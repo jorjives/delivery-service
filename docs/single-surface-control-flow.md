@@ -3,11 +3,11 @@
 Design notes for one delivery surface of a deterministically gated agent delivery
 harness. A surface takes a single task, drives an agent to complete it, and holds
 the line that a deterministic gate must pass before the work is accepted. This
-document covers the state machine, the gate interface, triage, and the serialised
-state the whole thing reads and writes.
+document covers the state machine, the gate interface, the close interface, triage,
+and the serialised state the whole thing reads and writes.
 
-Scope: one surface in isolation. Provisioning/teardown detail and multi-surface
-concerns are out of scope here.
+Scope: one surface in isolation. Close/teardown is covered via the close interface;
+worktree provisioning detail and multi-surface concerns are out of scope here.
 
 ## Core concepts
 
@@ -52,7 +52,8 @@ PRE_GATING                  (gate runs to establish the baseline fingerprint)
   → GATE_MAINTENANCE        (gate could not run / red beyond tolerance)
 
 GATE_MAINTENANCE            (repair agent; environment/harness only, NOT assertions)
-  → PRE_GATING              (re-baseline)
+  → PRE_GATING              (entered pre-task: re-baseline, no baseline exists yet)
+  → GATING                  (entered post-task via fix_the_gate: re-check, baseline is immutable)
   → ESCALATED               (unrepairable)
 
 AGENT_ACTIVE               (fresh reconstructed session, driven via SDK)
@@ -66,16 +67,21 @@ INCOMPLETE_TERMINUS        (abnormal — agent never cleanly signalled; also the
   → ESCALATED              (exhausted)
 
 GATING                     (post-task gate; compared against the baseline fingerprint)
-  → PASSED                 (no new failures)
+  → CLOSING                (accepted — no new failures)
   → TRIAGE                 (new failures, or gate error)
+
+CLOSING                    (variable close action: merge / open PR / cleanup / infra teardown)
+  → CLOSED                 (closer DONE)
+  → TRIAGE                 (closer FAIL/ERROR — infra-class; narrow router, no reroute)
 
 TRIAGE                     (router + classifier; typed verdict; never overturns a PASS)
   → AGENT_ACTIVE           (reroute; burns a correction slot; emits a sharpened brief)
   → GATE_MAINTENANCE       (fix_the_gate — environment only)
+  → CLOSING                (retry_close — post-acceptance close failure; burns a close slot)
   → ESCALATED              (escalate)
   → ABORTED                (abort)
 
-PASSED     (terminal) — worktree retained for merge/handoff
+CLOSED     (terminal) — close action completed (merged / PR opened / cleaned up)
 ESCALATED  (terminal) — worktree + case file retained for a human
 ABORTED    (terminal) — infra failure; worktree may be torn down
 ```
@@ -87,12 +93,34 @@ Notes:
 - **"Agent finished" and "structured output received" are different events.** A
   session can end without valid output. That is `INCOMPLETE_TERMINUS`, distinct
   from both escalation and gate failure, and it doubles as the crash-recovery path.
+  Its definition is negative: *any* session that ended without emitting valid
+  structured output — crash, token/turn cap, timeout, idle, or output that failed
+  schema validation. On the other two edges the agent signalled intent (completed,
+  or escalate-with-category) and you can route on it; here there is no signal, so
+  the only moves are retry-on-terminus-budget or give up.
+- **A retried terminus re-dispatches into the tree as it was left.** A crashed
+  session may have made partial worktree edits before dying. The fresh worker treats
+  that dirty tree as found-state (plus its distilled history), exactly as it treats
+  external side-effects: the gate is ground truth for what is still red. The
+  worktree is not reset between terminus retries.
 - **Gate fail and gate error are separate edges.** A fail routes back to the worker
   and burns a correction slot. An error (the gate could not run) is not the agent's
   fault: it re-runs the gate or routes to gate-maintenance, on a different budget.
-- **Three budgets**, each an independent deterministic counter: correction attempts
-  (worker), gate-error retries (infra), terminus retries (abnormal ends). Hitting a
-  cap forces escalation regardless of any classifier opinion.
+- **Budgets are independent deterministic counters**, one per failure population so
+  each gets a cap that fits its cost:
+  - **correction** (worker) — genuine regressions rerouted for a fix.
+  - **gate-error retries** (infra) — the gate flaked; cheap, stateless, re-run it.
+  - **gate-maintenance** (agent) — the environment is broken; dispatch a repair
+    agent. Expensive and stateful, so a *low* cap: a repair agent that fails once
+    rarely succeeds on the third.
+  - **terminus retries** (abnormal ends).
+  - **close retries** (infra) — a post-acceptance close that flaked; bounded so a
+    transient docker hiccup cannot escalate a good CLOSED to a human.
+
+  Hitting any cap forces escalation regardless of any classifier opinion.
+  gate-error and gate-maintenance are kept separate on purpose: one says "run the
+  gate again", the other says "send an agent to fix the box" — different cost,
+  different sensible cap, so a shared counter would serve both badly.
 
 ## Pre-flight gate and regression attribution
 
@@ -105,6 +133,16 @@ not just an aggregate pass/fail. This buys two things:
    gate's ambient noise.
 2. **A pre-task repair branch.** A red baseline routes to a gate-maintenance agent
    before the worker starts.
+
+**The baseline is captured exactly once per surface, before the first dispatch, and
+is immutable thereafter** (it lives in the immutable header of the case file). This
+is why gate-maintenance has two exits. Entered *pre-task* it returns to `PRE_GATING`
+to establish the baseline that does not yet exist. Entered *post-task* via
+`fix_the_gate`, the worker has already changed the world, so re-running `baseline`
+would bake the worker's edits into the fingerprint and destroy the attribution
+reference. It must instead return to `GATING` and re-check against the original,
+sacred baseline. Post-task maintenance repairs the box so the pinned assertions can
+*run*; it never re-establishes what "before" meant.
 
 Reward-hacking guard: gate-maintenance may fix the environment/harness so the gate
 can *run*; it may not weaken the assertions to turn baseline green. The same limit
@@ -184,6 +222,34 @@ mark), so a well-written gate lets the reconstructed worker see the effect alrea
 happened and skip it. This is a documented obligation on whoever writes such gates,
 not something the harness enforces generically.
 
+## Close interface
+
+Acceptance and close are separate events. `GATING` decides the work is *good*;
+`CLOSING` does something *with* it. Splitting them keeps invariant 4 intact — the
+accept decision and the close land as two commits, so a crash between them re-runs
+close idempotently against an already-accepted case file.
+
+Close is variable in the same way the gate is: the harness owns *when* it runs and
+*that its verdict is acted on*; it does not own *what* closing means. Injected and
+pinned by the harness, opaque to the worker.
+
+```
+closer.close(ctx, outcome) -> CloseReport { status: DONE | FAIL | ERROR, detail }
+```
+
+- **The strategy is keyed on `outcome`.** Merge back, open a PR, cleanup-only,
+  docker teardown: all just closer implementations, or a composed chain. The harness
+  never inspects the strategy. Infra teardown (removing container traces, releasing
+  the worktree) is the closer's business, not the harness's.
+- **Close failure is infra-class, not worker-class.** The work is already accepted
+  and correct, so rerouting to a fresh worker is meaningless. Close-triage is a
+  *narrow* router: its only live verdicts are `retry_close` (repair/retry, bounded
+  by the close budget) or `escalate`. No `reroute`.
+- **CLOSING is on the accept path.** `ESCALATED` and `ABORTED` may also need infra
+  teardown, handled by invoking the closer with that outcome, but as a fire-and-log
+  step: they are already terminal or human-owned, so a teardown failure there is
+  surfaced, not re-triaged. Only the accept-path close routes back into triage.
+
 ## Triage
 
 Triage's job, stated once: **compress the accumulated mess into a focused artifact
@@ -215,7 +281,7 @@ Triage reads, it does not touch:
 ```
 - task definition            # original intent — for plausibility and the brief
 - case file                  # prior attempts: index, session_key, terminus, gate_delta, prior triage rationales
-- triggering event           # gate fail-delta | gate error | worker escalate(category)
+- triggering event           # gate fail-delta | gate error | worker escalate(category) | close failure
 - current gate report        # the concrete newly-failing assertions, verbatim
 - remaining budgets          # how close to the cap
 ```
@@ -233,6 +299,7 @@ recorded, because it is the input the next triage round reads.
 { verdict: "reroute",      brief:  SharpenedBrief,   rationale }
 { verdict: "escalate",     packet: EscalationPacket, rationale }
 { verdict: "fix_the_gate", brief:  GateRepairBrief,  rationale }
+{ verdict: "retry_close",  brief:  CloseRepairBrief, rationale }   # close-failure trigger only
 { verdict: "abort",        reason,                   rationale }
 ```
 
@@ -295,17 +362,20 @@ CaseFile = {
 
   # ── cursor: mutable, the resume marker ──
   state                       # PRE_GATING | AGENT_ACTIVE | GATING | TRIAGE
-                              # | GATE_MAINTENANCE | PASSED | ESCALATED | ABORTED
-  budgets                     # correction: {used, max}
-                              # gate_error: {used, max}
-                              # terminus:   {used, max}
+                              # | GATE_MAINTENANCE | CLOSING
+                              # | CLOSED | ESCALATED | ABORTED
+  budgets                     # correction:       {used, max}
+                              # gate_error:        {used, max}
+                              # gate_maintenance:  {used, max}
+                              # terminus:          {used, max}
+                              # close:             {used, max}
   worktree_ref
 
   # ── history: append-only ordered log of typed entries ──
   history: [ Entry ]
 
   # ── outcome: written once, on a terminal state ──
-  outcome?                    # {kind: passed|escalated|aborted, source, reason, at}
+  outcome?                    # {kind: closed|escalated|aborted, source, reason, at}
 }
 ```
 
@@ -322,8 +392,11 @@ Entry =
         new_failures: [{id, detail_ref}],   # empty on the PASS that ends the run
         class: fail|error }
   | { t:"triage", after_attempt, trigger,
-        verdict: reroute|escalate|fix_the_gate|abort,
+        verdict: reroute|escalate|fix_the_gate|retry_close|abort,
         rationale, artifact_ref }            # artifact_ref → the brief or packet
+  | { t:"close",
+        status: DONE|FAIL|ERROR,
+        detail_ref }                         # written after the closer runs
 ```
 
 ### The log tail is the crash detector
@@ -336,8 +409,10 @@ tail; each tail type maps to exactly one action:
 tail = dispatch, no terminus     → session died → treat as INCOMPLETE_TERMINUS (existing edge)
 tail = terminus(completed)       → died before/during gate → re-run gate (idempotent, safe)
 tail = gate(fail|error)          → died in routing → run triage
+tail = gate(PASS)                → accepted, died before/during close → run closer (idempotent)
 tail = triage(verdict)           → died before acting → act on the recorded verdict
-tail = gate(PASS) / terminal     → done
+tail = close(FAIL|ERROR)         → died in routing → run close-triage
+tail = close(DONE) / terminal    → done
 ```
 
 There is no separate recovery subsystem: the structure of the log *is* the recovery
@@ -370,6 +445,8 @@ pulling a full prior transcript would reconstruct the bloat we chose to avoid.
 
 ## Open items
 
-- Surface lifecycle boundary: provisioning and teardown of the worktree, and what
-  each terminal state hands off to.
-- Lifting from a single surface to many.
+- Provisioning detail: how the worktree is created and the task injected (the
+  `PROVISIONING` entry edge). Close/teardown is now specified via the close
+  interface; provisioning is its unwritten counterpart.
+- Lifting from a single surface to many: scheduling, the shared worktree/resource
+  pool, concurrency caps, and whether the budgets stay per-surface.
