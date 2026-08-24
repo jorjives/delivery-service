@@ -166,9 +166,6 @@ Mechanics:
 - **Host resource governor**: the concrete mechanism for the host-level cap (token
   budget / SDK concurrency / docker / disk) across concurrent runs. A semaphore /
   env cap is the likely starting point; the detail is unwritten.
-- **Provisioning**: how a worktree is created and a task injected into a slot (the
-  surface's `PROVISIONING` edge). Shared as an open item with the single-surface
-  doc; the pool makes it the supervisor's concern too.
 - **Merge serialisation detail**: the exact critical section and lock granularity
   for the close/merge under the single repo-lock, once real merge throughput is
   observed.

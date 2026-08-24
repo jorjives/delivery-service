@@ -7,7 +7,8 @@ document covers the state machine, the gate interface, the close interface, tria
 and the serialised state the whole thing reads and writes.
 
 Scope: one surface in isolation. Close/teardown is covered via the close interface;
-worktree provisioning detail and multi-surface concerns are out of scope here.
+the `PROVISIONING` entry edge is covered in [provisioning](provisioning.md); other
+multi-surface concerns are out of scope here.
 
 ## Core concepts
 
@@ -445,8 +446,5 @@ pulling a full prior transcript would reconstruct the bloat we chose to avoid.
 
 ## Open items
 
-- Provisioning detail: how the worktree is created and the task injected (the
-  `PROVISIONING` entry edge). Close/teardown is now specified via the close
-  interface; provisioning is its unwritten counterpart.
 - Lifting from a single surface to many: scheduling, the shared worktree/resource
   pool, concurrency caps, and whether the budgets stay per-surface.
