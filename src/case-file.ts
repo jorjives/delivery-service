@@ -201,18 +201,10 @@ export async function incrementBudget(
   const budget = caseJson.cursor.budgets[population];
   const used = budget.used + 1;
 
-  const updated: CaseJson = {
-    ...caseJson,
-    cursor: {
-      ...caseJson.cursor,
-      budgets: {
-        ...caseJson.cursor.budgets,
-        [population]: { used, max: budget.max },
-      },
-    },
-  };
+  await updateCursor(dir, {
+    budgets: { ...caseJson.cursor.budgets, [population]: { used, max: budget.max } },
+  });
 
-  await writeCaseJson(dir, updated);
   return { used, max: budget.max, exhausted: used >= budget.max };
 }
 

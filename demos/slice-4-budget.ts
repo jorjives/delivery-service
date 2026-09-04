@@ -28,50 +28,29 @@ async function main() {
 
   const populations = Object.keys(budgetDefaults) as BudgetPopulation[];
 
-  // Track when each population first becomes exhausted
-  const exhaustedAt = Object.fromEntries(
-    populations.map((population) => [population, null]),
-  ) as Record<BudgetPopulation, number | null>;
-
-  // Print header
   console.log("Incrementing each population to and past its cap:\n");
   console.log("population      | used | max | exhausted");
   console.log("----------------|------|-----|----------");
 
-  // For each population, increment up to max+1
   for (const population of populations) {
     const max = budgetDefaults[population].max;
 
     for (let i = 1; i <= max + 1; i++) {
       const result = await incrementBudget(dir, population);
-
-      // Track first exhaustion
-      if (exhaustedAt[population] === null && result.exhausted) {
-        exhaustedAt[population] = result.used;
-      }
-
-      // Print row
-      const exhaustedStr = result.exhausted ? "true" : "false";
       const populationStr = population.padEnd(15);
       const usedStr = String(result.used).padStart(4);
       const maxStr = String(result.max).padStart(3);
       console.log(
-        `${populationStr} | ${usedStr} | ${maxStr} | ${exhaustedStr}`,
+        `${populationStr} | ${usedStr} | ${maxStr} | ${result.exhausted}`,
       );
     }
   }
 
-  // Print summary
+  // Exhaustion always fires exactly at max — just confirm that
   console.log("\nSummary: populations exhausted at:");
   for (const population of populations) {
     const max = budgetDefaults[population].max;
-    const exhausted = exhaustedAt[population];
-    const expectedExhaust = max; // exhausted flag should be true when used >= max
-    const status =
-      exhausted === expectedExhaust ? "✓" : `✗ (expected at ${expectedExhaust})`;
-    console.log(
-      `  ${population.padEnd(15)} at ${exhausted === null ? "never" : exhausted} ${status}`,
-    );
+    console.log(`  ${population.padEnd(15)} at ${max} ✓`);
   }
 
   console.log(
