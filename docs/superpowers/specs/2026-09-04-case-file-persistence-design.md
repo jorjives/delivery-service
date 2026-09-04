@@ -102,7 +102,7 @@ type GateEntry = {
   attempt: number
   status: 'PASS' | 'FAIL' | 'ERROR'
   newFailures: Array<{ id: string; detailRef: string }>
-  class: 'fail' | 'error'
+  class?: 'fail' | 'error'    // present on FAIL and ERROR; absent on PASS
 }
 
 type TriageEntry = {
@@ -181,10 +181,15 @@ not exist or either file is malformed.
 
 ### `rebuild(dir) → CaseFile`
 
-Reconstruct the cursor from the log when `case.json` is suspected stale or
-corrupt. Replays `log.jsonl` to derive the current state and budget counters,
-rewrites `case.json` with the reconstructed cursor, and returns the result.
-This is the "log wins" recovery path.
+Reconstruct the cursor from the log when `case.json` is suspected stale
+(parseable but desynced). Reads the header and budget maxima from the existing
+`case.json`, replays `log.jsonl` to derive the current state and budget
+`used` counters, rewrites `case.json` with the reconstructed cursor, and
+returns the result. This is the "log wins" recovery path.
+
+If `case.json` is missing or unparseable, `rebuild` fails with
+`FileNotFound` or `CorruptCaseFile` — the header and budget maxima are not
+recoverable from the log alone.
 
 ### `appendEntry(dir, entry) → void`
 
@@ -209,7 +214,10 @@ Write the terminal outcome. Fails if an outcome is already set.
 Mutations to header, cursor, and outcome atomically rewrite `case.json`
 (read, apply, write-to-temp, fsync, rename). History appends write a single
 line to `log.jsonl` and fsync. A crash at any point leaves either the prior
-state or the new state on disk, never a partial write.
+state or the new state on disk, never a partial write. An OS crash between
+the write and the fsync may leave a truncated last line in `log.jsonl`;
+`load` and `rebuild` treat a truncated final line as an incomplete append
+and ignore it (the prior consistent state is the last complete line).
 
 ## Budget enforcement
 
@@ -305,8 +313,10 @@ Coverage:
 - **Atomicity**: simulate a crash (kill the write before rename for
   `case.json`; truncate mid-line for `log.jsonl`) and verify `load` returns
   the prior consistent state.
-- **Rebuild**: append entries, corrupt or delete `case.json`, run `rebuild`,
-  verify cursor matches what the log implies.
+- **Rebuild**: append entries, manually desync the cursor in `case.json`,
+  run `rebuild`, verify cursor matches what the log implies. Verify that
+  `rebuild` on a missing or unparseable `case.json` fails with the
+  appropriate error (header irrecoverable).
 - **Log authority**: append entries, manually desync the cursor in
   `case.json`, verify `rebuild` restores the correct state from the log.
 - **Immutability**: `setBaseline` twice fails; `setOutcome` twice fails;
@@ -316,8 +326,10 @@ Coverage:
 - **Reference lifecycle**: write ref → append entry pointing to it → load →
   dereference → verify content.
 - **Corrupt file**: malformed JSON or schema-invalid JSON produces
-  `CorruptCaseFile`, not a crash. Malformed `log.jsonl` line produces a
-  clear error identifying the line number.
+  `CorruptCaseFile`, not a crash. A malformed `log.jsonl` line in a
+  non-final position produces a clear error identifying the line number.
+  A truncated final line is silently ignored (incomplete append from a
+  crash).
 - **Log tail**: verify `logTail` returns the correct entry type for each
   append sequence.
 
