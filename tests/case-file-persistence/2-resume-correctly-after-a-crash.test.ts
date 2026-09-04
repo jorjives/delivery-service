@@ -5,23 +5,7 @@
 // and asserts on its printed output for each simulated crash scenario.
 
 import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
-import { join } from "node:path";
-
-const REPO_ROOT = join(import.meta.dirname, "..", "..");
-
-function runTsx(args: string[]): { stdout: string; status: number } {
-  try {
-    const stdout = execFileSync("npx", ["tsx", ...args], {
-      cwd: REPO_ROOT,
-      encoding: "utf-8",
-    });
-    return { stdout, status: 0 };
-  } catch (err) {
-    const e = err as { stdout?: string; status?: number };
-    return { stdout: e.stdout ?? "", status: e.status ?? 1 };
-  }
-}
+import { runTsx } from "./helpers.js";
 
 describe("UAT: resume correctly after a crash", () => {
   const { stdout, status } = runTsx(["demos/slice-2-crash-recovery.ts"]);

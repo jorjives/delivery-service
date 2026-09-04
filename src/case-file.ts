@@ -160,54 +160,27 @@ export async function updateCursor(
   await writeCaseJson(dir, updated);
 }
 
+const terminusState: Record<string, SurfaceState> = {
+  completed: "GATING", escalate: "ESCALATED", incomplete: "INCOMPLETE_TERMINUS",
+};
+const gateState: Record<string, SurfaceState> = {
+  PASS: "CLOSING", FAIL: "TRIAGE", ERROR: "TRIAGE",
+};
+const triageState: Record<string, SurfaceState> = {
+  reroute: "AGENT_ACTIVE", escalate: "ESCALATED", fix_the_gate: "GATE_MAINTENANCE",
+  retry_close: "CLOSING", abort: "ABORTED",
+};
+const closeState: Record<string, SurfaceState> = {
+  DONE: "CLOSED", FAIL: "TRIAGE", ERROR: "TRIAGE",
+};
+
 function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
   switch (entry.t) {
-    case "dispatch":
-      return "AGENT_ACTIVE";
-    case "terminus":
-      switch (entry.status) {
-        case "completed":
-          return "GATING";
-        case "escalate":
-          return "ESCALATED";
-        case "incomplete":
-          return "INCOMPLETE_TERMINUS";
-      }
-      break; // unreachable, satisfies exhaustiveness
-    case "gate":
-      switch (entry.status) {
-        case "PASS":
-          return "CLOSING";
-        case "FAIL":
-          return "TRIAGE";
-        case "ERROR":
-          return "TRIAGE";
-      }
-      break;
-    case "triage":
-      switch (entry.verdict) {
-        case "reroute":
-          return "AGENT_ACTIVE";
-        case "escalate":
-          return "ESCALATED";
-        case "fix_the_gate":
-          return "GATE_MAINTENANCE";
-        case "retry_close":
-          return "CLOSING";
-        case "abort":
-          return "ABORTED";
-      }
-      break;
-    case "close":
-      switch (entry.status) {
-        case "DONE":
-          return "CLOSED";
-        case "FAIL":
-          return "TRIAGE";
-        case "ERROR":
-          return "TRIAGE";
-      }
-      break;
+    case "dispatch": return "AGENT_ACTIVE";
+    case "terminus": return terminusState[entry.status] as SurfaceState;
+    case "gate": return gateState[entry.status] as SurfaceState;
+    case "triage": return triageState[entry.verdict] as SurfaceState;
+    case "close": return closeState[entry.status] as SurfaceState;
   }
 }
 
@@ -237,13 +210,9 @@ function deriveBudgetsFromLog(
     }
   }
 
-  return {
-    correction: { used: used.correction, max: maxima.correction.max },
-    gateError: { used: used.gateError, max: maxima.gateError.max },
-    gateMaintenance: { used: used.gateMaintenance, max: maxima.gateMaintenance.max },
-    terminus: { used: used.terminus, max: maxima.terminus.max },
-    close: { used: used.close, max: maxima.close.max },
-  };
+  return Object.fromEntries(
+    Object.entries(used).map(([k, u]) => [k, { used: u, max: maxima[k as keyof BudgetSet].max }]),
+  ) as BudgetSet;
 }
 
 export async function rebuild(dir: string): Promise<CaseFile> {
@@ -273,12 +242,7 @@ export async function rebuild(dir: string): Promise<CaseFile> {
 
   await writeCaseJson(dir, updated);
 
-  return {
-    header: loaded.header,
-    cursor,
-    history: loaded.history,
-    outcome: loaded.outcome,
-  };
+  return { ...updated, history: loaded.history };
 }
 
 export type ResumeAction =

@@ -7,25 +7,10 @@
 // demo script's happy path doesn't exercise (missing / corrupt case file).
 
 import { describe, it, expect } from "vitest";
-import { execFileSync } from "node:child_process";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-
-const REPO_ROOT = join(import.meta.dirname, "..", "..");
-
-function runTsx(args: string[]): { stdout: string; status: number } {
-  try {
-    const stdout = execFileSync("npx", ["tsx", ...args], {
-      cwd: REPO_ROOT,
-      encoding: "utf-8",
-    });
-    return { stdout, status: 0 };
-  } catch (err) {
-    const e = err as { stdout?: string; status?: number };
-    return { stdout: e.stdout ?? "", status: e.status ?? 1 };
-  }
-}
+import { REPO_ROOT, runTsx } from "./helpers.js";
 
 describe("UAT: create, append to, and read back a case file", () => {
   it("demo script writes a case file, appends history, and reads it back from disk", () => {

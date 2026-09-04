@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction } from "./case-file.js";
+import { FileNotFound, CorruptCaseFile } from "./errors.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
@@ -146,13 +147,11 @@ describe("load", () => {
   });
 
   it("throws FileNotFound when case.json does not exist", async () => {
-    const { FileNotFound } = await import("./errors.js");
     const emptyDir = await mkdtemp(join(tmpdir(), "case-file-empty-"));
     await expect(load(emptyDir)).rejects.toThrow(FileNotFound);
   });
 
   it("throws CorruptCaseFile when case.json has invalid structure", async () => {
-    const { CorruptCaseFile } = await import("./errors.js");
     const badDir = await mkdtemp(join(tmpdir(), "case-file-bad-"));
     await writeFile(join(badDir, "case.json"), '{"not":"a case file"}');
     await writeFile(join(badDir, "log.jsonl"), "");
@@ -160,7 +159,6 @@ describe("load", () => {
   });
 
   it("throws CorruptCaseFile when case.json is not valid JSON", async () => {
-    const { CorruptCaseFile } = await import("./errors.js");
     const badDir = await mkdtemp(join(tmpdir(), "case-file-bad-json-"));
     await writeFile(join(badDir, "case.json"), "not json at all {{{");
     await writeFile(join(badDir, "log.jsonl"), "");
@@ -217,7 +215,6 @@ describe("crash recovery: truncated log line", () => {
 
     // Simulate crash mid-append: write a partial JSON line at the end
     const logPath = join(dir, "log.jsonl");
-    const { appendFile } = await import("node:fs/promises");
     await appendFile(logPath, '{"t":"terminus","attempt":1,"ses');
 
     const loaded = await load(dir);
@@ -388,15 +385,12 @@ describe("rebuild", () => {
   });
 
   it("fails with FileNotFound when case.json is missing", async () => {
-    const { FileNotFound } = await import("./errors.js");
-    const { unlink } = await import("node:fs/promises");
     await unlink(join(dir, "case.json"));
 
     await expect(rebuild(dir)).rejects.toThrow(FileNotFound);
   });
 
   it("fails with CorruptCaseFile when case.json is unparseable", async () => {
-    const { CorruptCaseFile } = await import("./errors.js");
     await writeFile(join(dir, "case.json"), "not valid json {{{");
 
     await expect(rebuild(dir)).rejects.toThrow(CorruptCaseFile);
