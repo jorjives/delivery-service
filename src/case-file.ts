@@ -160,37 +160,37 @@ export async function updateCursor(
   await writeCaseJson(dir, updated);
 }
 
-export async function setBaseline(
+async function setOnce(
   dir: string,
-  baseline: GateState,
+  field: string,
+  isSet: (caseJson: CaseJson) => boolean,
+  merge: (caseJson: CaseJson) => CaseJson,
 ): Promise<void> {
   const caseJson = await readCaseJson(dir);
 
-  if (caseJson.header.baseline !== null) {
-    throw new ImmutabilityViolation(dir, "baseline");
+  if (isSet(caseJson)) {
+    throw new ImmutabilityViolation(dir, field);
   }
 
-  const updated: CaseJson = {
-    ...caseJson,
-    header: { ...caseJson.header, baseline },
-  };
-
-  await writeCaseJson(dir, updated);
+  await writeCaseJson(dir, merge(caseJson));
 }
 
-export async function setOutcome(
-  dir: string,
-  outcome: CaseFileOutcome,
-): Promise<void> {
-  const caseJson = await readCaseJson(dir);
+export function setBaseline(dir: string, baseline: GateState): Promise<void> {
+  return setOnce(
+    dir,
+    "baseline",
+    (caseJson) => caseJson.header.baseline !== null,
+    (caseJson) => ({ ...caseJson, header: { ...caseJson.header, baseline } }),
+  );
+}
 
-  if (caseJson.outcome !== undefined) {
-    throw new ImmutabilityViolation(dir, "outcome");
-  }
-
-  const updated: CaseJson = { ...caseJson, outcome };
-
-  await writeCaseJson(dir, updated);
+export function setOutcome(dir: string, outcome: CaseFileOutcome): Promise<void> {
+  return setOnce(
+    dir,
+    "outcome",
+    (caseJson) => caseJson.outcome !== undefined,
+    (caseJson) => ({ ...caseJson, outcome }),
+  );
 }
 
 const terminusState: Record<string, SurfaceState> = {
