@@ -474,3 +474,41 @@ describe("resumeAction", () => {
     })).toBe("done");
   });
 });
+
+describe("header immutability", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-immut-"));
+    await create(dir, {
+      surfaceId: "surface-immut",
+      taskDef: { intent: "test immutability" },
+      gateRef: { gateId: "gate-1", version: 1 },
+      domainPrompt: "You are a helper.",
+    }, budgetDefaults);
+  });
+
+  it("header is unchanged after cursor updates and history appends", async () => {
+    const original = await load(dir);
+
+    await updateCursor(dir, { state: "AGENT_ACTIVE" });
+    await updateCursor(dir, { worktreeRef: "wt-123" });
+    await appendEntry(dir, {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "sess-1",
+    });
+    await appendEntry(dir, {
+      t: "terminus",
+      attempt: 1,
+      sessionKey: "sess-1",
+      status: "completed",
+      rationale: "Done",
+    });
+    await updateCursor(dir, { state: "GATING" });
+
+    const after = await load(dir);
+
+    expect(after.header).toEqual(original.header);
+  });
+});
