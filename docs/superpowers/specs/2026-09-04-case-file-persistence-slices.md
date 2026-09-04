@@ -167,6 +167,8 @@ made from them earlier in a task's life would become unverifiable.
 
 ## Slice 4: Budgets Track Usage and Signal When Exhausted
 
+**Status:** ✅ Complete — 2026-09-04 — `0fa3c02`
+
 **Delivers:** A developer can increment any of the task's budget counters
 (correction, gate error, gate maintenance, terminus, close) and see the
 running total and whether the cap has been reached.
