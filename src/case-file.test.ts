@@ -697,4 +697,39 @@ describe("reference storage", () => {
     expect(first).toEqual({ id: "first" });
     expect(second).toEqual({ id: "second" });
   });
+
+  it("a history entry's detailRef can be followed to retrieve the referenced content", async () => {
+    const failureDetail = {
+      assertion: "homepage-loads",
+      expected: 200,
+      actual: 500,
+      screenshot: "base64-data-would-go-here",
+      logs: ["GET / -> 500", "Internal Server Error"],
+    };
+
+    // Write the ref before the history entry (crash-safe ordering)
+    await writeRef(dir, "gate-detail-1", failureDetail);
+
+    // Record a gate failure that points to the ref
+    const gateEntry: HistoryEntry = {
+      t: "gate",
+      attempt: 1,
+      status: "FAIL",
+      newFailures: [{ id: "homepage-loads", detailRef: "gate-detail-1" }],
+      class: "fail",
+    };
+    await appendEntry(dir, gateEntry);
+
+    // Load the case file and follow the pointer
+    const loaded = await load(dir);
+    const tail = loaded.history.at(-1);
+    expect(tail).toBeDefined();
+    expect(tail!.t).toBe("gate");
+
+    const gate = tail as { t: "gate"; newFailures: Array<{ id: string; detailRef: string }> };
+    const refId = gate.newFailures[0]!.detailRef;
+    const retrieved = await readRef(dir, refId);
+
+    expect(retrieved).toEqual(failureDetail);
+  });
 });
