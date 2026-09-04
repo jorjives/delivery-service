@@ -56,11 +56,9 @@ and notes, not as a separate layer.
 
 ---
 
-## Item 1: Case File Persistence ✅
+## Item 1: Case File Persistence
 
-**Status:** Complete — 2026-09-04
-
-**Spec:** `docs/superpowers/specs/2026-09-04-case-file-persistence-design.md`
+**Status:** ✅ Complete — 2026-09-04 — spec: `docs/superpowers/specs/2026-09-04-case-file-persistence-design.md`
 
 **Delivers:** A serialisable, crash-recoverable state container that every
 other component reads and writes, enabling resume from disk alone.
