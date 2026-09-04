@@ -1,2 +1,1 @@
-// Case file persistence module — barrel export
-// Populated as the API is built.
+export { create } from "./case-file.js";
