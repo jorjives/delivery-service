@@ -1,7 +1,7 @@
 import { open, rename, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState } from "./schema.js";
-import { FileNotFound, CorruptCaseFile, WriteFailure } from "./errors.js";
+import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateState } from "./schema.js";
+import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
 
 async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
   const fd = await open(filePath, flag);
@@ -155,6 +155,24 @@ export async function updateCursor(
   const updated: CaseJson = {
     ...caseJson,
     cursor: CaseFileCursor.parse({ ...caseJson.cursor, ...patch }),
+  };
+
+  await writeCaseJson(dir, updated);
+}
+
+export async function setBaseline(
+  dir: string,
+  baseline: GateState,
+): Promise<void> {
+  const caseJson = await readCaseJson(dir);
+
+  if (caseJson.header.baseline !== null) {
+    throw new ImmutabilityViolation(dir, "baseline");
+  }
+
+  const updated: CaseJson = {
+    ...caseJson,
+    header: { ...caseJson.header, baseline },
   };
 
   await writeCaseJson(dir, updated);
