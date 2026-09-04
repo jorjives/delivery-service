@@ -46,6 +46,9 @@ export const CaseFileHeader = z.object({
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 
+// Header without baseline — the public input type for create()
+export type CreateHeader = Omit<CaseFileHeader, "baseline">;
+
 // --- Cursor ---
 
 export const CaseFileCursor = z.object({

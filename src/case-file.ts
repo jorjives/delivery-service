@@ -1,9 +1,7 @@
 import { open, rename, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry } from "./schema.js";
+import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure } from "./errors.js";
-
-type CreateHeader = Omit<CaseFileHeader, "baseline">;
 
 async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
   const fd = await open(filePath, flag);
@@ -37,12 +35,13 @@ export async function create(
     worktreeRef: "",
   };
 
-  const caseJson: CaseJson = { header: fullHeader, cursor };
+  const caseJson: CaseJson = CaseJson.parse({ header: fullHeader, cursor });
 
   try {
-    await atomicWriteJson(join(dir, "case.json"), caseJson);
-    // Create empty log file
-    await writeAndSync(join(dir, "log.jsonl"), "w", "");
+    await Promise.all([
+      atomicWriteJson(join(dir, "case.json"), caseJson),
+      writeAndSync(join(dir, "log.jsonl"), "w", ""),
+    ]);
   } catch (err) {
     throw new WriteFailure(dir, String(err));
   }
@@ -69,16 +68,17 @@ export async function load(dir: string): Promise<CaseFile> {
   const caseJsonPath = join(dir, "case.json");
   const logPath = join(dir, "log.jsonl");
 
-  // Read case.json
-  let caseJsonRaw: string;
-  try {
-    caseJsonRaw = await readFile(caseJsonPath, "utf-8");
-  } catch (err: unknown) {
-    if (isEnoent(err)) {
-      throw new FileNotFound(dir, caseJsonPath);
-    }
-    throw err;
-  }
+  // Read both files in parallel
+  const [caseJsonRaw, logRaw] = await Promise.all([
+    readFile(caseJsonPath, "utf-8").catch((err: unknown) => {
+      if (isEnoent(err)) throw new FileNotFound(dir, caseJsonPath);
+      throw err;
+    }),
+    readFile(logPath, "utf-8").catch((err: unknown) => {
+      if (isEnoent(err)) return "";
+      throw err;
+    }),
+  ]);
 
   // Parse and validate case.json
   let caseJson: CaseJson;
@@ -87,19 +87,6 @@ export async function load(dir: string): Promise<CaseFile> {
     caseJson = CaseJson.parse(parsed);
   } catch (err) {
     throw new CorruptCaseFile(dir, String(err));
-  }
-
-  // Read log.jsonl
-  let logRaw: string;
-  try {
-    logRaw = await readFile(logPath, "utf-8");
-  } catch (err: unknown) {
-    if (isEnoent(err)) {
-      // No log file yet — treat as empty history
-      logRaw = "";
-    } else {
-      throw err;
-    }
   }
 
   // Parse history entries

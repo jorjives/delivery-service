@@ -2,6 +2,7 @@ export { create, appendEntry, load, logTail } from "./case-file.js";
 export type {
   CaseFile,
   CaseFileHeader,
+  CreateHeader,
   CaseFileCursor,
   CaseFileOutcome,
   HistoryEntry,
