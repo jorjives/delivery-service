@@ -5,16 +5,24 @@ import { FileNotFound, CorruptCaseFile, WriteFailure } from "./errors.js";
 
 type CreateHeader = Omit<CaseFileHeader, "baseline">;
 
-async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
-  const tmp = filePath + ".tmp";
-  const fd = await open(tmp, "w");
+async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
+  const fd = await open(filePath, flag);
   try {
-    await fd.write(JSON.stringify(data, null, 2));
+    await fd.write(data);
     await fd.datasync();
   } finally {
     await fd.close();
   }
+}
+
+async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
+  const tmp = filePath + ".tmp";
+  await writeAndSync(tmp, "w", JSON.stringify(data, null, 2));
   await rename(tmp, filePath);
+}
+
+function isEnoent(err: unknown): boolean {
+  return err instanceof Error && "code" in err && err.code === "ENOENT";
 }
 
 export async function create(
@@ -34,9 +42,7 @@ export async function create(
   try {
     await atomicWriteJson(join(dir, "case.json"), caseJson);
     // Create empty log file
-    const logFd = await open(join(dir, "log.jsonl"), "w");
-    await logFd.datasync();
-    await logFd.close();
+    await writeAndSync(join(dir, "log.jsonl"), "w", "");
   } catch (err) {
     throw new WriteFailure(dir, String(err));
   }
@@ -53,13 +59,7 @@ export async function appendEntry(
 
   const logPath = join(dir, "log.jsonl");
   try {
-    const fd = await open(logPath, "a");
-    try {
-      await fd.write(JSON.stringify(entry) + "\n");
-      await fd.datasync();
-    } finally {
-      await fd.close();
-    }
+    await writeAndSync(logPath, "a", JSON.stringify(entry) + "\n");
   } catch (err) {
     throw new WriteFailure(dir, String(err));
   }
@@ -74,7 +74,7 @@ export async function load(dir: string): Promise<CaseFile> {
   try {
     caseJsonRaw = await readFile(caseJsonPath, "utf-8");
   } catch (err: unknown) {
-    if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+    if (isEnoent(err)) {
       throw new FileNotFound(dir, caseJsonPath);
     }
     throw err;
@@ -94,7 +94,7 @@ export async function load(dir: string): Promise<CaseFile> {
   try {
     logRaw = await readFile(logPath, "utf-8");
   } catch (err: unknown) {
-    if (err instanceof Error && "code" in err && err.code === "ENOENT") {
+    if (isEnoent(err)) {
       // No log file yet — treat as empty history
       logRaw = "";
     } else {
