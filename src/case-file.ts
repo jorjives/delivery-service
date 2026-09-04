@@ -132,3 +132,7 @@ export async function load(dir: string): Promise<CaseFile> {
     outcome: caseJson.outcome,
   };
 }
+
+export function logTail(caseFile: CaseFile): HistoryEntry | undefined {
+  return caseFile.history.at(-1);
+}

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load } from "./case-file.js";
+import { create, appendEntry, load, logTail } from "./case-file.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
@@ -175,5 +175,46 @@ describe("load", () => {
     await writeFile(join(badDir, "case.json"), "not json at all {{{");
     await writeFile(join(badDir, "log.jsonl"), "");
     await expect(load(badDir)).rejects.toThrow(CorruptCaseFile);
+  });
+});
+
+describe("logTail", () => {
+  it("returns undefined for empty history", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "case-file-tail-"));
+    const cf = await create(dir, {
+      surfaceId: "s-1",
+      taskDef: {},
+      gateRef: {},
+    }, budgetDefaults);
+    expect(logTail(cf)).toBeUndefined();
+  });
+
+  it("returns the last history entry", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "case-file-tail-"));
+    await create(dir, {
+      surfaceId: "s-1",
+      taskDef: {},
+      gateRef: {},
+    }, budgetDefaults);
+
+    const entry1: HistoryEntry = {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "s1",
+    };
+    const entry2: HistoryEntry = {
+      t: "terminus",
+      attempt: 1,
+      sessionKey: "s1",
+      status: "completed",
+      rationale: "Done",
+    };
+
+    await appendEntry(dir, entry1);
+    await appendEntry(dir, entry2);
+
+    const loaded = await load(dir);
+    const tail = logTail(loaded);
+    expect(tail).toEqual(entry2);
   });
 });
