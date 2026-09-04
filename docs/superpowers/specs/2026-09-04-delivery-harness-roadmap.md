@@ -21,6 +21,31 @@ Success at the roadmap level: a user can point the harness at a repo with a
 gate definition, hand it a queue of tasks, and get back accepted work or
 structured escalation packets, with crash recovery throughout.
 
+### Two audiences
+
+The harness serves two distinct personas, and the roadmap must hold both:
+
+- **Harness extenders** build new gate types, closer types, and custom
+  integrations. They are engineers comfortable with code, contracts, and
+  schemas. The pluggable interfaces (Items 2, 4, 6) are their surface.
+- **Project owners** use the harness to deliver work on their projects. Many
+  will be non-technical users leveraging AI agents to build something without
+  an engineering team. They should not need to write code to set up a project,
+  define tasks, or understand what happened during a run.
+
+This distinction is not about dumbing down the tool. It is about recognising
+that the value of an AI delivery harness is precisely that it lets people who
+are not engineers ship verified work. If the setup surface requires engineering
+skill, the tool solves a problem only for people who could already solve it
+themselves.
+
+The roadmap threads this by ensuring that every user-facing surface (gate
+selection, task authoring, agent context, configuration, reporting) has a
+declarative, code-free path alongside the extensible, code-first path. Early
+items build the contracts and reference implementations; later items (notably
+Item 9) compose them into a guided experience that a non-technical project
+owner can navigate.
+
 ### Developer experience as a cross-cut
 
 This is an open-source project. Trust and adoption depend on DX landing at the
@@ -92,6 +117,15 @@ have to reverse-engineer the contract from source. The gate is the first of
 several authoring surfaces that Item 9 (Project Configuration) will unify into
 a coherent onboarding experience; the guide written here becomes a chapter in
 that larger surface.
+
+**Accessibility:** The reference gate is not just an example for extenders; it
+is the gate most non-technical project owners will use. It must be usable
+through configuration alone (e.g. "run this test command and treat the exit
+code as pass/fail"), not only through code. The spec should consider what a
+small library of built-in, configurable gates covers: test-runner, file-exists,
+command-succeeds, schema-validates. A project owner who can describe their
+acceptance criteria in plain terms should be able to select and configure a gate
+without writing an implementation.
 
 ---
 
@@ -218,6 +252,11 @@ adopters the two plug points they must understand to use the harness; both need
 documented contracts and working examples. Like the gate guide, this becomes a
 chapter in Item 9's (Project Configuration) unified onboarding surface.
 
+**Accessibility:** As with gates, the built-in closers (merge-back, open-PR,
+commit-to-branch) must be selectable by configuration, not only by writing
+code. A non-technical project owner should be able to say "when work is
+accepted, open a pull request" without implementing the closer interface.
+
 ---
 
 ## Item 7: Agent Mock
@@ -290,6 +329,15 @@ proves it works end to end), and a release process (semver, changelog, tagged
 releases). The getting-started guide is the single most important document for
 adoption; it should be tested by running its own instructions from scratch.
 
+**Accessibility:** The CLI is the first thing a non-technical user touches.
+Sensible defaults matter more here than configurability: a user who runs the
+tool with a repo and a task description, and nothing else, should get a working
+run with a built-in gate and closer, not an error about missing configuration.
+The spec should consider an interactive setup mode (`init`) that walks a
+project owner through choosing a gate, a closer, and writing their first task
+definition via prompts rather than flags. Error messages must assume the reader
+does not know what a "worktree" or "structured output envelope" is.
+
 ---
 
 ## Item 9: Project Configuration
@@ -311,6 +359,10 @@ work, what tasks look like, and what context each agent role receives.
   consistency before a run starts (missing gate, malformed task defs, schema
   mismatches)
 - An example project demonstrates a complete configuration end to end
+- A non-technical project owner can set up a project using only declarative
+  configuration and built-in components, without writing any code
+- Task definitions can be written in natural language; the harness structures
+  them into what each agent role needs
 
 **Dependencies:**
 - Gate interface (the configuration surface must express gate definitions)
@@ -339,6 +391,34 @@ The individual authoring guides from Items 2, 4, and 6 (writing a gate,
 writing a closer, assembling agent context) become chapters in this item's
 unified onboarding documentation. Those guides are written when their contracts
 land; this item stitches them into a coherent project setup experience.
+
+**Accessibility:** This is the item where the two-audience split matters most.
+The configuration surface must work at two altitudes:
+
+- **Declarative altitude** (non-technical project owners): select from built-in
+  gates and closers by name, write task intent in natural language, describe the
+  project's domain in prose. The harness assembles the system-prompt fragment,
+  structures the task_def, and selects appropriate tool authority from what the
+  project owner describes. No code, no schemas, no knowledge of the harness's
+  internal model. Configuration reads like a project brief, not a config file.
+- **Programmatic altitude** (extenders): register custom gate/closer
+  implementations, author system-prompt fragments directly, define payload
+  schemas for structured output. Full control over every contract.
+
+Both altitudes produce the same internal artefacts. The declarative path is a
+higher-level interface to the same contracts, not a separate system. This means
+the declarative path must be designed alongside the contracts (Items 2, 4, 6),
+not bolted on afterwards; if a contract cannot be expressed declaratively, the
+contract is too complex for the non-technical path and the spec must decide
+whether to simplify the contract or accept that specific capability as
+extender-only.
+
+The spec should also consider whether the harness itself can assist with
+project setup: an agent-driven onboarding flow where the project owner
+describes what they want to build and the harness proposes a configuration
+(gate selection, closer selection, task breakdown) that the owner reviews and
+approves. This inverts the setup from "fill in this config" to "tell me what
+you want and I'll propose how to verify it".
 
 ---
 
@@ -410,6 +490,18 @@ human trusts the harness or stops using it. The spec should also consider
 structured output (JSON/machine-readable) alongside human-readable reporting,
 so adopters can build their own dashboards or integrate with existing
 observability tooling.
+
+**Accessibility:** For a non-technical project owner, the reporting surface may
+be the only window into what the harness did. The language must match: "3 of 5
+tasks completed and merged; 1 needs your decision (the agent wasn't sure
+whether to delete the old homepage); 1 failed after 3 attempts (the tests
+still don't pass)." Not "2 surfaces reached ESCALATED, 1 with authority-class
+terminus, correction budget exhausted on surface 4." The escalation packet in
+particular must present the decision the owner needs to make, not the internal
+state that led to it. The spec should consider whether reporting for
+non-technical owners is a different view of the same data, or whether the
+escalation packet itself needs a plain-language summary generated at triage
+time.
 
 ---
 
