@@ -7,7 +7,8 @@
     "test:watch": "vitest",
     "lint": "eslint . && tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "demo:slice-1": "npx tsx demos/slice-1-round-trip.ts"
+    "demo:slice-1": "npx tsx demos/slice-1-round-trip.ts",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {
     "node": ">=22"
