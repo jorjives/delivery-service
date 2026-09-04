@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction } from "./case-file.js";
+import { FileNotFound, CorruptCaseFile } from "./errors.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
@@ -146,13 +147,11 @@ describe("load", () => {
   });
 
   it("throws FileNotFound when case.json does not exist", async () => {
-    const { FileNotFound } = await import("./errors.js");
     const emptyDir = await mkdtemp(join(tmpdir(), "case-file-empty-"));
     await expect(load(emptyDir)).rejects.toThrow(FileNotFound);
   });
 
   it("throws CorruptCaseFile when case.json has invalid structure", async () => {
-    const { CorruptCaseFile } = await import("./errors.js");
     const badDir = await mkdtemp(join(tmpdir(), "case-file-bad-"));
     await writeFile(join(badDir, "case.json"), '{"not":"a case file"}');
     await writeFile(join(badDir, "log.jsonl"), "");
@@ -160,11 +159,75 @@ describe("load", () => {
   });
 
   it("throws CorruptCaseFile when case.json is not valid JSON", async () => {
-    const { CorruptCaseFile } = await import("./errors.js");
     const badDir = await mkdtemp(join(tmpdir(), "case-file-bad-json-"));
     await writeFile(join(badDir, "case.json"), "not json at all {{{");
     await writeFile(join(badDir, "log.jsonl"), "");
     await expect(load(badDir)).rejects.toThrow(CorruptCaseFile);
+  });
+});
+
+describe("crash recovery: case.json atomicity", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-crash-"));
+  });
+
+  it("a .tmp file left behind by a crashed write does not corrupt load", async () => {
+    const header = {
+      surfaceId: "surface-atomic",
+      taskDef: { intent: "test atomicity" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    };
+
+    await create(dir, header, budgetDefaults);
+
+    // Simulate a crash mid-write: leave a .tmp file with garbage
+    await writeFile(join(dir, "case.json.tmp"), "partial garbage data");
+
+    // Load should still read the valid case.json, ignoring the orphan .tmp
+    const loaded = await load(dir);
+    expect(loaded.header.surfaceId).toBe("surface-atomic");
+    expect(loaded.cursor.state).toBe("PROVISIONING");
+  });
+});
+
+describe("crash recovery: truncated log line", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-trunc-"));
+    await create(dir, {
+      surfaceId: "surface-trunc",
+      taskDef: { intent: "test truncation" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("ignores a truncated final line and returns prior complete entries", async () => {
+    const entry: HistoryEntry = {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "sess-1",
+    };
+
+    await appendEntry(dir, entry);
+
+    // Simulate crash mid-append: write a partial JSON line at the end
+    const logPath = join(dir, "log.jsonl");
+    await appendFile(logPath, '{"t":"terminus","attempt":1,"ses');
+
+    const loaded = await load(dir);
+    expect(loaded.history).toHaveLength(1);
+    expect(loaded.history[0]).toEqual(entry);
+  });
+
+  it("loads correctly when log has only a truncated line (no complete entries)", async () => {
+    const logPath = join(dir, "log.jsonl");
+    await writeFile(logPath, '{"t":"dispatch","at');
+
+    const loaded = await load(dir);
+    expect(loaded.history).toHaveLength(0);
   });
 });
 
@@ -206,5 +269,208 @@ describe("logTail", () => {
     const loaded = await load(dir);
     const tail = logTail(loaded);
     expect(tail).toEqual(entry2);
+  });
+});
+
+describe("updateCursor", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-cursor-"));
+    await create(dir, {
+      surfaceId: "surface-cursor",
+      taskDef: { intent: "test cursor update" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("updates the state field and preserves other cursor fields", async () => {
+    await updateCursor(dir, { state: "AGENT_ACTIVE" });
+
+    const loaded = await load(dir);
+    expect(loaded.cursor.state).toBe("AGENT_ACTIVE");
+    expect(loaded.cursor.budgets).toEqual(budgetDefaults);
+    expect(loaded.cursor.worktreeRef).toBe("");
+  });
+
+  it("updates the worktreeRef without changing state", async () => {
+    await updateCursor(dir, { worktreeRef: "wt-abc-123" });
+
+    const loaded = await load(dir);
+    expect(loaded.cursor.state).toBe("PROVISIONING");
+    expect(loaded.cursor.worktreeRef).toBe("wt-abc-123");
+  });
+
+  it("preserves header and outcome when rewriting case.json", async () => {
+    await updateCursor(dir, { state: "GATING" });
+
+    const loaded = await load(dir);
+    expect(loaded.header.surfaceId).toBe("surface-cursor");
+    expect(loaded.header.baseline).toBeNull();
+    expect(loaded.outcome).toBeUndefined();
+  });
+});
+
+describe("rebuild", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-rebuild-"));
+    await create(dir, {
+      surfaceId: "surface-rebuild",
+      taskDef: { intent: "test rebuild" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("reconstructs cursor state from the log when case.json is stale", async () => {
+    // Append entries that should move state to GATING
+    await appendEntry(dir, {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "sess-1",
+    });
+    await appendEntry(dir, {
+      t: "terminus",
+      attempt: 1,
+      sessionKey: "sess-1",
+      status: "completed",
+      rationale: "Done",
+    });
+
+    // Manually desync: case.json still says PROVISIONING
+    // (which it does, because appendEntry doesn't update cursor)
+    const beforeRebuild = await load(dir);
+    expect(beforeRebuild.cursor.state).toBe("PROVISIONING");
+
+    // Rebuild should fix the cursor
+    const rebuilt = await rebuild(dir);
+    expect(rebuilt.cursor.state).toBe("GATING");
+    expect(rebuilt.header.surfaceId).toBe("surface-rebuild");
+    expect(rebuilt.history).toHaveLength(2);
+
+    // Verify it was persisted
+    const reloaded = await load(dir);
+    expect(reloaded.cursor.state).toBe("GATING");
+  });
+
+  it("reconstructs budget used counts from the log", async () => {
+    await appendEntry(dir, {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "sess-1",
+    });
+    await appendEntry(dir, {
+      t: "terminus",
+      attempt: 1,
+      sessionKey: "sess-1",
+      status: "completed",
+      rationale: "Done",
+    });
+    await appendEntry(dir, {
+      t: "gate",
+      attempt: 1,
+      status: "ERROR",
+      newFailures: [],
+      class: "error",
+    });
+
+    const rebuilt = await rebuild(dir);
+    expect(rebuilt.cursor.budgets.terminus.used).toBe(1);
+    expect(rebuilt.cursor.budgets.gateError.used).toBe(1);
+    expect(rebuilt.cursor.budgets.correction.used).toBe(0);
+    // Max values preserved from case.json
+    expect(rebuilt.cursor.budgets.terminus.max).toBe(5);
+    expect(rebuilt.cursor.budgets.gateError.max).toBe(3);
+  });
+
+  it("fails with FileNotFound when case.json is missing", async () => {
+    await unlink(join(dir, "case.json"));
+
+    await expect(rebuild(dir)).rejects.toThrow(FileNotFound);
+  });
+
+  it("fails with CorruptCaseFile when case.json is unparseable", async () => {
+    await writeFile(join(dir, "case.json"), "not valid json {{{");
+
+    await expect(rebuild(dir)).rejects.toThrow(CorruptCaseFile);
+  });
+});
+
+describe("resumeAction", () => {
+  it("returns 'start' when there are no entries", () => {
+    expect(resumeAction(undefined)).toBe("start");
+  });
+
+  it("returns 'incomplete_terminus' for a dispatch with no terminus", () => {
+    expect(resumeAction({
+      t: "dispatch", attempt: 1, sessionKey: "s1",
+    })).toBe("incomplete_terminus");
+  });
+
+  it("returns 'gate' for terminus(completed)", () => {
+    expect(resumeAction({
+      t: "terminus", attempt: 1, sessionKey: "s1",
+      status: "completed", rationale: "Done",
+    })).toBe("gate");
+  });
+
+  it("returns 'triage' for terminus(escalate)", () => {
+    expect(resumeAction({
+      t: "terminus", attempt: 1, sessionKey: "s1",
+      status: "escalate", rationale: "Need help",
+    })).toBe("triage");
+  });
+
+  it("returns 'triage' for terminus(incomplete)", () => {
+    expect(resumeAction({
+      t: "terminus", attempt: 1, sessionKey: "s1",
+      status: "incomplete", rationale: "Ran out",
+    })).toBe("triage");
+  });
+
+  it("returns 'triage' for gate(FAIL)", () => {
+    expect(resumeAction({
+      t: "gate", attempt: 1, status: "FAIL",
+      newFailures: [{ id: "f1", detailRef: "ref-1" }], class: "fail",
+    })).toBe("triage");
+  });
+
+  it("returns 'triage' for gate(ERROR)", () => {
+    expect(resumeAction({
+      t: "gate", attempt: 1, status: "ERROR",
+      newFailures: [], class: "error",
+    })).toBe("triage");
+  });
+
+  it("returns 'close' for gate(PASS)", () => {
+    expect(resumeAction({
+      t: "gate", attempt: 1, status: "PASS", newFailures: [],
+    })).toBe("close");
+  });
+
+  it("returns 'act_on_verdict' for a triage entry", () => {
+    expect(resumeAction({
+      t: "triage", afterAttempt: 1, trigger: "gate_fail",
+      verdict: "reroute", rationale: "Try again", artifactRef: "ref-1",
+    })).toBe("act_on_verdict");
+  });
+
+  it("returns 'close_triage' for close(FAIL)", () => {
+    expect(resumeAction({
+      t: "close", status: "FAIL", detailRef: "ref-1",
+    })).toBe("close_triage");
+  });
+
+  it("returns 'close_triage' for close(ERROR)", () => {
+    expect(resumeAction({
+      t: "close", status: "ERROR", detailRef: "ref-1",
+    })).toBe("close_triage");
+  });
+
+  it("returns 'done' for close(DONE)", () => {
+    expect(resumeAction({
+      t: "close", status: "DONE", detailRef: "ref-1",
+    })).toBe("done");
   });
 });

@@ -72,6 +72,9 @@ trusted.
 
 ## Slice 2: Resume Correctly After a Crash
 
+**Status:** ✅ Complete — 2026-09-04 — `ed67c71`
+**Tests:** ✅ Recorded — 2026-09-04 — `515f3da` — cli — 1 UAT + 5 AC, 0 skipped
+
 **Delivers:** A developer can simulate a crash at any point in writing a case
 file and confirm that resuming reads back a consistent prior state, with the
 log — not the cached cursor — treated as the source of truth.

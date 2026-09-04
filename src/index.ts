@@ -1,4 +1,4 @@
-export { create, appendEntry, load, logTail } from "./case-file.js";
+export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction } from "./case-file.js";
 export type {
   CaseFile,
   CaseFileHeader,
@@ -18,6 +18,7 @@ export type {
   GateRef,
   GateState,
 } from "./schema.js";
+export type { ResumeAction } from "./case-file.js";
 export {
   FileNotFound,
   CorruptCaseFile,
