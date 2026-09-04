@@ -1,4 +1,4 @@
-import { open, rename, readFile } from "node:fs/promises";
+import { open, rename, readFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateState, CaseFileOutcome } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
@@ -206,6 +206,33 @@ export async function incrementBudget(
   });
 
   return { used, max: budget.max, exhausted: used >= budget.max };
+}
+
+export async function writeRef(dir: string, refId: string, data: unknown): Promise<string> {
+  const refsDir = join(dir, "refs");
+  await mkdir(refsDir, { recursive: true });
+  try {
+    await atomicWriteJson(join(refsDir, `${refId}.json`), data);
+  } catch (err) {
+    throw new WriteFailure(dir, String(err));
+  }
+  return refId;
+}
+
+export async function readRef(dir: string, refId: string): Promise<unknown> {
+  const refPath = join(dir, "refs", `${refId}.json`);
+  let raw: string;
+  try {
+    raw = await readFile(refPath, "utf-8");
+  } catch (err) {
+    if (isEnoent(err)) throw new FileNotFound(dir, refPath);
+    throw err;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new CorruptCaseFile(dir, `Malformed ref ${refId}`);
+  }
 }
 
 const terminusState: Record<string, SurfaceState> = {
