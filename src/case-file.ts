@@ -23,6 +23,15 @@ function isEnoent(err: unknown): boolean {
   return err instanceof Error && "code" in err && err.code === "ENOENT";
 }
 
+async function readFileOrNotFound(dir: string, filePath: string): Promise<string> {
+  try {
+    return await readFile(filePath, "utf-8");
+  } catch (err) {
+    if (isEnoent(err)) throw new FileNotFound(dir, filePath);
+    throw err;
+  }
+}
+
 function parseCaseJson(dir: string, raw: string): CaseJson {
   try {
     return CaseJson.parse(JSON.parse(raw));
@@ -32,14 +41,7 @@ function parseCaseJson(dir: string, raw: string): CaseJson {
 }
 
 async function readCaseJson(dir: string): Promise<CaseJson> {
-  const caseJsonPath = join(dir, "case.json");
-  let raw: string;
-  try {
-    raw = await readFile(caseJsonPath, "utf-8");
-  } catch (err) {
-    if (isEnoent(err)) throw new FileNotFound(dir, caseJsonPath);
-    throw err;
-  }
+  const raw = await readFileOrNotFound(dir, join(dir, "case.json"));
   return parseCaseJson(dir, raw);
 }
 
@@ -220,14 +222,7 @@ export async function writeRef(dir: string, refId: string, data: unknown): Promi
 }
 
 export async function readRef(dir: string, refId: string): Promise<unknown> {
-  const refPath = join(dir, "refs", `${refId}.json`);
-  let raw: string;
-  try {
-    raw = await readFile(refPath, "utf-8");
-  } catch (err) {
-    if (isEnoent(err)) throw new FileNotFound(dir, refPath);
-    throw err;
-  }
+  const raw = await readFileOrNotFound(dir, join(dir, "refs", `${refId}.json`));
   try {
     return JSON.parse(raw);
   } catch {
