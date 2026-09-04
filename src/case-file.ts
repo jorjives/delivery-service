@@ -1,5 +1,5 @@
 import { open, rename, readFile, mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateState, CaseFileOutcome } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
 
@@ -210,7 +210,15 @@ export async function incrementBudget(
   return { used, max: budget.max, exhausted: used >= budget.max };
 }
 
+function safeRefId(refId: string): string {
+  if (basename(refId) !== refId || refId.includes("..")) {
+    throw new Error(`Invalid refId: ${refId}`);
+  }
+  return refId;
+}
+
 export async function writeRef(dir: string, refId: string, data: unknown): Promise<string> {
+  safeRefId(refId);
   const refsDir = join(dir, "refs");
   await mkdir(refsDir, { recursive: true });
   try {
@@ -222,6 +230,7 @@ export async function writeRef(dir: string, refId: string, data: unknown): Promi
 }
 
 export async function readRef(dir: string, refId: string): Promise<unknown> {
+  safeRefId(refId);
   const raw = await readFileOrNotFound(dir, join(dir, "refs", `${refId}.json`));
   try {
     return JSON.parse(raw);
