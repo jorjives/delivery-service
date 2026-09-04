@@ -210,15 +210,14 @@ export async function incrementBudget(
   return { used, max: budget.max, exhausted: used >= budget.max };
 }
 
-function safeRefId(refId: string): string {
+function safeRefId(dir: string, refId: string): void {
   if (basename(refId) !== refId || refId.includes("..")) {
-    throw new Error(`Invalid refId: ${refId}`);
+    throw new CorruptCaseFile(dir, `Invalid refId: ${refId}`);
   }
-  return refId;
 }
 
 export async function writeRef(dir: string, refId: string, data: unknown): Promise<string> {
-  safeRefId(refId);
+  safeRefId(dir, refId);
   const refsDir = join(dir, "refs");
   await mkdir(refsDir, { recursive: true });
   try {
@@ -230,7 +229,7 @@ export async function writeRef(dir: string, refId: string, data: unknown): Promi
 }
 
 export async function readRef(dir: string, refId: string): Promise<unknown> {
-  safeRefId(refId);
+  safeRefId(dir, refId);
   const raw = await readFileOrNotFound(dir, join(dir, "refs", `${refId}.json`));
   try {
     return JSON.parse(raw);
