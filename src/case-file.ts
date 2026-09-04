@@ -108,6 +108,7 @@ export async function load(dir: string): Promise<CaseFile> {
     const lines = logRaw.trimEnd().split("\n");
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+      if (line === undefined) continue;
       try {
         const parsed = JSON.parse(line);
         history.push(HistoryEntry.parse(parsed));
