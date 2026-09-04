@@ -28,6 +28,12 @@ field (currently an opaque `Record<string, unknown>`) becomes a typed
 discriminated union on a `type` field. Built-in gate types are known
 discriminants; custom gates use `type: "custom"` with an implementation path.
 
+**TAP and JUnit parsers are hand-written, not library dependencies.** Both
+formats are simple enough that a focused parser (TAP: line-by-line regex; JUnit:
+minimal XML extraction) is smaller and more predictable than pulling in a
+general-purpose library. The parser only needs to extract test IDs and
+pass/fail/error outcomes; it does not need to handle the full format spec.
+
 ## Gate contract
 
 ### The interface
@@ -56,6 +62,8 @@ interface GateReport {
   status: "PASS" | "FAIL" | "ERROR";
   /** Per-assertion results. */
   assertions: Assertion[];
+  /** Diagnostic detail when status is ERROR. Undefined otherwise. */
+  detail?: string;
 }
 
 type GateState = GateReport;
@@ -149,10 +157,10 @@ interface NewFailure {
 3. Assertions in the check report that were not in the baseline are new
    assertions. They are not subject to the delta rule (there is no baseline to
    regress from). A new assertion that fails is not a regression; it is a net-new
-   failure. Whether to treat net-new failures as regressions is a gate-level
-   configuration option (`failOnNewAssertions`, default `false`), because the
-   common case is that a worker adding new tests that don't yet pass is
-   progress, not regression.
+   failure. Whether to treat net-new failures as regressions is a delta-rule
+   option (`failOnNewAssertions`, default `false`), stored on the `GateRef` so
+   it is pinned for the surface's lifetime. The common case is that a worker
+   adding new tests that don't yet pass is progress, not regression.
 
 4. The surface passes if and only if: `newFailures` is empty AND the check
    report's gate-level `status` is not `ERROR`.
@@ -185,8 +193,8 @@ the surface. This becomes a discriminated union:
 
 ```typescript
 type GateRef =
-  | { type: "command"; command: string; parseMode: "tap" | "junit" | "exitcode" }
-  | { type: "custom"; modulePath: string; exportName?: string };
+  | { type: "command"; command: string; parseMode: "tap" | "junit" | "exitcode"; failOnNewAssertions?: boolean }
+  | { type: "custom"; modulePath: string; exportName?: string; failOnNewAssertions?: boolean };
 ```
 
 ### Built-in gate types
