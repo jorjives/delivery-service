@@ -124,6 +124,8 @@ means a machine restart could silently lose or corrupt a task's progress.
 
 ## Slice 3: Fields That Cannot Be Changed Twice Are Protected
 
+**Status:** ✅ Complete — 2026-09-04 — `ecb8a52`
+**Tests:** ✅ Recorded — 2026-09-04 — `60569de` — cli — 1 UAT + 3 AC, 0 skipped
 **Delivers:** A developer can attempt to change a case file's fixed
 identity (its header) or its write-once fields (baseline, outcome) and see
 the attempt rejected, instead of silently succeeding and corrupting the

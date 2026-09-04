@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction } from "./case-file.js";
-import { FileNotFound, CorruptCaseFile } from "./errors.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome } from "./case-file.js";
+import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
@@ -472,5 +472,125 @@ describe("resumeAction", () => {
     expect(resumeAction({
       t: "close", status: "DONE", detailRef: "ref-1",
     })).toBe("done");
+  });
+});
+
+describe("header immutability", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-immut-"));
+    await create(dir, {
+      surfaceId: "surface-immut",
+      taskDef: { intent: "test immutability" },
+      gateRef: { gateId: "gate-1", version: 1 },
+      domainPrompt: "You are a helper.",
+    }, budgetDefaults);
+  });
+
+  it("header is unchanged after cursor updates and history appends", async () => {
+    const original = await load(dir);
+
+    await updateCursor(dir, { state: "AGENT_ACTIVE" });
+    await updateCursor(dir, { worktreeRef: "wt-123" });
+    await appendEntry(dir, {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "sess-1",
+    });
+    await appendEntry(dir, {
+      t: "terminus",
+      attempt: 1,
+      sessionKey: "sess-1",
+      status: "completed",
+      rationale: "Done",
+    });
+    await updateCursor(dir, { state: "GATING" });
+
+    const after = await load(dir);
+
+    expect(after.header).toEqual(original.header);
+  });
+});
+
+describe("setBaseline", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-baseline-"));
+    await create(dir, {
+      surfaceId: "surface-bl",
+      taskDef: { intent: "test baseline" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("sets the baseline when it is null", async () => {
+    const baseline = { assertion1: "pass", assertion2: "fail" };
+    await setBaseline(dir, baseline);
+
+    const loaded = await load(dir);
+    expect(loaded.header.baseline).toEqual(baseline);
+  });
+
+  it("rejects a second setBaseline with ImmutabilityViolation", async () => {
+    await setBaseline(dir, { assertion1: "pass" });
+
+    await expect(
+      setBaseline(dir, { assertion1: "different" }),
+    ).rejects.toThrow(ImmutabilityViolation);
+
+    // Original baseline unchanged
+    const loaded = await load(dir);
+    expect(loaded.header.baseline).toEqual({ assertion1: "pass" });
+  });
+});
+
+describe("setOutcome", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-outcome-"));
+    await create(dir, {
+      surfaceId: "surface-oc",
+      taskDef: { intent: "test outcome" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("sets the outcome when none exists", async () => {
+    const outcome = {
+      kind: "closed" as const,
+      source: "gate",
+      reason: "All assertions passed",
+      at: "2026-09-04T12:00:00Z",
+    };
+    await setOutcome(dir, outcome);
+
+    const loaded = await load(dir);
+    expect(loaded.outcome).toEqual(outcome);
+  });
+
+  it("rejects a second setOutcome with ImmutabilityViolation", async () => {
+    const outcome = {
+      kind: "closed" as const,
+      source: "gate",
+      reason: "All assertions passed",
+      at: "2026-09-04T12:00:00Z",
+    };
+    await setOutcome(dir, outcome);
+
+    await expect(
+      setOutcome(dir, {
+        kind: "escalated" as const,
+        source: "triage",
+        reason: "Cannot fix",
+        at: "2026-09-04T13:00:00Z",
+      }),
+    ).rejects.toThrow(ImmutabilityViolation);
+
+    // Original outcome unchanged
+    const loaded = await load(dir);
+    expect(loaded.outcome).toEqual(outcome);
   });
 });

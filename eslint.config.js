@@ -14,6 +14,7 @@ export default tseslint.config(
             "demos/*.ts",
             "tests/case-file-persistence/*.ts",
           ],
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 16,
         },
         tsconfigRootDir: import.meta.dirname,
       },

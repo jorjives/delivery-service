@@ -1,7 +1,7 @@
 import { open, rename, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState } from "./schema.js";
-import { FileNotFound, CorruptCaseFile, WriteFailure } from "./errors.js";
+import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateState, CaseFileOutcome } from "./schema.js";
+import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
 
 async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
   const fd = await open(filePath, flag);
@@ -158,6 +158,39 @@ export async function updateCursor(
   };
 
   await writeCaseJson(dir, updated);
+}
+
+async function setOnce(
+  dir: string,
+  field: string,
+  isSet: (caseJson: CaseJson) => boolean,
+  merge: (caseJson: CaseJson) => CaseJson,
+): Promise<void> {
+  const caseJson = await readCaseJson(dir);
+
+  if (isSet(caseJson)) {
+    throw new ImmutabilityViolation(dir, field);
+  }
+
+  await writeCaseJson(dir, merge(caseJson));
+}
+
+export function setBaseline(dir: string, baseline: GateState): Promise<void> {
+  return setOnce(
+    dir,
+    "baseline",
+    (caseJson) => caseJson.header.baseline !== null,
+    (caseJson) => ({ ...caseJson, header: { ...caseJson.header, baseline } }),
+  );
+}
+
+export function setOutcome(dir: string, outcome: CaseFileOutcome): Promise<void> {
+  return setOnce(
+    dir,
+    "outcome",
+    (caseJson) => caseJson.outcome !== undefined,
+    (caseJson) => ({ ...caseJson, outcome }),
+  );
 }
 
 const terminusState: Record<string, SurfaceState> = {
