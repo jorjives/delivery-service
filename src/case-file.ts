@@ -23,6 +23,34 @@ function isEnoent(err: unknown): boolean {
   return err instanceof Error && "code" in err && err.code === "ENOENT";
 }
 
+function parseCaseJson(dir: string, raw: string): CaseJson {
+  try {
+    return CaseJson.parse(JSON.parse(raw));
+  } catch (err) {
+    throw new CorruptCaseFile(dir, String(err));
+  }
+}
+
+async function readCaseJson(dir: string): Promise<CaseJson> {
+  const caseJsonPath = join(dir, "case.json");
+  let raw: string;
+  try {
+    raw = await readFile(caseJsonPath, "utf-8");
+  } catch (err) {
+    if (isEnoent(err)) throw new FileNotFound(dir, caseJsonPath);
+    throw err;
+  }
+  return parseCaseJson(dir, raw);
+}
+
+async function writeCaseJson(dir: string, caseJson: CaseJson): Promise<void> {
+  try {
+    await atomicWriteJson(join(dir, "case.json"), caseJson);
+  } catch (err) {
+    throw new WriteFailure(dir, String(err));
+  }
+}
+
 export async function create(
   dir: string,
   header: CreateHeader,
@@ -81,13 +109,7 @@ export async function load(dir: string): Promise<CaseFile> {
   ]);
 
   // Parse and validate case.json
-  let caseJson: CaseJson;
-  try {
-    const parsed = JSON.parse(caseJsonRaw);
-    caseJson = CaseJson.parse(parsed);
-  } catch (err) {
-    throw new CorruptCaseFile(dir, String(err));
-  }
+  const caseJson = parseCaseJson(dir, caseJsonRaw);
 
   // Parse history entries
   const history: HistoryEntry[] = [];
@@ -128,33 +150,14 @@ export async function updateCursor(
   dir: string,
   patch: Partial<CaseFileCursor>,
 ): Promise<void> {
-  const caseJsonPath = join(dir, "case.json");
-
-  let raw: string;
-  try {
-    raw = await readFile(caseJsonPath, "utf-8");
-  } catch (err) {
-    if (isEnoent(err)) throw new FileNotFound(dir, caseJsonPath);
-    throw err;
-  }
-
-  let caseJson: CaseJson;
-  try {
-    caseJson = CaseJson.parse(JSON.parse(raw));
-  } catch (err) {
-    throw new CorruptCaseFile(dir, String(err));
-  }
+  const caseJson = await readCaseJson(dir);
 
   const updated: CaseJson = {
     ...caseJson,
     cursor: CaseFileCursor.parse({ ...caseJson.cursor, ...patch }),
   };
 
-  try {
-    await atomicWriteJson(caseJsonPath, updated);
-  } catch (err) {
-    throw new WriteFailure(dir, String(err));
-  }
+  await writeCaseJson(dir, updated);
 }
 
 function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
@@ -268,11 +271,7 @@ export async function rebuild(dir: string): Promise<CaseFile> {
     ...(loaded.outcome ? { outcome: loaded.outcome } : {}),
   };
 
-  try {
-    await atomicWriteJson(join(dir, "case.json"), updated);
-  } catch (err) {
-    throw new WriteFailure(dir, String(err));
-  }
+  await writeCaseJson(dir, updated);
 
   return {
     header: loaded.header,
