@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef } from "./case-file.js";
 import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
@@ -652,5 +652,87 @@ describe("incrementBudget", () => {
     // Verify it persisted the over-cap value
     const loaded = await load(dir);
     expect(loaded.cursor.budgets.gateMaintenance.used).toBe(3);
+  });
+});
+
+describe("reference storage", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-ref-"));
+    await create(dir, {
+      surfaceId: "surface-ref",
+      taskDef: { intent: "test refs" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("round-trips a reference blob by ID", async () => {
+    const data = {
+      assertion: "homepage-loads",
+      expected: 200,
+      actual: 500,
+      diff: "status code mismatch",
+    };
+
+    const returnedId = await writeRef(dir, "gate-detail-1", data);
+
+    expect(returnedId).toBe("gate-detail-1");
+
+    const retrieved = await readRef(dir, "gate-detail-1");
+    expect(retrieved).toEqual(data);
+  });
+
+  it("throws FileNotFound when reading a ref that does not exist", async () => {
+    await expect(readRef(dir, "no-such-ref")).rejects.toThrow(FileNotFound);
+  });
+
+  it("stores multiple refs independently", async () => {
+    await writeRef(dir, "gate-detail-1", { id: "first" });
+    await writeRef(dir, "gate-detail-2", { id: "second" });
+
+    const first = await readRef(dir, "gate-detail-1");
+    const second = await readRef(dir, "gate-detail-2");
+
+    expect(first).toEqual({ id: "first" });
+    expect(second).toEqual({ id: "second" });
+  });
+
+  it("a history entry's detailRef can be followed to retrieve the referenced content", async () => {
+    const failureDetail = {
+      assertion: "homepage-loads",
+      expected: 200,
+      actual: 500,
+      screenshot: "base64-data-would-go-here",
+      logs: ["GET / -> 500", "Internal Server Error"],
+    };
+
+    // Write the ref before the history entry (crash-safe ordering)
+    await writeRef(dir, "gate-detail-1", failureDetail);
+
+    // Record a gate failure that points to the ref
+    const gateEntry: HistoryEntry = {
+      t: "gate",
+      attempt: 1,
+      status: "FAIL",
+      newFailures: [{ id: "homepage-loads", detailRef: "gate-detail-1" }],
+      class: "fail",
+    };
+    await appendEntry(dir, gateEntry);
+
+    // Load the case file and follow the pointer
+    const loaded = await load(dir);
+    const tail = loaded.history.at(-1);
+    if (!tail || tail.t !== "gate") {
+      throw new Error("expected a gate history entry");
+    }
+
+    const firstFailure = tail.newFailures[0];
+    if (!firstFailure) {
+      throw new Error("expected at least one failure on the gate entry");
+    }
+    const retrieved = await readRef(dir, firstFailure.detailRef);
+
+    expect(retrieved).toEqual(failureDetail);
   });
 });

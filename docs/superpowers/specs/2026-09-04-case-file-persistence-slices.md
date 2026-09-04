@@ -1,6 +1,7 @@
 # Case File Persistence — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-09-04-case-file-persistence-design.md`
+> **Status:** ✅ Complete — 2026-09-04 — all 5 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** this item has no end-user product surface yet (the CLI
@@ -211,6 +212,8 @@ real.
 
 ## Slice 5: Large Referenced Data Can Be Stored and Retrieved Separately
 
+**Status:** ✅ Complete — 2026-09-04 — `213e886`
+**Tests:** ✅ Recorded — 2026-09-04 — `4e57bc9` — cli — 1 UAT + 3 AC, 0 skipped
 **Delivers:** A developer can write a large piece of task data (a gate
 failure detail, a triage brief) to its own file and later retrieve it by the
 reference recorded in the task's history.

@@ -1,5 +1,5 @@
-import { open, rename, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { open, rename, readFile, mkdir } from "node:fs/promises";
+import { join, basename } from "node:path";
 import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateState, CaseFileOutcome } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
 
@@ -23,6 +23,15 @@ function isEnoent(err: unknown): boolean {
   return err instanceof Error && "code" in err && err.code === "ENOENT";
 }
 
+async function readFileOrNotFound(dir: string, filePath: string): Promise<string> {
+  try {
+    return await readFile(filePath, "utf-8");
+  } catch (err) {
+    if (isEnoent(err)) throw new FileNotFound(dir, filePath);
+    throw err;
+  }
+}
+
 function parseCaseJson(dir: string, raw: string): CaseJson {
   try {
     return CaseJson.parse(JSON.parse(raw));
@@ -32,14 +41,7 @@ function parseCaseJson(dir: string, raw: string): CaseJson {
 }
 
 async function readCaseJson(dir: string): Promise<CaseJson> {
-  const caseJsonPath = join(dir, "case.json");
-  let raw: string;
-  try {
-    raw = await readFile(caseJsonPath, "utf-8");
-  } catch (err) {
-    if (isEnoent(err)) throw new FileNotFound(dir, caseJsonPath);
-    throw err;
-  }
+  const raw = await readFileOrNotFound(dir, join(dir, "case.json"));
   return parseCaseJson(dir, raw);
 }
 
@@ -206,6 +208,34 @@ export async function incrementBudget(
   });
 
   return { used, max: budget.max, exhausted: used >= budget.max };
+}
+
+function safeRefId(dir: string, refId: string): void {
+  if (basename(refId) !== refId || refId.includes("..")) {
+    throw new CorruptCaseFile(dir, `Invalid refId: ${refId}`);
+  }
+}
+
+export async function writeRef(dir: string, refId: string, data: unknown): Promise<string> {
+  safeRefId(dir, refId);
+  const refsDir = join(dir, "refs");
+  await mkdir(refsDir, { recursive: true });
+  try {
+    await atomicWriteJson(join(refsDir, `${refId}.json`), data);
+  } catch (err) {
+    throw new WriteFailure(dir, String(err));
+  }
+  return refId;
+}
+
+export async function readRef(dir: string, refId: string): Promise<unknown> {
+  safeRefId(dir, refId);
+  const raw = await readFileOrNotFound(dir, join(dir, "refs", `${refId}.json`));
+  try {
+    return JSON.parse(raw);
+  } catch {
+    throw new CorruptCaseFile(dir, `Malformed ref ${refId}`);
+  }
 }
 
 const terminusState: Record<string, SurfaceState> = {
