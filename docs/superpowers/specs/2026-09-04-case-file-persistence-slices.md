@@ -14,6 +14,8 @@ in place of a product UI that doesn't exist yet.
 
 ## Slice 1: Create, Append To, and Read Back a Case File
 
+**Status:** ✅ Complete — 2026-09-04 — `a23fb6b`
+
 **Delivers:** A developer can create a case file on disk for a new task,
 append history entries to it, and read the whole thing back — the
 foundational round trip every other capability builds on.
