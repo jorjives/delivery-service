@@ -505,6 +505,91 @@ time.
 
 ---
 
+## Item 12: Pre-Built Task Packs
+
+**Delivers:** Ready-to-use task packs for common scenarios that a project owner
+can point at their codebase and run immediately, demonstrating the harness's
+value without any custom configuration.
+
+Each pack follows a two-phase pattern:
+
+1. **Scan:** an agent reviews the codebase against a specific lens, producing a
+   structured list of findings, each with enough context to be actionable
+   independently.
+2. **Fix:** each finding becomes a gated delivery task. The gate verifies that
+   the specific finding is resolved and that nothing else has regressed. The
+   findings fan out across surfaces, so with multi-surface the fixes run
+   concurrently.
+
+The scan is discovery; the fix is where the harness's gated delivery earns its
+keep. A finding that an agent "fixes" by deleting the test or introducing a new
+bug is caught by the gate, not waved through.
+
+**Success criteria:**
+- A project owner can run a code review pack against their repo with no
+  configuration beyond pointing at the codebase
+- The code review scan produces a structured findings list: each finding
+  identifies the location, the problem, and why it matters
+- Each code review finding becomes a fix task with a gate that verifies the
+  specific issue is resolved
+- A project owner can run a security review pack with the same ease
+- The security review scan produces findings categorised by severity, with
+  enough context for a non-technical owner to understand the risk
+- Each security finding becomes a fix task with a gate that verifies the
+  vulnerability is closed
+- Findings that the scan identifies but the fix agent cannot resolve (needs a
+  human decision, architectural change, or external action) are escalated with
+  a clear explanation, not silently skipped
+- A project owner can review the scan output before authorising the fix phase
+
+**Dependencies:**
+- Project configuration (packs are pre-built configurations using the
+  declarative surface)
+- Gate interface (each pack ships with a gate suited to its domain)
+- Close interface (each pack ships with a closer suited to its workflow)
+- Multi-surface supervisor is not a hard dependency (packs work single-surface,
+  sequentially) but is where the fan-out pattern becomes practical
+
+**Detail level:** brief
+
+**Notes:** The two initial packs:
+
+**Code review pack.** The scan agent reviews for: correctness issues, dead
+code, missing error handling, inconsistent patterns, and documented technical
+debt. Each finding carries the file, location, a description of the problem,
+and a description of what "fixed" looks like. The fix gate runs the project's
+existing test suite (or a built-in static analysis gate if no tests exist) plus
+a targeted check that the specific finding's location has changed.
+
+**Security review pack.** The scan agent reviews for: dependency
+vulnerabilities, injection surfaces, authentication/authorisation gaps, secret
+exposure, and insecure defaults. Findings are categorised by severity
+(critical, high, medium, low). The fix gate verifies the vulnerability is
+closed; for dependency updates, this may be as simple as "the vulnerable
+version is no longer in the lockfile." Security findings above a configurable
+severity threshold default to authority-class escalation (needs human sign-off
+before the fix is merged), because a security fix an owner doesn't understand
+is a liability, not a feature.
+
+The pack pattern is extensible: the two shipped packs establish the scan→fix
+convention, and the project configuration surface (Item 9) lets adopters and
+the community author new packs for their own domains (accessibility review,
+performance audit, API contract compliance, documentation coverage). The spec
+should define what a pack is (a bundle of: scan agent config, finding schema,
+fix task template, gate, closer) so the format is stable for community
+contributions.
+
+**Accessibility:** These packs are the strongest answer to "what can this tool
+do for me right now?" A non-technical project owner who installs the harness
+and runs `delivery-service review my-repo` should get a useful result within
+minutes. The scan output must be readable by someone who is not an engineer:
+"This function doesn't check whether the user is logged in before showing
+their data" not "Missing auth middleware on GET /api/users/:id". The fix
+phase's progress and outcomes feed through the reporting surface (Item 11)
+using the same plain-language approach.
+
+---
+
 ## Deferred
 
 _None yet._
