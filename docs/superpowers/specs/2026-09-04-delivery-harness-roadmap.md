@@ -590,6 +590,110 @@ using the same plain-language approach.
 
 ---
 
+## Item 13: Local Scheduling
+
+**Delivers:** The ability to schedule harness runs to happen at a recurring
+frequency or at a specific future time, using the machine the harness runs on
+as the scheduler.
+
+**Success criteria:**
+- A project owner can schedule a recurring run (e.g. "security review every
+  Sunday at 02:00") via the CLI or project configuration
+- A project owner can schedule a one-off future run (e.g. "run this task
+  tomorrow at 09:00")
+- A missed run (machine was off, harness was not running) is detected and
+  either executed on next start or reported as missed, depending on
+  configuration
+- Scheduled runs produce the same reporting output as manual runs (Item 11)
+- The schedule is inspectable: a project owner can list, edit, and remove
+  scheduled runs
+
+**Dependencies:**
+- CLI and configuration (scheduling is configured and managed through the CLI)
+- Observability and reporting (scheduled runs that happen unattended need
+  clear reporting on what happened)
+
+**Detail level:** brief
+
+**Notes:** This is the foundation layer of scheduling: cron-style, local to
+the machine, no hosted infrastructure. The mechanism may be as simple as
+generating a system cron entry or launchd plist, or a lightweight built-in
+scheduler that runs as a daemon. The spec should decide which, but the bias
+should be toward the simplest thing that handles missed-run detection.
+
+This is where the task packs (Item 12) become a maintenance practice rather
+than a one-off: "run a security review weekly" is the most obvious use, and
+it should be expressible in one command.
+
+**Accessibility:** A non-technical project owner should be able to set up a
+recurring run without understanding cron syntax. "Every Sunday" or "daily at
+midnight" as plain inputs, not `0 2 * * 0`.
+
+---
+
+## Item 14: Managed Scheduling and Event Triggers
+
+**Delivers:** A scheduling and triggering surface that can start harness runs
+in response to events (a PR is opened, dependencies change, a deploy
+completes) as well as managed time-based schedules with persistence, retry,
+and a management surface.
+
+**Success criteria:**
+- A project owner can configure a run to trigger on a repository event (PR
+  opened, push to a branch, dependency file changed)
+- A project owner can configure a run to trigger on an external event via
+  webhook
+- Event-triggered and time-scheduled runs coexist: "run a code review on
+  every PR, and a full security review weekly"
+- Trigger configuration is declarative and lives in the project configuration
+  (Item 9)
+- Trigger history is inspectable: what triggered, when, what run it produced,
+  what the outcome was
+- Triggers can be filtered: "only on PRs that touch src/auth/**", "only when
+  package.json changes"
+- A trigger that fires while a previous run is still active either queues or
+  skips, configurably
+
+**Dependencies:**
+- Local scheduling (the time-based foundation this builds on)
+- Project configuration (triggers are expressed in the declarative
+  configuration surface)
+- Observability and reporting (triggered runs need clear provenance: what
+  caused this run)
+
+**Detail level:** brief
+
+**Notes:** This item lifts scheduling from "a clock on your machine" to "a
+reactive system that responds to your development workflow." The two trigger
+families are:
+
+**Repository events.** PR opened, push, branch created, dependency file
+changed, CI status changed. These are the natural triggers for the task packs:
+a code review pack triggered on every PR is the most immediately useful
+integration. The mechanism depends on where the harness runs: a GitHub
+App/webhook listener, a git hook, or polling. The spec should evaluate each
+and may support more than one.
+
+**External events.** Webhooks from arbitrary sources: a deploy pipeline, a
+monitoring alert, a manual trigger from a chat bot. These extend the harness
+beyond code-centric workflows into operational ones (a deploy completes →
+run a smoke test pack; a monitoring alert fires → run a diagnostic pack).
+
+The managed scheduling aspect upgrades local scheduling (Item 13) with:
+persistence (schedules survive machine restarts without relying on system
+cron), retry (a failed scheduled run is retried, not silently lost), and a
+management surface (view all schedules and triggers, their history, and their
+outcomes in one place).
+
+**Accessibility:** Event triggers are where the harness becomes invisible
+infrastructure: "every time someone proposes a change, the harness reviews it
+and fixes what it can." A non-technical project owner should be able to set
+this up in the same declarative configuration as everything else: "on every
+pull request, run the code review pack." The complexity of webhooks, event
+filtering, and deduplication should be hidden behind that declaration.
+
+---
+
 ## Deferred
 
 _None yet._
