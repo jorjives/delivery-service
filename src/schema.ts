@@ -24,6 +24,8 @@ export const BudgetSet = z.object({
 });
 export type BudgetSet = z.infer<typeof BudgetSet>;
 
+export type BudgetPopulation = keyof BudgetSet;
+
 // --- Header ---
 
 // TaskDef and GateRef are opaque to persistence (defined by later items).

@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget } from "./case-file.js";
 import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
-import type { BudgetSet, HistoryEntry } from "./schema.js";
+import type { BudgetSet, HistoryEntry, BudgetPopulation } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -592,5 +592,65 @@ describe("setOutcome", () => {
     // Original outcome unchanged
     const loaded = await load(dir);
     expect(loaded.outcome).toEqual(outcome);
+  });
+});
+
+describe("incrementBudget", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-budget-"));
+    await create(dir, {
+      surfaceId: "surface-budget",
+      taskDef: { intent: "test budgets" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("increments the used counter by one and persists it", async () => {
+    const result = await incrementBudget(dir, "correction");
+
+    expect(result.used).toBe(1);
+    expect(result.max).toBe(3);
+    expect(result.exhausted).toBe(false);
+
+    // Verify persistence
+    const loaded = await load(dir);
+    expect(loaded.cursor.budgets.correction.used).toBe(1);
+  });
+
+  it("tracks each of the five populations independently", async () => {
+    await incrementBudget(dir, "correction");
+    await incrementBudget(dir, "correction");
+    await incrementBudget(dir, "terminus");
+
+    const loaded = await load(dir);
+    expect(loaded.cursor.budgets.correction.used).toBe(2);
+    expect(loaded.cursor.budgets.terminus.used).toBe(1);
+    expect(loaded.cursor.budgets.gateError.used).toBe(0);
+    expect(loaded.cursor.budgets.gateMaintenance.used).toBe(0);
+    expect(loaded.cursor.budgets.close.used).toBe(0);
+  });
+
+  it("reports exhausted exactly when used reaches max", async () => {
+    // gateMaintenance has max: 2
+    const r1 = await incrementBudget(dir, "gateMaintenance");
+    expect(r1).toEqual({ used: 1, max: 2, exhausted: false });
+
+    const r2 = await incrementBudget(dir, "gateMaintenance");
+    expect(r2).toEqual({ used: 2, max: 2, exhausted: true });
+  });
+
+  it("allows incrementing past the cap and still reports exhausted", async () => {
+    // gateMaintenance has max: 2
+    await incrementBudget(dir, "gateMaintenance");
+    await incrementBudget(dir, "gateMaintenance");
+
+    const r3 = await incrementBudget(dir, "gateMaintenance");
+    expect(r3).toEqual({ used: 3, max: 2, exhausted: true });
+
+    // Verify it persisted the over-cap value
+    const loaded = await load(dir);
+    expect(loaded.cursor.budgets.gateMaintenance.used).toBe(3);
   });
 });

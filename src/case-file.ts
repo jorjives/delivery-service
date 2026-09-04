@@ -1,6 +1,6 @@
 import { open, rename, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateState, CaseFileOutcome } from "./schema.js";
+import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateState, CaseFileOutcome } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
 
 async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
@@ -191,6 +191,29 @@ export function setOutcome(dir: string, outcome: CaseFileOutcome): Promise<void>
     (caseJson) => caseJson.outcome !== undefined,
     (caseJson) => ({ ...caseJson, outcome }),
   );
+}
+
+export async function incrementBudget(
+  dir: string,
+  population: BudgetPopulation,
+): Promise<{ used: number; max: number; exhausted: boolean }> {
+  const caseJson = await readCaseJson(dir);
+  const budget = caseJson.cursor.budgets[population];
+  const used = budget.used + 1;
+
+  const updated: CaseJson = {
+    ...caseJson,
+    cursor: {
+      ...caseJson.cursor,
+      budgets: {
+        ...caseJson.cursor.budgets,
+        [population]: { used, max: budget.max },
+      },
+    },
+  };
+
+  await writeCaseJson(dir, updated);
+  return { used, max: budget.max, exhausted: used >= budget.max };
 }
 
 const terminusState: Record<string, SurfaceState> = {

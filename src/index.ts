@@ -1,4 +1,4 @@
-export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome } from "./case-file.js";
+export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget } from "./case-file.js";
 export type {
   CaseFile,
   CaseFileHeader,
@@ -14,6 +14,7 @@ export type {
   SurfaceState,
   BudgetSet,
   Budget,
+  BudgetPopulation,
   TaskDef,
   GateRef,
   GateState,
