@@ -11,12 +11,14 @@ external coordinator.
 serialises structured data (JSON-native). TypeScript is the path of least
 friction across the full roadmap.
 
-**Persistence: atomic whole-file writes.** The case file is a single JSON file,
-rewritten atomically (write-to-temp, fsync, rename) on every mutation. The design
-docs mandate that the case file stays lean — large data lives by reference — so
-rewrites are cheap. This is simpler than append-only storage (JSONL) and provides
-the same crash-safety guarantee: a crash mid-write leaves the prior version
-intact.
+**Persistence: split by mutability.** The case file is two files: `case.json`
+for the header, cursor, and outcome (atomically rewritten via write-to-temp,
+fsync, rename), and `log.jsonl` for the append-only history (one JSON object per
+line, fsync after each append). This maps the design's own mutability rules
+directly to storage: infrequently changing state is atomically rewritten; the
+high-frequency history log is append-only. The log is the source of truth; the
+cursor is a derived cache. If they ever disagree, the log wins — replay it to
+reconstruct the cursor.
 
 **Immutability: enforced by the API, not the format.** The `CaseFile` type
 exposes no method to mutate header fields after creation. The header is
@@ -150,7 +152,8 @@ together.
 <run-dir>/
   surfaces/
     <surface-id>/
-      case.json              # the CaseFile, atomically rewritten
+      case.json              # header + cursor + outcome (atomically rewritten)
+      log.jsonl              # history entries (append-only, one JSON object per line)
       refs/
         <ref-id>.json        # referenced blobs (details, briefs, packets)
 ```
@@ -172,14 +175,22 @@ budget maxima from defaults, empty history, no outcome.
 
 ### `load(dir) → CaseFile`
 
-Read and parse the case file from disk. Returns the typed `CaseFile`. Fails if
-the file does not exist or is malformed.
+Read `case.json` and `log.jsonl`, parse both, and return the composed
+`CaseFile`. History entries come from the log file. Fails if `case.json` does
+not exist or either file is malformed.
+
+### `rebuild(dir) → CaseFile`
+
+Reconstruct the cursor from the log when `case.json` is suspected stale or
+corrupt. Replays `log.jsonl` to derive the current state and budget counters,
+rewrites `case.json` with the reconstructed cursor, and returns the result.
+This is the "log wins" recovery path.
 
 ### `appendEntry(dir, entry) → void`
 
-Append a history entry. Validates that the entry is well-formed. The caller is
-responsible for state-transition correctness; persistence does not enforce the
-state machine.
+Append a history entry as a single line to `log.jsonl` and fsync. Validates
+that the entry is well-formed. The caller is responsible for state-transition
+correctness; persistence does not enforce the state machine.
 
 ### `updateCursor(dir, patch) → void`
 
@@ -195,9 +206,10 @@ write-once semantics).
 
 Write the terminal outcome. Fails if an outcome is already set.
 
-Each mutation atomically rewrites `case.json`: read current, apply change,
-write to temp, fsync, rename over original. A crash at any point leaves either
-the prior version or the new version on disk, never a partial write.
+Mutations to header, cursor, and outcome atomically rewrite `case.json`
+(read, apply, write-to-temp, fsync, rename). History appends write a single
+line to `log.jsonl` and fsync. A crash at any point leaves either the prior
+state or the new state on disk, never a partial write.
 
 ## Budget enforcement
 
@@ -216,14 +228,16 @@ This is a convenience that combines `load` + `updateCursor` atomically.
 
 The log tail determines the resume action. This mapping is specified in the
 single-surface design and implemented by the state machine (a later item), not
-by the persistence layer. The persistence layer's contract is simpler: every
-write is atomic, so `load` always returns a consistent state.
+by the persistence layer. The persistence layer's contract: `case.json` writes
+are atomic, `log.jsonl` appends are atomic per-line, and the log is
+authoritative. If `case.json` is lost or stale, `rebuild` reconstructs it
+from the log.
 
 The state machine reads the tail via:
 
 ### `logTail(caseFile) → HistoryEntry | undefined`
 
-Return the last history entry (the tail). The state machine maps this to a
+Return the last history entry (the log tail). The state machine maps this to a
 resume action per the table in the single-surface design:
 
 | Tail | Resume action |
@@ -287,8 +301,14 @@ directory per test case; no mocks needed.
 Coverage:
 
 - **Round-trip**: create → append entries → load → verify all fields.
-- **Atomicity**: simulate a crash (kill the write before rename) and verify
-  `load` returns the prior state.
+  Confirm history comes from `log.jsonl`, not `case.json`.
+- **Atomicity**: simulate a crash (kill the write before rename for
+  `case.json`; truncate mid-line for `log.jsonl`) and verify `load` returns
+  the prior consistent state.
+- **Rebuild**: append entries, corrupt or delete `case.json`, run `rebuild`,
+  verify cursor matches what the log implies.
+- **Log authority**: append entries, manually desync the cursor in
+  `case.json`, verify `rebuild` restores the correct state from the log.
 - **Immutability**: `setBaseline` twice fails; `setOutcome` twice fails;
   header fields unchanged after cursor updates.
 - **Budget counters**: increment each population, verify `used` tracks and
@@ -296,7 +316,8 @@ Coverage:
 - **Reference lifecycle**: write ref → append entry pointing to it → load →
   dereference → verify content.
 - **Corrupt file**: malformed JSON or schema-invalid JSON produces
-  `CorruptCaseFile`, not a crash.
+  `CorruptCaseFile`, not a crash. Malformed `log.jsonl` line produces a
+  clear error identifying the line number.
 - **Log tail**: verify `logTail` returns the correct entry type for each
   append sequence.
 
