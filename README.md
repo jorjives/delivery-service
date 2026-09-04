@@ -1,5 +1,15 @@
 # delivery-service
 
-Design work for a deterministically gated agent delivery harness.
+A deterministically gated agent delivery harness.
 
-See [docs/](docs/).
+## Quick start
+
+```bash
+npm install
+npm test
+```
+
+## Documentation
+
+- [Design docs](docs/)
+- [Contributing](CONTRIBUTING.md)
