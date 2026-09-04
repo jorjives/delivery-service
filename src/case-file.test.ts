@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild } from "./case-file.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
@@ -311,5 +311,94 @@ describe("updateCursor", () => {
     expect(loaded.header.surfaceId).toBe("surface-cursor");
     expect(loaded.header.baseline).toBeNull();
     expect(loaded.outcome).toBeUndefined();
+  });
+});
+
+describe("rebuild", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-rebuild-"));
+    await create(dir, {
+      surfaceId: "surface-rebuild",
+      taskDef: { intent: "test rebuild" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("reconstructs cursor state from the log when case.json is stale", async () => {
+    // Append entries that should move state to GATING
+    await appendEntry(dir, {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "sess-1",
+    });
+    await appendEntry(dir, {
+      t: "terminus",
+      attempt: 1,
+      sessionKey: "sess-1",
+      status: "completed",
+      rationale: "Done",
+    });
+
+    // Manually desync: case.json still says PROVISIONING
+    // (which it does, because appendEntry doesn't update cursor)
+    const beforeRebuild = await load(dir);
+    expect(beforeRebuild.cursor.state).toBe("PROVISIONING");
+
+    // Rebuild should fix the cursor
+    const rebuilt = await rebuild(dir);
+    expect(rebuilt.cursor.state).toBe("GATING");
+    expect(rebuilt.header.surfaceId).toBe("surface-rebuild");
+    expect(rebuilt.history).toHaveLength(2);
+
+    // Verify it was persisted
+    const reloaded = await load(dir);
+    expect(reloaded.cursor.state).toBe("GATING");
+  });
+
+  it("reconstructs budget used counts from the log", async () => {
+    await appendEntry(dir, {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "sess-1",
+    });
+    await appendEntry(dir, {
+      t: "terminus",
+      attempt: 1,
+      sessionKey: "sess-1",
+      status: "completed",
+      rationale: "Done",
+    });
+    await appendEntry(dir, {
+      t: "gate",
+      attempt: 1,
+      status: "ERROR",
+      newFailures: [],
+      class: "error",
+    });
+
+    const rebuilt = await rebuild(dir);
+    expect(rebuilt.cursor.budgets.terminus.used).toBe(1);
+    expect(rebuilt.cursor.budgets.gateError.used).toBe(1);
+    expect(rebuilt.cursor.budgets.correction.used).toBe(0);
+    // Max values preserved from case.json
+    expect(rebuilt.cursor.budgets.terminus.max).toBe(5);
+    expect(rebuilt.cursor.budgets.gateError.max).toBe(3);
+  });
+
+  it("fails with FileNotFound when case.json is missing", async () => {
+    const { FileNotFound } = await import("./errors.js");
+    const { unlink } = await import("node:fs/promises");
+    await unlink(join(dir, "case.json"));
+
+    await expect(rebuild(dir)).rejects.toThrow(FileNotFound);
+  });
+
+  it("fails with CorruptCaseFile when case.json is unparseable", async () => {
+    const { CorruptCaseFile } = await import("./errors.js");
+    await writeFile(join(dir, "case.json"), "not valid json {{{");
+
+    await expect(rebuild(dir)).rejects.toThrow(CorruptCaseFile);
   });
 });

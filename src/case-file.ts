@@ -1,6 +1,6 @@
 import { open, rename, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader, CaseFileCursor } from "./schema.js";
+import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure } from "./errors.js";
 
 async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
@@ -155,4 +155,129 @@ export async function updateCursor(
   } catch (err) {
     throw new WriteFailure(dir, String(err));
   }
+}
+
+function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
+  switch (entry.t) {
+    case "dispatch":
+      return "AGENT_ACTIVE";
+    case "terminus":
+      switch (entry.status) {
+        case "completed":
+          return "GATING";
+        case "escalate":
+          return "ESCALATED";
+        case "incomplete":
+          return "INCOMPLETE_TERMINUS";
+      }
+      break; // unreachable, satisfies exhaustiveness
+    case "gate":
+      switch (entry.status) {
+        case "PASS":
+          return "CLOSING";
+        case "FAIL":
+          return "TRIAGE";
+        case "ERROR":
+          return "TRIAGE";
+      }
+      break;
+    case "triage":
+      switch (entry.verdict) {
+        case "reroute":
+          return "AGENT_ACTIVE";
+        case "escalate":
+          return "ESCALATED";
+        case "fix_the_gate":
+          return "GATE_MAINTENANCE";
+        case "retry_close":
+          return "CLOSING";
+        case "abort":
+          return "ABORTED";
+      }
+      break;
+    case "close":
+      switch (entry.status) {
+        case "DONE":
+          return "CLOSED";
+        case "FAIL":
+          return "TRIAGE";
+        case "ERROR":
+          return "TRIAGE";
+      }
+      break;
+  }
+}
+
+function deriveBudgetsFromLog(
+  history: HistoryEntry[],
+  maxima: BudgetSet,
+): BudgetSet {
+  const used = { correction: 0, gateError: 0, gateMaintenance: 0, terminus: 0, close: 0 };
+
+  for (const entry of history) {
+    switch (entry.t) {
+      case "dispatch":
+        if (entry.attempt > 1) used.correction++;
+        break;
+      case "terminus":
+        used.terminus++;
+        break;
+      case "gate":
+        if (entry.status === "ERROR") used.gateError++;
+        break;
+      case "triage":
+        if (entry.verdict === "fix_the_gate") used.gateMaintenance++;
+        break;
+      case "close":
+        used.close++;
+        break;
+    }
+  }
+
+  return {
+    correction: { used: used.correction, max: maxima.correction.max },
+    gateError: { used: used.gateError, max: maxima.gateError.max },
+    gateMaintenance: { used: used.gateMaintenance, max: maxima.gateMaintenance.max },
+    terminus: { used: used.terminus, max: maxima.terminus.max },
+    close: { used: used.close, max: maxima.close.max },
+  };
+}
+
+export async function rebuild(dir: string): Promise<CaseFile> {
+  // Reuse load() — it already reads case.json + log.jsonl with
+  // truncated-line handling and error mapping to FileNotFound/CorruptCaseFile
+  const loaded = await load(dir);
+
+  // Derive cursor from the log (the log wins over the stale cursor)
+  const tail = loaded.history.at(-1);
+  const state: SurfaceState = tail
+    ? deriveStateFromEntry(tail)
+    : loaded.cursor.state;
+  const budgets = deriveBudgetsFromLog(loaded.history, loaded.cursor.budgets);
+
+  const cursor = {
+    state,
+    budgets,
+    worktreeRef: loaded.cursor.worktreeRef,
+  };
+
+  // Rewrite case.json with reconstructed cursor
+  const updated: CaseJson = {
+    header: loaded.header,
+    cursor,
+    ...(loaded.outcome ? { outcome: loaded.outcome } : {}),
+  };
+
+  try {
+    await atomicWriteJson(join(dir, "case.json"), updated);
+  } catch (err) {
+    throw new WriteFailure(dir, String(err));
+  }
+
+  return {
+    header: loaded.header,
+    cursor,
+    history: loaded.history,
+    outcome: loaded.outcome,
+  };
 }
