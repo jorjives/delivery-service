@@ -1,6 +1,6 @@
 import { open, rename, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader } from "./schema.js";
+import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry, CreateHeader, CaseFileCursor } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure } from "./errors.js";
 
 async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
@@ -122,4 +122,37 @@ export async function load(dir: string): Promise<CaseFile> {
 
 export function logTail(caseFile: CaseFile): HistoryEntry | undefined {
   return caseFile.history.at(-1);
+}
+
+export async function updateCursor(
+  dir: string,
+  patch: Partial<CaseFileCursor>,
+): Promise<void> {
+  const caseJsonPath = join(dir, "case.json");
+
+  let raw: string;
+  try {
+    raw = await readFile(caseJsonPath, "utf-8");
+  } catch (err) {
+    if (isEnoent(err)) throw new FileNotFound(dir, caseJsonPath);
+    throw err;
+  }
+
+  let caseJson: CaseJson;
+  try {
+    caseJson = CaseJson.parse(JSON.parse(raw));
+  } catch (err) {
+    throw new CorruptCaseFile(dir, String(err));
+  }
+
+  const updated: CaseJson = {
+    ...caseJson,
+    cursor: CaseFileCursor.parse({ ...caseJson.cursor, ...patch }),
+  };
+
+  try {
+    await atomicWriteJson(caseJsonPath, updated);
+  } catch (err) {
+    throw new WriteFailure(dir, String(err));
+  }
 }

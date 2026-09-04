@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor } from "./case-file.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
@@ -272,5 +272,44 @@ describe("logTail", () => {
     const loaded = await load(dir);
     const tail = logTail(loaded);
     expect(tail).toEqual(entry2);
+  });
+});
+
+describe("updateCursor", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-cursor-"));
+    await create(dir, {
+      surfaceId: "surface-cursor",
+      taskDef: { intent: "test cursor update" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("updates the state field and preserves other cursor fields", async () => {
+    await updateCursor(dir, { state: "AGENT_ACTIVE" });
+
+    const loaded = await load(dir);
+    expect(loaded.cursor.state).toBe("AGENT_ACTIVE");
+    expect(loaded.cursor.budgets).toEqual(budgetDefaults);
+    expect(loaded.cursor.worktreeRef).toBe("");
+  });
+
+  it("updates the worktreeRef without changing state", async () => {
+    await updateCursor(dir, { worktreeRef: "wt-abc-123" });
+
+    const loaded = await load(dir);
+    expect(loaded.cursor.state).toBe("PROVISIONING");
+    expect(loaded.cursor.worktreeRef).toBe("wt-abc-123");
+  });
+
+  it("preserves header and outcome when rewriting case.json", async () => {
+    await updateCursor(dir, { state: "GATING" });
+
+    const loaded = await load(dir);
+    expect(loaded.header.surfaceId).toBe("surface-cursor");
+    expect(loaded.header.baseline).toBeNull();
+    expect(loaded.outcome).toBeUndefined();
   });
 });
