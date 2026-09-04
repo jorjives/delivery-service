@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome } from "./case-file.js";
 import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
@@ -543,5 +543,54 @@ describe("setBaseline", () => {
     // Original baseline unchanged
     const loaded = await load(dir);
     expect(loaded.header.baseline).toEqual({ assertion1: "pass" });
+  });
+});
+
+describe("setOutcome", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-outcome-"));
+    await create(dir, {
+      surfaceId: "surface-oc",
+      taskDef: { intent: "test outcome" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("sets the outcome when none exists", async () => {
+    const outcome = {
+      kind: "closed" as const,
+      source: "gate",
+      reason: "All assertions passed",
+      at: "2026-09-04T12:00:00Z",
+    };
+    await setOutcome(dir, outcome);
+
+    const loaded = await load(dir);
+    expect(loaded.outcome).toEqual(outcome);
+  });
+
+  it("rejects a second setOutcome with ImmutabilityViolation", async () => {
+    const outcome = {
+      kind: "closed" as const,
+      source: "gate",
+      reason: "All assertions passed",
+      at: "2026-09-04T12:00:00Z",
+    };
+    await setOutcome(dir, outcome);
+
+    await expect(
+      setOutcome(dir, {
+        kind: "escalated" as const,
+        source: "triage",
+        reason: "Cannot fix",
+        at: "2026-09-04T13:00:00Z",
+      }),
+    ).rejects.toThrow(ImmutabilityViolation);
+
+    // Original outcome unchanged
+    const loaded = await load(dir);
+    expect(loaded.outcome).toEqual(outcome);
   });
 });
