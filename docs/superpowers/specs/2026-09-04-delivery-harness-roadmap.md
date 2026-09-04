@@ -88,7 +88,10 @@ usable for the most common case.
 **DX:** Ships with a "writing a gate" guide: the contract, a minimal example,
 and what baseline/check must guarantee. The reference gate implementation
 doubles as the example. Without this, adopters hit the pluggable interface and
-have to reverse-engineer the contract from source.
+have to reverse-engineer the contract from source. The gate is the first of
+several authoring surfaces that Item 9 (Project Configuration) will unify into
+a coherent onboarding experience; the guide written here becomes a chapter in
+that larger surface.
 
 ---
 
@@ -154,6 +157,12 @@ state, structured output validation, and tool authority enforcement.
 (ctx shape, schema definition mechanism) are implementation detail that can be
 resolved during the spec without blocking.
 
+**DX:** The domain system-prompt fragment and task_def are project-owner
+authored content that reaches agents through this primitive. The spec should
+document what the project owner controls (domain context, task intent) versus
+what the harness owns (envelope instruction, template order), so Item 9
+(Project Configuration) can build an authoring surface on a stable contract.
+
 ---
 
 ## Item 5: Triage and Deterministic Router
@@ -206,7 +215,8 @@ useful out of the box.
 **DX:** Ships with a "writing a closer" guide, mirroring the gate guide from
 Item 2. The reference closer is the example. Together, Items 2 and 6 give
 adopters the two plug points they must understand to use the harness; both need
-documented contracts and working examples.
+documented contracts and working examples. Like the gate guide, this becomes a
+chapter in Item 9's (Project Configuration) unified onboarding surface.
 
 ---
 
@@ -282,7 +292,57 @@ adoption; it should be tested by running its own instructions from scratch.
 
 ---
 
-## Item 9: Multi-Surface Supervisor
+## Item 9: Project Configuration
+
+**Delivers:** The management surface through which a project owner onboards
+their project to the harness: defining what the gate checks, how close actions
+work, what tasks look like, and what context each agent role receives.
+
+**Success criteria:**
+- A project owner can define a gate, a closer, and a task queue for their
+  project without reading harness source code
+- The domain system-prompt fragment (role identity, domain context, domain
+  tools) can be authored and previewed before a run
+- Task definitions can be authored with the context each agent role needs,
+  and validated before dispatch
+- A project configuration can be checked into the repo and versioned alongside
+  the code it governs
+- A validation command checks the configuration for completeness and
+  consistency before a run starts (missing gate, malformed task defs, schema
+  mismatches)
+- An example project demonstrates a complete configuration end to end
+
+**Dependencies:**
+- Gate interface (the configuration surface must express gate definitions)
+- Close interface (the configuration surface must express closer definitions)
+- Agent invocation primitive (the configuration surface must express the domain
+  system-prompt fragment and task context that reach each agent role)
+- CLI and configuration (the project configuration is loaded and driven by the
+  CLI)
+
+**Detail level:** brief
+
+**Notes:** The existing design docs specify what the harness consumes (gate
+contract, closer contract, task_def, domain system-prompt fragment) but say
+nothing about how a project owner authors and manages those artefacts. This
+item bridges the gap between "the harness can be invoked" (Item 8) and "a
+project owner can set up and maintain their project's use of the harness"
+without reading internals.
+
+The scope includes: the configuration file format and structure, how gates and
+closers are registered and discovered, how task definitions and agent context
+are authored, and how the whole thing is validated. It does not include the
+harness's own internal configuration (budget caps, concurrency limits), which
+is Item 8's concern.
+
+The individual authoring guides from Items 2, 4, and 6 (writing a gate,
+writing a closer, assembling agent context) become chapters in this item's
+unified onboarding documentation. Those guides are written when their contracts
+land; this item stitches them into a coherent project setup experience.
+
+---
+
+## Item 10: Multi-Surface Supervisor
 
 **Delivers:** A supervisor that runs N surfaces concurrently against one
 target, with a shared task queue, worktree pool, breaker-based shared-fate
@@ -318,7 +378,7 @@ scripted interleavings.
 
 ---
 
-## Item 10: Observability and Reporting
+## Item 11: Observability and Reporting
 
 **Delivers:** Structured visibility into what the harness is doing: run
 progress, surface states, budget consumption, triage decisions, and terminal
