@@ -73,7 +73,7 @@ describe("appendEntry", () => {
     const logRaw = await readFile(join(dir, "log.jsonl"), "utf-8");
     const lines = logRaw.trimEnd().split("\n");
     expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0]!)).toEqual(entry);
+    expect(JSON.parse(lines[0] as string)).toEqual(entry);
   });
 
   it("appends multiple entries in order", async () => {
@@ -96,8 +96,8 @@ describe("appendEntry", () => {
     const logRaw = await readFile(join(dir, "log.jsonl"), "utf-8");
     const lines = logRaw.trimEnd().split("\n");
     expect(lines).toHaveLength(2);
-    expect(JSON.parse(lines[0]!)).toEqual(entry1);
-    expect(JSON.parse(lines[1]!)).toEqual(entry2);
+    expect(JSON.parse(lines[0] as string)).toEqual(entry1);
+    expect(JSON.parse(lines[1] as string)).toEqual(entry2);
   });
 });
 
