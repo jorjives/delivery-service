@@ -21,6 +21,14 @@ Success at the roadmap level: a user can point the harness at a repo with a
 gate definition, hand it a queue of tasks, and get back accepted work or
 structured escalation packets, with crash recovery throughout.
 
+### Developer experience as a cross-cut
+
+This is an open-source project. Trust and adoption depend on DX landing at the
+right moments, not as an afterthought. DX concerns (CI, testing, packaging,
+documentation, error quality, contributor onboarding) are threaded through the
+items below at the point each becomes relevant. They appear as success criteria
+and notes, not as a separate layer.
+
 ---
 
 ## Item 1: Case File Persistence
@@ -33,6 +41,9 @@ other component reads and writes, enabling resume from disk alone.
 - The log tail determines the correct resume action after a simulated crash
 - The immutable header cannot be mutated after creation
 - Budget counters increment and enforce caps
+- CI pipeline runs tests on every push and PR (established here, inherited by
+  every subsequent item)
+- A CONTRIBUTING guide covers: how to clone, run tests, and submit a PR
 
 **Dependencies:** None
 
@@ -43,6 +54,11 @@ This is the foundation: every other item writes to or reads from this
 structure. Implementing it first means every subsequent item has real
 persistence from day one, and crash recovery can be tested against the actual
 serialised format rather than mocked.
+
+**DX:** This item establishes the project's test runner, CI pipeline, and
+contributor onboarding. Every subsequent item lands into a repo where CI is
+already green and a new contributor knows how to run the suite. Getting this
+right at the foundation is cheaper than retrofitting it later.
 
 ---
 
@@ -68,6 +84,11 @@ serialised into the case file)
 **Notes:** The gate interface is fully specified. A reference gate
 implementation (e.g. wrapping a test runner) would make the harness immediately
 usable for the most common case.
+
+**DX:** Ships with a "writing a gate" guide: the contract, a minimal example,
+and what baseline/check must guarantee. The reference gate implementation
+doubles as the example. Without this, adopters hit the pluggable interface and
+have to reverse-engineer the contract from source.
 
 ---
 
@@ -97,6 +118,13 @@ enforcement and crash recovery.
 interface (Item 4) and triage (Item 5) are conceptually part of this loop but
 are separated because they each have enough surface area for their own spec.
 The state machine can be built with stub agent/triage implementations initially.
+
+**DX:** Error messages from the state machine are the user's primary debugging
+surface. Every illegal transition, budget exhaustion, and crash recovery should
+produce a message that names the state, the attempted edge, and what went
+wrong, not a stack trace. This is where adopters will spend their time when
+things go sideways; investing in error quality here pays for every subsequent
+item.
 
 ---
 
@@ -175,6 +203,11 @@ open PR, cleanup, teardown).
 **Notes:** A reference closer (merge-back or open-PR) would make the harness
 useful out of the box.
 
+**DX:** Ships with a "writing a closer" guide, mirroring the gate guide from
+Item 2. The reference closer is the example. Together, Items 2 and 6 give
+adopters the two plug points they must understand to use the harness; both need
+documented contracts and working examples.
+
 ---
 
 ## Item 7: Agent Mock
@@ -190,6 +223,8 @@ without live API calls.
 - An unmatched or malformed mock reply exercises the INCOMPLETE_TERMINUS path
 - A journal records what prompts the harness sent and which expectations were
   consumed
+- Adopters can write their own mock expectations for their gate/closer
+  combinations without reading harness internals
 
 **Dependencies:**
 - Agent invocation primitive (the mock fakes this seam)
@@ -199,6 +234,13 @@ without live API calls.
 **Notes:** The agent interface doc references claude-mock and describes the
 correspondence. The mock's own design (expectation format, journal shape,
 effect application) needs its own spec.
+
+**DX:** This is the harness's testing story for adopters, not just for the
+harness's own tests. An adopter who writes a custom gate and closer needs to
+test their integration without burning API calls. The mock must be a
+first-class public API with its own documentation, not an internal testing
+detail. The spec should include an adopter-facing testing guide: "how to test
+your delivery pipeline".
 
 ---
 
@@ -214,6 +256,10 @@ queue, and setting budget caps.
 - Configuration can be supplied via file or flags
 - Run progress is reported to the terminal
 - A crashed run can be resumed from the command line
+- The harness can be installed from a package registry in one command
+- A getting-started guide takes a new user from install to a completed run
+  against a sample project
+- Versioning follows semver; a changelog is maintained
 
 **Dependencies:**
 - Single-surface state machine (the CLI drives the machine)
@@ -226,6 +272,13 @@ queue, and setting budget caps.
 docs. The existing specs describe the internal machinery; they say nothing
 about how a user configures and launches it. The scope should be minimal: just
 enough to make the harness invocable.
+
+**DX:** This is the adoption gate. Everything before this item is usable only
+as a library; this item makes it a tool. The spec must cover: packaging and
+distribution (how users install it), a sample project (the "hello world" that
+proves it works end to end), and a release process (semver, changelog, tagged
+releases). The getting-started guide is the single most important document for
+adoption; it should be tested by running its own instructions from scratch.
 
 ---
 
@@ -256,6 +309,13 @@ handling, and run-level budgets.
 need resolution during the spec. The stop-the-world repair window is a
 deliberate simplification.
 
+**DX:** Concurrency introduces failure modes that are hard to reproduce and
+debug. The spec should cover: how a user diagnoses a breaker trip (what
+happened, which surface triggered it, what the repair attempted), and how
+the run file's state is inspectable post-mortem. The multi-surface case also
+needs its own section in the testing guide: how to mock N surfaces with
+scripted interleavings.
+
 ---
 
 ## Item 10: Observability and Reporting
@@ -281,6 +341,15 @@ outcomes, available both during and after a run.
 about surfacing that data to a user in a useful form, not about capturing it.
 The design should decide what the reporting surface is (structured log, live
 TUI, post-run report, or all three).
+
+**DX:** This is where the harness becomes trustworthy at scale. An adopter
+running 20 tasks overnight needs to come back to a clear summary: what
+succeeded, what escalated, why, and what to do about the escalations. The
+escalation packet is the handoff to a human; its quality determines whether the
+human trusts the harness or stops using it. The spec should also consider
+structured output (JSON/machine-readable) alongside human-readable reporting,
+so adopters can build their own dashboards or integrate with existing
+observability tooling.
 
 ---
 
