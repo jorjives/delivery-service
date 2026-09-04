@@ -723,12 +723,15 @@ describe("reference storage", () => {
     // Load the case file and follow the pointer
     const loaded = await load(dir);
     const tail = loaded.history.at(-1);
-    expect(tail).toBeDefined();
-    expect(tail!.t).toBe("gate");
+    if (!tail || tail.t !== "gate") {
+      throw new Error("expected a gate history entry");
+    }
 
-    const gate = tail as { t: "gate"; newFailures: Array<{ id: string; detailRef: string }> };
-    const refId = gate.newFailures[0]!.detailRef;
-    const retrieved = await readRef(dir, refId);
+    const firstFailure = tail.newFailures[0];
+    if (!firstFailure) {
+      throw new Error("expected at least one failure on the gate entry");
+    }
+    const retrieved = await readRef(dir, firstFailure.detailRef);
 
     expect(retrieved).toEqual(failureDetail);
   });
