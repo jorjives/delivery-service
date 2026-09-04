@@ -194,6 +194,46 @@ describe("crash recovery: case.json atomicity", () => {
   });
 });
 
+describe("crash recovery: truncated log line", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-trunc-"));
+    await create(dir, {
+      surfaceId: "surface-trunc",
+      taskDef: { intent: "test truncation" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("ignores a truncated final line and returns prior complete entries", async () => {
+    const entry: HistoryEntry = {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "sess-1",
+    };
+
+    await appendEntry(dir, entry);
+
+    // Simulate crash mid-append: write a partial JSON line at the end
+    const logPath = join(dir, "log.jsonl");
+    const { appendFile } = await import("node:fs/promises");
+    await appendFile(logPath, '{"t":"terminus","attempt":1,"ses');
+
+    const loaded = await load(dir);
+    expect(loaded.history).toHaveLength(1);
+    expect(loaded.history[0]).toEqual(entry);
+  });
+
+  it("loads correctly when log has only a truncated line (no complete entries)", async () => {
+    const logPath = join(dir, "log.jsonl");
+    await writeFile(logPath, '{"t":"dispatch","at');
+
+    const loaded = await load(dir);
+    expect(loaded.history).toHaveLength(0);
+  });
+});
+
 describe("logTail", () => {
   it("returns undefined for empty history", async () => {
     const dir = await mkdtemp(join(tmpdir(), "case-file-tail-"));
