@@ -281,3 +281,30 @@ export async function rebuild(dir: string): Promise<CaseFile> {
     outcome: loaded.outcome,
   };
 }
+
+export type ResumeAction =
+  | "start"
+  | "incomplete_terminus"
+  | "gate"
+  | "triage"
+  | "close"
+  | "act_on_verdict"
+  | "close_triage"
+  | "done";
+
+export function resumeAction(tail: HistoryEntry | undefined): ResumeAction {
+  if (!tail) return "start";
+
+  switch (tail.t) {
+    case "dispatch":
+      return "incomplete_terminus";
+    case "terminus":
+      return tail.status === "completed" ? "gate" : "triage";
+    case "gate":
+      return tail.status === "PASS" ? "close" : "triage";
+    case "triage":
+      return "act_on_verdict";
+    case "close":
+      return tail.status === "DONE" ? "done" : "close_triage";
+  }
+}

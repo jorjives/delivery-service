@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor, rebuild } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction } from "./case-file.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
@@ -400,5 +400,83 @@ describe("rebuild", () => {
     await writeFile(join(dir, "case.json"), "not valid json {{{");
 
     await expect(rebuild(dir)).rejects.toThrow(CorruptCaseFile);
+  });
+});
+
+describe("resumeAction", () => {
+  it("returns 'start' when there are no entries", () => {
+    expect(resumeAction(undefined)).toBe("start");
+  });
+
+  it("returns 'incomplete_terminus' for a dispatch with no terminus", () => {
+    expect(resumeAction({
+      t: "dispatch", attempt: 1, sessionKey: "s1",
+    })).toBe("incomplete_terminus");
+  });
+
+  it("returns 'gate' for terminus(completed)", () => {
+    expect(resumeAction({
+      t: "terminus", attempt: 1, sessionKey: "s1",
+      status: "completed", rationale: "Done",
+    })).toBe("gate");
+  });
+
+  it("returns 'triage' for terminus(escalate)", () => {
+    expect(resumeAction({
+      t: "terminus", attempt: 1, sessionKey: "s1",
+      status: "escalate", rationale: "Need help",
+    })).toBe("triage");
+  });
+
+  it("returns 'triage' for terminus(incomplete)", () => {
+    expect(resumeAction({
+      t: "terminus", attempt: 1, sessionKey: "s1",
+      status: "incomplete", rationale: "Ran out",
+    })).toBe("triage");
+  });
+
+  it("returns 'triage' for gate(FAIL)", () => {
+    expect(resumeAction({
+      t: "gate", attempt: 1, status: "FAIL",
+      newFailures: [{ id: "f1", detailRef: "ref-1" }], class: "fail",
+    })).toBe("triage");
+  });
+
+  it("returns 'triage' for gate(ERROR)", () => {
+    expect(resumeAction({
+      t: "gate", attempt: 1, status: "ERROR",
+      newFailures: [], class: "error",
+    })).toBe("triage");
+  });
+
+  it("returns 'close' for gate(PASS)", () => {
+    expect(resumeAction({
+      t: "gate", attempt: 1, status: "PASS", newFailures: [],
+    })).toBe("close");
+  });
+
+  it("returns 'act_on_verdict' for a triage entry", () => {
+    expect(resumeAction({
+      t: "triage", afterAttempt: 1, trigger: "gate_fail",
+      verdict: "reroute", rationale: "Try again", artifactRef: "ref-1",
+    })).toBe("act_on_verdict");
+  });
+
+  it("returns 'close_triage' for close(FAIL)", () => {
+    expect(resumeAction({
+      t: "close", status: "FAIL", detailRef: "ref-1",
+    })).toBe("close_triage");
+  });
+
+  it("returns 'close_triage' for close(ERROR)", () => {
+    expect(resumeAction({
+      t: "close", status: "ERROR", detailRef: "ref-1",
+    })).toBe("close_triage");
+  });
+
+  it("returns 'done' for close(DONE)", () => {
+    expect(resumeAction({
+      t: "close", status: "DONE", detailRef: "ref-1",
+    })).toBe("done");
   });
 });
