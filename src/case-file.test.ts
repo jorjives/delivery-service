@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry } from "./case-file.js";
+import { create, appendEntry, load } from "./case-file.js";
 import type { BudgetSet, HistoryEntry } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
@@ -108,5 +108,72 @@ describe("appendEntry", () => {
       expect(JSON.parse(line0)).toEqual(entry1);
       expect(JSON.parse(line1)).toEqual(entry2);
     }
+  });
+});
+
+describe("load", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-test-"));
+  });
+
+  it("round-trips a case file with history entries", async () => {
+    const header = {
+      surfaceId: "surface-rt",
+      taskDef: { intent: "round trip" },
+      gateRef: { gateId: "gate-rt", version: 2 },
+    };
+
+    await create(dir, header, budgetDefaults);
+
+    const entry1: HistoryEntry = {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "sess-1",
+    };
+    const entry2: HistoryEntry = {
+      t: "terminus",
+      attempt: 1,
+      sessionKey: "sess-1",
+      status: "completed",
+      rationale: "Done",
+    };
+
+    await appendEntry(dir, entry1);
+    await appendEntry(dir, entry2);
+
+    const loaded = await load(dir);
+
+    expect(loaded.header.surfaceId).toBe("surface-rt");
+    expect(loaded.header.baseline).toBeNull();
+    expect(loaded.cursor.state).toBe("PROVISIONING");
+    expect(loaded.cursor.budgets).toEqual(budgetDefaults);
+    expect(loaded.history).toHaveLength(2);
+    expect(loaded.history[0]).toEqual(entry1);
+    expect(loaded.history[1]).toEqual(entry2);
+    expect(loaded.outcome).toBeUndefined();
+  });
+
+  it("throws FileNotFound when case.json does not exist", async () => {
+    const { FileNotFound } = await import("./errors.js");
+    const emptyDir = await mkdtemp(join(tmpdir(), "case-file-empty-"));
+    await expect(load(emptyDir)).rejects.toThrow(FileNotFound);
+  });
+
+  it("throws CorruptCaseFile when case.json has invalid structure", async () => {
+    const { CorruptCaseFile } = await import("./errors.js");
+    const badDir = await mkdtemp(join(tmpdir(), "case-file-bad-"));
+    await writeFile(join(badDir, "case.json"), '{"not":"a case file"}');
+    await writeFile(join(badDir, "log.jsonl"), "");
+    await expect(load(badDir)).rejects.toThrow(CorruptCaseFile);
+  });
+
+  it("throws CorruptCaseFile when case.json is not valid JSON", async () => {
+    const { CorruptCaseFile } = await import("./errors.js");
+    const badDir = await mkdtemp(join(tmpdir(), "case-file-bad-json-"));
+    await writeFile(join(badDir, "case.json"), "not json at all {{{");
+    await writeFile(join(badDir, "log.jsonl"), "");
+    await expect(load(badDir)).rejects.toThrow(CorruptCaseFile);
   });
 });
