@@ -1,5 +1,7 @@
 # Case File Persistence — Design
 
+> **Status:** ✅ Complete — 2026-09-04 — all 5 slices delivered
+
 The serialisable, crash-recoverable state container that every harness component
 reads and writes. A surface resumes from its case file alone; no warm memory, no
 external coordinator.
