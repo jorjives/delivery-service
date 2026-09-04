@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, setBaseline, setOutcome, ImmutabilityViolation } from "../src/index.js";
+import { create, setBaseline, setOutcome, updateCursor, appendEntry, load, ImmutabilityViolation } from "../src/index.js";
 
 const header = {
   surfaceId: "demo-surface-3",
@@ -63,6 +63,24 @@ async function main() {
       throw err;
     }
   }
+
+  // Header immutability: unchanged after cursor updates and history appends
+  const dir2 = await mkdtemp(join(tmpdir(), "case-file-header-immut-demo-"));
+  const created = await create(dir2, header, budgets);
+  const originalHeader = JSON.stringify(created.header);
+
+  await updateCursor(dir2, { state: "AGENT_ACTIVE" });
+  await appendEntry(dir2, { t: "dispatch", attempt: 1, sessionKey: "sess-1" });
+  await appendEntry(dir2, {
+    t: "terminus", attempt: 1, sessionKey: "sess-1",
+    status: "completed", rationale: "Done",
+  });
+  await updateCursor(dir2, { state: "GATING" });
+
+  const after = await load(dir2);
+  const afterHeader = JSON.stringify(after.header);
+  const headerMatch = originalHeader === afterHeader;
+  console.log(`Header immutability: ${headerMatch ? "preserved" : "BROKEN"} after cursor updates and history appends`);
 
   console.log(
     "\nImmutability verified: both fields set exactly once, both second " +
