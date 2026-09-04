@@ -168,6 +168,32 @@ describe("load", () => {
   });
 });
 
+describe("crash recovery: case.json atomicity", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-crash-"));
+  });
+
+  it("a .tmp file left behind by a crashed write does not corrupt load", async () => {
+    const header = {
+      surfaceId: "surface-atomic",
+      taskDef: { intent: "test atomicity" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    };
+
+    await create(dir, header, budgetDefaults);
+
+    // Simulate a crash mid-write: leave a .tmp file with garbage
+    await writeFile(join(dir, "case.json.tmp"), "partial garbage data");
+
+    // Load should still read the valid case.json, ignoring the orphan .tmp
+    const loaded = await load(dir);
+    expect(loaded.header.surfaceId).toBe("surface-atomic");
+    expect(loaded.cursor.state).toBe("PROVISIONING");
+  });
+});
+
 describe("logTail", () => {
   it("returns undefined for empty history", async () => {
     const dir = await mkdtemp(join(tmpdir(), "case-file-tail-"));
