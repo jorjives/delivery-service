@@ -26,23 +26,12 @@ async function main() {
   await create(dir, header, budgetDefaults);
   console.log("Created case file with budgets.\n");
 
-  // Track when each population first becomes exhausted
-  const exhaustedAt: Record<BudgetPopulation, number | null> = {
-    correction: null,
-    gateError: null,
-    gateMaintenance: null,
-    terminus: null,
-    close: null,
-  };
+  const populations = Object.keys(budgetDefaults) as BudgetPopulation[];
 
-  // The populations and their max values
-  const populations: BudgetPopulation[] = [
-    "correction",
-    "gateError",
-    "gateMaintenance",
-    "terminus",
-    "close",
-  ];
+  // Track when each population first becomes exhausted
+  const exhaustedAt = Object.fromEntries(
+    populations.map((population) => [population, null]),
+  ) as Record<BudgetPopulation, number | null>;
 
   // Print header
   console.log("Incrementing each population to and past its cap:\n");
