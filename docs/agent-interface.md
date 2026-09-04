@@ -1,0 +1,219 @@
+# Agent Interface
+
+Design notes for the seam between the harness and the agents it drives. The
+[single-surface control flow](single-surface-control-flow.md) leans on this seam
+everywhere it says "driven via SDK", "structured-output terminus", or "fresh
+reconstructed session primed with distilled history", but never pins it down. This
+document does: the one invocation primitive, the three roles that instantiate it,
+how prompts are assembled, how structured output is shaped and validated, and how
+tool authority is enforced.
+
+Scope: the contract for invoking an agent and turning its session into a terminus.
+The states that *call* this seam (`AGENT_ACTIVE`, `TRIAGE`, `GATE_MAINTENANCE`) and
+the edges they route to are the control-flow doc's; how those states drive an agent
+is here. The gate and closer are not agents and are out of scope (see the gate and
+close interfaces). This is the seam [claude-mock](../../tools/claude-mock) fakes.
+
+## Core concepts
+
+- **Role**: worker, triage, or gate-maintenance. A role is a *configuration* of the
+  one primitive, not a distinct interface. The closer and the deterministic router
+  are not agents and never enter this seam.
+- **Invocation**: one call into the primitive. It spawns a fresh SDK session, feeds
+  a harness-assembled prompt, awaits a validated envelope, and returns a terminus.
+- **Envelope**: the harness-fixed outer shape every agent must emit — a `status`
+  discriminator plus a `rationale`. It is the harness's contract with every agent;
+  its absence *is* `INCOMPLETE_TERMINUS`.
+- **Payload**: the role-specific body carried inside the envelope. Where the roles
+  legitimately diverge.
+- **Terminus**: the typed result the primitive hands back to the control flow — a
+  validated envelope mapped to an edge, or `INCOMPLETE_TERMINUS`.
+
+## Governing decisions
+
+1. **One primitive, roles are configs.** The three roles differ in *content*
+   (schema, prompt, tools) not in *mechanism* (spawn fresh, feed prompt, await
+   validated envelope, map to terminus). Forcing them through one primitive is what
+   makes the whole thing mockable at a single seam. This mirrors the gate and close
+   interfaces: one interface, variable subject.
+2. **The envelope is non-negotiable and harness-owned.** No role, and no project,
+   may omit or reshape it. This is what keeps `INCOMPLETE_TERMINUS` meaning exactly
+   "crash / cap / timeout / no valid output" and never "misconfigured prompt".
+3. **The prompt is a pure function of serialised case-file state.** Same case file →
+   byte-identical prompt. Follows from the control flow's invariants 2 and 3
+   (reconstructed sessions, all state serialised) and the standing preference for
+   determinism.
+4. **Authority is enforced at the seam, not requested in prose.** A role's tool set
+   is pinned config passed to the SDK; a role cannot act outside its authority
+   because the seam refuses, not because the prompt asks nicely. Same philosophy as
+   pinning the gate out of the worker's reach (invariant 5).
+
+## The invocation primitive
+
+One call, identical mechanism for every role.
+
+```
+invoke(role_cfg, ctx) -> Terminus
+```
+
+- **`role_cfg`** is pinned configuration for the role: the system-prompt fragment,
+  the payload schema, the `allowedTools` set, and the role's budget knobs. It is
+  fixed for the run, out of any agent's reach.
+- **`ctx`** is the per-invocation handle: the worktree location, the case file to
+  assemble the prompt from, and the `session_key` under which the transcript is
+  recorded. It is the same kind of handle the gate's `ctx` is.
+- **`Terminus`** is the discriminated result (below). The primitive's whole job is
+  to turn one agent session into exactly one terminus.
+
+The mechanism is fixed across roles: construct the prompt from `ctx`, spawn a fresh
+SDK session with `role_cfg`'s system prompt and `allowedTools`, run it to session
+end, validate whatever it emitted against the envelope + role payload schema, and
+map the result to a terminus. Nothing about this loop varies by role; only the
+config it is handed does.
+
+## Roles as configs
+
+| Role | Blast radius | Payload on the happy path | Notable statuses |
+|---|---|---|---|
+| **worker** | edits the worktree | completion note | `completed`, `escalate(category)` |
+| **triage** | read-only over the case file | `SharpenedBrief` / `EscalationPacket` | `reroute`, `escalate`, `fix_the_gate`, `retry_close`, `abort` |
+| **gate-maintenance** | edits environment/harness, never assertions | repair note | `completed`, `escalate` |
+
+Each row is one `role_cfg`. The divergence between them lives entirely in the four
+config fields; the primitive does not branch on role.
+
+## Prompt assembly
+
+The task reaches the agent through a harness-constructed prompt, never through the
+worktree (control flow invariant 5, and the [provisioning](provisioning.md#task-binding)
+task-binding rule). The harness owns the assembly end-to-end; the project supplies
+only *values*, never the order.
+
+The template per role, every slot read from the case file:
+
+```
+[ system-prompt fragment ]     # role identity + domain context (see below)
+[ task_def ]                   # original intent, from the immutable header
+[ distilled brief ]            # SharpenedBrief on a reroute, raw delta otherwise
+[ verbatim gate evidence ]     # the newly-failing assertions, unparaphrased
+[ envelope instruction ]       # non-negotiable: "emit this envelope, these statuses"
+```
+
+- **The project contributes content, not structure.** It supplies the task intent
+  and an optional domain system-prompt fragment; it cannot reorder the template or
+  drop a slot. This is what keeps the envelope instruction unconditional: if a
+  project owned the template, it could tell a worker *not* to emit an envelope, and
+  `INCOMPLETE_TERMINUS` would stop meaning "crash".
+- **The domain system-prompt fragment lives in the immutable header**, alongside
+  `task_def` and `gate_ref`. It is pinned run-identity ("this is a Python service,
+  these are the domain tools"), immutable, out of the worker's reach, and it
+  serialises for free. It does not vary per attempt.
+- **Determinism falls out.** The prompt is a pure function of serialised state, so
+  the same case file yields a byte-identical prompt. A resumed surface reconstructs
+  the same session it would have run before the crash.
+
+## Structured output
+
+A harness-fixed envelope wraps a role-specific payload.
+
+```
+Envelope = {
+  status:    <role-scoped at the boundary, flat string in storage>,
+  rationale: string,          # always present; triage reads prior rationales
+  payload?:  <role payload>   # shape governed by role_cfg's schema
+}
+```
+
+- **The envelope is where the harness's discipline lives.** `status` + `rationale`
+  are common to every role; validating them is one code path, not one per role.
+- **The payload is where roles diverge.** A triage `reroute` carries a
+  `SharpenedBrief`; an `escalate` carries an `EscalationPacket`; a worker
+  `completed` carries a short note. Each role's `role_cfg` names the payload schema
+  for each of its statuses.
+
+### Status: strict at the boundary, flat in storage
+
+The two properties pull in opposite directions, so we take each where it pays:
+
+- **Strict at the schema boundary.** A role may emit only its own statuses. A worker
+  that emits `reroute` produces an *invalid* envelope, which fails validation and
+  becomes `INCOMPLETE_TERMINUS` rather than a silent mis-route. This closes a real
+  exploit: a confused or adversarial worker cannot route itself.
+- **Flat in storage.** The accepted status is persisted as a plain string in the
+  case file, so the `status` type stays uniform across roles and the mock's `json`
+  envelope is the same shape for every expectation. Terminus mapping reads
+  role + status together.
+
+Strictness where it guards an exploit; uniformity where it keeps the plumbing
+boring.
+
+### Terminus mapping
+
+The primitive turns one session end into exactly one terminus:
+
+```
+valid envelope, legal status   → the typed terminus for (role, status)
+no envelope emitted            → INCOMPLETE_TERMINUS
+malformed envelope             → INCOMPLETE_TERMINUS
+illegal status for the role    → INCOMPLETE_TERMINUS
+payload fails its role schema  → INCOMPLETE_TERMINUS
+session crashed / cap / idle   → INCOMPLETE_TERMINUS
+```
+
+`INCOMPLETE_TERMINUS` is defined negatively and uniformly: *any* end that did not
+produce a valid, role-legal, schema-conforming envelope. This is what lets the
+control flow treat "the agent never cleanly signalled" as one edge with one budget,
+whether the cause was a crash or a schema violation.
+
+## Tool authority
+
+Each role's blast radius is a security boundary, not a convention, so it is enforced
+at the SDK seam.
+
+- **`allowedTools` is pinned in `role_cfg`** and passed to the session. Triage gets
+  a read-only set; the worker gets edit + shell; gate-maintenance gets edit scoped
+  to the environment. A role literally cannot call outside its authority because the
+  seam refuses the call. This is the tool-level counterpart to pinning the gate out
+  of the worker's reach.
+
+- **Gate-maintenance's "environment, not assertions" boundary is finer than a tool
+  list** — it needs edit tools but must not touch assertion definitions. That is a
+  *path* restriction, not a *tool* one. We enforce it by **physical location**: the
+  assertion definitions live outside every agent-reachable worktree (they are
+  already "pinned by the harness, not discovered from inside the worktree",
+  invariant 5). A file that is not present cannot be edited. This reuses a mechanism
+  the design already commits to, rather than adding a path guard that has to be
+  correct to be safe.
+
+## Relationship to the mock
+
+This seam is precisely what [claude-mock](../../tools/claude-mock) fakes, and the
+correspondence is exact:
+
+- **One `invoke`** ↔ the mock's single scripted turn loop.
+- **Envelope** ↔ the expectation's `json` field (structured output on the result).
+- **Worktree edits** ↔ the expectation's `effects` (`write` / `edit`, applied for
+  real inside `cwd`).
+- **Terminus mapping** ↔ what the harness does with the mock's reply; an unmatched
+  or malformed reply exercises the `INCOMPLETE_TERMINUS` path.
+- **Verification** ↔ the journal, which records what prompt the harness actually
+  sent and which expectations it consumed.
+
+Because the mock sits at the CLI seam the SDK spawns, an SDK shape change surfaces
+as a parse failure against the real primitive rather than a passing fiction.
+
+## Open items
+
+- **`ctx` shape.** The concrete handle the primitive passes to the SDK: how the
+  worktree location, case-file reference, and `session_key` are threaded into the
+  `query()` options. Spec-level, but unspecified.
+- **Worker completion payload.** Whether `completed` carries anything beyond
+  `rationale`, given the gate is the real judge of the work. Leaning toward nothing
+  load-bearing, since a payload the harness trusts over the gate would violate
+  invariant 1.
+- **Schema definition mechanism.** How each role's payload schema is declared and
+  handed to the harness (inline, referenced, generated), and how it reaches the SDK
+  as an output constraint.
+- **Budget knobs in `role_cfg`.** The per-role budget fields named here are the same
+  counters the control flow owns; their exact placement (in `role_cfg`, in the case
+  file, or split) is left to the budget design.
