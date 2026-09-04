@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create } from "./case-file.js";
-import type { BudgetSet } from "./schema.js";
+import { create, appendEntry } from "./case-file.js";
+import type { BudgetSet, HistoryEntry } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -46,5 +46,67 @@ describe("create", () => {
 
     const logRaw = await readFile(join(dir, "log.jsonl"), "utf-8");
     expect(logRaw).toBe("");
+  });
+});
+
+describe("appendEntry", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-test-"));
+    await create(dir, {
+      surfaceId: "surface-1",
+      taskDef: { intent: "fix bug" },
+      gateRef: { gateId: "gate-1", version: 1 },
+    }, budgetDefaults);
+  });
+
+  it("appends a JSON line to log.jsonl", async () => {
+    const entry: HistoryEntry = {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "session-abc",
+    };
+
+    await appendEntry(dir, entry);
+
+    const logRaw = await readFile(join(dir, "log.jsonl"), "utf-8");
+    const lines = logRaw.trimEnd().split("\n");
+    expect(lines).toHaveLength(1);
+    const line = lines.at(0);
+    expect(line).toBeDefined();
+    if (line) {
+      expect(JSON.parse(line)).toEqual(entry);
+    }
+  });
+
+  it("appends multiple entries in order", async () => {
+    const entry1: HistoryEntry = {
+      t: "dispatch",
+      attempt: 1,
+      sessionKey: "session-1",
+    };
+    const entry2: HistoryEntry = {
+      t: "terminus",
+      attempt: 1,
+      sessionKey: "session-1",
+      status: "completed",
+      rationale: "All done",
+    };
+
+    await appendEntry(dir, entry1);
+    await appendEntry(dir, entry2);
+
+    const logRaw = await readFile(join(dir, "log.jsonl"), "utf-8");
+    const lines = logRaw.trimEnd().split("\n");
+    expect(lines).toHaveLength(2);
+    const line0 = lines.at(0);
+    const line1 = lines.at(1);
+    expect(line0).toBeDefined();
+    expect(line1).toBeDefined();
+    if (line0 && line1) {
+      expect(JSON.parse(line0)).toEqual(entry1);
+      expect(JSON.parse(line1)).toEqual(entry2);
+    }
   });
 });

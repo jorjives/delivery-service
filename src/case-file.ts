@@ -1,6 +1,6 @@
 import { open, rename } from "node:fs/promises";
 import { join } from "node:path";
-import { CaseJson, CaseFile, CaseFileHeader, BudgetSet } from "./schema.js";
+import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, HistoryEntry } from "./schema.js";
 import { WriteFailure } from "./errors.js";
 
 type CreateHeader = Omit<CaseFileHeader, "baseline">;
@@ -42,4 +42,25 @@ export async function create(
   }
 
   return { header: fullHeader, cursor, history: [] };
+}
+
+export async function appendEntry(
+  dir: string,
+  entry: HistoryEntry,
+): Promise<void> {
+  // Validate the entry against the schema
+  HistoryEntry.parse(entry);
+
+  const logPath = join(dir, "log.jsonl");
+  try {
+    const fd = await open(logPath, "a");
+    try {
+      await fd.write(JSON.stringify(entry) + "\n");
+      await fd.datasync();
+    } finally {
+      await fd.close();
+    }
+  } catch (err) {
+    throw new WriteFailure(dir, String(err));
+  }
 }
