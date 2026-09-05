@@ -1,4 +1,5 @@
 export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef } from "./case-file.js";
+export { computeDelta } from "./delta-rule.js";
 export type {
   CaseFile,
   CaseFileHeader,
