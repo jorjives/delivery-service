@@ -226,7 +226,10 @@ assertions. The simplest gate: point it at a test command and it works.
 - **`junit`**: Parses JUnit XML output (typically written to a file). Each
   `<testcase>` becomes an assertion with
   `classname::testname` as the ID. The standard CI interchange format; most
-  runners emit it natively or via plugin.
+  runners emit it natively or via plugin. How the XML reaches the parser
+  (stdout, a file path field on the GateRef, a convention) is an implementation
+  decision, not a design contract; the spec requires only that JUnit XML is
+  parsed into a conforming `GateReport`.
 
 - **`exitcode`**: No assertion parsing. The entire command is one assertion:
   exit code 0 is `PASS`, non-zero is `FAIL`. The ID is a stable synthetic
