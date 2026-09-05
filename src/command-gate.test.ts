@@ -52,6 +52,18 @@ function mockExecFileError(code: string): void {
   );
 }
 
+function mockExecFileKilled(): void {
+  (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+    (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
+      const err = Object.assign(new Error("Command timed out"), {
+        killed: true,
+        signal: "SIGTERM",
+      });
+      cb(err, "", "");
+    },
+  );
+}
+
 describe("createCommandGate", () => {
   afterEach(() => vi.restoreAllMocks());
 
@@ -122,6 +134,17 @@ describe("createCommandGate", () => {
     expect(report.status).toBe("ERROR");
     expect(report.assertions).toEqual([]);
     expect(report.detail).toContain("execution failed");
+  });
+
+  it("timed-out command produces an ERROR report, not a crash", async () => {
+    mockExecFileKilled();
+
+    const gate = createCommandGate("sleep 999", "tap");
+    const report = await gate.baseline(stubCtx());
+
+    expect(report.status).toBe("ERROR");
+    expect(report.assertions).toEqual([]);
+    expect(report.detail).toContain("timed out");
   });
 
   it("unparseable TAP output produces an ERROR report", async () => {

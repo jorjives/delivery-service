@@ -44,7 +44,8 @@ describe("parseTap", () => {
     const assertions = parseTap(tap);
 
     expect(assertions).toHaveLength(1);
-    expect(assertions[0]!.id).toBe("1 - works");
+    const [assertion] = assertions;
+    expect(assertion?.id).toBe("1 - works");
   });
 
   it("throws ParseError on empty input with no test lines", () => {
@@ -100,8 +101,9 @@ describe("parseJunit", () => {
     const assertions = parseJunit(xml);
 
     expect(assertions).toHaveLength(2);
-    expect(assertions[0]!.id).toBe("A::one");
-    expect(assertions[1]!.id).toBe("B::two");
+    const [first, second] = assertions;
+    expect(first?.id).toBe("A::one");
+    expect(second?.id).toBe("B::two");
   });
 
   it("uses name alone when classname is absent", () => {
@@ -110,8 +112,9 @@ describe("parseJunit", () => {
 </testsuite>`;
 
     const assertions = parseJunit(xml);
+    const [assertion] = assertions;
 
-    expect(assertions[0]!.id).toBe("standalone");
+    expect(assertion?.id).toBe("standalone");
   });
 
   it("throws ParseError on non-XML input", () => {
@@ -141,10 +144,10 @@ describe("parseExitCode", () => {
   });
 
   it("produces the same ID for the same command", () => {
-    const a = parseExitCode("make check", 0);
-    const b = parseExitCode("make check", 1);
+    const [aAssertion] = parseExitCode("make check", 0);
+    const [bAssertion] = parseExitCode("make check", 1);
 
-    expect(a[0]!.id).toBe(b[0]!.id);
+    expect(aAssertion?.id).toBe(bAssertion?.id);
   });
 });
 

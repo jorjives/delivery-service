@@ -16,8 +16,9 @@ export function parseTap(output: string): Assertion[] {
     const m = TAP_LINE.exec(line.trim());
     if (!m) continue;
 
-    const status = m[1]!;
-    const num = m[2]!;
+    const status = m[1];
+    const num = m[2];
+    if (status === undefined || num === undefined) continue;
     const desc = m[3];
     const id = desc ? `${num} - ${desc}` : num;
 
@@ -52,8 +53,9 @@ function extractAttr(tag: string): TestcaseAttrs {
   let m: RegExpExecArray | null;
   ATTR.lastIndex = 0;
   while ((m = ATTR.exec(tag)) !== null) {
-    const key = m[1]!;
-    const val = m[2]!;
+    const key = m[1];
+    const val = m[2];
+    if (key === undefined || val === undefined) continue;
     if (key === "classname") attrs.classname = val;
     if (key === "name") attrs.name = val;
   }
@@ -71,8 +73,9 @@ export function parseJunit(output: string): Assertion[] {
   TESTCASE_OPEN.lastIndex = 0;
 
   while ((match = TESTCASE_OPEN.exec(output)) !== null) {
-    const attrStr = match[1]!;
+    const attrStr = match[1];
     const body = match[2] ?? "";
+    if (attrStr === undefined) continue;
     const attrs = extractAttr(attrStr);
 
     const name = attrs.name;
