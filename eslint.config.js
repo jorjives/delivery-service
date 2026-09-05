@@ -13,6 +13,7 @@ export default tseslint.config(
             "*.ts",
             "demos/*.ts",
             "tests/case-file-persistence/*.ts",
+            "tests/gate-interface/*.ts",
           ],
           maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 16,
         },
