@@ -90,6 +90,38 @@ async function main(): Promise<void> {
   fs.writeFileSync(exitScript, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
   printReport("Exit-code — failing (exit 1)", await exitGate.check(ctx(tmp)));
 
+  // --- Determinism: same command, unchanged code, run twice ---
+  const stableScript = path.join(tmp, "stable-tap.sh");
+  fs.writeFileSync(stableScript, [
+    "#!/bin/sh",
+    'echo "1..2"',
+    'echo "ok 1 - alpha"',
+    'echo "ok 2 - beta"',
+  ].join("\n"), { mode: 0o755 });
+  const stableGate = createCommandGate(`sh ${stableScript}`, "tap");
+  const run1 = await stableGate.baseline(ctx(tmp));
+  const run2 = await stableGate.check(ctx(tmp));
+  console.log("\n=== Determinism — same command run twice ===");
+  console.log(`Run 1 IDs: ${run1.assertions.map((a) => a.id).join(", ")}`);
+  console.log(`Run 2 IDs: ${run2.assertions.map((a) => a.id).join(", ")}`);
+
+  // --- Error handling ---
+  const notFoundGate = createCommandGate("totally-nonexistent-cmd-xyz", "tap");
+  printReport("Error — command not found", await notFoundGate.baseline(ctx(tmp)));
+
+  const unparseableGate = createCommandGate(`echo "not tap output"`, "tap");
+  printReport("Error — unparseable output", await unparseableGate.baseline(ctx(tmp)));
+
+  const dupScript = path.join(tmp, "dup-tap.sh");
+  fs.writeFileSync(dupScript, [
+    "#!/bin/sh",
+    'echo "1..2"',
+    'echo "ok 1 - same"',
+    'echo "ok 1 - same"',
+  ].join("\n"), { mode: 0o755 });
+  const dupGate = createCommandGate(`sh ${dupScript}`, "tap");
+  printReport("Error — duplicate assertion ID", await dupGate.baseline(ctx(tmp)));
+
   // Cleanup
   fs.rmSync(tmp, { recursive: true, force: true });
 
