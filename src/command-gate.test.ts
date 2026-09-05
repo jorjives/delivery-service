@@ -167,4 +167,38 @@ describe("createCommandGate", () => {
 
     expect(baseline).toEqual(check);
   });
+
+  it("same TAP output on two runs produces identical assertion IDs", async () => {
+    const tap = "ok 1 - alpha\nnot ok 2 - beta\n";
+    mockExecFile(tap);
+
+    const gate = createCommandGate("npm test", "tap");
+    const run1 = await gate.baseline(stubCtx());
+
+    // Reset mock for second call
+    mockExecFile(tap);
+    const run2 = await gate.check(stubCtx());
+
+    const ids1 = run1.assertions.map((a) => a.id);
+    const ids2 = run2.assertions.map((a) => a.id);
+    expect(ids1).toEqual(ids2);
+  });
+
+  it("same JUnit output on two runs produces identical assertion IDs", async () => {
+    const xml = `<testsuite>
+  <testcase classname="X" name="a"/>
+  <testcase classname="X" name="b"><failure message="f"/></testcase>
+</testsuite>`;
+    mockExecFile(xml);
+
+    const gate = createCommandGate("mvn test", "junit");
+    const run1 = await gate.baseline(stubCtx());
+
+    mockExecFile(xml);
+    const run2 = await gate.check(stubCtx());
+
+    const ids1 = run1.assertions.map((a) => a.id);
+    const ids2 = run2.assertions.map((a) => a.id);
+    expect(ids1).toEqual(ids2);
+  });
 });
