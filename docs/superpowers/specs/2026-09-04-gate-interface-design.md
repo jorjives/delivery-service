@@ -71,8 +71,6 @@ interface GateReport {
   detail?: string;
 }
 
-type GateState = GateReport;
-
 interface Gate {
   baseline(ctx: GateContext): Promise<GateReport>;
   check(ctx: GateContext): Promise<GateReport>;
@@ -83,8 +81,8 @@ interface Gate {
 
 Both `baseline` and `check` are **read-only and idempotent**. A gate that
 mutates the world it judges is not a gate. Both return the same `GateReport`
-shape: the gate does not know whether it is being called for baseline or check
-purposes; the harness decides what to do with the result.
+shape: both methods must behave identically — the gate does not vary its behaviour
+based on which is called. The harness decides what to do with the result.
 
 `baseline` is called once, before the first dispatch. Its report is serialised
 into the case file header and is immutable for the lifetime of the surface. This
@@ -173,16 +171,26 @@ interface NewFailure {
    `"error"` regardless of assertion-level results. Otherwise, if there are new
    failures, the class is `"fail"`.
 
-### Gate errors vs gate failures
+### Gate errors vs assertion regressions
 
-This distinction is structural:
+Gate-level `status` reflects whether the gate infrastructure ran successfully,
+not whether assertions passed:
 
-- **Gate failure** (`status: "FAIL"`): the gate ran, assertions were evaluated,
-  and some regressed. This is the worker's fault. It routes back via triage and
-  burns a correction slot.
-- **Gate error** (`status: "ERROR"`): the gate could not run or could not
-  produce reliable results. This is not the worker's fault. It re-runs the gate
-  on the `gateError` budget, or routes to gate maintenance.
+- **`status: "PASS"`**: the gate executed and produced a reliable set of
+  assertions. Individual assertions may have any outcome; that is the delta
+  rule's concern.
+- **`status: "FAIL"`**: the gate ran but its results may be unreliable (e.g. a
+  partial run that produced some assertions before failing). The harness treats
+  this the same as `PASS` for delta purposes; the assertions it did produce are
+  compared normally.
+- **`status: "ERROR"`**: the gate could not run or could not produce any
+  reliable results. This is infrastructure failure, not the worker's fault. It
+  re-runs the gate on the `gateError` budget, or routes to gate maintenance.
+
+Separately, when the delta rule finds regressions (assertions that passed at
+baseline but now fail), the harness routes the surface back via triage and
+burns a correction slot. That is a harness-level outcome driven by the delta
+rule, not a gate-level status value.
 
 A gate implementation signals error by setting `status: "ERROR"` on the report
 and providing detail. The harness never infers error from exceptions; the gate
@@ -290,9 +298,9 @@ persistence layer:
 - **Gate ref storage:** the `gateRef` field in the header identifies the gate.
   It is set at creation and immutable.
 
-The `GateState` type in `schema.ts` (currently `z.record(z.string(), z.unknown())`)
-is refined to match the `GateReport` shape. The `GateRef` type is refined to the
-discriminated union above.
+The `GateReport` type in `schema.ts` (currently `z.record(z.string(), z.unknown())`
+as `GateState`) is refined to match the `GateReport` shape defined above. The
+`GateRef` type is refined to the discriminated union above.
 
 ## Error model
 
