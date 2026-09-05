@@ -16,6 +16,8 @@ doesn't exist yet.
 
 ## Slice 1: Compute a Regression Verdict from Two Gate Reports
 
+**Status:** ✅ Complete — 2026-09-05 — `dacf633`
+
 **Delivers:** A developer can feed the delta rule a baseline report and a
 check report and get back a verdict — pass or fail, which assertions newly
 broke, and whether the failure is worker-caused or infrastructure-caused —
