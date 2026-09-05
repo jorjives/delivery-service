@@ -12,77 +12,55 @@ import { runTsx } from "./helpers.js";
 describe("UAT: feed the delta rule a pair of before/after gate reports", () => {
   const { stdout, status } = runTsx(["demos/gate-interface-slice-1-delta-rule.ts"]);
 
+  function section(from: string, to?: string): string {
+    const start = stdout.indexOf(from);
+    return to ? stdout.slice(start, stdout.indexOf(to)) : stdout.slice(start);
+  }
+
   it("demo script runs to completion", () => {
     expect(status).toBe(0);
   });
 
   it("AC: identical passing assertions at baseline and check pass with no new failures", () => {
-    const section = stdout.slice(
-      stdout.indexOf("1. No regressions"),
-      stdout.indexOf("2. Genuine regression"),
-    );
-    expect(section).toContain("verdict: PASS");
-    expect(section).not.toContain("new failure:");
+    const s = section("1. No regressions", "2. Genuine regression");
+    expect(s).toContain("verdict: PASS");
+    expect(s).not.toContain("new failure:");
   });
 
   it("AC: an assertion that passed at baseline and fails at check is a new failure with both outcomes", () => {
-    const section = stdout.slice(
-      stdout.indexOf("2. Genuine regression"),
-      stdout.indexOf("3. Vanished assertion"),
-    );
-    expect(section).toContain("verdict: FAIL (fail)");
-    expect(section).toContain("new failure: a (PASS -> FAIL)");
+    const s = section("2. Genuine regression", "3. Vanished assertion");
+    expect(s).toContain("verdict: FAIL (fail)");
+    expect(s).toContain("new failure: a (PASS -> FAIL)");
+    // Also covers AC: non-ERROR gate status classes as worker-caused (fail), not infrastructure (error)
+    expect(s).not.toContain("(error)");
   });
 
   it("AC: an assertion that passed at baseline and is missing at check is a new failure with ABSENT", () => {
-    const section = stdout.slice(
-      stdout.indexOf("3. Vanished assertion"),
-      stdout.indexOf("4. Pre-existing red noise"),
-    );
-    expect(section).toContain("verdict: FAIL (fail)");
-    expect(section).toContain("new failure: a (PASS -> ABSENT)");
+    const s = section("3. Vanished assertion", "4. Pre-existing red noise");
+    expect(s).toContain("verdict: FAIL (fail)");
+    expect(s).toContain("new failure: a (PASS -> ABSENT)");
   });
 
   it("AC: an assertion already failing at baseline is never reported as a new failure", () => {
-    const section = stdout.slice(
-      stdout.indexOf("4. Pre-existing red noise"),
-      stdout.indexOf("5. Brand-new failing assertion, default"),
-    );
-    expect(section).toContain("verdict: PASS");
-    expect(section).not.toContain("new failure:");
+    const s = section("4. Pre-existing red noise", "5. Brand-new failing assertion, default");
+    expect(s).toContain("verdict: PASS");
+    expect(s).not.toContain("new failure:");
   });
 
   it("AC: an assertion present at check but absent from baseline is not reported by default", () => {
-    const section = stdout.slice(
-      stdout.indexOf("5. Brand-new failing assertion, default"),
-      stdout.indexOf("5b. Brand-new failing assertion"),
-    );
-    expect(section).toContain("verdict: PASS");
-    expect(section).not.toContain("new failure:");
+    const s = section("5. Brand-new failing assertion, default", "5b. Brand-new failing assertion");
+    expect(s).toContain("verdict: PASS");
+    expect(s).not.toContain("new failure:");
   });
 
   it("AC: with failOnNewAssertions set, a failing assertion with no baseline counterpart is a new failure", () => {
-    const section = stdout.slice(
-      stdout.indexOf("5b. Brand-new failing assertion"),
-      stdout.indexOf("6. Gate-level ERROR"),
-    );
-    expect(section).toContain("verdict: FAIL (fail)");
-    expect(section).toContain("new failure: b (PASS -> FAIL)");
+    const s = section("5b. Brand-new failing assertion", "6. Gate-level ERROR");
+    expect(s).toContain("verdict: FAIL (fail)");
+    expect(s).toContain("new failure: b (ABSENT -> FAIL)");
   });
 
   it("AC: a gate-level ERROR check status fails and classes as infrastructure regardless of assertion outcomes", () => {
-    const section = stdout.slice(stdout.indexOf("6. Gate-level ERROR"));
-    expect(section).toContain("verdict: FAIL (error)");
-  });
-
-  it("AC: new failures with a non-ERROR gate status class as worker-caused, not infrastructure", () => {
-    // Same scenario 2 output above already shows "(fail)" rather than "(error)" —
-    // asserted again here directly against the acceptance criterion's wording.
-    const section = stdout.slice(
-      stdout.indexOf("2. Genuine regression"),
-      stdout.indexOf("3. Vanished assertion"),
-    );
-    expect(section).toContain("(fail)");
-    expect(section).not.toContain("(error)");
+    const s = section("6. Gate-level ERROR");
+    expect(s).toContain("verdict: FAIL (error)");
   });
 });

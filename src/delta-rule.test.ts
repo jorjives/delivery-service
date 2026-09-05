@@ -179,7 +179,7 @@ describe("computeDelta", () => {
     expect(result.newFailures).toHaveLength(1);
     expect(result.newFailures[0]).toEqual({
       id: "test-new",
-      baselineOutcome: "PASS",
+      baselineOutcome: "ABSENT",
       checkOutcome: "FAIL",
       detail: "new and broken",
     });

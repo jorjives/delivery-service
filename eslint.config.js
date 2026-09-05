@@ -12,6 +12,7 @@ export default tseslint.config(
             "*.js",
             "*.ts",
             "demos/*.ts",
+            "tests/*.ts",
             "tests/case-file-persistence/*.ts",
             "tests/gate-interface/*.ts",
           ],

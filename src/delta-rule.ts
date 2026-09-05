@@ -34,11 +34,9 @@ export function computeDelta(
     const baselineIds = new Set(baseline.assertions.map((a) => a.id));
     for (const checkAssertion of check.assertions) {
       if (!baselineIds.has(checkAssertion.id) && checkAssertion.outcome !== "PASS") {
-        // baselineOutcome is "PASS" by convention — the assertion has no actual
-        // baseline, but the NewFailure type constrains this field to "PASS".
         newFailures.push({
           id: checkAssertion.id,
-          baselineOutcome: "PASS",
+          baselineOutcome: "ABSENT",
           checkOutcome: checkAssertion.outcome,
           detail: checkAssertion.detail,
         });

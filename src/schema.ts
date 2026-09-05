@@ -55,7 +55,7 @@ export type GateReport = z.infer<typeof GateReport>;
 
 export const NewFailure = z.object({
   id: z.string(),
-  baselineOutcome: z.literal("PASS"),
+  baselineOutcome: z.enum(["PASS", "ABSENT"]),
   checkOutcome: z.enum(["FAIL", "ERROR", "ABSENT"]),
   detail: z.string(),
 });
