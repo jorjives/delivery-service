@@ -135,4 +135,76 @@ describe("computeDelta", () => {
     expect(result.newFailures).toEqual([]);
     expect(result.class).toBeNull();
   });
+
+  it("ignores a new assertion at check that has no baseline counterpart", () => {
+    const baseline: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+      ],
+    };
+    const check: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+        { id: "test-new", outcome: "FAIL", detail: "new test, not passing yet" },
+      ],
+    };
+
+    const result = computeDelta(baseline, check);
+
+    expect(result.pass).toBe(true);
+    expect(result.newFailures).toEqual([]);
+    expect(result.class).toBeNull();
+  });
+
+  it("reports a failing new assertion when failOnNewAssertions is set", () => {
+    const baseline: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+      ],
+    };
+    const check: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+        { id: "test-new", outcome: "FAIL", detail: "new and broken" },
+      ],
+    };
+
+    const result = computeDelta(baseline, check, { failOnNewAssertions: true });
+
+    expect(result.pass).toBe(false);
+    expect(result.newFailures).toHaveLength(1);
+    expect(result.newFailures[0]).toEqual({
+      id: "test-new",
+      baselineOutcome: "PASS",
+      checkOutcome: "FAIL",
+      detail: "new and broken",
+    });
+    expect(result.class).toBe("fail");
+  });
+
+  it("does not report a passing new assertion even when failOnNewAssertions is set", () => {
+    const baseline: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+      ],
+    };
+    const check: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+        { id: "test-new", outcome: "PASS", detail: "new and passing" },
+      ],
+    };
+
+    const result = computeDelta(baseline, check, { failOnNewAssertions: true });
+
+    expect(result.pass).toBe(true);
+    expect(result.newFailures).toEqual([]);
+    expect(result.class).toBeNull();
+  });
 });
