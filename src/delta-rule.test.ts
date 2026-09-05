@@ -81,4 +81,58 @@ describe("computeDelta", () => {
     });
     expect(result.class).toBe("fail");
   });
+
+  it("reports ABSENT when an assertion passed at baseline but is missing from check", () => {
+    const baseline: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+        { id: "test-2", outcome: "PASS", detail: "ok" },
+      ],
+    };
+    const check: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+        // test-2 is gone
+      ],
+    };
+
+    const result = computeDelta(baseline, check);
+
+    expect(result.pass).toBe(false);
+    expect(result.newFailures).toHaveLength(1);
+    expect(result.newFailures[0]).toEqual({
+      id: "test-2",
+      baselineOutcome: "PASS",
+      checkOutcome: "ABSENT",
+      detail: 'Assertion "test-2" was present at baseline but missing from check',
+    });
+    expect(result.class).toBe("fail");
+  });
+
+  it("never reports a pre-existing failure as a new failure regardless of check outcome", () => {
+    const baseline: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+        { id: "test-2", outcome: "FAIL", detail: "known broken" },
+        { id: "test-3", outcome: "ERROR", detail: "known error" },
+      ],
+    };
+    const check: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+        { id: "test-2", outcome: "FAIL", detail: "still broken" },
+        { id: "test-3", outcome: "PASS", detail: "fixed now" },
+      ],
+    };
+
+    const result = computeDelta(baseline, check);
+
+    expect(result.pass).toBe(true);
+    expect(result.newFailures).toEqual([]);
+    expect(result.class).toBeNull();
+  });
 });
