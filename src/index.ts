@@ -18,6 +18,11 @@ export type {
   TaskDef,
   GateRef,
   GateState,
+  Assertion,
+  GateReport,
+  NewFailure,
+  DeltaResult,
+  DeltaOptions,
 } from "./schema.js";
 export type { ResumeAction } from "./case-file.js";
 export {
