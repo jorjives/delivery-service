@@ -1,5 +1,6 @@
 # Gate Interface — Slice 1: Compute a Regression Verdict from Two Gate Reports
 
+> **Status:** ✅ Complete — 2026-09-05 — `dacf633`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 1 of `docs/superpowers/specs/2026-09-05-gate-interface-slices.md`
