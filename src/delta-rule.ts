@@ -39,7 +39,7 @@ export function computeDelta(
         newFailures.push({
           id: checkAssertion.id,
           baselineOutcome: "PASS",
-          checkOutcome: checkAssertion.outcome as "FAIL" | "ERROR",
+          checkOutcome: checkAssertion.outcome,
           detail: checkAssertion.detail,
         });
       }
