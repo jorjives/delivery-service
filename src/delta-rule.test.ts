@@ -207,4 +207,66 @@ describe("computeDelta", () => {
     expect(result.newFailures).toEqual([]);
     expect(result.class).toBeNull();
   });
+
+  it("fails with error class when check report status is ERROR, regardless of assertions", () => {
+    const baseline: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+      ],
+    };
+    const check: GateReport = {
+      status: "ERROR",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+      ],
+      detail: "test runner crashed",
+    };
+
+    const result = computeDelta(baseline, check);
+
+    expect(result.pass).toBe(false);
+    expect(result.class).toBe("error");
+  });
+
+  it("classifies as fail when there are new failures and gate status is not ERROR", () => {
+    const baseline: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+      ],
+    };
+    const check: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "FAIL", detail: "broke" },
+      ],
+    };
+
+    const result = computeDelta(baseline, check);
+
+    expect(result.pass).toBe(false);
+    expect(result.class).toBe("fail");
+  });
+
+  it("classifies as error even when there are also new assertion failures", () => {
+    const baseline: GateReport = {
+      status: "PASS",
+      assertions: [
+        { id: "test-1", outcome: "PASS", detail: "ok" },
+      ],
+    };
+    const check: GateReport = {
+      status: "ERROR",
+      assertions: [
+        { id: "test-1", outcome: "FAIL", detail: "broke" },
+      ],
+      detail: "partial run",
+    };
+
+    const result = computeDelta(baseline, check);
+
+    expect(result.pass).toBe(false);
+    expect(result.class).toBe("error");
+  });
 });
