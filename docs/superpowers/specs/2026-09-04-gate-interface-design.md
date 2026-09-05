@@ -151,8 +151,7 @@ interface NewFailure {
 1. For each assertion in the baseline where `outcome === "PASS"`:
    - Find the matching assertion in the check report by `id`.
    - If missing: the check outcome is `ABSENT`.
-   - If present and outcome is `FAIL`, `ERROR`, or `ABSENT`: this is a new
-     failure.
+   - If present and outcome is `FAIL` or `ERROR`: this is a new failure.
    - If present and outcome is `PASS`: no regression.
 
 2. Assertions in the baseline with outcome `FAIL` or `ERROR` are pre-existing
@@ -259,11 +258,11 @@ Gate resolution is the process of turning a `GateRef` into a usable `Gate`
 instance. It runs once per surface, at the transition into `PRE_GATING`.
 
 ```typescript
-type GateResolver = (ref: GateRef, ctx: GateContext) => Promise<Gate>;
+type GateResolver = (ctx: GateContext) => Promise<Gate>;
 ```
 
-For built-in types, the resolver constructs the appropriate gate from the ref's
-parameters. For custom gates, it dynamically imports the module and validates the
+The resolver reads the gate reference from `ctx.gateRef`. For built-in types, it
+constructs the appropriate gate from the ref's parameters. For custom gates, it dynamically imports the module and validates the
 export.
 
 Resolution errors (module not found, invalid export, unsupported parse mode) are
