@@ -1,4 +1,5 @@
 export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef } from "./case-file.js";
+export { computeDelta } from "./delta-rule.js";
 export type {
   CaseFile,
   CaseFileHeader,
@@ -18,6 +19,11 @@ export type {
   TaskDef,
   GateRef,
   GateState,
+  Assertion,
+  GateReport,
+  NewFailure,
+  DeltaResult,
+  DeltaOptions,
 } from "./schema.js";
 export type { ResumeAction } from "./case-file.js";
 export {

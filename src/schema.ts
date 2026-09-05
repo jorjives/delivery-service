@@ -39,6 +39,40 @@ export type GateRef = z.infer<typeof GateRef>;
 export const GateState = z.record(z.string(), z.unknown());
 export type GateState = z.infer<typeof GateState>;
 
+export const Assertion = z.object({
+  id: z.string(),
+  outcome: z.enum(["PASS", "FAIL", "ERROR"]),
+  detail: z.string(),
+});
+export type Assertion = z.infer<typeof Assertion>;
+
+export const GateReport = z.object({
+  status: z.enum(["PASS", "FAIL", "ERROR"]),
+  assertions: z.array(Assertion),
+  detail: z.string().optional(),
+});
+export type GateReport = z.infer<typeof GateReport>;
+
+export const NewFailure = z.object({
+  id: z.string(),
+  baselineOutcome: z.enum(["PASS", "ABSENT"]),
+  checkOutcome: z.enum(["FAIL", "ERROR", "ABSENT"]),
+  detail: z.string(),
+});
+export type NewFailure = z.infer<typeof NewFailure>;
+
+export const DeltaResult = z.object({
+  pass: z.boolean(),
+  newFailures: z.array(NewFailure),
+  class: z.enum(["fail", "error"]).nullable(),
+});
+export type DeltaResult = z.infer<typeof DeltaResult>;
+
+export const DeltaOptions = z.object({
+  failOnNewAssertions: z.boolean().optional(),
+});
+export type DeltaOptions = z.infer<typeof DeltaOptions>;
+
 export const CaseFileHeader = z.object({
   surfaceId: z.string(),
   taskDef: TaskDef,
