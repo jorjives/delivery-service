@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { createCommandGate } from "./command-gate.js";
 import type { GateContext } from "./command-gate.js";
 
@@ -18,9 +18,15 @@ vi.mock("node:child_process", () => ({
 
 import { execFile } from "node:child_process";
 
+type ExecFileCallback = (
+  error: (Error & { code?: string | number; stdout?: string; stderr?: string }) | null,
+  stdout: string,
+  stderr: string,
+) => void;
+
 function mockExecFile(stdout: string, stderr = "", exitCode = 0): void {
   (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-    (_cmd: string, _args: string[], _opts: unknown, cb: Function) => {
+    (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
       if (exitCode !== 0) {
         const err = Object.assign(new Error("Command failed"), {
           code: exitCode,
@@ -37,7 +43,7 @@ function mockExecFile(stdout: string, stderr = "", exitCode = 0): void {
 
 function mockExecFileError(code: string): void {
   (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-    (_cmd: string, _args: string[], _opts: unknown, cb: Function) => {
+    (_cmd: string, _args: string[], _opts: unknown, cb: ExecFileCallback) => {
       const err = Object.assign(new Error("spawn failed"), {
         code,
       });
@@ -80,8 +86,8 @@ describe("createCommandGate", () => {
 
     expect(report.status).toBe("PASS");
     expect(report.assertions).toHaveLength(2);
-    expect(report.assertions[0]!.id).toBe("Math::add");
-    expect(report.assertions[1]!.outcome).toBe("FAIL");
+    expect(report.assertions[0]?.id).toBe("Math::add");
+    expect(report.assertions[1]?.outcome).toBe("FAIL");
   });
 
   it("exit-code mode: pass on exit 0", async () => {
@@ -92,8 +98,8 @@ describe("createCommandGate", () => {
 
     expect(report.status).toBe("PASS");
     expect(report.assertions).toHaveLength(1);
-    expect(report.assertions[0]!.outcome).toBe("PASS");
-    expect(report.assertions[0]!.id).toBe("exit:make check");
+    expect(report.assertions[0]?.outcome).toBe("PASS");
+    expect(report.assertions[0]?.id).toBe("exit:make check");
   });
 
   it("exit-code mode: fail on non-zero exit", async () => {
@@ -104,7 +110,7 @@ describe("createCommandGate", () => {
 
     expect(report.status).toBe("PASS");
     expect(report.assertions).toHaveLength(1);
-    expect(report.assertions[0]!.outcome).toBe("FAIL");
+    expect(report.assertions[0]?.outcome).toBe("FAIL");
   });
 
   it("command not found produces an ERROR report, not a crash", async () => {
