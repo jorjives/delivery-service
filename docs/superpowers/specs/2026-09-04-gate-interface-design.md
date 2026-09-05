@@ -1,3 +1,8 @@
+---
+status: approved
+approved: 2026-09-05
+---
+
 # Gate Interface — Design
 
 The pluggable gate that captures a baseline fingerprint before dispatch, checks
