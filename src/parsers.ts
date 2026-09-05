@@ -102,3 +102,26 @@ export function parseJunit(output: string): Assertion[] {
 
   return assertions;
 }
+
+export function parseExitCode(command: string, exitCode: number): Assertion[] {
+  return [{
+    id: `exit:${command}`,
+    outcome: exitCode === 0 ? "PASS" : "FAIL",
+    detail: `exit code ${exitCode}`,
+  }];
+}
+
+export class DuplicateIdError extends Error {
+  constructor(readonly duplicateId: string) {
+    super(`DuplicateIdError: assertion ID "${duplicateId}" appears more than once`);
+    this.name = "DuplicateIdError";
+  }
+}
+
+export function validateUniqueIds(assertions: Assertion[]): void {
+  const seen = new Set<string>();
+  for (const a of assertions) {
+    if (seen.has(a.id)) throw new DuplicateIdError(a.id);
+    seen.add(a.id);
+  }
+}

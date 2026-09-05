@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseTap, parseJunit } from "./parsers.js";
+import { parseTap, parseJunit, parseExitCode, validateUniqueIds } from "./parsers.js";
 
 describe("parseTap", () => {
   it("produces one assertion per ok/not ok line with stable IDs", () => {
@@ -120,5 +120,53 @@ describe("parseJunit", () => {
 
   it("throws ParseError when no testcase elements found", () => {
     expect(() => parseJunit("<testsuite></testsuite>")).toThrow("ParseError");
+  });
+});
+
+describe("parseExitCode", () => {
+  it("returns a single PASS assertion for exit code 0", () => {
+    const assertions = parseExitCode("npm test", 0);
+
+    expect(assertions).toEqual([
+      { id: "exit:npm test", outcome: "PASS", detail: "exit code 0" },
+    ]);
+  });
+
+  it("returns a single FAIL assertion for non-zero exit code", () => {
+    const assertions = parseExitCode("npm test", 1);
+
+    expect(assertions).toEqual([
+      { id: "exit:npm test", outcome: "FAIL", detail: "exit code 1" },
+    ]);
+  });
+
+  it("produces the same ID for the same command", () => {
+    const a = parseExitCode("make check", 0);
+    const b = parseExitCode("make check", 1);
+
+    expect(a[0]!.id).toBe(b[0]!.id);
+  });
+});
+
+describe("validateUniqueIds", () => {
+  it("does not throw when all IDs are unique", () => {
+    expect(() => validateUniqueIds([
+      { id: "a", outcome: "PASS", detail: "" },
+      { id: "b", outcome: "PASS", detail: "" },
+    ])).not.toThrow();
+  });
+
+  it("throws DuplicateIdError when IDs are duplicated", () => {
+    expect(() => validateUniqueIds([
+      { id: "a", outcome: "PASS", detail: "" },
+      { id: "a", outcome: "FAIL", detail: "" },
+    ])).toThrow("DuplicateIdError");
+  });
+
+  it("names the duplicated ID in the error message", () => {
+    expect(() => validateUniqueIds([
+      { id: "test-1", outcome: "PASS", detail: "" },
+      { id: "test-1", outcome: "FAIL", detail: "" },
+    ])).toThrow("test-1");
   });
 });
