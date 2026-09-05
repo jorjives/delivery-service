@@ -34,3 +34,71 @@ export function parseTap(output: string): Assertion[] {
 
   return assertions;
 }
+
+// Minimal XML extraction — not a full parser, just enough for JUnit testcase elements.
+// ponytail: regex XML extraction; upgrade to a streaming parser if nested CDATA or
+// namespaced elements become real inputs.
+
+const TESTCASE_OPEN = /<testcase\s([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
+const ATTR = /(\w+)="([^"]*)"/g;
+
+interface TestcaseAttrs {
+  classname?: string;
+  name?: string;
+}
+
+function extractAttr(tag: string): TestcaseAttrs {
+  const attrs: TestcaseAttrs = {};
+  let m: RegExpExecArray | null;
+  ATTR.lastIndex = 0;
+  while ((m = ATTR.exec(tag)) !== null) {
+    const key = m[1]!;
+    const val = m[2]!;
+    if (key === "classname") attrs.classname = val;
+    if (key === "name") attrs.name = val;
+  }
+  return attrs;
+}
+
+export function parseJunit(output: string): Assertion[] {
+  // Quick sanity check — JUnit output should contain at least one angle bracket
+  if (!output.includes("<")) {
+    throw new ParseError("ParseError: input does not look like XML");
+  }
+
+  const assertions: Assertion[] = [];
+  let match: RegExpExecArray | null;
+  TESTCASE_OPEN.lastIndex = 0;
+
+  while ((match = TESTCASE_OPEN.exec(output)) !== null) {
+    const attrStr = match[1]!;
+    const body = match[2] ?? "";
+    const attrs = extractAttr(attrStr);
+
+    const name = attrs.name;
+    if (!name) continue;
+
+    const id = attrs.classname ? `${attrs.classname}::${name}` : name;
+
+    let outcome: "PASS" | "FAIL" | "ERROR" = "PASS";
+    let detail = id;
+
+    if (body.includes("<error")) {
+      outcome = "ERROR";
+      const msgMatch = /message="([^"]*)"/.exec(body);
+      detail = msgMatch?.[1] ?? "error";
+    } else if (body.includes("<failure")) {
+      outcome = "FAIL";
+      const msgMatch = /message="([^"]*)"/.exec(body);
+      detail = msgMatch?.[1] ?? "failure";
+    }
+
+    assertions.push({ id, outcome, detail });
+  }
+
+  if (assertions.length === 0) {
+    throw new ParseError("ParseError: no <testcase> elements found in JUnit XML");
+  }
+
+  return assertions;
+}
