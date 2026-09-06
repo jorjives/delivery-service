@@ -92,16 +92,16 @@ export function createCustomGate(
   exportName?: string,
   baseDir?: string,
 ): Gate {
+  let gate: Promise<Gate> | undefined;
   const run =
     (method: "baseline" | "check") =>
     async (ctx: GateContext): Promise<GateReport> => {
-      let gate: Gate;
+      gate ??= loadCustomGate(modulePath, exportName, baseDir);
       try {
-        gate = await loadCustomGate(modulePath, exportName, baseDir);
+        return await (await gate)[method](ctx);
       } catch (err) {
         return errorReport(messageOf(err));
       }
-      return gate[method](ctx);
     };
 
   return { baseline: run("baseline"), check: run("check") };

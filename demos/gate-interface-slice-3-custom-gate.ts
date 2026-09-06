@@ -13,19 +13,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { createCustomGate, loadCustomGate } from "../src/custom-gate.js";
 import type { GateContext } from "../src/command-gate.js";
+import type { GateReport } from "../src/schema.js";
 
 function ctx(dir: string): GateContext {
   return { worktreePath: dir, taskDef: {}, gateRef: {} };
 }
 
-function printReport(
-  label: string,
-  report: {
-    status: string;
-    assertions: { id: string; outcome: string; detail: string }[];
-    detail?: string;
-  },
-): void {
+function printReport(label: string, report: GateReport): void {
   console.log(`\n=== ${label} ===`);
   console.log(`Status: ${report.status}`);
   if (report.detail) console.log(`Detail: ${report.detail}`);
