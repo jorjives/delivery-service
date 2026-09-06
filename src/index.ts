@@ -33,4 +33,6 @@ export {
   CorruptCaseFile,
   ImmutabilityViolation,
   WriteFailure,
+  ParseError,
+  DuplicateIdError,
 } from "./errors.js";

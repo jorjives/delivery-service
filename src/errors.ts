@@ -38,3 +38,19 @@ export class WriteFailure extends Error {
     this.name = "WriteFailure";
   }
 }
+
+export class ParseError extends Error {
+  readonly code = "PARSE_ERROR" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "ParseError";
+  }
+}
+
+export class DuplicateIdError extends Error {
+  readonly code = "DUPLICATE_ID" as const;
+  constructor(readonly duplicateId: string) {
+    super(`DuplicateIdError: assertion ID "${duplicateId}" appears more than once`);
+    this.name = "DuplicateIdError";
+  }
+}

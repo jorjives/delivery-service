@@ -1,11 +1,7 @@
 import type { Assertion } from "./schema.js";
+import { ParseError, DuplicateIdError } from "./errors.js";
 
-export class ParseError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ParseError";
-  }
-}
+export { ParseError, DuplicateIdError };
 
 const TAP_LINE = /^(ok|not ok)\s+(\d+)(?:\s+-\s+(.*))?$/;
 
@@ -13,7 +9,8 @@ export function parseTap(output: string): Assertion[] {
   const assertions: Assertion[] = [];
 
   for (const line of output.split("\n")) {
-    const m = TAP_LINE.exec(line.trim());
+    const trimmed = line.trim();
+    const m = TAP_LINE.exec(trimmed);
     if (!m) continue;
 
     const status = m[1];
@@ -25,7 +22,7 @@ export function parseTap(output: string): Assertion[] {
     assertions.push({
       id,
       outcome: status === "ok" ? "PASS" : "FAIL",
-      detail: line.trim(),
+      detail: trimmed,
     });
   }
 
@@ -40,8 +37,9 @@ export function parseTap(output: string): Assertion[] {
 // ponytail: regex XML extraction; upgrade to a streaming parser if nested CDATA or
 // namespaced elements become real inputs.
 
-const TESTCASE_OPEN = /<testcase\s([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
-const ATTR = /(\w+)="([^"]*)"/g;
+const TESTCASE_RE = /<testcase\s([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
+const ATTR_RE = /(\w+)="([^"]*)"/g;
+const MESSAGE_RE = /message="([^"]*)"/;
 
 interface TestcaseAttrs {
   classname?: string;
@@ -50,9 +48,7 @@ interface TestcaseAttrs {
 
 function extractAttr(tag: string): TestcaseAttrs {
   const attrs: TestcaseAttrs = {};
-  let m: RegExpExecArray | null;
-  ATTR.lastIndex = 0;
-  while ((m = ATTR.exec(tag)) !== null) {
+  for (const m of tag.matchAll(ATTR_RE)) {
     const key = m[1];
     const val = m[2];
     if (key === undefined || val === undefined) continue;
@@ -69,10 +65,8 @@ export function parseJunit(output: string): Assertion[] {
   }
 
   const assertions: Assertion[] = [];
-  let match: RegExpExecArray | null;
-  TESTCASE_OPEN.lastIndex = 0;
 
-  while ((match = TESTCASE_OPEN.exec(output)) !== null) {
+  for (const match of output.matchAll(TESTCASE_RE)) {
     const attrStr = match[1];
     const body = match[2] ?? "";
     if (attrStr === undefined) continue;
@@ -85,7 +79,7 @@ export function parseJunit(output: string): Assertion[] {
 
     const tag = body.includes("<error") ? "error" : body.includes("<failure") ? "failure" : null;
     const outcome: "PASS" | "FAIL" | "ERROR" = tag === "error" ? "ERROR" : tag === "failure" ? "FAIL" : "PASS";
-    const detail = tag ? (/message="([^"]*)"/.exec(body)?.[1] ?? tag) : id;
+    const detail = tag ? (MESSAGE_RE.exec(body)?.[1] ?? tag) : id;
 
     assertions.push({ id, outcome, detail });
   }
@@ -103,13 +97,6 @@ export function parseExitCode(command: string, exitCode: number): Assertion[] {
     outcome: exitCode === 0 ? "PASS" : "FAIL",
     detail: `exit code ${exitCode}`,
   }];
-}
-
-export class DuplicateIdError extends Error {
-  constructor(readonly duplicateId: string) {
-    super(`DuplicateIdError: assertion ID "${duplicateId}" appears more than once`);
-    this.name = "DuplicateIdError";
-  }
 }
 
 export function validateUniqueIds(assertions: Assertion[]): void {

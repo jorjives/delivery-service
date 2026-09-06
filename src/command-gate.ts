@@ -1,6 +1,7 @@
 import { execFile as execFileCb } from "node:child_process";
 import type { GateReport, GateRef, TaskDef, Assertion } from "./schema.js";
-import { parseTap, parseJunit, parseExitCode, validateUniqueIds, ParseError, DuplicateIdError } from "./parsers.js";
+import { parseTap, parseJunit, parseExitCode, validateUniqueIds } from "./parsers.js";
+import { ParseError, DuplicateIdError } from "./errors.js";
 
 export interface GateContext {
   worktreePath: string;
