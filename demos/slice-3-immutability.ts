@@ -6,7 +6,7 @@ import { create, setBaseline, setOutcome, updateCursor, appendEntry, load, Immut
 const header = {
   surfaceId: "demo-surface-3",
   taskDef: { intent: "Demonstrate write-once fields" },
-  gateRef: { gateId: "gate-demo", version: 1 },
+  gateRef: { type: "command", command: "npm test", parseMode: "tap" },
 };
 const budgets = {
   correction: { used: 0, max: 3 },

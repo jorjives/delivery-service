@@ -6,7 +6,7 @@ import { create, appendEntry, load, logTail, rebuild, resumeAction } from "../sr
 const header = {
   surfaceId: "demo-surface-2",
   taskDef: { intent: "Demonstrate crash recovery" },
-  gateRef: { gateId: "gate-demo", version: 1 },
+  gateRef: { type: "command", command: "npm test", parseMode: "tap" },
 };
 const budgets = {
   correction: { used: 0, max: 3 },

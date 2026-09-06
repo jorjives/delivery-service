@@ -20,7 +20,7 @@ async function main() {
   const header = {
     surfaceId: "demo-surface-budget",
     taskDef: { intent: "Demonstrate budget tracking" },
-    gateRef: { gateId: "gate-demo", version: 1 },
+    gateRef: { type: "command", command: "npm test", parseMode: "tap" },
   };
 
   await create(dir, header, budgetDefaults);

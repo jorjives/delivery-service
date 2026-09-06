@@ -2,6 +2,7 @@ export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction
 export { computeDelta } from "./delta-rule.js";
 export { createCommandGate } from "./command-gate.js";
 export { createCustomGate, loadCustomGate } from "./custom-gate.js";
+export { resolveGate } from "./resolve-gate.js";
 export type {
   CaseFile,
   CaseFileHeader,

@@ -11,7 +11,7 @@ async function main() {
   const header = {
     surfaceId: "demo-surface-ref-storage",
     taskDef: { intent: "Demonstrate reference storage" },
-    gateRef: { gateId: "gate-demo", version: 1 },
+    gateRef: { type: "command", command: "npm test", parseMode: "tap" },
   };
   const budgetDefaults = {
     correction: { used: 0, max: 3 },
