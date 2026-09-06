@@ -25,7 +25,7 @@ describe("create", () => {
     const header = {
       surfaceId: "surface-1",
       taskDef: { intent: "fix bug" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
       domainPrompt: "You are a helper.",
     };
 
@@ -58,7 +58,7 @@ describe("appendEntry", () => {
     await create(dir, {
       surfaceId: "surface-1",
       taskDef: { intent: "fix bug" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
   });
 
@@ -113,7 +113,7 @@ describe("load", () => {
     const header = {
       surfaceId: "surface-rt",
       taskDef: { intent: "round trip" },
-      gateRef: { gateId: "gate-rt", version: 2 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     };
 
     await create(dir, header, budgetDefaults);
@@ -177,7 +177,7 @@ describe("crash recovery: case.json atomicity", () => {
     const header = {
       surfaceId: "surface-atomic",
       taskDef: { intent: "test atomicity" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     };
 
     await create(dir, header, budgetDefaults);
@@ -200,7 +200,7 @@ describe("crash recovery: truncated log line", () => {
     await create(dir, {
       surfaceId: "surface-trunc",
       taskDef: { intent: "test truncation" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
   });
 
@@ -237,7 +237,7 @@ describe("logTail", () => {
     const cf = await create(dir, {
       surfaceId: "s-1",
       taskDef: {},
-      gateRef: {},
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
     expect(logTail(cf)).toBeUndefined();
   });
@@ -247,7 +247,7 @@ describe("logTail", () => {
     await create(dir, {
       surfaceId: "s-1",
       taskDef: {},
-      gateRef: {},
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
 
     const entry1: HistoryEntry = {
@@ -280,7 +280,7 @@ describe("updateCursor", () => {
     await create(dir, {
       surfaceId: "surface-cursor",
       taskDef: { intent: "test cursor update" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
   });
 
@@ -319,7 +319,7 @@ describe("rebuild", () => {
     await create(dir, {
       surfaceId: "surface-rebuild",
       taskDef: { intent: "test rebuild" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
   });
 
@@ -483,7 +483,7 @@ describe("header immutability", () => {
     await create(dir, {
       surfaceId: "surface-immut",
       taskDef: { intent: "test immutability" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
       domainPrompt: "You are a helper.",
     }, budgetDefaults);
   });
@@ -521,7 +521,7 @@ describe("setBaseline", () => {
     await create(dir, {
       surfaceId: "surface-bl",
       taskDef: { intent: "test baseline" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
   });
 
@@ -554,7 +554,7 @@ describe("setOutcome", () => {
     await create(dir, {
       surfaceId: "surface-oc",
       taskDef: { intent: "test outcome" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
   });
 
@@ -603,7 +603,7 @@ describe("incrementBudget", () => {
     await create(dir, {
       surfaceId: "surface-budget",
       taskDef: { intent: "test budgets" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
   });
 
@@ -663,7 +663,7 @@ describe("reference storage", () => {
     await create(dir, {
       surfaceId: "surface-ref",
       taskDef: { intent: "test refs" },
-      gateRef: { gateId: "gate-1", version: 1 },
+      gateRef: { type: "command", command: "npm test", parseMode: "tap" } as const,
     }, budgetDefaults);
   });
 

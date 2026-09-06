@@ -28,12 +28,25 @@ export type BudgetPopulation = keyof BudgetSet;
 
 // --- Header ---
 
-// TaskDef and GateRef are opaque to persistence (defined by later items).
-// For now they are passthrough JSON objects.
+// TaskDef is opaque to persistence (defined by a later item) and stays a
+// passthrough JSON object. GateRef is typed: gate resolution switches on it.
 export const TaskDef = z.record(z.string(), z.unknown());
 export type TaskDef = z.infer<typeof TaskDef>;
 
-export const GateRef = z.record(z.string(), z.unknown());
+export const GateRef = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("command"),
+    command: z.string(),
+    parseMode: z.enum(["tap", "junit", "exitcode"]),
+    failOnNewAssertions: z.boolean().optional(),
+  }),
+  z.object({
+    type: z.literal("custom"),
+    modulePath: z.string(),
+    exportName: z.string().optional(),
+    failOnNewAssertions: z.boolean().optional(),
+  }),
+]);
 export type GateRef = z.infer<typeof GateRef>;
 
 export const GateState = z.record(z.string(), z.unknown());

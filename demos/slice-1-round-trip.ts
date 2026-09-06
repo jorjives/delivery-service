@@ -11,7 +11,7 @@ async function main() {
   const header = {
     surfaceId: "demo-surface-1",
     taskDef: { intent: "Demonstrate the round trip" },
-    gateRef: { gateId: "gate-demo", version: 1 },
+    gateRef: { type: "command", command: "npm test", parseMode: "tap" },
     domainPrompt: "You are a demo assistant.",
   };
   const budgets = {

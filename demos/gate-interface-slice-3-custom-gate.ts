@@ -16,7 +16,11 @@ import type { GateContext } from "../src/command-gate.js";
 import type { GateReport } from "../src/schema.js";
 
 function ctx(dir: string): GateContext {
-  return { worktreePath: dir, taskDef: {}, gateRef: {} };
+  return {
+    worktreePath: dir,
+    taskDef: {},
+    gateRef: { type: "custom", modulePath: "./gate.mjs" },
+  };
 }
 
 function printReport(label: string, report: GateReport): void {
