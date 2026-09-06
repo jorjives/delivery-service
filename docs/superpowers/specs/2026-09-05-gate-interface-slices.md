@@ -188,6 +188,7 @@ exactly as safe to run as the built-ins.
 ## Slice 4: Resolve a Pinned Gate Reference into a Running Gate
 
 **Status:** ✅ Complete — 2026-09-06 — `b643770`
+**Tests:** ✅ Recorded — 2026-09-06 — `6a303ed` — cli — 1 UAT + 4 AC, 0 skipped
 **Delivers:** A developer can hand the resolver the same `GateRef` value
 that lives in a case file header — a plain description of "command" or
 "custom" plus its parameters — and get back a working gate, without needing
