@@ -122,6 +122,11 @@ async function main(): Promise<void> {
   const dupGate = createCommandGate(`sh ${dupScript}`, "tap");
   printReport("Error — duplicate assertion ID", await dupGate.baseline(ctx(tmp)));
 
+  // A 50ms timeout against a command that sleeps for 5s — real timeout
+  // behaviour, without a UAT demo actually waiting on the default 5-minute one.
+  const timeoutGate = createCommandGate("sleep 5", "tap", 50);
+  printReport("Error — command timed out", await timeoutGate.baseline(ctx(tmp)));
+
   // Cleanup
   fs.rmSync(tmp, { recursive: true, force: true });
 
