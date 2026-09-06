@@ -54,3 +54,28 @@ export class DuplicateIdError extends Error {
     this.name = "DuplicateIdError";
   }
 }
+
+export class GateModuleLoadFailure extends Error {
+  readonly code = "GATE_MODULE_LOAD_FAILURE" as const;
+  constructor(
+    readonly modulePath: string,
+    readonly detail: string,
+  ) {
+    super(`GateModuleLoadFailure: cannot load custom gate module "${modulePath}": ${detail}`);
+    this.name = "GateModuleLoadFailure";
+  }
+}
+
+export class InvalidGateExport extends Error {
+  readonly code = "INVALID_GATE_EXPORT" as const;
+  constructor(
+    readonly modulePath: string,
+    readonly exportName: string,
+    readonly detail: string,
+  ) {
+    super(
+      `InvalidGateExport: export "${exportName}" of "${modulePath}" is not a gate: ${detail}`,
+    );
+    this.name = "InvalidGateExport";
+  }
+}
