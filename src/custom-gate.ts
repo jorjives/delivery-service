@@ -2,16 +2,8 @@ import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Gate, GateContext } from "./command-gate.js";
 import { GateReport } from "./schema.js";
-import { validateUniqueIds } from "./parsers.js";
-import { GateModuleLoadFailure, InvalidGateExport, DuplicateIdError } from "./errors.js";
-
-function errorReport(detail: string): GateReport {
-  return { status: "ERROR", assertions: [], detail };
-}
-
-function messageOf(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+import { GateModuleLoadFailure, InvalidGateExport } from "./errors.js";
+import { errorReport, messageOf, duplicateIdReport } from "./gate-support.js";
 
 // Safety net: a custom gate is third-party code. Whatever it throws — sync or
 // async — becomes an ERROR report, never an exception reaching the harness; and
@@ -39,14 +31,8 @@ function guard(
       );
     }
 
-    try {
-      validateUniqueIds(parsed.data.assertions);
-    } catch (err) {
-      if (err instanceof DuplicateIdError) {
-        return errorReport(`Duplicate assertion ID: ${err.duplicateId}`);
-      }
-      throw err;
-    }
+    const dup = duplicateIdReport(parsed.data.assertions);
+    if (dup) return dup;
 
     return parsed.data;
   };
