@@ -8,6 +8,7 @@
     "lint": "eslint . && tsc --noEmit",
     "typecheck": "tsc --noEmit",
     "demo:slice-1": "npx tsx demos/slice-1-round-trip.ts",
+    "demo:slice-2": "npx tsx demos/gate-interface-slice-2-command-gate.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {

@@ -75,6 +75,9 @@ any real gate is wired up to it.
 
 ## Slice 2: Gate a Real Project with a Shell Command
 
+**Status:** ✅ Complete — 2026-09-05 — `6b92b9d`
+**Tests:** ✅ Recorded — 2026-09-06 — `6b92b9d` — cli — 1 UAT + 6 AC, 1 skipped
+
 **Delivers:** A developer can point the built-in command gate at a real
 shell command in a real worktree and get back a `GateReport` with one
 assertion per test — for TAP output, JUnit XML output, or a plain exit code
