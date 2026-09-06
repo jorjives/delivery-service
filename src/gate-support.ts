@@ -1,4 +1,5 @@
 import type { Assertion, GateReport } from "./schema.js";
+import type { Gate } from "./command-gate.js";
 import { validateUniqueIds } from "./parsers.js";
 import { DuplicateIdError } from "./errors.js";
 
@@ -24,4 +25,14 @@ export function duplicateIdReport(assertions: Assertion[]): GateReport | null {
     }
     throw err;
   }
+}
+
+/**
+ * A gate that reports the same failure however it is called. Resolution
+ * failures use this so a caller never has to distinguish "failed to resolve"
+ * from "failed to run" — both are just an ERROR report.
+ */
+export function failedGate(detail: string): Gate {
+  const fail = async (): Promise<GateReport> => errorReport(detail);
+  return { baseline: fail, check: fail };
 }
