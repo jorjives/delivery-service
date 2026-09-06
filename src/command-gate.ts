@@ -102,9 +102,6 @@ async function run(
 }
 
 export function createCommandGate(command: string, parseMode: "tap" | "junit" | "exitcode"): Gate {
-  const gate: Gate = {
-    baseline: (ctx) => run(command, parseMode, ctx.worktreePath),
-    check: (ctx) => run(command, parseMode, ctx.worktreePath),
-  };
-  return gate;
+  const execute = (ctx: GateContext) => run(command, parseMode, ctx.worktreePath);
+  return { baseline: execute, check: execute };
 }

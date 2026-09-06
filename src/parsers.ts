@@ -83,18 +83,9 @@ export function parseJunit(output: string): Assertion[] {
 
     const id = attrs.classname ? `${attrs.classname}::${name}` : name;
 
-    let outcome: "PASS" | "FAIL" | "ERROR" = "PASS";
-    let detail = id;
-
-    if (body.includes("<error")) {
-      outcome = "ERROR";
-      const msgMatch = /message="([^"]*)"/.exec(body);
-      detail = msgMatch?.[1] ?? "error";
-    } else if (body.includes("<failure")) {
-      outcome = "FAIL";
-      const msgMatch = /message="([^"]*)"/.exec(body);
-      detail = msgMatch?.[1] ?? "failure";
-    }
+    const tag = body.includes("<error") ? "error" : body.includes("<failure") ? "failure" : null;
+    const outcome: "PASS" | "FAIL" | "ERROR" = tag === "error" ? "ERROR" : tag === "failure" ? "FAIL" : "PASS";
+    const detail = tag ? (/message="([^"]*)"/.exec(body)?.[1] ?? tag) : id;
 
     assertions.push({ id, outcome, detail });
   }
