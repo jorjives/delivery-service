@@ -134,6 +134,9 @@ non-technical owner only has to name a test command, not write a parser.
 
 ## Slice 3: Gate a Project with a Custom, Hand-Written Gate
 
+**Status:** ✅ Complete — 2026-09-06 — `e571dff`
+**Tests:** ✅ Recorded — 2026-09-06 — `5b102ea` — cli — 1 UAT + 5 AC, 0 skipped
+
 **Delivers:** A developer can author their own gate as a small module
 exposing `baseline` and `check`, point the harness at it, and have it run
 exactly like a built-in gate — for the cases the command gate can't cover.

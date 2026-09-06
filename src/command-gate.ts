@@ -1,7 +1,8 @@
 import { execFile as execFileCb } from "node:child_process";
 import type { GateReport, GateRef, TaskDef, Assertion } from "./schema.js";
-import { parseTap, parseJunit, parseExitCode, validateUniqueIds } from "./parsers.js";
-import { ParseError, DuplicateIdError } from "./errors.js";
+import { parseTap, parseJunit, parseExitCode } from "./parsers.js";
+import { ParseError } from "./errors.js";
+import { errorReport, messageOf, duplicateIdReport } from "./gate-support.js";
 
 export interface GateContext {
   worktreePath: string;
@@ -52,10 +53,6 @@ function exec(command: string, cwd: string): Promise<ExecResult> {
   });
 }
 
-function errorReport(detail: string): GateReport {
-  return { status: "ERROR", assertions: [], detail };
-}
-
 async function run(
   command: string,
   parseMode: "tap" | "junit" | "exitcode",
@@ -65,7 +62,7 @@ async function run(
   try {
     result = await exec(command, cwd);
   } catch (err) {
-    return errorReport(`Command execution failed: ${err instanceof Error ? err.message : String(err)}`);
+    return errorReport(`Command execution failed: ${messageOf(err)}`);
   }
 
   let assertions: Assertion[];
@@ -84,14 +81,8 @@ async function run(
     throw err;
   }
 
-  try {
-    validateUniqueIds(assertions);
-  } catch (err) {
-    if (err instanceof DuplicateIdError) {
-      return errorReport(`Duplicate assertion ID: ${err.duplicateId}`);
-    }
-    throw err;
-  }
+  const dup = duplicateIdReport(assertions);
+  if (dup) return dup;
 
   // Gate-level status reflects whether the gate infrastructure ran successfully,
   // not whether individual assertions passed (that is the delta rule's concern).
