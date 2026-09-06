@@ -16,7 +16,10 @@ export default tseslint.config(
             "tests/case-file-persistence/*.ts",
             "tests/gate-interface/*.ts",
           ],
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 20,
+          // ponytail: raw count ceiling, keeps needing a bump as slices add
+          // demos/tests files; a real fix gives demos/tests their own
+          // tsconfig project instead of piggybacking on the default one.
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 40,
         },
         tsconfigRootDir: import.meta.dirname,
       },
