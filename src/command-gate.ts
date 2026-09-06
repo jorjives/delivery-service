@@ -22,12 +22,12 @@ interface ExecResult {
 
 const DEFAULT_TIMEOUT_MS = 300_000; // 5 minutes
 
-function exec(command: string, cwd: string): Promise<ExecResult> {
+function exec(command: string, cwd: string, timeoutMs: number): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
     execFileCb(
       "/bin/sh",
       ["-c", command],
-      { cwd, timeout: DEFAULT_TIMEOUT_MS, maxBuffer: 50 * 1024 * 1024 },
+      { cwd, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024 },
       (err, stdout, stderr) => {
         if (err && "code" in err && typeof err.code === "string") {
           // System-level error (ENOENT, ETIMEDOUT, etc.) — not a command exit code
@@ -60,10 +60,11 @@ async function run(
   command: string,
   parseMode: "tap" | "junit" | "exitcode",
   cwd: string,
+  timeoutMs: number,
 ): Promise<GateReport> {
   let result: ExecResult;
   try {
-    result = await exec(command, cwd);
+    result = await exec(command, cwd, timeoutMs);
   } catch (err) {
     return errorReport(`Command execution failed: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -102,7 +103,11 @@ async function run(
   };
 }
 
-export function createCommandGate(command: string, parseMode: "tap" | "junit" | "exitcode"): Gate {
-  const execute = (ctx: GateContext) => run(command, parseMode, ctx.worktreePath);
+export function createCommandGate(
+  command: string,
+  parseMode: "tap" | "junit" | "exitcode",
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Gate {
+  const execute = (ctx: GateContext) => run(command, parseMode, ctx.worktreePath, timeoutMs);
   return { baseline: execute, check: execute };
 }

@@ -90,9 +90,10 @@ describe("UAT: point the command gate at a real test suite", () => {
     expect(stdout).toContain("--- Demo complete ---");
   });
 
-  // SKIPPED AC: "a command that times out produces an error status" — the demo
-  // script doesn't exercise this (the default timeout is 5 minutes, too slow
-  // for a UAT demo); it's covered instead by src/command-gate.test.ts's unit
-  // tests. Not-found and unparseable-output are covered above.
-  it.skip("AC: a command that times out produces an error status with a diagnostic detail", () => {});
+  it("AC: a command that times out produces an error status with a diagnostic detail", () => {
+    const s = section("=== Error — command timed out ===", "--- Demo complete ---");
+    expect(s).toContain("Status: ERROR");
+    expect(s).toContain("Detail:");
+    expect(s.toLowerCase()).toContain("timed out");
+  });
 });
