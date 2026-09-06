@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadCustomGate } from "./custom-gate.js";
+import { createCustomGate, loadCustomGate } from "./custom-gate.js";
 import { GateModuleLoadFailure, InvalidGateExport } from "./errors.js";
 import type { GateContext } from "./command-gate.js";
 
@@ -187,5 +187,41 @@ describe("loadCustomGate", () => {
 
     expect(report.status).toBe("ERROR");
     expect(report.detail).toContain("same");
+  });
+});
+
+describe("createCustomGate", () => {
+  it("runs a working custom gate without the caller loading it first", async () => {
+    const modulePath = writeGateModule(WORKING_GATE);
+
+    const gate = createCustomGate(modulePath);
+    const report = await gate.baseline(ctx("/worktrees/beta"));
+
+    expect(report.status).toBe("PASS");
+    expect(report.assertions[0]?.detail).toBe("/worktrees/beta");
+  });
+
+  it("reports an unresolvable module path as an ERROR report, not a throw", async () => {
+    const missing = path.join(os.tmpdir(), "no-such-gate-module-abc.mjs");
+
+    const gate = createCustomGate(missing);
+    const report = await gate.baseline(ctx());
+
+    expect(report.status).toBe("ERROR");
+    expect(report.assertions).toEqual([]);
+    expect(report.detail).toContain(missing);
+  });
+
+  it("reports an export missing check as an ERROR report from both methods", async () => {
+    const modulePath = writeGateModule(`
+      export default { baseline: async () => ({ status: "PASS", assertions: [] }) };
+    `);
+
+    const gate = createCustomGate(modulePath);
+
+    for (const report of [await gate.baseline(ctx()), await gate.check(ctx())]) {
+      expect(report.status).toBe("ERROR");
+      expect(report.detail).toContain("check");
+    }
   });
 });

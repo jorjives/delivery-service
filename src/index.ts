@@ -1,6 +1,7 @@
 export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef } from "./case-file.js";
 export { computeDelta } from "./delta-rule.js";
 export { createCommandGate } from "./command-gate.js";
+export { createCustomGate, loadCustomGate } from "./custom-gate.js";
 export type {
   CaseFile,
   CaseFileHeader,
@@ -35,4 +36,6 @@ export {
   WriteFailure,
   ParseError,
   DuplicateIdError,
+  GateModuleLoadFailure,
+  InvalidGateExport,
 } from "./errors.js";

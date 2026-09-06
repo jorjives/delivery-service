@@ -95,3 +95,28 @@ export async function loadCustomGate(
     check: guard((ctx) => gate.check(ctx), "check", modulePath),
   };
 }
+
+/**
+ * A `Gate` that loads its module lazily and reports load failures as ERROR
+ * reports rather than exceptions — the shape gate resolution needs, where
+ * "failed to load" and "failed to run" must look the same to the caller.
+ */
+export function createCustomGate(
+  modulePath: string,
+  exportName?: string,
+  baseDir?: string,
+): Gate {
+  const run =
+    (method: "baseline" | "check") =>
+    async (ctx: GateContext): Promise<GateReport> => {
+      let gate: Gate;
+      try {
+        gate = await loadCustomGate(modulePath, exportName, baseDir);
+      } catch (err) {
+        return errorReport(messageOf(err));
+      }
+      return gate[method](ctx);
+    };
+
+  return { baseline: run("baseline"), check: run("check") };
+}
