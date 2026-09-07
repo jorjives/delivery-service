@@ -91,6 +91,8 @@ right at the foundation is cheaper than retrofitting it later.
 
 ## Item 2: Gate Interface
 
+**Status:** ✅ Complete — 2026-09-07 — spec: `docs/superpowers/specs/2026-09-04-gate-interface-design.md`
+
 **Delivers:** A pluggable gate that captures a baseline fingerprint before
 dispatch and checks world state after, with the harness computing the
 regression delta.
