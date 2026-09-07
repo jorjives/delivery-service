@@ -1,6 +1,7 @@
 # Gate Interface — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-09-04-gate-interface-design.md`
+> **Status:** ✅ Complete — 2026-09-07 — all 5 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** this item has no end-user product surface yet (gate
@@ -237,6 +238,8 @@ or hand-written code, only that it has a `GateRef`.
 
 ## Slice 5: A Gated Surface's Baseline and History Survive on Disk
 
+**Status:** ✅ Complete — 2026-09-07 — `6a9c2bf`
+**Tests:** ✅ Recorded — 2026-09-07 — `6a9c2bf` — cli — 1 UAT + 4 AC, 0 skipped
 **Delivers:** A developer can run a gate's baseline once for a surface, run
 `check` after a simulated attempt, and see the delta result recorded in that
 surface's case file — the full pipeline from a pinned gate reference through

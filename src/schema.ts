@@ -49,9 +49,6 @@ export const GateRef = z.discriminatedUnion("type", [
 ]);
 export type GateRef = z.infer<typeof GateRef>;
 
-export const GateState = z.record(z.string(), z.unknown());
-export type GateState = z.infer<typeof GateState>;
-
 export const Assertion = z.object({
   id: z.string(),
   outcome: z.enum(["PASS", "FAIL", "ERROR"]),
@@ -91,7 +88,7 @@ export const CaseFileHeader = z.object({
   taskDef: TaskDef,
   gateRef: GateRef,
   domainPrompt: z.string().optional(),
-  baseline: GateState.nullable(),
+  baseline: GateReport.nullable(),
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 

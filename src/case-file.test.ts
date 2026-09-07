@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef } from "./case-file.js";
 import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
-import type { BudgetSet, HistoryEntry } from "./schema.js";
+import type { BudgetSet, HistoryEntry, GateReport } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -528,7 +528,10 @@ describe("setBaseline", () => {
   });
 
   it("sets the baseline when it is null", async () => {
-    const baseline = { assertion1: "pass", assertion2: "fail" };
+    const baseline: GateReport = {
+      status: "PASS",
+      assertions: [{ id: "1 - alpha", outcome: "PASS", detail: "ok 1 - alpha" }],
+    };
     await setBaseline(dir, baseline);
 
     const loaded = await load(dir);
@@ -536,15 +539,26 @@ describe("setBaseline", () => {
   });
 
   it("rejects a second setBaseline with ImmutabilityViolation", async () => {
-    await setBaseline(dir, { assertion1: "pass" });
+    const first: GateReport = {
+      status: "PASS",
+      assertions: [{ id: "1 - alpha", outcome: "PASS", detail: "ok 1 - alpha" }],
+    };
+    const second: GateReport = {
+      status: "PASS",
+      assertions: [{ id: "1 - alpha", outcome: "FAIL", detail: "not ok 1 - alpha" }],
+    };
+    await setBaseline(dir, first);
 
-    await expect(
-      setBaseline(dir, { assertion1: "different" }),
-    ).rejects.toThrow(ImmutabilityViolation);
+    await expect(setBaseline(dir, second)).rejects.toThrow(ImmutabilityViolation);
 
     // Original baseline unchanged
     const loaded = await load(dir);
-    expect(loaded.header.baseline).toEqual({ assertion1: "pass" });
+    expect(loaded.header.baseline).toEqual(first);
+  });
+  it("rejects a baseline that is not a GateReport", async () => {
+    await expect(
+      setBaseline(dir, { assertion1: "pass" } as unknown as GateReport),
+    ).rejects.toThrow();
   });
 });
 

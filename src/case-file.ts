@@ -1,6 +1,6 @@
 import { open, rename, readFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
-import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateState, CaseFileOutcome } from "./schema.js";
+import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateReport, CaseFileOutcome } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
 
 async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
@@ -177,12 +177,22 @@ async function setOnce(
   await writeCaseJson(dir, merge(caseJson));
 }
 
-export function setBaseline(dir: string, baseline: GateState): Promise<void> {
+export async function setBaseline(dir: string, baseline: GateReport): Promise<void> {
+  // Parse rather than trust: the baseline is immutable once written, so a
+  // malformed one would poison the surface for its whole lifetime.
+  //
+  // This function is declared `async` deliberately, not left as a plain
+  // Promise-returning function that happens to call `parse` first: `parse`
+  // throws synchronously, and a non-async function propagates that throw at
+  // the call site rather than as a promise rejection. `async` wraps it into
+  // the returned promise's rejection instead, so `await setBaseline(dir, bad)`
+  // rejects rather than the call itself throwing.
+  const parsed = GateReport.parse(baseline);
   return setOnce(
     dir,
     "baseline",
     (caseJson) => caseJson.header.baseline !== null,
-    (caseJson) => ({ ...caseJson, header: { ...caseJson.header, baseline } }),
+    (caseJson) => ({ ...caseJson, header: { ...caseJson.header, baseline: parsed } }),
   );
 }
 

@@ -12,6 +12,7 @@
     "demo:gate-slice-2": "npx tsx demos/gate-interface-slice-2-command-gate.ts",
     "demo:gate-slice-3": "npx tsx demos/gate-interface-slice-3-custom-gate.ts",
     "demo:gate-slice-4": "npx tsx demos/gate-interface-slice-4-resolution.ts",
+    "demo:gate-slice-5": "npx tsx demos/gate-interface-slice-5-round-trip.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {

@@ -5,6 +5,8 @@ approved: 2026-09-05
 
 # Gate Interface — Design
 
+> **Status:** ✅ Complete — 2026-09-07 — all 5 slices delivered
+
 The pluggable gate that captures a baseline fingerprint before dispatch, checks
 world state after, and lets the harness compute the regression delta. This
 document covers the gate contract, the delta rule, assertion identity, error
