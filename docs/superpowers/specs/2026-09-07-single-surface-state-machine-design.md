@@ -65,6 +65,22 @@ doc); this item implements the concrete, unambiguous half: `status: ERROR`
 (the gate could not run) sends the surface to `GATE_MAINTENANCE`, anything
 else (`PASS` or `FAIL`) proceeds to `AGENT_ACTIVE`.
 
+**`DispatchEntry`/`TerminusEntry` gain an optional `role` field.** The
+schema Item 1 shipped models one implicit role (the worker): attempt
+numbers, `resumeAction`, and `deriveBudgetsFromLog` all assume every
+dispatch is a worker attempt. `GATE_MAINTENANCE` dispatches a repair agent
+through the same `AgentPort` primitive and needs the same crash-recoverable
+dispatch → terminus pairing (a repair session can crash mid-session exactly
+like a worker session can), so it needs to write entries too — but a
+gate-maintenance dispatch is not a worker attempt and must not be counted as
+one. Rather than invent a parallel, unrecoverable path for this one role,
+this item adds `role?: "worker" | "gate-maintenance"` to both entry types
+(absent = `"worker"`, so every existing test and case file stays valid) and
+makes resume/budget derivation switch on it. This is additive schema work
+inside Item 1's already-shipped file, done here because Item 3 is the first
+consumer that actually drives a second role through the dispatch/terminus
+pair; see "Schema extension" below for the full detail.
+
 ## The driver
 
 ```
@@ -92,13 +108,18 @@ log tail, so `advance` after a crash always resumes onto a legal edge.
 ### Determining position
 
 ```
-if history is empty:
+if history has no worker-role dispatch entry yet:
   if header.baseline === null:
-    position = cursor.state === "PROVISIONING" ? "PROVISIONING" : "PRE_GATING"
+    if last entry (if any) is a gate-maintenance dispatch with no terminus:
+      position = "GATE_MAINTENANCE"          # pre-task repair session crashed mid-run
+    else if last entry is a gate-maintenance terminus(completed):
+      position = "PRE_GATING"                # repair done, re-baseline
+    else:
+      position = cursor.state === "PROVISIONING" ? "PROVISIONING" : "PRE_GATING"
   else:
-    position = "AGENT_ACTIVE"     # baselined, no dispatch entry yet
+    position = "AGENT_ACTIVE"     # baselined, no worker dispatch entry yet
 else:
-  position = resumeAction(logTail(history))   # existing Item 1 function
+  position = resumeAction(logTail(history), role-aware)   # Item 1 function, extended below
 ```
 
 `cursor.state` starts at `"PROVISIONING"` (set by `create`, Item 1) and the
@@ -136,9 +157,15 @@ provisioning.md's "partial worktree" recovery), rather than looping forever.
 Calls `recordBaseline(dir, worktreePath)` (Item 2, already built). On
 `status !== "ERROR"`: `updateCursor(dir, { state: "AGENT_ACTIVE" })`. On
 `status === "ERROR"`: increment the `gateMaintenance` budget
-(`incrementBudget`); if exhausted, escalate (see Escalation below); otherwise
-dispatch the `gate-maintenance` role through `AgentPort` and update the
-cursor to `"GATE_MAINTENANCE"`.
+(`incrementBudget`); if exhausted, escalate (see Escalation below);
+otherwise append a `dispatch` entry with `role: "gate-maintenance"`, call
+`agent.invoke(gateMaintenanceRoleCfg, ctx)`, append the resulting `terminus`
+entry (also `role: "gate-maintenance"`), and update the cursor to
+`"GATE_MAINTENANCE"`. Writing the dispatch/terminus pair here — rather than
+calling the agent with nothing recorded — is what makes a crash mid-repair
+resumable (see "Determining position" above) and what makes the
+`gateMaintenance` budget derivable from the log on rebuild, matching every
+other population.
 
 **GATE_MAINTENANCE → PRE_GATING | GATING | ESCALATED**
 
@@ -147,24 +174,34 @@ terminus, cursor returns to `"PRE_GATING"` to re-baseline. Entered post-task
 (triage verdict was `fix_the_gate`): on `completed`, cursor returns to
 `"GATING"` to re-check against the existing baseline — the baseline is never
 recaptured post-task. Either entry's `escalate` terminus, or the budget
-already being exhausted on entry, routes to `ESCALATED`.
+already being exhausted on entry, routes to `ESCALATED`. The post-task entry
+pair also carries `role: "gate-maintenance"`, for the same resumability and
+derivation reasons as the pre-task case.
 
 **AGENT_ACTIVE → GATING | ESCALATED | TRIAGE | INCOMPLETE_TERMINUS**
 
-Determines the attempt number (`1 + count of prior "terminus" entries`),
-appends a `dispatch` entry, calls `agent.invoke(workerRoleCfg, ctx)`, appends
-the resulting `terminus` entry. Maps the terminus per
-`case-file.ts`'s existing `terminusState` table (already built in Item 1):
-`completed → GATING`, `escalate → ESCALATED` (authority-class) or `TRIAGE`
-(exhaustion-class — the deterministic router still gets first look, per
-control-flow doc), `incomplete → INCOMPLETE_TERMINUS`.
+Determines the attempt number (`1 + count of prior "triage" entries with
+verdict "reroute"` — counting terminus entries instead would overcount,
+since a terminus-retry reuses its attempt number rather than advancing it,
+per "Attempt numbering" below), appends a `dispatch` entry (`role: "worker"`,
+or omitted — worker is the default),
+calls `agent.invoke(workerRoleCfg, ctx)`, appends the resulting `terminus`
+entry. Maps the terminus per `case-file.ts`'s existing `terminusState` table
+(already built in Item 1): `completed → GATING`, `escalate → ESCALATED`
+(authority-class) or `TRIAGE` (exhaustion-class — the deterministic router
+still gets first look, per control-flow doc), `incomplete →
+INCOMPLETE_TERMINUS`.
 
 **INCOMPLETE_TERMINUS → AGENT_ACTIVE | ESCALATED**
 
 Increments the `terminus` budget. Under cap: returns to `AGENT_ACTIVE`,
-re-dispatching onto the worktree as the crashed/capped session left it (no
-reset — control-flow doc, "a retried terminus re-dispatches into the tree as
-it was left"). At cap: escalate.
+re-dispatching onto the worktree as the crashed/capped session left it, with
+the **same attempt number** as the terminus entry just recorded — this is a
+retry of that attempt, not a new one (no reset — control-flow doc, "a
+retried terminus re-dispatches into the tree as it was left"). At cap:
+escalate. Reusing the attempt number (rather than incrementing it) is what
+keeps this edge's cost attributed to `terminus`, not `correction` — see
+"Attempt numbering and budget derivation" below.
 
 **GATING → CLOSING | TRIAGE**
 
@@ -187,10 +224,11 @@ Assembles a `TriageInput` (trigger, case file, current gate report,
 remaining budgets) and calls `triage(input)` (`TriagePort`). Appends a
 `triage` entry with the verdict and rationale. Maps verdict to state via
 `case-file.ts`'s existing `triageState` table: `reroute` burns a
-`correction` budget slot and returns to `AGENT_ACTIVE`; `fix_the_gate` burns
-`gateMaintenance` and goes to `GATE_MAINTENANCE`; `retry_close` burns `close`
-and returns to `CLOSING`; `escalate`/`abort` go straight to their terminal
-states.
+`correction` budget slot, advances the attempt number, and returns to
+`AGENT_ACTIVE` (the next `advance` call dispatches `attempt + 1`, per
+"Attempt numbering" below); `fix_the_gate` burns `gateMaintenance` and goes
+to `GATE_MAINTENANCE`; `retry_close` burns `close` and returns to `CLOSING`;
+`escalate`/`abort` go straight to their terminal states.
 
 ### Escalation and abort
 
@@ -250,10 +288,21 @@ Its rule, applied per trigger:
 | Trigger | Budget checked | Under cap | At cap |
 |---|---|---|---|
 | `gate_fail` | `correction` | `reroute` | `escalate` |
-| `gate_error` | `gateError` (checked, not burned here — `GATING`'s own re-check consumes it) | `reroute` on the check, else `fix_the_gate` if `gateMaintenance` remains | `escalate` |
+| `gate_error` | `gateMaintenance` | `fix_the_gate` | `escalate` |
 | `worker_escalate` (authority) | — | `escalate` (never overruled) | `escalate` |
 | `worker_escalate` (exhaustion) | `correction` | `escalate` (this item never overrules downward — that judgement needs an agent, Item 5) | `escalate` |
 | `close_failure` | `close` | `retry_close` | `escalate` |
+
+`gate_error` has no legal verdict that just silently re-runs the check —
+the schema's `TriageEntry.verdict` enum has no such case, and control-flow
+doc's own TRIAGE output contract doesn't offer one either. A gate that could
+not run needs `GATE_MAINTENANCE` to fix the environment, exactly like the
+pre-task case; this item routes both through the same edge and the same
+budget. The `gateError` population (already in `BudgetSet`, Item 1) is
+reserved for a future *bounded, agent-free* re-check fast path — control-flow
+doc calls this out as "cheap, stateless, re-run it" — which needs a
+`TriageVerdict` case this item does not add. Left to Item 5, which owns the
+verdict vocabulary's evolution alongside the real triage agent.
 
 The `worker_escalate` (exhaustion) row is the one place this item is
 strictly more conservative than the target design: control-flow doc allows
@@ -285,7 +334,73 @@ All five populations (`correction`, `gateError`, `gateMaintenance`,
 built) at the point each is burned, per the table in the Edges section
 above. `incrementBudget` returns `{ used, max, exhausted }`; the driver
 checks `exhausted` immediately after incrementing and routes to escalation
-rather than letting a subsequent edge silently exceed the cap.
+rather than letting a subsequent edge silently exceed the cap. `gateError`
+is tracked (via `deriveBudgetsFromLog`, counting `gate` entries with
+`status: "ERROR"`) but not gated on by this item's `TriagePort` — see the
+`gate_error` row above — so it is visible in the case file for reporting
+but has no cap enforcement in this item.
+
+### Schema extension: `role` on dispatch/terminus entries
+
+```
+DispatchEntry.role?:  "worker" | "gate-maintenance"   # default "worker"
+TerminusEntry.role?:  "worker" | "gate-maintenance"   # default "worker"
+```
+
+Additive and optional, so every existing case file and test (Items 1-2) is
+still valid — an entry with no `role` is a worker entry. `deriveStateFromEntry`
+and `resumeAction` (`case-file.ts`, Item 1) both switch on `entry.t` today;
+this item extends them to also switch on `entry.role` for `dispatch` and
+`terminus`, so a `gate-maintenance`-role dispatch-with-no-terminus resumes
+into `GATE_MAINTENANCE` rather than `INCOMPLETE_TERMINUS`, and a
+`gate-maintenance`-role `terminus(completed)` resumes into `PRE_GATING` or
+`GATING` (pre- vs post-task, disambiguated by `header.baseline`) rather than
+`GATING` unconditionally. `deriveBudgetsFromLog` is extended the same way —
+see below.
+
+### Attempt numbering and budget derivation
+
+Two rules pin down how `attempt` behaves across the worker/gate-maintenance
+split and the reroute/retry split, because `deriveBudgetsFromLog`
+(`case-file.ts`, Item 1) recomputes budgets from the log on every `rebuild`
+and must agree with what the driver burned live via `incrementBudget`,
+or a crash-resumed surface would enforce different caps than a
+never-crashed one — silently breaking the "each population enforces its cap
+independently" success criterion.
+
+1. **`attempt` only advances on a worker-role reroute.** A `TRIAGE` verdict
+   of `reroute` dispatches the next worker attempt (`attempt + 1`). An
+   `INCOMPLETE_TERMINUS` retry re-dispatches the **same** attempt number —
+   it is a retry of the attempt that produced no valid terminus, not a new
+   one. Gate-maintenance dispatches carry their own attempt count
+   (`1 + count of prior gate-maintenance-role terminus entries`), entirely
+   separate from the worker's counter — the two never interact.
+
+2. **`deriveBudgetsFromLog`'s existing `entry.attempt > 1` check is
+   replaced with a lookback rule**, because attempt number alone cannot
+   distinguish a reroute-driven redispatch from a terminus-retry once both
+   have happened at least once (both can produce a worker dispatch at
+   `attempt > 1`). The corrected rule inspects the entry immediately
+   preceding each `dispatch` in the log:
+   - preceding entry is a `triage` entry with `verdict: "reroute"` →
+     this dispatch consumes `correction`
+   - preceding entry is a `terminus` entry with `status: "incomplete"`
+     (same role) → this dispatch consumes `terminus`
+   - no preceding entry (the very first dispatch) → consumes neither
+
+   `gateMaintenance` derivation gains a matching case: a `dispatch` with
+   `role: "gate-maintenance"` consumes `gateMaintenance` directly (whether
+   entered pre-task from `PRE_GATING` or post-task via a `triage`
+   `fix_the_gate` verdict), replacing the existing "only count
+   `fix_the_gate` triage entries" rule, which missed the pre-task case
+   entirely (`PRE_GATING → GATE_MAINTENANCE` has no `triage` entry to
+   count — see the Edges section).
+
+   This is a change to `deriveBudgetsFromLog` in Item 1's already-shipped
+   `case-file.ts`, made here because Item 3 is the first caller that
+   exercises more than one attempt and more than one role; it is covered by
+   new tests in this item's suite (crash mid-reroute, crash mid-terminus-
+   retry, crash mid-gate-maintenance), not a silent behind-the-scenes patch.
 
 ## Crash recovery
 
