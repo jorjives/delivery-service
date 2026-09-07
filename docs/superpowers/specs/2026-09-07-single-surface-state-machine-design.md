@@ -147,8 +147,12 @@ triggering event *is* the burn**, and nothing else is. Each population is
 counted by deriving straight from the log, at the moment it's needed, off
 the entry that directly evidences it:
 
-- `terminus` ← count of `terminus` entries with `status: "incomplete"` (own
-  role), not a subsequent redispatch. `INCOMPLETE_TERMINUS` derives the
+- `terminus` ← count of `terminus` entries with `status: "incomplete"` and
+  worker role (`role` absent or `"worker"`), not a subsequent redispatch. A
+  gate-maintenance `incomplete` terminus is never counted here: its cost is
+  burned on `gateMaintenance` by the redispatch's own `dispatch` entry, so
+  counting it would charge a repair session to the worker's population.
+  `INCOMPLETE_TERMINUS` derives the
   count *before* deciding to redispatch — the terminus entry that triggered
   this edge is already in the log, written by the edge before it, so the
   count is correct with zero additional writes, including at cap where no
@@ -207,9 +211,11 @@ SurfacePorts = {
 ```
 
 `worktreePath` is a caller argument only at first provision, where it seeds
-`cursor.worktreeRef`; once that cursor write has landed, `cursor.worktreeRef`
-is authoritative and the driver prefers it over the argument, so invariant 3
-holds (a replay called with a different path cannot divert an already-
+`cursor.worktreeRef`. `create` (Item 1) writes `worktreeRef: ""`, so the
+empty string is the "not yet provisioned" sentinel: the driver uses the
+argument only while `cursor.worktreeRef` is empty, and once the provisioning
+cursor write has landed `cursor.worktreeRef` is authoritative and the driver
+prefers it over the argument, so invariant 3 holds (a replay called with a different path cannot divert an already-
 provisioned surface). This is why the path, unlike branch and base-ref, may be
 an argument: `CaseFileCursor` already has a field for it.
 
@@ -369,7 +375,10 @@ the trigger (`"gate_fail"` or `"gate_error"`) that `TriagePort` reads.
 
 Calls `closer.close(ctx, { kind: "accepted" })`. The `CloseReport`'s `detail`
 is written with `writeRef` and the resulting id stored as the entry's required
-`detailRef`, matching how `runCheck` stores gate failure detail. `DONE`:
+`detailRef`, matching how `runCheck` stores gate failure detail. The ref key
+is `close-<count of prior close entries>`, so a `retry_close` cycle cannot
+overwrite the ref an earlier `close` entry still points at — the same
+collision `runCheck`'s widened gate key fixes above. `DONE`:
 appends a `close` entry, calls `setOutcome(dir, { kind: "closed", ... })`, returns `CLOSED`.
 `FAIL`/`ERROR`: appends the `close` entry, routes to `TRIAGE` with trigger
 `"close_failure"` (the narrow router — only `retry_close` or `escalate` are
@@ -382,7 +391,9 @@ Assembles a `TriageInput` (trigger, escalate category if any, case file,
 remaining budgets — the latest gate report is reached through the case file's
 last `gate` entry and its refs, so it is not a separate field) and calls
 `triage(input)` (`TriagePort`). Writes a stub
-artefact `{ trigger, rationale }` via `writeRef` and appends a `triage` entry
+artefact `{ trigger, rationale }` via `writeRef`, keyed
+`triage-<count of prior triage entries>` so repeated triage rounds never
+overwrite each other's refs, and appends a `triage` entry
 with `afterAttempt` (the worker attempt in flight), the trigger, the verdict,
 rationale, and the resulting `artifactRef` (see Decisions
 above — this item's router synthesises no richer artefact, but the field is
@@ -445,7 +456,8 @@ TriageInput = {
   trigger: "gate_fail" | "gate_error" | "worker_escalate" | "close_failure",
   category?: "exhaustion" | "authority",   # present when trigger is worker_escalate
   caseFile: CaseFile,
-  remainingBudgets: BudgetSet,
+  remainingBudgets: BudgetSet,   # the log-derived {used, max} per population,
+                                 # computed immediately before this call
 }
 TriageVerdict =
   | { verdict: "reroute", rationale: string }
@@ -573,7 +585,8 @@ population enforces its cap independently" success criterion.
    population directly off the entry that recorded the triggering event:
    - `correction` ← `triage` entries with `verdict: "reroute"`
    - `close` ← `triage` entries with `verdict: "retry_close"`
-   - `terminus` ← `terminus` entries with `status: "incomplete"` (own role)
+   - `terminus` ← `terminus` entries with `status: "incomplete"` and worker
+     role (`role` absent or `"worker"`)
    - `gateMaintenance` ← `dispatch` entries with `role: "gate-maintenance"`
      (covers both the pre-task `PRE_GATING` entry and the post-task
      `fix_the_gate` entry uniformly, since both are plain
