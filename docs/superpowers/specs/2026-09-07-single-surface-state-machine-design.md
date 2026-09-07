@@ -49,9 +49,11 @@ loop untestable against a real filesystem. The repo-level lock that
 
 **Pre-first-entry resume is driven by cursor + header, not the log tail.**
 `resumeAction` (built in Item 1) maps a log tail to a resume action, but
-`PROVISIONING` and `PRE_GATING` write no history entries — provisioning
-commits by writing the case file header, baselining commits by writing the
-immutable `header.baseline` field. Before the first `dispatch` entry exists,
+`PROVISIONING` and `PRE_GATING` write no history entries — the case file
+header already exists before the driver runs (`create`, Item 1, writes it and
+sets `cursor.state: "PROVISIONING"`), so provisioning commits by advancing the
+cursor to `PRE_GATING`, and baselining commits by writing the immutable
+`header.baseline` field. Before the first `dispatch` entry exists,
 the log tail is empty and gives no information. The driver's pre-dispatch
 resume logic reads `cursor.state` and `header.baseline` directly: this is the
 one segment of the loop where the cursor, not the log, is authoritative,
@@ -105,6 +107,16 @@ Both functions are safe to call from a fresh process against an existing
 `dir`: every branch below either reads pre-entry state (cursor/header) or the
 log tail, so `advance` after a crash always resumes onto a legal edge.
 
+An already-terminal surface is recognised before any position is derived: if
+`outcome` is set, `advance` returns `{ state: cursor.state, done: true }`
+without touching the log or the budgets. This matters because escalation and
+abort do not always append an entry (see "Escalation and abort" below), so the
+log tail of a terminal surface can still look mid-flight — re-running the loop
+without this guard would re-enter the machine, re-burn a budget, and fail on
+`setOutcome`'s `setOnce` immutability check. For the same reason, terminal
+handling writes `updateCursor(dir, { state })` alongside `setOutcome`, so the
+cursor names the terminal state the outcome records.
+
 ### Determining position
 
 ```
@@ -119,15 +131,26 @@ if history has no worker-role dispatch entry yet:
   else:
     position = "AGENT_ACTIVE"     # baselined, no worker dispatch entry yet
 else:
-  position = resumeAction(logTail(history), role-aware)   # Item 1 function, extended below
+  position = deriveStateFromEntry(logTail(history), role-aware)  # Item 1 function, extended below
 ```
+
+`position` is a `SurfaceState` in every branch. Past the first worker
+dispatch it comes from `deriveStateFromEntry`, which already returns a
+`SurfaceState` and is what `rebuild` uses, so a resumed position and a rebuilt
+cursor can never disagree. `resumeAction` returns a different vocabulary
+(`ResumeAction`) and is used for the one thing the state alone does not carry:
+its `triage` versus `close_triage` distinction supplies the `TriageInput`
+trigger when the position is `TRIAGE`. The pre-task versus post-task
+`GATE_MAINTENANCE` disambiguation stays in the driver, which reads
+`header.baseline`; `deriveStateFromEntry` sees only an entry and cannot make
+that call (see "Schema extension" below).
 
 `cursor.state` starts at `"PROVISIONING"` (set by `create`, Item 1) and the
 driver advances it to `"PRE_GATING"` once the worktree exists — this is the
-one cursor write that happens before any history entry, mirroring the header
-write in `provisioning.md`'s own crash-recovery story (worktree created →
-header written is the commit point; here, header written → cursor advanced
-to `PRE_GATING` is the next one).
+one cursor write that happens before any history entry. It plays the role
+`provisioning.md` gives the header write: because this design creates the case
+file first and provisions second, the commit point for "the worktree exists and
+belongs to this surface" is the cursor advance, not the header write.
 
 ### Edges
 
@@ -211,8 +234,10 @@ the trigger (`"gate_fail"` or `"gate_error"`) that `TriagePort` reads.
 
 **CLOSING → CLOSED | TRIAGE**
 
-Calls `closer.close(ctx, { kind: "accepted" })`. `DONE`: appends a `close`
-entry, calls `setOutcome(dir, { kind: "closed", ... })`, returns `CLOSED`.
+Calls `closer.close(ctx, { kind: "accepted" })`. The `CloseReport`'s `detail`
+is written with `writeRef` and the resulting id stored as the entry's required
+`detailRef`, matching how `runCheck` stores gate failure detail. `DONE`:
+appends a `close` entry, calls `setOutcome(dir, { kind: "closed", ... })`, returns `CLOSED`.
 `FAIL`/`ERROR`: appends the `close` entry, routes to `TRIAGE` with trigger
 `"close_failure"` (the narrow router — only `retry_close` or `escalate` are
 legal verdicts here, enforced by `TriagePort`'s own contract, not by this
@@ -258,7 +283,11 @@ Terminus =
 
 This mirrors `agent-interface.md`'s `invoke(role_cfg, ctx) -> Terminus`
 exactly, so Item 4 can implement `AgentPort` as its real SDK-backed
-primitive with no shape change here. This item's own tests supply a scripted
+primitive with no shape change here. `sessionKey` is the driver's to mint —
+`DispatchEntry` and `TerminusEntry` both require it, and the pair must agree —
+so it is derived deterministically from role and attempt rather than randomly,
+which makes a crashed dispatch's re-run write the same key rather than orphan
+the first one. This item's own tests supply a scripted
 stub implementing the same signature.
 
 ### `TriagePort`
@@ -353,10 +382,14 @@ and `resumeAction` (`case-file.ts`, Item 1) both switch on `entry.t` today;
 this item extends them to also switch on `entry.role` for `dispatch` and
 `terminus`, so a `gate-maintenance`-role dispatch-with-no-terminus resumes
 into `GATE_MAINTENANCE` rather than `INCOMPLETE_TERMINUS`, and a
-`gate-maintenance`-role `terminus(completed)` resumes into `PRE_GATING` or
-`GATING` (pre- vs post-task, disambiguated by `header.baseline`) rather than
-`GATING` unconditionally. `deriveBudgetsFromLog` is extended the same way —
-see below.
+`gate-maintenance`-role `terminus(completed)` resumes into
+`GATE_MAINTENANCE` (the edge that then routes on to `PRE_GATING` or `GATING`)
+rather than into `GATING` unconditionally. The pre- versus post-task choice
+between those two is the driver's, not the derivation's: `deriveStateFromEntry`
+is given one entry and has no visibility of `header.baseline`, so widening its
+signature to take the header would put a header read inside a pure function
+that `rebuild` calls per entry. `deriveBudgetsFromLog` is extended the same
+way — see below.
 
 ### Attempt numbering and budget derivation
 
@@ -388,6 +421,20 @@ independently" success criterion.
      (same role) → this dispatch consumes `terminus`
    - no preceding entry (the very first dispatch) → consumes neither
 
+   Attribution therefore moves onto the redispatch, so the existing blanket
+   `terminus` count (one per `terminus` entry, whatever its status) is
+   **removed** — leaving it would count every `completed` terminus, and every
+   gate-maintenance terminus, against a budget that exists to cap retries of
+   sessions that produced no valid terminus.
+
+   `close` derivation gets the same treatment for the same reason: today every
+   `close` entry counts against the `close` budget, but the driver burns that
+   budget only on a `retry_close` verdict, so the first close attempt would be
+   derived as one already-spent slot and a resumed surface would enforce a
+   tighter cap than a never-crashed one. The corrected rule mirrors
+   `correction`: a `close` entry consumes `close` only when the entry
+   immediately preceding it is a `triage` entry with `verdict: "retry_close"`.
+
    `gateMaintenance` derivation gains a matching case: a `dispatch` with
    `role: "gate-maintenance"` consumes `gateMaintenance` directly (whether
    entered pre-task from `PRE_GATING` or post-task via a `triage`
@@ -400,7 +447,9 @@ independently" success criterion.
    `case-file.ts`, made here because Item 3 is the first caller that
    exercises more than one attempt and more than one role; it is covered by
    new tests in this item's suite (crash mid-reroute, crash mid-terminus-
-   retry, crash mid-gate-maintenance), not a silent behind-the-scenes patch.
+   retry, crash mid-gate-maintenance, crash mid-close-retry), each asserting
+   that the budgets a `rebuild` derives equal the budgets the uninterrupted
+   run burned — not a silent behind-the-scenes patch.
 
 ## Crash recovery
 
@@ -415,11 +464,11 @@ ports)` again:
   already built in Item 1 and already covering every edge this item drives.
 
 The only genuinely new recovery case this item introduces is the
-`PROVISIONING` partial-worktree window (`git worktree add` succeeded, header
-write did not) — handled per `provisioning.md`: on re-entry, the driver
-checks for an existing worktree at the surface's expected path; if found and
-no header exists yet, it tears down and recreates rather than adopting found
-state.
+`PROVISIONING` partial-worktree window (`git worktree add` succeeded, the
+cursor advance to `PRE_GATING` did not) — handled per `provisioning.md`: on
+re-entry, the driver checks for an existing worktree at the surface's expected
+path; if one is found while `cursor.state` is still `"PROVISIONING"`, it tears
+down and recreates rather than adopting found state.
 
 ## Error handling
 
