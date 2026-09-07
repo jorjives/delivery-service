@@ -133,6 +133,62 @@ its first repair-then-recheck cycle. This item widens the key to
 below. The existing `ponytail:` comment marking this as a ceiling is removed
 along with the fix.
 
+**Budgets have no separately-mutated live counter — every check derives
+fresh from the log.** The first cut of this design called `incrementBudget`
+as a mutation timed independently of the entry that evidences the burn (e.g.
+gate-maintenance incremented the budget, *then* appended the dispatch entry;
+`INCOMPLETE_TERMINUS` incremented the budget but appended no entry of its
+own at all). A crash between those two independent writes leaves the live
+counter and a log-derived recount disagreeing — and for `terminus` at cap,
+where no further entry is ever appended, the final burn is permanently
+underivable from the log. Rather than try to make two separate writes
+atomic, this item removes the second write: **the entry that records the
+triggering event *is* the burn**, and nothing else is. Each population is
+counted by deriving straight from the log, at the moment it's needed, off
+the entry that directly evidences it:
+
+- `terminus` ← count of `terminus` entries with `status: "incomplete"` (own
+  role), not a subsequent redispatch. `INCOMPLETE_TERMINUS` derives the
+  count *before* deciding to redispatch — the terminus entry that triggered
+  this edge is already in the log, written by the edge before it, so the
+  count is correct with zero additional writes, including at cap where no
+  redispatch ever follows.
+- `correction` ← count of `triage` entries with `verdict: "reroute"`, and
+  `close` ← count of `triage` entries with `verdict: "retry_close"` — both
+  directly off the `triage` entry `TRIAGE` already appends, not off the
+  dispatch/close entry that follows it. `TriagePort` already receives
+  `remainingBudgets` (derived before the call) and is the thing that
+  refuses `reroute`/`retry_close` at cap per its own trigger table, so no
+  separate cap check is needed after the fact.
+- `gateMaintenance` ← count of `dispatch` entries with `role:
+  "gate-maintenance"`, derived *before* appending a new one: the driver
+  checks the cap, and only if under it does it append the dispatch entry —
+  the append is the only write, and it is simultaneously the burn and the
+  crash-recoverable record of it. Both the `PRE_GATING → GATE_MAINTENANCE`
+  entry point and a same-attempt `incomplete`-terminus redispatch (see
+  below) follow this rule identically; there is no separate `incrementBudget`
+  call left in either path.
+
+This makes "burned live" and "derived from log" the same computation by
+construction, not two commit points a crash can land between — `incrementBudget`
+(Item 1) is no longer called from these four edges; `exhausted` is read
+straight off `deriveBudgetsFromLog`'s result.
+
+**`sessionKey` includes a retry count, not just role and attempt.** Two
+edges deliberately redispatch at the same attempt number — a worker
+`INCOMPLETE_TERMINUS` retry and a gate-maintenance `incomplete`-terminus
+retry — so `role`+`attempt` alone produces the same key for two genuinely
+different sessions, which breaks the "the dispatch/terminus pair must
+agree" pairing invariant `sessionKey` exists to serve (see invariant 2:
+sessions are reconstructed, never resumed, so a key that meant "reuse this
+session" would be a contradiction, not a valid reading). `sessionKey` is
+`${role}-${attempt}-${retryCount}`, where `retryCount` is the count of
+prior same-role, same-attempt `terminus` entries with `status: "incomplete"`
+already in the log — log-derivable, so a crashed dispatch's own re-run
+(before any terminus for it exists) still computes the same key and stays
+idempotent, while a genuine retry after a recorded `incomplete` terminus
+gets a new one.
+
 ## The driver
 
 ```
@@ -240,9 +296,10 @@ provisioning.md's "partial worktree" recovery), rather than looping forever.
 
 Calls `recordBaseline(dir, worktreePath)` (Item 2, already built). On
 `status !== "ERROR"`: `updateCursor(dir, { state: "AGENT_ACTIVE" })`. On
-`status === "ERROR"`: increment the `gateMaintenance` budget
-(`incrementBudget`); if exhausted, escalate (see Escalation below);
-otherwise append a `dispatch` entry with `role: "gate-maintenance"`, call
+`status === "ERROR"`: derive the current `gateMaintenance` count from the
+log; if at cap, escalate (see Escalation below) without appending anything;
+otherwise append a `dispatch` entry with `role: "gate-maintenance"` (this
+append is the burn — see Decisions above), call
 `agent.invoke(gateMaintenanceRoleCfg, ctx)`, append the resulting `terminus`
 entry (also `role: "gate-maintenance"`), and update the cursor to
 `"GATE_MAINTENANCE"`. Writing the dispatch/terminus pair here — rather than
@@ -262,12 +319,16 @@ already being exhausted on entry, routes to `ESCALATED`. The post-task entry
 pair also carries `role: "gate-maintenance"`, for the same resumability and
 derivation reasons as the pre-task case.
 
-An `incomplete` terminus (either entry point) increments `gateMaintenance`
-again; under cap it re-dispatches within `GATE_MAINTENANCE` at the **same**
-attempt (mirroring `INCOMPLETE_TERMINUS`'s same-attempt re-dispatch for
-workers — see Decisions above), at cap it escalates. This never routes
-through `AGENT_ACTIVE` or a worker-population budget: a crashed repair
-session is still a repair-agent cost, not a worker one.
+An `incomplete` terminus (either entry point) derives the current
+`gateMaintenance` count from the log; under cap it re-dispatches within
+`GATE_MAINTENANCE` at the **same** attempt (mirroring
+`INCOMPLETE_TERMINUS`'s same-attempt re-dispatch for workers — see Decisions
+above), minting a new `sessionKey` with the incremented `retryCount` (also
+Decisions above) — the redispatch's own `dispatch` entry is the burn, exactly
+as in the pre-task/post-task entry case; at cap it escalates without
+appending one. This never routes through `AGENT_ACTIVE` or a
+worker-population budget: a crashed repair session is still a repair-agent
+cost, not a worker one.
 
 **AGENT_ACTIVE → GATING | ESCALATED | TRIAGE | INCOMPLETE_TERMINUS**
 
@@ -285,14 +346,18 @@ INCOMPLETE_TERMINUS`.
 
 **INCOMPLETE_TERMINUS → AGENT_ACTIVE | ESCALATED**
 
-Increments the `terminus` budget. Under cap: returns to `AGENT_ACTIVE`,
-re-dispatching onto the worktree as the crashed/capped session left it, with
-the **same attempt number** as the terminus entry just recorded — this is a
-retry of that attempt, not a new one (no reset — control-flow doc, "a
-retried terminus re-dispatches into the tree as it was left"). At cap:
-escalate. Reusing the attempt number (rather than incrementing it) is what
-keeps this edge's cost attributed to `terminus`, not `correction` — see
-"Attempt numbering and budget derivation" below.
+Derives the current `terminus` count from the log — the `terminus` entry
+that put the surface on this edge is already counted, since it was appended
+by the prior `AGENT_ACTIVE` edge (see Decisions above: burns have no
+separate live counter). Under cap: returns to `AGENT_ACTIVE`, re-dispatching
+onto the worktree as the crashed/capped session left it, with the **same
+attempt number** as the terminus entry just recorded and a new `sessionKey`
+(incremented `retryCount`) — this is a retry of that attempt, not a new one
+(no reset — control-flow doc, "a retried terminus re-dispatches into the
+tree as it was left"). At cap: escalate. Reusing the attempt number (rather
+than incrementing it) is what keeps this edge's cost attributed to
+`terminus`, not `correction` — see "Attempt numbering and budget
+derivation" below.
 
 **GATING → CLOSING | TRIAGE**
 
@@ -321,12 +386,17 @@ artefact `{ trigger, rationale }` via `writeRef` and appends a `triage` entry
 with `afterAttempt` (the worker attempt in flight), the trigger, the verdict,
 rationale, and the resulting `artifactRef` (see Decisions
 above — this item's router synthesises no richer artefact, but the field is
-never omitted). Maps verdict to state via
-`case-file.ts`'s existing `triageState` table: `reroute` burns a
-`correction` budget slot, advances the attempt number, and returns to
-`AGENT_ACTIVE` (the next `advance` call dispatches `attempt + 1`, per
-"Attempt numbering" below); `fix_the_gate` burns `gateMaintenance` and goes
-to `GATE_MAINTENANCE`; `retry_close` burns `close` and returns to `CLOSING`;
+never omitted). The triage entry just appended **is** the `correction`/
+`close` burn for `reroute`/`retry_close` verdicts (see Decisions above) —
+there is no separate increment call; `TriagePort` already refused those
+verdicts once `remainingBudgets` (derived before the call) showed cap. Maps
+verdict to state via `case-file.ts`'s existing `triageState` table: `reroute`
+advances the attempt number and returns to `AGENT_ACTIVE` (the next `advance`
+call dispatches `attempt + 1`, per "Attempt numbering" below); `fix_the_gate`
+appends the post-task `dispatch`/`terminus` pair with `role:
+"gate-maintenance"` right here (that append is the `gateMaintenance` burn,
+per Decisions above — same pattern as `PRE_GATING`'s pre-task case) and
+routes to `GATE_MAINTENANCE`; `retry_close` returns to `CLOSING`;
 `escalate`/`abort` go straight to their terminal states.
 
 ### Escalation and abort
@@ -358,10 +428,12 @@ Terminus =
 This mirrors `agent-interface.md`'s `invoke(role_cfg, ctx) -> Terminus`
 exactly, so Item 4 can implement `AgentPort` as its real SDK-backed
 primitive with no shape change here. `sessionKey` is the driver's to mint —
-`DispatchEntry` and `TerminusEntry` both require it, and the pair must agree —
-so it is derived deterministically from role and attempt rather than randomly,
-which makes a crashed dispatch's re-run write the same key rather than orphan
-the first one. This item's own tests supply a scripted
+`DispatchEntry` and `TerminusEntry` both require it, and the pair must
+agree — so it is derived deterministically as `${role}-${attempt}-${retryCount}`
+(see Decisions above), which makes a crashed dispatch's own re-run (before
+any terminus for it exists) write the same key rather than orphan the first
+one, while a genuine same-attempt retry after a recorded `incomplete`
+terminus gets a distinct one. This item's own tests supply a scripted
 stub implementing the same signature.
 
 ### `TriagePort`
@@ -432,16 +504,18 @@ and Item 10 own real cleanup.
 
 ## Budgets
 
-All five populations (`correction`, `gateError`, `gateMaintenance`,
-`terminus`, `close`) are enforced via `incrementBudget` (Item 1, already
-built) at the point each is burned, per the table in the Edges section
-above. `incrementBudget` returns `{ used, max, exhausted }`; the driver
-checks `exhausted` immediately after incrementing and routes to escalation
-rather than letting a subsequent edge silently exceed the cap. `gateError`
-is tracked (via `deriveBudgetsFromLog`, counting `gate` entries with
-`status: "ERROR"`) but not gated on by this item's `TriagePort` — see the
-`gate_error` row above — so it is visible in the case file for reporting
-but has no cap enforcement in this item.
+Four of the five populations (`correction`, `gateMaintenance`, `terminus`,
+`close`) are enforced purely by deriving from the log, per Decisions above —
+no separate `incrementBudget` mutation is called from this item's edges;
+each edge derives the current count, checks it against `max`, and only then
+performs the single write (a `dispatch` or `triage` entry) that is
+simultaneously the action and the burn. `gateError` is tracked the same way
+(`deriveBudgetsFromLog`, counting `gate` entries with `status: "ERROR"`) but
+not gated on by this item's `TriagePort` — see the `gate_error` row above —
+so it is visible in the case file for reporting but has no cap enforcement
+in this item. `incrementBudget` (Item 1) is unused by this item's driver;
+it remains available for a future caller that needs a live counter outside
+this derive-then-write pattern.
 
 ### Schema extension: `role` on dispatch/terminus entries
 
@@ -470,11 +544,12 @@ way — see below.
 
 Two rules pin down how `attempt` behaves across the worker/gate-maintenance
 split and the reroute/retry split, because `deriveBudgetsFromLog`
-(`case-file.ts`, Item 1) recomputes budgets from the log on every `rebuild`
-and must agree with what the driver burned live via `incrementBudget`,
-or a crash-resumed surface would enforce different caps than a
-never-crashed one — silently breaking the "each population enforces its cap
-independently" success criterion.
+(`case-file.ts`, Item 1) is now the *only* thing the driver ever checks a
+budget against (see Decisions above — no live counter to keep in sync), so
+it must count each population off exactly the entry this item's edges treat
+as that population's burn, or a crash-resumed surface would enforce
+different caps than a never-crashed one — silently breaking the "each
+population enforces its cap independently" success criterion.
 
 1. **`attempt` only advances on a worker-role reroute.** A `TRIAGE` verdict
    of `reroute` dispatches the next worker attempt (`attempt + 1`). An
@@ -488,49 +563,38 @@ independently" success criterion.
    `INCOMPLETE_TERMINUS` does for workers.
 
 2. **`deriveBudgetsFromLog`'s existing `entry.attempt > 1` check is
-   replaced with a lookback rule**, because attempt number alone cannot
-   distinguish a reroute-driven redispatch from a terminus-retry once both
-   have happened at least once (both can produce a worker dispatch at
-   `attempt > 1`). The corrected rule inspects the entry immediately
-   preceding each `dispatch` in the log:
-   - preceding entry is a `triage` entry with `verdict: "reroute"` →
-     this dispatch consumes `correction`
-   - preceding entry is a `terminus` entry with `status: "incomplete"`
-     (same role) → this dispatch consumes `terminus`
-   - no preceding entry (the very first dispatch) → consumes neither
+   replaced with direct attribution to the cause entry** — not, as an
+   earlier version of this design had it, to the redispatch/close entry
+   that follows. Attributing to the entry *after* the cause creates exactly
+   the crash window "Budgets have no separately-mutated live counter" (see
+   Decisions above) exists to close, and for `terminus` at cap it is worse
+   than a window: no redispatch ever follows, so that final burn would be
+   permanently unrecoverable from the log. The corrected rule counts each
+   population directly off the entry that recorded the triggering event:
+   - `correction` ← `triage` entries with `verdict: "reroute"`
+   - `close` ← `triage` entries with `verdict: "retry_close"`
+   - `terminus` ← `terminus` entries with `status: "incomplete"` (own role)
+   - `gateMaintenance` ← `dispatch` entries with `role: "gate-maintenance"`
+     (covers both the pre-task `PRE_GATING` entry and the post-task
+     `fix_the_gate` entry uniformly, since both are plain
+     `role: "gate-maintenance"` dispatches, and covers an
+     `incomplete`-terminus redispatch for free, since each redispatch is
+     its own dispatch entry with the same role)
 
-   Attribution therefore moves onto the redispatch, so the existing blanket
-   `terminus` count (one per `terminus` entry, whatever its status) is
-   **removed** — leaving it would count every `completed` terminus, and every
-   gate-maintenance terminus, against a budget that exists to cap retries of
-   sessions that produced no valid terminus.
-
-   `close` derivation gets the same treatment for the same reason: today every
-   `close` entry counts against the `close` budget, but the driver burns that
-   budget only on a `retry_close` verdict, so the first close attempt would be
-   derived as one already-spent slot and a resumed surface would enforce a
-   tighter cap than a never-crashed one. The corrected rule mirrors
-   `correction`: a `close` entry consumes `close` only when the entry
-   immediately preceding it is a `triage` entry with `verdict: "retry_close"`.
-
-   `gateMaintenance` derivation gains a matching case: a `dispatch` with
-   `role: "gate-maintenance"` consumes `gateMaintenance` directly (whether
-   entered pre-task from `PRE_GATING` or post-task via a `triage`
-   `fix_the_gate` verdict), replacing the existing "only count
-   `fix_the_gate` triage entries" rule, which missed the pre-task case
-   entirely (`PRE_GATING → GATE_MAINTENANCE` has no `triage` entry to
-   count — see the Edges section). Counting every gate-maintenance-role
-   dispatch directly (rather than only entry-triggering ones) also covers an
-   `incomplete`-terminus re-dispatch for free, since each re-dispatch is its
-   own `dispatch` entry with the same role.
+   This also removes the existing blanket `terminus`/`close` counts (one
+   per `terminus`/`close` entry regardless of status/verdict) — those
+   over-counted every `completed` terminus and every accepted close against
+   budgets that exist only to cap retries.
 
    This is a change to `deriveBudgetsFromLog` in Item 1's already-shipped
    `case-file.ts`, made here because Item 3 is the first caller that
    exercises more than one attempt and more than one role; it is covered by
    new tests in this item's suite (crash mid-reroute, crash mid-terminus-
-   retry, crash mid-gate-maintenance, crash mid-close-retry), each asserting
-   that the budgets a `rebuild` derives equal the budgets the uninterrupted
-   run burned — not a silent behind-the-scenes patch.
+   retry, crash mid-gate-maintenance, crash mid-close-retry, crash between
+   deriving a count and appending the entry that would have burned it),
+   each asserting that the budgets a `rebuild` derives equal the budgets an
+   uninterrupted run would have enforced — not a silent behind-the-scenes
+   patch.
 
 ## Crash recovery
 
