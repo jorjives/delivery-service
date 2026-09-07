@@ -157,13 +157,13 @@ surface, no lifecycle hooks. The harness supplies context and owns the diff; the
 gate answers "what is true now" honestly and comparably.
 
 ```
-gate.baseline(ctx)         -> GateState     # before dispatch; read-only, idempotent
-gate.check(ctx, baseline)  -> GateReport    # after task;      read-only, idempotent
+gate.baseline(ctx)         -> GateReport    # before dispatch; read-only, idempotent
+gate.check(ctx)            -> GateReport    # after task;      read-only, idempotent
 ```
 
 `ctx` is a handle to the work location plus task metadata. Both calls are read-only
 and side-effect free: a gate that mutates the world it judges is not a gate. The
-`GateState` is **serialised**, so the surface survives connection drops and machine
+baseline `GateReport` is **serialised**, so the surface survives connection drops and machine
 restarts without dropping warm work.
 
 ```
@@ -359,7 +359,7 @@ CaseFile = {
   surface_id
   task_def                    # original intent
   gate_ref                    # pinned gate identity + version
-  baseline                    # serialised GateState fingerprint (per-assertion)
+  baseline                    # serialised baseline GateReport (per-assertion)
 
   # ── cursor: mutable, the resume marker ──
   state                       # PRE_GATING | AGENT_ACTIVE | GATING | TRIAGE

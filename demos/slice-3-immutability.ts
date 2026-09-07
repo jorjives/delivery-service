@@ -22,12 +22,18 @@ async function main() {
   await create(dir, header, budgets);
 
   // First baseline attempt: succeeds
-  await setBaseline(dir, { assertion1: "pass" });
-  console.log("Baseline attempt 1: succeeded — baseline set to {assertion1: pass}");
+  await setBaseline(dir, {
+    status: "PASS",
+    assertions: [{ id: "1 - alpha", outcome: "PASS", detail: "ok 1 - alpha" }],
+  });
+  console.log("Baseline attempt 1: succeeded — baseline set to a PASS report with 1 assertion");
 
   // Second baseline attempt: rejected
   try {
-    await setBaseline(dir, { assertion1: "different" });
+    await setBaseline(dir, {
+      status: "FAIL",
+      assertions: [{ id: "1 - alpha", outcome: "FAIL", detail: "not ok 1 - alpha" }],
+    });
     console.log("Baseline attempt 2: NO_ERROR_THROWN (unexpected)");
   } catch (err) {
     if (err instanceof ImmutabilityViolation) {

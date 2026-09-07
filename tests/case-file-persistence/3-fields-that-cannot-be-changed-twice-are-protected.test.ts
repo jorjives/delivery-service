@@ -21,7 +21,7 @@ describe("UAT: fields that cannot be changed twice are protected", () => {
 
   it("AC: setting the baseline succeeds exactly once; a second attempt is rejected", () => {
     expect(stdout).toContain(
-      "Baseline attempt 1: succeeded — baseline set to {assertion1: pass}",
+      "Baseline attempt 1: succeeded — baseline set to a PASS report with 1 assertion",
     );
     expect(stdout).toContain("Baseline attempt 2: rejected — ImmutabilityViolation");
     expect(stdout).toContain("Cannot overwrite baseline in");

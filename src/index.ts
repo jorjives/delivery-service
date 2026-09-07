@@ -21,7 +21,6 @@ export type {
   BudgetPopulation,
   TaskDef,
   GateRef,
-  GateState,
   Assertion,
   GateReport,
   NewFailure,
