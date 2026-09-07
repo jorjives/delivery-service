@@ -49,7 +49,6 @@ export const GateRef = z.discriminatedUnion("type", [
 ]);
 export type GateRef = z.infer<typeof GateRef>;
 
-
 export const Assertion = z.object({
   id: z.string(),
   outcome: z.enum(["PASS", "FAIL", "ERROR"]),

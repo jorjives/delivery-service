@@ -68,13 +68,12 @@ export async function runCheck(
   // attempt is safe under this scheme. Widen the key (e.g. include a
   // re-check counter) if gate maintenance ever re-checks an attempt more
   // than once.
-  const newFailures: GateEntry["newFailures"] = [];
-  for (const [index, failure] of failures.entries()) {
-    newFailures.push({
+  const newFailures: GateEntry["newFailures"] = await Promise.all(
+    failures.map(async (failure, index) => ({
       id: failure.id,
       detailRef: await writeRef(dir, `gate-${attempt}-${index}`, failure),
-    });
-  }
+    })),
+  );
 
   const status = delta.pass ? "PASS" : delta.class === "error" ? "ERROR" : "FAIL";
   await appendEntry(dir, {
