@@ -83,6 +83,56 @@ inside Item 1's already-shipped file, done here because Item 3 is the first
 consumer that actually drives a second role through the dispatch/terminus
 pair; see "Schema extension" below for the full detail.
 
+**GATE_MAINTENANCE re-dispatches on its own budget, not a separate `terminus`
+one.** A repair session can crash/cap/timeout exactly like a worker session,
+but routing that failure onto the worker's `terminus` population or into
+`AGENT_ACTIVE` would dispatch the wrong session type onto an environment
+whose gate still cannot run. Instead, an `incomplete` terminus from a
+gate-maintenance dispatch increments `gateMaintenance` again and re-dispatches
+within `GATE_MAINTENANCE` at the same attempt — mirroring how a worker
+terminus-retry reuses its attempt number — and escalates at cap. This keeps
+every repair-agent session, clean or crashed, on the single cost centre the
+Budgets table already documents for it ("expensive and stateful, so a low
+cap").
+
+**Triage entries always carry a real `artifactRef`, even when this item's
+router has nothing to synthesise.** `TriageEntry.artifactRef` is required in
+Item 1's shipped schema, and weakening it to optional would push a permanent
+"was there an artefact" check onto every future reader, including Item 5's
+real triage agent. Instead every `TRIAGE` edge writes a stub artefact
+(`{ trigger, rationale }`) via `writeRef` before appending the entry — exactly
+as `runCheck` already writes gate-failure detail — and stores the resulting
+id as `artifactRef`. Item 5 replaces the stub's contents
+(`SharpenedBrief`/`EscalationPacket`) without touching the schema or this
+item's callers.
+
+**Branch and base-ref are derived from `surfaceId`, not new state.**
+`provisioning.md` leaves the `surface_id → branch` scheme open ("likely
+`surface_id`-derived"); this item settles it: `branchName(surfaceId)` is a
+pure deterministic function (`surface/<surfaceId>`), and the base ref is the
+repo's default branch resolved at provision time
+(`git symbolic-ref refs/remotes/origin/HEAD` or equivalent) — neither is
+stored anywhere. Storing either in `CaseFileHeader` would create a second
+source of truth that can drift from `surfaceId`; passing them as `run`/
+`advance` arguments would violate invariant 3 (resumable from disk alone) — a
+replay called with different arguments could diverge from the first run.
+
+**`runCheck`'s gate-failure ref key is widened to include a re-check
+counter.** Item 2's shipped `run-gate.ts` keys failure refs
+`gate-<attempt>-<index>`, which collides when the same attempt is checked
+twice — exactly what `GATE_MAINTENANCE → GATING`'s post-task re-check does
+(baseline is immutable, so the re-check reuses the attempt that triggered
+`fix_the_gate`). Left alone, the second `runCheck` overwrites the first
+call's ref files while both `GateEntry` history entries still point at those
+ids, so triage can read stale or dangling detail — a correctness break, not a
+stylistic one, since this item's own state machine exercises the collision on
+its first repair-then-recheck cycle. This item widens the key to
+`gate-<attempt>-<recheckCount>-<index>` (`recheckCount` = count of prior
+`gate` entries for this attempt) in Item 2's already-shipped file — the same
+"additive change to a shipped file" pattern as the `role` schema extension
+below. The existing `ponytail:` comment marking this as a ceiling is removed
+along with the fix.
+
 ## The driver
 
 ```
@@ -165,6 +215,10 @@ read-only action (a re-run gate check, a re-dispatch onto a dirty tree).
 git worktree add <path> -b <branch> <base-ref>   # under try/catch
 ```
 
+`branch` is `branchName(header.surfaceId)`; `base-ref` is the repo's resolved
+default branch at provision time (see Decisions above). Neither is read from
+or written to the case file.
+
 On success: `updateCursor(dir, { state: "PRE_GATING", worktreeRef: path })`.
 On failure: `appendEntry` is not used here (no PROVISIONING entry type
 exists in the schema — provisioning has no history representation, matching
@@ -190,7 +244,7 @@ resumable (see "Determining position" above) and what makes the
 `gateMaintenance` budget derivable from the log on rebuild, matching every
 other population.
 
-**GATE_MAINTENANCE → PRE_GATING | GATING | ESCALATED**
+**GATE_MAINTENANCE → PRE_GATING | GATING | GATE_MAINTENANCE | ESCALATED**
 
 Entered pre-task (no baseline yet): on the repair agent's `completed`
 terminus, cursor returns to `"PRE_GATING"` to re-baseline. Entered post-task
@@ -200,6 +254,13 @@ recaptured post-task. Either entry's `escalate` terminus, or the budget
 already being exhausted on entry, routes to `ESCALATED`. The post-task entry
 pair also carries `role: "gate-maintenance"`, for the same resumability and
 derivation reasons as the pre-task case.
+
+An `incomplete` terminus (either entry point) increments `gateMaintenance`
+again; under cap it re-dispatches within `GATE_MAINTENANCE` at the **same**
+attempt (mirroring `INCOMPLETE_TERMINUS`'s same-attempt re-dispatch for
+workers — see Decisions above), at cap it escalates. This never routes
+through `AGENT_ACTIVE` or a worker-population budget: a crashed repair
+session is still a repair-agent cost, not a worker one.
 
 **AGENT_ACTIVE → GATING | ESCALATED | TRIAGE | INCOMPLETE_TERMINUS**
 
@@ -246,8 +307,11 @@ driver).
 **TRIAGE → AGENT_ACTIVE | GATE_MAINTENANCE | CLOSING | ESCALATED | ABORTED**
 
 Assembles a `TriageInput` (trigger, case file, current gate report,
-remaining budgets) and calls `triage(input)` (`TriagePort`). Appends a
-`triage` entry with the verdict and rationale. Maps verdict to state via
+remaining budgets) and calls `triage(input)` (`TriagePort`). Writes a stub
+artefact `{ trigger, rationale }` via `writeRef` and appends a `triage` entry
+with the verdict, rationale, and the resulting `artifactRef` (see Decisions
+above — this item's router synthesises no richer artefact, but the field is
+never omitted). Maps verdict to state via
 `case-file.ts`'s existing `triageState` table: `reroute` burns a
 `correction` budget slot, advances the attempt number, and returns to
 `AGENT_ACTIVE` (the next `advance` call dispatches `attempt + 1`, per
@@ -405,9 +469,12 @@ independently" success criterion.
    of `reroute` dispatches the next worker attempt (`attempt + 1`). An
    `INCOMPLETE_TERMINUS` retry re-dispatches the **same** attempt number —
    it is a retry of the attempt that produced no valid terminus, not a new
-   one. Gate-maintenance dispatches carry their own attempt count
-   (`1 + count of prior gate-maintenance-role terminus entries`), entirely
-   separate from the worker's counter — the two never interact.
+   one. Gate-maintenance dispatches carry their own attempt count (`1 +
+   count of prior gate-maintenance-role terminus entries with status
+   "completed" or "escalate"`), entirely separate from the worker's counter —
+   the two never interact. A gate-maintenance `incomplete` terminus
+   re-dispatches the **same** gate-maintenance attempt, exactly as
+   `INCOMPLETE_TERMINUS` does for workers.
 
 2. **`deriveBudgetsFromLog`'s existing `entry.attempt > 1` check is
    replaced with a lookback rule**, because attempt number alone cannot
@@ -441,7 +508,10 @@ independently" success criterion.
    `fix_the_gate` verdict), replacing the existing "only count
    `fix_the_gate` triage entries" rule, which missed the pre-task case
    entirely (`PRE_GATING → GATE_MAINTENANCE` has no `triage` entry to
-   count — see the Edges section).
+   count — see the Edges section). Counting every gate-maintenance-role
+   dispatch directly (rather than only entry-triggering ones) also covers an
+   `incomplete`-terminus re-dispatch for free, since each re-dispatch is its
+   own `dispatch` entry with the same role.
 
    This is a change to `deriveBudgetsFromLog` in Item 1's already-shipped
    `case-file.ts`, made here because Item 3 is the first caller that
