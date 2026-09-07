@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, load } from "./case-file.js";
-import { recordBaseline } from "./run-gate.js";
-import { ImmutabilityViolation } from "./errors.js";
+import { create, load, readRef } from "./case-file.js";
+import { recordBaseline, runCheck } from "./run-gate.js";
+import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 
 const budgets: BudgetSet = {
@@ -32,6 +32,19 @@ async function newSurface(gateRef: GateRef = TAP_GATE): Promise<void> {
 
 async function tap(contents: string): Promise<void> {
   await writeFile(join(worktree, "report.tap"), contents);
+}
+
+// Written out in full rather than spread from TAP_GATE: TAP_GATE is annotated
+// as the `GateRef` union, and spreading a union then assigning the result back
+// to `GateRef` is an assignability risk `npm run lint` (tsc --noEmit over
+// `src`, which includes `src/*.test.ts`) would have to catch for us.
+async function newSurfaceWithFlag(): Promise<void> {
+  await newSurface({
+    type: "command",
+    command: "cat report.tap",
+    parseMode: "tap",
+    failOnNewAssertions: true,
+  });
 }
 
 describe("recordBaseline", () => {
@@ -64,5 +77,99 @@ describe("recordBaseline", () => {
     expect(report.status).toBe("ERROR");
     const loaded = await load(surfaceDir);
     expect(loaded.header.baseline).toBeNull();
+  });
+});
+
+const REGRESSED = "1..2\nok 1 - alpha\nnot ok 2 - beta\n";
+
+describe("runCheck", () => {
+  beforeEach(async () => {
+    await newSurface();
+    await tap(GREEN);
+  });
+
+  it("appends a PASS entry with no new failures when nothing regressed", async () => {
+    await recordBaseline(surfaceDir, worktree);
+
+    const { delta } = await runCheck(surfaceDir, worktree, 1);
+
+    expect(delta.pass).toBe(true);
+    const loaded = await load(surfaceDir);
+    expect(loaded.history).toEqual([
+      { t: "gate", attempt: 1, status: "PASS", newFailures: [] },
+    ]);
+  });
+
+  it("records the verdict, the new failures, and the failure class after a regression", async () => {
+    await recordBaseline(surfaceDir, worktree);
+    await tap(REGRESSED);
+
+    const { delta } = await runCheck(surfaceDir, worktree, 1);
+
+    expect(delta.pass).toBe(false);
+    expect(delta.class).toBe("fail");
+
+    const loaded = await load(surfaceDir);
+    expect(loaded.history[0]).toEqual({
+      t: "gate",
+      attempt: 1,
+      status: "FAIL",
+      class: "fail",
+      newFailures: [{ id: "2 - beta", detailRef: "gate-1-0" }],
+    });
+
+    expect(await readRef(surfaceDir, "gate-1-0")).toEqual({
+      id: "2 - beta",
+      baselineOutcome: "PASS",
+      checkOutcome: "FAIL",
+      detail: "not ok 2 - beta",
+    });
+  });
+
+  it("leaves the stored baseline untouched across the round trip", async () => {
+    const baseline = await recordBaseline(surfaceDir, worktree);
+    await tap(REGRESSED);
+    await runCheck(surfaceDir, worktree, 1);
+
+    const loaded = await load(surfaceDir);
+    expect(loaded.header.baseline).toEqual(baseline);
+  });
+
+  it("records a gate-level error as an error-class entry with no new failures", async () => {
+    await recordBaseline(surfaceDir, worktree);
+    await rm(join(worktree, "report.tap"));
+
+    const { report, delta } = await runCheck(surfaceDir, worktree, 2);
+
+    expect(report.status).toBe("ERROR");
+    expect(delta.class).toBe("error");
+    // The returned delta agrees with what was persisted: the ABSENT artefacts
+    // of a failed gate run are not reported as the worker's new failures.
+    expect(delta.newFailures).toEqual([]);
+
+    const loaded = await load(surfaceDir);
+    expect(loaded.history[0]).toEqual({
+      t: "gate",
+      attempt: 2,
+      status: "ERROR",
+      class: "error",
+      newFailures: [],
+    });
+  });
+
+  it("honours failOnNewAssertions pinned on the gate ref", async () => {
+    await newSurfaceWithFlag();
+    await tap("1..1\nok 1 - alpha\n");
+    await recordBaseline(surfaceDir, worktree);
+    await tap("1..2\nok 1 - alpha\nnot ok 2 - brandnew\n");
+
+    const { delta } = await runCheck(surfaceDir, worktree, 1);
+
+    expect(delta.pass).toBe(false);
+    expect(delta.newFailures.map((f) => f.id)).toEqual(["2 - brandnew"]);
+  });
+
+  it("rejects a check run before any baseline was recorded", async () => {
+    await expect(runCheck(surfaceDir, worktree, 1)).rejects.toThrow(MissingBaseline);
   });
 });

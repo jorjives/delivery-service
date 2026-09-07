@@ -3,7 +3,7 @@ export { computeDelta } from "./delta-rule.js";
 export { createCommandGate } from "./command-gate.js";
 export { createCustomGate, loadCustomGate } from "./custom-gate.js";
 export { resolveGate } from "./resolve-gate.js";
-export { recordBaseline } from "./run-gate.js";
+export { recordBaseline, runCheck } from "./run-gate.js";
 export type {
   CaseFile,
   CaseFileHeader,
@@ -39,4 +39,5 @@ export {
   DuplicateIdError,
   GateModuleLoadFailure,
   InvalidGateExport,
+  MissingBaseline,
 } from "./errors.js";

@@ -79,3 +79,11 @@ export class InvalidGateExport extends Error {
     this.name = "InvalidGateExport";
   }
 }
+
+export class MissingBaseline extends Error {
+  readonly code = "MISSING_BASELINE" as const;
+  constructor(readonly surfaceDir: string) {
+    super(`No baseline recorded in ${surfaceDir}: run the gate's baseline before check`);
+    this.name = "MissingBaseline";
+  }
+}
