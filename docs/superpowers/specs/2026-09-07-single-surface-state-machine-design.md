@@ -150,6 +150,13 @@ SurfacePorts = {
 }
 ```
 
+`worktreePath` is a caller argument only at first provision, where it seeds
+`cursor.worktreeRef`; once that cursor write has landed, `cursor.worktreeRef`
+is authoritative and the driver prefers it over the argument, so invariant 3
+holds (a replay called with a different path cannot divert an already-
+provisioned surface). This is why the path, unlike branch and base-ref, may be
+an argument: `CaseFileCursor` already has a field for it.
+
 `advance` loads the case file, determines the current position, performs the
 one next action, and returns. `run` loops `advance` until `done` is true
 (state is `CLOSED`, `ESCALATED`, or `ABORTED`), then reads back `outcome`.
@@ -172,10 +179,8 @@ cursor names the terminal state the outcome records.
 ```
 if history has no worker-role dispatch entry yet:
   if header.baseline === null:
-    if last entry (if any) is a gate-maintenance dispatch with no terminus:
-      position = "GATE_MAINTENANCE"          # pre-task repair session crashed mid-run
-    else if last entry is a gate-maintenance terminus(completed):
-      position = "PRE_GATING"                # repair done, re-baseline
+    if last entry (if any) is a gate-maintenance dispatch or terminus:
+      position = "GATE_MAINTENANCE"          # the edge routes on by terminus status
     else:
       position = cursor.state === "PROVISIONING" ? "PROVISIONING" : "PRE_GATING"
   else:
@@ -223,8 +228,10 @@ On success: `updateCursor(dir, { state: "PRE_GATING", worktreeRef: path })`.
 On failure: `appendEntry` is not used here (no PROVISIONING entry type
 exists in the schema — provisioning has no history representation, matching
 `provisioning.md`'s "the worktree is an orphan with no owning surface" case);
-the driver sets `outcome` directly via `setOutcome(dir, { kind: "aborted", source: "provisioning", reason, at })`
-and returns `{ state: "ABORTED", done: true }`. A crash before this point
+the driver sets `outcome` directly via `setOutcome(dir, { kind: "aborted", source: "provisioning", reason, at })`,
+writes `updateCursor(dir, { state: "ABORTED" })` alongside it (per the terminal
+rule above, so the terminal guard reports `ABORTED` rather than the stale
+`PROVISIONING`), and returns `{ state: "ABORTED", done: true }`. A crash before this point
 resumes provisioning idempotently — `git worktree add` on an existing branch
 name fails cleanly and the driver tears down and retries once (matching
 provisioning.md's "partial worktree" recovery), rather than looping forever.
@@ -306,10 +313,13 @@ driver).
 
 **TRIAGE → AGENT_ACTIVE | GATE_MAINTENANCE | CLOSING | ESCALATED | ABORTED**
 
-Assembles a `TriageInput` (trigger, case file, current gate report,
-remaining budgets) and calls `triage(input)` (`TriagePort`). Writes a stub
+Assembles a `TriageInput` (trigger, escalate category if any, case file,
+remaining budgets — the latest gate report is reached through the case file's
+last `gate` entry and its refs, so it is not a separate field) and calls
+`triage(input)` (`TriagePort`). Writes a stub
 artefact `{ trigger, rationale }` via `writeRef` and appends a `triage` entry
-with the verdict, rationale, and the resulting `artifactRef` (see Decisions
+with `afterAttempt` (the worker attempt in flight), the trigger, the verdict,
+rationale, and the resulting `artifactRef` (see Decisions
 above — this item's router synthesises no richer artefact, but the field is
 never omitted). Maps verdict to state via
 `case-file.ts`'s existing `triageState` table: `reroute` burns a
@@ -444,11 +454,12 @@ Additive and optional, so every existing case file and test (Items 1-2) is
 still valid — an entry with no `role` is a worker entry. `deriveStateFromEntry`
 and `resumeAction` (`case-file.ts`, Item 1) both switch on `entry.t` today;
 this item extends them to also switch on `entry.role` for `dispatch` and
-`terminus`, so a `gate-maintenance`-role dispatch-with-no-terminus resumes
-into `GATE_MAINTENANCE` rather than `INCOMPLETE_TERMINUS`, and a
-`gate-maintenance`-role `terminus(completed)` resumes into
-`GATE_MAINTENANCE` (the edge that then routes on to `PRE_GATING` or `GATING`)
-rather than into `GATING` unconditionally. The pre- versus post-task choice
+`terminus`, so a `gate-maintenance`-role dispatch resumes into
+`GATE_MAINTENANCE` rather than `AGENT_ACTIVE` (and, in `resumeAction`'s
+vocabulary, not into `incomplete_terminus`), and a `gate-maintenance`-role
+`terminus` of any status resumes into `GATE_MAINTENANCE` — the edge that then
+routes on to `PRE_GATING`, `GATING`, a re-dispatch or `ESCALATED` — rather
+than into `GATING`/`INCOMPLETE_TERMINUS`/`ESCALATED` by the worker table. The pre- versus post-task choice
 between those two is the driver's, not the derivation's: `deriveStateFromEntry`
 is given one entry and has no visibility of `header.baseline`, so widening its
 signature to take the header would put a header read inside a pure function
@@ -552,9 +563,9 @@ New errors, following the existing `errors.ts` convention (named class,
 - **`IllegalStateTransition`** — the case file's `cursor.state` does not
   match any edge the driver knows how to advance from (defensive: should be
   unreachable given the state machine's own construction, but guards a
-  corrupted or hand-edited case file). Carries `dir`, `state`, and thrown
-  rather than silently ignored, per the roadmap's DX note on this item: name
-  the state, the attempted edge, what went wrong.
+  corrupted or hand-edited case file). Carries `dir`, `state` and `edge`, and
+  is thrown rather than silently ignored, per the roadmap's DX note on this
+  item: name the state, the attempted edge, what went wrong.
 
 ## Testing
 
