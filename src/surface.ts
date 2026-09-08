@@ -115,6 +115,23 @@ function workerAttempt(history: HistoryEntry[]): number {
   return 1 + history.filter((e) => e.t === "triage" && e.verdict === "reroute").length;
 }
 
+/** Terminate as ESCALATED with the standard `{kind, source, reason, at}` shape. */
+function escalate(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+  source: string,
+  reason: string,
+): Promise<AdvanceResult> {
+  return terminate(dir, caseFile, location, ports, "ESCALATED", {
+    kind: "escalated",
+    source,
+    reason,
+    at: new Date().toISOString(),
+  });
+}
+
 /** Terminal escalation whose reason is the tail terminus's own rationale. */
 function escalateFromTail(
   dir: string,
@@ -124,12 +141,32 @@ function escalateFromTail(
   source: string,
 ): Promise<AdvanceResult> {
   const tail = logTail(caseFile);
-  return terminate(dir, caseFile, location, ports, "ESCALATED", {
-    kind: "escalated",
-    source,
-    reason: tail?.t === "terminus" ? tail.rationale : "the session escalated",
-    at: new Date().toISOString(),
-  });
+  return escalate(
+    dir, caseFile, location, ports, source,
+    tail?.t === "terminus" ? tail.rationale : "the session escalated",
+  );
+}
+
+/**
+ * A dangling dispatch (no terminus recorded) is not a session to resurrect —
+ * sessions are reconstructed, never resumed — so the missing terminus is
+ * recorded first and the ordinary bounded retry handles it from there.
+ */
+async function recordMissingTerminus(
+  dir: string,
+  tail: Extract<HistoryEntry, { t: "dispatch" }>,
+  role: "worker" | "gate-maintenance",
+): Promise<HistoryEntry> {
+  const entry: HistoryEntry = {
+    t: "terminus",
+    role,
+    attempt: tail.attempt,
+    sessionKey: tail.sessionKey,
+    status: "incomplete",
+    rationale: `${role === "worker" ? "worker" : "repair"} session ended without recording a terminus (recovered on resume)`,
+  };
+  await appendEntry(dir, entry);
+  return entry;
 }
 
 /**
@@ -168,12 +205,7 @@ async function dispatchSession(
 
   const state = deriveStateFromEntry(entry);
   if (state === "ESCALATED") {
-    return terminate(dir, caseFile, location, ports, "ESCALATED", {
-      kind: "escalated",
-      source: role,
-      reason: terminus.rationale,
-      at: new Date().toISOString(),
-    });
+    return escalate(dir, caseFile, location, ports, role, terminus.rationale);
   }
   await updateCursor(dir, { state });
   return { state, done: false };
@@ -195,12 +227,10 @@ async function dispatchGateMaintenance(
   const budgets = deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets);
   const { used, max } = budgets.gateMaintenance;
   if (used >= max) {
-    return terminate(dir, caseFile, location, ports, "ESCALATED", {
-      kind: "escalated",
-      source: "gate-maintenance",
-      reason: `gateMaintenance budget exhausted (${used}/${max}): ${reason}`,
-      at: new Date().toISOString(),
-    });
+    return escalate(
+      dir, caseFile, location, ports, "gate-maintenance",
+      `gateMaintenance budget exhausted (${used}/${max}): ${reason}`,
+    );
   }
 
   return dispatchSession(
@@ -257,14 +287,7 @@ async function gateMaintenance(
     // A dispatch with no terminus is a session that ended without emitting a
     // valid result — an incomplete terminus, not a session to resurrect. Record
     // it and let the ordinary incomplete handling redispatch or escalate.
-    await appendEntry(dir, {
-      t: "terminus",
-      role: "gate-maintenance",
-      attempt: tail.attempt,
-      sessionKey: tail.sessionKey,
-      status: "incomplete",
-      rationale: "repair session ended without recording a terminus (recovered on resume)",
-    });
+    await recordMissingTerminus(dir, tail, "gate-maintenance");
     return { state: "GATE_MAINTENANCE", done: false };
   }
 
@@ -350,14 +373,7 @@ async function incompleteTerminus(
   const tail = logTail(caseFile);
 
   if (tail?.t === "dispatch") {
-    await appendEntry(dir, {
-      t: "terminus",
-      role: "worker",
-      attempt: tail.attempt,
-      sessionKey: tail.sessionKey,
-      status: "incomplete",
-      rationale: "worker session ended without recording a terminus (recovered on resume)",
-    });
+    await recordMissingTerminus(dir, tail, "worker");
     return { state: "INCOMPLETE_TERMINUS", done: false };
   }
 
@@ -373,12 +389,10 @@ async function incompleteTerminus(
     caseFile.cursor.budgets,
   ).terminus;
   if (used >= max) {
-    return terminate(dir, caseFile, location, ports, "ESCALATED", {
-      kind: "escalated",
-      source: "worker",
-      reason: `terminus budget exhausted (${used}/${max}): ${tail.rationale}`,
-      at: new Date().toISOString(),
-    });
+    return escalate(
+      dir, caseFile, location, ports, "worker",
+      `terminus budget exhausted (${used}/${max}): ${tail.rationale}`,
+    );
   }
 
   // Re-dispatch onto the worktree as the crashed or capped session left it,
