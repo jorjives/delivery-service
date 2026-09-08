@@ -35,8 +35,8 @@ end — not the final version:
   and the demo use a scripted test double.
 - **`TriagePort`** — this item ships the deterministic-router half only:
   budget-aware routing with no agent call. Item 5 adds the agent-judgement
-  half (overruling an exhaustion-class escalate downward, sharpened briefs)
-  in front of this same port.
+  half (judging *which* exhaustion-class escalates are worth rerouting,
+  sharpened briefs) in front of this same port.
 - **`CloserPort`** — this item ships a trivial no-op closer (reports `DONE`,
   does no infra work). Item 6 builds real closers (merge-back, open-PR,
   teardown).
@@ -555,7 +555,7 @@ Its rule, applied per trigger:
 | `gate_fail` | `correction` | `reroute` | `escalate` |
 | `gate_error` | `gateMaintenance` | `fix_the_gate` | `escalate` |
 | `worker_escalate` (authority) | — | `escalate` (never overruled) | `escalate` |
-| `worker_escalate` (exhaustion) | `correction` | `escalate` (this item never overrules downward — that judgement needs an agent, Item 5) | `escalate` |
+| `worker_escalate` (exhaustion) | `correction` | `reroute` | `escalate` |
 | `close_failure` | `close` | `retry_close` | `escalate` |
 
 `gate_error` has no legal verdict that just silently re-runs the check —
@@ -569,12 +569,14 @@ doc calls this out as "cheap, stateless, re-run it" — which needs a
 `TriageVerdict` case this item does not add. Left to Item 5, which owns the
 verdict vocabulary's evolution alongside the real triage agent.
 
-The `worker_escalate` (exhaustion) row is the one place this item is
-strictly more conservative than the target design: control-flow doc allows
-triage to overrule an exhaustion-class escalate down to a reroute, but doing
-so needs judgement this item has no agent to supply. Escalating instead is
-safe (never loses work, never overturns a PASS) and is exactly the behaviour
-Item 5 replaces.
+An exhaustion-class escalate is the worker saying "I stopped, but another
+attempt might get there" — the one escalate class a retry can resolve — so the
+router spends a `correction` and reroutes, exactly as it does for a gate
+failure, and escalates once that budget is at cap. This is a bounded,
+judgement-free rule: what Item 5's real triage agent adds is the judgement to
+tell an exhaustion worth retrying from one that is not, and to synthesise a
+sharpened brief for the retry rather than re-dispatching the same one.
+An authority-class escalate is never rerouted at any budget.
 
 ### `CloserPort`
 

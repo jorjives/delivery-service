@@ -7,6 +7,7 @@ export { recordBaseline, runCheck } from "./run-gate.js";
 export { branchName, provisionWorktree } from "./provision.js";
 export { advance, run } from "./surface.js";
 export { noopCloser } from "./ports.js";
+export { deterministicRouter } from "./router.js";
 export type { AdvanceResult, RunResult } from "./surface.js";
 export type {
   AgentRole,
