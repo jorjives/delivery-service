@@ -51,14 +51,14 @@ async function terminate(
   location: SurfaceLocation,
   ports: SurfacePorts,
   state: "ESCALATED" | "ABORTED",
-  outcome: CaseFileOutcome,
+  outcome: Omit<CaseFileOutcome, "kind"> & { kind: "escalated" | "aborted" },
 ): Promise<AdvanceResult> {
   await setOutcome(dir, outcome);
   await updateCursor(dir, { state });
   try {
     await ports.closer.close(
       { worktreePath: worktreeOf(caseFile, location), dir },
-      { kind: outcome.kind === "closed" ? "accepted" : outcome.kind },
+      { kind: outcome.kind },
     );
   } catch (err) {
     console.warn(`Closer teardown failed for ${dir}: ${messageOf(err)}`);
@@ -66,7 +66,9 @@ async function terminate(
   return { state, done: true };
 }
 
-function isGateMaintenanceTerminus(entry: HistoryEntry): boolean {
+function isGateMaintenanceTerminus(
+  entry: HistoryEntry,
+): entry is Extract<HistoryEntry, { t: "terminus" }> & { role: "gate-maintenance" } {
   return entry.t === "terminus" && entry.role === "gate-maintenance";
 }
 
@@ -79,21 +81,14 @@ function gateMaintenanceAttempt(history: HistoryEntry[]): number {
   return (
     1 +
     history.filter(
-      (e) =>
-        isGateMaintenanceTerminus(e) &&
-        e.t === "terminus" &&
-        (e.status === "completed" || e.status === "escalate"),
+      (e) => isGateMaintenanceTerminus(e) && (e.status === "completed" || e.status === "escalate"),
     ).length
   );
 }
 
 function gateMaintenanceRetries(history: HistoryEntry[], attempt: number): number {
   return history.filter(
-    (e) =>
-      isGateMaintenanceTerminus(e) &&
-      e.t === "terminus" &&
-      e.attempt === attempt &&
-      e.status === "incomplete",
+    (e) => isGateMaintenanceTerminus(e) && e.attempt === attempt && e.status === "incomplete",
   ).length;
 }
 
