@@ -15,6 +15,7 @@ export default tseslint.config(
             "tests/*.ts",
             "tests/case-file-persistence/*.ts",
             "tests/gate-interface/*.ts",
+            "tests/single-surface-state-machine/*.ts",
           ],
           // ponytail: raw count ceiling, keeps needing a bump as slices add
           // demos/tests files; a real fix gives demos/tests their own
