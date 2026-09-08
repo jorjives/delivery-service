@@ -96,15 +96,19 @@ describe("advance", () => {
   });
 
   it("throws IllegalStateTransition naming the state it cannot advance from", async () => {
-    // A baselined surface with no worker dispatch sits at AGENT_ACTIVE, whose
-    // edge this slice does not ship.
+    // An exhaustion-class escalate sits at TRIAGE, whose edge is slice 3's.
     await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+    await appendEntry(dir, { t: "dispatch", attempt: 1, sessionKey: "worker-1-0" });
+    await appendEntry(dir, {
+      t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "escalate",
+      category: "exhaustion", rationale: "out of ideas",
+    });
 
     await expect(advance(dir, location, portsWith(unusedAgent()))).rejects.toThrow(
       IllegalStateTransition,
     );
     await expect(advance(dir, location, portsWith(unusedAgent()))).rejects.toThrow(
-      /AGENT_ACTIVE/,
+      /TRIAGE/,
     );
   });
 
@@ -347,5 +351,100 @@ describe("noopCloser", () => {
       { kind: "escalated" },
     );
     expect(report.status).toBe("DONE");
+  });
+});
+
+describe("the AGENT_ACTIVE edge", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  /** Provision + baseline a healthy surface, leaving it at AGENT_ACTIVE. */
+  async function readyForWorker(ports: SurfacePorts): Promise<SurfaceLocation> {
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+    await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
+    return location;
+  }
+
+  it("dispatches a worker session and records the dispatch/terminus pair", async () => {
+    const agent = scriptedAgent([{ status: "completed", rationale: "wrote the feature" }]);
+    const ports = portsWith(agent);
+    const location = await readyForWorker(ports);
+
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "GATING", done: false });
+    expect(agent.calls).toEqual(["worker:worker-1-0"]);
+    const { history, cursor } = await load(dir);
+    expect(history).toEqual([
+      { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" },
+      {
+        t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0",
+        status: "completed", rationale: "wrote the feature",
+      },
+    ]);
+    expect(cursor.state).toBe("GATING");
+  });
+
+  it("ends the surface in ESCALATED when the worker reports an authority limit", async () => {
+    const agent = scriptedAgent([
+      { status: "escalate", category: "authority", rationale: "needs a credential I do not hold" },
+    ]);
+    const ports = portsWith(agent);
+    const location = await readyForWorker(ports);
+
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "ESCALATED", done: true });
+    const reloaded = await load(dir);
+    expect(reloaded.cursor.state).toBe("ESCALATED");
+    expect(reloaded.outcome?.kind).toBe("escalated");
+    expect(reloaded.outcome?.source).toBe("worker");
+    expect(reloaded.outcome?.reason).toContain("credential");
+    // The terminus already evidences the escalate — no extra entry is written.
+    expect(reloaded.history).toHaveLength(2);
+  });
+
+  it("routes an exhaustion-class escalate to TRIAGE rather than straight out", async () => {
+    const agent = scriptedAgent([
+      { status: "escalate", category: "exhaustion", rationale: "out of ideas" },
+    ]);
+    const ports = portsWith(agent);
+    const location = await readyForWorker(ports);
+
+    const result = await advance(dir, location, ports);
+
+    // The deterministic router gets first look; its edge is slice 3's.
+    expect(result).toEqual({ state: "TRIAGE", done: false });
+    expect((await load(dir)).outcome).toBeUndefined();
+  });
+
+  it("routes a session that ended without a result to INCOMPLETE_TERMINUS", async () => {
+    const agent = scriptedAgent([{ status: "incomplete", rationale: "hit the turn cap" }]);
+    const ports = portsWith(agent);
+    const location = await readyForWorker(ports);
+
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "INCOMPLETE_TERMINUS", done: false });
+  });
+
+  it("resumes an authority escalate recorded before the outcome was written", async () => {
+    // The crash window between appending the terminus and writing the outcome.
+    const ports = portsWith(unusedAgent());
+    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+    await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" });
+    await appendEntry(dir, {
+      t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0",
+      status: "escalate", category: "authority", rationale: "needs an owner's sign-off",
+    });
+
+    const result = await advance(dir, { repoPath: "/unused", worktreePath: "/unused" }, ports);
+
+    expect(result).toEqual({ state: "ESCALATED", done: true });
+    expect((await load(dir)).outcome?.reason).toContain("sign-off");
   });
 });
