@@ -3,7 +3,7 @@ import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
-import type { SurfaceLocation, SurfacePorts } from "./ports.js";
+import type { SurfaceLocation, SurfacePorts, TriageInput } from "./ports.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
 export interface AdvanceResult {
@@ -462,6 +462,93 @@ async function closed(dir: string, reason: string): Promise<AdvanceResult> {
 }
 
 /**
+ * The trigger `TriagePort` reads, derived from the entry that routed the
+ * surface into `TRIAGE`. The state alone does not carry it, and the tail is the
+ * same thing a resumed run reads — so a live route and a resumed one classify
+ * the setback identically.
+ */
+export function triageTrigger(
+  dir: string,
+  tail: HistoryEntry | undefined,
+): Pick<TriageInput, "trigger" | "category"> {
+  if (tail?.t === "gate") {
+    return { trigger: tail.status === "ERROR" ? "gate_error" : "gate_fail" };
+  }
+  if (tail?.t === "close") return { trigger: "close_failure" };
+  if (tail?.t === "terminus" && tail.status === "escalate") {
+    return { trigger: "worker_escalate", category: tail.category };
+  }
+  throw new IllegalStateTransition(dir, "TRIAGE", "triage");
+}
+
+/**
+ * Ask the router what to do about the setback on the log tail, and carry out
+ * its verdict.
+ *
+ * The `triage` entry appended here IS the `correction`/`close` burn for a
+ * `reroute`/`retry_close` verdict — there is no separate increment, and the
+ * budgets handed to the router are derived from the log immediately before the
+ * call, never read from the cursor's stale copy. Routing then goes through
+ * `deriveStateFromEntry` on the entry just appended, so a live route and a
+ * resumed one are the same computation rather than two rules that can drift.
+ *
+ * `fix_the_gate` deliberately stops at `GATE_MAINTENANCE` without dispatching:
+ * that edge already has to dispatch from a `fix_the_gate` tail to recover the
+ * crash window between the two writes, so doing it here as well would be a
+ * second copy of the same code guarded by nothing.
+ */
+async function triage(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<AdvanceResult> {
+  const { trigger, category } = triageTrigger(dir, logTail(caseFile));
+  const remainingBudgets = deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets);
+
+  const verdict = await ports.triage.triage({
+    trigger,
+    ...(category ? { category } : {}),
+    caseFile,
+    remainingBudgets,
+  });
+
+  // Keyed by prior triage count so repeated rounds never overwrite each other's
+  // artefacts. This item's router synthesises nothing richer than the stub, but
+  // the field is never omitted — Item 5 replaces the contents, not the schema.
+  const priorTriages = caseFile.history.filter((e) => e.t === "triage").length;
+  const artifactRef = await writeRef(dir, `triage-${priorTriages}`, {
+    trigger,
+    rationale: verdict.rationale,
+  });
+
+  const entry: HistoryEntry = {
+    t: "triage",
+    afterAttempt: workerAttempt(caseFile.history),
+    trigger,
+    verdict: verdict.verdict,
+    rationale: verdict.rationale,
+    artifactRef,
+  };
+  await appendEntry(dir, entry);
+
+  const state = deriveStateFromEntry(entry);
+  if (state === "ESCALATED") {
+    return escalate(dir, caseFile, location, ports, "triage", verdict.rationale);
+  }
+  if (state === "ABORTED") {
+    return terminate(dir, caseFile, location, ports, "ABORTED", {
+      kind: "aborted",
+      source: "triage",
+      reason: verdict.rationale,
+      at: new Date().toISOString(),
+    });
+  }
+  await updateCursor(dir, { state });
+  return { state, done: false };
+}
+
+/**
  * Perform exactly one transition and commit it. Safe to call from a fresh
  * process against an existing `dir`: every branch reads pre-entry state or the
  * log tail, so a call after a crash always resumes onto a legal edge.
@@ -492,6 +579,8 @@ export async function advance(
       return incompleteTerminus(dir, caseFile, location, ports);
     case "GATING":
       return gating(dir, caseFile, location);
+    case "TRIAGE":
+      return triage(dir, caseFile, location, ports);
     case "CLOSING":
       return closing(dir, caseFile, location, ports);
     case "CLOSED":

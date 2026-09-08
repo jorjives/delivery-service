@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef } from "./case-file.js";
 import { initTempRepo } from "./temp-repo.js";
-import { advance, run } from "./surface.js";
+import { advance, run, triageTrigger } from "./surface.js";
 import { noopCloser } from "./ports.js";
+import { deterministicRouter } from "./router.js";
 import type { SurfaceLocation, SurfacePorts, Terminus } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition } from "./errors.js";
@@ -56,6 +57,14 @@ function portsWith(agent: SurfacePorts["agent"]): SurfacePorts {
   return { agent, triage: unusedTriage(), closer: noopCloser };
 }
 
+/** Ports whose triage is the real deterministic router. */
+function portsWithTriage(
+  agent: SurfacePorts["agent"],
+  closer: SurfacePorts["closer"] = noopCloser,
+): SurfacePorts {
+  return { agent, triage: deterministicRouter, closer };
+}
+
 /** Provision a surface against a repo seeded with `files`, and return its paths. */
 async function provisioned(
   dir: string,
@@ -94,23 +103,6 @@ describe("advance", () => {
     const result = await advance(dir, location, portsWith(unusedAgent()));
 
     expect(result).toEqual({ state: "ESCALATED", done: true });
-  });
-
-  it("throws IllegalStateTransition naming the state it cannot advance from", async () => {
-    // An exhaustion-class escalate sits at TRIAGE, whose edge is slice 3's.
-    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
-    await appendEntry(dir, { t: "dispatch", attempt: 1, sessionKey: "worker-1-0" });
-    await appendEntry(dir, {
-      t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "escalate",
-      category: "exhaustion", rationale: "out of ideas",
-    });
-
-    await expect(advance(dir, location, portsWith(unusedAgent()))).rejects.toThrow(
-      IllegalStateTransition,
-    );
-    await expect(advance(dir, location, portsWith(unusedAgent()))).rejects.toThrow(
-      /TRIAGE/,
-    );
   });
 
   it("creates a worktree on a surface-derived branch and lands on PRE_GATING", async () => {
@@ -687,5 +679,166 @@ describe("run", () => {
     expect(await statesOf()).toEqual([
       "PRE_GATING", "AGENT_ACTIVE", "GATING", "CLOSING", "CLOSED",
     ]);
+  });
+});
+
+describe("TRIAGE", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  /** Drive a surface to TRIAGE by letting a worker break the gate. */
+  async function toTriageOnGateFail(): Promise<{
+    location: SurfaceLocation;
+    ports: SurfacePorts;
+  }> {
+    const agent = {
+      invoke: (_roleCfg: { role: string }, ctx: { worktreePath: string }) => {
+        writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
+        return Promise.resolve({ status: "completed", rationale: "broke it" } as Terminus);
+      },
+    };
+    const ports = portsWithTriage(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+    await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
+    await advance(dir, location, ports); // AGENT_ACTIVE -> GATING
+    const gated = await advance(dir, location, ports); // GATING -> TRIAGE
+    expect(gated.state).toBe("TRIAGE");
+    return { location, ports };
+  }
+
+  it("routes a gate failure to another worker attempt on the next attempt number", async () => {
+    const { location, ports } = await toTriageOnGateFail();
+
+    const step = await advance(dir, location, ports);
+    expect(step.state).toBe("AGENT_ACTIVE");
+    expect(step.done).toBe(false);
+
+    const { history } = await load(dir);
+    const entry = history.at(-1);
+    expect(entry).toMatchObject({
+      t: "triage",
+      trigger: "gate_fail",
+      verdict: "reroute",
+      afterAttempt: 1,
+      artifactRef: "triage-0",
+    });
+    expect(await readRef(dir, "triage-0")).toMatchObject({ trigger: "gate_fail" });
+
+    // The reroute entry IS the correction burn, and it advances the attempt.
+    await advance(dir, location, ports); // AGENT_ACTIVE dispatches attempt 2
+    const after = await load(dir);
+    const dispatches = after.history.filter((e) => e.t === "dispatch");
+    expect(dispatches.at(-1)).toMatchObject({ attempt: 2, role: "worker" });
+  });
+
+  it("escalates a gate failure once the correction budget is at cap", async () => {
+    const { location, ports } = await toTriageOnGateFail();
+
+    // The worker never fixes the gate, so every attempt returns to TRIAGE.
+    const result = await run(dir, location, ports);
+    expect(result.state).toBe("ESCALATED");
+    expect(result.outcome).toMatchObject({ kind: "escalated", source: "triage" });
+
+    const { history } = await load(dir);
+    const reroutes = history.filter((e) => e.t === "triage" && e.verdict === "reroute");
+    expect(reroutes).toHaveLength(budgets.correction.max);
+  });
+
+  it("routes a close failure back to another close attempt", async () => {
+    const cleanWorker = {
+      invoke: () =>
+        Promise.resolve({ status: "completed", rationale: "clean" } as Terminus),
+    };
+    let closes = 0;
+    const fussyCloser: SurfacePorts["closer"] = {
+      close: (_ctx, outcome) => {
+        if (outcome.kind !== "accepted") return Promise.resolve({ status: "DONE", detail: "torn down" });
+        closes += 1;
+        return Promise.resolve(
+          closes === 1
+            ? { status: "FAIL", detail: "not ready yet" }
+            : { status: "DONE", detail: "merged" },
+        );
+      },
+    };
+    const ports = portsWithTriage(cleanWorker, fussyCloser);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await run(dir, location, ports);
+    expect(result.state).toBe("CLOSED");
+    expect(closes).toBe(2);
+
+    const { history } = await load(dir);
+    expect(history.filter((e) => e.t === "triage")).toMatchObject([
+      { trigger: "close_failure", verdict: "retry_close" },
+    ]);
+  });
+
+  it("retries an exhaustion-class worker escalate as another worker attempt", async () => {
+    const agent = scriptedAgent([
+      { status: "escalate", category: "exhaustion", rationale: "stuck, maybe retry" },
+      { status: "completed", rationale: "got there on the retry" },
+    ]);
+    const ports = portsWithTriage(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await run(dir, location, ports);
+    expect(result.state).toBe("CLOSED");
+
+    const { history } = await load(dir);
+    expect(history.filter((e) => e.t === "triage")).toMatchObject([
+      { trigger: "worker_escalate", verdict: "reroute" },
+    ]);
+    expect(agent.calls).toEqual(["worker:worker-1-0", "worker:worker-2-0"]);
+  });
+
+  it("ends the surface with no further dispatch when the router escalates", async () => {
+    const agent = scriptedAgent([
+      { status: "escalate", category: "exhaustion", rationale: "stuck for good" },
+    ]);
+    const ports = portsWithTriage(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await run(dir, location, ports);
+    expect(result.state).toBe("ESCALATED");
+
+    const { cursor, history } = await load(dir);
+    expect(cursor.state).toBe("ESCALATED");
+    // The last triage entry is the escalate; nothing was dispatched after it.
+    const lastTriage = history.map((e) => e.t).lastIndexOf("triage");
+    expect(history.slice(lastTriage).filter((e) => e.t === "dispatch")).toEqual([]);
+  });
+
+  it("ends the surface as ABORTED when the port returns an abort verdict", async () => {
+    const abortingTriage: SurfacePorts["triage"] = {
+      triage: () =>
+        Promise.resolve({ verdict: "abort", rationale: "the task itself is unsound" }),
+    };
+    const agent = {
+      invoke: (_roleCfg: { role: string }, ctx: { worktreePath: string }) => {
+        writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
+        return Promise.resolve({ status: "completed", rationale: "broke it" } as Terminus);
+      },
+    };
+    const ports: SurfacePorts = { agent, triage: abortingTriage, closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await run(dir, location, ports);
+    expect(result.state).toBe("ABORTED");
+    expect(result.outcome).toMatchObject({ kind: "aborted", source: "triage" });
+
+    const { history } = await load(dir);
+    expect(history.at(-1)).toMatchObject({ t: "triage", verdict: "abort" });
+  });
+
+  it("names the state and the edge when TRIAGE is reached with no routable tail", () => {
+    // Defensive guard: no tail `position()` derives TRIAGE from can fail to
+    // yield a trigger, so it is exercised directly rather than through advance.
+    expect(() => triageTrigger(dir, undefined)).toThrow(IllegalStateTransition);
+    expect(() => triageTrigger(dir, { t: "baseline", status: "PASS" })).toThrow(/TRIAGE/);
   });
 });
