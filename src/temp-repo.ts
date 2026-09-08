@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { cleanGitEnv } from "./git-env.js";
 
 /**
  * Test and demo support: create a throwaway git repository seeded with `files`
@@ -11,7 +12,7 @@ import { join } from "node:path";
 export function initTempRepo(prefix: string, files: Record<string, string>): string {
   const repo = mkdtempSync(join(tmpdir(), prefix));
   const git = (args: string[]): void => {
-    execFileSync("git", args, { cwd: repo, stdio: "pipe" });
+    execFileSync("git", args, { cwd: repo, stdio: "pipe", env: cleanGitEnv() });
   };
 
   git(["init", "-b", "main"]);

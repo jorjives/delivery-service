@@ -11,6 +11,7 @@ import { noopCloser } from "./ports.js";
 import type { SurfaceLocation, SurfacePorts, Terminus } from "./ports.js";
 import { IllegalStateTransition } from "./errors.js";
 import type { BudgetSet, GateRef } from "./schema.js";
+import { cleanGitEnv } from "./git-env.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -116,7 +117,11 @@ describe("advance", () => {
     expect(result).toEqual({ state: "PRE_GATING", done: false });
     expect(await readFile(join(tree, "seed.txt"), "utf-8")).toBe("hello\n");
     expect(
-      execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: tree, encoding: "utf-8" }).trim(),
+      execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], {
+        cwd: tree,
+        encoding: "utf-8",
+        env: cleanGitEnv(),
+      }).trim(),
     ).toBe("surface/surface-1");
 
     const reloaded = await load(dir);

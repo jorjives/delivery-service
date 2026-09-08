@@ -2,6 +2,7 @@ import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { ProvisioningFailure } from "./errors.js";
 import { messageOf } from "./gate-support.js";
+import { cleanGitEnv } from "./git-env.js";
 
 const execFile = promisify(execFileCb);
 
@@ -15,7 +16,7 @@ export function branchName(surfaceId: string): string {
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFile("git", args, { cwd });
+  const { stdout } = await execFile("git", args, { cwd, env: cleanGitEnv() });
   return stdout.trim();
 }
 

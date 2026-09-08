@@ -6,9 +6,10 @@ import { execFileSync } from "node:child_process";
 import { branchName, provisionWorktree } from "./provision.js";
 import { initTempRepo } from "./temp-repo.js";
 import { ProvisioningFailure } from "./errors.js";
+import { cleanGitEnv } from "./git-env.js";
 
 function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8" }).trim();
+  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
 }
 
 describe("branchName", () => {
