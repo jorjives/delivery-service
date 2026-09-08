@@ -207,19 +207,22 @@ distinguish "resolved onward to `PRE_GATING`" from "resolved onward to
 `GATING`" from "still repairing." The exact encoding is a planning decision,
 not a design one: this document fixes the requirement, not the mechanism.
 
-**Resuming an unresolved dispatch completes it — it never creates a second
-one.** A `dispatch` entry with no matching `terminus` is, by definition, a
-session a crash interrupted before it could report back. Since a `dispatch`
-entry is a population's entire burn (see above), writing a *second* dispatch
-entry to resume that same interrupted session would double-burn its
-population on every crash that lands in that window — contradicting this
-item's own test criterion that a resumed surface enforces the same caps as
-an uninterrupted one. This item requires that resuming onto a dangling
-dispatch re-invokes the agent for that same session and appends only the
-missing `terminus` — never a new `dispatch`. Recognising "this position
-already has a dangling dispatch" (and what `AgentContext` a re-invocation
-needs to carry on into the same session) is a planning decision; this
-document fixes the requirement, not the mechanism.
+**A dangling dispatch on resume is an incomplete terminus, not a session to
+resurrect.** A `dispatch` entry with no matching `terminus` is exactly what
+this document already defines a terminus as covering when its status is
+`incomplete`: "any session that ended without emitting valid structured
+output — crash, token/turn cap, timeout, idle, or output that failed schema
+validation" (control-flow doc). It is not a new case needing its own
+recovery path, and control-flow doc already says so directly: `tail =
+dispatch, no terminus → treat as INCOMPLETE_TERMINUS (existing edge)`.
+Resume therefore appends an `incomplete` terminus for the dangling dispatch
+(this is the one and only terminus ever written for that dispatch, so no
+double-burn arises) and proceeds through the existing `INCOMPLETE_TERMINUS`/
+`GATE_MAINTENANCE`-incomplete edges — the same bounded redispatch-or-escalate
+logic already specified above for a crash observed *within* a live process,
+now also covering a crash observed only on the *next* process's resume. No
+new recovery path, no new budget, and no unbounded retry: the existing cap
+applies either way.
 
 ## The driver
 
@@ -356,6 +359,11 @@ edge covers that case itself: derive the `gateMaintenance` count, and under cap
 append the dispatch (the burn), invoke, and append the terminus, exactly as the
 `TRIAGE` edge would have; at cap, escalate. Without this the surface would
 resume into `GATE_MAINTENANCE` with no terminus for the edge below to route on.
+If instead a `role: "gate-maintenance"` dispatch exists with no matching
+terminus, the same "dangling dispatch is an incomplete terminus" rule from
+Decisions above applies: this edge appends the missing `incomplete` terminus
+for it before doing anything else, then falls into the ordinary
+incomplete-terminus handling below.
 
 Entered pre-task (no baseline yet): on the repair agent's `completed`
 terminus, resolves to `"PRE_GATING"` to re-baseline. Entered post-task
@@ -400,9 +408,14 @@ between an exhaustion-class terminus and the triage entry would resume into
 
 **INCOMPLETE_TERMINUS → AGENT_ACTIVE | ESCALATED**
 
-Derives the current `terminus` count from the log — the `terminus` entry
-that put the surface on this edge is already counted, since it was appended
-by the prior `AGENT_ACTIVE` edge (see Decisions above: burns have no
+If the dispatch that put the surface here has no `terminus` entry yet (a
+crash resumed rather than observed live — see "A dangling dispatch on
+resume is an incomplete terminus" above), first appends one
+(`status: "incomplete"`) for it; if a `terminus` entry is already present
+(the crash was observed within the same live process, before this edge's
+own `advance` call), nothing further is appended. Either way, the `terminus`
+count is then derived from the log — the entry is now present exactly once
+regardless of which path wrote it (see Decisions above: burns have no
 separate live counter). Under cap: returns to `AGENT_ACTIVE`, re-dispatching
 onto the worktree as the crashed/capped session left it, with the **same
 attempt number** as the terminus entry just recorded and a new `sessionKey`
@@ -495,12 +508,14 @@ primitive with no shape change here. `sessionKey` is the driver's to mint —
 agree — so it is derived deterministically as `${role}-${attempt}-${retryCount}`
 (see Decisions above), which gives a genuine same-attempt retry (one that
 follows a recorded `incomplete` terminus) a distinct key from the attempt it
-retries. A crash before any terminus is recorded for a dispatch is the
-"resuming an unresolved dispatch" case from Decisions above: the driver
-re-invokes the agent under that dispatch's *existing* `sessionKey` and
-appends only the resulting terminus — it never mints a second `sessionKey`
-or writes a second `dispatch` entry for the same interruption. This item's
-own tests supply a scripted stub implementing the same signature.
+retries. A crash before any terminus is recorded for a dispatch never mints
+a *second* `sessionKey` for that same dispatch either: per "A dangling
+dispatch on resume is an incomplete terminus" above, resume appends the
+missing `incomplete` terminus for the existing dispatch/`sessionKey` pair,
+then lets the normal `INCOMPLETE_TERMINUS` edge mint the next retry's key —
+there is no separate "complete the old session" path for `AgentPort` to
+support. This item's own tests supply a scripted stub implementing the same
+signature.
 
 ### `TriagePort`
 
@@ -694,11 +709,12 @@ ports)` again:
   above.
 - **After the first history entry**: resumed via the role- and category-aware
   `deriveStateFromEntry(logTail(...))`, per "Determining position" above.
-  `resumeAction` as shipped is *not* sufficient on its own here: it is neither
-  role-aware (a gate-maintenance dispatch would resume as
-  `incomplete_terminus`) nor category-aware, and its dangling-dispatch →
-  `incomplete_terminus` mapping is precisely the resume this item forbids (see
-  "Resuming an unresolved dispatch" above).
+  `resumeAction` as shipped is *not* sufficient on its own here: it is not
+  role-aware (a gate-maintenance dangling dispatch must resume into
+  `GATE_MAINTENANCE`, not `incomplete_terminus`, per the Schema extension
+  above), though its worker dangling-dispatch → `incomplete_terminus`
+  mapping is exactly right and is what "A dangling dispatch on resume is an
+  incomplete terminus" (Decisions above) relies on.
 
 The only genuinely new recovery case this item introduces is the
 `PROVISIONING` partial-worktree window (`git worktree add` succeeded, the
