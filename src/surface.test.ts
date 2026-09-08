@@ -1,8 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, setBaseline, setOutcome, updateCursor } from "./case-file.js";
+import { execFileSync } from "node:child_process";
+import { create, load, setBaseline, setOutcome, updateCursor } from "./case-file.js";
+import { initTempRepo } from "./temp-repo.js";
 import { advance } from "./surface.js";
 import { noopCloser } from "./ports.js";
 import type { SurfaceLocation, SurfacePorts, Terminus } from "./ports.js";
@@ -87,6 +89,61 @@ describe("advance", () => {
     await expect(advance(dir, location, portsWith(unusedAgent()))).rejects.toThrow(
       /AGENT_ACTIVE/,
     );
+  });
+
+  it("creates a worktree on a surface-derived branch and lands on PRE_GATING", async () => {
+    const repo = initTempRepo("surface-repo-", { "seed.txt": "hello\n" });
+    const tree = join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt");
+
+    const result = await advance(dir, { repoPath: repo, worktreePath: tree }, portsWith(unusedAgent()));
+
+    expect(result).toEqual({ state: "PRE_GATING", done: false });
+    expect(await readFile(join(tree, "seed.txt"), "utf-8")).toBe("hello\n");
+    expect(
+      execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: tree, encoding: "utf-8" }).trim(),
+    ).toBe("surface/surface-1");
+
+    const reloaded = await load(dir);
+    expect(reloaded.cursor.state).toBe("PRE_GATING");
+    expect(reloaded.cursor.worktreeRef).toBe(tree);
+  });
+
+  it("aborts with a reason when the worktree cannot be created", async () => {
+    const repo = initTempRepo("surface-repo-", { "seed.txt": "hello\n" });
+    const blocker = join(await mkdtemp(join(tmpdir(), "surface-block-")), "file");
+    await writeFile(blocker, "not a directory\n");
+
+    const result = await advance(
+      dir,
+      { repoPath: repo, worktreePath: join(blocker, "wt") },
+      portsWith(unusedAgent()),
+    );
+
+    expect(result).toEqual({ state: "ABORTED", done: true });
+    const reloaded = await load(dir);
+    expect(reloaded.cursor.state).toBe("ABORTED");
+    expect(reloaded.outcome?.kind).toBe("aborted");
+    expect(reloaded.outcome?.source).toBe("provisioning");
+    expect(reloaded.outcome?.reason).not.toBe("");
+    // No history entry: provisioning has no representation in the log
+    expect(reloaded.history).toHaveLength(0);
+  });
+
+  it("still reaches ABORTED when the closer's teardown throws", async () => {
+    const repo = initTempRepo("surface-repo-", { "seed.txt": "hello\n" });
+    const blocker = join(await mkdtemp(join(tmpdir(), "surface-block-")), "file");
+    await writeFile(blocker, "not a directory\n");
+    const throwingCloser = {
+      close: () => Promise.reject(new Error("teardown blew up")),
+    };
+
+    const result = await advance(
+      dir,
+      { repoPath: repo, worktreePath: join(blocker, "wt") },
+      { agent: unusedAgent(), triage: unusedTriage(), closer: throwingCloser },
+    );
+
+    expect(result).toEqual({ state: "ABORTED", done: true });
   });
 });
 
