@@ -416,7 +416,15 @@ resume is an incomplete terminus" above), first appends one
 own `advance` call), nothing further is appended. Either way, the `terminus`
 count is then derived from the log — the entry is now present exactly once
 regardless of which path wrote it (see Decisions above: burns have no
-separate live counter). Under cap: returns to `AGENT_ACTIVE`, re-dispatching
+separate live counter). Under cap: this edge performs the re-dispatch itself — appends the
+`dispatch` entry, calls `agent.invoke`, appends the resulting `terminus` —
+exactly as the `AGENT_ACTIVE` edge does, and exactly as `GATE_MAINTENANCE`
+does for its own `incomplete` retry. It does not merely move the cursor to
+`AGENT_ACTIVE` and leave the dispatch to the next `advance`: position is
+derived from the log tail, which is still the `incomplete` terminus until a
+new `dispatch` entry exists, so a cursor-only write would re-derive
+`INCOMPLETE_TERMINUS` on every subsequent `advance` and never progress.
+The re-dispatch runs
 onto the worktree as the crashed/capped session left it, with the **same
 attempt number** as the terminus entry just recorded and a new `sessionKey`
 (incremented `retryCount`) — this is a retry of that attempt, not a new one
@@ -626,6 +634,18 @@ vocabulary, not into `incomplete_terminus`), and a `gate-maintenance`-role
 routes on to `PRE_GATING`, `GATING`, a re-dispatch or `ESCALATED` — rather
 than into `GATING`/`INCOMPLETE_TERMINUS`/`ESCALATED` by the worker table.
 
+`deriveStateFromEntry`'s worker `dispatch` mapping is corrected in the same
+change: the shipped table returns `AGENT_ACTIVE`, but a `dispatch` that is
+still the tail has no terminus, which is precisely the dangling-dispatch case
+Decisions above define as an incomplete terminus. Left at `AGENT_ACTIVE` the
+driver would resume by dispatching a second session for the same attempt —
+no `incomplete` terminus recorded, so no `terminus` burn, an unbounded retry
+loop, and two `dispatch` entries sharing one `sessionKey`. A worker-role
+`dispatch` therefore derives to `INCOMPLETE_TERMINUS`, matching
+`resumeAction`'s already-correct mapping; a `gate-maintenance`-role one
+derives to `GATE_MAINTENANCE` as above, whose edge applies the same rule for
+its own role.
+
 `deriveStateFromEntry`'s worker `terminus` mapping is extended in the same
 change to branch on `category`: an `escalate` terminus resolves to `TRIAGE`
 when `category` is `"exhaustion"` and to `ESCALATED` when it is `"authority"`.
@@ -640,6 +660,11 @@ is given one entry and has no visibility of `header.baseline`, so widening its
 signature to take the header would put a header read inside a pure function
 that `rebuild` calls per entry. `deriveBudgetsFromLog` is extended the same
 way — see below.
+
+Both functions are module-private in Item 1's shipped `case-file.ts`, whose
+only caller is `rebuild`. The driver reads position and budgets through them
+directly, so both become part of the module's public surface (exported from
+`case-file.ts` and re-exported from `index.ts`) alongside the changes above.
 
 ### Attempt numbering and budget derivation
 
