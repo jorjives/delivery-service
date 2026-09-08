@@ -5,9 +5,9 @@ export { createCustomGate, loadCustomGate } from "./custom-gate.js";
 export { resolveGate } from "./resolve-gate.js";
 export { recordBaseline, runCheck } from "./run-gate.js";
 export { branchName, provisionWorktree } from "./provision.js";
-export { advance } from "./surface.js";
+export { advance, run } from "./surface.js";
 export { noopCloser } from "./ports.js";
-export type { AdvanceResult } from "./surface.js";
+export type { AdvanceResult, RunResult } from "./surface.js";
 export type {
   AgentRole,
   RoleConfig,

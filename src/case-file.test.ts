@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog } from "./case-file.js";
 import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
 import type { BudgetSet, HistoryEntry, GateReport } from "./schema.js";
 
@@ -378,7 +378,9 @@ describe("rebuild", () => {
     });
 
     const rebuilt = await rebuild(dir);
-    expect(rebuilt.cursor.budgets.terminus.used).toBe(1);
+    // A completed terminus resolves its attempt and costs nothing — the
+    // terminus budget caps sessions that ended WITHOUT a valid result.
+    expect(rebuilt.cursor.budgets.terminus.used).toBe(0);
     expect(rebuilt.cursor.budgets.gateError.used).toBe(1);
     expect(rebuilt.cursor.budgets.correction.used).toBe(0);
     // Max values preserved from case.json
@@ -813,5 +815,97 @@ describe("reference storage", () => {
     const retrieved = await readRef(dir, firstFailure.detailRef);
 
     expect(retrieved).toEqual(failureDetail);
+  });
+});
+
+describe("deriveStateFromEntry", () => {
+  it("derives INCOMPLETE_TERMINUS from a worker dispatch that is still the tail", () => {
+    // A dispatch with no terminus is a session that ended without a valid
+    // result — not a session to resurrect by dispatching a second one.
+    expect(deriveStateFromEntry({
+      t: "dispatch", attempt: 1, sessionKey: "worker-1-0",
+    })).toBe("INCOMPLETE_TERMINUS");
+    expect(deriveStateFromEntry({
+      t: "dispatch", attempt: 1, sessionKey: "worker-1-0", role: "worker",
+    })).toBe("INCOMPLETE_TERMINUS");
+  });
+
+  it("derives ESCALATED from an authority-class worker escalate", () => {
+    expect(deriveStateFromEntry({
+      t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "escalate",
+      category: "authority", rationale: "needs a credential I do not hold",
+    })).toBe("ESCALATED");
+  });
+
+  it("derives TRIAGE from an exhaustion-class worker escalate", () => {
+    // The deterministic router still gets first look at an exhaustion-class
+    // escalate; only an authority limit is terminal on the spot.
+    expect(deriveStateFromEntry({
+      t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "escalate",
+      category: "exhaustion", rationale: "out of ideas",
+    })).toBe("TRIAGE");
+  });
+});
+
+describe("deriveBudgetsFromLog attribution", () => {
+  const maxima: BudgetSet = {
+    correction: { used: 0, max: 3 },
+    gateError: { used: 0, max: 3 },
+    gateMaintenance: { used: 0, max: 2 },
+    terminus: { used: 0, max: 5 },
+    close: { used: 0, max: 3 },
+  };
+
+  it("charges nothing for a worker session that resolved", () => {
+    const history: HistoryEntry[] = [
+      { t: "dispatch", attempt: 1, sessionKey: "worker-1-0" },
+      { t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "completed", rationale: "done" },
+      { t: "close", status: "DONE", detailRef: "close-0" },
+    ];
+
+    const budgets = deriveBudgetsFromLog(history, maxima);
+
+    // Budgets cap RETRIES. A clean run through burns none of them.
+    expect(budgets.terminus.used).toBe(0);
+    expect(budgets.close.used).toBe(0);
+    expect(budgets.correction.used).toBe(0);
+  });
+
+  it("charges the terminus budget once per worker session that ended without a result", () => {
+    const history: HistoryEntry[] = [
+      { t: "dispatch", attempt: 1, sessionKey: "worker-1-0" },
+      { t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "incomplete", rationale: "crashed" },
+      { t: "dispatch", attempt: 1, sessionKey: "worker-1-1" },
+      { t: "terminus", attempt: 1, sessionKey: "worker-1-1", status: "incomplete", rationale: "capped" },
+    ];
+
+    expect(deriveBudgetsFromLog(history, maxima).terminus.used).toBe(2);
+  });
+
+  it("never charges a repair sessions incomplete terminus to the workers budget", () => {
+    const history: HistoryEntry[] = [
+      { t: "dispatch", role: "gate-maintenance", attempt: 1, sessionKey: "gate-maintenance-1-0" },
+      { t: "terminus", role: "gate-maintenance", attempt: 1, sessionKey: "gate-maintenance-1-0", status: "incomplete", rationale: "crashed" },
+    ];
+
+    const budgets = deriveBudgetsFromLog(history, maxima);
+
+    // The repair sessions cost is burned on gateMaintenance by its own
+    // dispatch entry — counting it twice would charge a repair to the worker.
+    expect(budgets.terminus.used).toBe(0);
+    expect(budgets.gateMaintenance.used).toBe(1);
+  });
+
+  it("charges correction and close to the triage verdicts that caused them", () => {
+    const history: HistoryEntry[] = [
+      { t: "triage", afterAttempt: 1, trigger: "gate_fail", verdict: "reroute", rationale: "regression", artifactRef: "triage-0" },
+      { t: "triage", afterAttempt: 2, trigger: "close_failure", verdict: "retry_close", rationale: "flaked", artifactRef: "triage-1" },
+      { t: "triage", afterAttempt: 2, trigger: "gate_fail", verdict: "escalate", rationale: "out of road", artifactRef: "triage-2" },
+    ];
+
+    const budgets = deriveBudgetsFromLog(history, maxima);
+
+    expect(budgets.correction.used).toBe(1);
+    expect(budgets.close.used).toBe(1);
   });
 });

@@ -1,8 +1,8 @@
-import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog } from "./case-file.js";
+import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
-import { recordBaseline } from "./run-gate.js";
+import { recordBaseline, runCheck } from "./run-gate.js";
 import type { SurfaceLocation, SurfacePorts } from "./ports.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
@@ -21,17 +21,17 @@ function worktreeOf(caseFile: CaseFile, location: SurfaceLocation): string {
  *
  * Before the first worker dispatch there are no worker log entries to read, so
  * the header's set-once `baseline` and the cursor are authoritative — this is
- * the one segment of the loop where that is true. Once a baseline exists the
- * surface is ready for a worker.
- *
- * Slice 1 stops here: no worker entry is ever written, so "baselined" and
- * "waiting for its first worker dispatch" are the same thing. Slice 2 replaces
- * the `AGENT_ACTIVE` arm with the design spec's full rule — once a worker
- * dispatch entry exists, position comes from `deriveStateFromEntry(logTail)`.
+ * the one segment of the loop where that is true. Once a worker dispatch entry
+ * exists the log tail is authoritative, which is what makes a resumed position
+ * and a rebuilt cursor incapable of disagreeing.
  */
 function position(caseFile: CaseFile): SurfaceState {
+  const tail = logTail(caseFile);
+  const workerStarted = caseFile.history.some(
+    (e) => e.t === "dispatch" && e.role !== "gate-maintenance",
+  );
+  if (workerStarted && tail) return deriveStateFromEntry(tail);
   if (caseFile.header.baseline === null) {
-    const tail = logTail(caseFile);
     if (tail) return deriveStateFromEntry(tail);
     return caseFile.cursor.state === "PROVISIONING" ? "PROVISIONING" : "PRE_GATING";
   }
@@ -86,10 +86,129 @@ function gateMaintenanceAttempt(history: HistoryEntry[]): number {
   );
 }
 
-function gateMaintenanceRetries(history: HistoryEntry[], attempt: number): number {
+/**
+ * Prior same-role, same-attempt sessions that ended without a valid result.
+ * Log-derived, so a crashed dispatch's own re-run computes the same sessionKey
+ * and stays idempotent, while a genuine retry after a recorded incomplete
+ * terminus gets a new one.
+ */
+function retriesOf(
+  history: HistoryEntry[],
+  role: "worker" | "gate-maintenance",
+  attempt: number,
+): number {
   return history.filter(
-    (e) => isGateMaintenanceTerminus(e) && e.attempt === attempt && e.status === "incomplete",
+    (e) =>
+      e.t === "terminus" &&
+      (e.role ?? "worker") === role &&
+      e.attempt === attempt &&
+      e.status === "incomplete",
   ).length;
+}
+
+/**
+ * The worker attempt in flight. Only a reroute verdict advances it: a
+ * terminus-retry re-dispatches the SAME attempt, which is what keeps its cost
+ * attributed to the terminus population rather than to corrections.
+ */
+function workerAttempt(history: HistoryEntry[]): number {
+  return 1 + history.filter((e) => e.t === "triage" && e.verdict === "reroute").length;
+}
+
+/** Terminate as ESCALATED with the standard `{kind, source, reason, at}` shape. */
+function escalate(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+  source: string,
+  reason: string,
+): Promise<AdvanceResult> {
+  return terminate(dir, caseFile, location, ports, "ESCALATED", {
+    kind: "escalated",
+    source,
+    reason,
+    at: new Date().toISOString(),
+  });
+}
+
+/** Terminal escalation whose reason is the tail terminus's own rationale. */
+function escalateFromTail(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+  source: string,
+): Promise<AdvanceResult> {
+  const tail = logTail(caseFile);
+  return escalate(
+    dir, caseFile, location, ports, source,
+    tail?.t === "terminus" ? tail.rationale : "the session escalated",
+  );
+}
+
+/**
+ * A dangling dispatch (no terminus recorded) is not a session to resurrect —
+ * sessions are reconstructed, never resumed — so the missing terminus is
+ * recorded first and the ordinary bounded retry handles it from there.
+ */
+async function recordMissingTerminus(
+  dir: string,
+  tail: Extract<HistoryEntry, { t: "dispatch" }>,
+  role: "worker" | "gate-maintenance",
+): Promise<HistoryEntry> {
+  const entry: HistoryEntry = {
+    t: "terminus",
+    role,
+    attempt: tail.attempt,
+    sessionKey: tail.sessionKey,
+    status: "incomplete",
+    rationale: `${role === "worker" ? "worker" : "repair"} session ended without recording a terminus (recovered on resume)`,
+  };
+  await appendEntry(dir, entry);
+  return entry;
+}
+
+/**
+ * Dispatch one agent session and route on what it returned.
+ *
+ * The dispatch entry, the invoke and the terminus entry are one edge: routing
+ * goes through `deriveStateFromEntry` on the terminus just appended, so the
+ * state a live run moves to and the state a resumed run derives from the log
+ * are the same computation rather than two rules that can drift apart.
+ */
+async function dispatchSession(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+  role: "worker" | "gate-maintenance",
+  attempt: number,
+): Promise<AdvanceResult> {
+  const sessionKey = `${role}-${attempt}-${retriesOf(caseFile.history, role, attempt)}`;
+
+  await appendEntry(dir, { t: "dispatch", role, attempt, sessionKey });
+  const terminus = await ports.agent.invoke(
+    { role },
+    { worktreePath: worktreeOf(caseFile, location), dir, sessionKey },
+  );
+  const entry: HistoryEntry = {
+    t: "terminus",
+    role,
+    attempt,
+    sessionKey,
+    status: terminus.status,
+    ...(terminus.status === "escalate" ? { category: terminus.category } : {}),
+    rationale: terminus.rationale,
+  };
+  await appendEntry(dir, entry);
+
+  const state = deriveStateFromEntry(entry);
+  if (state === "ESCALATED") {
+    return escalate(dir, caseFile, location, ports, role, terminus.rationale);
+  }
+  await updateCursor(dir, { state });
+  return { state, done: false };
 }
 
 /**
@@ -108,33 +227,16 @@ async function dispatchGateMaintenance(
   const budgets = deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets);
   const { used, max } = budgets.gateMaintenance;
   if (used >= max) {
-    return terminate(dir, caseFile, location, ports, "ESCALATED", {
-      kind: "escalated",
-      source: "gate-maintenance",
-      reason: `gateMaintenance budget exhausted (${used}/${max}): ${reason}`,
-      at: new Date().toISOString(),
-    });
+    return escalate(
+      dir, caseFile, location, ports, "gate-maintenance",
+      `gateMaintenance budget exhausted (${used}/${max}): ${reason}`,
+    );
   }
 
-  const attempt = gateMaintenanceAttempt(caseFile.history);
-  const sessionKey = `gate-maintenance-${attempt}-${gateMaintenanceRetries(caseFile.history, attempt)}`;
-
-  await appendEntry(dir, { t: "dispatch", role: "gate-maintenance", attempt, sessionKey });
-  const terminus = await ports.agent.invoke(
-    { role: "gate-maintenance" },
-    { worktreePath: worktreeOf(caseFile, location), dir, sessionKey },
+  return dispatchSession(
+    dir, caseFile, location, ports,
+    "gate-maintenance", gateMaintenanceAttempt(caseFile.history),
   );
-  await appendEntry(dir, {
-    t: "terminus",
-    role: "gate-maintenance",
-    attempt,
-    sessionKey,
-    status: terminus.status,
-    ...(terminus.status === "escalate" ? { category: terminus.category } : {}),
-    rationale: terminus.rationale,
-  });
-  await updateCursor(dir, { state: "GATE_MAINTENANCE" });
-  return { state: "GATE_MAINTENANCE", done: false };
 }
 
 /**
@@ -185,14 +287,7 @@ async function gateMaintenance(
     // A dispatch with no terminus is a session that ended without emitting a
     // valid result — an incomplete terminus, not a session to resurrect. Record
     // it and let the ordinary incomplete handling redispatch or escalate.
-    await appendEntry(dir, {
-      t: "terminus",
-      role: "gate-maintenance",
-      attempt: tail.attempt,
-      sessionKey: tail.sessionKey,
-      status: "incomplete",
-      rationale: "repair session ended without recording a terminus (recovered on resume)",
-    });
+    await recordMissingTerminus(dir, tail, "gate-maintenance");
     return { state: "GATE_MAINTENANCE", done: false };
   }
 
@@ -204,12 +299,7 @@ async function gateMaintenance(
     case "completed":
       return preGating(dir, caseFile, location, ports);
     case "escalate":
-      return terminate(dir, caseFile, location, ports, "ESCALATED", {
-        kind: "escalated",
-        source: "gate-maintenance",
-        reason: tail.rationale,
-        at: new Date().toISOString(),
-      });
+      return escalateFromTail(dir, caseFile, location, ports, "gate-maintenance");
     case "incomplete":
       return dispatchGateMaintenance(
         dir,
@@ -249,6 +339,135 @@ async function provisioning(
 }
 
 /**
+ * Dispatch the worker session for the attempt in flight. Every terminus this
+ * can return is routed by `dispatchSession`: completed to GATING, an authority
+ * limit straight out, an exhaustion-class escalate to the deterministic
+ * router, and a session that ended without a result to INCOMPLETE_TERMINUS.
+ */
+function agentActive(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<AdvanceResult> {
+  return dispatchSession(
+    dir, caseFile, location, ports, "worker", workerAttempt(caseFile.history),
+  );
+}
+
+/**
+ * Retry a worker session that ended without a valid result, or escalate.
+ *
+ * A dangling dispatch is not a session to resurrect — sessions are
+ * reconstructed, never resumed — so the missing terminus is recorded first and
+ * the ordinary bounded retry handles it from there. That terminus is the one
+ * and only one ever written for the dispatch, so no double burn arises whether
+ * the crash was observed live or only on the next process's resume.
+ */
+async function incompleteTerminus(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<AdvanceResult> {
+  const tail = logTail(caseFile);
+
+  if (tail?.t === "dispatch") {
+    await recordMissingTerminus(dir, tail, "worker");
+    return { state: "INCOMPLETE_TERMINUS", done: false };
+  }
+
+  if (tail?.t !== "terminus") {
+    throw new IllegalStateTransition(dir, "INCOMPLETE_TERMINUS", "retry-worker");
+  }
+
+  // The terminus entry that triggered this edge is already in the log, so the
+  // count is correct with zero additional writes — including at cap, where no
+  // redispatch ever follows to record the final burn.
+  const { used, max } = deriveBudgetsFromLog(
+    caseFile.history,
+    caseFile.cursor.budgets,
+  ).terminus;
+  if (used >= max) {
+    return escalate(
+      dir, caseFile, location, ports, "worker",
+      `terminus budget exhausted (${used}/${max}): ${tail.rationale}`,
+    );
+  }
+
+  // Re-dispatch onto the worktree as the crashed or capped session left it,
+  // with the SAME attempt number: this is a retry of that attempt, not a new
+  // one, which is what keeps its cost on terminus rather than correction.
+  return dispatchSession(dir, caseFile, location, ports, "worker", tail.attempt);
+}
+
+/**
+ * Judge the worker's change against the recorded baseline. `runCheck` writes
+ * the gate entry and the failure refs itself; the attempt it judges is the one
+ * in flight, which is the same attempt the terminus just recorded — a
+ * terminus-retry re-checks the attempt it retried, never a new one.
+ */
+async function gating(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+): Promise<AdvanceResult> {
+  const { delta } = await runCheck(
+    dir,
+    worktreeOf(caseFile, location),
+    workerAttempt(caseFile.history),
+  );
+  const state: SurfaceState = delta.pass ? "CLOSING" : "TRIAGE";
+  await updateCursor(dir, { state });
+  return { state, done: false };
+}
+
+/**
+ * Do something with the accepted work. Acceptance and close are separate
+ * events: GATING decided the change is good, this decides what happens to it.
+ *
+ * The ref key counts prior close entries so a retried close cannot overwrite
+ * the detail an earlier close entry still points at.
+ */
+async function closing(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<AdvanceResult> {
+  const report = await ports.closer.close(
+    { worktreePath: worktreeOf(caseFile, location), dir },
+    { kind: "accepted" },
+  );
+
+  const priorCloses = caseFile.history.filter((e) => e.t === "close").length;
+  const detailRef = await writeRef(dir, `close-${priorCloses}`, report);
+  await appendEntry(dir, { t: "close", status: report.status, detailRef });
+
+  if (report.status !== "DONE") {
+    await updateCursor(dir, { state: "TRIAGE" });
+    return { state: "TRIAGE", done: false };
+  }
+
+  return closed(dir, report.detail);
+}
+
+/**
+ * Record the terminal CLOSED outcome. Split out so the resume case can reuse
+ * it without re-running the closer.
+ */
+async function closed(dir: string, reason: string): Promise<AdvanceResult> {
+  await setOutcome(dir, {
+    kind: "closed",
+    source: "closer",
+    reason,
+    at: new Date().toISOString(),
+  });
+  await updateCursor(dir, { state: "CLOSED" });
+  return { state: "CLOSED", done: true };
+}
+
+/**
  * Perform exactly one transition and commit it. Safe to call from a fresh
  * process against an existing `dir`: every branch reads pre-entry state or the
  * log tail, so a call after a crash always resumes onto a legal edge.
@@ -273,7 +492,50 @@ export async function advance(
       return preGating(dir, caseFile, location, ports);
     case "GATE_MAINTENANCE":
       return gateMaintenance(dir, caseFile, location, ports);
+    case "AGENT_ACTIVE":
+      return agentActive(dir, caseFile, location, ports);
+    case "INCOMPLETE_TERMINUS":
+      return incompleteTerminus(dir, caseFile, location, ports);
+    case "GATING":
+      return gating(dir, caseFile, location);
+    case "CLOSING":
+      return closing(dir, caseFile, location, ports);
+    case "CLOSED":
+      // The crash window between appending an accepted close entry and writing
+      // the outcome. The close already happened — never re-run the closer.
+      return closed(dir, "the closer accepted the work (outcome recorded on resume)");
+    case "ESCALATED":
+      // The crash window between recording an authority-class terminus and
+      // writing the outcome: resume onto the terminal edge, not into a throw.
+      return escalateFromTail(dir, caseFile, location, ports, "worker");
     default:
       throw new IllegalStateTransition(dir, state, "advance");
   }
+}
+
+export interface RunResult {
+  state: SurfaceState;
+  outcome?: CaseFileOutcome;
+}
+
+/**
+ * Advance the surface until it is terminal, then read back its outcome.
+ *
+ * No step cap: every non-terminal advance either appends an entry or throws,
+ * and the budget caps bound how many entries the loop can produce. Safe to
+ * call from a fresh process against an existing `dir` — it is just `advance`,
+ * which resumes onto a legal edge from whatever is on disk.
+ */
+export async function run(
+  dir: string,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<RunResult> {
+  let result: AdvanceResult;
+  do {
+    result = await advance(dir, location, ports);
+  } while (!result.done);
+
+  const { outcome } = await load(dir);
+  return { state: result.state, outcome };
 }
