@@ -1,5 +1,6 @@
 # Single-Surface State Machine — Slice 3: Route a Setback Back Into the Loop Instead of Giving Up
 
+> **Status:** ✅ Complete — 2026-09-08 — `e9fad5b`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 3 of `docs/superpowers/specs/2026-09-08-single-surface-state-machine-slices.md`
@@ -25,13 +26,16 @@
 
 - `package.json` `scripts` — new `demo:surface-slice-3` entry, the run story for this slice's UAT → added in Task 5.
 - `docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md` — the `TriagePort` router table's `worker_escalate (exhaustion)` row and the paragraph defending it describe a behaviour this slice's acceptance criteria contradict (see Task 2). The spec's description of the router is stale the moment the router is built → corrected in Task 2, in the same commit as the router it describes.
+- `docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md` — the `TRIAGE` edge says `fix_the_gate` appends the repair dispatch "right here"; Tasks 3 and 4 leave that dispatch solely to the `GATE_MAINTENANCE` edge → corrected in Task 4, in the same commit as the edge it describes.
+- `src/index.ts` — `deterministicRouter` is this item's built-in `TriagePort`, the counterpart of the already-exported `noopCloser` → exported in Task 2.
 - `src/run-gate.ts`'s `ponytail:` ceiling comment documents the ref-key collision this slice removes → deleted in Task 1 alongside the fix.
+- `src/surface.test.ts:99` asserts `advance` throws on a TRIAGE position — a pre-slice-3 expectation the edge makes obsolete → deleted in Task 3.
 
 No README, CONTRIBUTING or embedded-skill text describes the triage router, the gate ref-key scheme, or the demo list; `README.md` and `CONTRIBUTING.md` were checked and reference no `demo:*` script by name.
 
 ---
 
-## Task 1: Widen the gate-failure ref key with a re-check counter
+## Task 1: Widen the gate-failure ref key with a re-check counter ✅ DONE (deliver-slice)
 
 The post-task repair path re-checks the **same** attempt against the pinned baseline. Today `runCheck` keys failure refs `gate-<attempt>-<index>`, so the second check for an attempt overwrites the ref files the first check's `gate` entry still points at — triage would read another check's detail. Widening the key to `gate-<attempt>-<recheckCount>-<index>` removes the collision before any edge can reach it.
 
@@ -125,14 +129,15 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 2: The deterministic triage router
+## Task 2: The deterministic triage router ✅ DONE (deliver-slice)
 
 The item ships the deterministic half of `TriagePort` only: a per-trigger lookup with no agent call and no brief synthesis. Its whole rule is "if the trigger's budget is under cap, return the verdict that helps; otherwise escalate."
 
 **Files:**
 - Create: `src/router.ts`
 - Test: `src/router.test.ts`
-- Modify: `docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md` (the `worker_escalate (exhaustion)` router row and the paragraph defending it)
+- Modify: `src/index.ts` (re-export `deterministicRouter`, alongside `noopCloser`)
+- Modify: `docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md` (the `worker_escalate (exhaustion)` router row, the paragraph defending it, and the `TriagePort` bullet in Decisions)
 
 **Interfaces:**
 - Consumes: `TriagePort`, `TriageInput`, `TriageVerdict` from `src/ports.ts`; `BudgetPopulation`, `BudgetSet` from `src/schema.ts`.
@@ -300,12 +305,23 @@ export const deterministicRouter: TriagePort = {
 };
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Export it from the package surface**
+
+`src/index.ts` already exports `noopCloser`, this item's built-in `CloserPort`.
+The router is the built-in `TriagePort` and belongs on the same surface — a
+consumer wiring `SurfacePorts` needs both. Add to `src/index.ts`, next to the
+`noopCloser` line:
+
+```ts
+export { deterministicRouter } from "./router.js";
+```
+
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run src/router.test.ts && npx tsc --noEmit`
 Expected: PASS, and a clean typecheck.
 
-- [ ] **Step 5: Correct the design spec's router table**
+- [ ] **Step 6: Correct the design spec's router table**
 
 In `docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md`, in the `TriagePort` router table, replace the `worker_escalate` (exhaustion) row:
 
@@ -332,10 +348,24 @@ sharpened brief for the retry rather than re-dispatching the same one.
 An authority-class escalate is never rerouted at any budget.
 ```
 
-- [ ] **Step 6: Commit**
+Finally, in the Decisions section's `TriagePort` bullet, the parenthetical
+listing what Item 5 adds is stale for the same reason. Replace:
+
+```
+  half (overruling an exhaustion-class escalate downward, sharpened briefs)
+```
+
+with:
+
+```
+  half (judging *which* exhaustion-class escalates are worth rerouting,
+  sharpened briefs)
+```
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/router.ts src/router.test.ts docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md
+git add src/router.ts src/router.test.ts src/index.ts docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md
 git commit -m "Add the deterministic triage router
 
 The item's built-in TriagePort: one lookup row per trigger, returning the
@@ -350,7 +380,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 3: The TRIAGE edge
+## Task 3: The TRIAGE edge ✅ DONE (deliver-slice)
 
 `advance` currently falls through to `IllegalStateTransition` when the surface reaches `TRIAGE`. This task builds the edge: read the trigger off the log tail, derive budgets, call the port, write the stub artefact, append the `triage` entry (which is the `correction` / `close` burn), and route the verdict through `case-file.ts`'s existing `triageState` table.
 
@@ -518,26 +548,55 @@ describe("TRIAGE", () => {
     expect(history.slice(lastTriage).filter((e) => e.t === "dispatch")).toEqual([]);
   });
 
-  it("names the state and the edge when TRIAGE is reached with no routable tail", async () => {
-    await updateCursor(dir, { state: "TRIAGE" });
-    await appendEntry(dir, { t: "triage", afterAttempt: 1, trigger: "gate_fail", verdict: "reroute", rationale: "r", artifactRef: "triage-0" });
-    // Force the position to TRIAGE with a tail nothing can derive a trigger from.
-    await appendEntry(dir, { t: "baseline", status: "PASS" });
-    await updateCursor(dir, { state: "TRIAGE" });
+  it("ends the surface as ABORTED when the port returns an abort verdict", async () => {
+    const abortingTriage: SurfacePorts["triage"] = {
+      triage: () =>
+        Promise.resolve({ verdict: "abort", rationale: "the task itself is unsound" }),
+    };
+    const agent = {
+      invoke: (_roleCfg: { role: string }, ctx: { worktreePath: string }) => {
+        writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
+        return Promise.resolve({ status: "completed", rationale: "broke it" } as Terminus);
+      },
+    };
+    const ports: SurfacePorts = { agent, triage: abortingTriage, closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
 
-    // Reached directly, since `position()` would derive AGENT_ACTIVE from the tail.
-    await expect(
-      (async () => {
-        const caseFile = await load(dir);
-        const { triageTrigger } = await import("./surface.js");
-        return triageTrigger(dir, caseFile.history.at(-1));
-      })(),
-    ).rejects.toThrow(IllegalStateTransition);
+    const result = await run(dir, location, ports);
+    expect(result.state).toBe("ABORTED");
+    expect(result.outcome).toMatchObject({ kind: "aborted", source: "triage" });
+
+    const { history } = await load(dir);
+    expect(history.at(-1)).toMatchObject({ t: "triage", verdict: "abort" });
+  });
+
+  it("names the state and the edge when TRIAGE is reached with no routable tail", () => {
+    // Defensive guard: no tail `position()` derives TRIAGE from can fail to
+    // yield a trigger, so it is exercised directly rather than through advance.
+    expect(() => triageTrigger(dir, undefined)).toThrow(IllegalStateTransition);
+    expect(() => triageTrigger(dir, { t: "baseline", status: "PASS" })).toThrow(/TRIAGE/);
   });
 });
 ```
 
-Note on the last test: it exercises the guard through an exported helper. Export `triageTrigger` from `src/surface.ts` for exactly this reason (Step 3), and keep it the only export added.
+Note on the last test: it exercises the guard through an exported helper, imported statically at the top of the file alongside `advance`/`run`:
+
+```ts
+import { advance, run, triageTrigger } from "./surface.js";
+```
+
+Export `triageTrigger` from `src/surface.ts` for exactly this reason (Step 3), and keep it the only export added.
+
+- [ ] **Step 1b: Remove the test the edge makes obsolete**
+
+`src/surface.test.ts:99` currently asserts that `advance` *throws* on a TRIAGE
+position (`"throws IllegalStateTransition naming the state it cannot advance
+from"`, whose comment already says "whose edge is slice 3's"). That is a
+pre-slice-3 expectation, not intended behaviour: with the edge built it fails
+with `"triage was not expected here"` from `unusedTriage`. Delete it — the
+`IllegalStateTransition` message contract it guarded is now covered by the
+`triageTrigger` test above and by the existing `GATE_MAINTENANCE` /
+`INCOMPLETE_TERMINUS` guard tests.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -672,13 +731,14 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 4: The post-task gate repair — dispatch from triage, re-check without re-baselining
+## Task 4: The post-task gate repair — dispatch from triage, re-check without re-baselining ✅ DONE (deliver-slice)
 
 `GATE_MAINTENANCE` today only knows its pre-task entry: it assumes a dispatch or terminus tail, and a completed repair always re-baselines. This task adds the two post-task cases: dispatching when the tail is the `fix_the_gate` triage entry, and resolving a completed repair to a re-check of the same attempt against the baseline already pinned.
 
 **Files:**
 - Modify: `src/surface.ts` (the `gateMaintenance` function)
 - Test: `src/surface.test.ts`
+- Modify: `docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md` (the `TRIAGE` edge's `fix_the_gate` sentence)
 
 **Interfaces:**
 - Consumes: `triage` edge from Task 3 (a `fix_the_gate` triage entry is the tail it dispatches from); `runCheck`'s widened ref key from Task 1 (the re-check writes refs for an attempt already checked).
@@ -707,7 +767,11 @@ Add to `src/surface.test.ts`, inside the `describe("TRIAGE", ...)` block from Ta
     const ports = portsWithTriage(agent);
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
 
-    const before = await load(dir);
+    // Capture the baseline the moment it is pinned, before any worker runs.
+    await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
+    const pinned = (await load(dir)).header.baseline;
+    expect(pinned).not.toBeNull();
+
     const result = await run(dir, location, ports);
     expect(result.state).toBe("CLOSED");
 
@@ -715,7 +779,7 @@ Add to `src/surface.test.ts`, inside the `describe("TRIAGE", ...)` block from Ta
 
     // The baseline is the one captured pre-task — never recaptured.
     expect(history.filter((e) => e.t === "baseline")).toHaveLength(1);
-    expect(header.baseline).toEqual(before.header.baseline);
+    expect(header.baseline).toEqual(pinned);
 
     // gate_error routed to a repair, and the re-check judged the SAME attempt.
     expect(history.filter((e) => e.t === "triage")).toMatchObject([
@@ -843,15 +907,38 @@ async function gateMaintenance(
 
 `gating` is declared below `gateMaintenance` in the file; both are function declarations, so hoisting makes the forward reference legal. Leave the ordering as it is — moving `gating` would churn the diff for nothing.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 4: Correct the design spec's `TRIAGE` edge description**
+
+The spec's `TRIAGE` edge says `fix_the_gate` "appends the post-task
+`dispatch`/`terminus` pair with `role: "gate-maintenance"` right here ... and
+routes to `GATE_MAINTENANCE`", with the `GATE_MAINTENANCE` edge recovering the
+crash window between the two writes. Tasks 3 and 4 keep the observable
+behaviour and drop the duplicate: only `GATE_MAINTENANCE` dispatches. In
+`docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md`,
+replace that clause with:
+
+```
+`fix_the_gate` routes to `GATE_MAINTENANCE`, whose edge appends the post-task
+`dispatch`/`terminus` pair with `role: "gate-maintenance"` (that append is the
+`gateMaintenance` burn, per Decisions above — same pattern as `PRE_GATING`'s
+pre-task case). `TRIAGE` records the verdict and stops: since that edge must
+dispatch from a `fix_the_gate` tail anyway to recover the crash window between
+the two writes, dispatching here as well would be a second copy of the same
+code, and leaving it out closes the window by construction;
+```
+
+Leave the `GATE_MAINTENANCE` edge section as it is — it already specifies
+exactly this dispatch-from-a-triage-tail behaviour.
+
+- [ ] **Step 5: Run test to verify it passes**
 
 Run: `npx vitest run src/surface.test.ts && npx tsc --noEmit`
 Expected: PASS, clean typecheck.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
-git add src/surface.ts src/surface.test.ts
+git add src/surface.ts src/surface.test.ts docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md
 git commit -m "Resolve a post-task gate repair by re-checking, not re-baselining
 
 GATE_MAINTENANCE only knew its pre-task entry: it rejected a fix_the_gate
@@ -866,7 +953,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 5: The setback-routing demo
+## Task 5: The setback-routing demo ✅ DONE (deliver-slice)
 
 The harness extender's UAT surface for this slice: four scenarios against fresh surfaces, each printing its state sequence, the router's verdicts, and its final outcome.
 
@@ -875,7 +962,7 @@ The harness extender's UAT surface for this slice: four scenarios against fresh 
 - Modify: `package.json` (`scripts`)
 
 **Interfaces:**
-- Consumes: `advance` and `run` from `src/surface.js`; `deterministicRouter` from `src/router.js` (Task 2); `create`/`load` from `src/case-file.js`; `initTempRepo` from `src/temp-repo.js`; `noopCloser`, `AgentPort`, `SurfaceLocation`, `SurfacePorts`, `CloserPort` from `src/ports.js`.
+- Consumes: `advance` from `src/surface.js` (the demo steps the surface itself, so it can print every state); `deterministicRouter` from `src/router.js` (Task 2); `create`/`load` from `src/case-file.js`; `initTempRepo` from `src/temp-repo.js`; `noopCloser`, `AgentPort`, `SurfaceLocation`, `SurfacePorts`, `CloserPort` from `src/ports.js`.
 - Produces: `npm run demo:surface-slice-3`.
 
 - [ ] **Step 1: Write the demo script**
@@ -1092,7 +1179,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 | A closer that reports the surface isn't ready routes back to another close attempt | Task 3 (`routes a close failure back to another close attempt`) |
 | A worker's "stuck, but retrying might help" is retried as another worker attempt, up to its own cap | Task 2 (router row) + Task 3 (`retries an exhaustion-class worker escalate...`) |
 | Each route eventually reaches closed / escalated / aborted — none can loop forever | Task 3 (`escalates a gate failure once the correction budget is at cap` uses `run`, which is unbounded and terminates only because the budget caps it) |
-| A verdict that ends the surface leaves it in the matching terminal state with no further dispatch | Task 3 (`ends the surface with no further dispatch when the router escalates`) |
+| A verdict that ends the surface leaves it in the matching terminal state with no further dispatch | Task 3 (`ends the surface with no further dispatch when the router escalates`, plus `ends the surface as ABORTED when the port returns an abort verdict` for the other terminal verdict) |
 
 No gaps.
 
@@ -1119,7 +1206,7 @@ No new dependency, no new abstraction with a single call site, no hand-rolled co
 **5. Scaffolding drift check**
 
 Behaviours this slice changes, and where each is described:
-- **`TRIAGE` is now a live edge rather than a throw** — described only in the design spec's control-flow section, which already specifies it; no README, CONTRIBUTING or skill text describes the state machine's edges. No update needed beyond Task 2's correction.
+- **`TRIAGE` is now a live edge rather than a throw** — described in the design spec's control-flow section, which specifies it correctly except for placing the `fix_the_gate` repair dispatch inside `TRIAGE` → corrected in Task 4. `src/surface.test.ts`'s "throws IllegalStateTransition naming the state it cannot advance from" encodes the old throw → deleted in Task 3. No README, CONTRIBUTING or skill text describes the state machine's edges.
 - **The exhaustion-class routing rule** — described in the design spec's router table and its defending paragraph, both now stale → corrected in Task 2, the task that builds the router.
 - **The gate failure ref-key format** — described only in `src/run-gate.ts`'s own `ponytail:` comment → deleted in Task 1, the task that changes the format.
 - **A post-task repair re-checks rather than re-baselines** — described in the design spec's `GATE_MAINTENANCE` section, which already specifies this behaviour correctly. No update needed.
