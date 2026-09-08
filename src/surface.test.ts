@@ -54,6 +54,22 @@ function portsWith(agent: SurfacePorts["agent"]): SurfacePorts {
   return { agent, triage: unusedTriage(), closer: noopCloser };
 }
 
+/** Provision a surface against a repo seeded with `files`, and return its paths. */
+async function provisioned(
+  dir: string,
+  files: Record<string, string>,
+  ports: SurfacePorts,
+): Promise<SurfaceLocation> {
+  const repoPath = initTempRepo("surface-repo-", files);
+  const worktreePath = join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt");
+  const location = { repoPath, worktreePath };
+  await advance(dir, location, ports);
+  return location;
+}
+
+const PASSING_TAP = "1..2\nok 1 - alpha\nok 2 - beta\n";
+const FAILING_TAP = "1..2\nok 1 - alpha\nnot ok 2 - beta\n";
+
 describe("advance", () => {
   let dir: string;
   let location: SurfaceLocation;
@@ -144,6 +160,62 @@ describe("advance", () => {
     );
 
     expect(result).toEqual({ state: "ABORTED", done: true });
+  });
+
+  it("baselines a healthy gate and lands on AGENT_ACTIVE with no repair dispatched", async () => {
+    const agent = scriptedAgent([{ status: "completed", rationale: "unused" }]);
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "AGENT_ACTIVE", done: false });
+    const reloaded = await load(dir);
+    expect(reloaded.header.baseline?.status).toBe("PASS");
+    expect(reloaded.cursor.state).toBe("AGENT_ACTIVE");
+    expect(agent.calls).toEqual([]);
+    expect(reloaded.history).toHaveLength(0);
+  });
+
+  it("baselines a red-but-running gate and still lands on AGENT_ACTIVE", async () => {
+    const agent = scriptedAgent([{ status: "completed", rationale: "unused" }]);
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "report.tap": FAILING_TAP }, ports);
+
+    const result = await advance(dir, location, ports);
+
+    // Pre-existing failures are recorded as the baseline, not repaired: only a
+    // gate-level ERROR routes to GATE_MAINTENANCE.
+    expect(result).toEqual({ state: "AGENT_ACTIVE", done: false });
+    expect(agent.calls).toEqual([]);
+  });
+
+  it("dispatches a repair session when the gate itself cannot run", async () => {
+    const agent = scriptedAgent([{ status: "completed", rationale: "reinstalled the runner" }]);
+    const ports = portsWith(agent);
+    // No report.tap in the repo: `cat report.tap` fails and parses to nothing,
+    // so the gate reports ERROR.
+    const location = await provisioned(dir, { "seed.txt": "hello\n" }, ports);
+
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "GATE_MAINTENANCE", done: false });
+    expect(agent.calls).toEqual(["gate-maintenance:gate-maintenance-1-0"]);
+
+    const reloaded = await load(dir);
+    expect(reloaded.header.baseline).toBeNull();
+    expect(reloaded.cursor.state).toBe("GATE_MAINTENANCE");
+    expect(reloaded.history).toEqual([
+      { t: "dispatch", role: "gate-maintenance", attempt: 1, sessionKey: "gate-maintenance-1-0" },
+      {
+        t: "terminus",
+        role: "gate-maintenance",
+        attempt: 1,
+        sessionKey: "gate-maintenance-1-0",
+        status: "completed",
+        rationale: "reinstalled the runner",
+      },
+    ]);
   });
 });
 

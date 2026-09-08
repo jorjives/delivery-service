@@ -1,9 +1,10 @@
-import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor } from "./case-file.js";
+import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
+import { recordBaseline } from "./run-gate.js";
 import type { SurfaceLocation, SurfacePorts } from "./ports.js";
-import type { CaseFile, CaseFileOutcome, SurfaceState } from "./schema.js";
+import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
 export interface AdvanceResult {
   state: SurfaceState;
@@ -65,6 +66,108 @@ async function terminate(
   return { state, done: true };
 }
 
+function isGateMaintenanceTerminus(entry: HistoryEntry): boolean {
+  return entry.t === "terminus" && entry.role === "gate-maintenance";
+}
+
+/**
+ * The repair agent's own attempt counter, entirely separate from the worker's:
+ * a resolved repair session (completed or escalate) advances it, an incomplete
+ * one does not — that redispatches the same attempt.
+ */
+function gateMaintenanceAttempt(history: HistoryEntry[]): number {
+  return (
+    1 +
+    history.filter(
+      (e) =>
+        isGateMaintenanceTerminus(e) &&
+        e.t === "terminus" &&
+        (e.status === "completed" || e.status === "escalate"),
+    ).length
+  );
+}
+
+function gateMaintenanceRetries(history: HistoryEntry[], attempt: number): number {
+  return history.filter(
+    (e) =>
+      isGateMaintenanceTerminus(e) &&
+      e.t === "terminus" &&
+      e.attempt === attempt &&
+      e.status === "incomplete",
+  ).length;
+}
+
+/**
+ * Dispatch one repair session, or escalate if the gate-maintenance budget is
+ * spent. The dispatch entry IS the budget burn: the count is derived from the
+ * log first, and the entry appended only if under cap, so "burned live" and
+ * "derived from the log on rebuild" are the same computation by construction.
+ */
+async function dispatchGateMaintenance(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+  reason: string,
+): Promise<AdvanceResult> {
+  const budgets = deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets);
+  const { used, max } = budgets.gateMaintenance;
+  if (used >= max) {
+    return terminate(dir, caseFile, location, ports, "ESCALATED", {
+      kind: "escalated",
+      source: "gate-maintenance",
+      reason: `gateMaintenance budget exhausted (${used}/${max}): ${reason}`,
+      at: new Date().toISOString(),
+    });
+  }
+
+  const attempt = gateMaintenanceAttempt(caseFile.history);
+  const sessionKey = `gate-maintenance-${attempt}-${gateMaintenanceRetries(caseFile.history, attempt)}`;
+
+  await appendEntry(dir, { t: "dispatch", role: "gate-maintenance", attempt, sessionKey });
+  const terminus = await ports.agent.invoke(
+    { role: "gate-maintenance" },
+    { worktreePath: worktreeOf(caseFile, location), dir, sessionKey },
+  );
+  await appendEntry(dir, {
+    t: "terminus",
+    role: "gate-maintenance",
+    attempt,
+    sessionKey,
+    status: terminus.status,
+    ...(terminus.status === "escalate" ? { category: terminus.category } : {}),
+    rationale: terminus.rationale,
+  });
+  await updateCursor(dir, { state: "GATE_MAINTENANCE" });
+  return { state: "GATE_MAINTENANCE", done: false };
+}
+
+/**
+ * Capture the baseline. A gate that ran — green or known-red — is a trustworthy
+ * measuring stick, so the surface is ready for a worker; only a gate-level
+ * ERROR (the gate could not run at all) needs the environment repaired first.
+ */
+async function preGating(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<AdvanceResult> {
+  const report = await recordBaseline(dir, worktreeOf(caseFile, location));
+  if (report.status !== "ERROR") {
+    await updateCursor(dir, { state: "AGENT_ACTIVE" });
+    return { state: "AGENT_ACTIVE", done: false };
+  }
+  // recordBaseline stores nothing on ERROR, so `caseFile` is still current.
+  return dispatchGateMaintenance(
+    dir,
+    caseFile,
+    location,
+    ports,
+    report.detail ?? "the gate could not run",
+  );
+}
+
 async function provisioning(
   dir: string,
   caseFile: CaseFile,
@@ -113,6 +216,8 @@ export async function advance(
   switch (state) {
     case "PROVISIONING":
       return provisioning(dir, caseFile, location, ports);
+    case "PRE_GATING":
+      return preGating(dir, caseFile, location, ports);
     default:
       throw new IllegalStateTransition(dir, state, "advance");
   }
