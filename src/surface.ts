@@ -333,6 +333,61 @@ function agentActive(
 }
 
 /**
+ * Retry a worker session that ended without a valid result, or escalate.
+ *
+ * A dangling dispatch is not a session to resurrect — sessions are
+ * reconstructed, never resumed — so the missing terminus is recorded first and
+ * the ordinary bounded retry handles it from there. That terminus is the one
+ * and only one ever written for the dispatch, so no double burn arises whether
+ * the crash was observed live or only on the next process's resume.
+ */
+async function incompleteTerminus(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<AdvanceResult> {
+  const tail = logTail(caseFile);
+
+  if (tail?.t === "dispatch") {
+    await appendEntry(dir, {
+      t: "terminus",
+      role: "worker",
+      attempt: tail.attempt,
+      sessionKey: tail.sessionKey,
+      status: "incomplete",
+      rationale: "worker session ended without recording a terminus (recovered on resume)",
+    });
+    return { state: "INCOMPLETE_TERMINUS", done: false };
+  }
+
+  if (tail?.t !== "terminus") {
+    throw new IllegalStateTransition(dir, "INCOMPLETE_TERMINUS", "retry-worker");
+  }
+
+  // The terminus entry that triggered this edge is already in the log, so the
+  // count is correct with zero additional writes — including at cap, where no
+  // redispatch ever follows to record the final burn.
+  const { used, max } = deriveBudgetsFromLog(
+    caseFile.history,
+    caseFile.cursor.budgets,
+  ).terminus;
+  if (used >= max) {
+    return terminate(dir, caseFile, location, ports, "ESCALATED", {
+      kind: "escalated",
+      source: "worker",
+      reason: `terminus budget exhausted (${used}/${max}): ${tail.rationale}`,
+      at: new Date().toISOString(),
+    });
+  }
+
+  // Re-dispatch onto the worktree as the crashed or capped session left it,
+  // with the SAME attempt number: this is a retry of that attempt, not a new
+  // one, which is what keeps its cost on terminus rather than correction.
+  return dispatchSession(dir, caseFile, location, ports, "worker", tail.attempt);
+}
+
+/**
  * Perform exactly one transition and commit it. Safe to call from a fresh
  * process against an existing `dir`: every branch reads pre-entry state or the
  * log tail, so a call after a crash always resumes onto a legal edge.
@@ -359,6 +414,8 @@ export async function advance(
       return gateMaintenance(dir, caseFile, location, ports);
     case "AGENT_ACTIVE":
       return agentActive(dir, caseFile, location, ports);
+    case "INCOMPLETE_TERMINUS":
+      return incompleteTerminus(dir, caseFile, location, ports);
     case "ESCALATED":
       // The crash window between recording an authority-class terminus and
       // writing the outcome: resume onto the terminal edge, not into a throw.

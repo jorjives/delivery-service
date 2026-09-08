@@ -249,7 +249,7 @@ export async function readRef(dir: string, refId: string): Promise<unknown> {
 }
 
 const terminusState: Record<string, SurfaceState> = {
-  completed: "GATING", escalate: "ESCALATED", incomplete: "INCOMPLETE_TERMINUS",
+  completed: "GATING", incomplete: "INCOMPLETE_TERMINUS",
 };
 const gateState: Record<string, SurfaceState> = {
   PASS: "CLOSING", FAIL: "TRIAGE", ERROR: "TRIAGE",
@@ -265,15 +265,23 @@ const closeState: Record<string, SurfaceState> = {
 export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
   switch (entry.t) {
     case "dispatch":
-      // A gate-maintenance dispatch resumes into GATE_MAINTENANCE, whose edge
-      // routes on by terminus status; a worker one still means AGENT_ACTIVE.
-      return entry.role === "gate-maintenance" ? "GATE_MAINTENANCE" : "AGENT_ACTIVE";
+      // A dispatch that is still the tail has no terminus — a session that
+      // ended without emitting a valid result, whichever role ran it. A repair
+      // session's recovery is GATE_MAINTENANCE's own edge; a worker's is the
+      // INCOMPLETE_TERMINUS edge, which records the missing terminus and
+      // retries on the terminus budget rather than dispatching unboundedly.
+      return entry.role === "gate-maintenance" ? "GATE_MAINTENANCE" : "INCOMPLETE_TERMINUS";
     case "terminus":
-      // A repair session's terminus of ANY status stays inside GATE_MAINTENANCE:
+      // A repair sessions terminus of ANY status stays inside GATE_MAINTENANCE:
       // its edge decides between re-baselining, redispatching and escalating.
-      return entry.role === "gate-maintenance"
-        ? "GATE_MAINTENANCE"
-        : terminusState[entry.status] as SurfaceState;
+      if (entry.role === "gate-maintenance") return "GATE_MAINTENANCE";
+      // An authority limit is terminal on the spot; an exhaustion-class
+      // escalate still gets the deterministic routers first look, so a crash
+      // between the terminus and the triage entry cannot skip triage entirely.
+      if (entry.status === "escalate") {
+        return entry.category === "authority" ? "ESCALATED" : "TRIAGE";
+      }
+      return terminusState[entry.status] as SurfaceState;
     case "gate": return gateState[entry.status] as SurfaceState;
     case "triage": return triageState[entry.verdict] as SurfaceState;
     case "close": return closeState[entry.status] as SurfaceState;
@@ -289,27 +297,28 @@ export function deriveBudgetsFromLog(
   for (const entry of history) {
     switch (entry.t) {
       case "dispatch":
-        // The dispatch entry IS the gateMaintenance burn (design spec: "Budgets
-        // have no separately-mutated live counter"), so a repair dispatch is
-        // never also charged to the worker's correction population.
+        // The dispatch entry IS the gateMaintenance burn: the count is derived
+        // from the log, and the entry appended only if under cap, so "burned
+        // live" and "derived on rebuild" are the same computation.
         if (entry.role === "gate-maintenance") used.gateMaintenance++;
-        else if (entry.attempt > 1) used.correction++;
         break;
       case "terminus":
-        // `terminus` is the WORKER's population. A repair session's terminus is
-        // paid for on gateMaintenance by its own dispatch entry (design spec:
-        // "counting it would charge a repair session to the worker's
-        // population"), so it is never counted here. The worker-side narrowing
-        // to `status === "incomplete"` only is Slice 3/4's — see "Out of scope".
-        if (entry.role !== "gate-maintenance") used.terminus++;
+        // `terminus` caps WORKER retries, so only a worker session that ended
+        // without a valid result burns it. A completed or escalated terminus
+        // resolved its attempt and costs nothing; a repair sessions terminus
+        // is already paid for on gateMaintenance by its own dispatch entry.
+        if (entry.role !== "gate-maintenance" && entry.status === "incomplete") used.terminus++;
         break;
       case "gate":
         if (entry.status === "ERROR") used.gateError++;
         break;
       case "triage":
+        // The triage entry IS the burn for the verdict it records — not the
+        // dispatch or close that follows it, which a crash could land before.
+        if (entry.verdict === "reroute") used.correction++;
+        else if (entry.verdict === "retry_close") used.close++;
         break;
       case "close":
-        used.close++;
         break;
     }
   }

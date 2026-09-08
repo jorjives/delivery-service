@@ -448,3 +448,78 @@ describe("the AGENT_ACTIVE edge", () => {
     expect((await load(dir)).outcome?.reason).toContain("sign-off");
   });
 });
+
+describe("the INCOMPLETE_TERMINUS edge", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  async function readyForWorker(ports: SurfacePorts): Promise<SurfaceLocation> {
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+    await advance(dir, location, ports);
+    return location;
+  }
+
+  it("retries the same attempt with a fresh session key", async () => {
+    const agent = scriptedAgent([
+      { status: "incomplete", rationale: "hit the turn cap" },
+      { status: "completed", rationale: "finished on the retry" },
+    ]);
+    const ports = portsWith(agent);
+    const location = await readyForWorker(ports);
+    await advance(dir, location, ports); // AGENT_ACTIVE -> INCOMPLETE_TERMINUS
+
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "GATING", done: false });
+    // Same attempt — a retry of the attempt that produced no valid result, not
+    // a new one — and a distinct session, because sessions are reconstructed.
+    expect(agent.calls).toEqual(["worker:worker-1-0", "worker:worker-1-1"]);
+    const { history } = await load(dir);
+    expect(history.filter((e) => e.t === "dispatch").every((e) => e.attempt === 1)).toBe(true);
+  });
+
+  it("escalates once the terminus budget is spent, naming the population and cap", async () => {
+    const agent = scriptedAgent([{ status: "incomplete", rationale: "hit the turn cap" }]);
+    const ports = portsWith(agent);
+    // A cap of 2 makes the whole scenario short: two incomplete sessions, then out.
+    await updateCursor(dir, { budgets: { ...budgets, terminus: { used: 0, max: 2 } } });
+    const location = await readyForWorker(ports);
+
+    let result = await advance(dir, location, ports);
+    for (let step = 0; step < 10 && !result.done; step++) {
+      result = await advance(dir, location, ports);
+    }
+
+    expect(result).toEqual({ state: "ESCALATED", done: true });
+    const reloaded = await load(dir);
+    expect(reloaded.outcome?.kind).toBe("escalated");
+    // REVIEW FIX: the source is the ROLE whose retries ran out (matching slice
+    // 1's "gate-maintenance"); the population and cap are named in the reason.
+    expect(reloaded.outcome?.source).toBe("worker");
+    expect(reloaded.outcome?.reason).toContain("terminus budget exhausted (2/2)");
+    // Exactly the cap: two sessions dispatched, no third.
+    expect(agent.calls).toEqual(["worker:worker-1-0", "worker:worker-1-1"]);
+  });
+
+  it("records the missing terminus for a dispatch that never recorded one", async () => {
+    const agent = scriptedAgent([{ status: "completed", rationale: "finished on the retry" }]);
+    const ports = portsWith(agent);
+    const location = await readyForWorker(ports);
+    // A crash between appending the dispatch and appending its terminus.
+    await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" });
+
+    const recorded = await advance(dir, location, ports);
+
+    expect(recorded).toEqual({ state: "INCOMPLETE_TERMINUS", done: false });
+    const { history } = await load(dir);
+    const tail = history.at(-1);
+    expect(tail?.t).toBe("terminus");
+    expect(tail).toMatchObject({ status: "incomplete", attempt: 1, sessionKey: "worker-1-0" });
+    // No duplicate session was dispatched for the crashed one.
+    expect(agent.calls).toEqual([]);
+  });
+});
