@@ -282,10 +282,14 @@ else:
 `position` is a `SurfaceState` in every branch. Past the first worker
 dispatch it comes from `deriveStateFromEntry`, which already returns a
 `SurfaceState` and is what `rebuild` uses, so a resumed position and a rebuilt
-cursor can never disagree. `resumeAction` returns a different vocabulary
-(`ResumeAction`) and is used for the one thing the state alone does not carry:
-its `triage` versus `close_triage` distinction supplies the `TriageInput`
-trigger when the position is `TRIAGE`. The pre-task versus post-task
+cursor can never disagree. The `TriageInput` trigger, which the state alone
+does not carry, is read off the tail entry that produced the `TRIAGE`
+position: a `gate` entry gives `"gate_fail"` or `"gate_error"` by its
+`status`, a `close` entry gives `"close_failure"`, and an `escalate` terminus
+gives `"worker_escalate"` plus its `category`. `resumeAction` returns a
+different vocabulary (`ResumeAction`) and is not what the driver routes on;
+its `triage`/`close_triage` split is a coarser view of the same tail read.
+The pre-task versus post-task
 `GATE_MAINTENANCE` disambiguation stays in the driver, which reads
 `header.baseline`; `deriveStateFromEntry` sees only an entry and cannot make
 that call (see "Schema extension" below).
@@ -344,6 +348,15 @@ other population.
 
 **GATE_MAINTENANCE → PRE_GATING | GATING | GATE_MAINTENANCE | ESCALATED**
 
+If the position is `GATE_MAINTENANCE` but no `role: "gate-maintenance"`
+dispatch entry follows the entry that routed the surface here, the repair
+session was never dispatched — the crash window between `TRIAGE` appending a
+`fix_the_gate` triage entry and appending the dispatch that pays for it. This
+edge covers that case itself: derive the `gateMaintenance` count, and under cap
+append the dispatch (the burn), invoke, and append the terminus, exactly as the
+`TRIAGE` edge would have; at cap, escalate. Without this the surface would
+resume into `GATE_MAINTENANCE` with no terminus for the edge below to route on.
+
 Entered pre-task (no baseline yet): on the repair agent's `completed`
 terminus, resolves to `"PRE_GATING"` to re-baseline. Entered post-task
 (triage verdict was `fix_the_gate`): on `completed`, resolves to `"GATING"`
@@ -376,11 +389,14 @@ since a terminus-retry reuses its attempt number rather than advancing it,
 per "Attempt numbering" below), appends a `dispatch` entry (`role: "worker"`,
 or omitted — worker is the default),
 calls `agent.invoke(workerRoleCfg, ctx)`, appends the resulting `terminus`
-entry. Maps the terminus per `case-file.ts`'s existing `terminusState` table
-(already built in Item 1): `completed → GATING`, `escalate → ESCALATED`
-(authority-class) or `TRIAGE` (exhaustion-class — the deterministic router
-still gets first look, per control-flow doc), `incomplete →
-INCOMPLETE_TERMINUS`.
+entry. Maps the terminus per `case-file.ts`'s `terminusState` table:
+`completed → GATING`, `escalate → ESCALATED` (authority-class) or `TRIAGE`
+(exhaustion-class — the deterministic router still gets first look, per
+control-flow doc), `incomplete → INCOMPLETE_TERMINUS`. The shipped table maps
+`escalate` to `ESCALATED` unconditionally, so it is extended here to branch on
+`TerminusEntry.category` — see "Schema extension" below; without that, a crash
+between an exhaustion-class terminus and the triage entry would resume into
+`ESCALATED` and skip triage entirely.
 
 **INCOMPLETE_TERMINUS → AGENT_ACTIVE | ESCALATED**
 
@@ -438,17 +454,21 @@ advances the attempt number and returns to `AGENT_ACTIVE` (the next `advance`
 call dispatches `attempt + 1`, per "Attempt numbering" below); `fix_the_gate`
 appends the post-task `dispatch`/`terminus` pair with `role:
 "gate-maintenance"` right here (that append is the `gateMaintenance` burn,
-per Decisions above — same pattern as `PRE_GATING`'s pre-task case) and
+per Decisions above — same pattern as `PRE_GATING`'s pre-task case; a crash
+between the triage entry and that append is recovered by the
+`GATE_MAINTENANCE` edge's no-dispatch-yet case above) and
 routes to `GATE_MAINTENANCE`; `retry_close` returns to `CLOSING`;
 `escalate`/`abort` go straight to their terminal states.
 
 ### Escalation and abort
 
-Both are terminal and handled the same way: append the relevant entry (a
-`triage` entry if the escalate/abort came from a `TriagePort` verdict; none
-if it came from an authority-class worker escalate or a budget exhaustion —
-those are visible from the `terminus`/prior entries alone), call
-`setOutcome`, and fire-and-log the closer with the non-accept outcome
+Both are terminal and handled the same way. No extra entry is appended: when
+the escalate/abort came from a `TriagePort` verdict, the `TRIAGE` edge has
+already appended the `triage` entry that records it; when it came from an
+authority-class worker escalate or a budget exhaustion, the `terminus` and
+prior entries already evidence it. The terminal handling is therefore just:
+call `setOutcome`, write `updateCursor(dir, { state })` alongside it, and
+fire-and-log the closer with the non-accept outcome
 (`{ kind: "escalated" | "aborted" }`) for infra teardown. A teardown failure
 here is logged, not re-triaged (control-flow doc: "already terminal or
 human-owned").
@@ -564,6 +584,15 @@ in this item. `incrementBudget` (Item 1) is unused by this item's driver;
 it remains available for a future caller that needs a live counter outside
 this derive-then-write pattern.
 
+Because nothing increments it, `cursor.budgets[*].used` is a denormalisation
+and not authoritative — it holds whatever `create` seeded until a `rebuild`
+refreshes it from the log. Only `max` is read from the cursor. This is the same
+rule the control-flow doc already states for `cursor.state` ("if it ever
+disagrees with the tail, the log wins"), extended to the budget counters.
+Every reader that acts on a budget — this item's edges, `TriagePort` via
+`TriageInput.remainingBudgets`, and Item 5's real triage agent, which sees the
+same case file — must use the log-derived values, never the cursor's copy.
+
 ### Schema extension: `role` on dispatch/terminus entries
 
 ```
@@ -580,7 +609,17 @@ this item extends them to also switch on `entry.role` for `dispatch` and
 vocabulary, not into `incomplete_terminus`), and a `gate-maintenance`-role
 `terminus` of any status resumes into `GATE_MAINTENANCE` — the edge that then
 routes on to `PRE_GATING`, `GATING`, a re-dispatch or `ESCALATED` — rather
-than into `GATING`/`INCOMPLETE_TERMINUS`/`ESCALATED` by the worker table. The pre- versus post-task choice
+than into `GATING`/`INCOMPLETE_TERMINUS`/`ESCALATED` by the worker table.
+
+`deriveStateFromEntry`'s worker `terminus` mapping is extended in the same
+change to branch on `category`: an `escalate` terminus resolves to `TRIAGE`
+when `category` is `"exhaustion"` and to `ESCALATED` when it is `"authority"`.
+The shipped table returns `ESCALATED` for both, which contradicts the
+`AGENT_ACTIVE` edge above and would make a crash between an exhaustion-class
+terminus and its triage entry resume straight into a terminal state, silently
+losing the reroute the deterministic router would have chosen. Since `rebuild`
+writes this state into the cursor, the fix belongs in the derivation, not in a
+driver-side override. The pre- versus post-task choice
 between those two is the driver's, not the derivation's: `deriveStateFromEntry`
 is given one entry and has no visibility of `header.baseline`, so widening its
 signature to take the header would put a header read inside a pure function
@@ -653,8 +692,13 @@ ports)` again:
 - **Before the first history entry** (during `PROVISIONING`/`PRE_GATING`):
   resumed via `cursor.state` + `header.baseline`, per the Decisions section
   above.
-- **After the first history entry**: resumed via `resumeAction(logTail(...))`,
-  already built in Item 1 and already covering every edge this item drives.
+- **After the first history entry**: resumed via the role- and category-aware
+  `deriveStateFromEntry(logTail(...))`, per "Determining position" above.
+  `resumeAction` as shipped is *not* sufficient on its own here: it is neither
+  role-aware (a gate-maintenance dispatch would resume as
+  `incomplete_terminus`) nor category-aware, and its dangling-dispatch →
+  `incomplete_terminus` mapping is precisely the resume this item forbids (see
+  "Resuming an unresolved dispatch" above).
 
 The only genuinely new recovery case this item introduces is the
 `PROVISIONING` partial-worktree window (`git worktree add` succeeded, the
