@@ -4,6 +4,7 @@ export { createCommandGate } from "./command-gate.js";
 export { createCustomGate, loadCustomGate } from "./custom-gate.js";
 export { resolveGate } from "./resolve-gate.js";
 export { recordBaseline, runCheck } from "./run-gate.js";
+export { branchName, provisionWorktree } from "./provision.js";
 export type {
   CaseFile,
   CaseFileHeader,
@@ -40,4 +41,6 @@ export {
   GateModuleLoadFailure,
   InvalidGateExport,
   MissingBaseline,
+  ProvisioningFailure,
+  IllegalStateTransition,
 } from "./errors.js";

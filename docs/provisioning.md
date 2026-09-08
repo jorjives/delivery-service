@@ -132,9 +132,12 @@ dominated by parallel in-worktree work.
 
 ## Open items
 
-- **Branch naming and collision.** The exact `surface_id → branch` scheme, and what
-  happens if a branch name survives a prior aborted run. Likely `surface_id`-derived
-  and force-clean on re-provision, but unspecified.
+- **Branch naming and collision.** ~~Open.~~ Settled by the single-surface state
+  machine: the branch is `surface/<surface_id>`, computed by a pure function and
+  stored nowhere, so it can never drift from the surface id. A branch surviving a
+  prior aborted run is force-deleted as part of the same tear-down-and-recreate
+  that handles a partial worktree, so provisioning always starts from a clean
+  branch as well as a clean tree.
 - **Task queue shape.** Provisioning consumes from the queue but the queue's own
   structure (priority, dedup, persistence) is the supervisor's, still open in the
   multi-surface doc.
