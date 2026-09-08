@@ -188,12 +188,17 @@ export async function setBaseline(dir: string, baseline: GateReport): Promise<vo
   // the returned promise's rejection instead, so `await setBaseline(dir, bad)`
   // rejects rather than the call itself throwing.
   const parsed = GateReport.parse(baseline);
-  return setOnce(
+  await setOnce(
     dir,
     "baseline",
     (caseJson) => caseJson.header.baseline !== null,
     (caseJson) => ({ ...caseJson, header: { ...caseJson.header, baseline: parsed } }),
   );
+  // The baseline capture is a state-advancing event like any other, so it
+  // gets its own log entry — the log tail stays unconditionally authoritative
+  // for `deriveStateFromEntry`, rather than needing a special case for
+  // "header.baseline was just set but nothing says so in the log".
+  await appendEntry(dir, { t: "baseline", status: parsed.status });
 }
 
 export function setOutcome(dir: string, outcome: CaseFileOutcome): Promise<void> {
@@ -285,6 +290,10 @@ export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
     case "gate": return gateState[entry.status] as SurfaceState;
     case "triage": return triageState[entry.verdict] as SurfaceState;
     case "close": return closeState[entry.status] as SurfaceState;
+    // Baseline capture only ever runs when the report status isn't ERROR
+    // (recordBaseline never calls setBaseline with one), and either way the
+    // surface is ready to dispatch a worker once it's captured.
+    case "baseline": return "AGENT_ACTIVE";
   }
 }
 
@@ -380,5 +389,10 @@ export function resumeAction(tail: HistoryEntry | undefined): ResumeAction {
       return "act_on_verdict";
     case "close":
       return tail.status === "DONE" ? "done" : "close_triage";
+    // Unconsumed by the driver (routes on deriveStateFromEntry instead, see
+    // slice-2 plan); "start" fits — a baseline tail is ready to dispatch the
+    // first worker, the same readiness a missing tail represents.
+    case "baseline":
+      return "start";
   }
 }

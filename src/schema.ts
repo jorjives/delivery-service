@@ -153,12 +153,19 @@ export const CloseEntry = z.object({
 });
 export type CloseEntry = z.infer<typeof CloseEntry>;
 
+export const BaselineEntry = z.object({
+  t: z.literal("baseline"),
+  status: z.enum(["PASS", "FAIL", "ERROR"]),
+});
+export type BaselineEntry = z.infer<typeof BaselineEntry>;
+
 export const HistoryEntry = z.discriminatedUnion("t", [
   DispatchEntry,
   TerminusEntry,
   GateEntry,
   TriageEntry,
   CloseEntry,
+  BaselineEntry,
 ]);
 export type HistoryEntry = z.infer<typeof HistoryEntry>;
 

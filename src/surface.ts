@@ -19,23 +19,17 @@ function worktreeOf(caseFile: CaseFile, location: SurfaceLocation): string {
 /**
  * Where the surface actually is, derived rather than trusted.
  *
- * Before the first worker dispatch there are no worker log entries to read, so
- * the header's set-once `baseline` and the cursor are authoritative — this is
- * the one segment of the loop where that is true. Once a worker dispatch entry
- * exists the log tail is authoritative, which is what makes a resumed position
- * and a rebuilt cursor incapable of disagreeing.
+ * Every state-advancing event, baseline capture included, appends a
+ * `HistoryEntry` — so once any entry exists the log tail is unconditionally
+ * authoritative, which is what makes a resumed position and a rebuilt cursor
+ * incapable of disagreeing. Only before the very first entry (fresh
+ * provisioning, or a worktree that exists but hasn't been gated yet) is there
+ * no tail to read, and the cursor decides between those two.
  */
 function position(caseFile: CaseFile): SurfaceState {
   const tail = logTail(caseFile);
-  const workerStarted = caseFile.history.some(
-    (e) => e.t === "dispatch" && e.role !== "gate-maintenance",
-  );
-  if (workerStarted && tail) return deriveStateFromEntry(tail);
-  if (caseFile.header.baseline === null) {
-    if (tail) return deriveStateFromEntry(tail);
-    return caseFile.cursor.state === "PROVISIONING" ? "PROVISIONING" : "PRE_GATING";
-  }
-  return "AGENT_ACTIVE";
+  if (tail) return deriveStateFromEntry(tail);
+  return caseFile.cursor.state === "PROVISIONING" ? "PROVISIONING" : "PRE_GATING";
 }
 
 /**

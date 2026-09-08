@@ -184,7 +184,7 @@ describe("advance", () => {
     expect(reloaded.header.baseline?.status).toBe("PASS");
     expect(reloaded.cursor.state).toBe("AGENT_ACTIVE");
     expect(agent.calls).toEqual([]);
-    expect(reloaded.history).toHaveLength(0);
+    expect(reloaded.history).toEqual([{ t: "baseline", status: "PASS" }]);
   });
 
   it("baselines a red-but-running gate and still lands on AGENT_ACTIVE", async () => {
@@ -381,6 +381,7 @@ describe("the AGENT_ACTIVE edge", () => {
     expect(agent.calls).toEqual(["worker:worker-1-0"]);
     const { history, cursor } = await load(dir);
     expect(history).toEqual([
+      { t: "baseline", status: "PASS" },
       { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" },
       {
         t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0",
@@ -405,8 +406,9 @@ describe("the AGENT_ACTIVE edge", () => {
     expect(reloaded.outcome?.kind).toBe("escalated");
     expect(reloaded.outcome?.source).toBe("worker");
     expect(reloaded.outcome?.reason).toContain("credential");
-    // The terminus already evidences the escalate — no extra entry is written.
-    expect(reloaded.history).toHaveLength(2);
+    // The terminus already evidences the escalate — no extra entry is written,
+    // beyond the baseline capture that preceded this worker attempt.
+    expect(reloaded.history).toHaveLength(3);
   });
 
   it("routes an exhaustion-class escalate to TRIAGE rather than straight out", async () => {
@@ -662,7 +664,7 @@ describe("run", () => {
     expect(result.state).toBe("CLOSED");
     expect(result.outcome?.kind).toBe("closed");
     const { history } = await load(dir);
-    expect(history.map((e) => e.t)).toEqual(["dispatch", "terminus", "gate", "close"]);
+    expect(history.map((e) => e.t)).toEqual(["baseline", "dispatch", "terminus", "gate", "close"]);
   });
 
   it("produces the same sequence of states every time, given the same script", async () => {

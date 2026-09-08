@@ -96,6 +96,7 @@ describe("runCheck", () => {
     expect(delta.pass).toBe(true);
     const loaded = await load(surfaceDir);
     expect(loaded.history).toEqual([
+      { t: "baseline", status: "PASS" },
       { t: "gate", attempt: 1, status: "PASS", newFailures: [] },
     ]);
   });
@@ -110,7 +111,7 @@ describe("runCheck", () => {
     expect(delta.class).toBe("fail");
 
     const loaded = await load(surfaceDir);
-    expect(loaded.history[0]).toEqual({
+    expect(loaded.history[1]).toEqual({
       t: "gate",
       attempt: 1,
       status: "FAIL",
@@ -148,7 +149,7 @@ describe("runCheck", () => {
     expect(delta.newFailures).toEqual([]);
 
     const loaded = await load(surfaceDir);
-    expect(loaded.history[0]).toEqual({
+    expect(loaded.history[1]).toEqual({
       t: "gate",
       attempt: 2,
       status: "ERROR",
