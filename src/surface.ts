@@ -126,6 +126,23 @@ function escalate(
   });
 }
 
+/** Terminate as ABORTED with the standard `{kind, source, reason, at}` shape. */
+function abort(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+  source: string,
+  reason: string,
+): Promise<AdvanceResult> {
+  return terminate(dir, caseFile, location, ports, "ABORTED", {
+    kind: "aborted",
+    source,
+    reason,
+    at: new Date().toISOString(),
+  });
+}
+
 /** Terminal escalation whose reason is the tail terminus's own rationale. */
 function escalateFromTail(
   dir: string,
@@ -332,12 +349,7 @@ async function provisioning(
     if (!(err instanceof ProvisioningFailure)) throw err;
     // Provisioning failure is infra-class and terminal: there is no worker or
     // triage move that helps, so it never reaches the caller as a throw.
-    return terminate(dir, caseFile, location, ports, "ABORTED", {
-      kind: "aborted",
-      source: "provisioning",
-      reason: err.detail,
-      at: new Date().toISOString(),
-    });
+    return abort(dir, caseFile, location, ports, "provisioning", err.detail);
   }
 
   // The cursor advance is the commit point for "the worktree exists and belongs
@@ -551,12 +563,7 @@ async function triage(
     return escalate(dir, caseFile, location, ports, "triage", verdict.rationale);
   }
   if (state === "ABORTED") {
-    return terminate(dir, caseFile, location, ports, "ABORTED", {
-      kind: "aborted",
-      source: "triage",
-      reason: verdict.rationale,
-      at: new Date().toISOString(),
-    });
+    return abort(dir, caseFile, location, ports, "triage", verdict.rationale);
   }
   await updateCursor(dir, { state });
   return { state, done: false };
