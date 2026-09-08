@@ -193,6 +193,34 @@ already in the log — log-derivable, so a crashed dispatch's own re-run
 idempotent, while a genuine retry after a recorded `incomplete` terminus
 gets a new one.
 
+**A repair session's resolution must be recoverable from the log alone, not
+the cursor.** `GATE_MAINTENANCE`'s two success exits (pre-task → re-baseline,
+post-task → re-check) must not be considered complete until the log itself
+carries enough information for `deriveStateFromEntry` to reach the correct
+next state on resume. A cursor-only write is not sufficient: `rebuild`
+recomputes the cursor from the log, not the reverse, so a crash immediately
+after such a write would leave the log tail unchanged and every resumed
+`advance` would re-derive `GATE_MAINTENANCE` and re-enter it — a livelock,
+since both exits otherwise look identical to the driver once entered. This
+item requires every `GATE_MAINTENANCE` exit to leave the log itself able to
+distinguish "resolved onward to `PRE_GATING`" from "resolved onward to
+`GATING`" from "still repairing." The exact encoding is a planning decision,
+not a design one: this document fixes the requirement, not the mechanism.
+
+**Resuming an unresolved dispatch completes it — it never creates a second
+one.** A `dispatch` entry with no matching `terminus` is, by definition, a
+session a crash interrupted before it could report back. Since a `dispatch`
+entry is a population's entire burn (see above), writing a *second* dispatch
+entry to resume that same interrupted session would double-burn its
+population on every crash that lands in that window — contradicting this
+item's own test criterion that a resumed surface enforces the same caps as
+an uninterrupted one. This item requires that resuming onto a dangling
+dispatch re-invokes the agent for that same session and appends only the
+missing `terminus` — never a new `dispatch`. Recognising "this position
+already has a dangling dispatch" (and what `AgentContext` a re-invocation
+needs to carry on into the same session) is a planning decision; this
+document fixes the requirement, not the mechanism.
+
 ## The driver
 
 ```
@@ -317,13 +345,17 @@ other population.
 **GATE_MAINTENANCE → PRE_GATING | GATING | GATE_MAINTENANCE | ESCALATED**
 
 Entered pre-task (no baseline yet): on the repair agent's `completed`
-terminus, cursor returns to `"PRE_GATING"` to re-baseline. Entered post-task
-(triage verdict was `fix_the_gate`): on `completed`, cursor returns to
-`"GATING"` to re-check against the existing baseline — the baseline is never
-recaptured post-task. Either entry's `escalate` terminus, or the budget
-already being exhausted on entry, routes to `ESCALATED`. The post-task entry
-pair also carries `role: "gate-maintenance"`, for the same resumability and
-derivation reasons as the pre-task case.
+terminus, resolves to `"PRE_GATING"` to re-baseline. Entered post-task
+(triage verdict was `fix_the_gate`): on `completed`, resolves to `"GATING"`
+to re-check against the existing baseline — the baseline is never recaptured
+post-task. Either entry's `escalate` terminus, or the budget already being
+exhausted on entry, resolves to `ESCALATED`. The post-task entry pair also
+carries `role: "gate-maintenance"`, for the same resumability and
+derivation reasons as the pre-task case. Per Decisions above, "resolves to"
+here means the log itself must carry the distinction — a plain
+`updateCursor` is not sufficient on its own, since a crash right after it
+would leave `deriveStateFromEntry` re-deriving `GATE_MAINTENANCE` on resume
+with no way to tell the exits apart.
 
 An `incomplete` terminus (either entry point) derives the current
 `gateMaintenance` count from the log; under cap it re-dispatches within
@@ -441,11 +473,14 @@ exactly, so Item 4 can implement `AgentPort` as its real SDK-backed
 primitive with no shape change here. `sessionKey` is the driver's to mint —
 `DispatchEntry` and `TerminusEntry` both require it, and the pair must
 agree — so it is derived deterministically as `${role}-${attempt}-${retryCount}`
-(see Decisions above), which makes a crashed dispatch's own re-run (before
-any terminus for it exists) write the same key rather than orphan the first
-one, while a genuine same-attempt retry after a recorded `incomplete`
-terminus gets a distinct one. This item's own tests supply a scripted
-stub implementing the same signature.
+(see Decisions above), which gives a genuine same-attempt retry (one that
+follows a recorded `incomplete` terminus) a distinct key from the attempt it
+retries. A crash before any terminus is recorded for a dispatch is the
+"resuming an unresolved dispatch" case from Decisions above: the driver
+re-invokes the agent under that dispatch's *existing* `sessionKey` and
+appends only the resulting terminus — it never mints a second `sessionKey`
+or writes a second `dispatch` entry for the same interruption. This item's
+own tests supply a scripted stub implementing the same signature.
 
 ### `TriagePort`
 
