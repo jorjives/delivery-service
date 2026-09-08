@@ -84,6 +84,8 @@ baseline to measure against; this is the ground every later slice stands on.
 
 ## Slice 2: Drive a Worker's Change Through the Gate to a Decision
 
+**Status:** ✅ Complete — 2026-09-08 — `e574130`
+
 **Delivers:** A harness extender can watch the driver dispatch a scripted
 worker session, gate its result against the recorded baseline, and reach a
 close decision on a clean success — the full happy-path loop from "ready for
