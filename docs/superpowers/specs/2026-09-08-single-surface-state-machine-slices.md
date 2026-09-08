@@ -85,6 +85,7 @@ baseline to measure against; this is the ground every later slice stands on.
 ## Slice 2: Drive a Worker's Change Through the Gate to a Decision
 
 **Status:** ✅ Complete — 2026-09-08 — `e574130`
+**Tests:** ✅ Recorded — 2026-09-08 — `be3a906` — cli — 1 UAT + 4 AC, 0 skipped
 
 **Delivers:** A harness extender can watch the driver dispatch a scripted
 worker session, gate its result against the recorded baseline, and reach a
