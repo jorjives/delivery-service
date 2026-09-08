@@ -523,3 +523,49 @@ describe("the INCOMPLETE_TERMINUS edge", () => {
     expect(agent.calls).toEqual([]);
   });
 });
+
+describe("the GATING edge", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  /** Provision, baseline and run one worker session that writes `after`. */
+  async function workerWrote(after: string): Promise<{ location: SurfaceLocation; ports: SurfacePorts }> {
+    const agent: SurfacePorts["agent"] = {
+      invoke: (_roleCfg, ctx) => {
+        writeFileSync(join(ctx.worktreePath, "report.tap"), after);
+        return Promise.resolve({ status: "completed", rationale: "made the change" });
+      },
+    };
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+    await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
+    await advance(dir, location, ports); // AGENT_ACTIVE -> GATING
+    return { location, ports };
+  }
+
+  it("gates a clean change against the baseline and moves to CLOSING", async () => {
+    const { location, ports } = await workerWrote(PASSING_TAP);
+
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "CLOSING", done: false });
+    const { history, cursor } = await load(dir);
+    expect(history.at(-1)).toMatchObject({ t: "gate", attempt: 1, status: "PASS" });
+    expect(cursor.state).toBe("CLOSING");
+  });
+
+  it("routes a change that broke the gate to TRIAGE", async () => {
+    const { location, ports } = await workerWrote(FAILING_TAP);
+
+    const result = await advance(dir, location, ports);
+
+    // The router's edge is slice 3's; slice 2 only has to reach it.
+    expect(result).toEqual({ state: "TRIAGE", done: false });
+    const { history } = await load(dir);
+    expect(history.at(-1)).toMatchObject({ t: "gate", attempt: 1, status: "FAIL" });
+  });
+});

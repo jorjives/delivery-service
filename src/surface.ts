@@ -2,7 +2,7 @@ import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEn
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
-import { recordBaseline } from "./run-gate.js";
+import { recordBaseline, runCheck } from "./run-gate.js";
 import type { SurfaceLocation, SurfacePorts } from "./ports.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
@@ -388,6 +388,27 @@ async function incompleteTerminus(
 }
 
 /**
+ * Judge the worker's change against the recorded baseline. `runCheck` writes
+ * the gate entry and the failure refs itself; the attempt it judges is the one
+ * in flight, which is the same attempt the terminus just recorded — a
+ * terminus-retry re-checks the attempt it retried, never a new one.
+ */
+async function gating(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+): Promise<AdvanceResult> {
+  const { delta } = await runCheck(
+    dir,
+    worktreeOf(caseFile, location),
+    workerAttempt(caseFile.history),
+  );
+  const state: SurfaceState = delta.pass ? "CLOSING" : "TRIAGE";
+  await updateCursor(dir, { state });
+  return { state, done: false };
+}
+
+/**
  * Perform exactly one transition and commit it. Safe to call from a fresh
  * process against an existing `dir`: every branch reads pre-entry state or the
  * log tail, so a call after a crash always resumes onto a legal edge.
@@ -416,6 +437,8 @@ export async function advance(
       return agentActive(dir, caseFile, location, ports);
     case "INCOMPLETE_TERMINUS":
       return incompleteTerminus(dir, caseFile, location, ports);
+    case "GATING":
+      return gating(dir, caseFile, location);
     case "ESCALATED":
       // The crash window between recording an authority-class terminus and
       // writing the outcome: resume onto the terminal edge, not into a throw.
