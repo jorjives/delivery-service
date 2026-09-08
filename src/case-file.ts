@@ -318,8 +318,6 @@ export function deriveBudgetsFromLog(
         if (entry.verdict === "reroute") used.correction++;
         else if (entry.verdict === "retry_close") used.close++;
         break;
-      case "close":
-        break;
     }
   }
 
