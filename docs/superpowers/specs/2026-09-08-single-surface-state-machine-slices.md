@@ -18,6 +18,8 @@ for Item 2 (`2026-09-05-gate-interface-slices.md`).
 
 ## Slice 1: Provision a Surface and Reach Its First Decision Point
 
+**Status:** ✅ Complete — 2026-09-08 — `091a924`
+
 **Delivers:** A harness extender can hand the driver a bare directory and a
 fresh worktree location and watch it create a real git worktree, capture a
 baseline gate report against it, and land on either "ready for a worker" or
