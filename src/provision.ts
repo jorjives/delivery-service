@@ -57,10 +57,10 @@ export async function provisionWorktree(
   const branch = branchName(surfaceId);
   try {
     const baseRef = await resolveBaseRef(repoPath);
-    await tryGit(repoPath, ["worktree", "remove", "--force", worktreePath]);
+    await tryGit(repoPath, ["worktree", "remove", "--force", "--", worktreePath]);
     await tryGit(repoPath, ["worktree", "prune"]);
-    await tryGit(repoPath, ["branch", "-D", branch]);
-    await git(repoPath, ["worktree", "add", worktreePath, "-b", branch, baseRef]);
+    await tryGit(repoPath, ["branch", "-D", "--", branch]);
+    await git(repoPath, ["worktree", "add", "-b", branch, "--", worktreePath, baseRef]);
   } catch (err) {
     throw new ProvisioningFailure(dir, messageOf(err));
   }

@@ -34,7 +34,8 @@ describe("UAT: provision a surface and reach its first decision point", () => {
     // ("demo-unusable") and based off the repository's default branch ("main").
     const s = section("=== Unusable worktree path ===");
     expect(s).toContain("git worktree add");
-    expect(s).toContain("-b surface/demo-unusable main");
+    expect(s).toContain("-b surface/demo-unusable -- ");
+    expect(s).toContain(" main");
   });
 
   it("UAT + AC: once the worktree exists, a baseline gate report is captured automatically with no further input", () => {
