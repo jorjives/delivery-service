@@ -60,8 +60,7 @@ describe("deterministicRouter", () => {
     ["gate_error", "gateMaintenance"],
     ["close_failure", "close"],
     ["worker_escalate", "correction"],
-  ] as [TriageInput["trigger"], keyof BudgetSet][])
-    ("escalates %s once its %s budget is at cap",
+  ] as [TriageInput["trigger"], keyof BudgetSet][])("escalates %s once its %s budget is at cap",
     async (trigger, population) => {
       const verdict = await deterministicRouter.triage(input(trigger, atCap(population)));
       expect(verdict.verdict).toBe("escalate");
