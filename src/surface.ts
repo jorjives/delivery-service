@@ -262,12 +262,18 @@ async function preGating(
 /**
  * Route a repair session's outcome.
  *
- * Slice 1 only reaches here pre-task (no baseline yet), so a completed repair
- * resolves by re-baselining. That re-baseline — writing the set-once
- * `header.baseline`, or appending another repair dispatch when the gate is
- * still broken — is what makes the exit distinguishable on resume: without it
- * the log tail would still derive GATE_MAINTENANCE and the surface would
- * re-enter this edge forever.
+ * Three tails can land here. A `triage` entry means `fix_the_gate` was recorded
+ * but the repair it pays for was not yet dispatched — the crash window between
+ * those two writes, and also the ordinary post-task hand-off, since `TRIAGE`
+ * deliberately leaves the dispatch to this edge. A `dispatch` with no terminus
+ * is a session that ended without a result. A `terminus` is a session to route.
+ *
+ * A completed repair resolves differently by entry point, and the log — not the
+ * cursor — must carry the distinction, or a crash right after would re-derive
+ * `GATE_MAINTENANCE` with no way to tell the exits apart. Pre-task (no baseline
+ * yet) re-baselines, appending a `baseline` entry. Post-task re-checks the
+ * attempt that triggered the repair against the baseline already pinned,
+ * appending a `gate` entry. The baseline is never recaptured post-task.
  */
 async function gateMaintenance(
   dir: string,
@@ -276,6 +282,12 @@ async function gateMaintenance(
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
   const tail = logTail(caseFile);
+
+  if (tail?.t === "triage") {
+    return dispatchGateMaintenance(
+      dir, caseFile, location, ports, "triage routed the setback to a gate repair",
+    );
+  }
 
   if (tail?.t === "dispatch") {
     // A dispatch with no terminus is a session that ended without emitting a
@@ -291,7 +303,9 @@ async function gateMaintenance(
 
   switch (tail.status) {
     case "completed":
-      return preGating(dir, caseFile, location, ports);
+      return caseFile.header.baseline === null
+        ? preGating(dir, caseFile, location, ports)
+        : gating(dir, caseFile, location);
     case "escalate":
       return escalateFromTail(dir, caseFile, location, ports, "gate-maintenance");
     case "incomplete":

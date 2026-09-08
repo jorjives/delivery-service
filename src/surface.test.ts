@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
-import { writeFileSync } from "node:fs";
+import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -840,5 +840,83 @@ describe("TRIAGE", () => {
     // yield a trigger, so it is exercised directly rather than through advance.
     expect(() => triageTrigger(dir, undefined)).toThrow(IllegalStateTransition);
     expect(() => triageTrigger(dir, { t: "baseline", status: "PASS" })).toThrow(/TRIAGE/);
+  });
+
+  it("repairs an errored gate and re-checks the same attempt against the same baseline", async () => {
+    const worker = (ctx: { worktreePath: string }): Promise<Terminus> => {
+      // The worker's change removes the file the gate reads: the gate can no
+      // longer run at all, which is an ERROR, not a regression.
+      rmSync(join(ctx.worktreePath, "report.tap"));
+      return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
+    };
+    const repair = (ctx: { worktreePath: string }): Promise<Terminus> => {
+      writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+      return Promise.resolve({ status: "completed", rationale: "restored report.tap" });
+    };
+    const agent: SurfacePorts["agent"] = {
+      invoke: (roleCfg, ctx) =>
+        roleCfg.role === "gate-maintenance" ? repair(ctx) : worker(ctx),
+    };
+    const ports = portsWithTriage(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    // Capture the baseline the moment it is pinned, before any worker runs.
+    await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
+    const pinned = (await load(dir)).header.baseline;
+    expect(pinned).not.toBeNull();
+
+    const result = await run(dir, location, ports);
+    expect(result.state).toBe("CLOSED");
+
+    const { header, history } = await load(dir);
+
+    // The baseline is the one captured pre-task — never recaptured.
+    expect(history.filter((e) => e.t === "baseline")).toHaveLength(1);
+    expect(header.baseline).toEqual(pinned);
+
+    // gate_error routed to a repair, and the re-check judged the SAME attempt.
+    expect(history.filter((e) => e.t === "triage")).toMatchObject([
+      { trigger: "gate_error", verdict: "fix_the_gate" },
+    ]);
+    expect(history.filter((e) => e.t === "gate")).toMatchObject([
+      { attempt: 1, status: "ERROR" },
+      { attempt: 1, status: "PASS" },
+    ]);
+    expect(history.filter((e) => e.t === "dispatch")).toMatchObject([
+      { role: "worker", attempt: 1 },
+      { role: "gate-maintenance", attempt: 1 },
+    ]);
+  });
+
+  it("dispatches the repair on resume when the fix_the_gate verdict was the last thing recorded", async () => {
+    const agent: SurfacePorts["agent"] = {
+      invoke: (roleCfg, ctx) => {
+        if (roleCfg.role === "gate-maintenance") {
+          writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+          return Promise.resolve({ status: "completed", rationale: "restored" });
+        }
+        rmSync(join(ctx.worktreePath, "report.tap"));
+        return Promise.resolve({ status: "completed", rationale: "broke the gate" });
+      },
+    };
+    const ports = portsWithTriage(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
+    await advance(dir, location, ports); // AGENT_ACTIVE -> GATING
+    await advance(dir, location, ports); // GATING -> TRIAGE
+    const routed = await advance(dir, location, ports); // TRIAGE -> GATE_MAINTENANCE
+    expect(routed.state).toBe("GATE_MAINTENANCE");
+
+    // Nothing dispatched yet — the triage entry is the tail. A fresh process
+    // resuming here must dispatch the repair rather than throw.
+    const mid = await load(dir);
+    expect(mid.history.at(-1)).toMatchObject({ t: "triage", verdict: "fix_the_gate" });
+
+    const step = await advance(dir, location, ports);
+    expect(step.state).toBe("GATE_MAINTENANCE");
+    const after = await load(dir);
+    expect(after.history.filter((e) => e.t === "dispatch").at(-1))
+      .toMatchObject({ role: "gate-maintenance" });
   });
 });

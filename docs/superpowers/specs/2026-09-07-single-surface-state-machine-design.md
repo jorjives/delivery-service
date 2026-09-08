@@ -473,12 +473,13 @@ verdicts once `remainingBudgets` (derived before the call) showed cap. Maps
 verdict to state via `case-file.ts`'s existing `triageState` table: `reroute`
 advances the attempt number and returns to `AGENT_ACTIVE` (the next `advance`
 call dispatches `attempt + 1`, per "Attempt numbering" below); `fix_the_gate`
-appends the post-task `dispatch`/`terminus` pair with `role:
-"gate-maintenance"` right here (that append is the `gateMaintenance` burn,
-per Decisions above — same pattern as `PRE_GATING`'s pre-task case; a crash
-between the triage entry and that append is recovered by the
-`GATE_MAINTENANCE` edge's no-dispatch-yet case above) and
-routes to `GATE_MAINTENANCE`; `retry_close` returns to `CLOSING`;
+routes to `GATE_MAINTENANCE`, whose edge appends the post-task
+`dispatch`/`terminus` pair with `role: "gate-maintenance"` (that append is the
+`gateMaintenance` burn, per Decisions above — same pattern as `PRE_GATING`'s
+pre-task case). `TRIAGE` records the verdict and stops: since that edge must
+dispatch from a `fix_the_gate` tail anyway to recover the crash window between
+the two writes, dispatching here as well would be a second copy of the same
+code, and leaving it out closes the window by construction; `retry_close` returns to `CLOSING`;
 `escalate`/`abort` go straight to their terminal states.
 
 ### Escalation and abort
