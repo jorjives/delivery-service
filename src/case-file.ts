@@ -262,17 +262,25 @@ const closeState: Record<string, SurfaceState> = {
   DONE: "CLOSED", FAIL: "TRIAGE", ERROR: "TRIAGE",
 };
 
-function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
+export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
   switch (entry.t) {
-    case "dispatch": return "AGENT_ACTIVE";
-    case "terminus": return terminusState[entry.status] as SurfaceState;
+    case "dispatch":
+      // A gate-maintenance dispatch resumes into GATE_MAINTENANCE, whose edge
+      // routes on by terminus status; a worker one still means AGENT_ACTIVE.
+      return entry.role === "gate-maintenance" ? "GATE_MAINTENANCE" : "AGENT_ACTIVE";
+    case "terminus":
+      // A repair session's terminus of ANY status stays inside GATE_MAINTENANCE:
+      // its edge decides between re-baselining, redispatching and escalating.
+      return entry.role === "gate-maintenance"
+        ? "GATE_MAINTENANCE"
+        : terminusState[entry.status] as SurfaceState;
     case "gate": return gateState[entry.status] as SurfaceState;
     case "triage": return triageState[entry.verdict] as SurfaceState;
     case "close": return closeState[entry.status] as SurfaceState;
   }
 }
 
-function deriveBudgetsFromLog(
+export function deriveBudgetsFromLog(
   history: HistoryEntry[],
   maxima: BudgetSet,
 ): BudgetSet {
@@ -281,16 +289,24 @@ function deriveBudgetsFromLog(
   for (const entry of history) {
     switch (entry.t) {
       case "dispatch":
-        if (entry.attempt > 1) used.correction++;
+        // The dispatch entry IS the gateMaintenance burn (design spec: "Budgets
+        // have no separately-mutated live counter"), so a repair dispatch is
+        // never also charged to the worker's correction population.
+        if (entry.role === "gate-maintenance") used.gateMaintenance++;
+        else if (entry.attempt > 1) used.correction++;
         break;
       case "terminus":
-        used.terminus++;
+        // `terminus` is the WORKER's population. A repair session's terminus is
+        // paid for on gateMaintenance by its own dispatch entry (design spec:
+        // "counting it would charge a repair session to the worker's
+        // population"), so it is never counted here. The worker-side narrowing
+        // to `status === "incomplete"` only is Slice 3/4's — see "Out of scope".
+        if (entry.role !== "gate-maintenance") used.terminus++;
         break;
       case "gate":
         if (entry.status === "ERROR") used.gateError++;
         break;
       case "triage":
-        if (entry.verdict === "fix_the_gate") used.gateMaintenance++;
         break;
       case "close":
         used.close++;

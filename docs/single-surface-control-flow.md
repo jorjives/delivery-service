@@ -382,12 +382,15 @@ CaseFile = {
 
 ```
 Entry =
-  | { t:"dispatch", attempt, session_key, brief_ref? }
+  | { t:"dispatch", attempt, session_key, brief_ref?, role? }
         # written WHEN the session starts. brief_ref null on a raw reroute / attempt 1.
+        # role: worker (default, may be absent) | gate-maintenance — a repair
+        # session records the same crash-recoverable dispatch/terminus pair as a
+        # worker, on the gate_maintenance budget rather than the worker's.
   | { t:"terminus", attempt, session_key,
         status: completed|escalate|incomplete,
         category?,             # for escalate: exhaustion | authority
-        rationale }
+        rationale, role? }     # role as above; must match its dispatch
   | { t:"gate", attempt,
         status: PASS|FAIL|ERROR,
         new_failures: [{id, detail_ref}],   # empty on the PASS that ends the run

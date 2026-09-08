@@ -111,6 +111,8 @@ export const DispatchEntry = z.object({
   attempt: z.number().int().positive(),
   sessionKey: z.string(),
   briefRef: z.string().optional(),
+  // Absent means "worker" — every Item 1/2 case file stays valid.
+  role: z.enum(["worker", "gate-maintenance"]).optional(),
 });
 export type DispatchEntry = z.infer<typeof DispatchEntry>;
 
@@ -121,6 +123,7 @@ export const TerminusEntry = z.object({
   status: z.enum(["completed", "escalate", "incomplete"]),
   category: z.enum(["exhaustion", "authority"]).optional(),
   rationale: z.string(),
+  role: z.enum(["worker", "gate-maintenance"]).optional(),
 });
 export type TerminusEntry = z.infer<typeof TerminusEntry>;
 

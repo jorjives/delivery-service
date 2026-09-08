@@ -87,3 +87,29 @@ export class MissingBaseline extends Error {
     this.name = "MissingBaseline";
   }
 }
+
+export class ProvisioningFailure extends Error {
+  readonly code = "PROVISIONING_FAILURE" as const;
+  constructor(
+    readonly surfaceDir: string,
+    readonly detail: string,
+  ) {
+    super(`Provisioning failed for ${surfaceDir}: ${detail}`);
+    this.name = "ProvisioningFailure";
+  }
+}
+
+export class IllegalStateTransition extends Error {
+  readonly code = "ILLEGAL_STATE_TRANSITION" as const;
+  constructor(
+    readonly surfaceDir: string,
+    readonly state: string,
+    readonly edge: string,
+  ) {
+    super(
+      `No "${edge}" edge from state ${state} in ${surfaceDir}: ` +
+        `the driver has no transition to take from here`,
+    );
+    this.name = "IllegalStateTransition";
+  }
+}

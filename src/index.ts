@@ -1,9 +1,29 @@
-export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef } from "./case-file.js";
+export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog } from "./case-file.js";
 export { computeDelta } from "./delta-rule.js";
 export { createCommandGate } from "./command-gate.js";
 export { createCustomGate, loadCustomGate } from "./custom-gate.js";
 export { resolveGate } from "./resolve-gate.js";
 export { recordBaseline, runCheck } from "./run-gate.js";
+export { branchName, provisionWorktree } from "./provision.js";
+export { advance } from "./surface.js";
+export { noopCloser } from "./ports.js";
+export type { AdvanceResult } from "./surface.js";
+export type {
+  AgentRole,
+  RoleConfig,
+  AgentContext,
+  Terminus,
+  AgentPort,
+  TriageInput,
+  TriageVerdict,
+  TriagePort,
+  CloseContext,
+  CloseOutcome,
+  CloseReport,
+  CloserPort,
+  SurfacePorts,
+  SurfaceLocation,
+} from "./ports.js";
 export type {
   CaseFile,
   CaseFileHeader,
@@ -40,4 +60,6 @@ export {
   GateModuleLoadFailure,
   InvalidGateExport,
   MissingBaseline,
+  ProvisioningFailure,
+  IllegalStateTransition,
 } from "./errors.js";
