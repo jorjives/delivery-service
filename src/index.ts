@@ -1,4 +1,4 @@
-export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef } from "./case-file.js";
+export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog } from "./case-file.js";
 export { computeDelta } from "./delta-rule.js";
 export { createCommandGate } from "./command-gate.js";
 export { createCustomGate, loadCustomGate } from "./custom-gate.js";

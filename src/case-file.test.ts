@@ -397,6 +397,69 @@ describe("rebuild", () => {
 
     await expect(rebuild(dir)).rejects.toThrow(CorruptCaseFile);
   });
+
+  it("derives GATE_MAINTENANCE from a gate-maintenance dispatch tail", async () => {
+    await appendEntry(dir, {
+      t: "dispatch",
+      role: "gate-maintenance",
+      attempt: 1,
+      sessionKey: "gate-maintenance-1-0",
+    });
+
+    const rebuilt = await rebuild(dir);
+    expect(rebuilt.cursor.state).toBe("GATE_MAINTENANCE");
+  });
+
+  it("derives GATE_MAINTENANCE from a gate-maintenance terminus of any status", async () => {
+    await appendEntry(dir, {
+      t: "dispatch",
+      role: "gate-maintenance",
+      attempt: 1,
+      sessionKey: "gate-maintenance-1-0",
+    });
+    await appendEntry(dir, {
+      t: "terminus",
+      role: "gate-maintenance",
+      attempt: 1,
+      sessionKey: "gate-maintenance-1-0",
+      status: "completed",
+      rationale: "reinstalled the gate's dependencies",
+    });
+
+    const rebuilt = await rebuild(dir);
+    // A worker terminus(completed) would derive GATING; the repair agent's does not.
+    expect(rebuilt.cursor.state).toBe("GATE_MAINTENANCE");
+  });
+
+  it("counts the gateMaintenance budget off gate-maintenance dispatch entries", async () => {
+    await appendEntry(dir, {
+      t: "dispatch",
+      role: "gate-maintenance",
+      attempt: 1,
+      sessionKey: "gate-maintenance-1-0",
+    });
+    await appendEntry(dir, {
+      t: "terminus",
+      role: "gate-maintenance",
+      attempt: 1,
+      sessionKey: "gate-maintenance-1-0",
+      status: "completed",
+      rationale: "fixed",
+    });
+    await appendEntry(dir, {
+      t: "dispatch",
+      role: "gate-maintenance",
+      attempt: 2,
+      sessionKey: "gate-maintenance-2-0",
+    });
+
+    const rebuilt = await rebuild(dir);
+    expect(rebuilt.cursor.budgets.gateMaintenance.used).toBe(2);
+    // attempt 2 is a repair attempt, not a worker correction
+    expect(rebuilt.cursor.budgets.correction.used).toBe(0);
+    // …and a repair session's terminus is not a worker terminus either
+    expect(rebuilt.cursor.budgets.terminus.used).toBe(0);
+  });
 });
 
 describe("resumeAction", () => {
