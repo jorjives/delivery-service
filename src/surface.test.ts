@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { create, load, setBaseline, setOutcome, updateCursor, appendEntry } from "./case-file.js";
+import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef } from "./case-file.js";
 import { initTempRepo } from "./temp-repo.js";
 import { advance } from "./surface.js";
 import { noopCloser } from "./ports.js";
@@ -567,5 +567,68 @@ describe("the GATING edge", () => {
     expect(result).toEqual({ state: "TRIAGE", done: false });
     const { history } = await load(dir);
     expect(history.at(-1)).toMatchObject({ t: "gate", attempt: 1, status: "FAIL" });
+  });
+});
+
+describe("the CLOSING edge", () => {
+  let dir: string;
+  const location: SurfaceLocation = { repoPath: "/unused", worktreePath: "/unused" };
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    // A baselined surface whose attempt 1 passed the gate sits at CLOSING.
+    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+    await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" });
+    await appendEntry(dir, {
+      t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0",
+      status: "completed", rationale: "made the change",
+    });
+    await appendEntry(dir, { t: "gate", attempt: 1, status: "PASS", newFailures: [] });
+  });
+
+  it("closes the surface when the closer accepts the work", async () => {
+    const ports = portsWith(unusedAgent());
+
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "CLOSED", done: true });
+    const reloaded = await load(dir);
+    expect(reloaded.cursor.state).toBe("CLOSED");
+    expect(reloaded.outcome?.kind).toBe("closed");
+    const tail = reloaded.history.at(-1);
+    expect(tail).toMatchObject({ t: "close", status: "DONE", detailRef: "close-0" });
+    expect(await readRef(dir, "close-0")).toMatchObject({ status: "DONE" });
+  });
+
+  it("routes a close that failed to TRIAGE with the report recorded", async () => {
+    const failingCloser = {
+      close: () => Promise.resolve({ status: "FAIL" as const, detail: "the merge conflicted" }),
+    };
+
+    const result = await advance(
+      dir, location,
+      { agent: unusedAgent(), triage: unusedTriage(), closer: failingCloser },
+    );
+
+    expect(result).toEqual({ state: "TRIAGE", done: false });
+    const reloaded = await load(dir);
+    expect(reloaded.outcome).toBeUndefined();
+    expect(reloaded.history.at(-1)).toMatchObject({ t: "close", status: "FAIL" });
+    expect(await readRef(dir, "close-0")).toMatchObject({ detail: "the merge conflicted" });
+  });
+
+  it("resumes an accepted close recorded before the outcome was written", async () => {
+    // The crash window between appending the close entry and setOutcome.
+    await appendEntry(dir, { t: "close", status: "DONE", detailRef: "close-0" });
+
+    const result = await advance(dir, location, portsWith(unusedAgent()));
+
+    expect(result).toEqual({ state: "CLOSED", done: true });
+    const reloaded = await load(dir);
+    expect(reloaded.cursor.state).toBe("CLOSED");
+    expect(reloaded.outcome?.kind).toBe("closed");
+    // No second close was attempted: the log already carries the accepted one.
+    expect(reloaded.history.filter((e) => e.t === "close")).toHaveLength(1);
   });
 });

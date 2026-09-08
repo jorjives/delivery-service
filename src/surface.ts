@@ -1,4 +1,4 @@
-import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog } from "./case-file.js";
+import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
@@ -409,6 +409,51 @@ async function gating(
 }
 
 /**
+ * Do something with the accepted work. Acceptance and close are separate
+ * events: GATING decided the change is good, this decides what happens to it.
+ *
+ * The ref key counts prior close entries so a retried close cannot overwrite
+ * the detail an earlier close entry still points at.
+ */
+async function closing(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<AdvanceResult> {
+  const report = await ports.closer.close(
+    { worktreePath: worktreeOf(caseFile, location), dir },
+    { kind: "accepted" },
+  );
+
+  const priorCloses = caseFile.history.filter((e) => e.t === "close").length;
+  const detailRef = await writeRef(dir, `close-${priorCloses}`, report);
+  await appendEntry(dir, { t: "close", status: report.status, detailRef });
+
+  if (report.status !== "DONE") {
+    await updateCursor(dir, { state: "TRIAGE" });
+    return { state: "TRIAGE", done: false };
+  }
+
+  return closed(dir, report.detail);
+}
+
+/**
+ * Record the terminal CLOSED outcome. Split out so the resume case can reuse
+ * it without re-running the closer.
+ */
+async function closed(dir: string, reason: string): Promise<AdvanceResult> {
+  await setOutcome(dir, {
+    kind: "closed",
+    source: "closer",
+    reason,
+    at: new Date().toISOString(),
+  });
+  await updateCursor(dir, { state: "CLOSED" });
+  return { state: "CLOSED", done: true };
+}
+
+/**
  * Perform exactly one transition and commit it. Safe to call from a fresh
  * process against an existing `dir`: every branch reads pre-entry state or the
  * log tail, so a call after a crash always resumes onto a legal edge.
@@ -439,6 +484,12 @@ export async function advance(
       return incompleteTerminus(dir, caseFile, location, ports);
     case "GATING":
       return gating(dir, caseFile, location);
+    case "CLOSING":
+      return closing(dir, caseFile, location, ports);
+    case "CLOSED":
+      // The crash window between appending an accepted close entry and writing
+      // the outcome. The close already happened — never re-run the closer.
+      return closed(dir, "the closer accepted the work (outcome recorded on resume)");
     case "ESCALATED":
       // The crash window between recording an authority-class terminus and
       // writing the outcome: resume onto the terminal edge, not into a throw.
