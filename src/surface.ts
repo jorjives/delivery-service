@@ -168,6 +168,64 @@ async function preGating(
   );
 }
 
+/**
+ * Route a repair session's outcome.
+ *
+ * Slice 1 only reaches here pre-task (no baseline yet), so a completed repair
+ * resolves by re-baselining. That re-baseline — writing the set-once
+ * `header.baseline`, or appending another repair dispatch when the gate is
+ * still broken — is what makes the exit distinguishable on resume: without it
+ * the log tail would still derive GATE_MAINTENANCE and the surface would
+ * re-enter this edge forever.
+ */
+async function gateMaintenance(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<AdvanceResult> {
+  const tail = logTail(caseFile);
+
+  if (tail?.t === "dispatch") {
+    // A dispatch with no terminus is a session that ended without emitting a
+    // valid result — an incomplete terminus, not a session to resurrect. Record
+    // it and let the ordinary incomplete handling redispatch or escalate.
+    await appendEntry(dir, {
+      t: "terminus",
+      role: "gate-maintenance",
+      attempt: tail.attempt,
+      sessionKey: tail.sessionKey,
+      status: "incomplete",
+      rationale: "repair session ended without recording a terminus (recovered on resume)",
+    });
+    return { state: "GATE_MAINTENANCE", done: false };
+  }
+
+  if (tail?.t !== "terminus") {
+    throw new IllegalStateTransition(dir, "GATE_MAINTENANCE", "resolve-repair");
+  }
+
+  switch (tail.status) {
+    case "completed":
+      return preGating(dir, caseFile, location, ports);
+    case "escalate":
+      return terminate(dir, caseFile, location, ports, "ESCALATED", {
+        kind: "escalated",
+        source: "gate-maintenance",
+        reason: tail.rationale,
+        at: new Date().toISOString(),
+      });
+    case "incomplete":
+      return dispatchGateMaintenance(
+        dir,
+        caseFile,
+        location,
+        ports,
+        "the repair session ended without a result",
+      );
+  }
+}
+
 async function provisioning(
   dir: string,
   caseFile: CaseFile,
@@ -218,6 +276,8 @@ export async function advance(
       return provisioning(dir, caseFile, location, ports);
     case "PRE_GATING":
       return preGating(dir, caseFile, location, ports);
+    case "GATE_MAINTENANCE":
+      return gateMaintenance(dir, caseFile, location, ports);
     default:
       throw new IllegalStateTransition(dir, state, "advance");
   }
