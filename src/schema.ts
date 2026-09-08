@@ -49,15 +49,20 @@ export const GateRef = z.discriminatedUnion("type", [
 ]);
 export type GateRef = z.infer<typeof GateRef>;
 
+// The gate's own three-way verdict — reused wherever a status is one report's
+// or one entry's, as opposed to a delta/verdict computed from two of them.
+export const GateStatus = z.enum(["PASS", "FAIL", "ERROR"]);
+export type GateStatus = z.infer<typeof GateStatus>;
+
 export const Assertion = z.object({
   id: z.string(),
-  outcome: z.enum(["PASS", "FAIL", "ERROR"]),
+  outcome: GateStatus,
   detail: z.string(),
 });
 export type Assertion = z.infer<typeof Assertion>;
 
 export const GateReport = z.object({
-  status: z.enum(["PASS", "FAIL", "ERROR"]),
+  status: GateStatus,
   assertions: z.array(Assertion),
   detail: z.string().optional(),
 });
@@ -130,7 +135,7 @@ export type TerminusEntry = z.infer<typeof TerminusEntry>;
 export const GateEntry = z.object({
   t: z.literal("gate"),
   attempt: z.number().int().positive(),
-  status: z.enum(["PASS", "FAIL", "ERROR"]),
+  status: GateStatus,
   newFailures: z.array(z.object({ id: z.string(), detailRef: z.string() })),
   class: z.enum(["fail", "error"]).optional(),
 });
@@ -153,12 +158,19 @@ export const CloseEntry = z.object({
 });
 export type CloseEntry = z.infer<typeof CloseEntry>;
 
+export const BaselineEntry = z.object({
+  t: z.literal("baseline"),
+  status: GateStatus,
+});
+export type BaselineEntry = z.infer<typeof BaselineEntry>;
+
 export const HistoryEntry = z.discriminatedUnion("t", [
   DispatchEntry,
   TerminusEntry,
   GateEntry,
   TriageEntry,
   CloseEntry,
+  BaselineEntry,
 ]);
 export type HistoryEntry = z.infer<typeof HistoryEntry>;
 

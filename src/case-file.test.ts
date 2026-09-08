@@ -433,6 +433,33 @@ describe("rebuild", () => {
     expect(rebuilt.cursor.state).toBe("GATE_MAINTENANCE");
   });
 
+  it("derives AGENT_ACTIVE, not GATE_MAINTENANCE, once a gate-maintenance repair has re-baselined", async () => {
+    // Reproduces issue #14: a gate-maintenance repair completes, then
+    // setBaseline re-baselines the surface — advancing it to AGENT_ACTIVE —
+    // without appending a history entry marking that. The log tail is still
+    // the repair's own completed terminus, so a live `position()` and a
+    // resumed `rebuild()` must not disagree about where that leaves the
+    // surface.
+    await appendEntry(dir, {
+      t: "dispatch",
+      role: "gate-maintenance",
+      attempt: 1,
+      sessionKey: "gate-maintenance-1-0",
+    });
+    await appendEntry(dir, {
+      t: "terminus",
+      role: "gate-maintenance",
+      attempt: 1,
+      sessionKey: "gate-maintenance-1-0",
+      status: "completed",
+      rationale: "reinstalled the gate's dependencies",
+    });
+    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+
+    const rebuilt = await rebuild(dir);
+    expect(rebuilt.cursor.state).toBe("AGENT_ACTIVE");
+  });
+
   it("counts the gateMaintenance budget off gate-maintenance dispatch entries", async () => {
     await appendEntry(dir, {
       t: "dispatch",
