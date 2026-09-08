@@ -498,3 +498,30 @@ export async function advance(
       throw new IllegalStateTransition(dir, state, "advance");
   }
 }
+
+export interface RunResult {
+  state: SurfaceState;
+  outcome?: CaseFileOutcome;
+}
+
+/**
+ * Advance the surface until it is terminal, then read back its outcome.
+ *
+ * No step cap: every non-terminal advance either appends an entry or throws,
+ * and the budget caps bound how many entries the loop can produce. Safe to
+ * call from a fresh process against an existing `dir` — it is just `advance`,
+ * which resumes onto a legal edge from whatever is on disk.
+ */
+export async function run(
+  dir: string,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+): Promise<RunResult> {
+  let result: AdvanceResult;
+  do {
+    result = await advance(dir, location, ports);
+  } while (!result.done);
+
+  const { outcome } = await load(dir);
+  return { state: result.state, outcome };
+}

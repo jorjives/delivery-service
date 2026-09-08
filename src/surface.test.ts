@@ -6,11 +6,12 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef } from "./case-file.js";
 import { initTempRepo } from "./temp-repo.js";
-import { advance } from "./surface.js";
+import { advance, run } from "./surface.js";
 import { noopCloser } from "./ports.js";
 import type { SurfaceLocation, SurfacePorts, Terminus } from "./ports.js";
+import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition } from "./errors.js";
-import type { BudgetSet, GateRef } from "./schema.js";
+import type { BudgetSet, GateRef, SurfaceState } from "./schema.js";
 import { cleanGitEnv } from "./git-env.js";
 
 const budgets: BudgetSet = {
@@ -630,5 +631,59 @@ describe("the CLOSING edge", () => {
     expect(reloaded.outcome?.kind).toBe("closed");
     // No second close was attempted: the log already carries the accepted one.
     expect(reloaded.history.filter((e) => e.t === "close")).toHaveLength(1);
+  });
+});
+
+describe("run", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  /** A worker that adds a file and leaves the gate passing. */
+  function cleanWorker(): SurfacePorts["agent"] {
+    return {
+      invoke: (_roleCfg, ctx) => {
+        writeFileSync(join(ctx.worktreePath, "feature.txt"), "the change\n");
+        return Promise.resolve({ status: "completed", rationale: "added the feature" });
+      },
+    };
+  }
+
+  it("drives a fresh surface all the way to CLOSED with no intervention", async () => {
+    const ports = portsWith(cleanWorker());
+    const repoPath = initTempRepo("surface-repo-", { "report.tap": PASSING_TAP });
+    const worktreePath = join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt");
+
+    const result = await run(dir, { repoPath, worktreePath }, ports);
+
+    expect(result.state).toBe("CLOSED");
+    expect(result.outcome?.kind).toBe("closed");
+    const { history } = await load(dir);
+    expect(history.map((e) => e.t)).toEqual(["dispatch", "terminus", "gate", "close"]);
+  });
+
+  it("produces the same sequence of states every time, given the same script", async () => {
+    async function statesOf(): Promise<SurfaceState[]> {
+      const caseDir = await mkdtemp(join(tmpdir(), "surface-case-"));
+      await create(caseDir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+      const ports = portsWith(cleanWorker());
+      const repoPath = initTempRepo("surface-repo-", { "report.tap": PASSING_TAP });
+      const worktreePath = join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt");
+      const seen: SurfaceState[] = [];
+      let step: AdvanceResult = { state: "PROVISIONING", done: false };
+      while (!step.done) {
+        step = await advance(caseDir, { repoPath, worktreePath }, ports);
+        seen.push(step.state);
+      }
+      return seen;
+    }
+
+    expect(await statesOf()).toEqual(await statesOf());
+    expect(await statesOf()).toEqual([
+      "PRE_GATING", "AGENT_ACTIVE", "GATING", "CLOSING", "CLOSED",
+    ]);
   });
 });
