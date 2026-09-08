@@ -1,5 +1,6 @@
 # Single-Surface State Machine — Slice 1: Provision a Surface and Reach Its First Decision Point
 
+> **Status:** ✅ Complete — 2026-09-08 — `091a924`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 1 of `docs/superpowers/specs/2026-09-08-single-surface-state-machine-slices.md`
@@ -1165,7 +1166,7 @@ error handling builds on."
 
 ---
 
-### Task 5: The `PRE_GATING` edge and the gate-maintenance dispatch
+### Task 5: The `PRE_GATING` edge and the gate-maintenance dispatch ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/surface.ts`
@@ -1439,7 +1440,7 @@ so a crash cannot leave the counter and the log disagreeing."
 
 ---
 
-### Task 6: The `GATE_MAINTENANCE` edge
+### Task 6: The `GATE_MAINTENANCE` edge ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/surface.ts`
@@ -1651,7 +1652,7 @@ crashed repair costs its own budget instead of retrying forever."
 
 ---
 
-### Task 7: The provisioning demo script
+### Task 7: The provisioning demo script ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/single-surface-slice-1-provisioning.ts`
