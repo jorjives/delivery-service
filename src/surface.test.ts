@@ -309,6 +309,30 @@ describe("advance", () => {
     const reloaded = await load(dir);
     expect(reloaded.outcome?.reason).toContain("2/2");
   });
+
+  it("escalates instead of dispatching when the gate-maintenance budget is already spent", async () => {
+    const agent = scriptedAgent([{ status: "completed", rationale: "unused" }]);
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "seed.txt": "hello\n" }, ports);
+    // Two prior repair dispatches == the cap of 2
+    await appendEntry(dir, { t: "dispatch", role: "gate-maintenance", attempt: 1, sessionKey: "gate-maintenance-1-0" });
+    await appendEntry(dir, { t: "terminus", role: "gate-maintenance", attempt: 1, sessionKey: "gate-maintenance-1-0", status: "completed", rationale: "a" });
+    await appendEntry(dir, { t: "dispatch", role: "gate-maintenance", attempt: 2, sessionKey: "gate-maintenance-2-0" });
+    await appendEntry(dir, { t: "terminus", role: "gate-maintenance", attempt: 2, sessionKey: "gate-maintenance-2-0", status: "completed", rationale: "b" });
+
+    // Position is GATE_MAINTENANCE, so this drives PRE_GATING's cap check via
+    // the completed-terminus exit, which re-baselines and finds ERROR again.
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "ESCALATED", done: true });
+    const reloaded = await load(dir);
+    expect(reloaded.outcome?.kind).toBe("escalated");
+    expect(reloaded.outcome?.reason).toContain("gateMaintenance");
+    expect(reloaded.outcome?.reason).toContain("2/2");
+    // No third dispatch was appended, and the repair agent was never invoked
+    expect(reloaded.history.filter((e) => e.t === "dispatch")).toHaveLength(2);
+    expect(agent.calls).toEqual([]);
+  });
 });
 
 describe("noopCloser", () => {
