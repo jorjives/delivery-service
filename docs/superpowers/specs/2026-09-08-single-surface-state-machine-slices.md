@@ -136,6 +136,7 @@ survive, or a way of recovering from it going wrong.
 ## Slice 3: Route a Setback Back Into the Loop Instead of Giving Up
 
 **Status:** ✅ Complete — 2026-09-08 — `e9fad5b`
+**Tests:** ✅ Recorded — 2026-09-08 — `47da177` — cli — 5 UAT + 4 AC, 0 skipped
 
 **Delivers:** A harness extender can watch a gate failure, a close failure,
 or a worker's own "I'm stuck but this might just need another try" signal
