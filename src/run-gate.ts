@@ -43,7 +43,7 @@ export async function runCheck(
   worktreePath: string,
   attempt: number,
 ): Promise<{ report: GateReport; delta: DeltaResult }> {
-  const { header } = await load(dir);
+  const { header, history } = await load(dir);
   if (header.baseline === null) throw new MissingBaseline(dir);
 
   const gate = resolveGate(header.gateRef, worktreePath);
@@ -61,17 +61,16 @@ export async function runCheck(
   // for it; add one when triage needs the diagnostic rather than a re-run.
   const failures: NewFailure[] = delta.class === "error" ? [] : delta.newFailures;
 
-  // ponytail: refs are keyed `gate-<attempt>-<index>`, so a second `runCheck`
-  // for the SAME attempt (a gate-maintenance re-check retries the identical
-  // attempt) overwrites the earlier call's ref files while both history
-  // entries still point at those ids. Ceiling: at most one runCheck per
-  // attempt is safe under this scheme. Widen the key (e.g. include a
-  // re-check counter) if gate maintenance ever re-checks an attempt more
-  // than once.
+  // Keyed by attempt AND by how many times this attempt has already been
+  // checked: a gate-maintenance repair re-checks the SAME attempt against the
+  // immutable baseline, and a bare `gate-<attempt>-<index>` key would overwrite
+  // the ref files the earlier check's `gate` entry still points at.
+  const recheckCount = history.filter((e) => e.t === "gate" && e.attempt === attempt).length;
+
   const newFailures: GateEntry["newFailures"] = await Promise.all(
     failures.map(async (failure, index) => ({
       id: failure.id,
-      detailRef: await writeRef(dir, `gate-${attempt}-${index}`, failure),
+      detailRef: await writeRef(dir, `gate-${attempt}-${recheckCount}-${index}`, failure),
     })),
   );
 

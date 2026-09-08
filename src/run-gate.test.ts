@@ -116,10 +116,10 @@ describe("runCheck", () => {
       attempt: 1,
       status: "FAIL",
       class: "fail",
-      newFailures: [{ id: "2 - beta", detailRef: "gate-1-0" }],
+      newFailures: [{ id: "2 - beta", detailRef: "gate-1-0-0" }],
     });
 
-    expect(await readRef(surfaceDir, "gate-1-0")).toEqual({
+    expect(await readRef(surfaceDir, "gate-1-0-0")).toEqual({
       id: "2 - beta",
       baselineOutcome: "PASS",
       checkOutcome: "FAIL",
@@ -172,5 +172,37 @@ describe("runCheck", () => {
 
   it("rejects a check run before any baseline was recorded", async () => {
     await expect(runCheck(surfaceDir, worktree, 1)).rejects.toThrow(MissingBaseline);
+  });
+
+  it("keys a re-check of the same attempt separately from the first check", async () => {
+    await tap(GREEN);
+    await recordBaseline(surfaceDir, worktree);
+
+    await tap("1..2\nok 1 - alpha\nnot ok 2 - beta\n");
+    await runCheck(surfaceDir, worktree, 1);
+
+    await tap("1..2\nnot ok 1 - alpha\nok 2 - beta\n");
+    await runCheck(surfaceDir, worktree, 1);
+
+    const { history } = await load(surfaceDir);
+    const gates = history.filter((e) => e.t === "gate") as Extract<typeof history[number], { t: "gate" }>[];
+    expect(gates).toHaveLength(2);
+
+    const first = gates[0];
+    const second = gates[1];
+    if (!first || !second) throw new Error("expected 2 gate entries");
+
+    const firstFailure = first.newFailures[0];
+    const secondFailure = second.newFailures[0];
+    if (!firstFailure || !secondFailure) throw new Error("expected failures on gate entries");
+
+    expect(firstFailure.detailRef).toBe("gate-1-0-0");
+    expect(secondFailure.detailRef).toBe("gate-1-1-0");
+
+    // The first check's detail must still be readable and still be its own.
+    expect(await readRef(surfaceDir, firstFailure.detailRef))
+      .toMatchObject({ id: "2 - beta" });
+    expect(await readRef(surfaceDir, secondFailure.detailRef))
+      .toMatchObject({ id: "1 - alpha" });
   });
 });
