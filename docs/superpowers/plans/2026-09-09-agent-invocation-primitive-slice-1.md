@@ -66,7 +66,7 @@ project on `PATH`, not vendored here).
 
 ---
 
-## Task 1: Add the SDK dependency and free the `RoleConfig` name
+## Task 1: Add the SDK dependency and free the `RoleConfig` name ✅ DONE (deliver-slice)
 
 **Why this is first:** `src/ports.ts` already exports `RoleConfig` as the driver's one-field role
 *handle* (`{ role }`, all `src/surface.ts` ever constructs). This slice introduces the real,
@@ -151,7 +151,7 @@ one-field handle first keeps one name per concept."
 
 ---
 
-## Task 2: The worker's role configuration and envelope schema
+## Task 2: The worker's role configuration and envelope schema ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/role-config.ts`
@@ -422,7 +422,7 @@ than silently routing itself."
 
 ---
 
-## Task 3: Deterministic five-slot prompt assembly
+## Task 3: Deterministic five-slot prompt assembly ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/prompt-assembly.ts`
@@ -709,7 +709,7 @@ out so the assembly itself is pure and its determinism is assertable."
 
 ---
 
-## Task 4: `invoke()` — a real session in, a typed terminus out
+## Task 4: `invoke()` — a real session in, a typed terminus out ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/agent-invoke.ts`
@@ -1061,7 +1061,7 @@ trace at a project owner."
 
 ---
 
-## Task 5: Prove the request is byte-identical across runs
+## Task 5: Prove the request is byte-identical across runs ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/agent-invoke.test.ts`
@@ -1135,7 +1135,7 @@ an option leaking into the prompt would be caught."
 
 ---
 
-## Task 6: A demo an extender can read the three outcomes from
+## Task 6: A demo an extender can read the three outcomes from ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/agent-invocation-slice-1-worker-invocation.ts`
