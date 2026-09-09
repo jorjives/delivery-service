@@ -58,10 +58,11 @@ export function buildSessionOptions(
   ctx: AgentContext,
   session: SessionEnvironment,
   canUseTool: CanUseTool,
+  systemPrompt = "",
 ): Options {
   return {
     cwd: ctx.worktreePath,
-    systemPrompt: "",
+    systemPrompt,
     outputFormat: { type: "json_schema", schema: z.toJSONSchema(roleCfg.envelopeSchema) },
     canUseTool,
     settingSources: [],
@@ -108,7 +109,7 @@ export async function invoke(
   );
 
   const authority = createToolAuthority(roleCfg);
-  const options = { ...buildSessionOptions(roleCfg, ctx, session, authority.canUseTool), systemPrompt };
+  const options = buildSessionOptions(roleCfg, ctx, session, authority.canUseTool, systemPrompt);
 
   let result: SDKResultMessage | undefined;
   try {
