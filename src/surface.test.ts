@@ -4,7 +4,7 @@ import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef, deriveBudgetsFromLog } from "./case-file.js";
+import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef, deriveBudgetsFromLog, rebuild } from "./case-file.js";
 import { initTempRepo } from "./temp-repo.js";
 import { advance, run, triageTrigger } from "./surface.js";
 import { noopCloser } from "./ports.js";
@@ -1054,5 +1054,53 @@ describe("budget caps", () => {
     expect(countOf(history, "dispatch")).toBe(1);
     expect(spent.correction.used).toBe(0);
     expect(spent.terminus.used).toBe(0);
+  });
+
+  it("reaches the same cap when the run is stopped partway and resumed from the directory", async () => {
+    const stuck = (): Terminus => ({
+      status: "escalate",
+      category: "exhaustion",
+      rationale: "stuck, try again",
+    });
+
+    // Reference: the whole scenario in one go.
+    const straightThrough = await runToEnd(portsWithTriage(scriptedAgent([stuck()])));
+
+    // The same scenario, stopped after four transitions and picked up again.
+    const resumedDir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(
+      resumedDir,
+      { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef },
+      budgets,
+    );
+    const firstProcess = portsWithTriage(scriptedAgent([stuck()]));
+    const location = await provisioned(resumedDir, { "report.tap": PASSING_TAP }, firstProcess);
+    // PRE_GATING -> AGENT_ACTIVE -> TRIAGE -> AGENT_ACTIVE -> TRIAGE: stopped
+    // with one of three corrections spent.
+    for (let step = 0; step < 4; step++) {
+      await advance(resumedDir, location, firstProcess);
+    }
+    const midRun = await load(resumedDir);
+    expect(midRun.outcome).toBeUndefined();
+    expect(
+      deriveBudgetsFromLog(midRun.history, midRun.cursor.budgets).correction.used,
+    ).toBe(1);
+
+    // A fresh process: the cursor rebuilt from the log, and doubles that share
+    // no state with the ones that ran before the stop.
+    await rebuild(resumedDir);
+    const secondProcess = portsWithTriage(scriptedAgent([stuck()]));
+    const result = await run(resumedDir, location, secondProcess);
+    const resumed = await load(resumedDir);
+
+    expect(result.state).toBe(straightThrough.state);
+    expect(resumed.outcome?.reason).toContain(exhaustedPrefix("correction"));
+    expect(
+      deriveBudgetsFromLog(resumed.history, resumed.cursor.budgets),
+    ).toEqual(straightThrough.spent);
+    // Not later and not sooner: the same number of worker sessions either way.
+    expect(resumed.history.filter((e) => e.t === "dispatch")).toHaveLength(
+      straightThrough.history.filter((e) => e.t === "dispatch").length,
+    );
   });
 });
