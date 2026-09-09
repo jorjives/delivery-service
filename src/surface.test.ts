@@ -952,6 +952,53 @@ describe("TRIAGE", () => {
     expect(after.history.filter((e) => e.t === "dispatch").at(-1))
       .toMatchObject({ role: "gate-maintenance" });
   });
+
+  it("carries out a retry_close verdict on resume instead of re-triaging", async () => {
+    let closes = 0;
+    const closer: SurfacePorts["closer"] = {
+      close: (_ctx, outcome) => {
+        if (outcome.kind !== "accepted") return Promise.resolve({ status: "DONE", detail: "torn down" });
+        closes += 1;
+        return Promise.resolve(
+          closes === 1
+            ? { status: "FAIL", detail: "not ready to close" }
+            : { status: "DONE", detail: "closed on the retry" },
+        );
+      },
+    };
+    let triages = 0;
+    const triage: SurfacePorts["triage"] = {
+      triage: (input) => {
+        triages += 1;
+        return deterministicRouter.triage(input);
+      },
+    };
+    const ports: SurfacePorts = {
+      agent: scriptedAgent([{ status: "completed", rationale: "clean change" }]),
+      triage,
+      closer,
+    };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
+    await advance(dir, location, ports); // AGENT_ACTIVE -> GATING
+    await advance(dir, location, ports); // GATING -> CLOSING
+    await advance(dir, location, ports); // CLOSING -> TRIAGE (close rejected)
+    const routed = await advance(dir, location, ports); // TRIAGE -> CLOSING
+    expect(routed.state).toBe("CLOSING");
+    expect(triages).toBe(1);
+
+    // A fresh process picks the directory up here: the triage decision is
+    // recorded, its consequence — the retried close — is not yet carried out.
+    await rebuild(dir);
+    const resumed = await run(dir, location, ports);
+
+    expect(resumed.state).toBe("CLOSED");
+    expect(closes).toBe(2); // the retried close ran exactly once
+    expect(triages).toBe(1); // the triage decision was not repeated
+    const { history, cursor } = await load(dir);
+    expect(deriveBudgetsFromLog(history, cursor.budgets).close.used).toBe(1);
+  });
 });
 
 describe("budget caps", () => {
@@ -1136,4 +1183,110 @@ describe("budget caps", () => {
       straightThrough.history.filter((e) => e.t === "dispatch").length,
     );
   });
+});
+
+describe("resume parity: an interrupted run reaches the same outcome as a straight one", () => {
+  /** A fresh case dir + temp repo + worktree path for one scenario. */
+  async function freshSurface(files: Record<string, string>): Promise<{ dir: string; location: SurfaceLocation }> {
+    const dir = await mkdtemp(join(tmpdir(), "surface-parity-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    const repoPath = initTempRepo("parity-repo-", files);
+    const worktreePath = join(await mkdtemp(join(tmpdir(), "parity-tree-")), "wt");
+    return { dir, location: { repoPath, worktreePath } };
+  }
+
+  /** The outcome and log-derived budgets a finished surface ended on. */
+  async function summarise(dir: string): Promise<{ kind: string; reason: string; spent: BudgetSet }> {
+    const { outcome, history, cursor } = await load(dir);
+    return {
+      kind: outcome?.kind ?? "none",
+      reason: outcome?.reason ?? "",
+      spent: deriveBudgetsFromLog(history, cursor.budgets),
+    };
+  }
+
+  interface ParityCase {
+    name: string;
+    files: Record<string, string>;
+    ports: () => SurfacePorts;
+    /** Where to cut the first process off, in whole advances. */
+    stopAfter: number;
+  }
+
+  const cases: ParityCase[] = [
+    {
+      name: "a clean worker change closing on the first attempt",
+      files: { "report.tap": PASSING_TAP },
+      ports: () => ({
+        agent: scriptedAgent([{ status: "completed", rationale: "clean change" }]),
+        triage: deterministicRouter,
+        closer: noopCloser,
+      }),
+      stopAfter: 2,
+    },
+    {
+      name: "a worker that never returns a result, to the terminus cap",
+      files: { "report.tap": PASSING_TAP },
+      ports: () => ({
+        agent: scriptedAgent([{ status: "incomplete", rationale: "hit the turn cap" }]),
+        triage: deterministicRouter,
+        closer: noopCloser,
+      }),
+      stopAfter: 3,
+    },
+    {
+      name: "a worker that breaks the gate, repaired to the gate-maintenance cap",
+      files: { "report.tap": PASSING_TAP },
+      ports: () => ({
+        agent: {
+          invoke: (roleCfg, ctx) => {
+            if (roleCfg.role === "worker") {
+              rmSync(join(ctx.worktreePath, "report.tap"), { force: true });
+              return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
+            }
+            return Promise.resolve({ status: "completed", rationale: "repaired nothing" });
+          },
+        },
+        triage: deterministicRouter,
+        closer: noopCloser,
+      }),
+      stopAfter: 4,
+    },
+    {
+      name: "a closer that always rejects, to the close cap",
+      files: { "report.tap": PASSING_TAP },
+      ports: () => ({
+        agent: scriptedAgent([{ status: "completed", rationale: "clean change" }]),
+        triage: deterministicRouter,
+        closer: {
+          close: (_ctx, outcome) =>
+            Promise.resolve(
+              outcome.kind === "accepted"
+                ? { status: "FAIL", detail: "not ready to close" }
+                : { status: "DONE", detail: "torn down" },
+            ),
+        },
+      }),
+      stopAfter: 5,
+    },
+  ];
+
+  for (const parityCase of cases) {
+    it(`reaches the same outcome and budgets with a stop-and-resume: ${parityCase.name}`, async () => {
+      const straight = await freshSurface(parityCase.files);
+      await run(straight.dir, straight.location, parityCase.ports());
+      const reference = await summarise(straight.dir);
+
+      const stopped = await freshSurface(parityCase.files);
+      const firstProcess = parityCase.ports();
+      for (let step = 0; step < parityCase.stopAfter; step++) {
+        await advance(stopped.dir, stopped.location, firstProcess);
+      }
+      // A fresh process picks up the directory with nothing else carried over.
+      await rebuild(stopped.dir);
+      await run(stopped.dir, stopped.location, parityCase.ports());
+
+      expect(await summarise(stopped.dir)).toEqual(reference);
+    });
+  }
 });
