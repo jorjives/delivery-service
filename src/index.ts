@@ -69,3 +69,4 @@ export { WorkerEnvelope, workerRoleConfig, validateRoleConfig } from "./role-con
 export type { Envelope, RoleConfig } from "./role-config.js";
 export { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 export type { AssembledPrompt, PromptEvidence } from "./prompt-assembly.js";
+export { invoke, DID_NOT_COMPLETE } from "./agent-invoke.js";

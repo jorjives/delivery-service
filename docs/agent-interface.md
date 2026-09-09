@@ -12,7 +12,7 @@ Scope: the contract for invoking an agent and turning its session into a terminu
 The states that *call* this seam (`AGENT_ACTIVE`, `TRIAGE`, `GATE_MAINTENANCE`) and
 the edges they route to are the control-flow doc's; how those states drive an agent
 is here. The gate and closer are not agents and are out of scope (see the gate and
-close interfaces). This is the seam [claude-mock](../../tools/claude-mock) fakes.
+close interfaces). This is the seam claude-mock fakes.
 
 ## Core concepts
 
@@ -187,7 +187,7 @@ at the SDK seam.
 
 ## Relationship to the mock
 
-This seam is precisely what [claude-mock](../../tools/claude-mock) fakes, and the
+This seam is precisely what claude-mock fakes, and the
 correspondence is exact:
 
 - **One `invoke`** ↔ the mock's single scripted turn loop.
@@ -202,18 +202,20 @@ correspondence is exact:
 Because the mock sits at the CLI seam the SDK spawns, an SDK shape change surfaces
 as a parse failure against the real primitive rather than a passing fiction.
 
+`claude-mock` is a **sibling project, not vendored into this repo**. Install it with
+`npm link` from its own checkout so that `claude-mock` resolves on `PATH`; the mock-backed
+tests and the invocation demos skip or refuse to run without it. Vendoring it is Item 7's.
+
 ## Open items
 
-- **`ctx` shape.** The concrete handle the primitive passes to the SDK: how the
-  worktree location, case-file reference, and `session_key` are threaded into the
-  `query()` options. Spec-level, but unspecified.
-- **Worker completion payload.** Whether `completed` carries anything beyond
-  `rationale`, given the gate is the real judge of the work. Leaning toward nothing
-  load-bearing, since a payload the harness trusts over the gate would violate
-  invariant 1.
-- **Schema definition mechanism.** How each role's payload schema is declared and
-  handed to the harness (inline, referenced, generated), and how it reaches the SDK
-  as an output constraint.
-- **Budget knobs in `role_cfg`.** The per-role budget fields named here are the same
-  counters the control flow owns; their exact placement (in `role_cfg`, in the case
-  file, or split) is left to the budget design.
+- **`ctx` shape** — resolved. `AgentContext.dir` is the case-file reference: the primitive
+  calls `load(ctx.dir)` itself, `ctx.worktreePath` becomes the session's `cwd`, and
+  `ctx.sessionKey` is a journal key only, deliberately kept out of prompt content so a retry
+  re-sends a byte-identical request.
+- **Worker completion payload** — resolved. `completed` carries `rationale` and nothing else;
+  the gate stays the sole judge of the work.
+- **Schema definition mechanism** — resolved. Each role's envelope is a zod discriminated union
+  in its `role_cfg`, validated harness-side and handed to the SDK's `outputFormat` via
+  `z.toJSONSchema()`. One schema language, two enforcement points.
+- **Budget knobs in `role_cfg`.** Reserved as `role_cfg.budgets?`, unused until the budget
+  design names the fields.
