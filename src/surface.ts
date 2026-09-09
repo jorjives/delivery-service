@@ -10,6 +10,13 @@ import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./sc
 export interface AdvanceResult {
   state: SurfaceState;
   done: boolean;
+  /**
+   * Present only when this advance recovered from an interruption, describing
+   * what it recovered. Crash recovery is a primary debugging surface for this
+   * item, so a resumed run says what it had to put right; it is returned as
+   * data, never printed from here.
+   */
+  recovery?: string;
 }
 
 function worktreeOf(caseFile: CaseFile, location: SurfaceLocation): string {
@@ -344,8 +351,13 @@ async function provisioning(
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
   const worktreePath = worktreeOf(caseFile, location);
+  // Initialised, not merely declared: TypeScript's definite-assignment analysis
+  // is conservative about a value assigned only inside a `try`.
+  let restarted = false;
   try {
-    await provisionWorktree(dir, location.repoPath, worktreePath, caseFile.header.surfaceId);
+    ({ restarted } = await provisionWorktree(
+      dir, location.repoPath, worktreePath, caseFile.header.surfaceId,
+    ));
   } catch (err) {
     if (!(err instanceof ProvisioningFailure)) throw err;
     // Provisioning failure is infra-class and terminal: there is no worker or
@@ -356,7 +368,13 @@ async function provisioning(
   // The cursor advance is the commit point for "the worktree exists and belongs
   // to this surface" — provisioning has no history representation.
   await updateCursor(dir, { state: "PRE_GATING", worktreeRef: worktreePath });
-  return { state: "PRE_GATING", done: false };
+  return {
+    state: "PRE_GATING",
+    done: false,
+    ...(restarted
+      ? { recovery: "restarted an interrupted provision: cleared what a torn attempt left behind and re-created the worktree" }
+      : {}),
+  };
 }
 
 /**

@@ -164,6 +164,24 @@ describe("advance", () => {
     expect(result).toEqual({ state: "ABORTED", done: true });
   });
 
+  it("reports a restarted provision when a leftover worktree had to be cleared", async () => {
+    const repoPath = initTempRepo("surface-repo-", { "a.txt": "hello\n" });
+    const worktreePath = join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt");
+    const location: SurfaceLocation = { repoPath, worktreePath };
+    const ports = portsWith(unusedAgent());
+
+    const first = await advance(dir, location, ports);
+    expect(first).toEqual({ state: "PRE_GATING", done: false });
+    // A crash after the worktree was created but before the cursor advanced:
+    // the surface is still PROVISIONING on disk, with wreckage on the path.
+    await updateCursor(dir, { state: "PROVISIONING", worktreeRef: "" });
+
+    const resumed = await advance(dir, location, ports);
+
+    expect(resumed.state).toBe("PRE_GATING");
+    expect(resumed.recovery).toBe("restarted an interrupted provision: cleared what a torn attempt left behind and re-created the worktree");
+  });
+
   it("baselines a healthy gate and lands on AGENT_ACTIVE with no repair dispatched", async () => {
     const agent = scriptedAgent([{ status: "completed", rationale: "unused" }]);
     const ports = portsWith(agent);

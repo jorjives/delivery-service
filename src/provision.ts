@@ -20,11 +20,14 @@ async function git(cwd: string, args: string[]): Promise<string> {
   return stdout.trim();
 }
 
-async function tryGit(cwd: string, args: string[]): Promise<void> {
+/** Best-effort clean-up: reports whether the command actually did something. */
+async function tryGit(cwd: string, args: string[]): Promise<boolean> {
   try {
     await git(cwd, args);
+    return true;
   } catch {
-    // Best-effort clean-up: nothing to remove is the common case.
+    // Nothing to remove is the common case.
+    return false;
   }
 }
 
@@ -46,21 +49,22 @@ async function resolveBaseRef(repoPath: string): Promise<string> {
  * (docs/provisioning.md), so a partial worktree or a leftover branch from a
  * torn attempt is torn down and recreated rather than adopted. That makes the
  * whole function idempotent: a crash anywhere inside it is recovered by calling
- * it again.
+ * it again. Reports whether wreckage was cleared.
  */
 export async function provisionWorktree(
   dir: string,
   repoPath: string,
   worktreePath: string,
   surfaceId: string,
-): Promise<void> {
+): Promise<{ restarted: boolean }> {
   const branch = branchName(surfaceId);
   try {
     const baseRef = await resolveBaseRef(repoPath);
-    await tryGit(repoPath, ["worktree", "remove", "--force", "--", worktreePath]);
+    const removedTree = await tryGit(repoPath, ["worktree", "remove", "--force", "--", worktreePath]);
     await tryGit(repoPath, ["worktree", "prune"]);
-    await tryGit(repoPath, ["branch", "-D", "--", branch]);
+    const removedBranch = await tryGit(repoPath, ["branch", "-D", "--", branch]);
     await git(repoPath, ["worktree", "add", "-b", branch, "--", worktreePath, baseRef]);
+    return { restarted: removedTree || removedBranch };
   } catch (err) {
     throw new ProvisioningFailure(dir, messageOf(err));
   }

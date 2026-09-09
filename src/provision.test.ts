@@ -49,6 +49,20 @@ describe("provisionWorktree", () => {
     await expect(readFile(join(tree, "stray.txt"), "utf-8")).rejects.toThrow();
   });
 
+  it("reports a clean first provision as not restarted", async () => {
+    const result = await provisionWorktree(dir, repo, tree, "surface-42");
+
+    expect(result).toEqual({ restarted: false });
+  });
+
+  it("reports a provision that had to clear a leftover worktree as restarted", async () => {
+    await provisionWorktree(dir, repo, tree, "surface-42");
+
+    const result = await provisionWorktree(dir, repo, tree, "surface-42");
+
+    expect(result).toEqual({ restarted: true });
+  });
+
   it("throws ProvisioningFailure naming the surface dir when the path is unusable", async () => {
     const blocker = join(await mkdtemp(join(tmpdir(), "provision-block-")), "file");
     await writeFile(blocker, "not a directory\n");
