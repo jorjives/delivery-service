@@ -82,6 +82,7 @@ the point where the harness stops simulating a worker and starts actually runnin
 
 ## Slice 2: A Role Cannot Act Outside What It Was Given Permission to Touch
 
+**Status:** ✅ Complete — 2026-09-10 — `c155a01`
 **Delivers:** A harness extender can watch a role attempt something outside its
 permitted-tools list and see the harness refuse the attempt — with a message that says
 which role, which action, and that this was refused on purpose, not a malfunction.
