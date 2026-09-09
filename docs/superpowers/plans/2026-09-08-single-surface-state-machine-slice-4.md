@@ -1,5 +1,6 @@
 # Single-Surface State Machine — Slice 4: Stop Cleanly When a Retry Budget Runs Out
 
+> **Status:** ✅ Complete — 2026-09-09 — `f6c93b5`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 4 of `docs/superpowers/specs/2026-09-08-single-surface-state-machine-slices.md`
