@@ -135,6 +135,8 @@ without writing an implementation.
 
 ## Item 3: Single-Surface State Machine
 
+**Status:** ✅ Complete — 2026-09-09 — spec: `docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md`
+
 **Delivers:** The core delivery loop: provision a worktree, dispatch an agent,
 gate the result, and route to a terminal state, with deterministic budget
 enforcement and crash recovery.
