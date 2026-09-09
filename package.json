@@ -19,6 +19,7 @@
     "demo:surface-slice-4": "npx tsx demos/single-surface-slice-4-budgets.ts",
     "demo:surface-slice-5": "npx tsx demos/single-surface-slice-5-crash-recovery.ts",
     "demo:agent-slice-1": "npx tsx demos/agent-invocation-slice-1-worker-invocation.ts",
+    "demo:agent-slice-2": "npx tsx demos/agent-invocation-slice-2-tool-authority.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {
