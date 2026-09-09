@@ -121,7 +121,10 @@ async function main(): Promise<void> {
     "   Note:   claude-mock models no tool permissions, so it cannot be scripted to\n" +
       "           attempt an out-of-role call. Sections 2 and 3 drive the harness's own\n" +
       "           decision path directly; the end-to-end guarantee rests on the real\n" +
-      "           agent runtime. Known gap, stated rather than papered over.",
+      "           agent runtime. Known gap, stated rather than papered over.\n" +
+      "           One residual: the guard sees only calls the runtime would prompt\n" +
+      "           about, so an out-of-role read-only call is auto-approved and never\n" +
+      "           refused. Mutating tools — where the blast radius is — all pass here.",
   );
 }
 
