@@ -111,10 +111,7 @@ describe.skipIf(!hasMock)("invoke against a scripted agent session", () => {
   // The journal records the user turn only; `systemPrompt` determinism is Task 3's.
   it("sends the identical request twice from the same starting case file", async () => {
     const journalPath = join(dir, "journal.jsonl");
-    await script([
-      { json: { status: "completed", rationale: "first run" } },
-      { json: { status: "completed", rationale: "second run" } },
-    ]);
+    await script([{ json: { status: "completed", rationale: "either run" } }]);
     const sdk = {
       pathToClaudeCodeExecutable: "claude-mock",
       env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: journalPath },
