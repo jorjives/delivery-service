@@ -4,7 +4,7 @@ import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef } from "./case-file.js";
+import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef, deriveBudgetsFromLog } from "./case-file.js";
 import { initTempRepo } from "./temp-repo.js";
 import { advance, run, triageTrigger } from "./surface.js";
 import { noopCloser } from "./ports.js";
@@ -12,7 +12,7 @@ import { deterministicRouter } from "./router.js";
 import type { SurfaceLocation, SurfacePorts, Terminus } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition } from "./errors.js";
-import type { BudgetSet, GateRef, SurfaceState } from "./schema.js";
+import type { BudgetPopulation, BudgetSet, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
 import { cleanGitEnv } from "./git-env.js";
 
 const budgets: BudgetSet = {
@@ -918,5 +918,141 @@ describe("TRIAGE", () => {
     const after = await load(dir);
     expect(after.history.filter((e) => e.t === "dispatch").at(-1))
       .toMatchObject({ role: "gate-maintenance" });
+  });
+});
+
+describe("budget caps", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  /** Provision, run to a terminal state, and read back what the log says was spent. */
+  async function runToEnd(
+    ports: SurfacePorts,
+  ): Promise<{ state: SurfaceState; reason: string; spent: BudgetSet; history: HistoryEntry[] }> {
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+    const result = await run(dir, location, ports);
+    const caseFile = await load(dir);
+    return {
+      state: result.state,
+      reason: caseFile.outcome?.reason ?? "",
+      spent: deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets),
+      history: caseFile.history,
+    };
+  }
+
+  function countOf(history: HistoryEntry[], t: HistoryEntry["t"]): number {
+    return history.filter((e) => e.t === t).length;
+  }
+
+  /** The reason a cap escalation must carry, per the item's DX decision. */
+  function exhaustedPrefix(population: BudgetPopulation): string {
+    const { max } = budgets[population];
+    return `${population} budget exhausted (${max}/${max})`;
+  }
+
+  it("spends exactly the correction cap when the worker is always stuck, and nothing else", async () => {
+    const agent = scriptedAgent([
+      { status: "escalate", category: "exhaustion", rationale: "stuck, try again" },
+    ]);
+
+    const { state, reason, spent, history } = await runToEnd(portsWithTriage(agent));
+
+    expect(state).toBe("ESCALATED");
+    expect(reason).toContain(exhaustedPrefix("correction"));
+    expect(spent.correction.used).toBe(budgets.correction.max);
+
+    // Exactly the cap: the first attempt plus one retry per correction spent,
+    // and a final triage round that refused to spend a fourth.
+    expect(countOf(history, "dispatch")).toBe(budgets.correction.max + 1);
+    expect(
+      history.filter((e) => e.t === "triage" && e.verdict === "reroute"),
+    ).toHaveLength(budgets.correction.max);
+
+    // Independence: a scenario that only ever burns corrections burns nothing else.
+    expect(spent.gateError.used).toBe(0);
+    expect(spent.gateMaintenance.used).toBe(0);
+    expect(spent.terminus.used).toBe(0);
+    expect(spent.close.used).toBe(0);
+  });
+
+  it("spends exactly the gate-maintenance cap when the gate never runs again", async () => {
+    // The worker deletes the file the gate reads, so the gate ERRORs rather
+    // than failing; every repair session reports success without restoring it.
+    const agent: SurfacePorts["agent"] = {
+      invoke: (roleCfg, ctx) => {
+        if (roleCfg.role === "worker") {
+          rmSync(join(ctx.worktreePath, "report.tap"), { force: true });
+          return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
+        }
+        return Promise.resolve({ status: "completed", rationale: "repaired nothing" });
+      },
+    };
+
+    const { state, reason, spent, history } = await runToEnd(portsWithTriage(agent));
+
+    expect(state).toBe("ESCALATED");
+    expect(reason).toContain(exhaustedPrefix("gateMaintenance"));
+    expect(spent.gateMaintenance.used).toBe(budgets.gateMaintenance.max);
+
+    // One repair session per gateMaintenance spent, and no more.
+    expect(
+      history.filter((e) => e.t === "dispatch" && e.role === "gate-maintenance"),
+    ).toHaveLength(budgets.gateMaintenance.max);
+    expect(
+      history.filter((e) => e.t === "dispatch" && e.role === "worker"),
+    ).toHaveLength(1);
+
+    // The worker's own populations are untouched: a broken gate is not the
+    // worker's setback to pay for.
+    expect(spent.correction.used).toBe(0);
+    expect(spent.terminus.used).toBe(0);
+    expect(spent.close.used).toBe(0);
+  });
+
+  it("spends exactly the terminus cap when the worker never returns a result", async () => {
+    const agent = scriptedAgent([{ status: "incomplete", rationale: "hit the turn cap" }]);
+
+    const { state, reason, spent, history } = await runToEnd(portsWithTriage(agent));
+
+    expect(state).toBe("ESCALATED");
+    expect(reason).toContain(exhaustedPrefix("terminus"));
+    expect(spent.terminus.used).toBe(budgets.terminus.max);
+
+    // Each incomplete session IS the burn, so the cap is the session count —
+    // the last one is never retried, and no triage round is ever reached.
+    expect(countOf(history, "dispatch")).toBe(budgets.terminus.max);
+    expect(countOf(history, "triage")).toBe(0);
+    expect(spent.correction.used).toBe(0);
+    expect(spent.gateMaintenance.used).toBe(0);
+  });
+
+  it("spends exactly the close cap when the closer always rejects the work", async () => {
+    const agent = scriptedAgent([{ status: "completed", rationale: "clean change" }]);
+    const rejectingCloser: SurfacePorts["closer"] = {
+      close: (_ctx, outcome) =>
+        Promise.resolve(
+          outcome.kind === "accepted"
+            ? { status: "FAIL", detail: "not ready to close" }
+            : { status: "DONE", detail: "torn down" },
+        ),
+    };
+
+    const { state, reason, spent, history } = await runToEnd(
+      portsWithTriage(agent, rejectingCloser),
+    );
+
+    expect(state).toBe("ESCALATED");
+    expect(reason).toContain(exhaustedPrefix("close"));
+    expect(spent.close.used).toBe(budgets.close.max);
+
+    // The first close plus one retry per close spent; the worker ran once.
+    expect(countOf(history, "close")).toBe(budgets.close.max + 1);
+    expect(countOf(history, "dispatch")).toBe(1);
+    expect(spent.correction.used).toBe(0);
+    expect(spent.terminus.used).toBe(0);
   });
 });
