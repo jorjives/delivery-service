@@ -306,10 +306,21 @@ describe("advance", () => {
 
     const result = await advance(dir, location, ports);
 
-    expect(result).toEqual({ state: "GATE_MAINTENANCE", done: false });
+    expect(result).toEqual({
+      state: "GATE_MAINTENANCE",
+      done: false,
+      recovery: "recorded a missing terminus for repair attempt 1 (gate-maintenance-1-0): the interrupted session is retried, not re-dispatched",
+    });
     expect(agent.calls).toEqual([]); // no duplicate session dispatched
     const tail = (await load(dir)).history.at(-1);
     expect(tail).toMatchObject({ t: "terminus", role: "gate-maintenance", attempt: 1, status: "incomplete" });
+
+    // A repair recovery is not a worker retry and pays for nothing of the
+    // worker's: only the repair's own population moves.
+    const { history, cursor } = await load(dir);
+    const spent = deriveBudgetsFromLog(history, cursor.budgets);
+    expect(spent.terminus.used).toBe(0);
+    expect(spent.correction.used).toBe(0);
   });
 
   it("escalates when repeated repairs never fix the gate, at exactly the cap", async () => {
@@ -527,7 +538,11 @@ describe("the INCOMPLETE_TERMINUS edge", () => {
 
     const recorded = await advance(dir, location, ports);
 
-    expect(recorded).toEqual({ state: "INCOMPLETE_TERMINUS", done: false });
+    expect(recorded).toEqual({
+      state: "INCOMPLETE_TERMINUS",
+      done: false,
+      recovery: "recorded a missing terminus for worker attempt 1 (worker-1-0): the interrupted session is retried, not re-dispatched",
+    });
     const { history } = await load(dir);
     const tail = history.at(-1);
     expect(tail?.t).toBe("terminus");

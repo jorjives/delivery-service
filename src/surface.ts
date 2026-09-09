@@ -175,17 +175,18 @@ async function recordMissingTerminus(
   dir: string,
   tail: Extract<HistoryEntry, { t: "dispatch" }>,
   role: "worker" | "gate-maintenance",
-): Promise<HistoryEntry> {
+): Promise<string> {
+  const label = role === "worker" ? "worker" : "repair";
   const entry: HistoryEntry = {
     t: "terminus",
     role,
     attempt: tail.attempt,
     sessionKey: tail.sessionKey,
     status: "incomplete",
-    rationale: `${role === "worker" ? "worker" : "repair"} session ended without recording a terminus (recovered on resume)`,
+    rationale: `${label} session ended without recording a terminus (recovered on resume)`,
   };
   await appendEntry(dir, entry);
-  return entry;
+  return `recorded a missing terminus for ${label} attempt ${tail.attempt} (${tail.sessionKey}): the interrupted session is retried, not re-dispatched`;
 }
 
 /**
@@ -318,8 +319,8 @@ async function gateMaintenance(
     // A dispatch with no terminus is a session that ended without emitting a
     // valid result — an incomplete terminus, not a session to resurrect. Record
     // it and let the ordinary incomplete handling redispatch or escalate.
-    await recordMissingTerminus(dir, tail, "gate-maintenance");
-    return { state: "GATE_MAINTENANCE", done: false };
+    const recovery = await recordMissingTerminus(dir, tail, "gate-maintenance");
+    return { state: "GATE_MAINTENANCE", done: false, recovery };
   }
 
   if (tail?.t !== "terminus") {
@@ -412,8 +413,8 @@ async function incompleteTerminus(
   const tail = logTail(caseFile);
 
   if (tail?.t === "dispatch") {
-    await recordMissingTerminus(dir, tail, "worker");
-    return { state: "INCOMPLETE_TERMINUS", done: false };
+    const recovery = await recordMissingTerminus(dir, tail, "worker");
+    return { state: "INCOMPLETE_TERMINUS", done: false, recovery };
   }
 
   if (tail?.t !== "terminus") {
