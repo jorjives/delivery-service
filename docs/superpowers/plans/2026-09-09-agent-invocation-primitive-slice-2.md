@@ -1,5 +1,6 @@
 # Agent Invocation Primitive — Slice 2: A Role Cannot Act Outside What It Was Given Permission to Touch
 
+> **Status:** ✅ Complete — 2026-09-10 — `c155a01`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 2 of `docs/superpowers/specs/2026-09-09-agent-invocation-primitive-slices.md`
