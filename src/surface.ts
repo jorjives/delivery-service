@@ -354,6 +354,7 @@ async function provisioning(
   const worktreePath = worktreeOf(caseFile, location);
   // Initialised, not merely declared: TypeScript's definite-assignment analysis
   // is conservative about a value assigned only inside a `try`.
+  // eslint-disable-next-line no-useless-assignment
   let restarted = false;
   try {
     ({ restarted } = await provisionWorktree(
