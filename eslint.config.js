@@ -13,6 +13,7 @@ export default tseslint.config(
             "*.ts",
             "demos/*.ts",
             "tests/*.ts",
+            "tests/agent-invocation-primitive/*.ts",
             "tests/case-file-persistence/*.ts",
             "tests/gate-interface/*.ts",
             "tests/single-surface-state-machine/*.ts",
