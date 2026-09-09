@@ -610,6 +610,15 @@ in this item. `incrementBudget` (Item 1) is unused by this item's driver;
 it remains available for a future caller that needs a live counter outside
 this derive-then-write pattern.
 
+Every escalation caused by a cap — the driver's `GATE_MAINTENANCE` and
+`INCOMPLETE_TERMINUS` edges, and `TriagePort`'s own at-cap branch — writes its
+reason in one shape, produced by a single formatter: `<population> budget
+exhausted (<used>/<max>): <detail>`. This is the roadmap's DX decision for this
+item made structural: a reader of a surface's outcome can tell "it ran out of
+retries" from every other escalation, and tell which population ran out, by the
+first two words, rather than by recognising one of several hand-written
+sentences.
+
 Because nothing increments it, `cursor.budgets[*].used` is a denormalisation
 and not authoritative — it holds whatever `create` seeded until a `rebuild`
 refreshes it from the log. Only `max` is read from the cursor. This is the same

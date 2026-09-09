@@ -1,5 +1,6 @@
 import type { TriageInput, TriagePort, TriageVerdict } from "./ports.js";
 import type { BudgetPopulation } from "./schema.js";
+import { budgetExhausted } from "./budgets.js";
 
 /**
  * The whole deterministic rule, one row per trigger: the budget that gates the
@@ -44,7 +45,11 @@ export const deterministicRouter: TriagePort = {
     if (used >= max) {
       return Promise.resolve({
         verdict: "escalate",
-        rationale: `${input.trigger}: ${budget} budget exhausted (${used}/${max})`,
+        rationale: budgetExhausted(
+          budget,
+          { used, max },
+          `no retry remains for a ${input.trigger} setback`,
+        ),
       });
     }
 

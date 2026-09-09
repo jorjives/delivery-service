@@ -15,8 +15,9 @@ function gateContext(header: CaseFileHeader, worktreePath: string): GateContext 
  * rejects with `ImmutabilityViolation`.
  *
  * An ERROR report is returned but never stored — the baseline is immutable for
- * the surface's lifetime, so pinning a failed run would be unrecoverable. The
- * caller retries on the gateError budget.
+ * the surface's lifetime, so pinning a failed run would be unrecoverable. What
+ * the caller does with it is the caller's: this item's driver routes it to
+ * gate maintenance, on the gateMaintenance budget.
  */
 export async function recordBaseline(
   dir: string,

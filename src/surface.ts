@@ -3,6 +3,7 @@ import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
+import { budgetExhausted } from "./budgets.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput } from "./ports.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
@@ -240,7 +241,7 @@ async function dispatchGateMaintenance(
   if (used >= max) {
     return escalate(
       dir, caseFile, location, ports, "gate-maintenance",
-      `gateMaintenance budget exhausted (${used}/${max}): ${reason}`,
+      budgetExhausted("gateMaintenance", { used, max }, reason),
     );
   }
 
@@ -411,7 +412,7 @@ async function incompleteTerminus(
   if (used >= max) {
     return escalate(
       dir, caseFile, location, ports, "worker",
-      `terminus budget exhausted (${used}/${max}): ${tail.rationale}`,
+      budgetExhausted("terminus", { used, max }, tail.rationale),
     );
   }
 
