@@ -158,6 +158,7 @@ malformed envelope             → INCOMPLETE_TERMINUS
 illegal status for the role    → INCOMPLETE_TERMINUS
 payload fails its role schema  → INCOMPLETE_TERMINUS
 session crashed / cap / idle   → INCOMPLETE_TERMINUS
+out-of-role tool attempted     → INCOMPLETE_TERMINUS (authority refusal)
 ```
 
 `INCOMPLETE_TERMINUS` is defined negatively and uniformly: *any* end that did not
@@ -170,11 +171,20 @@ whether the cause was a crash or a schema violation.
 Each role's blast radius is a security boundary, not a convention, so it is enforced
 at the SDK seam.
 
-- **`allowedTools` is pinned in `role_cfg`** and passed to the session. Triage gets
-  a read-only set; the worker gets edit + shell; gate-maintenance gets edit scoped
-  to the environment. A role literally cannot call outside its authority because the
-  seam refuses the call. This is the tool-level counterpart to pinning the gate out
-  of the worker's reach.
+- **`allowedTools` is pinned in `role_cfg`** and enforced at the session's
+  `canUseTool` callback — the one decision point, consulted before each tool
+  execution. Triage gets a read-only set; the worker gets edit + shell;
+  gate-maintenance gets edit scoped to the environment. The session's base tool
+  set is deliberately *not* narrowed to that list: a role must be able to issue
+  an out-of-role call so the seam can refuse it observably and name it in the
+  log. The refusal is reported as `INCOMPLETE_TERMINUS` with a sentence naming
+  the role, the tool, and that the boundary worked as intended.
+
+- **The runtime is the enforcer, and the mock is not.** `claude-mock` models no
+  tool permissions, so no offline test can drive a real out-of-role call
+  through it. The harness's own decision path is unit-tested directly; the
+  end-to-end guarantee rests on the real agent runtime. Known gap, stated
+  rather than papered over.
 
 - **Gate-maintenance's "environment, not assertions" boundary is finer than a tool
   list** — it needs edit tools but must not touch assertion definitions. That is a

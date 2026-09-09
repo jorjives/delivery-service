@@ -3,9 +3,10 @@ import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { create } from "./case-file.js";
-import { invoke, DID_NOT_COMPLETE } from "./agent-invoke.js";
+import { invoke, DID_NOT_COMPLETE, buildSessionOptions } from "./agent-invoke.js";
 import { workerRoleConfig } from "./role-config.js";
 import { isOnPath } from "./on-path.js";
+import { createToolAuthority } from "./tool-authority.js";
 import type { AgentContext } from "./ports.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 
@@ -140,5 +141,67 @@ describe("invoke without a runnable session", () => {
     expect(terminus.status).toBe("incomplete");
     expect(terminus.rationale).toContain(DID_NOT_COMPLETE.notRun);
     expect(terminus.rationale).not.toContain("ENOENT");
+  });
+});
+
+describe("the session options the primitive builds", () => {
+  function options() {
+    return buildSessionOptions(
+      workerRoleConfig,
+      ctx,
+      { pathToClaudeCodeExecutable: "claude-mock", env: { A: "1" } },
+      createToolAuthority(workerRoleConfig).canUseTool,
+    );
+  }
+
+  it("installs the role's guard as the permission decision point", () => {
+    expect(typeof options().canUseTool).toBe("function");
+  });
+
+  it("does not narrow the session's base tool set, which would silence the guard", () => {
+    expect(options().tools).toBeUndefined();
+  });
+
+  it("does not auto-approve the role's tools, which would make the guard dead code", () => {
+    expect(options().allowedTools).toBeUndefined();
+  });
+
+  it("closes every route round the guard by construction", () => {
+    const built = options();
+    expect(built.settingSources).toEqual([]);
+    expect(built.permissionMode).toBe("default");
+    expect(built.permissionPrompts).toBe("host");
+    expect(built.hooks).toBeUndefined();
+    expect(built.plugins).toBeUndefined();
+    expect(built.permissionPromptToolName).toBeUndefined();
+    expect(built.allowDangerouslySkipPermissions).toBeUndefined();
+  });
+
+  it("takes only the executable and its environment from the caller", () => {
+    const built = buildSessionOptions(
+      workerRoleConfig,
+      ctx,
+      // A caller reaching for a permission field cannot: the parameter type has no
+      // such field, and nothing is spread. Cast to prove the runtime behaviour too.
+      { pathToClaudeCodeExecutable: "claude-mock", permissionMode: "bypassPermissions" } as never,
+      createToolAuthority(workerRoleConfig).canUseTool,
+    );
+    expect(built.pathToClaudeCodeExecutable).toBe("claude-mock");
+    expect(built.permissionMode).toBe("default");
+  });
+
+  it("still points the session at the run's worktree", () => {
+    expect(options().cwd).toBe(worktreePath);
+  });
+});
+
+describe.skipIf(!hasMock)("invoke with the guard installed", () => {
+  it("still drives a scripted session to a clean terminus", async () => {
+    await script([{ json: { status: "completed", rationale: "guard installed, run unaffected" } }]);
+    const terminus = await invoke(workerRoleConfig, ctx, useMock());
+    expect(terminus).toEqual({
+      status: "completed",
+      rationale: "guard installed, run unaffected",
+    });
   });
 });

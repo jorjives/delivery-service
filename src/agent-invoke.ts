@@ -1,10 +1,11 @@
-import { query, type Options, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type CanUseTool, type Options, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { load } from "./case-file.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
 import type { AgentContext, Terminus } from "./ports.js";
+import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
 
 /**
  * The four ways a session fails to produce a usable answer, and the one
@@ -29,14 +30,63 @@ function incomplete(roleCfg: RoleConfig, reason: string): Terminus {
 }
 
 /**
+ * The only session settings a caller may supply: where the CLI binary is, and
+ * what environment it runs with. Deliberately an allowlist rather than a
+ * `Partial<Options>` with the permission fields written back over it — a
+ * deny-list silently widens the day the SDK adds an option, and the whole
+ * point of this seam is that a role's authority cannot be widened from
+ * outside.
+ */
+export interface SessionEnvironment {
+  pathToClaudeCodeExecutable?: string;
+  env?: Record<string, string | undefined>;
+}
+
+/**
+ * Assemble the session's options field by field.
+ *
+ * `tools` is left alone on purpose: narrowing it to the role's list removes
+ * out-of-role tools from the session entirely, so the model never issues the
+ * call and there is nothing to refuse or report. `allowedTools` is left unset
+ * for the mirror-image reason — a bare entry auto-approves before `canUseTool`
+ * is consulted. Authority is decided in exactly one place, and the surrounding
+ * routes to a decision are pinned shut: no filesystem settings, a fixed
+ * permission mode, prompts answered by this process, no hooks, no plugins.
+ */
+export function buildSessionOptions(
+  roleCfg: RoleConfig,
+  ctx: AgentContext,
+  session: SessionEnvironment,
+  canUseTool: CanUseTool,
+): Options {
+  return {
+    cwd: ctx.worktreePath,
+    systemPrompt: "",
+    outputFormat: { type: "json_schema", schema: z.toJSONSchema(roleCfg.envelopeSchema) },
+    canUseTool,
+    settingSources: [],
+    permissionMode: "default",
+    permissionPrompts: "host",
+    pathToClaudeCodeExecutable: session.pathToClaudeCodeExecutable,
+    env: session.env,
+  };
+}
+
+/**
  * One agent session in, exactly one terminus out.
  *
  * The primitive never retries and never branches on role: it assembles the
  * prompt, spawns one fresh session (no resume, no session id — sessions are
  * reconstructed from the case file, never continued), and validates whatever
- * came back. `sdkOverrides` exists so a test or demo can point the SDK at
- * `claude-mock` instead of the real CLI; the tool-authority fields are applied
- * after it, so an override can never widen what the role may do.
+ * came back. `session` exists so a test or demo can point the SDK at
+ * `claude-mock` instead of the real CLI; it can name the binary and its
+ * environment and nothing else, so a caller can never widen what the role may do.
+ *
+ * An out-of-role tool call outranks every other outcome. A session that reached
+ * outside its authority is reported as that refusal even if it went on to emit a
+ * clean envelope: the boundary event is the thing a reader must not miss, and a
+ * "completed" that quietly swallowed a refusal would be the harness hiding its
+ * own security boundary from the person relying on it.
  *
  * Throws `InvalidRoleConfig` — and only that — for a malformed config, before any
  * session is spawned. An extender's typo is a programming error, not a run
@@ -46,7 +96,7 @@ function incomplete(roleCfg: RoleConfig, reason: string): Terminus {
 export async function invoke(
   roleCfg: RoleConfig,
   ctx: AgentContext,
-  sdkOverrides: Partial<Options> = {},
+  session: SessionEnvironment = {},
 ): Promise<Terminus> {
   validateRoleConfig(roleCfg);
 
@@ -57,12 +107,18 @@ export async function invoke(
     await resolveEvidence(ctx.dir, caseFile),
   );
 
+  const authority = createToolAuthority(roleCfg);
+  const options = { ...buildSessionOptions(roleCfg, ctx, session, authority.canUseTool), systemPrompt };
+
   let result: SDKResultMessage | undefined;
   try {
-    result = await lastResult(prompt, systemPrompt, roleCfg, ctx, sdkOverrides);
+    result = await lastResult(prompt, options);
   } catch {
-    return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
+    return authorityRefusal(roleCfg, authority.attempted, []) ?? incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   }
+
+  const refusal = authorityRefusal(roleCfg, authority.attempted, result?.permission_denials ?? []);
+  if (refusal) return refusal;
 
   if (!result) return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   if (result.subtype !== "success" || result.is_error) {
@@ -83,28 +139,9 @@ export async function invoke(
  * Drive the session to its end and keep the result message. The stream is
  * drained rather than broken out of, so the child process is never left behind.
  */
-async function lastResult(
-  prompt: string,
-  systemPrompt: string,
-  roleCfg: RoleConfig,
-  ctx: AgentContext,
-  sdkOverrides: Partial<Options>,
-): Promise<SDKResultMessage | undefined> {
+async function lastResult(prompt: string, options: Options): Promise<SDKResultMessage | undefined> {
   let result: SDKResultMessage | undefined;
-  for await (const message of query({
-    prompt,
-    options: {
-      ...sdkOverrides,
-      cwd: ctx.worktreePath,
-      systemPrompt,
-      // One authored list, two SDK options: `tools` is the real restriction on
-      // the session's base tool set, `allowedTools` auto-approves what the role
-      // is already entitled to so an unattended run never stalls on a prompt.
-      tools: roleCfg.allowedTools,
-      allowedTools: roleCfg.allowedTools,
-      outputFormat: { type: "json_schema", schema: z.toJSONSchema(roleCfg.envelopeSchema) },
-    },
-  })) {
+  for await (const message of query({ prompt, options })) {
     if (message.type === "result") result = message;
   }
   return result;
