@@ -15,6 +15,7 @@ established for Items 2, 3, and 6.
 
 ## Slice 1: Wire a Worker to a Real Invocation and Get Back a Typed Result
 
+**Status:** ✅ Complete — 2026-09-09 — `bde4e8d`
 **Delivers:** A harness extender can hand a worker `role_cfg` and a run context to the
 real invocation primitive and watch it spawn an actual agent session, validate whatever
 the agent emitted, and hand back exactly one typed result — whether the agent finished
