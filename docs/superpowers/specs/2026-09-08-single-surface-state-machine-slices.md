@@ -192,6 +192,7 @@ escalating to a human for problems a retry or a repair would have solved.
 ## Slice 4: Stop Cleanly When a Retry Budget Runs Out
 
 **Status:** ✅ Complete — 2026-09-09 — `f6c93b5`
+**Tests:** ✅ Recorded — 2026-09-09 — `b10d852` — cli — 1 UAT + 8 AC, 0 skipped
 **Delivers:** A harness extender can watch each of the surface's five retry
 budgets (worker corrections, gate repairs, incomplete-terminus retries,
 close retries, and gate errors) get enforced independently — a scripted
