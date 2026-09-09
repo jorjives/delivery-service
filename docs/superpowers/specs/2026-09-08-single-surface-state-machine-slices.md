@@ -253,6 +253,7 @@ person" a bounded, trustworthy guarantee.
 ## Slice 5: Resume a Surface After a Crash to the Same Outcome
 
 **Status:** ✅ Complete — 2026-09-09 — `bac91b6`
+**Tests:** ✅ Recorded — 2026-09-09 — `e3cf65c` — cli — 1 UAT + 4 AC, 0 skipped
 **Delivers:** A harness extender can stop the driver at any point in a
 surface's run — mid-provision, mid-repair, mid-worker-attempt, mid-triage —
 throw away everything except what's on disk, and resume it, and see it reach
