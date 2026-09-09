@@ -186,6 +186,14 @@ at the SDK seam.
   end-to-end guarantee rests on the real agent runtime. Known gap, stated
   rather than papered over.
 
+- **One residual the guard cannot close.** `canUseTool` is consulted only for
+  calls the runtime would otherwise prompt about. A tool the runtime
+  auto-approves under the pinned permission mode — the read-only family — is
+  never put to the guard, so an out-of-role *read-only* call is not refused and
+  not reported. Closing it would need a computed deny-list, which this design
+  rejected for having nothing to enumerate against. Every mutating tool, which
+  is where a role's blast radius actually lives, goes through the guard.
+
 - **Gate-maintenance's "environment, not assertions" boundary is finer than a tool
   list** — it needs edit tools but must not touch assertion definitions. That is a
   *path* restriction, not a *tool* one. We enforce it by **physical location**: the
