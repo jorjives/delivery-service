@@ -27,11 +27,12 @@ export async function resolveEvidence(dir: string, caseFile: CaseFile): Promise<
   const history = [...caseFile.history].reverse();
 
   const gate = history.find((entry) => entry.t === "gate");
-  const newFailures: NewFailure[] = [];
-  for (const failure of gate?.newFailures ?? []) {
-    const parsed = NewFailure.safeParse(await readRef(dir, failure.detailRef));
-    if (parsed.success) newFailures.push(parsed.data);
-  }
+  const parsedFailures = await Promise.all(
+    (gate?.newFailures ?? []).map((failure) =>
+      readRef(dir, failure.detailRef).then((raw) => NewFailure.safeParse(raw)),
+    ),
+  );
+  const newFailures = parsedFailures.flatMap((p) => (p.success ? [p.data] : []));
 
   const dispatch = history.find((entry) => entry.t === "dispatch");
   const brief = dispatch?.briefRef ? await readRef(dir, dispatch.briefRef) : null;

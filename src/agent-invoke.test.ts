@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, writeFile, readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, delimiter } from "node:path";
+import { join } from "node:path";
 import { create } from "./case-file.js";
 import { invoke, DID_NOT_COMPLETE } from "./agent-invoke.js";
 import { workerRoleConfig } from "./role-config.js";
+import { isOnPath } from "./on-path.js";
 import type { AgentContext } from "./ports.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 
@@ -13,9 +13,7 @@ import type { BudgetSet, GateRef } from "./schema.js";
  * claude-mock is a sibling project installed with `npm link`, not vendored
  * here, so this tier skips rather than fails when it is absent.
  */
-const hasMock = (process.env.PATH ?? "")
-  .split(delimiter)
-  .some((d) => d !== "" && existsSync(join(d, "claude-mock")));
+const hasMock = isOnPath("claude-mock");
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },

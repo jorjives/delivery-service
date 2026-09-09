@@ -22,6 +22,7 @@ import * as path from "node:path";
 import { create } from "../src/case-file.js";
 import { invoke } from "../src/agent-invoke.js";
 import { workerRoleConfig } from "../src/role-config.js";
+import { isOnPath } from "../src/on-path.js";
 import type { AgentContext, Terminus } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
 
@@ -55,10 +56,7 @@ const scenarios: { name: string; reply: unknown }[] = [
 ];
 
 function requireMock(): void {
-  const onPath = (process.env.PATH ?? "")
-    .split(path.delimiter)
-    .some((d) => d !== "" && fs.existsSync(path.join(d, "claude-mock")));
-  if (onPath) return;
+  if (isOnPath("claude-mock")) return;
   console.error(
     "claude-mock is not on PATH.\n\n" +
       "It is a scripted fake `claude` binary from a sibling project, deliberately not\n" +
