@@ -113,3 +113,14 @@ export class IllegalStateTransition extends Error {
     this.name = "IllegalStateTransition";
   }
 }
+
+export class InvalidRoleConfig extends Error {
+  readonly code = "INVALID_ROLE_CONFIG" as const;
+  constructor(
+    readonly field: string,
+    readonly detail: string,
+  ) {
+    super(`Invalid role config: ${field} ${detail}`);
+    this.name = "InvalidRoleConfig";
+  }
+}

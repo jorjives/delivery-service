@@ -63,4 +63,7 @@ export {
   MissingBaseline,
   ProvisioningFailure,
   IllegalStateTransition,
+  InvalidRoleConfig,
 } from "./errors.js";
+export { WorkerEnvelope, workerRoleConfig, validateRoleConfig } from "./role-config.js";
+export type { Envelope, RoleConfig } from "./role-config.js";
