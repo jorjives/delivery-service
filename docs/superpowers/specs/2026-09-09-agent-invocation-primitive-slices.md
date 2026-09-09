@@ -92,6 +92,35 @@ slice's demo and guide must say plainly that the enforcement guarantee rests on 
 agent runtime, and that only a smoke-level check is possible without it — this is a
 known, documented gap, not a silent hole.
 
+**Build note — the enforcement point is `canUseTool`, and only `canUseTool`.** The SDK
+offers two ways to bound a session's tools, and they are alternatives, not layers:
+`tools` removes a name from the session's base set so the model never sees it, and
+`canUseTool` is consulted before each tool execution and can allow or deny. Narrowing
+`tools` to the role's list makes the attempt in this slice's own title *impossible* — the
+model never issues the call, so nothing is ever refused and nothing can be reported. This
+slice's whole point is the observable refusal, so authority is enforced at `canUseTool`:
+it allows exactly `role_cfg.allowedTools`, denies everything else with the plain-English
+message, and records the attempt itself. Three consequences the build must honour:
+
+- **`tools` is not narrowed to the role's list.** Narrowing it silences the guard.
+- **`allowedTools` is not set to the role's list.** A bare `allowedTools` entry
+  auto-approves the tool *before* `canUseTool` is consulted — the SDK warns about exactly
+  this at runtime — so setting both to the same list makes the guard dead code.
+  `canUseTool` is itself the programmatic prompt surface, so an unattended run still
+  never stalls, which was `allowedTools`' only job here.
+- **The guard must be the only decision point, closed by construction.** Pin
+  `settingSources: []` and the permission mode, accept no hooks or plugins, and narrow
+  the caller's session-options parameter to an allowlist of the executable path and its
+  environment. A spread of caller options with permission fields written back over it is
+  a deny-list and is forbidden: the next SDK release adds a widening option and nothing
+  fails.
+
+`result.permission_denials` is read as a second source, because denials resolved before
+the callback never reach it — but it is **classified, never trusted wholesale**. Only a
+denial whose `tool_name` is outside `role_cfg.allowedTools` is a role-authority refusal
+and earns the message above; an in-role denial is an ordinary "did not complete" and
+carries no claim about authority.
+
 ### Prerequisites
 
 - A worker `role_cfg` can be handed to the invocation primitive and produce a typed
