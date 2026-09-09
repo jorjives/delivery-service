@@ -575,7 +575,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 3: The tool-authority demo an extender reads
+## Task 3: The tool-authority demo an extender reads ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/agent-invocation-slice-2-tool-authority.ts`
