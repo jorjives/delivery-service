@@ -4,6 +4,8 @@ status: approved
 
 # Single-Surface State Machine — Design
 
+> **Status:** ✅ Complete — 2026-09-09 — all 5 slices delivered
+
 The core delivery loop for one surface: provision a worktree, capture a
 baseline, dispatch an agent, gate the result, and route to a terminal state,
 with deterministic budget enforcement and crash recovery throughout. This

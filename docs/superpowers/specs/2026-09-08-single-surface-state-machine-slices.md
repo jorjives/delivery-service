@@ -1,6 +1,7 @@
 # Single-Surface State Machine — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-09-07-single-surface-state-machine-design.md`
+> **Status:** ✅ Complete — 2026-09-09 — all 5 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** this item has no end-user product surface yet (a real
@@ -251,6 +252,7 @@ person" a bounded, trustworthy guarantee.
 
 ## Slice 5: Resume a Surface After a Crash to the Same Outcome
 
+**Status:** ✅ Complete — 2026-09-09 — `bac91b6`
 **Delivers:** A harness extender can stop the driver at any point in a
 surface's run — mid-provision, mid-repair, mid-worker-attempt, mid-triage —
 throw away everything except what's on disk, and resume it, and see it reach
