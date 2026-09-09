@@ -4,8 +4,13 @@ import type { BudgetSet, CaseFile } from "./schema.js";
 
 export type AgentRole = "worker" | "triage" | "gate-maintenance";
 
-/** Per-role pinned configuration. Item 4 owns what else lives in here. */
-export interface RoleConfig {
+/**
+ * The driver's handle for "which role is being dispatched". The full pinned
+ * configuration for a role — prompt fragment, envelope schema, tool authority —
+ * lives in `role-config.ts`; the driver never assembles one, it names a role and
+ * the agent port resolves it.
+ */
+export interface RoleHandle {
   role: AgentRole;
 }
 
@@ -21,7 +26,7 @@ export type Terminus =
   | { status: "incomplete"; rationale: string };
 
 export interface AgentPort {
-  invoke(roleCfg: RoleConfig, ctx: AgentContext): Promise<Terminus>;
+  invoke(roleCfg: RoleHandle, ctx: AgentContext): Promise<Terminus>;
 }
 
 // --- TriagePort (this item ships the deterministic router; Item 5 the agent) ---
