@@ -1,5 +1,6 @@
 # Single-Surface State Machine — Slice 5: Resume a Surface After a Crash to the Same Outcome
 
+> **Status:** ✅ Complete — 2026-09-09 — `bac91b6`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 5 of `docs/superpowers/specs/2026-09-08-single-surface-state-machine-slices.md`
