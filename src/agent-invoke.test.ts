@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
@@ -106,6 +106,32 @@ describe.skipIf(!hasMock)("invoke against a scripted agent session", () => {
     expect(terminus.rationale).not.toContain("TypeError");
     expect(terminus.rationale).not.toContain("at foo");
     expect(terminus.rationale).toContain("worker");
+  });
+
+  // The journal records the user turn only; `systemPrompt` determinism is Task 3's.
+  it("sends the identical request twice from the same starting case file", async () => {
+    const journalPath = join(dir, "journal.jsonl");
+    await script([
+      { json: { status: "completed", rationale: "first run" } },
+      { json: { status: "completed", rationale: "second run" } },
+    ]);
+    const sdk = {
+      pathToClaudeCodeExecutable: "claude-mock",
+      env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: journalPath },
+    };
+
+    await invoke(workerRoleConfig, { ...ctx, sessionKey: "worker-1-0" }, sdk);
+    await invoke(workerRoleConfig, { ...ctx, sessionKey: "worker-1-1" }, sdk);
+
+    const prompts = (await readFile(journalPath, "utf-8"))
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => JSON.parse(line) as { event: string; prompt?: string })
+      .filter((entry) => entry.event === "matched")
+      .map((entry) => entry.prompt);
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts[1]).toBe(prompts[0]);
   });
 });
 
