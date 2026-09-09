@@ -1267,7 +1267,10 @@ describe("resume parity: an interrupted run reaches the same outcome as a straig
             ),
         },
       }),
-      stopAfter: 5,
+      // Six advances — provision, baseline, worker, gate, rejected close,
+      // triage — stop with the retry_close verdict recorded and the close it
+      // pays for not yet carried out: AC4's window exactly.
+      stopAfter: 6,
     },
   ];
 
