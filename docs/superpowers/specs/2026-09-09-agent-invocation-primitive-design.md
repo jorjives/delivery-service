@@ -6,6 +6,7 @@ roadmap_item: 4
 
 # Agent Invocation Primitive — Design
 
+> **Status:** ✅ Complete — 2026-09-10 — all 3 slices delivered
 > Roadmap: `docs/superpowers/specs/2026-09-04-delivery-harness-roadmap.md`, Item 4.
 > Mechanism spec this design implements: `docs/agent-interface.md`.
 > Audit trail: `docs/prd/2026-09-09-agent-invocation-primitive/` (research.md, product-design.md, architecture.md, review-log.md).

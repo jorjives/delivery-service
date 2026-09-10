@@ -1,6 +1,7 @@
 # Agent Invocation Primitive — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-09-09-agent-invocation-primitive-design.md`
+> **Status:** ✅ Complete — 2026-09-10 — all 3 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** this item has no end-user product surface — a CLI (Item 8) and
@@ -163,6 +164,7 @@ trusting the harness with real changes.
 
 ## Slice 3: Configure a Second Role Using the Same Seam, Nothing Rebuilt
 
+**Status:** ✅ Complete — 2026-09-10 — `ce6c20c`
 **Delivers:** A harness extender can configure the gate-maintenance role — a role with a
 narrower job than the worker (repair the environment, never the checks themselves) —
 using the exact same invocation seam as Slice 1, changing only what the configuration
