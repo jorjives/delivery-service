@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { WorkerEnvelope, workerRoleConfig, validateRoleConfig } from "./role-config.js";
+import { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
 import { InvalidRoleConfig } from "./errors.js";
 
@@ -84,5 +84,36 @@ describe("validateRoleConfig", () => {
     } catch (err) {
       expect((err as InvalidRoleConfig).field).toBe("envelopeSchema");
     }
+  });
+});
+
+describe("gateMaintenanceRoleConfig", () => {
+  it("is a gate-maintenance config that passes the same validation as the worker's", () => {
+    expect(gateMaintenanceRoleConfig.role).toBe("gate-maintenance");
+    expect(() => validateRoleConfig(gateMaintenanceRoleConfig)).not.toThrow();
+  });
+
+  it("may edit files, which is how it repairs the environment", () => {
+    expect(gateMaintenanceRoleConfig.allowedTools).toEqual(
+      expect.arrayContaining(["Edit", "Write"]),
+    );
+  });
+
+  it("is not granted a shell, which could write past the worktree boundary", () => {
+    expect(gateMaintenanceRoleConfig.allowedTools).not.toContain("Bash");
+  });
+
+  it("tells the session it repairs the environment and never the checks", () => {
+    expect(gateMaintenanceRoleConfig.systemPromptFragment).toMatch(/environment/);
+    expect(gateMaintenanceRoleConfig.systemPromptFragment).toMatch(/never .*checks/i);
+  });
+
+  it("replies with the same completed/escalate shape as the worker", () => {
+    expect(
+      gateMaintenanceRoleConfig.envelopeSchema.safeParse({ status: "completed", rationale: "fixed .env" }).success,
+    ).toBe(true);
+    expect(
+      gateMaintenanceRoleConfig.envelopeSchema.safeParse({ status: "fix_the_gate", rationale: "x" }).success,
+    ).toBe(false);
   });
 });

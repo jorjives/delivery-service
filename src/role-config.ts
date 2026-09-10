@@ -68,6 +68,29 @@ export const workerRoleConfig: RoleConfig = {
   allowedTools: ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
 };
 
+/**
+ * The reference gate-maintenance configuration. Same seam, same reply shape as
+ * the worker; only the content differs.
+ *
+ * It may edit files because repairing the environment means editing files. It
+ * cannot edit the checks because they live outside the worktree and the tool
+ * guard refuses any call aimed outside it. It is deliberately not given `Bash`:
+ * a shell can write past that boundary in ways the runtime does not always flag.
+ */
+export const gateMaintenanceRoleConfig: RoleConfig = {
+  role: "gate-maintenance",
+  systemPromptFragment: [
+    "You are gate maintenance on a gated delivery harness.",
+    "The project's gate could not run. Repair the environment inside the working tree",
+    "(configuration, fixtures, dependency manifests) so that the gate can run again.",
+    "You never edit, weaken, or work around the checks themselves: they are pinned by",
+    "the harness, kept outside your working tree, and any attempt to touch them is refused.",
+    "If the only fix is a change to a check, escalate instead.",
+  ].join("\n"),
+  envelopeSchema: WorkerEnvelope,
+  allowedTools: ["Read", "Glob", "Grep", "Edit", "Write"],
+};
+
 const RoleConfigShape = z.object({
   role: z.enum(["worker", "triage", "gate-maintenance"] as const satisfies readonly AgentRole[]),
   systemPromptFragment: z.string().min(1),

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { create } from "./case-file.js";
 import { invoke, DID_NOT_COMPLETE, buildSessionOptions } from "./agent-invoke.js";
-import { workerRoleConfig } from "./role-config.js";
+import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { isOnPath } from "./on-path.js";
 import { createToolAuthority } from "./tool-authority.js";
 import type { AgentContext } from "./ports.js";
@@ -203,5 +203,29 @@ describe.skipIf(!hasMock)("invoke with the guard installed", () => {
       status: "completed",
       rationale: "guard installed, run unaffected",
     });
+  });
+});
+
+describe.skipIf(!hasMock)("invoking gate-maintenance through the same seam as the worker", () => {
+  it("repairs an environment file and returns a completed terminus, as the worker's clean case does", async () => {
+    await writeFile(join(worktreePath, ".env"), "PORT=\n", "utf-8");
+    await script([
+      {
+        effects: [{ edit: { path: ".env", old: "PORT=", new: "PORT=8080" } }],
+        json: { status: "completed", rationale: "set the missing PORT in .env so the service can start" },
+      },
+    ]);
+
+    const terminus = await invoke(
+      gateMaintenanceRoleConfig,
+      { worktreePath, dir, sessionKey: "gate-maintenance-1-0" },
+      useMock(),
+    );
+
+    expect(terminus).toEqual({
+      status: "completed",
+      rationale: "set the missing PORT in .env so the service can start",
+    });
+    expect(await readFile(join(worktreePath, ".env"), "utf-8")).toBe("PORT=8080\n");
   });
 });

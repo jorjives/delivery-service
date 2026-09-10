@@ -65,7 +65,7 @@ export {
   IllegalStateTransition,
   InvalidRoleConfig,
 } from "./errors.js";
-export { WorkerEnvelope, workerRoleConfig, validateRoleConfig } from "./role-config.js";
+export { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig } from "./role-config.js";
 export type { Envelope, RoleConfig } from "./role-config.js";
 export { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 export type { AssembledPrompt, PromptEvidence } from "./prompt-assembly.js";
