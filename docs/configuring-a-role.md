@@ -82,10 +82,14 @@ run) and a **worktree** (the files the agent works on). `invoke` reads the task
 from the case file and runs the agent inside the worktree.
 
 ```ts
+import { mkdirSync } from "node:fs";
 import { create, invoke, gateMaintenanceRoleConfig } from "./src/index.js";
 
 const dir = "/tmp/my-run/case";          // the case file directory
 const worktreePath = "/tmp/my-run/tree"; // the agent's working tree
+
+mkdirSync(dir, { recursive: true });
+mkdirSync(worktreePath, { recursive: true });
 
 await create(
   dir,
