@@ -15,3 +15,9 @@ export function runTsx(args: string[]): { stdout: string; status: number } {
     return { stdout: e.stdout ?? "", status: e.status ?? 1 };
   }
 }
+
+/** Slices a UAT demo's numbered console output between two section headings. */
+export function sectionOf(stdout: string, from: string, to?: string): string {
+  const start = stdout.indexOf(from);
+  return to ? stdout.slice(start, stdout.indexOf(to)) : stdout.slice(start);
+}

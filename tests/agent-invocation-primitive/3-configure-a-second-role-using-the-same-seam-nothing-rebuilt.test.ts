@@ -17,18 +17,14 @@
 
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
-import { runTsx, REPO_ROOT } from "../helpers.js";
+import { runTsx, sectionOf, REPO_ROOT } from "../helpers.js";
 import { join } from "node:path";
 
 describe("UAT: configure a second role using the same seam, nothing rebuilt", () => {
   const { stdout, status } = runTsx(["demos/agent-invocation-slice-3-gate-maintenance.ts"]);
 
   const mockMissing = stdout.includes("claude-mock is not on PATH");
-
-  function section(from: string, to?: string): string {
-    const start = stdout.indexOf(from);
-    return to ? stdout.slice(start, stdout.indexOf(to)) : stdout.slice(start);
-  }
+  const section = (from: string, to?: string): string => sectionOf(stdout, from, to);
 
   it("demo script runs to completion, or explains plainly that claude-mock is required", () => {
     if (mockMissing) {
