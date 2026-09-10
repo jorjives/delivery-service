@@ -173,6 +173,8 @@ item.
 
 ## Item 4: Agent Invocation Primitive
 
+**Status:** ✅ Complete — 2026-09-10 — spec: `docs/superpowers/specs/2026-09-09-agent-invocation-primitive-design.md`
+
 **Delivers:** The single seam through which the harness drives all agent
 roles (worker, triage, gate-maintenance), with prompt assembly from case file
 state, structured output validation, and tool authority enforcement.
