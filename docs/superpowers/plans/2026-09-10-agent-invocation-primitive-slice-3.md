@@ -1,5 +1,6 @@
 # Agent Invocation Primitive — Slice 3: Configure a Second Role Using the Same Seam, Nothing Rebuilt
 
+> **Status:** ✅ Complete — 2026-09-10 — `ce6c20c`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 3 of `docs/superpowers/specs/2026-09-09-agent-invocation-primitive-slices.md`
