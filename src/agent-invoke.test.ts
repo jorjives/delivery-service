@@ -150,7 +150,7 @@ describe("the session options the primitive builds", () => {
       workerRoleConfig,
       ctx,
       { pathToClaudeCodeExecutable: "claude-mock", env: { A: "1" } },
-      createToolAuthority(workerRoleConfig).canUseTool,
+      createToolAuthority(workerRoleConfig, worktreePath).canUseTool,
     );
   }
 
@@ -184,7 +184,7 @@ describe("the session options the primitive builds", () => {
       // A caller reaching for a permission field cannot: the parameter type has no
       // such field, and nothing is spread. Cast to prove the runtime behaviour too.
       { pathToClaudeCodeExecutable: "claude-mock", permissionMode: "bypassPermissions" } as never,
-      createToolAuthority(workerRoleConfig).canUseTool,
+      createToolAuthority(workerRoleConfig, worktreePath).canUseTool,
     );
     expect(built.pathToClaudeCodeExecutable).toBe("claude-mock");
     expect(built.permissionMode).toBe("default");

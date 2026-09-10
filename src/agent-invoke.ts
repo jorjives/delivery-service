@@ -108,17 +108,17 @@ export async function invoke(
     await resolveEvidence(ctx.dir, caseFile),
   );
 
-  const authority = createToolAuthority(roleCfg);
+  const authority = createToolAuthority(roleCfg, ctx.worktreePath);
   const options = buildSessionOptions(roleCfg, ctx, session, authority.canUseTool, systemPrompt);
 
   let result: SDKResultMessage | undefined;
   try {
     result = await lastResult(prompt, options);
   } catch {
-    return authorityRefusal(roleCfg, authority.attempted, []) ?? incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
+    return authorityRefusal(roleCfg, authority.refusals, []) ?? incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   }
 
-  const refusal = authorityRefusal(roleCfg, authority.attempted, result?.permission_denials ?? []);
+  const refusal = authorityRefusal(roleCfg, authority.refusals, result?.permission_denials ?? []);
   if (refusal) return refusal;
 
   if (!result) return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);

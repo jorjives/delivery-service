@@ -227,6 +227,12 @@ meaningless in an unattended harness with no human to reject the prompt. `tools`
 SDK's actual base-set restriction. One authored field, two SDK options, no computed
 complement, no drift risk.
 
+ **Refined during delivery.** Physical location alone did not hold against the
+> real runtime: an in-role edit tool can name an absolute path outside `cwd`, and
+> the guard allowed it. The `canUseTool` guard now also refuses any call aimed
+> outside the worktree. See `docs/agent-interface.md`, "Tool authority", and
+> `2026-09-09-agent-invocation-primitive-slices.md`, Slice 3.
+
 Gate-maintenance's finer "environment, not assertions" boundary is **not** a tool
 restriction: assertion definitions live outside every agent-reachable worktree, physically
 outside the directory tree `ctx.worktreePath` (the SDK's `cwd`) points into. A file that is

@@ -159,6 +159,7 @@ illegal status for the role    → INCOMPLETE_TERMINUS
 payload fails its role schema  → INCOMPLETE_TERMINUS
 session crashed / cap / idle   → INCOMPLETE_TERMINUS
 out-of-role tool attempted     → INCOMPLETE_TERMINUS (authority refusal)
+call aimed outside the worktree → INCOMPLETE_TERMINUS (authority refusal)
 ```
 
 `INCOMPLETE_TERMINUS` is defined negatively and uniformly: *any* end that did not
@@ -194,14 +195,19 @@ at the SDK seam.
   rejected for having nothing to enumerate against. Every mutating tool, which
   is where a role's blast radius actually lives, goes through the guard.
 
-- **Gate-maintenance's "environment, not assertions" boundary is finer than a tool
-  list** — it needs edit tools but must not touch assertion definitions. That is a
-  *path* restriction, not a *tool* one. We enforce it by **physical location**: the
-  assertion definitions live outside every agent-reachable worktree (they are
-  already "pinned by the harness, not discovered from inside the worktree",
-  invariant 5). A file that is not present cannot be edited. This reuses a mechanism
-  the design already commits to, rather than adding a path guard that has to be
-  correct to be safe.
+- **No role may act outside its worktree.** Gate-maintenance's "environment, not
+  assertions" boundary is finer than a tool list: it needs edit tools but must not
+  touch assertion definitions. Those definitions live outside every agent-reachable
+  worktree (invariant 5), and the same `canUseTool` guard enforces that location: a
+  call whose target path (`file_path`, `notebook_path`, `path`, or the path the runtime
+  itself flags as outside its working directory) resolves outside the run's
+  worktree is refused, for every role, with a sentence naming the role, the tool,
+  the path, and that the boundary worked as intended. The runtime already routes
+  such calls to the guard instead of running them; before this rule the guard
+  answered "allow" for any permitted tool, so "not present, so not editable" held
+  only by luck. Residual: a role granted `Bash` can write wherever its shell can,
+  and the runtime does not flag every such command, which is why the reference
+  gate-maintenance config does not grant `Bash`.
 
 ## Relationship to the mock
 

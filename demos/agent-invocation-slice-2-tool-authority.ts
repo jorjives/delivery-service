@@ -87,7 +87,7 @@ async function main(): Promise<void> {
   console.log(`   Attempted tool:  ${OUT_OF_ROLE_TOOL} (outside the permitted list)\n`);
 
   // The guard the SDK consults before every tool call, driven directly.
-  const authority = createToolAuthority(readOnlyWorker);
+  const authority = createToolAuthority(readOnlyWorker, worktreePath);
   const decision = await authority.canUseTool(
     OUT_OF_ROLE_TOOL,
     { command: "rm -rf build" },
@@ -98,7 +98,7 @@ async function main(): Promise<void> {
   console.log(`   Decision: ${decision.behavior}`);
   if (decision.behavior === "deny") console.log(`   Message:  ${decision.message}\n`);
 
-  const terminus = authorityRefusal(readOnlyWorker, authority.attempted, []);
+  const terminus = authorityRefusal(readOnlyWorker, authority.refusals, []);
   console.log("3. What the harness reports back");
   console.log(`   Result: ${terminus?.status ?? "(no refusal recorded)"}`);
   console.log(`   Reason: ${terminus?.rationale ?? "-"}\n`);

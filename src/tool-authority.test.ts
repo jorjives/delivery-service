@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { createToolAuthority, refusalSentence, authorityRefusal } from "./tool-authority.js";
+import {
+  createToolAuthority,
+  refusalSentence,
+  outsideWorktreeSentence,
+  authorityRefusal,
+} from "./tool-authority.js";
 import type { RoleConfig } from "./role-config.js";
 import { WorkerEnvelope } from "./role-config.js";
 
@@ -10,6 +15,15 @@ const readOnlyWorker: RoleConfig = {
   allowedTools: ["Read", "Glob"],
 };
 
+const editor: RoleConfig = {
+  role: "gate-maintenance",
+  systemPromptFragment: "You repair the environment.",
+  envelopeSchema: WorkerEnvelope,
+  allowedTools: ["Read", "Edit", "Write"],
+};
+
+const worktree = "/runs/s-1/tree";
+
 /** The options bag the SDK passes as `canUseTool`'s third argument. */
 const sdkCallOptions = {
   signal: new AbortController().signal,
@@ -19,33 +33,102 @@ const sdkCallOptions = {
 
 describe("the guard the SDK consults before each tool call", () => {
   it("allows a tool the role's config names", async () => {
-    const authority = createToolAuthority(readOnlyWorker);
-    const decision = await authority.canUseTool("Read", { file_path: "/x" }, sdkCallOptions);
-    expect(decision).toEqual({ behavior: "allow", updatedInput: { file_path: "/x" } });
-    expect(authority.attempted).toEqual([]);
+    const authority = createToolAuthority(readOnlyWorker, worktree);
+    const decision = await authority.canUseTool("Read", { file_path: `${worktree}/x` }, sdkCallOptions);
+    expect(decision).toEqual({ behavior: "allow", updatedInput: { file_path: `${worktree}/x` } });
+    expect(authority.refusals).toEqual([]);
   });
 
   it("denies a tool outside the role's config and says why in plain English", async () => {
-    const authority = createToolAuthority(readOnlyWorker);
-    // `CanUseTool` returns `PermissionResult | null`; the guard never returns
-    // null, and the assertions narrow it so `tsc --noEmit` (which typechecks
-    // `src/**`, tests included) stays clean.
+    const authority = createToolAuthority(readOnlyWorker, worktree);
     const decision = await authority.canUseTool("Bash", { command: "rm -rf /" }, sdkCallOptions);
     expect(decision?.behavior).toBe("deny");
     if (decision?.behavior !== "deny") return;
     expect(decision.message).toBe(refusalSentence(readOnlyWorker, "Bash"));
   });
 
-  it("records each out-of-role attempt so the harness can report it afterwards", async () => {
-    const authority = createToolAuthority(readOnlyWorker);
+  it("records each refusal, in order, so the harness can report it afterwards", async () => {
+    const authority = createToolAuthority(readOnlyWorker, worktree);
     await authority.canUseTool("Bash", {}, sdkCallOptions);
     await authority.canUseTool("Read", {}, sdkCallOptions);
     await authority.canUseTool("WebFetch", {}, sdkCallOptions);
-    expect(authority.attempted).toEqual(["Bash", "WebFetch"]);
+    expect(authority.refusals).toEqual([
+      refusalSentence(readOnlyWorker, "Bash"),
+      refusalSentence(readOnlyWorker, "WebFetch"),
+    ]);
   });
 });
 
-describe("the sentence a refusal is reported with", () => {
+describe("the worktree boundary, for tools the role IS permitted", () => {
+  it("allows an edit to a file inside the worktree, relative or absolute", async () => {
+    const authority = createToolAuthority(editor, worktree);
+    for (const file_path of [".env", `${worktree}/config/app.env`]) {
+      const decision = await authority.canUseTool("Edit", { file_path }, sdkCallOptions);
+      expect(decision?.behavior).toBe("allow");
+    }
+    expect(authority.refusals).toEqual([]);
+  });
+
+  it("refuses an edit to a file outside the worktree, even though Edit is permitted", async () => {
+    const authority = createToolAuthority(editor, worktree);
+    const target = "/runs/s-1/checks/greeting.check.sh";
+    const decision = await authority.canUseTool("Edit", { file_path: target }, sdkCallOptions);
+    expect(decision?.behavior).toBe("deny");
+    if (decision?.behavior !== "deny") return;
+    expect(decision.message).toBe(outsideWorktreeSentence(editor, "Edit", target));
+    expect(authority.refusals).toEqual([outsideWorktreeSentence(editor, "Edit", target)]);
+  });
+
+  it("is not fooled by a relative path that climbs out", async () => {
+    const authority = createToolAuthority(editor, worktree);
+    const decision = await authority.canUseTool("Write", { file_path: "../checks/x.sh" }, sdkCallOptions);
+    expect(decision?.behavior).toBe("deny");
+  });
+
+  it("is not fooled by a sibling directory that shares the worktree's prefix", async () => {
+    const authority = createToolAuthority(editor, worktree);
+    const decision = await authority.canUseTool("Edit", { file_path: `${worktree}-evil/x` }, sdkCallOptions);
+    expect(decision?.behavior).toBe("deny");
+  });
+
+  it("is not fooled by a home-relative path, which the file tools expand", async () => {
+    const authority = createToolAuthority(editor, worktree);
+    const decision = await authority.canUseTool("Edit", { file_path: "~/.bashrc" }, sdkCallOptions);
+    expect(decision?.behavior).toBe("deny");
+  });
+
+  it("refuses a search rooted outside the worktree", async () => {
+    const authority = createToolAuthority({ ...editor, allowedTools: ["Grep"] }, worktree);
+    const decision = await authority.canUseTool("Grep", { pattern: "x", path: "/runs/s-1/checks" }, sdkCallOptions);
+    expect(decision?.behavior).toBe("deny");
+  });
+
+  it("refuses a notebook edit outside the worktree", async () => {
+    const authority = createToolAuthority({ ...editor, allowedTools: ["NotebookEdit"] }, worktree);
+    const decision = await authority.canUseTool("NotebookEdit", { notebook_path: "/elsewhere/n.ipynb" }, sdkCallOptions);
+    expect(decision?.behavior).toBe("deny");
+  });
+
+  it("refuses whatever path the runtime itself flags as outside the allowed directories", async () => {
+    const authority = createToolAuthority({ ...editor, allowedTools: ["Bash"] }, worktree);
+    const decision = await authority.canUseTool(
+      "Bash",
+      { command: "sed -i s/a/b/ /runs/s-1/checks/x.sh" },
+      { ...sdkCallOptions, blockedPath: "/runs/s-1/checks/x.sh" },
+    );
+    expect(decision?.behavior).toBe("deny");
+    if (decision?.behavior !== "deny") return;
+    expect(decision.message).toContain("/runs/s-1/checks/x.sh");
+  });
+
+  it("checks the tool list first, so an out-of-role call is reported as that", async () => {
+    const authority = createToolAuthority(readOnlyWorker, worktree);
+    await authority.canUseTool("Write", { file_path: "/elsewhere/x" }, sdkCallOptions);
+    expect(authority.refusals).toEqual([refusalSentence(readOnlyWorker, "Write")]);
+  });
+});
+
+describe("the sentences a refusal is reported with", () => {
   it("names the role, the tool, the permitted tools, and that this was deliberate", () => {
     const sentence = refusalSentence(readOnlyWorker, "Bash");
     expect(sentence).toContain("worker");
@@ -54,45 +137,55 @@ describe("the sentence a refusal is reported with", () => {
     expect(sentence).toContain("working as intended");
   });
 
+  it("names the role, the tool, the path, the worktree rule, and that this was deliberate", () => {
+    const sentence = outsideWorktreeSentence(editor, "Edit", "/runs/s-1/checks/x.sh");
+    expect(sentence).toContain("gate-maintenance");
+    expect(sentence).toContain("Edit");
+    expect(sentence).toContain("/runs/s-1/checks/x.sh");
+    expect(sentence).toContain("outside the worktree");
+    expect(sentence).toContain("working as intended");
+  });
+
   it("never reads as an unexplained failure", () => {
-    const sentence = refusalSentence(readOnlyWorker, "Bash");
-    expect(sentence).toContain("refused");
-    expect(sentence).toContain("not a fault in the run");
-    expect(sentence).not.toMatch(/error|Error|exception|denied by the SDK/);
+    for (const sentence of [
+      refusalSentence(readOnlyWorker, "Bash"),
+      outsideWorktreeSentence(editor, "Edit", "/x"),
+    ]) {
+      expect(sentence).toContain("refused");
+      expect(sentence).toContain("not a fault in the run");
+      expect(sentence).not.toMatch(/error|Error|exception|denied by the SDK/);
+    }
   });
 });
 
 describe("classifying what a finished session refused", () => {
-  it("reports nothing when no out-of-role tool was attempted", () => {
+  it("reports nothing when nothing was refused", () => {
     expect(authorityRefusal(readOnlyWorker, [], [])).toBeUndefined();
   });
 
-  it("turns a recorded out-of-role attempt into one incomplete terminus", () => {
-    const terminus = authorityRefusal(readOnlyWorker, ["Bash"], []);
+  it("turns the first recorded refusal into one incomplete terminus", () => {
+    const first = outsideWorktreeSentence(editor, "Edit", "/x");
+    const terminus = authorityRefusal(editor, [first, refusalSentence(editor, "Bash")], []);
     expect(terminus).toEqual({
       status: "incomplete",
-      rationale: `worker session did not complete: ${refusalSentence(readOnlyWorker, "Bash")}`,
+      rationale: `gate-maintenance session did not complete: ${first}`,
     });
   });
 
   it("reads the SDK's own denial record as a second source", () => {
-    // Only `tool_name` is passed: the parameter is `Pick<SDKPermissionDenial,
-    // "tool_name">`, and a fresh object literal carrying the other fields would
-    // fail TypeScript's excess-property check.
     const terminus = authorityRefusal(readOnlyWorker, [], [{ tool_name: "Write" }]);
-    expect(terminus?.rationale).toContain("Write");
+    expect(terminus?.rationale).toBe(
+      `worker session did not complete: ${refusalSentence(readOnlyWorker, "Write")}`,
+    );
   });
 
   it("makes no authority claim about a denial of a tool the role was permitted", () => {
-    expect(
-      authorityRefusal(readOnlyWorker, [], [{ tool_name: "Read" }]),
-    ).toBeUndefined();
+    expect(authorityRefusal(readOnlyWorker, [], [{ tool_name: "Read" }])).toBeUndefined();
   });
 
-  it("reports the first out-of-role tool once, however many sources saw it", () => {
-    const terminus = authorityRefusal(readOnlyWorker, ["Bash"], [{ tool_name: "Bash" }]);
-    expect(terminus?.rationale).toBe(
-      `worker session did not complete: ${refusalSentence(readOnlyWorker, "Bash")}`,
-    );
+  it("prefers the guard's own record over the SDK's", () => {
+    const own = refusalSentence(readOnlyWorker, "Bash");
+    const terminus = authorityRefusal(readOnlyWorker, [own], [{ tool_name: "Write" }]);
+    expect(terminus?.rationale).toBe(`worker session did not complete: ${own}`);
   });
 });
