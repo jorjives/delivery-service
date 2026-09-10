@@ -21,7 +21,7 @@ export default tseslint.config(
           // ponytail: raw count ceiling, keeps needing a bump as slices add
           // demos/tests files; a real fix gives demos/tests their own
           // tsconfig project instead of piggybacking on the default one.
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 40,
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 50,
         },
         tsconfigRootDir: import.meta.dirname,
       },
