@@ -82,6 +82,9 @@ config it is handed does.
 Each row is one `role_cfg`. The divergence between them lives entirely in the four
 config fields; the primitive does not branch on role.
 
+For the extender's how-to, with both reference configurations, see
+[Configuring a role](configuring-a-role.md).
+
 ## Prompt assembly
 
 The task reaches the agent through a harness-constructed prompt, never through the
