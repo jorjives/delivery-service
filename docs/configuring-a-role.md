@@ -172,7 +172,7 @@ where `/tmp/my-run/mock.json` scripts what the agent does and replies, for examp
 ```json
 [
   {
-    "effects": [{ "edit": { "path": ".env", "old": "PORT=", "new": "PORT=8080" } }],
+    "effects": [{ "write": { "path": ".env", "content": "PORT=8080\n" } }],
     "json": { "status": "completed", "rationale": "set the missing PORT in .env" }
   }
 ]
