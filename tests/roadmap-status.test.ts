@@ -7,10 +7,9 @@ import { REPO_ROOT } from "./helpers";
 // so roadmap readers (Spec View, autoloop discovery) see finished items as
 // unstarted. This keeps the two in step.
 const SPECS_DIR = "docs/superpowers/specs";
-const ROADMAP = join(REPO_ROOT, SPECS_DIR, "2026-09-04-delivery-harness-roadmap.md");
+const roadmap = readFileSync(join(REPO_ROOT, SPECS_DIR, "2026-09-04-delivery-harness-roadmap.md"), "utf-8");
 
 function roadmapItemSection(item: number): string {
-  const roadmap = readFileSync(ROADMAP, "utf-8");
   const start = roadmap.indexOf(`## Item ${item}:`);
   const end = roadmap.indexOf("\n## ", start + 1);
   return start < 0 ? "" : roadmap.slice(start, end < 0 ? undefined : end);
