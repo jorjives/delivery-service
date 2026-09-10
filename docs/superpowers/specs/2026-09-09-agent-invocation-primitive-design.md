@@ -236,9 +236,19 @@ authority.
 ### Security & compliance
 
 Blast radius per role is enforced twice, at two different layers, for two different
-failure modes: `tools` (SDK-level restriction — can this role invoke tool X at all) and
-worktree scoping via `cwd` (filesystem-level — can an edit tool this role does have reach
-file Y). Neither substitutes for the other. No secrets or credentials pass through the
+failure modes: the `canUseTool` tool-authority guard (SDK-level — may this role use tool
+X; `tools` and `allowedTools` are deliberately left unset, so the session's base tool set
+is *not* narrowed) and worktree scoping via `cwd` (filesystem-level — can an edit tool
+this role does have reach file Y). Neither substitutes for the other.
+
+One residual the guard cannot close: `canUseTool` is consulted only for calls the runtime
+would otherwise prompt about. A tool the runtime auto-approves under the pinned permission
+mode — the read-only family — never reaches the guard, so an out-of-role *read-only* call
+is neither refused nor reported. Closing it would need the computed deny-list rejected in
+the buy/build table below. Every mutating tool, where a role's blast radius actually lives,
+goes through the guard. See `docs/agent-interface.md`.
+
+No secrets or credentials pass through the
 prompt — the five-slot template only ever carries case-file-derived content and authored
 domain fragments.
 
@@ -300,7 +310,7 @@ hits the same `Terminus`-type-widening question flagged for triage above.
 | JSON Schema generation for `outputFormat` | **Reuse-estate** — zod v4's native `z.toJSONSchema()` | Hand-write JSON Schema per role; add a conversion library | The SDK wants a plain JSON Schema object; zod v4 (confirmed installed) converts natively. Hand-authoring would be a duplicate, driftable source of truth. |
 | SDK session spawn / process management | **Buy** — `@anthropic-ai/claude-agent-sdk` (new dependency) | Shell out to the `claude` CLI and parse stdout by hand | The SDK is the first-party, versioned interface to exactly this; hand-rolling would duplicate what it does and lose its schema-retry behaviour. |
 | Structured-output constraint enforcement | **Buy** — SDK's `outputFormat: json_schema`, server/CLI-side | Freeform text + harness-side regex/parsing | First-party version of "forced-shape output"; reimplementing constrained decoding would be strictly worse. |
-| Tool authority (allow/deny) | **Buy** — `role_cfg.allowedTools` passed as the SDK's `tools` option (true restriction) alongside `allowedTools` (auto-approval) | A computed `disallowedTools` complement against "the SDK's built-in tool set" | Rejected during review: no runtime enumeration of the SDK's built-in tool names exists to complement against. `tools` restricts the base set directly, natively, with zero enumeration and zero drift risk. _(Superseded — see "Tool authority enforcement" above.)_ |
+| Tool authority (allow/deny) | **Buy** — the SDK's native `canUseTool` callback, refusing any tool not in `role_cfg.allowedTools`; `tools` and `allowedTools` left unset | A computed `disallowedTools` complement against "the SDK's built-in tool set"; `tools` + `allowedTools` set from `role_cfg.allowedTools` | Complement rejected during review: no runtime enumeration of the SDK's built-in tool names exists to complement against. `tools` + `allowedTools` superseded during delivery: narrowing `tools` makes the refusal unobservable, and a matching `allowedTools` auto-approves before the guard runs, making it dead code. Known residual: out-of-role read-only calls are auto-approved and never reach `canUseTool` (see "Security & compliance"). |
 | Prompt template assembly | **Build** — pure function, five fixed slots | A templating library (Handlebars, Mustache) | Five concatenated slots, fixed order, no conditionals/loops/partials — a templating engine adds a dependency and indirection for what string concatenation already does exactly. |
 | Test double for the SDK seam | **Reuse-estate** (partial) — `claude-mock`, sibling project; formal vendoring deferred to Item 7 | Hand-write a bespoke `AgentPort` test double | `claude-mock` is the exact, purpose-built fake for this seam at the CLI/stdio boundary the SDK itself spawns; a hand-written double would exercise a weaker code path and wouldn't surface SDK shape changes. |
 | Per-invocation SDK-level resource caps (budget knobs) | **Deferred** — no decision in this item | — | Genuinely unresolved by research; `agent-interface.md` itself defers this to "the budget design." This item reserves the field without guessing at unverified SDK option names. |
