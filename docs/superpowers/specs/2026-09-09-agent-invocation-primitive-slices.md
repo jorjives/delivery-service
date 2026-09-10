@@ -165,6 +165,7 @@ trusting the harness with real changes.
 ## Slice 3: Configure a Second Role Using the Same Seam, Nothing Rebuilt
 
 **Status:** ✅ Complete — 2026-09-10 — `ce6c20c`
+**Tests:** ✅ Recorded — 2026-09-10 — `fd66a9795e1e98ebec9506c5801e7d64478d5742` — cli — 1 UAT + 4 AC, 0 skipped
 **Delivers:** A harness extender can configure the gate-maintenance role — a role with a
 narrower job than the worker (repair the environment, never the checks themselves) —
 using the exact same invocation seam as Slice 1, changing only what the configuration
