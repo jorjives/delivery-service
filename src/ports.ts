@@ -67,6 +67,11 @@ export interface TriageVerdict {
   rationale: string;
   /** In memory only: what the surface writes into the round's ref. Never set by the deterministic router. */
   artifact?: TriageArtifact;
+  /**
+   * In memory only: why an `escalate` verdict escalated, when no agent wrote a
+   * packet. The surface builds the packet a person reads from it. Never persisted.
+   */
+  cause?: EscalationCause;
 }
 
 export interface TriagePort {

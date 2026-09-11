@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createAgentTriage, needsJudgement, toTriageVerdict } from "./triage.js";
 import type { AgentContext, AgentPort, TriageInput, TriageTerminus } from "./ports.js";
 import type { BudgetSet, CaseFile } from "./schema.js";
+import { DID_NOT_COMPLETE } from "./agent-invoke.js";
 
 const ctx: AgentContext = { worktreePath: "/w", dir: "/d", sessionKey: "triage-0" };
 
@@ -94,11 +95,11 @@ describe("toTriageVerdict", () => {
     expect(verdict.artifact).toBeUndefined();
   });
 
-  it("escalates a verdict that is not legal for the trigger, naming the verdict, trigger and legal set", () => {
+  it("escalates a verdict that is not legal for the trigger, naming the verdict, setback and legal set", () => {
     const verdict = toTriageVerdict({ status: "retry_close", rationale: "close it", payload: brief }, input({}));
     expect(verdict.verdict).toBe("escalate");
     expect(verdict.rationale).toContain("retry_close");
-    expect(verdict.rationale).toContain("worker_escalate");
+    expect(verdict.rationale).toContain("after a worker escalation");
     expect(verdict.rationale).toContain("reroute, escalate, abort");
   });
 
@@ -108,5 +109,77 @@ describe("toTriageVerdict", () => {
       rationale: "infra",
       artifact: { reason: "disk full" },
     });
+  });
+});
+
+const packet = {
+  decision: "Decide whether to amend the task.",
+  evidence: "not ok 2 - beta",
+  dead_ends: "attempt 1 edited the template",
+  why_now: "one slot left",
+  references: ["worker-1-0"],
+};
+
+describe("a failed close", () => {
+  const failedClose = (closeUsed: number) =>
+    input({ trigger: "close_failure", category: undefined, remainingBudgets: budgets(0, closeUsed) });
+
+  it("engages the agent only on its last close slot", () => {
+    expect(needsJudgement(failedClose(2))).toBe(true);
+    expect(needsJudgement(failedClose(1))).toBe(false);
+    expect(needsJudgement(failedClose(3))).toBe(false);
+  });
+
+  it.each(["reroute", "fix_the_gate"] as const)(
+    "escalates a %s answer instead, naming the verdict and the verdicts allowed",
+    (status) => {
+      const verdict = toTriageVerdict({ status, rationale: "try again", payload: brief }, failedClose(2));
+      expect(verdict.verdict).toBe("escalate");
+      expect(verdict.rationale).toBe(
+        `triage answered ${status}, which is not allowed after a close failure ` +
+          "(allowed: retry_close, escalate, abort). Escalating rather than acting on it.",
+      );
+      expect(verdict.artifact).toBeUndefined();
+      expect(verdict.cause).toEqual({ kind: "triage_failure", rationale: verdict.rationale });
+    },
+  );
+
+  it.each([
+    { status: "retry_close", rationale: "flaky", payload: brief },
+    { status: "escalate", rationale: "stop", payload: packet },
+    { status: "abort", rationale: "infra", payload: { reason: "disk full" } },
+  ] as TriageTerminus[])("acts on a legal $status answer", (reply) => {
+    expect(toTriageVerdict(reply, failedClose(2)).verdict).toBe(reply.status);
+  });
+
+  it("asks the agent on the last slot, and escalates its 'retry the worker' answer", async () => {
+    const agent = triageAgent({ status: "reroute", rationale: "retry the worker", payload: brief });
+    const verdict = await createAgentTriage(agent).triage(failedClose(2));
+    expect(agent.calls).toHaveLength(1);
+    expect(verdict.verdict).toBe("escalate");
+  });
+});
+
+describe("unusable triage output", () => {
+  it.each(Object.values(DID_NOT_COMPLETE))(
+    "escalates in plain English, never a retry, when %s",
+    (reason) => {
+      const verdict = toTriageVerdict(
+        { status: "incomplete", rationale: `triage session did not complete: ${reason}` },
+        input({}),
+      );
+      expect(verdict.verdict).toBe("escalate");
+      expect(verdict.rationale).toBe(
+        `triage did not produce a usable verdict: triage session did not complete: ${reason}. Escalating rather than guessing.`,
+      );
+      expect(verdict.rationale).not.toMatch(/Error|\n\s+at\s/);
+      expect(verdict.cause).toEqual({ kind: "triage_failure", rationale: verdict.rationale });
+    },
+  );
+
+  it("keeps the agent's own packet when it escalates, with no cause to rebuild one from", async () => {
+    const agent = triageAgent({ status: "escalate", rationale: "no retry will help", payload: packet });
+    const verdict = await createAgentTriage(agent).triage(input({}));
+    expect(verdict).toEqual({ verdict: "escalate", rationale: "no retry will help", artifact: packet });
   });
 });

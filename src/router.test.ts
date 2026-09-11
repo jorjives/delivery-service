@@ -81,4 +81,29 @@ describe("deterministicRouter", () => {
       verdict: "reroute",
     });
   });
+
+  it("names an authority limit as the cause of its escalation", async () => {
+    expect((await deterministicRouter.triage(input("worker_escalate", fresh, "authority"))).cause)
+      .toEqual({ kind: "authority", role: "worker" });
+  });
+
+  it.each([
+    ["gate_fail", "correction"],
+    ["gate_error", "gateMaintenance"],
+    ["close_failure", "close"],
+    ["worker_escalate", "correction"],
+  ] as [TriageInput["trigger"], keyof BudgetSet][])("names the spent %s population (%s) as the cause of an at-cap escalation",
+    async (trigger, population) => {
+      const verdict = await deterministicRouter.triage(input(trigger, atCap(population)));
+      expect(verdict.cause).toMatchObject({
+        kind: "budget",
+        population,
+        budget: { used: fresh[population].max, max: fresh[population].max },
+      });
+    },
+  );
+
+  it("gives no cause for a verdict that is not an escalation", async () => {
+    expect((await deterministicRouter.triage(input("gate_fail"))).cause).toBeUndefined();
+  });
 });

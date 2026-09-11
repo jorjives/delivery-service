@@ -22,8 +22,9 @@ const rules: Record<
 };
 
 /**
- * This item's built-in `TriagePort`: the deterministic router only — no agent
- * call, no brief or escalation-packet synthesis (Item 5's concern). It reads
+ * The built-in `TriagePort`: a lookup table with no agent call. It never writes
+ * a brief or a packet; when it escalates it names the cause (`cause`), and the
+ * surface builds the escalation packet a person reads from that. It reads
  * nothing but the trigger, the escalate category, and the log-derived budgets
  * the caller computed immediately before calling it.
  */
@@ -36,6 +37,7 @@ export const deterministicRouter: TriagePort = {
       return Promise.resolve({
         verdict: "escalate",
         rationale: "authority limit: the worker reported no retry can resolve this",
+        cause: { kind: "authority", role: "worker" },
       });
     }
 
@@ -43,13 +45,11 @@ export const deterministicRouter: TriagePort = {
     const { used, max } = input.remainingBudgets[budget];
 
     if (used >= max) {
+      const detail = `no retry remains for a ${input.trigger} setback`;
       return Promise.resolve({
         verdict: "escalate",
-        rationale: budgetExhausted(
-          budget,
-          { used, max },
-          `no retry remains for a ${input.trigger} setback`,
-        ),
+        rationale: budgetExhausted(budget, { used, max }, detail),
+        cause: { kind: "budget", population: budget, budget: { used, max }, detail },
       });
     }
 

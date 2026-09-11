@@ -1,4 +1,5 @@
 import { deterministicRouter } from "./router.js";
+import { SETBACK_LABELS } from "./escalation-packet.js";
 import type { AgentPort, TriageInput, TriagePort, TriageTerminus, TriageVerdict } from "./ports.js";
 import type { Budget } from "./schema.js";
 
@@ -19,16 +20,18 @@ export const legalVerdicts: Record<TriageInput["trigger"], ReadonlySet<Verdict>>
 /**
  * Whether a real decision exists that an agent could change. A stuck worker
  * with a correction slot left is one: triage may judge a retry worthwhile and
- * say what to try. Once a population is spent, no judgement changes the
- * outcome, so no agent is asked a question whose only answer is escalate.
+ * say what to try. The last close slot is another: a clean escalation may beat
+ * one more long-shot close. Once a population is spent, no judgement changes
+ * the outcome, so no agent is asked a question whose only answer is escalate.
  */
 export function needsJudgement({ trigger, category, remainingBudgets: b }: TriageInput): boolean {
   const left = (x: Budget) => x.max - x.used;
   switch (trigger) {
     case "worker_escalate":
       return category !== "authority" && left(b.correction) > 0;
-    case "gate_fail":
     case "close_failure":
+      return left(b.close) === 1;
+    case "gate_fail":
     case "gate_error":
       return false;
   }
@@ -41,19 +44,15 @@ export function needsJudgement({ trigger, category, remainingBudgets: b }: Triag
  */
 export function toTriageVerdict(terminus: TriageTerminus, input: TriageInput): TriageVerdict {
   if (terminus.status === "incomplete") {
-    return {
-      verdict: "escalate",
-      rationale: `triage did not produce a usable verdict: ${terminus.rationale}. Escalating rather than guessing.`,
-    };
+    const rationale = `triage did not produce a usable verdict: ${terminus.rationale}. Escalating rather than guessing.`;
+    return { verdict: "escalate", rationale, cause: { kind: "triage_failure", rationale } };
   }
   const legal = legalVerdicts[input.trigger];
   if (!legal.has(terminus.status)) {
-    return {
-      verdict: "escalate",
-      rationale:
-        `triage answered ${terminus.status}, which is not allowed for a ${input.trigger} setback ` +
-        `(allowed: ${[...legal].join(", ")}). Escalating rather than acting on it.`,
-    };
+    const rationale =
+      `triage answered ${terminus.status}, which is not allowed after ${SETBACK_LABELS[input.trigger]} ` +
+      `(allowed: ${[...legal].join(", ")}). Escalating rather than acting on it.`;
+    return { verdict: "escalate", rationale, cause: { kind: "triage_failure", rationale } };
   }
   return { verdict: terminus.status, rationale: terminus.rationale, artifact: terminus.payload };
 }
