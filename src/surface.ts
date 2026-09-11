@@ -1,4 +1,4 @@
-import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef } from "./case-file.js";
+import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, setbackOf } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
@@ -515,14 +515,9 @@ export function triageTrigger(
   dir: string,
   tail: HistoryEntry | undefined,
 ): Pick<TriageInput, "trigger" | "category"> {
-  if (tail?.t === "gate") {
-    return { trigger: tail.status === "ERROR" ? "gate_error" : "gate_fail" };
-  }
-  if (tail?.t === "close") return { trigger: "close_failure" };
-  if (tail?.t === "terminus" && tail.status === "escalate") {
-    return { trigger: "worker_escalate", category: tail.category };
-  }
-  throw new IllegalStateTransition(dir, "TRIAGE", "triage");
+  const setback = setbackOf(tail);
+  if (!setback) throw new IllegalStateTransition(dir, "TRIAGE", "triage");
+  return setback;
 }
 
 /**

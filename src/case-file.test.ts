@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog, setbackOf } from "./case-file.js";
 import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
 import type { BudgetSet, HistoryEntry, GateReport } from "./schema.js";
 
@@ -934,5 +934,28 @@ describe("deriveBudgetsFromLog attribution", () => {
 
     expect(budgets.correction.used).toBe(1);
     expect(budgets.close.used).toBe(1);
+  });
+});
+
+describe("setbackOf", () => {
+  it("classifies a failed gate as gate_fail and an errored gate as gate_error", () => {
+    expect(setbackOf({ t: "gate", attempt: 1, status: "FAIL", newFailures: [] })).toEqual({ trigger: "gate_fail" });
+    expect(setbackOf({ t: "gate", attempt: 1, status: "ERROR", newFailures: [] })).toEqual({ trigger: "gate_error" });
+  });
+
+  it("classifies a close entry as close_failure", () => {
+    expect(setbackOf({ t: "close", status: "FAIL", detailRef: "close-0" })).toEqual({ trigger: "close_failure" });
+  });
+
+  it("classifies a worker escalate with its category", () => {
+    expect(
+      setbackOf({ t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "escalate", category: "exhaustion", rationale: "stuck" }),
+    ).toEqual({ trigger: "worker_escalate", category: "exhaustion" });
+  });
+
+  it("returns undefined for a tail that is not a setback", () => {
+    expect(setbackOf(undefined)).toBeUndefined();
+    expect(setbackOf({ t: "dispatch", attempt: 1, sessionKey: "worker-1-0" })).toBeUndefined();
+    expect(setbackOf({ t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "completed", rationale: "ok" })).toBeUndefined();
   });
 });

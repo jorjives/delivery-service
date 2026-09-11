@@ -2,6 +2,7 @@ import { open, rename, readFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateReport, CaseFileOutcome } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
+import type { TriageInput } from "./ports.js";
 
 async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
   const fd = await open(filePath, flag);
@@ -295,6 +296,23 @@ export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
     // surface is ready to dispatch a worker once it's captured.
     case "baseline": return "AGENT_ACTIVE";
   }
+}
+
+/** What kind of setback a history entry records, as `TriagePort` names it. */
+export type Setback = Pick<TriageInput, "trigger" | "category">;
+
+/**
+ * The setback a log tail records, or undefined when the tail is not one.
+ * Pure over one entry, like `deriveStateFromEntry`, so the surface routing into
+ * TRIAGE and the prompt shown to triage classify the same tail identically.
+ */
+export function setbackOf(tail: HistoryEntry | undefined): Setback | undefined {
+  if (tail?.t === "gate") return { trigger: tail.status === "ERROR" ? "gate_error" : "gate_fail" };
+  if (tail?.t === "close") return { trigger: "close_failure" };
+  if (tail?.t === "terminus" && tail.status === "escalate") {
+    return { trigger: "worker_escalate", category: tail.category };
+  }
+  return undefined;
 }
 
 export function deriveBudgetsFromLog(
