@@ -87,6 +87,7 @@ whole reason the harness triages instead of just counting attempts.
 ## Slice 2: Every Escalation Hands a Human a Decision, Not Internal State
 
 **Status:** ✅ Complete — 2026-09-11 — `8c13b87`
+**Tests:** ✅ Recorded — 2026-09-11 — `43887bd` — cli — 1 UAT + 7 AC, 1 skipped
 **Delivers:** Whenever a surface escalates, whatever caused it, the case file carries an
 escalation packet stating the decision a human must make, the verbatim evidence, what
 already failed, why it escalated now, and which sessions to consult; and triage can
