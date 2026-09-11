@@ -1,5 +1,6 @@
 # Triage and Deterministic Router — Slice 2: Every Escalation Hands a Human a Decision, Not Internal State
 
+> **Status:** ✅ Complete — 2026-09-11 — `8c13b87`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 2 of `docs/superpowers/specs/2026-09-10-triage-and-router-slices.md`
