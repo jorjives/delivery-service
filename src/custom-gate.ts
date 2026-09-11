@@ -40,7 +40,7 @@ function guard(
 
 /**
  * Load a user-supplied gate module. `modulePath` is resolved against
- * `baseDir` (the project root by default); absolute paths pass through
+ * `baseDir` (the current working directory by default); absolute paths pass through
  * unchanged. Throws `GateModuleLoadFailure` if the module cannot be imported
  * and `InvalidGateExport` if the selected export is not a gate — both before
  * any gate method is called.

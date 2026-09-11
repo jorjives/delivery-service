@@ -357,7 +357,10 @@ async function preGating(
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
-  const report = await recordBaseline(dir, worktreeOf(caseFile, location));
+  const report = await recordBaseline(dir, {
+    repoPath: location.repoPath,
+    worktreePath: worktreeOf(caseFile, location),
+  });
   if (report.status !== "ERROR") {
     await updateCursor(dir, { state: "AGENT_ACTIVE" });
     return { state: "AGENT_ACTIVE", done: false };
@@ -540,7 +543,7 @@ async function gating(
 ): Promise<AdvanceResult> {
   const { delta } = await runCheck(
     dir,
-    worktreeOf(caseFile, location),
+    { repoPath: location.repoPath, worktreePath: worktreeOf(caseFile, location) },
     workerAttempt(caseFile.history),
   );
   const state: SurfaceState = delta.pass ? "CLOSING" : "TRIAGE";

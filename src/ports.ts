@@ -121,10 +121,12 @@ export interface SurfacePorts {
 }
 
 /**
- * The two caller-supplied filesystem locations. Both are read only while
- * `cursor.worktreeRef` is still the empty-string "not yet provisioned"
+ * The two caller-supplied filesystem locations. `worktreePath` is read only
+ * while `cursor.worktreeRef` is still the empty-string "not yet provisioned"
  * sentinel; afterwards `cursor.worktreeRef` is authoritative, so a replay
  * called with different arguments cannot divert a provisioned surface.
+ * `repoPath` is also where a custom gate's relative `modulePath` resolves, at
+ * every gate run, so the gate stays outside the worktree agents edit.
  */
 export interface SurfaceLocation {
   repoPath: string;

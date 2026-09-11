@@ -140,10 +140,10 @@ Reference it from the case file header:
 `exportName` selects a named export instead of `default`, so one module can hold
 several gates.
 
-**Keep the module outside the worktree and give an absolute `modulePath`.** A
-relative path is resolved against the worktree the surface is running in, which
-puts the gate inside the reach of the very agent it is judging. An agent that can
-edit the gate can make a failure disappear rather than fix it.
+**The module is loaded from outside the worktree.** A relative `modulePath` is
+resolved against the repository root (`repoPath`), never the worktree the surface
+is running in, so the agent being judged cannot edit the gate that judges it and
+make a failure disappear rather than fix it. An absolute path works too.
 
 To load and call it yourself:
 

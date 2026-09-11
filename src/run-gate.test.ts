@@ -6,6 +6,7 @@ import { create, load, readRef } from "./case-file.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
 import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
 import type { BudgetSet, GateRef } from "./schema.js";
+import type { SurfaceLocation } from "./ports.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -23,10 +24,12 @@ const GREEN = "1..2\nok 1 - alpha\nok 2 - beta\n";
 
 let surfaceDir: string;
 let worktree: string;
+let location: SurfaceLocation;
 
 async function newSurface(gateRef: GateRef = TAP_GATE): Promise<void> {
   surfaceDir = await mkdtemp(join(tmpdir(), "run-gate-case-"));
   worktree = await mkdtemp(join(tmpdir(), "run-gate-tree-"));
+  location = { repoPath: await mkdtemp(join(tmpdir(), "run-gate-repo-")), worktreePath: worktree };
   await create(surfaceDir, { surfaceId: "surface-1", taskDef: { intent: "fix bug" }, gateRef }, budgets);
 }
 
@@ -54,7 +57,7 @@ describe("recordBaseline", () => {
   });
 
   it("resolves the header's gate ref, runs baseline, and stores it in the case file", async () => {
-    const report = await recordBaseline(surfaceDir, worktree);
+    const report = await recordBaseline(surfaceDir, location);
 
     expect(report.status).toBe("PASS");
     expect(report.assertions.map((a) => a.id)).toEqual(["1 - alpha", "2 - beta"]);
@@ -64,19 +67,41 @@ describe("recordBaseline", () => {
   });
 
   it("rejects a second baseline for the same surface", async () => {
-    await recordBaseline(surfaceDir, worktree);
+    await recordBaseline(surfaceDir, location);
 
-    await expect(recordBaseline(surfaceDir, worktree)).rejects.toThrow(ImmutabilityViolation);
+    await expect(recordBaseline(surfaceDir, location)).rejects.toThrow(ImmutabilityViolation);
   });
 
   it("returns an ERROR report without storing it when the gate cannot run", async () => {
     await rm(join(worktree, "report.tap"));
 
-    const report = await recordBaseline(surfaceDir, worktree);
+    const report = await recordBaseline(surfaceDir, location);
 
     expect(report.status).toBe("ERROR");
     const loaded = await load(surfaceDir);
     expect(loaded.header.baseline).toBeNull();
+  });
+});
+
+describe("a custom gate with a relative modulePath", () => {
+  // A gate reporting where it was loaded from. The copy planted in the worktree
+  // stands in for one the agent under judgement wrote or edited.
+  const gateAt = (where: string): string =>
+    `const report = async () => ({ status: "PASS", assertions: [{ id: "${where}", outcome: "PASS", detail: "" }] });
+     export default { baseline: report, check: report };`;
+
+  beforeEach(async () => {
+    await newSurface({ type: "custom", modulePath: "./gate.mjs" });
+    await writeFile(join(location.repoPath, "gate.mjs"), gateAt("repo"));
+    await writeFile(join(worktree, "gate.mjs"), gateAt("worktree"));
+  });
+
+  it("resolves against the repo root, never the worktree the agent edits", async () => {
+    const baseline = await recordBaseline(surfaceDir, location);
+    const { report } = await runCheck(surfaceDir, location, 1);
+
+    expect(baseline.assertions.map((a) => a.id)).toEqual(["repo"]);
+    expect(report.assertions.map((a) => a.id)).toEqual(["repo"]);
   });
 });
 
@@ -89,9 +114,9 @@ describe("runCheck", () => {
   });
 
   it("appends a PASS entry with no new failures when nothing regressed", async () => {
-    await recordBaseline(surfaceDir, worktree);
+    await recordBaseline(surfaceDir, location);
 
-    const { delta } = await runCheck(surfaceDir, worktree, 1);
+    const { delta } = await runCheck(surfaceDir, location, 1);
 
     expect(delta.pass).toBe(true);
     const loaded = await load(surfaceDir);
@@ -102,10 +127,10 @@ describe("runCheck", () => {
   });
 
   it("records the verdict, the new failures, and the failure class after a regression", async () => {
-    await recordBaseline(surfaceDir, worktree);
+    await recordBaseline(surfaceDir, location);
     await tap(REGRESSED);
 
-    const { delta } = await runCheck(surfaceDir, worktree, 1);
+    const { delta } = await runCheck(surfaceDir, location, 1);
 
     expect(delta.pass).toBe(false);
     expect(delta.class).toBe("fail");
@@ -128,19 +153,19 @@ describe("runCheck", () => {
   });
 
   it("leaves the stored baseline untouched across the round trip", async () => {
-    const baseline = await recordBaseline(surfaceDir, worktree);
+    const baseline = await recordBaseline(surfaceDir, location);
     await tap(REGRESSED);
-    await runCheck(surfaceDir, worktree, 1);
+    await runCheck(surfaceDir, location, 1);
 
     const loaded = await load(surfaceDir);
     expect(loaded.header.baseline).toEqual(baseline);
   });
 
   it("records a gate-level error as an error-class entry with no new failures", async () => {
-    await recordBaseline(surfaceDir, worktree);
+    await recordBaseline(surfaceDir, location);
     await rm(join(worktree, "report.tap"));
 
-    const { report, delta } = await runCheck(surfaceDir, worktree, 2);
+    const { report, delta } = await runCheck(surfaceDir, location, 2);
 
     expect(report.status).toBe("ERROR");
     expect(delta.class).toBe("error");
@@ -161,28 +186,28 @@ describe("runCheck", () => {
   it("honours failOnNewAssertions pinned on the gate ref", async () => {
     await newSurfaceWithFlag();
     await tap("1..1\nok 1 - alpha\n");
-    await recordBaseline(surfaceDir, worktree);
+    await recordBaseline(surfaceDir, location);
     await tap("1..2\nok 1 - alpha\nnot ok 2 - brandnew\n");
 
-    const { delta } = await runCheck(surfaceDir, worktree, 1);
+    const { delta } = await runCheck(surfaceDir, location, 1);
 
     expect(delta.pass).toBe(false);
     expect(delta.newFailures.map((f) => f.id)).toEqual(["2 - brandnew"]);
   });
 
   it("rejects a check run before any baseline was recorded", async () => {
-    await expect(runCheck(surfaceDir, worktree, 1)).rejects.toThrow(MissingBaseline);
+    await expect(runCheck(surfaceDir, location, 1)).rejects.toThrow(MissingBaseline);
   });
 
   it("keys a re-check of the same attempt separately from the first check", async () => {
     await tap(GREEN);
-    await recordBaseline(surfaceDir, worktree);
+    await recordBaseline(surfaceDir, location);
 
     await tap("1..2\nok 1 - alpha\nnot ok 2 - beta\n");
-    await runCheck(surfaceDir, worktree, 1);
+    await runCheck(surfaceDir, location, 1);
 
     await tap("1..2\nnot ok 1 - alpha\nok 2 - beta\n");
-    await runCheck(surfaceDir, worktree, 1);
+    await runCheck(surfaceDir, location, 1);
 
     const { history } = await load(surfaceDir);
     const gates = history.filter((e) => e.t === "gate") as Extract<typeof history[number], { t: "gate" }>[];

@@ -234,6 +234,28 @@ describe("advance", () => {
     expect(agent.calls).toEqual([]);
   });
 
+  it("loads a relative custom gate from the repo root, out of the worktree agents edit", async () => {
+    const customDir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(
+      customDir,
+      { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef: { type: "custom", modulePath: "./gate.mjs" } },
+      budgets,
+    );
+    const ports = portsWith(unusedAgent());
+    const location = await provisioned(customDir, { "seed.txt": "x\n" }, ports);
+    // Untracked, so provisioning never copied it into the worktree.
+    writeFileSync(
+      join(location.repoPath, "gate.mjs"),
+      `const report = async () => ({ status: "PASS", assertions: [{ id: "repo-gate", outcome: "PASS", detail: "" }] });
+       export default { baseline: report, check: report };`,
+    );
+
+    const result = await advance(customDir, location, ports);
+
+    expect(result).toEqual({ state: "AGENT_ACTIVE", done: false });
+    expect((await load(customDir)).header.baseline?.assertions.map((a) => a.id)).toEqual(["repo-gate"]);
+  });
+
   it("dispatches a repair session when the gate itself cannot run", async () => {
     const agent = scriptedAgent([{ status: "completed", rationale: "reinstalled the runner" }]);
     const ports = portsWith(agent);

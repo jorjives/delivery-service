@@ -28,6 +28,8 @@ const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode
 
 const surfaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "gate-slice-5-case-"));
 const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "gate-slice-5-tree-"));
+// A command gate never loads a module, so the repo root is unused here.
+const location = { repoPath: process.cwd(), worktreePath: worktree };
 
 function tap(contents: string): void {
   fs.writeFileSync(path.join(worktree, "report.tap"), contents);
@@ -42,13 +44,13 @@ async function main(): Promise<void> {
 
   console.log("=== 1. Record the baseline ===");
   tap("1..2\nok 1 - alpha\nok 2 - beta\n");
-  const baseline = await recordBaseline(surfaceDir, worktree);
+  const baseline = await recordBaseline(surfaceDir, location);
   console.log(`Baseline stored: status ${baseline.status}, ${baseline.assertions.length} assertions`);
   for (const a of baseline.assertions) console.log(`  [${a.outcome}] ${a.id}`);
 
   console.log("\n=== 2. A second baseline for the same surface ===");
   try {
-    await recordBaseline(surfaceDir, worktree);
+    await recordBaseline(surfaceDir, location);
     console.log("Second baseline: NO_ERROR_THROWN (unexpected)");
   } catch (err) {
     if (!(err instanceof ImmutabilityViolation)) throw err;
@@ -57,7 +59,7 @@ async function main(): Promise<void> {
 
   console.log("\n=== 3. Simulate an attempt that breaks a test, then check ===");
   tap("1..2\nok 1 - alpha\nnot ok 2 - beta\n");
-  const failed = await runCheck(surfaceDir, worktree, 1);
+  const failed = await runCheck(surfaceDir, location, 1);
   console.log(`Check verdict: pass=${failed.delta.pass}, class=${failed.delta.class}`);
   for (const f of failed.delta.newFailures) {
     console.log(`  New failure: ${f.id} (${f.baselineOutcome} -> ${f.checkOutcome}) — ${f.detail}`);
@@ -65,7 +67,7 @@ async function main(): Promise<void> {
 
   console.log("\n=== 4. A second attempt where the gate itself cannot run ===");
   fs.rmSync(path.join(worktree, "report.tap"));
-  const errored = await runCheck(surfaceDir, worktree, 2);
+  const errored = await runCheck(surfaceDir, location, 2);
   console.log(`Gate report status: ${errored.report.status}`);
   console.log(`Check verdict: pass=${errored.delta.pass}, class=${errored.delta.class}`);
 

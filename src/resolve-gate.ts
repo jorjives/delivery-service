@@ -10,8 +10,9 @@ import { GateRef } from "./schema.js";
  * an ERROR report from both methods, so resolution failure and run failure
  * reach the caller in the same shape.
  *
- * `baseDir` is the project root a custom gate's `modulePath` resolves against;
- * it defaults to the current working directory.
+ * `baseDir` is what a custom gate's relative `modulePath` resolves against; it
+ * defaults to the current working directory. A surface run passes its repo
+ * root, never the worktree (see `run-gate.ts`).
  */
 export function resolveGate(gateRef: GateRef, baseDir?: string): Gate {
   const parsed = GateRef.safeParse(gateRef);

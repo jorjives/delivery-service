@@ -3,10 +3,18 @@ import { resolveGate } from "./resolve-gate.js";
 import { computeDelta } from "./delta-rule.js";
 import { MissingBaseline } from "./errors.js";
 import type { GateContext } from "./command-gate.js";
+import type { SurfaceLocation } from "./ports.js";
 import type { CaseFileHeader, GateEntry, GateReport, DeltaResult, NewFailure } from "./schema.js";
 
 function gateContext(header: CaseFileHeader, worktreePath: string): GateContext {
   return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef };
+}
+
+// The gate measures the worktree but is loaded from the repo root: a relative
+// custom `modulePath` resolved against the worktree would put the gate in reach
+// of the very roles it judges.
+function gateOf(header: CaseFileHeader, location: SurfaceLocation) {
+  return resolveGate(header.gateRef, location.repoPath);
 }
 
 /**
@@ -21,11 +29,10 @@ function gateContext(header: CaseFileHeader, worktreePath: string): GateContext 
  */
 export async function recordBaseline(
   dir: string,
-  worktreePath: string,
+  location: SurfaceLocation,
 ): Promise<GateReport> {
   const { header } = await load(dir);
-  const gate = resolveGate(header.gateRef, worktreePath);
-  const report = await gate.baseline(gateContext(header, worktreePath));
+  const report = await gateOf(header, location).baseline(gateContext(header, location.worktreePath));
 
   if (report.status !== "ERROR") {
     await setBaseline(dir, report);
@@ -41,14 +48,13 @@ export async function recordBaseline(
  */
 export async function runCheck(
   dir: string,
-  worktreePath: string,
+  location: SurfaceLocation,
   attempt: number,
 ): Promise<{ report: GateReport; delta: DeltaResult }> {
   const { header, history } = await load(dir);
   if (header.baseline === null) throw new MissingBaseline(dir);
 
-  const gate = resolveGate(header.gateRef, worktreePath);
-  const report = await gate.check(gateContext(header, worktreePath));
+  const report = await gateOf(header, location).check(gateContext(header, location.worktreePath));
   const delta = computeDelta(header.baseline, report, {
     failOnNewAssertions: header.gateRef.failOnNewAssertions,
   });
