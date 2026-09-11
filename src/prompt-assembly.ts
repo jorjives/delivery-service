@@ -2,7 +2,7 @@ import { z } from "zod";
 import { deriveBudgetsFromLog, logTail, readRef, setbackOf, type Setback } from "./case-file.js";
 import { NewFailure, type BudgetSet, type CaseFile } from "./schema.js";
 import type { RoleConfig } from "./role-config.js";
-import type { SharpenedBrief } from "./triage-role-config.js";
+import { SharpenedBrief } from "./triage-role-config.js";
 
 export interface PromptSetback extends Setback {
   /** Log-derived used/max per population at the moment of the setback. */
@@ -29,7 +29,7 @@ export interface AssembledPrompt {
 }
 
 /** The ref shape `surface.ts` writes for an agent-path triage round. */
-const BriefRef = z.object({ artifact: z.instanceof(Object) }).refine((r) => "artifact" in r, { message: "artifact required" });
+const BriefRef = z.object({ artifact: SharpenedBrief });
 const CloseDetail = z.object({ detail: z.string() });
 
 /**
@@ -51,7 +51,7 @@ export async function resolveEvidence(dir: string, caseFile: CaseFile): Promise<
   // A deterministic reroute's ref has no artefact; that dispatch has no brief.
   const dispatch = history.find((entry) => entry.t === "dispatch");
   const briefRef = dispatch?.briefRef ? BriefRef.safeParse(await readRef(dir, dispatch.briefRef)) : undefined;
-  const brief = briefRef?.success ? (briefRef.data as { artifact: SharpenedBrief }).artifact : null;
+  const brief = briefRef?.success ? briefRef.data.artifact : null;
 
   return { brief, newFailures, setback: await resolveSetback(dir, caseFile) };
 }

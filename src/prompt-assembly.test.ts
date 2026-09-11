@@ -299,6 +299,14 @@ describe("the brief a triage reroute left behind", () => {
     const { prompt } = assemblePrompt(caseFile, workerRoleConfig, await resolveEvidence(dir, caseFile));
     expect(prompt).toContain("No distilled brief");
   });
+
+  it("falls back to the no-brief sentence when the artefact is malformed (missing fields)", async () => {
+    await writeRef(dir, "triage-0", { trigger: "worker_escalate", rationale: "retry", artifact: { problem: "only this field" } });
+    await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 2, sessionKey: "worker-2-0", briefRef: "triage-0" });
+    const caseFile = await load(dir);
+    const { prompt } = assemblePrompt(caseFile, workerRoleConfig, await resolveEvidence(dir, caseFile));
+    expect(prompt).toContain("No distilled brief");
+  });
 });
 
 describe("the triage prompt's setback slot", () => {
