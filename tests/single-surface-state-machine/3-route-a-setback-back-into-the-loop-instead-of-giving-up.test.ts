@@ -44,8 +44,10 @@ describe("UAT: route a setback back into the loop instead of giving up", () => {
 
   it("AC: a gate that errors post-worker routes to a repair, and a successful repair re-checks the same baseline rather than re-baselining", () => {
     const s = section("=== Gate error, repaired then re-checked ===", "=== Close rejected once, accepted on retry ===");
-    expect(s).toContain("States:   PROVISIONING -> PRE_GATING -> AGENT_ACTIVE -> GATING -> TRIAGE -> GATE_MAINTENANCE -> GATE_MAINTENANCE -> CLOSING -> CLOSED");
-    expect(s).toContain("Router:   gate_error -> fix_the_gate");
+    expect(s).toContain("States:   PROVISIONING -> PRE_GATING -> AGENT_ACTIVE -> GATING -> TRIAGE -> GATING -> TRIAGE -> GATING -> TRIAGE -> GATING -> TRIAGE -> GATE_MAINTENANCE -> GATE_MAINTENANCE -> CLOSING -> CLOSED");
+    // Triage and Router slice 3: a gate error is first rechecked, free, until its
+    // recheck budget is spent; only then is it routed to a repair.
+    expect(s).toContain("Router:   gate_error -> recheck_gate, gate_error -> recheck_gate, gate_error -> recheck_gate, gate_error -> fix_the_gate");
     // Only one worker attempt was dispatched: the repair goes through GATE_MAINTENANCE
     // twice (dispatch, then a re-check), never re-running or re-baselining the worker's attempt.
     expect(s).toContain("Attempts: 2 dispatched");

@@ -56,9 +56,10 @@ describe("UAT: resume a surface after a crash to the same outcome", () => {
     expect(s).toContain(
       "Stop + resume: escalated — gateMaintenance budget exhausted (2/2): the repair session ended without a result",
     );
-    // The repair retry burns the gate-maintenance budget, never the worker's terminus budget.
+    // The repair retry burns the gate-maintenance budget, never the worker's terminus
+    // budget. The free rechecks before the first repair spent gateError at its cap.
     expect(s).toContain(
-      "correction 0/3, gateError 1/3, gateMaintenance 2/2, terminus 0/5, close 0/3",
+      "correction 0/3, gateError 3/3, gateMaintenance 2/2, terminus 0/5, close 0/3",
     );
     expect(s).toContain("Identical:     yes");
   });

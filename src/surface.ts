@@ -604,9 +604,9 @@ export function triageTrigger(
  * Ask the router what to do about the setback on the log tail, and carry out
  * its verdict.
  *
- * The `triage` entry appended here IS the `correction`/`close` burn for a
- * `reroute`/`retry_close` verdict — there is no separate increment, and the
- * budgets handed to the router are derived from the log immediately before the
+ * The `triage` entry appended here IS the `correction`/`close`/`gateError` burn
+ * for a `reroute`/`retry_close`/`recheck_gate` verdict — there is no separate
+ * increment, and the budgets handed to the router are derived from the log immediately before the
  * call, never read from the cursor's stale copy. Routing then goes through
  * `deriveStateFromEntry` on the entry just appended, so a live route and a
  * resumed one are the same computation rather than two rules that can drift.

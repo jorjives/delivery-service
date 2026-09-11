@@ -102,6 +102,8 @@ async function provisioned(
 
 const PASSING_TAP = "1..2\nok 1 - alpha\nok 2 - beta\n";
 const FAILING_TAP = "1..2\nok 1 - alpha\nnot ok 2 - beta\n";
+/** Errors on the first check after the worker drops a `.flaky` marker, then reads report.tap as usual. */
+const FLAKY_GATE = "if [ -f .flaky ]; then rm .flaky; else cat report.tap; fi";
 
 describe("advance", () => {
   let dir: string;
@@ -904,7 +906,36 @@ describe("TRIAGE", () => {
     expect(() => triageTrigger(dir, { t: "baseline", status: "PASS" })).toThrow(/TRIAGE/);
   });
 
-  it("repairs an errored gate and re-checks the same attempt against the same baseline", async () => {
+  it("rechecks a gate that errored once, for free, and closes with no agent call and no repair", async () => {
+    const flakyDir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    const flakyGate: GateRef = { type: "command", command: FLAKY_GATE, parseMode: "tap" };
+    await create(flakyDir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef: flakyGate }, budgets);
+    const agent = sessionAgent((role, ctx) => {
+      if (role !== "worker") return Promise.reject(new Error("no repair session was expected"));
+      writeFileSync(join(ctx.worktreePath, ".flaky"), "");
+      return Promise.resolve({ status: "completed", rationale: "clean change" });
+    }); // no triage function: any triage agent call rejects and fails the test
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(flakyDir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await run(flakyDir, location, ports);
+
+    expect(result.state).toBe("CLOSED");
+    const { history } = await load(flakyDir);
+    expect(history.filter((e) => e.t === "triage")).toMatchObject([{ trigger: "gate_error", verdict: "recheck_gate" }]);
+    // The same attempt, judged twice against the one baseline pinned before the worker ran.
+    expect(history.filter((e) => e.t === "gate")).toMatchObject([
+      { attempt: 1, status: "ERROR" },
+      { attempt: 1, status: "PASS" },
+    ]);
+    expect(history.filter((e) => e.t === "baseline")).toHaveLength(1);
+    expect(history.filter((e) => e.t === "dispatch")).toEqual([
+      expect.objectContaining({ role: "worker", attempt: 1 }),
+    ]);
+    expect(deriveBudgetsFromLog(history, budgets).gateError.used).toBe(1);
+  });
+
+  it("rechecks a gate that keeps erroring until rechecks are spent, then repairs it and re-checks the same attempt", async () => {
     const worker = (ctx: { worktreePath: string }): Promise<Terminus> => {
       // The worker's change removes the file the gate reads: the gate can no
       // longer run at all, which is an ERROR, not a regression.
@@ -918,6 +949,7 @@ describe("TRIAGE", () => {
     const agent: SurfacePorts["agent"] = sessionAgent((role, ctx) =>
       role === "gate-maintenance" ? repair(ctx) : worker(ctx),
     );
+    // The deterministic router alone: no triage agent is wired in.
     const ports = portsWithTriage(agent);
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
 
@@ -935,11 +967,18 @@ describe("TRIAGE", () => {
     expect(history.filter((e) => e.t === "baseline")).toHaveLength(1);
     expect(header.baseline).toEqual(pinned);
 
-    // gate_error routed to a repair, and the re-check judged the SAME attempt.
+    // Three free rechecks (gateError max 3), then a repair, as before this item.
     expect(history.filter((e) => e.t === "triage")).toMatchObject([
+      { trigger: "gate_error", verdict: "recheck_gate" },
+      { trigger: "gate_error", verdict: "recheck_gate" },
+      { trigger: "gate_error", verdict: "recheck_gate" },
       { trigger: "gate_error", verdict: "fix_the_gate" },
     ]);
+    // Every check, rechecks and the post-repair re-check alike, judged the SAME attempt.
     expect(history.filter((e) => e.t === "gate")).toMatchObject([
+      { attempt: 1, status: "ERROR" },
+      { attempt: 1, status: "ERROR" },
+      { attempt: 1, status: "ERROR" },
       { attempt: 1, status: "ERROR" },
       { attempt: 1, status: "PASS" },
     ]);
@@ -961,9 +1000,8 @@ describe("TRIAGE", () => {
     const ports = portsWithTriage(agent);
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
 
-    await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
-    await advance(dir, location, ports); // AGENT_ACTIVE -> GATING
-    await advance(dir, location, ports); // GATING -> TRIAGE
+    // baseline, worker, first gate; then three recheck rounds (TRIAGE -> GATING -> TRIAGE)
+    for (let i = 0; i < 3 + 3 * 2; i++) await advance(dir, location, ports);
     const routed = await advance(dir, location, ports); // TRIAGE -> GATE_MAINTENANCE
     expect(routed.state).toBe("GATE_MAINTENANCE");
 
@@ -1506,6 +1544,9 @@ describe("budget caps", () => {
     expect(state).toBe("ESCALATED");
     expect(reason).toContain(exhaustedPrefix("gateMaintenance"));
     expect(spent.gateMaintenance.used).toBe(budgets.gateMaintenance.max);
+    // Rechecks came first and are spent too, at exactly their cap: an escalation
+    // needs both the free recheck and the paid repair to be exhausted.
+    expect(spent.gateError.used).toBe(budgets.gateError.max);
 
     // One repair session per gateMaintenance spent, and no more.
     expect(
@@ -1677,7 +1718,9 @@ describe("resume parity: an interrupted run reaches the same outcome as a straig
         triage: deterministicRouter,
         closer: noopCloser,
       }),
-      stopAfter: 4,
+      // Provision, baseline, worker, errored gate, first recheck verdict: stops
+      // with a recheck_gate recorded and the recheck it pays for not yet run.
+      stopAfter: 5,
     },
     {
       name: "a closer that always rejects, to the close cap",

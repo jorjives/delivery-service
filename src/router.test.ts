@@ -33,10 +33,24 @@ describe("deterministicRouter", () => {
     });
   });
 
-  it("routes a gate error to a gate repair while repair budget remains", async () => {
-    expect(await deterministicRouter.triage(input("gate_error"))).toMatchObject({
+  it("rechecks a gate error, free, while the recheck budget remains", async () => {
+    expect(await deterministicRouter.triage(input("gate_error"))).toEqual({
+      verdict: "recheck_gate",
+      rationale: "gate_error: recheck_gate (gateError 0/3)",
+    });
+  });
+
+  it("routes a gate error to a gate repair once rechecks are spent and repair budget remains", async () => {
+    expect(await deterministicRouter.triage(input("gate_error", atCap("gateError")))).toMatchObject({
       verdict: "fix_the_gate",
     });
+  });
+
+  it("escalates a gate error only when rechecks and repairs are both spent, naming the repair budget", async () => {
+    const bothSpent = { ...atCap("gateError"), gateMaintenance: { used: 2, max: 2 } };
+    const verdict = await deterministicRouter.triage(input("gate_error", bothSpent));
+    expect(verdict.verdict).toBe("escalate");
+    expect(verdict.cause).toMatchObject({ kind: "budget", population: "gateMaintenance", budget: { used: 2, max: 2 } });
   });
 
   it("routes a close failure back to another close attempt while close budget remains", async () => {
@@ -57,7 +71,6 @@ describe("deterministicRouter", () => {
 
   it.each([
     ["gate_fail", "correction"],
-    ["gate_error", "gateMaintenance"],
     ["close_failure", "close"],
     ["worker_escalate", "correction"],
   ] as [TriageInput["trigger"], keyof BudgetSet][])("escalates %s once its %s budget is at cap",
@@ -89,7 +102,6 @@ describe("deterministicRouter", () => {
 
   it.each([
     ["gate_fail", "correction"],
-    ["gate_error", "gateMaintenance"],
     ["close_failure", "close"],
     ["worker_escalate", "correction"],
   ] as [TriageInput["trigger"], keyof BudgetSet][])("names the spent %s population (%s) as the cause of an at-cap escalation",

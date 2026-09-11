@@ -63,7 +63,11 @@ export interface TriageInput {
 export type TriageArtifact = SharpenedBrief | EscalationPacket | { reason: string };
 
 export interface TriageVerdict {
-  verdict: "reroute" | "escalate" | "fix_the_gate" | "retry_close" | "abort";
+  /**
+   * `recheck_gate` is the lookup table's alone: re-running a gate needs no
+   * judgement, so it is never in `TriageEnvelope` and no agent can answer it.
+   */
+  verdict: "reroute" | "escalate" | "fix_the_gate" | "retry_close" | "abort" | "recheck_gate";
   rationale: string;
   /** In memory only: what the surface writes into the round's ref. Never set by the deterministic router. */
   artifact?: TriageArtifact;

@@ -263,6 +263,8 @@ const gateState: Record<string, SurfaceState> = {
 const triageState: Record<string, SurfaceState> = {
   reroute: "AGENT_ACTIVE", escalate: "ESCALATED", fix_the_gate: "GATE_MAINTENANCE",
   retry_close: "CLOSING", abort: "ABORTED",
+  // Re-run the same check against the same pinned baseline: GATING, not PRE_GATING.
+  recheck_gate: "GATING",
 };
 const closeState: Record<string, SurfaceState> = {
   DONE: "CLOSED", FAIL: "TRIAGE", ERROR: "TRIAGE",
@@ -336,14 +338,14 @@ export function deriveBudgetsFromLog(
         // is already paid for on gateMaintenance by its own dispatch entry.
         if (entry.role !== "gate-maintenance" && entry.status === "incomplete") used.terminus++;
         break;
-      case "gate":
-        if (entry.status === "ERROR") used.gateError++;
-        break;
       case "triage":
         // The triage entry IS the burn for the verdict it records — not the
-        // dispatch or close that follows it, which a crash could land before.
+        // dispatch, close or recheck that follows it, which a crash could land
+        // before. An errored gate entry costs nothing by itself: counting it
+        // would let an always-broken gate run the population past its cap.
         if (entry.verdict === "reroute") used.correction++;
         else if (entry.verdict === "retry_close") used.close++;
+        else if (entry.verdict === "recheck_gate") used.gateError++;
         break;
     }
   }

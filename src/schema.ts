@@ -145,7 +145,7 @@ export const TriageEntry = z.object({
   t: z.literal("triage"),
   afterAttempt: z.number().int().positive(),
   trigger: z.string(),
-  verdict: z.enum(["reroute", "escalate", "fix_the_gate", "retry_close", "abort"]),
+  verdict: z.enum(["reroute", "escalate", "fix_the_gate", "retry_close", "abort", "recheck_gate"]),
   rationale: z.string(),
   artifactRef: z.string(),
 });

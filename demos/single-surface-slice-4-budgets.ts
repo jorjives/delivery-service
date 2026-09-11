@@ -96,12 +96,8 @@ function alwaysWorker(terminus: Terminus): AgentPort {
 
 async function main(): Promise<void> {
   console.log("Budget caps for these runs:", budgetLine(budgets));
-  console.log(
-    "Note: gateError is counted but gated by nothing in this item (design spec, Budgets):",
-  );
-  console.log(
-    "      a gate that cannot run is routed to gate maintenance and paid for there.",
-  );
+  console.log("Note: gateError pays for free gate rechecks. A gate that still cannot run after them");
+  console.log("      is routed to gate maintenance and paid for there.");
 
   // 1. correction — the worker is always stuck but says a retry might help.
   await runScenario({

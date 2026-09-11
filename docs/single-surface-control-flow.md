@@ -77,7 +77,8 @@ CLOSING                    (variable close action: merge / open PR / cleanup / i
 
 TRIAGE                     (router + classifier; typed verdict; never overturns a PASS)
   → AGENT_ACTIVE           (reroute; burns a correction slot; emits a sharpened brief)
-  → GATE_MAINTENANCE       (fix_the_gate — environment only)
+  → GATING                 (recheck_gate — gate error, re-run free against the same baseline; burns a gate-error slot; router only, no agent)
+  → GATE_MAINTENANCE       (fix_the_gate — environment only; once gate-error rechecks are spent)
   → CLOSING                (retry_close — post-acceptance close failure; burns a close slot)
   → ESCALATED              (escalate)
   → ABORTED                (abort)
@@ -111,6 +112,8 @@ Notes:
   each gets a cap that fits its cost:
   - **correction** (worker) — genuine regressions rerouted for a fix.
   - **gate-error retries** (infra) — the gate flaked; cheap, stateless, re-run it.
+    Each `recheck_gate` triage verdict is one burn; the errored gate entry itself
+    costs nothing. Only once these are spent does a gate error reach gate-maintenance.
   - **gate-maintenance** (agent) — the environment is broken; dispatch a repair
     agent. Expensive and stateful, so a *low* cap: a repair agent that fails once
     rarely succeeds on the third.
@@ -398,7 +401,7 @@ Entry =
         new_failures: [{id, detail_ref}],   # empty on the PASS that ends the run
         class: fail|error }
   | { t:"triage", after_attempt, trigger,
-        verdict: reroute|escalate|fix_the_gate|retry_close|abort,
+        verdict: reroute|escalate|fix_the_gate|retry_close|abort|recheck_gate,
         rationale, artifact_ref }            # artifact_ref → the brief or packet
   | { t:"close",
         status: DONE|FAIL|ERROR,

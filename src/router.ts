@@ -6,10 +6,10 @@ import { budgetExhausted } from "./budgets.js";
  * The whole deterministic rule, one row per trigger: the budget that gates the
  * helpful verdict, and the verdict itself. At cap, every trigger escalates.
  *
- * `gateError` is deliberately absent. It is reserved for a future bounded,
- * agent-free re-check fast path, which needs a `TriageVerdict` case this item
- * does not add; a gate that could not run is routed to `GATE_MAINTENANCE` on
- * the `gateMaintenance` budget, exactly like the pre-task case.
+ * `gate_error`'s row is its second step. A gate that could not run is not the
+ * worker's fault and re-running it costs nothing but time, so it is first
+ * rechecked, on the `gateError` budget and with no agent, before this row
+ * sends it to `GATE_MAINTENANCE` on the `gateMaintenance` budget.
  */
 const rules: Record<
   TriageInput["trigger"],
@@ -39,6 +39,16 @@ export const deterministicRouter: TriagePort = {
         rationale: "authority limit: the worker reported no retry can resolve this",
         cause: { kind: "authority", role: "worker" },
       });
+    }
+
+    if (input.trigger === "gate_error") {
+      const { used, max } = input.remainingBudgets.gateError;
+      if (used < max) {
+        return Promise.resolve({
+          verdict: "recheck_gate",
+          rationale: `gate_error: recheck_gate (gateError ${used}/${max})`,
+        });
+      }
     }
 
     const { budget, helpful } = rules[input.trigger];

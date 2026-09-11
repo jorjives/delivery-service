@@ -106,11 +106,12 @@ async function main(): Promise<void> {
     },
   );
 
-  // 2. The worker's change stops the gate running at all; a repair restores it,
-  //    and the SAME attempt is re-checked against the SAME baseline.
+  // 2. The worker's change stops the gate running at all. The gate is rechecked,
+  //    free, until its recheck budget is spent; then a repair restores it, and
+  //    the SAME attempt is re-checked against the SAME baseline.
   await runScenario(
     "Gate error, repaired then re-checked",
-    "the worker's change removes the file the gate reads, so the gate cannot run",
+    "the worker's change removes the file the gate reads, so the gate cannot run, even on recheck",
     {
       agent: agentOf(
         [(wt) => { fs.rmSync(path.join(wt, "report.tap")); return { status: "completed", rationale: "worked, broke the gate" }; }],

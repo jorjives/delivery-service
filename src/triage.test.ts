@@ -216,3 +216,11 @@ describe("a spent population", () => {
     expect(verdict.cause).toMatchObject({ kind: "budget", population });
   });
 });
+
+describe("a gate error while rechecks remain", () => {
+  it("is rechecked with no agent call", async () => {
+    const verdict = await createAgentTriage(forbiddenAgent).triage(input({ trigger: "gate_error", category: undefined }));
+    expect(verdict.verdict).toBe("recheck_gate");
+    expect(verdict.artifact).toBeUndefined();
+  });
+});

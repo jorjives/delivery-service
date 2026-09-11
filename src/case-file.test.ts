@@ -381,7 +381,8 @@ describe("rebuild", () => {
     // A completed terminus resolves its attempt and costs nothing — the
     // terminus budget caps sessions that ended WITHOUT a valid result.
     expect(rebuilt.cursor.budgets.terminus.used).toBe(0);
-    expect(rebuilt.cursor.budgets.gateError.used).toBe(1);
+    // An errored gate costs nothing by itself: the recheck triage verdict is the burn.
+    expect(rebuilt.cursor.budgets.gateError.used).toBe(0);
     expect(rebuilt.cursor.budgets.correction.used).toBe(0);
     // Max values preserved from case.json
     expect(rebuilt.cursor.budgets.terminus.max).toBe(5);
@@ -934,6 +935,28 @@ describe("deriveBudgetsFromLog attribution", () => {
 
     expect(budgets.correction.used).toBe(1);
     expect(budgets.close.used).toBe(1);
+  });
+
+  it("burns gateError on a recheck_gate triage verdict, never on the ERROR gate entry itself", () => {
+    const maxima = {
+      correction: { used: 0, max: 3 },
+      gateError: { used: 0, max: 3 },
+      gateMaintenance: { used: 0, max: 2 },
+      terminus: { used: 0, max: 5 },
+      close: { used: 0, max: 3 },
+    };
+    const history: HistoryEntry[] = [
+      { t: "gate", attempt: 1, status: "ERROR", newFailures: [], class: "error" },
+      { t: "triage", afterAttempt: 1, trigger: "gate_error", verdict: "recheck_gate", rationale: "r", artifactRef: "triage-0" },
+      { t: "gate", attempt: 1, status: "ERROR", newFailures: [], class: "error" },
+    ];
+    expect(deriveBudgetsFromLog(history, maxima).gateError).toEqual({ used: 1, max: 3 });
+  });
+
+  it("routes a recheck_gate verdict back to GATING", () => {
+    expect(
+      deriveStateFromEntry({ t: "triage", afterAttempt: 1, trigger: "gate_error", verdict: "recheck_gate", rationale: "r", artifactRef: "triage-0" }),
+    ).toBe("GATING");
   });
 });
 

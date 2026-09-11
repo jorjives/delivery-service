@@ -407,12 +407,11 @@ so `deterministicRouter`'s dispatch function gains a `gate_error`-only branch
 that checks the two budgets in sequence before falling through to that
 lookup for every other trigger. `triageState` maps `recheck_gate`
 to `GATING`, re-running the same check against the same immutable baseline.
-`gateError` already counts `gate` entries with status `ERROR`
-(`case-file.ts`), so each failed recheck spends it with no new counter.
-*(Team-lead assembly decision: `architecture.md` replaced the `gate_error`
-row outright, which would have made a deterministic-only harness escalate
-instead of reaching gate maintenance once `gateError` was spent. The two-step
-rule keeps today's behaviour after the recheck.)*
+Each `recheck_gate` triage entry is one `gateError` burn, like `reroute` for
+`correction` and `retry_close` for `close`; an errored gate entry costs nothing
+by itself, so an always-broken gate cannot run the population past its cap.
+(Amended in slice 3 delivery: counting every `ERROR` gate entry would have
+reported e.g. "gate recheck 5/3".)
 
 ### Prompt assembly
 
