@@ -21,6 +21,7 @@
     "demo:agent-slice-1": "npx tsx demos/agent-invocation-slice-1-worker-invocation.ts",
     "demo:agent-slice-2": "npx tsx demos/agent-invocation-slice-2-tool-authority.ts",
     "demo:agent-slice-3": "npx tsx demos/agent-invocation-slice-3-gate-maintenance.ts",
+    "demo:triage-slice-1": "npx tsx demos/triage-slice-1-informed-retry.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {

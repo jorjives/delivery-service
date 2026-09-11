@@ -18,11 +18,12 @@ export default defineConfig(
             "tests/case-file-persistence/*.ts",
             "tests/gate-interface/*.ts",
             "tests/single-surface-state-machine/*.ts",
+            "tests/triage-and-router/*.ts",
           ],
           // ponytail: raw count ceiling, keeps needing a bump as slices add
           // demos/tests files; a real fix gives demos/tests their own
           // tsconfig project instead of piggybacking on the default one.
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 50,
+          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 60,
         },
         tsconfigRootDir: import.meta.dirname,
       },
