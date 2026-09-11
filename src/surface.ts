@@ -152,7 +152,12 @@ function abort(
   });
 }
 
-/** Terminal escalation whose reason is the tail terminus's own rationale. */
+/**
+ * Terminal escalation for a log tail that already records one: an authority
+ * terminus, a repair session's escalate, or a triage escalate whose outcome was
+ * never written. The reason is the tail's own rationale, and a triage tail is
+ * credited to triage, exactly as the live run would have credited it.
+ */
 function escalateFromTail(
   dir: string,
   caseFile: CaseFile,
@@ -161,6 +166,9 @@ function escalateFromTail(
   source: string,
 ): Promise<AdvanceResult> {
   const tail = logTail(caseFile);
+  if (tail?.t === "triage") {
+    return escalate(dir, caseFile, location, ports, "triage", tail.rationale);
+  }
   return escalate(
     dir, caseFile, location, ports, source,
     tail?.t === "terminus" ? tail.rationale : "the session escalated",
@@ -645,8 +653,9 @@ export async function advance(
       // the outcome. The close already happened — never re-run the closer.
       return closed(dir, "the closer accepted the work (outcome recorded on resume)");
     case "ESCALATED":
-      // The crash window between recording an authority-class terminus and
-      // writing the outcome: resume onto the terminal edge, not into a throw.
+      // The crash window between recording an escalation (an authority-class
+      // terminus, or a triage escalate) and writing the outcome: resume onto
+      // the terminal edge, not into a throw.
       return escalateFromTail(dir, caseFile, location, ports, "worker");
     default:
       throw new IllegalStateTransition(dir, state, "advance");

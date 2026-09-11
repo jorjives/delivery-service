@@ -4,7 +4,7 @@ import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef, deriveBudgetsFromLog, rebuild } from "./case-file.js";
+import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef, deriveBudgetsFromLog, rebuild, writeRef } from "./case-file.js";
 import { initTempRepo } from "./temp-repo.js";
 import { advance, run, triageTrigger } from "./surface.js";
 import { noopCloser } from "./ports.js";
@@ -486,6 +486,27 @@ describe("the AGENT_ACTIVE edge", () => {
 
     expect(result).toEqual({ state: "ESCALATED", done: true });
     expect((await load(dir)).outcome?.reason).toContain("sign-off");
+  });
+
+  it("resumes a triage escalate recorded before the outcome was written, crediting triage", async () => {
+    // The crash window between appending an escalate triage entry and writing the outcome.
+    const ports = portsWith(unusedAgent());
+    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+    await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" });
+    await appendEntry(dir, {
+      t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0",
+      status: "escalate", category: "exhaustion", rationale: "stuck for good",
+    });
+    await writeRef(dir, "triage-0", { trigger: "worker_escalate", rationale: "no retry can help" });
+    await appendEntry(dir, {
+      t: "triage", afterAttempt: 1, trigger: "worker_escalate",
+      verdict: "escalate", rationale: "no retry can help", artifactRef: "triage-0",
+    });
+
+    const result = await advance(dir, { repoPath: "/unused", worktreePath: "/unused" }, ports);
+
+    expect(result).toEqual({ state: "ESCALATED", done: true });
+    expect((await load(dir)).outcome).toMatchObject({ source: "triage", reason: "no retry can help" });
   });
 });
 
