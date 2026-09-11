@@ -247,14 +247,6 @@ async function recordMissingTerminus(
   return `recorded a missing terminus for ${label} attempt ${tail.attempt} (${tail.sessionKey}): the interrupted session is retried, not re-dispatched`;
 }
 
-/**
- * Dispatch one agent session and route on what it returned.
- *
- * The dispatch entry, the invoke and the terminus entry are one edge: routing
- * goes through `deriveStateFromEntry` on the terminus just appended, so the
- * state a live run moves to and the state a resumed run derives from the log
- * are the same computation rather than two rules that can drift apart.
- */
 /** The triage verdict that starts a session of each role, and so may carry its brief. */
 const BRIEFING_VERDICT = { worker: "reroute", "gate-maintenance": "fix_the_gate" } as const;
 
@@ -279,6 +271,14 @@ async function currentBriefRef(
   return BriefRef.safeParse(ref).success ? start.artifactRef : undefined;
 }
 
+/**
+ * Dispatch one agent session and route on what it returned.
+ *
+ * The dispatch entry, the invoke and the terminus entry are one edge: routing
+ * goes through `deriveStateFromEntry` on the terminus just appended, so the
+ * state a live run moves to and the state a resumed run derives from the log
+ * are the same computation rather than two rules that can drift apart.
+ */
 async function dispatchSession(
   dir: string,
   caseFile: CaseFile,
