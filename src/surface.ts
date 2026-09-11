@@ -4,6 +4,7 @@ import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
 import { budgetExhausted } from "./budgets.js";
+import { BriefRef } from "./prompt-assembly.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput } from "./ports.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
@@ -210,7 +211,7 @@ async function currentBriefRef(dir: string, history: HistoryEntry[]): Promise<st
   const reroute = history.findLast((e) => e.t === "triage" && e.verdict === "reroute");
   if (reroute?.t !== "triage") return undefined;
   const ref = await readRef(dir, reroute.artifactRef);
-  return typeof ref === "object" && ref !== null && "artifact" in ref ? reroute.artifactRef : undefined;
+  return BriefRef.safeParse(ref).success ? reroute.artifactRef : undefined;
 }
 
 async function dispatchSession(

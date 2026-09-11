@@ -28,8 +28,12 @@ export interface AssembledPrompt {
   prompt: string;
 }
 
-/** The ref shape `surface.ts` writes for an agent-path triage round. */
-const BriefRef = z.object({ artifact: SharpenedBrief });
+/**
+ * The ref shape `surface.ts` writes for an agent-path triage round. Exported so
+ * `surface.ts` can ask the same question — "does this ref carry a usable
+ * brief?" — with the same validation, rather than a second, weaker check.
+ */
+export const BriefRef = z.object({ artifact: SharpenedBrief });
 const CloseDetail = z.object({ detail: z.string() });
 
 /**
