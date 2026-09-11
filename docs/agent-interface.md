@@ -99,6 +99,7 @@ The template per role, every slot read from the case file:
 [ task_def ]                   # original intent, from the immutable header
 [ distilled brief ]            # SharpenedBrief on a reroute, raw delta otherwise
 [ verbatim gate evidence ]     # the newly-failing assertions, unparaphrased
+[ setback ]                    # triage only: trigger, used/max budgets, setback evidence, prior triage rationales
 [ envelope instruction ]       # non-negotiable: "emit this envelope, these statuses"
 ```
 
@@ -107,6 +108,7 @@ The template per role, every slot read from the case file:
   drop a slot. This is what keeps the envelope instruction unconditional: if a
   project owned the template, it could tell a worker *not* to emit an envelope, and
   `INCOMPLETE_TERMINUS` would stop meaning "crash".
+- **The brief is rendered as labelled fields** (problem, dead ends, scope, references, diagnosis), with the diagnosis labelled as a hypothesis. Worker and gate-maintenance prompts carry no setback slot.
 - **The domain system-prompt fragment lives in the immutable header**, alongside
   `task_def` and `gate_ref`. It is pinned run-identity ("this is a Python service,
   these are the domain tools"), immutable, out of the worker's reach, and it

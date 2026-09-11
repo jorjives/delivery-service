@@ -1,4 +1,4 @@
-export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog } from "./case-file.js";
+export { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog, setbackOf } from "./case-file.js";
 export { computeDelta } from "./delta-rule.js";
 export { createCommandGate } from "./command-gate.js";
 export { createCustomGate, loadCustomGate } from "./custom-gate.js";
@@ -53,7 +53,7 @@ export type {
   DeltaResult,
   DeltaOptions,
 } from "./schema.js";
-export type { ResumeAction } from "./case-file.js";
+export type { ResumeAction, Setback } from "./case-file.js";
 export type { Gate, GateContext } from "./command-gate.js";
 export {
   FileNotFound,
@@ -72,8 +72,8 @@ export {
 export { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig, READ_ONLY_TOOLS } from "./role-config.js";
 export type { Envelope, RoleConfig } from "./role-config.js";
 export { SharpenedBrief, GateRepairBrief, CloseRepairBrief, EscalationPacket, TriageEnvelope, triageRoleConfig } from "./triage-role-config.js";
-export { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
-export type { AssembledPrompt, PromptEvidence } from "./prompt-assembly.js";
+export { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE } from "./prompt-assembly.js";
+export type { AssembledPrompt, PromptEvidence, PromptSetback } from "./prompt-assembly.js";
 export { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
 export type { SessionEnvironment, RoleConfigs } from "./agent-invoke.js";
 export { createToolAuthority, refusalSentence, outsideWorktreeSentence, authorityRefusal } from "./tool-authority.js";
