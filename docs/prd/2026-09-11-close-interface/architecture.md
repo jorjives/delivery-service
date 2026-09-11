@@ -24,7 +24,7 @@ New files, following the codebase's flat `src/*.ts` + `src/*.test.ts` layout
 already established):
 
 ```
-src/resolve-closer.ts        # resolveCloser(closerRef, baseDir?): CloserPort — total, pure
+src/resolve-closer.ts        # resolveCloser(closerRef, repoPath): CloserPort — total, pure
 src/merge-back-closer.ts     # createMergeBackCloser(opts?)
 src/commit-to-branch-closer.ts
 src/open-pr-closer.ts        # createOpenPrCloser(opts?: { ghCommand?: string })
@@ -148,7 +148,7 @@ export type CloserRef = z.infer<typeof CloserRef>;
 
 ```typescript
 // src/resolve-closer.ts
-export function resolveCloser(closerRef: CloserRef, baseDir?: string): CloserPort {
+export function resolveCloser(closerRef: CloserRef, repoPath: string): CloserPort {
   const parsed = CloserRef.safeParse(closerRef);
   if (!parsed.success) return failedCloser(`Cannot resolve closer reference: ${parsed.error.message}`);
   const ref = parsed.data;
@@ -156,10 +156,16 @@ export function resolveCloser(closerRef: CloserRef, baseDir?: string): CloserPor
     case "merge-back":       return createMergeBackCloser(ref);
     case "commit-to-branch": return createCommitToBranchCloser(ref);
     case "open-pr":          return createOpenPrCloser(ref);
-    case "custom":           return createCustomCloser(ref.modulePath, ref.exportName, baseDir);
+    case "custom":           return createCustomCloser(ref.modulePath, ref.exportName, repoPath);
   }
 }
 ```
+
+`repoPath` is required, not an optional `baseDir` defaulting to
+`process.cwd()`: a custom closer's relative `modulePath` must resolve against
+the repo root (`SurfaceLocation.repoPath`), never the worktree the worker
+edits, so an agent can never rewrite the closer that lands its own work. This
+matches the gate, which `run-gate.ts` resolves against `location.repoPath`.
 
 Total and pure, exactly like `resolveGate` (`src/resolve-gate.ts:16-26`): an
 unparseable `CloserRef` yields a `CloserPort` whose `close()` always returns
@@ -213,7 +219,7 @@ implementations; **where the ref's value comes from is Item 9's declarative
 surface**, matching the identical deferral the gate design already states
 (`docs/superpowers/specs/2026-09-04-gate-interface-design.md:362`,
 `research.md §2.3` restates this as the Item 6/Item 9 boundary). Until then,
-constructing `SurfacePorts.closer = resolveCloser(closerRef)` and passing
+constructing `SurfacePorts.closer = resolveCloser(closerRef, location.repoPath)` and passing
 `closerRef` into `create()`'s header are both direct code, exactly as
 constructing a `GateRef` literal is direct code today — "selectable by
 configuration alone" means *by data, not by implementing an interface*, which

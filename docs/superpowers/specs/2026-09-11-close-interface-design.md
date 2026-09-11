@@ -99,9 +99,15 @@ absence or expired auth is a project-setup problem this item cannot solve.
 1. **`CloserRef`**, a zod discriminated union on `type` mirroring `GateRef`:
    built-in variants carry a name and parameters; `custom` carries
    `modulePath` and optional `exportName`.
-2. **`resolveCloser(ref, baseDir?)`**, total and pure like `resolveGate`: an
+2. **`resolveCloser(ref, repoPath)`**, total and pure like `resolveGate`: an
    unparseable ref yields a closer whose `close()` returns `ERROR`, so
-   resolution failure and run failure reach the caller in one shape.
+   resolution failure and run failure reach the caller in one shape. A
+   `custom` ref's relative `modulePath` resolves against `repoPath`, the
+   repo root, never the worktree the worker edits and never the process's
+   working directory: `repoPath` is required, with no `process.cwd()`
+   default, so no caller can omit it and load the closer from inside the
+   tree it judges. This matches the gate (`run-gate.ts` resolves against
+   `SurfaceLocation.repoPath`).
 3. **The `merge-back` closer**: idempotent ancestor check, commit, ff-only
    merge into the pinned base branch, worktree removal, safety-checked branch
    delete.
@@ -236,7 +242,8 @@ identically across calls, only on invoking it correctly against on-disk
 state. Existing close-routing tests also inject `ports.closer` as a scripted
 double, and forcing them through the `custom` dynamic-import path would add
 cost for no gain. Whoever assembles the driver calls
-`resolveCloser(header.closerRef)`. Until Item 9 exists that is direct code,
+`resolveCloser(header.closerRef, location.repoPath)`, passing the same
+`SurfaceLocation.repoPath` `surface.ts` hands the gate. Until Item 9 exists that is direct code,
 as constructing a `GateRef` literal is today. "Selectable by configuration
 alone" means selectable by data, not by implementing an interface.
 
