@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig } from "./role-config.js";
+import { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig, READ_ONLY_TOOLS } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
 import { InvalidRoleConfig } from "./errors.js";
+import { TriageEnvelope } from "./triage-role-config.js";
 
 describe("WorkerEnvelope", () => {
   it("accepts a clean completion", () => {
@@ -115,5 +116,30 @@ describe("gateMaintenanceRoleConfig", () => {
     expect(
       gateMaintenanceRoleConfig.envelopeSchema.safeParse({ status: "fix_the_gate", rationale: "x" }).success,
     ).toBe(false);
+  });
+});
+
+describe("a triage config cannot be configured into editing the worktree", () => {
+  it("names allowedTools and the read-only rule when a triage config grants Edit", () => {
+    expect(() =>
+      validateRoleConfig({
+        role: "triage",
+        systemPromptFragment: "You classify setbacks.",
+        envelopeSchema: TriageEnvelope,
+        allowedTools: ["Read", "Edit"],
+      }),
+    ).toThrow(/allowedTools.*read-only/);
+  });
+
+  it("accepts any subset of the read-only tools", () => {
+    expect(READ_ONLY_TOOLS).toEqual(["Read", "Glob", "Grep"]);
+    expect(() =>
+      validateRoleConfig({
+        role: "triage",
+        systemPromptFragment: "You classify setbacks.",
+        envelopeSchema: TriageEnvelope,
+        allowedTools: ["Read"],
+      }),
+    ).not.toThrow();
   });
 });

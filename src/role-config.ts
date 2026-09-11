@@ -36,11 +36,11 @@ export const WorkerEnvelope = z.discriminatedUnion("status", [
  * agent's reach, and the only thing that varies between roles. The invocation
  * primitive itself never branches on `role`.
  */
-export interface RoleConfig extends RoleHandle {
+export interface RoleConfig<E = Envelope> extends RoleHandle {
   /** Role identity and domain context. Becomes the session's system prompt. */
   systemPromptFragment: string;
   /** The reply shape this role may emit. Also constrains the SDK's output. */
-  envelopeSchema: z.ZodType<Envelope>;
+  envelopeSchema: z.ZodType<E>;
   /** The authored, positive tool list. This role's entire blast radius. */
   allowedTools: string[];
   /**
@@ -50,6 +50,13 @@ export interface RoleConfig extends RoleHandle {
    */
   budgets?: Record<string, unknown>;
 }
+
+/**
+ * The only tools a triage session may be granted. Triage is read-only until its
+ * single case-file append; that is what makes a crash mid-triage safe to replay,
+ * so the tool list is a property of the role, not a knob to widen.
+ */
+export const READ_ONLY_TOOLS = ["Read", "Glob", "Grep"] as const;
 
 /**
  * The reference worker configuration. An extender copies this, changes the
@@ -91,22 +98,33 @@ export const gateMaintenanceRoleConfig: RoleConfig = {
   allowedTools: ["Read", "Glob", "Grep", "Edit", "Write"],
 };
 
-const RoleConfigShape = z.object({
-  role: z.enum(["worker", "triage", "gate-maintenance"] as const satisfies readonly AgentRole[]),
-  systemPromptFragment: z.string().min(1),
-  envelopeSchema: z.custom<z.ZodType<Envelope>>((value) => value instanceof z.ZodType, {
-    message: "must be a zod schema",
-  }),
-  allowedTools: z.array(z.string().min(1)).min(1),
-  budgets: z.record(z.string(), z.unknown()).optional(),
-});
+const RoleConfigShape = z
+  .object({
+    role: z.enum(["worker", "triage", "gate-maintenance"] as const satisfies readonly AgentRole[]),
+    systemPromptFragment: z.string().min(1),
+    envelopeSchema: z.custom<z.ZodType<unknown>>((value) => value instanceof z.ZodType, {
+      message: "must be a zod schema",
+    }),
+    allowedTools: z.array(z.string().min(1)).min(1),
+    budgets: z.record(z.string(), z.unknown()).optional(),
+  })
+  .superRefine((cfg, ctx) => {
+    if (cfg.role !== "triage") return;
+    const writable = cfg.allowedTools.find((tool) => !(READ_ONLY_TOOLS as readonly string[]).includes(tool));
+    if (writable === undefined) return;
+    ctx.addIssue({
+      code: "custom",
+      path: ["allowedTools"],
+      message: `triage is read-only by design and may use only ${READ_ONLY_TOOLS.join(", ")}, not ${writable}`,
+    });
+  });
 
 /**
  * Check a role config before any session is spawned, and name the field that is
  * wrong. An extender's first mistake is a typo in a config, and finding it
  * costs nothing here versus a confusing session failure later.
  */
-export function validateRoleConfig(cfg: RoleConfig): void {
+export function validateRoleConfig(cfg: RoleConfig<unknown>): void {
   const result = RoleConfigShape.safeParse(cfg);
   if (result.success) return;
   const { issues } = result.error;

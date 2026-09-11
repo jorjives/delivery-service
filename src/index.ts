@@ -14,6 +14,7 @@ export type {
   RoleHandle,
   AgentContext,
   Terminus,
+  Incomplete,
   AgentPort,
   TriageInput,
   TriageVerdict,
@@ -65,8 +66,9 @@ export {
   IllegalStateTransition,
   InvalidRoleConfig,
 } from "./errors.js";
-export { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig } from "./role-config.js";
+export { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig, READ_ONLY_TOOLS } from "./role-config.js";
 export type { Envelope, RoleConfig } from "./role-config.js";
+export { SharpenedBrief, GateRepairBrief, CloseRepairBrief, EscalationPacket, TriageEnvelope, triageRoleConfig } from "./triage-role-config.js";
 export { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 export type { AssembledPrompt, PromptEvidence } from "./prompt-assembly.js";
 export { invoke, DID_NOT_COMPLETE, buildSessionOptions } from "./agent-invoke.js";

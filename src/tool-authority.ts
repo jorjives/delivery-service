@@ -2,7 +2,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { CanUseTool, PermissionResult, SDKPermissionDenial } from "@anthropic-ai/claude-agent-sdk";
 import type { RoleConfig } from "./role-config.js";
-import type { Terminus } from "./ports.js";
+import type { Incomplete } from "./ports.js";
 
 /**
  * The one sentence a refusal is ever reported with — to the model in the deny
@@ -13,7 +13,7 @@ import type { Terminus } from "./ports.js";
  * sentence names the role, the tool it reached for, what it may use instead,
  * and says outright that the refusal was the point.
  */
-export function refusalSentence(roleCfg: RoleConfig, tool: string): string {
+export function refusalSentence(roleCfg: RoleConfig<unknown>, tool: string): string {
   return (
     `the ${roleCfg.role} role is not permitted to use ${tool}, so the harness refused the call ` +
     `before it ran. This role may use only: ${roleCfg.allowedTools.join(", ")}. ` +
@@ -29,7 +29,7 @@ export function refusalSentence(roleCfg: RoleConfig, tool: string): string {
  * it, so this is the rule that stops a gate-maintenance session "repairing" a
  * check into passing, however broad its tool list.
  */
-export function outsideWorktreeSentence(roleCfg: RoleConfig, tool: string, target: string): string {
+export function outsideWorktreeSentence(roleCfg: RoleConfig<unknown>, tool: string, target: string): string {
   return (
     `the ${roleCfg.role} role used ${tool} on ${target}, which is outside the worktree, ` +
     `so the harness refused the call before it ran. Every role may act only inside its worktree; ` +
@@ -85,7 +85,7 @@ function isInside(worktreePath: string, target: string): boolean {
  * runtime already routes a call aimed outside its working directory to this
  * callback rather than running it; rule 2 is the harness answering "no".
  */
-export function createToolAuthority(roleCfg: RoleConfig, worktreePath: string): ToolAuthority {
+export function createToolAuthority(roleCfg: RoleConfig<unknown>, worktreePath: string): ToolAuthority {
   const refusals: string[] = [];
   const deny = (message: string): Promise<PermissionResult> => {
     refusals.push(message);
@@ -115,10 +115,10 @@ export function createToolAuthority(roleCfg: RoleConfig, worktreePath: string): 
  * authority.
  */
 export function authorityRefusal(
-  roleCfg: RoleConfig,
+  roleCfg: RoleConfig<unknown>,
   refusals: readonly string[],
   denials: readonly Pick<SDKPermissionDenial, "tool_name">[],
-): Terminus | undefined {
+): Incomplete | undefined {
   const outOfRole = denials
     .map((denial) => denial.tool_name)
     .find((tool) => !roleCfg.allowedTools.includes(tool));

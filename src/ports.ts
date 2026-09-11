@@ -25,6 +25,9 @@ export type Terminus =
   | { status: "escalate"; category: "exhaustion" | "authority"; rationale: string }
   | { status: "incomplete"; rationale: string };
 
+/** The harness's own verdict on a session that produced nothing usable, for any role. */
+export type Incomplete = Extract<Terminus, { status: "incomplete" }>;
+
 export interface AgentPort {
   invoke(roleCfg: RoleHandle, ctx: AgentContext): Promise<Terminus>;
 }

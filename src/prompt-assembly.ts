@@ -53,7 +53,7 @@ export async function resolveEvidence(dir: string, caseFile: CaseFile): Promise<
  */
 export function assemblePrompt(
   caseFile: CaseFile,
-  roleCfg: RoleConfig,
+  roleCfg: RoleConfig<unknown>,
   evidence: PromptEvidence,
 ): AssembledPrompt {
   const domain = caseFile.header.domainPrompt;

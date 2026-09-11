@@ -4,7 +4,7 @@ import { load } from "./case-file.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
-import type { AgentContext, Terminus } from "./ports.js";
+import type { AgentContext, Terminus, Incomplete } from "./ports.js";
 import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
 
 /**
@@ -25,7 +25,7 @@ export const DID_NOT_COMPLETE = {
   notRun: "the session could not be started or run to completion",
 } as const;
 
-function incomplete(roleCfg: RoleConfig, reason: string): Terminus {
+function incomplete(roleCfg: RoleConfig<unknown>, reason: string): Incomplete {
   return { status: "incomplete", rationale: `${roleCfg.role} session did not complete: ${reason}` };
 }
 
@@ -54,7 +54,7 @@ export interface SessionEnvironment {
  * permission mode, prompts answered by this process, no hooks, no plugins.
  */
 export function buildSessionOptions(
-  roleCfg: RoleConfig,
+  roleCfg: RoleConfig<unknown>,
   ctx: AgentContext,
   session: SessionEnvironment,
   canUseTool: CanUseTool,
@@ -74,7 +74,7 @@ export function buildSessionOptions(
 }
 
 /**
- * One agent session in, exactly one terminus out.
+ * One agent session in, exactly one result out.
  *
  * The primitive never retries and never branches on role: it assembles the
  * prompt, spawns one fresh session (no resume, no session id — sessions are
@@ -92,13 +92,13 @@ export function buildSessionOptions(
  * Throws `InvalidRoleConfig` — and only that — for a malformed config, before any
  * session is spawned. An extender's typo is a programming error, not a run
  * outcome: reporting it as `incomplete` would hide it behind a retry budget.
- * Every *agent* outcome, success or failure, returns as a `Terminus`.
+ * Every *agent* outcome, success or failure, returns as the role's envelope or an incomplete terminus.
  */
-export async function invoke(
-  roleCfg: RoleConfig,
+export async function invoke<E>(
+  roleCfg: RoleConfig<E>,
   ctx: AgentContext,
   session: SessionEnvironment = {},
-): Promise<Terminus> {
+): Promise<E | Incomplete> {
   validateRoleConfig(roleCfg);
 
   const caseFile = await load(ctx.dir);
