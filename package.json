@@ -23,6 +23,7 @@
     "demo:agent-slice-3": "npx tsx demos/agent-invocation-slice-3-gate-maintenance.ts",
     "demo:triage-slice-1": "npx tsx demos/triage-slice-1-informed-retry.ts",
     "demo:triage-slice-2": "npx tsx demos/triage-slice-2-escalation-packets.ts",
+    "demo:triage-slice-3": "npx tsx demos/triage-slice-3-last-attempt.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {
