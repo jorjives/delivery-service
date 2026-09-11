@@ -78,3 +78,4 @@ export { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort } from "
 export type { SessionEnvironment, RoleConfigs } from "./agent-invoke.js";
 export { createToolAuthority, refusalSentence, outsideWorktreeSentence, authorityRefusal } from "./tool-authority.js";
 export type { ToolAuthority } from "./tool-authority.js";
+export { createAgentTriage, needsJudgement, toTriageVerdict, legalVerdicts } from "./triage.js";
