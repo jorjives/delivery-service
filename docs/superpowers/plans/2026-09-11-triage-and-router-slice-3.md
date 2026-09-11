@@ -1,5 +1,6 @@
 # Triage and Deterministic Router — Slice 3: Triage Judges the Last Attempt and Rechecks Broken Gates for Free
 
+> **Status:** ✅ Complete — 2026-09-11 — `adbcdf0`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 3 of `docs/superpowers/specs/2026-09-10-triage-and-router-slices.md`
