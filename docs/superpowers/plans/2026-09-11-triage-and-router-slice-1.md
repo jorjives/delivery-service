@@ -1515,7 +1515,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 7: Runnable demo against `claude-mock`
+## Task 7: Runnable demo against `claude-mock` ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/triage-slice-1-informed-retry.ts`
