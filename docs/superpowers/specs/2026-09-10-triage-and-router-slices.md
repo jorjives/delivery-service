@@ -1,6 +1,7 @@
 # Triage and Deterministic Router — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-09-10-triage-and-router-design.md`
+> **Status:** ✅ Complete — 2026-09-11 — all 3 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** this item has no end-user product surface; a CLI (Item 8) and
@@ -141,6 +142,7 @@ on it without reading transcripts, they stop trusting the harness.
 
 ## Slice 3: Triage Judges the Last Attempt and Rechecks Broken Gates for Free
 
+**Status:** ✅ Complete — 2026-09-11 — `adbcdf0`
 **Delivers:** On the last remaining attempt, triage decides whether a final retry is
 worth spending or a clean escalation is better; a gate that errors is first re-run
 for free before anything else is spent, and a gate repair session receives triage's

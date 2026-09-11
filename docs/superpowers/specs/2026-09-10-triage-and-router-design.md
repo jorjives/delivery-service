@@ -6,6 +6,7 @@ roadmap_item: 5
 
 # Triage and Deterministic Router — Design
 
+> **Status:** ✅ Complete — 2026-09-11 — all 3 slices delivered
 > Roadmap: `docs/superpowers/specs/2026-09-04-delivery-harness-roadmap.md`, Item 5.
 > Mechanism spec this design implements: `docs/single-surface-control-flow.md` §Triage, `docs/agent-interface.md`.
 > Personas: `docs/personas.md` (team-derived, assumed, not human-confirmed).
