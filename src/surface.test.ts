@@ -1128,6 +1128,38 @@ describe("triage by agent", () => {
     expect(retry).not.toHaveProperty("briefRef");
   });
 
+  it("asks the triage agent about a failing gate only on the last correction slot", async () => {
+    const lastSlotPacket = {
+      decision: "Three attempts have regressed the same assertion. Decide whether to amend the task or take it on yourself.",
+      evidence: "2: not ok 2 - beta",
+      dead_ends: "Attempts 1 to 3 each rewrote report.tap and broke beta.",
+      why_now: "One correction slot is left, and another attempt would repeat the same change.",
+      references: ["worker-1-0", "worker-2-0", "worker-3-0"],
+    };
+    const triageKeys: string[] = [];
+    const agent = sessionAgent(
+      (_role, ctx) => {
+        writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
+        return Promise.resolve({ status: "completed", rationale: "changed it" });
+      },
+      (ctx) => {
+        triageKeys.push(ctx.sessionKey);
+        return Promise.resolve({ status: "escalate", rationale: "a last retry would repeat attempt 3", payload: lastSlotPacket });
+      },
+    );
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await run(dir, location, ports);
+
+    // correction max is 3: rounds 0 and 1 leave more than one slot, so the lookup
+    // table reroutes; round 2 has exactly one slot left, so the agent decides.
+    expect(triageKeys).toEqual(["triage-2"]);
+    expect(result.state).toBe("ESCALATED");
+    expect(result.outcome).toMatchObject({ source: "triage", reason: "a last retry would repeat attempt 3" });
+    expect(await readRef(dir, result.outcome?.packetRef ?? "")).toEqual(lastSlotPacket);
+  });
+
   it("never asks the triage agent about an authority limit", async () => {
     const agent = sessionAgent(() =>
       Promise.resolve({ status: "escalate", category: "authority", rationale: "I may not touch billing" }),

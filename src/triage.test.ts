@@ -183,3 +183,36 @@ describe("unusable triage output", () => {
     expect(verdict).toEqual({ verdict: "escalate", rationale: "no retry will help", artifact: packet });
   });
 });
+
+describe("the last correction slot after a gate failure", () => {
+  const gateFail = (correctionUsed: number) =>
+    input({ trigger: "gate_fail", category: undefined, remainingBudgets: budgets(correctionUsed) });
+
+  it("engages the agent only on the last correction slot", () => {
+    expect(needsJudgement(gateFail(2))).toBe(true);
+    expect(needsJudgement(gateFail(1))).toBe(false);
+    expect(needsJudgement(gateFail(3))).toBe(false);
+  });
+
+  it.each([
+    { verdict: "reroute", rationale: "one more try is worth it", artifact: brief },
+    { verdict: "escalate", rationale: "a last retry would repeat attempt 2", artifact: packet },
+  ])("asks the agent on the last slot and acts on its $verdict answer", async (expected) => {
+    const agent = triageAgent({ status: expected.verdict as any, rationale: expected.rationale, payload: expected.artifact });
+    const verdict = await createAgentTriage(agent).triage(gateFail(2));
+    expect(agent.calls).toEqual([ctx]);
+    expect(verdict).toEqual(expected);
+  });
+});
+
+describe("a spent population", () => {
+  it.each([
+    ["a gate failure", input({ trigger: "gate_fail", category: undefined, remainingBudgets: budgets(3) }), "correction"],
+    ["a stuck worker", input({ remainingBudgets: budgets(3) }), "correction"],
+    ["a close failure", input({ trigger: "close_failure", category: undefined, remainingBudgets: budgets(0, 3) }), "close"],
+  ] as const)("escalates %s with no agent call, naming the spent budget as the cause", async (_name, spent, population) => {
+    const verdict = await createAgentTriage(forbiddenAgent).triage(spent);
+    expect(verdict.verdict).toBe("escalate");
+    expect(verdict.cause).toMatchObject({ kind: "budget", population });
+  });
+});

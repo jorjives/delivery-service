@@ -20,18 +20,20 @@ export const legalVerdicts: Record<TriageInput["trigger"], ReadonlySet<Verdict>>
 /**
  * Whether a real decision exists that an agent could change. A stuck worker
  * with a correction slot left is one: triage may judge a retry worthwhile and
- * say what to try. The last close slot is another: a clean escalation may beat
- * one more long-shot close. Once a population is spent, no judgement changes
- * the outcome, so no agent is asked a question whose only answer is escalate.
+ * say what to try. The last slot of a population is another: with one slot
+ * left, a clean escalation may beat a long-shot retry. Once a population is
+ * spent, no judgement changes the outcome, so no agent is asked a question
+ * whose only answer is escalate.
  */
 export function needsJudgement({ trigger, category, remainingBudgets: b }: TriageInput): boolean {
   const left = (x: Budget) => x.max - x.used;
   switch (trigger) {
     case "worker_escalate":
       return category !== "authority" && left(b.correction) > 0;
+    case "gate_fail":
+      return left(b.correction) === 1;
     case "close_failure":
       return left(b.close) === 1;
-    case "gate_fail":
     case "gate_error":
       return false;
   }
