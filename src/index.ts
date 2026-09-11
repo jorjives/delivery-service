@@ -18,6 +18,7 @@ export type {
   TriageTerminus,
   RoleTerminusMap,
   AgentPort,
+  EscalationCause,
   TriageInput,
   TriageArtifact,
   TriageVerdict,
@@ -79,3 +80,5 @@ export type { SessionEnvironment, RoleConfigs } from "./agent-invoke.js";
 export { createToolAuthority, refusalSentence, outsideWorktreeSentence, authorityRefusal } from "./tool-authority.js";
 export type { ToolAuthority } from "./tool-authority.js";
 export { createAgentTriage, needsJudgement, toTriageVerdict, legalVerdicts } from "./triage.js";
+export { buildEscalationPacket, resolveEscalationPacket, POPULATION_LABELS, SETBACK_LABELS, NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
+export type { PacketFacts } from "./escalation-packet.js";

@@ -1,4 +1,4 @@
-import type { BudgetSet, CaseFile } from "./schema.js";
+import type { Budget, BudgetPopulation, BudgetSet, CaseFile } from "./schema.js";
 import type { EscalationPacket, SharpenedBrief, TriageEnvelope } from "./triage-role-config.js";
 
 // --- AgentPort (createAgentPort in agent-invoke.ts is the SDK-backed implementation) ---
@@ -42,6 +42,13 @@ export interface AgentPort {
 }
 
 // --- TriagePort (deterministicRouter in router.ts; createAgentTriage in triage.ts) ---
+
+/** Why a surface escalated, when no agent wrote the packet. The surface builds the packet from it. */
+export type EscalationCause =
+  | { kind: "authority"; role: "worker" | "gate-maintenance" }
+  | { kind: "repair_gave_up" }
+  | { kind: "budget"; population: BudgetPopulation; budget: Budget; detail: string }
+  | { kind: "triage_failure"; rationale: string };
 
 export interface TriageInput {
   trigger: "gate_fail" | "gate_error" | "worker_escalate" | "close_failure";
