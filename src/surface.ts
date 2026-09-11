@@ -28,6 +28,10 @@ function worktreeOf(caseFile: CaseFile, location: SurfaceLocation): string {
   return caseFile.cursor.worktreeRef || location.worktreePath;
 }
 
+function locationOf(caseFile: CaseFile, location: SurfaceLocation): SurfaceLocation {
+  return { repoPath: location.repoPath, worktreePath: worktreeOf(caseFile, location) };
+}
+
 /**
  * Where the surface actually is, derived rather than trusted.
  *
@@ -357,10 +361,7 @@ async function preGating(
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
-  const report = await recordBaseline(dir, {
-    repoPath: location.repoPath,
-    worktreePath: worktreeOf(caseFile, location),
-  });
+  const report = await recordBaseline(dir, locationOf(caseFile, location));
   if (report.status !== "ERROR") {
     await updateCursor(dir, { state: "AGENT_ACTIVE" });
     return { state: "AGENT_ACTIVE", done: false };
@@ -543,7 +544,7 @@ async function gating(
 ): Promise<AdvanceResult> {
   const { delta } = await runCheck(
     dir,
-    { repoPath: location.repoPath, worktreePath: worktreeOf(caseFile, location) },
+    locationOf(caseFile, location),
     workerAttempt(caseFile.history),
   );
   const state: SurfaceState = delta.pass ? "CLOSING" : "TRIAGE";
