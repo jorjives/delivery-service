@@ -1159,8 +1159,7 @@ describe.skipIf(!isOnPath("claude-mock"))("triage by agent through the real invo
       references: ["worker-1-0"],
       diagnosis: "the report is generated, not hand-written",
     };
-    let dir: string;
-    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    const dir = await mkdtemp(join(tmpdir(), "surface-case-"));
     await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
     const scriptPath = join(dir, "mock.json");
     const journalPath = join(dir, "journal.jsonl");

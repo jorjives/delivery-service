@@ -4,7 +4,7 @@ import { load } from "./case-file.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
-import type { AgentContext, AgentPort, RoleHandle, Terminus, Incomplete } from "./ports.js";
+import type { AgentContext, AgentPort, RoleHandle, Incomplete } from "./ports.js";
 import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
 
