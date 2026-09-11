@@ -209,6 +209,8 @@ what the harness owns (envelope instruction, template order), so Item 9
 
 ## Item 5: Triage and Deterministic Router
 
+**Status:** ✅ Complete — 2026-09-11 — spec: `docs/superpowers/specs/2026-09-10-triage-and-router-design.md`
+
 **Delivers:** The routing layer that compresses accumulated failure history
 into focused artefacts (sharpened briefs for agents, escalation packets for
 humans), with a fast deterministic path for common cases and an agent path for
