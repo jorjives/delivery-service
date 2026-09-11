@@ -19,6 +19,7 @@ then the budget-boundary and gate-error refinements with the extender guide.
 ## Slice 1: A Stuck Worker's Retry Is Informed by Triage, Not Re-dispatched Blind
 
 **Status:** ✅ Complete — 2026-09-11 — `df74624`
+**Tests:** ✅ Recorded — 2026-09-11 — `4477d17` — cli — 1 UAT + 5 AC, 4 skipped
 **Delivers:** When a worker gives up but another attempt might succeed, a read-only
 triage agent decides whether to retry and, if it does, the fresh worker receives a
 sharpened brief saying what was tried, why it missed, and what to try next, while plain
