@@ -143,6 +143,7 @@ on it without reading transcripts, they stop trusting the harness.
 ## Slice 3: Triage Judges the Last Attempt and Rechecks Broken Gates for Free
 
 **Status:** ✅ Complete — 2026-09-11 — `adbcdf0`
+**Tests:** ✅ Recorded — 2026-09-11 — `04e1d25` — cli — 1 UAT + 4 AC, 4 skipped
 **Delivers:** On the last remaining attempt, triage decides whether a final retry is
 worth spending or a clean escalation is better; a gate that errors is first re-run
 for free before anything else is spent, and a gate repair session receives triage's
