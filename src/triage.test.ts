@@ -3,6 +3,7 @@ import { createAgentTriage, needsJudgement, toTriageVerdict } from "./triage.js"
 import type { AgentContext, AgentPort, TriageInput, TriageTerminus } from "./ports.js";
 import type { BudgetSet, CaseFile } from "./schema.js";
 import { DID_NOT_COMPLETE } from "./agent-invoke.js";
+import type { TriageEnvelope } from "./triage-role-config.js";
 
 const ctx: AgentContext = { worktreePath: "/w", dir: "/d", sessionKey: "triage-0" };
 
@@ -195,13 +196,13 @@ describe("the last correction slot after a gate failure", () => {
   });
 
   it.each([
-    { verdict: "reroute", rationale: "one more try is worth it", artifact: brief },
-    { verdict: "escalate", rationale: "a last retry would repeat attempt 2", artifact: packet },
-  ])("asks the agent on the last slot and acts on its $verdict answer", async (expected) => {
-    const agent = triageAgent({ status: expected.verdict as any, rationale: expected.rationale, payload: expected.artifact });
+    { status: "reroute", rationale: "one more try is worth it", payload: brief },
+    { status: "escalate", rationale: "a last retry would repeat attempt 2", payload: packet },
+  ] as TriageEnvelope[])("asks the agent on the last slot and acts on its $status answer", async (reply) => {
+    const agent = triageAgent(reply);
     const verdict = await createAgentTriage(agent).triage(gateFail(2));
     expect(agent.calls).toEqual([ctx]);
-    expect(verdict).toEqual(expected);
+    expect(verdict).toEqual({ verdict: reply.status, rationale: reply.rationale, artifact: reply.payload });
   });
 });
 
