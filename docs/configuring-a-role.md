@@ -1,8 +1,8 @@
 # Configuring a role
 
-This guide gets you from nothing to a first successful agent invocation for either
-of the two roles the harness ships: the **worker** and **gate-maintenance**. You do
-not need to read any source to follow it.
+This guide gets you from nothing to a first successful agent invocation for any
+of the three roles the harness ships: the **worker**, **gate-maintenance** and
+**triage**. You do not need to read any source to follow it.
 
 ## What a role is
 
@@ -16,9 +16,9 @@ A role configuration has four fields:
 
 | Field | What it is | What happens if it is wrong |
 |---|---|---|
-| `role` | `"worker"` or `"gate-maintenance"` | Rejected before any session starts |
+| `role` | `"worker"`, `"gate-maintenance"` or `"triage"` | Rejected before any session starts |
 | `systemPromptFragment` | Who the agent is and what it is for, in plain sentences. Must not be empty. | Rejected before any session starts |
-| `envelopeSchema` | The reply shape the agent must end with. Use `WorkerEnvelope` for both roles. | Rejected before any session starts |
+| `envelopeSchema` | The reply shape the agent must end with. Use `WorkerEnvelope` for the worker and gate-maintenance, and `TriageEnvelope` for triage. | Rejected before any session starts |
 | `allowedTools` | The tools the agent may use, e.g. `["Read", "Edit"]`. Must not be empty. This is the role's entire blast radius. | Rejected before any session starts |
 
 A mistake in any field throws `InvalidRoleConfig`, naming the field, before an
@@ -188,3 +188,168 @@ npm run demo:agent-slice-3   # gate-maintenance
 The mock does not model tool permissions, so it cannot show a refusal happening
 inside a live session. The demos show the refusal by driving the harness's own
 decision directly; the live guarantee comes from the real `claude` runtime.
+
+## Triage
+
+Triage decides what happens after a setback: the gate failed, the gate could not
+run, the worker gave up, or the close failed. It reads; it never edits. It is the
+same kind of role as the other two: one configuration, the same `invoke`.
+
+### The reference configuration
+
+```ts
+import { TriageEnvelope, READ_ONLY_TOOLS, type RoleConfig } from "./src/index.js";
+
+export const myTriage: RoleConfig<TriageEnvelope> = {
+  role: "triage",
+  systemPromptFragment: [
+    "You are triage on a gated delivery harness: a read-only classifier.",
+    "Read the setback, the remaining budgets and what earlier rounds decided, then choose what happens next.",
+    "Your diagnosis is a hypothesis for the next session to test, not an established fact.",
+  ].join("\n"),
+  envelopeSchema: TriageEnvelope,
+  allowedTools: [...READ_ONLY_TOOLS], // Read, Glob, Grep
+};
+```
+
+It is also exported ready-made as `triageRoleConfig`.
+
+**Triage's tool list is read-only by design. It is not a setting to widen.**
+Triage must never change the thing it is judging: the gate is the only proof
+that work is good, and a triage session that could edit the worktree could make
+a failure disappear rather than explain it. Change the sentences if you like;
+keep the tools to `Read`, `Glob` and `Grep`.
+
+### When triage is asked
+
+The harness only calls the triage agent when its answer can change what
+happens. Every other setback is settled by a fixed rule, at no cost:
+
+| Setback | The agent is asked when | Otherwise |
+|---|---|---|
+| The worker lacked authority | never | escalate to a person |
+| The worker is stuck | a correction slot is left | escalate once none is left |
+| The gate failed | exactly one correction slot is left | retry the worker while more are left; escalate at none |
+| The close failed | exactly one close slot is left | retry the close while more are left; escalate at none |
+| The gate could not run | gate rechecks are used up and a gate repair slot is left | re-run the gate free while rechecks are left; escalate when both are used up |
+
+### What comes back
+
+`invoke(triageRoleConfig, …)` returns a typed verdict. Which verdicts are
+allowed depends on the setback. An answer that is not allowed is escalated
+rather than acted on.
+
+| `status` | Allowed after | `payload` |
+|---|---|---|
+| `reroute` | the gate failed, the worker is stuck | a brief for the next worker: `problem`, `dead_ends`, `scope`, `references`, `diagnosis` |
+| `fix_the_gate` | the gate could not run | the same brief shape, for the repair session |
+| `retry_close` | the close failed | the same brief shape, kept in the case file |
+| `escalate` | any setback | a packet for a person: `decision`, `evidence`, `dead_ends`, `why_now`, `references` |
+| `abort` | any setback | `{ reason }` |
+| `incomplete` | (the harness's own verdict) | none: the session produced nothing usable, and the harness escalates rather than guessing |
+
+### Your first triage invocation
+
+Offline, with `claude-mock` (see "Trying it offline" above). Write the reply the
+mock should give to `/tmp/my-triage/mock.json`:
+
+```json
+[
+  {
+    "json": {
+      "status": "reroute",
+      "rationale": "Worth one more attempt with a sharper brief.",
+      "payload": {
+        "problem": "The greeting still says hi.",
+        "dead_ends": "Attempt 1 edited the template; the text comes from translations.json.",
+        "scope": "Touch translations.json only.",
+        "references": ["worker-1-0"],
+        "diagnosis": "The template reads its greeting from translations.json."
+      }
+    }
+  }
+]
+```
+
+Then, from the repository root, save the following as `first-triage.ts` and run
+it with `npx tsx first-triage.ts`:
+
+```ts
+import { mkdirSync } from "node:fs";
+import { create, invoke, triageRoleConfig } from "./src/index.js";
+
+const dir = "/tmp/my-triage/case";
+const worktreePath = "/tmp/my-triage/tree";
+mkdirSync(dir, { recursive: true });
+mkdirSync(worktreePath, { recursive: true });
+
+await create(
+  dir,
+  {
+    surfaceId: "my-first-triage",
+    taskDef: { intent: "make the greeting say hello" },
+    gateRef: { type: "command", command: "npm test", parseMode: "tap" },
+  },
+  {
+    correction: { used: 0, max: 3 },
+    gateError: { used: 0, max: 3 },
+    gateMaintenance: { used: 0, max: 2 },
+    terminus: { used: 0, max: 5 },
+    close: { used: 0, max: 3 },
+  },
+);
+
+const verdict = await invoke(
+  triageRoleConfig,
+  { worktreePath, dir, sessionKey: "triage-0" },
+  {
+    pathToClaudeCodeExecutable: "claude-mock",
+    env: { ...process.env, CLAUDE_MOCK_SCRIPT: "/tmp/my-triage/mock.json" },
+  },
+);
+
+if (verdict.status === "reroute") {
+  console.log("Retry, and tell the next worker:", verdict.payload.dead_ends);
+} else {
+  console.log(verdict.status, verdict.rationale);
+}
+```
+
+`verdict` is typed: inside the `reroute` branch your editor knows `payload` is a
+brief. The script prints
+`Retry, and tell the next worker: Attempt 1 edited the template; the text comes from translations.json.`
+Without the third argument, `invoke` uses the real `claude` command.
+
+### Wiring triage into a run
+
+A run takes one agent port for every role, and a triage port built from it:
+
+```ts
+import {
+  createAgentPort, createAgentTriage, noopCloser, run,
+  workerRoleConfig, gateMaintenanceRoleConfig, triageRoleConfig,
+} from "./src/index.js";
+
+const agent = createAgentPort({
+  worker: workerRoleConfig,
+  "gate-maintenance": gateMaintenanceRoleConfig,
+  triage: triageRoleConfig,
+});
+const ports = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+
+const { state, outcome } = await run(dir, { repoPath: "/path/to/your/repo", worktreePath: "/tmp/my-triage/run-tree" }, ports);
+```
+
+Pass `deterministicRouter` as `triage` instead to run with the fixed rules alone
+and never call the agent. Every run then retries and escalates exactly as the
+"Otherwise" column above says.
+
+To watch triage being asked only on the last slot, and a flaky gate recovering
+on a free recheck, run:
+
+```bash
+npm run demo:triage-slice-3
+```
+
+The mock does not enforce `allowedTools`, so it cannot show triage being refused
+a write. That guarantee comes from the real `claude` runtime.
