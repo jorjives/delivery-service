@@ -1,5 +1,6 @@
 # Triage and Deterministic Router — Slice 1: A Stuck Worker's Retry Is Informed by Triage, Not Re-dispatched Blind
 
+> **Status:** ✅ Complete — 2026-09-11 — `df74624`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 1 of `docs/superpowers/specs/2026-09-10-triage-and-router-slices.md`
