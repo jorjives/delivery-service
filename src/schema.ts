@@ -181,6 +181,9 @@ export const CaseFileOutcome = z.object({
   source: z.string(),
   reason: z.string(),
   at: z.string(), // ISO 8601
+  // Escalated only: the ref holding the EscalationPacket a person reads.
+  // Optional, so every case file written before packets existed stays valid.
+  packetRef: z.string().optional(),
 });
 export type CaseFileOutcome = z.infer<typeof CaseFileOutcome>;
 

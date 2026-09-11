@@ -376,7 +376,9 @@ CaseFile = {
   history: [ Entry ]
 
   # ── outcome: written once, on a terminal state ──
-  outcome?                    # {kind: closed|escalated|aborted, source, reason, at}
+  outcome?                    # {kind: closed|escalated|aborted, source, reason, at, packet_ref?}
+                              # packet_ref: escalated only → the EscalationPacket a person reads
+                              # (decision, verbatim evidence, dead ends, why now, session keys)
 }
 ```
 

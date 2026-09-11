@@ -10,8 +10,9 @@ import { advance, run, triageTrigger } from "./surface.js";
 import { noopCloser } from "./ports.js";
 import { deterministicRouter } from "./router.js";
 import { createAgentTriage } from "./triage.js";
-import { createAgentPort } from "./agent-invoke.js";
-import { triageRoleConfig } from "./triage-role-config.js";
+import { createAgentPort, DID_NOT_COMPLETE } from "./agent-invoke.js";
+import { triageRoleConfig, EscalationPacket } from "./triage-role-config.js";
+import { NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { isOnPath } from "./on-path.js";
@@ -1168,6 +1169,195 @@ describe("triage by agent", () => {
     expect(resumed.state).toBe("AGENT_ACTIVE");
     expect(seen.map((s) => s.sessionKey)).toEqual(["triage-0", "triage-0"]);
     expect(seen[1]?.prompt).toBe(seen[0]?.prompt);
+  });
+});
+
+describe("escalation packets", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  /** The packet the outcome points at, validated as the five-part shape. */
+  async function storedPacket(): Promise<EscalationPacket> {
+    const { outcome } = await load(dir);
+    expect(outcome).toMatchObject({ kind: "escalated", packetRef: "escalation" });
+    return EscalationPacket.parse(await readRef(dir, outcome?.packetRef ?? "escalation"));
+  }
+
+  const brief = {
+    problem: "p", dead_ends: "attempt 1 looked in the wrong module", scope: "s", references: ["worker-1-0"], diagnosis: "h",
+  };
+  const agentPacket = {
+    decision: "Decide whether to grant access to the translations service.",
+    evidence: "I cannot reach the translations service",
+    dead_ends: "attempt 1 searched the handlers",
+    why_now: "a retry would repeat the same search",
+    references: ["worker-1-0"],
+  };
+  const stuck = (): Promise<Terminus> =>
+    Promise.resolve({ status: "escalate", category: "exhaustion", rationale: "I cannot reach the translations service" });
+
+  it("stores the triage agent's own packet, in the round's ref and where the outcome points", async () => {
+    const agent = sessionAgent(stuck, () =>
+      Promise.resolve({ status: "escalate", rationale: "no retry will help", payload: agentPacket }),
+    );
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("ESCALATED");
+
+    expect(await storedPacket()).toEqual(agentPacket);
+    expect(await readRef(dir, "triage-0")).toMatchObject({ artifact: agentPacket });
+  });
+
+  it("builds an authority escalation's packet with no agent call, quoting the worker", async () => {
+    const agent = scriptedAgent([
+      { status: "escalate", category: "authority", rationale: "needs a deploy key I do not hold" },
+    ]);
+    const ports = portsWith(agent); // any triage call rejects
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    await run(dir, location, ports);
+
+    const packet = await storedPacket();
+    expect(packet.decision).toContain("lacked authority");
+    expect(packet.evidence).toBe("needs a deploy key I do not hold");
+    expect(packet.dead_ends).toBe(NO_PRIOR_ATTEMPTS);
+    expect(packet.why_now).toContain("never retried");
+    expect(packet.references).toEqual(["worker-1-0"]);
+    expect(agent.calls).toEqual(["worker:worker-1-0"]);
+  });
+
+  it("builds a packet saying no correction budget remains, quoting the failing assertion", async () => {
+    await updateCursor(dir, { budgets: { ...budgets, correction: { used: 0, max: 1 } } });
+    const agent = sessionAgent((_role, ctx) => {
+      writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
+      return Promise.resolve({ status: "completed", rationale: "changed it" });
+    }); // no triage function: the deterministic router decides, and any agent triage call rejects
+    const ports = portsWithTriage(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("ESCALATED");
+
+    const packet = await storedPacket();
+    expect(packet.decision).toContain("No correction budget remains (1/1 used).");
+    const gate = (await load(dir)).history.findLast((e) => e.t === "gate");
+    const detailRef = gate?.t === "gate" ? gate.newFailures[0]?.detailRef : undefined;
+    const failure = (await readRef(dir, detailRef ?? "missing")) as { id: string; detail: string };
+    expect(packet.evidence).toBe(`${failure.id}: ${failure.detail}`);
+    expect(packet.dead_ends).toMatch(/^1\. gate_fail: reroute/);
+    expect(packet.references).toEqual(["worker-1-0", "worker-2-0"]);
+    expect(await readRef(dir, "triage-1")).toMatchObject({ artifact: packet });
+  });
+
+  it("builds a packet saying no session retry budget remains", async () => {
+    await updateCursor(dir, { budgets: { ...budgets, terminus: { used: 0, max: 2 } } });
+    const agent = scriptedAgent([{ status: "incomplete", rationale: "worker session did not complete: hit the turn cap" }]);
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    await run(dir, location, ports);
+
+    const packet = await storedPacket();
+    expect(packet.decision).toContain("No session retry budget remains (2/2 used).");
+    expect(packet.evidence).toBe("worker session did not complete: hit the turn cap");
+  });
+
+  it("builds a packet saying no gate repair budget remains when the gate never runs", async () => {
+    const agent = scriptedAgent([{ status: "completed", rationale: "claims to have fixed it" }]);
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "seed.txt": "hello\n" }, ports);
+
+    await run(dir, location, ports);
+
+    const packet = await storedPacket();
+    expect(packet.decision).toContain("No gate repair budget remains (2/2 used).");
+    expect(packet.references).toEqual(expect.arrayContaining(["gate-maintenance-1-0", "gate-maintenance-2-0"]));
+  });
+
+  it("builds a packet when triage's reply cannot be used, and never retries the worker", async () => {
+    const agent = sessionAgent(stuck, () =>
+      Promise.resolve({ status: "incomplete", rationale: `triage session did not complete: ${DID_NOT_COMPLETE.wrongShape}` }),
+    );
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("ESCALATED");
+
+    const packet = await storedPacket();
+    expect(packet.decision).toBe("Triage could not reach a verdict. Decide how to proceed from the evidence below.");
+    expect(packet.why_now).toContain(DID_NOT_COMPLETE.wrongShape);
+    expect(packet.evidence).toBe("I cannot reach the translations service");
+    expect((await load(dir)).history.filter((e) => e.t === "dispatch")).toHaveLength(1);
+    expect(await readRef(dir, "triage-0")).toMatchObject({ artifact: packet });
+  });
+
+  it("escalates a failed close that triage answers with 'retry the worker', and never reroutes", async () => {
+    await updateCursor(dir, { budgets: { ...budgets, close: { used: 0, max: 1 } } });
+    const refusingCloser: SurfacePorts["closer"] = {
+      close: (_ctx, outcome) =>
+        Promise.resolve(
+          outcome.kind === "accepted"
+            ? { status: "FAIL", detail: "the merge was refused" }
+            : { status: "DONE", detail: "torn down" },
+        ),
+    };
+    const agent = sessionAgent(
+      () => Promise.resolve({ status: "completed", rationale: "clean" }),
+      () => Promise.resolve({ status: "reroute", rationale: "retry the worker", payload: brief }),
+    );
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: refusingCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("ESCALATED");
+
+    const packet = await storedPacket();
+    expect(packet.why_now).toContain(
+      "triage answered reroute, which is not allowed after a close failure (allowed: retry_close, escalate, abort)",
+    );
+    expect(packet.evidence).toBe("the merge was refused");
+    const { history } = await load(dir);
+    expect(history.filter((e) => e.t === "triage")).toMatchObject([{ trigger: "close_failure", verdict: "escalate" }]);
+    expect(history.filter((e) => e.t === "dispatch")).toHaveLength(1);
+  });
+
+  it("resumes a triage escalation recorded before its outcome, keeping the round's packet", async () => {
+    const ports = portsWith(unusedAgent());
+    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+    await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" });
+    await appendEntry(dir, {
+      t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0",
+      status: "escalate", category: "exhaustion", rationale: "stuck",
+    });
+    await writeRef(dir, "triage-0", { trigger: "worker_escalate", rationale: "no retry will help", artifact: agentPacket });
+    await appendEntry(dir, {
+      t: "triage", afterAttempt: 1, trigger: "worker_escalate",
+      verdict: "escalate", rationale: "no retry will help", artifactRef: "triage-0",
+    });
+
+    await advance(dir, { repoPath: "/unused", worktreePath: "/unused" }, ports);
+
+    expect(await storedPacket()).toEqual(agentPacket);
+    expect((await load(dir)).outcome).toMatchObject({ source: "triage" });
+  });
+
+  it("resumes an authority escalation recorded before its outcome with the same packet a live run writes", async () => {
+    const ports = portsWith(unusedAgent());
+    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+    await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" });
+    await appendEntry(dir, {
+      t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0",
+      status: "escalate", category: "authority", rationale: "needs an owner's sign-off",
+    });
+
+    await advance(dir, { repoPath: "/unused", worktreePath: "/unused" }, ports);
+
+    const packet = await storedPacket();
+    expect(packet.decision).toContain("lacked authority");
+    expect(packet.evidence).toBe("needs an owner's sign-off");
   });
 });
 

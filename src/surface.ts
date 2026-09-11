@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, readRef, setbackOf } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
@@ -5,7 +6,9 @@ import { messageOf } from "./gate-support.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
 import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
-import type { SurfaceLocation, SurfacePorts, TriageInput } from "./ports.js";
+import { resolveEscalationPacket } from "./escalation-packet.js";
+import { EscalationPacket } from "./triage-role-config.js";
+import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict } from "./ports.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
 export interface AdvanceResult {
@@ -118,21 +121,56 @@ function workerAttempt(history: HistoryEntry[]): number {
   return 1 + history.filter((e) => e.t === "triage" && e.verdict === "reroute").length;
 }
 
-/** Terminate as ESCALATED with the standard `{kind, source, reason, at}` shape. */
-function escalate(
+/**
+ * Terminate as ESCALATED with the standard `{kind, source, reason, at}` shape,
+ * plus the packet a person reads. Every escalation, whatever caused it, comes
+ * through here, so none can reach a person without one. One fixed ref key: a
+ * surface escalates at most once, and a re-run after a crash rewrites the same
+ * deterministic packet at the same place.
+ */
+async function escalate(
   dir: string,
   caseFile: CaseFile,
   location: SurfaceLocation,
   ports: SurfacePorts,
   source: string,
   reason: string,
+  packet: EscalationPacket,
 ): Promise<AdvanceResult> {
+  const packetRef = await writeRef(dir, "escalation", packet);
   return terminate(dir, caseFile, location, ports, "ESCALATED", {
     kind: "escalated",
     source,
     reason,
     at: new Date().toISOString(),
+    packetRef,
   });
+}
+
+/** The harness's packet for a cause, over the log as it now stands on disk. */
+async function packetFor(dir: string, cause: EscalationCause): Promise<EscalationPacket> {
+  return resolveEscalationPacket(dir, await load(dir), cause);
+}
+
+/** The ref shape `triage()` writes for an escalate round. */
+const PacketRef = z.object({ artifact: EscalationPacket });
+
+/**
+ * The packet for an escalate verdict: the agent's own when it wrote one, else
+ * the harness's, built from the cause the port named. A port that named none
+ * is treated as triage failing to reach a verdict, so no escalation can ever
+ * reach a person without a packet.
+ */
+async function packetForVerdict(
+  dir: string,
+  caseFile: CaseFile,
+  verdict: TriageVerdict,
+): Promise<EscalationPacket> {
+  const authored = EscalationPacket.safeParse(verdict.artifact);
+  if (authored.success) return authored.data;
+  return resolveEscalationPacket(
+    dir, caseFile, verdict.cause ?? { kind: "triage_failure", rationale: verdict.rationale },
+  );
 }
 
 /** Terminate as ABORTED with the standard `{kind, source, reason, at}` shape. */
@@ -158,7 +196,7 @@ function abort(
  * never written. The reason is the tail's own rationale, and a triage tail is
  * credited to triage, exactly as the live run would have credited it.
  */
-function escalateFromTail(
+async function escalateFromTail(
   dir: string,
   caseFile: CaseFile,
   location: SurfaceLocation,
@@ -167,11 +205,22 @@ function escalateFromTail(
 ): Promise<AdvanceResult> {
   const tail = logTail(caseFile);
   if (tail?.t === "triage") {
-    return escalate(dir, caseFile, location, ports, "triage", tail.rationale);
+    // TRIAGE wrote this round's packet into its ref before appending the entry.
+    const ref = PacketRef.safeParse(await readRef(dir, tail.artifactRef));
+    const packet = ref.success
+      ? ref.data.artifact
+      : await packetFor(dir, { kind: "triage_failure", rationale: tail.rationale });
+    return escalate(dir, caseFile, location, ports, "triage", tail.rationale, packet);
   }
+  const terminus = tail?.t === "terminus" ? tail : undefined;
+  const cause: EscalationCause =
+    terminus?.category === "authority"
+      ? { kind: "authority", role: terminus.role ?? "worker" }
+      : { kind: "repair_gave_up" };
   return escalate(
     dir, caseFile, location, ports, source,
-    tail?.t === "terminus" ? tail.rationale : "the session escalated",
+    terminus ? terminus.rationale : "the session escalated",
+    await packetFor(dir, cause),
   );
 }
 
@@ -251,7 +300,10 @@ async function dispatchSession(
 
   const state = deriveStateFromEntry(entry);
   if (state === "ESCALATED") {
-    return escalate(dir, caseFile, location, ports, role, terminus.rationale);
+    return escalate(
+      dir, caseFile, location, ports, role, terminus.rationale,
+      await packetFor(dir, { kind: "authority", role }),
+    );
   }
   await updateCursor(dir, { state });
   return { state, done: false };
@@ -276,6 +328,7 @@ async function dispatchGateMaintenance(
     return escalate(
       dir, caseFile, location, ports, "gate-maintenance",
       budgetExhausted("gateMaintenance", { used, max }, reason),
+      await packetFor(dir, { kind: "budget", population: "gateMaintenance", budget: { used, max }, detail: reason }),
     );
   }
 
@@ -456,6 +509,7 @@ async function incompleteTerminus(
     return escalate(
       dir, caseFile, location, ports, "worker",
       budgetExhausted("terminus", { used, max }, tail.rationale),
+      await packetFor(dir, { kind: "budget", population: "terminus", budget: { used, max }, detail: tail.rationale }),
     );
   }
 
@@ -582,14 +636,17 @@ async function triage(
     ctx: { worktreePath: worktreeOf(caseFile, location), dir, sessionKey: `triage-${priorTriages}` },
   });
 
-  // Keyed by prior triage count so repeated rounds never overwrite each other's
-  // artefacts, and written before the entry: a crash between the two leaves an
-  // orphan ref that the re-run overwrites at the same key. The artefact (a
-  // brief or packet) is present only when the verdict carried one.
+  // Every escalate carries a packet a person can act on. It goes into the
+  // round's ref like any artefact, before the entry, so a resumed escalation
+  // finds it there. Keyed by prior triage count so repeated rounds never
+  // overwrite each other's artefacts; a crash between the ref and the entry
+  // leaves an orphan ref that the re-run overwrites at the same key.
+  const packet = verdict.verdict === "escalate" ? await packetForVerdict(dir, caseFile, verdict) : undefined;
+  const artifact = packet ?? verdict.artifact;
   const artifactRef = await writeRef(dir, `triage-${priorTriages}`, {
     trigger,
     rationale: verdict.rationale,
-    ...(verdict.artifact ? { artifact: verdict.artifact } : {}),
+    ...(artifact ? { artifact } : {}),
   });
 
   const entry: HistoryEntry = {
@@ -603,8 +660,10 @@ async function triage(
   await appendEntry(dir, entry);
 
   const state = deriveStateFromEntry(entry);
-  if (state === "ESCALATED") {
-    return escalate(dir, caseFile, location, ports, "triage", verdict.rationale);
+  // `packet` is set exactly when the verdict is escalate, which is exactly when
+  // the entry routes to ESCALATED.
+  if (state === "ESCALATED" && packet) {
+    return escalate(dir, caseFile, location, ports, "triage", verdict.rationale, packet);
   }
   if (state === "ABORTED") {
     return abort(dir, caseFile, location, ports, "triage", verdict.rationale);
