@@ -19,7 +19,7 @@ function input(
   budgets: BudgetSet = fresh,
   category?: TriageInput["category"],
 ): TriageInput {
-  return { trigger, caseFile, remainingBudgets: budgets, ...(category ? { category } : {}) };
+  return { trigger, caseFile, remainingBudgets: budgets, ...(category ? { category } : {}), ctx: { worktreePath: "/w", dir: "/d", sessionKey: "triage-0" } };
 }
 
 function atCap(population: keyof BudgetSet): BudgetSet {

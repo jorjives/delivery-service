@@ -545,17 +545,20 @@ async function triage(
   const { trigger, category } = triageTrigger(dir, logTail(caseFile));
   const remainingBudgets = deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets);
 
+  const priorTriages = caseFile.history.filter((e) => e.t === "triage").length;
   const verdict = await ports.triage.triage({
     trigger,
     ...(category ? { category } : {}),
     caseFile,
     remainingBudgets,
+    // The session key is the round's ref key: one string per round, derived from
+    // the log, so a resumed triage mints the same session it would have run.
+    ctx: { worktreePath: worktreeOf(caseFile, location), dir, sessionKey: `triage-${priorTriages}` },
   });
 
   // Keyed by prior triage count so repeated rounds never overwrite each other's
   // artefacts. This item's router synthesises nothing richer than the stub, but
   // the field is never omitted — Item 5 replaces the contents, not the schema.
-  const priorTriages = caseFile.history.filter((e) => e.t === "triage").length;
   const artifactRef = await writeRef(dir, `triage-${priorTriages}`, {
     trigger,
     rationale: verdict.rationale,

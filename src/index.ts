@@ -15,8 +15,11 @@ export type {
   AgentContext,
   Terminus,
   Incomplete,
+  TriageTerminus,
+  RoleTerminusMap,
   AgentPort,
   TriageInput,
+  TriageArtifact,
   TriageVerdict,
   TriagePort,
   CloseContext,
@@ -71,7 +74,7 @@ export type { Envelope, RoleConfig } from "./role-config.js";
 export { SharpenedBrief, GateRepairBrief, CloseRepairBrief, EscalationPacket, TriageEnvelope, triageRoleConfig } from "./triage-role-config.js";
 export { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 export type { AssembledPrompt, PromptEvidence } from "./prompt-assembly.js";
-export { invoke, DID_NOT_COMPLETE, buildSessionOptions } from "./agent-invoke.js";
-export type { SessionEnvironment } from "./agent-invoke.js";
+export { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
+export type { SessionEnvironment, RoleConfigs } from "./agent-invoke.js";
 export { createToolAuthority, refusalSentence, outsideWorktreeSentence, authorityRefusal } from "./tool-authority.js";
 export type { ToolAuthority } from "./tool-authority.js";

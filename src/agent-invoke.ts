@@ -4,8 +4,9 @@ import { load } from "./case-file.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
-import type { AgentContext, Terminus, Incomplete } from "./ports.js";
+import type { AgentContext, AgentPort, RoleHandle, Terminus, Incomplete } from "./ports.js";
 import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
+import type { TriageEnvelope } from "./triage-role-config.js";
 
 /**
  * The four ways a session fails to produce a usable answer, and the one
@@ -146,4 +147,24 @@ async function lastResult(prompt: string, options: Options): Promise<SDKResultMe
     if (message.type === "result") result = message;
   }
   return result;
+}
+
+/** The pinned configuration for every role a surface dispatches. */
+export interface RoleConfigs {
+  worker: RoleConfig;
+  "gate-maintenance": RoleConfig;
+  triage: RoleConfig<TriageEnvelope>;
+}
+
+/**
+ * The SDK-backed `AgentPort`: a role name in, that role's pinned config through
+ * the one `invoke()` seam, its terminus out. `session` is passed through
+ * unchanged, so a test or demo can point every role at `claude-mock`.
+ */
+export function createAgentPort(configs: RoleConfigs, session: SessionEnvironment = {}): AgentPort {
+  // One cast: TypeScript cannot correlate `configs[role]`'s envelope type with
+  // RoleTerminusMap[R] across a generic key. RoleConfigs pins that mapping.
+  const run = (roleCfg: RoleHandle, ctx: AgentContext) =>
+    invoke(configs[roleCfg.role] as RoleConfig<unknown>, ctx, session);
+  return { invoke: run as AgentPort["invoke"] };
 }

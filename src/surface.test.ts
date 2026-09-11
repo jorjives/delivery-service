@@ -9,7 +9,7 @@ import { initTempRepo } from "./temp-repo.js";
 import { advance, run, triageTrigger } from "./surface.js";
 import { noopCloser } from "./ports.js";
 import { deterministicRouter } from "./router.js";
-import type { SurfaceLocation, SurfacePorts, Terminus } from "./ports.js";
+import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition } from "./errors.js";
 import type { BudgetPopulation, BudgetSet, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
@@ -24,6 +24,24 @@ const budgets: BudgetSet = {
 };
 
 const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode: "tap" };
+
+/**
+ * Build an agent port from per-role functions. `AgentPort.invoke` is generic
+ * over the role, which a plain function cannot satisfy, so the single cast
+ * lives here rather than in every fake. A role with no function rejects.
+ */
+function sessionAgent(
+  worker: (role: "worker" | "gate-maintenance", ctx: AgentContext) => Promise<Terminus>,
+  triage?: (ctx: AgentContext) => Promise<TriageTerminus>,
+): AgentPort {
+  const run = (roleCfg: { role: string }, ctx: AgentContext) => {
+    if (roleCfg.role === "triage") {
+      return triage ? triage(ctx) : Promise.reject(new Error("the triage agent was not expected here"));
+    }
+    return worker(roleCfg.role as "worker" | "gate-maintenance", ctx);
+  };
+  return { invoke: run as AgentPort["invoke"] };
+}
 
 /** An agent that must never be called in this scenario. */
 function unusedAgent(): SurfacePorts["agent"] {
@@ -42,15 +60,12 @@ function unusedTriage(): SurfacePorts["triage"] {
 function scriptedAgent(script: Terminus[]): SurfacePorts["agent"] & { calls: string[] } {
   const calls: string[] = [];
   let i = 0;
-  return {
-    calls,
-    invoke: (roleCfg, ctx) => {
-      calls.push(`${roleCfg.role}:${ctx.sessionKey}`);
-      const next = script[Math.min(i, script.length - 1)];
-      i += 1;
-      return Promise.resolve(next as Terminus);
-    },
-  };
+  return Object.assign(sessionAgent((role, ctx) => {
+    calls.push(`${role}:${ctx.sessionKey}`);
+    const next = script[Math.min(i, script.length - 1)] as Terminus;
+    i += 1;
+    return Promise.resolve(next);
+  }), { calls });
 }
 
 function portsWith(agent: SurfacePorts["agent"]): SurfacePorts {
@@ -239,18 +254,13 @@ describe("advance", () => {
   });
 
   it("re-baselines after a successful repair and reaches AGENT_ACTIVE", async () => {
-    const agent: SurfacePorts["agent"] & { calls: string[] } = (() => {
-      const calls: string[] = [];
-      return {
-        calls,
-        invoke: (roleCfg, ctx) => {
-          calls.push(`${roleCfg.role}:${ctx.sessionKey}`);
-          // The repair agent fixes the environment it was dispatched into.
-          writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
-          return Promise.resolve({ status: "completed", rationale: "restored report.tap" });
-        },
-      };
-    })();
+    const calls: string[] = [];
+    const agent: SurfacePorts["agent"] & { calls: string[] } = Object.assign(sessionAgent((role, ctx) => {
+      calls.push(`${role}:${ctx.sessionKey}`);
+      // The repair agent fixes the environment it was dispatched into.
+      writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+      return Promise.resolve({ status: "completed", rationale: "restored report.tap" });
+    }), { calls });
     const ports = portsWith(agent);
     const location = await provisioned(dir, { "seed.txt": "hello\n" }, ports);
 
@@ -562,12 +572,10 @@ describe("the GATING edge", () => {
 
   /** Provision, baseline and run one worker session that writes `after`. */
   async function workerWrote(after: string): Promise<{ location: SurfaceLocation; ports: SurfacePorts }> {
-    const agent: SurfacePorts["agent"] = {
-      invoke: (_roleCfg, ctx) => {
-        writeFileSync(join(ctx.worktreePath, "report.tap"), after);
-        return Promise.resolve({ status: "completed", rationale: "made the change" });
-      },
-    };
+    const agent: SurfacePorts["agent"] = sessionAgent((_role, ctx) => {
+      writeFileSync(join(ctx.worktreePath, "report.tap"), after);
+      return Promise.resolve({ status: "completed", rationale: "made the change" });
+    });
     const ports = portsWith(agent);
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
     await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
@@ -671,12 +679,10 @@ describe("run", () => {
 
   /** A worker that adds a file and leaves the gate passing. */
   function cleanWorker(): SurfacePorts["agent"] {
-    return {
-      invoke: (_roleCfg, ctx) => {
-        writeFileSync(join(ctx.worktreePath, "feature.txt"), "the change\n");
-        return Promise.resolve({ status: "completed", rationale: "added the feature" });
-      },
-    };
+    return sessionAgent((_role, ctx) => {
+      writeFileSync(join(ctx.worktreePath, "feature.txt"), "the change\n");
+      return Promise.resolve({ status: "completed", rationale: "added the feature" });
+    });
   }
 
   it("drives a fresh surface all the way to CLOSED with no intervention", async () => {
@@ -728,12 +734,10 @@ describe("TRIAGE", () => {
     location: SurfaceLocation;
     ports: SurfacePorts;
   }> {
-    const agent = {
-      invoke: (_roleCfg: { role: string }, ctx: { worktreePath: string }) => {
-        writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
-        return Promise.resolve({ status: "completed", rationale: "broke it" } as Terminus);
-      },
-    };
+    const agent = sessionAgent((_role, ctx) => {
+      writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
+      return Promise.resolve({ status: "completed", rationale: "broke it" });
+    });
     const ports = portsWithTriage(agent);
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
     await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
@@ -782,10 +786,9 @@ describe("TRIAGE", () => {
   });
 
   it("routes a close failure back to another close attempt", async () => {
-    const cleanWorker = {
-      invoke: () =>
-        Promise.resolve({ status: "completed", rationale: "clean" } as Terminus),
-    };
+    const cleanWorker = sessionAgent(() =>
+      Promise.resolve({ status: "completed", rationale: "clean" }),
+    );
     let closes = 0;
     const fussyCloser: SurfacePorts["closer"] = {
       close: (_ctx, outcome) => {
@@ -851,12 +854,10 @@ describe("TRIAGE", () => {
       triage: () =>
         Promise.resolve({ verdict: "abort", rationale: "the task itself is unsound" }),
     };
-    const agent = {
-      invoke: (_roleCfg: { role: string }, ctx: { worktreePath: string }) => {
-        writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
-        return Promise.resolve({ status: "completed", rationale: "broke it" } as Terminus);
-      },
-    };
+    const agent = sessionAgent((_role, ctx) => {
+      writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
+      return Promise.resolve({ status: "completed", rationale: "broke it" });
+    });
     const ports: SurfacePorts = { agent, triage: abortingTriage, closer: noopCloser };
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
 
@@ -886,10 +887,9 @@ describe("TRIAGE", () => {
       writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
       return Promise.resolve({ status: "completed", rationale: "restored report.tap" });
     };
-    const agent: SurfacePorts["agent"] = {
-      invoke: (roleCfg, ctx) =>
-        roleCfg.role === "gate-maintenance" ? repair(ctx) : worker(ctx),
-    };
+    const agent: SurfacePorts["agent"] = sessionAgent((role, ctx) =>
+      role === "gate-maintenance" ? repair(ctx) : worker(ctx),
+    );
     const ports = portsWithTriage(agent);
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
 
@@ -922,16 +922,14 @@ describe("TRIAGE", () => {
   });
 
   it("dispatches the repair on resume when the fix_the_gate verdict was the last thing recorded", async () => {
-    const agent: SurfacePorts["agent"] = {
-      invoke: (roleCfg, ctx) => {
-        if (roleCfg.role === "gate-maintenance") {
-          writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
-          return Promise.resolve({ status: "completed", rationale: "restored" });
-        }
-        rmSync(join(ctx.worktreePath, "report.tap"));
-        return Promise.resolve({ status: "completed", rationale: "broke the gate" });
-      },
-    };
+    const agent: SurfacePorts["agent"] = sessionAgent((role, ctx) => {
+      if (role === "gate-maintenance") {
+        writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+        return Promise.resolve({ status: "completed", rationale: "restored" });
+      }
+      rmSync(join(ctx.worktreePath, "report.tap"));
+      return Promise.resolve({ status: "completed", rationale: "broke the gate" });
+    });
     const ports = portsWithTriage(agent);
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
 
@@ -1062,15 +1060,13 @@ describe("budget caps", () => {
   it("spends exactly the gate-maintenance cap when the gate never runs again", async () => {
     // The worker deletes the file the gate reads, so the gate ERRORs rather
     // than failing; every repair session reports success without restoring it.
-    const agent: SurfacePorts["agent"] = {
-      invoke: (roleCfg, ctx) => {
-        if (roleCfg.role === "worker") {
-          rmSync(join(ctx.worktreePath, "report.tap"), { force: true });
-          return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
-        }
-        return Promise.resolve({ status: "completed", rationale: "repaired nothing" });
-      },
-    };
+    const agent: SurfacePorts["agent"] = sessionAgent((role, ctx) => {
+      if (role === "worker") {
+        rmSync(join(ctx.worktreePath, "report.tap"), { force: true });
+        return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
+      }
+      return Promise.resolve({ status: "completed", rationale: "repaired nothing" });
+    });
 
     const { state, reason, spent, history } = await runToEnd(portsWithTriage(agent));
 
@@ -1238,15 +1234,13 @@ describe("resume parity: an interrupted run reaches the same outcome as a straig
       name: "a worker that breaks the gate, repaired to the gate-maintenance cap",
       files: { "report.tap": PASSING_TAP },
       ports: () => ({
-        agent: {
-          invoke: (roleCfg, ctx) => {
-            if (roleCfg.role === "worker") {
-              rmSync(join(ctx.worktreePath, "report.tap"), { force: true });
-              return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
-            }
-            return Promise.resolve({ status: "completed", rationale: "repaired nothing" });
-          },
-        },
+        agent: sessionAgent((role, ctx) => {
+          if (role === "worker") {
+            rmSync(join(ctx.worktreePath, "report.tap"), { force: true });
+            return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
+          }
+          return Promise.resolve({ status: "completed", rationale: "repaired nothing" });
+        }),
         triage: deterministicRouter,
         closer: noopCloser,
       }),

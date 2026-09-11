@@ -3,10 +3,12 @@ import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { create } from "./case-file.js";
-import { invoke, DID_NOT_COMPLETE, buildSessionOptions } from "./agent-invoke.js";
+import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { isOnPath } from "./on-path.js";
 import { createToolAuthority } from "./tool-authority.js";
+import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
+import { InvalidRoleConfig } from "./errors.js";
 import type { AgentContext } from "./ports.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 
@@ -227,5 +229,40 @@ describe.skipIf(!hasMock)("invoking gate-maintenance through the same seam as th
       rationale: "set the missing PORT in .env so the service can start",
     });
     expect(await readFile(join(worktreePath, ".env"), "utf-8")).toBe("PORT=8080\n");
+  });
+});
+
+const configs = { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig };
+
+describe("createAgentPort", () => {
+  it("refuses a triage config that grants an editing tool before any session is spawned", async () => {
+    const port = createAgentPort({
+      ...configs,
+      triage: { ...triageRoleConfig, allowedTools: ["Read", "Write"] },
+    });
+    await expect(port.invoke({ role: "triage" }, { ...ctx, sessionKey: "triage-0" })).rejects.toThrow(InvalidRoleConfig);
+  });
+});
+
+describe.skipIf(!hasMock)("createAgentPort against a scripted session", () => {
+  it("runs each role with its own config through the one invoke seam", async () => {
+    await script([
+      // claude-mock matches the user turn only; the literal "reroute" appears in the
+      // triage envelope schema rendered there, and in no worker prompt.
+      { when: { promptContains: "\"reroute\"" }, json: {
+        status: "reroute",
+        rationale: "one more attempt is worth it",
+        payload: { problem: "p", dead_ends: "d", scope: "s", references: [], diagnosis: "h" },
+      } },
+      { json: { status: "completed", rationale: "done" } },
+    ]);
+    const port = createAgentPort(configs, useMock());
+
+    const triaged = await port.invoke({ role: "triage" }, { ...ctx, sessionKey: "triage-0" });
+    expect(triaged.status).toBe("reroute");
+    expect(TriageEnvelope.safeParse(triaged).success).toBe(true);
+
+    const worked = await port.invoke({ role: "worker" }, ctx);
+    expect(worked).toEqual({ status: "completed", rationale: "done" });
   });
 });

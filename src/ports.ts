@@ -1,6 +1,7 @@
 import type { BudgetSet, CaseFile } from "./schema.js";
+import type { EscalationPacket, SharpenedBrief, TriageEnvelope } from "./triage-role-config.js";
 
-// --- AgentPort (Item 4 supplies the real, SDK-backed implementation) ---
+// --- AgentPort (createAgentPort in agent-invoke.ts is the SDK-backed implementation) ---
 
 export type AgentRole = "worker" | "triage" | "gate-maintenance";
 
@@ -28,11 +29,19 @@ export type Terminus =
 /** The harness's own verdict on a session that produced nothing usable, for any role. */
 export type Incomplete = Extract<Terminus, { status: "incomplete" }>;
 
-export interface AgentPort {
-  invoke(roleCfg: RoleHandle, ctx: AgentContext): Promise<Terminus>;
+export type TriageTerminus = TriageEnvelope | Incomplete;
+
+export interface RoleTerminusMap {
+  worker: Terminus;
+  "gate-maintenance": Terminus;
+  triage: TriageTerminus;
 }
 
-// --- TriagePort (this item ships the deterministic router; Item 5 the agent) ---
+export interface AgentPort {
+  invoke<R extends AgentRole>(roleCfg: RoleHandle & { role: R }, ctx: AgentContext): Promise<RoleTerminusMap[R]>;
+}
+
+// --- TriagePort (deterministicRouter in router.ts; createAgentTriage in triage.ts) ---
 
 export interface TriageInput {
   trigger: "gate_fail" | "gate_error" | "worker_escalate" | "close_failure";
@@ -40,11 +49,17 @@ export interface TriageInput {
   caseFile: CaseFile;
   /** Log-derived {used, max} per population, computed immediately before the call. */
   remainingBudgets: BudgetSet;
+  /** What an agent-backed port needs to invoke triage; the deterministic router ignores it. */
+  ctx: AgentContext;
 }
+
+export type TriageArtifact = SharpenedBrief | EscalationPacket | { reason: string };
 
 export interface TriageVerdict {
   verdict: "reroute" | "escalate" | "fix_the_gate" | "retry_close" | "abort";
   rationale: string;
+  /** In memory only: what the surface writes into the round's ref. Never set by the deterministic router. */
+  artifact?: TriageArtifact;
 }
 
 export interface TriagePort {
