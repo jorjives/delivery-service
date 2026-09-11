@@ -1224,7 +1224,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 5: Runnable demo: five escalations, five packets
+## Task 5: Runnable demo: five escalations, five packets ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/triage-slice-2-escalation-packets.ts`
