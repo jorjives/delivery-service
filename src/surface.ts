@@ -1,4 +1,4 @@
-import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, setbackOf } from "./case-file.js";
+import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, readRef, setbackOf } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
@@ -197,6 +197,22 @@ async function recordMissingTerminus(
  * state a live run moves to and the state a resumed run derives from the log
  * are the same computation rather than two rules that can drift apart.
  */
+/**
+ * The ref holding the brief for the worker attempt in flight, or undefined.
+ *
+ * Every worker attempt after the first was started by a `reroute` triage entry,
+ * and the latest such entry is the one that started the current attempt. Its
+ * ref carries an artefact only when an agent wrote a brief; a deterministic
+ * reroute's ref does not, so that retry dispatches with no brief. Derived from
+ * the log, so a first dispatch, a terminus-retry and a resumed run all agree.
+ */
+async function currentBriefRef(dir: string, history: HistoryEntry[]): Promise<string | undefined> {
+  const reroute = history.findLast((e) => e.t === "triage" && e.verdict === "reroute");
+  if (reroute?.t !== "triage") return undefined;
+  const ref = await readRef(dir, reroute.artifactRef);
+  return typeof ref === "object" && ref !== null && "artifact" in ref ? reroute.artifactRef : undefined;
+}
+
 async function dispatchSession(
   dir: string,
   caseFile: CaseFile,
@@ -207,7 +223,8 @@ async function dispatchSession(
 ): Promise<AdvanceResult> {
   const sessionKey = `${role}-${attempt}-${retriesOf(caseFile.history, role, attempt)}`;
 
-  await appendEntry(dir, { t: "dispatch", role, attempt, sessionKey });
+  const briefRef = role === "worker" ? await currentBriefRef(dir, caseFile.history) : undefined;
+  await appendEntry(dir, { t: "dispatch", role, attempt, sessionKey, ...(briefRef ? { briefRef } : {}) });
   const terminus = await ports.agent.invoke(
     { role },
     { worktreePath: worktreeOf(caseFile, location), dir, sessionKey },
@@ -557,11 +574,13 @@ async function triage(
   });
 
   // Keyed by prior triage count so repeated rounds never overwrite each other's
-  // artefacts. This item's router synthesises nothing richer than the stub, but
-  // the field is never omitted — Item 5 replaces the contents, not the schema.
+  // artefacts, and written before the entry: a crash between the two leaves an
+  // orphan ref that the re-run overwrites at the same key. The artefact (a
+  // brief or packet) is present only when the verdict carried one.
   const artifactRef = await writeRef(dir, `triage-${priorTriages}`, {
     trigger,
     rationale: verdict.rationale,
+    ...(verdict.artifact ? { artifact: verdict.artifact } : {}),
   });
 
   const entry: HistoryEntry = {

@@ -9,6 +9,12 @@ import { initTempRepo } from "./temp-repo.js";
 import { advance, run, triageTrigger } from "./surface.js";
 import { noopCloser } from "./ports.js";
 import { deterministicRouter } from "./router.js";
+import { createAgentTriage } from "./triage.js";
+import { createAgentPort } from "./agent-invoke.js";
+import { triageRoleConfig } from "./triage-role-config.js";
+import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
+import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
+import { isOnPath } from "./on-path.js";
 import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition } from "./errors.js";
@@ -996,6 +1002,191 @@ describe("TRIAGE", () => {
     expect(triages).toBe(1); // the triage decision was not repeated
     const { history, cursor } = await load(dir);
     expect(deriveBudgetsFromLog(history, cursor.budgets).close.used).toBe(1);
+  });
+});
+
+describe("triage by agent", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  const brief = {
+    problem: "the second assertion fails",
+    dead_ends: "attempt 1 gave up looking in the wrong module",
+    scope: "touch report.tap only",
+    references: ["worker-1-0"],
+    diagnosis: "the report is generated, not hand-written",
+  };
+
+  /** Worker 1 is stuck; later workers complete. Records each worker's assembled prompt. */
+  function stuckThenCleanWorker(prompts: string[]) {
+    let calls = 0;
+    return async (role: "worker" | "gate-maintenance", ctx: { dir: string }): Promise<Terminus> => {
+      const caseFile = await load(ctx.dir);
+      prompts.push(assemblePrompt(caseFile, workerRoleConfig, await resolveEvidence(ctx.dir, caseFile)).prompt);
+      calls += 1;
+      return calls === 1
+        ? { status: "escalate", category: "exhaustion", rationale: "I am stuck" }
+        : { status: "completed", rationale: "fixed it" };
+    };
+  }
+
+  it("puts a stuck worker to the triage agent and hands the retried worker its brief", async () => {
+    const workerPrompts: string[] = [];
+    const triageKeys: string[] = [];
+    const agent = sessionAgent(stuckThenCleanWorker(workerPrompts), (ctx) => {
+      triageKeys.push(ctx.sessionKey);
+      return Promise.resolve({ status: "reroute", rationale: "one more try with a sharper brief", payload: brief });
+    });
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await run(dir, location, ports);
+
+    expect(result.state).toBe("CLOSED");
+    expect(triageKeys).toEqual(["triage-0"]);
+    const { history } = await load(dir);
+    expect(history.find((e) => e.t === "triage")).toMatchObject({ verdict: "reroute", artifactRef: "triage-0" });
+    expect(await readRef(dir, "triage-0")).toEqual({
+      trigger: "worker_escalate",
+      rationale: "one more try with a sharper brief",
+      artifact: brief,
+    });
+    expect(history.filter((e) => e.t === "dispatch").at(-1)).toMatchObject({ attempt: 2, briefRef: "triage-0" });
+
+    const retried = workerPrompts.at(-1) ?? "";
+    expect(retried).toContain(`Dead ends: ${brief.dead_ends}`);
+    expect(retried).toContain("Diagnosis (a hypothesis to test, not an established fact)");
+    expect(retried.indexOf("## Gate evidence")).toBeGreaterThan(retried.indexOf("## Brief"));
+  });
+
+  it("keeps the brief when the retried worker's session ends without a result and is retried", async () => {
+    let calls = 0;
+    const agent = sessionAgent(
+      () => {
+        calls += 1;
+        if (calls === 1) return Promise.resolve({ status: "escalate", category: "exhaustion", rationale: "stuck" });
+        if (calls === 2) return Promise.resolve({ status: "incomplete", rationale: "hit the turn cap" });
+        return Promise.resolve({ status: "completed", rationale: "fixed it" });
+      },
+      () => Promise.resolve({ status: "reroute", rationale: "retry", payload: brief }),
+    );
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    await run(dir, location, ports);
+
+    const dispatches = (await load(dir)).history.filter((e) => e.t === "dispatch");
+    expect(dispatches.slice(1)).toEqual([
+      expect.objectContaining({ attempt: 2, sessionKey: "worker-2-0", briefRef: "triage-0" }),
+      expect.objectContaining({ attempt: 2, sessionKey: "worker-2-1", briefRef: "triage-0" }),
+    ]);
+  });
+
+  it("routes a plain gate failure with slots to spare with no agent call, and its retry carries no brief", async () => {
+    let workerCalls = 0;
+    const agent = sessionAgent((_role, ctx) => {
+      workerCalls += 1;
+      if (workerCalls === 1) writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
+      return Promise.resolve({ status: "completed", rationale: "changed it" });
+    }); // no triage function: any triage call rejects and fails the test
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    for (let i = 0; i < 5; i++) await advance(dir, location, ports); // baseline, worker, gate, triage, worker 2
+
+    const { history } = await load(dir);
+    expect(history.find((e) => e.t === "triage")).toMatchObject({ trigger: "gate_fail", verdict: "reroute" });
+    expect(await readRef(dir, "triage-0")).not.toHaveProperty("artifact");
+    const retry = history.filter((e) => e.t === "dispatch").at(-1);
+    expect(retry).toMatchObject({ attempt: 2 });
+    expect(retry).not.toHaveProperty("briefRef");
+  });
+
+  it("never asks the triage agent about an authority limit", async () => {
+    const agent = sessionAgent(() =>
+      Promise.resolve({ status: "escalate", category: "authority", rationale: "I may not touch billing" }),
+    );
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await run(dir, location, ports);
+    expect(result.state).toBe("ESCALATED");
+    expect((await load(dir)).history.some((e) => e.t === "triage")).toBe(false);
+  });
+
+  it("resumes a triage round that crashed mid-session to the same round and the same request", async () => {
+    const seen: { sessionKey: string; prompt: string }[] = [];
+    let triageCalls = 0;
+    const agent = sessionAgent(
+      () => Promise.resolve({ status: "escalate", category: "exhaustion", rationale: "stuck" }),
+      async (ctx) => {
+        const caseFile = await load(ctx.dir);
+        seen.push({
+          sessionKey: ctx.sessionKey,
+          prompt: assemblePrompt(caseFile, triageRoleConfig, await resolveEvidence(ctx.dir, caseFile)).prompt,
+        });
+        triageCalls += 1;
+        if (triageCalls === 1) throw new Error("process killed mid-triage");
+        return { status: "reroute", rationale: "retry", payload: brief };
+      },
+    );
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+    await advance(dir, location, ports); // PRE_GATING -> AGENT_ACTIVE
+    await advance(dir, location, ports); // worker escalates -> TRIAGE
+    const before = await load(dir);
+
+    await expect(advance(dir, location, ports)).rejects.toThrow("process killed mid-triage");
+    expect((await load(dir)).history).toEqual(before.history); // nothing appended
+
+    const resumed = await advance(dir, location, ports);
+    expect(resumed.state).toBe("AGENT_ACTIVE");
+    expect(seen.map((s) => s.sessionKey)).toEqual(["triage-0", "triage-0"]);
+    expect(seen[1]?.prompt).toBe(seen[0]?.prompt);
+  });
+});
+
+describe.skipIf(!isOnPath("claude-mock"))("triage by agent through the real invocation seam", () => {
+  it("delivers the triage brief's dead ends into the retried worker's actual request", async () => {
+    const localBrief = {
+      problem: "the second assertion fails",
+      dead_ends: "attempt 1 gave up looking in the wrong module",
+      scope: "touch report.tap only",
+      references: ["worker-1-0"],
+      diagnosis: "the report is generated, not hand-written",
+    };
+    let dir: string;
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    const scriptPath = join(dir, "mock.json");
+    const journalPath = join(dir, "journal.jsonl");
+    // Each session re-reads the queue, so expectations are routed by prompt content:
+    // triage first (only its prompt has a Setback slot), then the briefed retry, then attempt 1.
+    await writeFile(scriptPath, JSON.stringify([
+      { when: { promptContains: "## Setback" }, json: { status: "reroute", rationale: "one more try", payload: localBrief } },
+      { when: { promptContains: localBrief.dead_ends }, json: { status: "completed", rationale: "fixed it" } },
+      { when: { promptContains: "No distilled brief" }, json: { status: "escalate", category: "exhaustion", rationale: "I am stuck" } },
+    ]), "utf-8");
+    const agent = createAgentPort(
+      { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig },
+      { pathToClaudeCodeExecutable: "claude-mock", env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: journalPath } },
+    );
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("CLOSED");
+
+    const prompts = (await readFile(journalPath, "utf-8"))
+      .split("\n").filter((l) => l !== "")
+      .map((l) => JSON.parse(l) as { event: string; prompt?: string })
+      .filter((e) => e.event === "matched").map((e) => e.prompt ?? "");
+    expect(prompts).toHaveLength(3);
+    expect(prompts[1]).toContain("## Setback");
+    expect(prompts[2]).toContain(`Dead ends: ${localBrief.dead_ends}`);
   });
 });
 
