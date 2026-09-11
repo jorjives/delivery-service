@@ -224,3 +224,31 @@ describe("a gate error while rechecks remain", () => {
     expect(verdict.artifact).toBeUndefined();
   });
 });
+
+describe("a gate error once rechecks are spent", () => {
+  const gateError = (repairUsed: number) =>
+    input({
+      trigger: "gate_error",
+      category: undefined,
+      remainingBudgets: { ...budgets(0), gateError: { used: 3, max: 3 }, gateMaintenance: { used: repairUsed, max: 2 } },
+    });
+
+  it("engages the agent while a repair slot is left, and never before rechecks are spent", () => {
+    expect(needsJudgement(gateError(0))).toBe(true);
+    expect(needsJudgement(gateError(1))).toBe(true);
+    expect(needsJudgement(input({ trigger: "gate_error", category: undefined }))).toBe(false);
+  });
+
+  it("carries the agent's repair brief through with its fix_the_gate verdict", async () => {
+    const agent = triageAgent({ status: "fix_the_gate", rationale: "the runner is missing", payload: brief });
+    const verdict = await createAgentTriage(agent).triage(gateError(0));
+    expect(agent.calls).toEqual([ctx]);
+    expect(verdict).toEqual({ verdict: "fix_the_gate", rationale: "the runner is missing", artifact: brief });
+  });
+
+  it("escalates with no agent call once repairs are spent too", async () => {
+    const verdict = await createAgentTriage(forbiddenAgent).triage(gateError(2));
+    expect(verdict.verdict).toBe("escalate");
+    expect(verdict.cause).toMatchObject({ kind: "budget", population: "gateMaintenance" });
+  });
+});

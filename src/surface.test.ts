@@ -1429,6 +1429,68 @@ describe("escalation packets", () => {
     expect(packet.decision).toContain("lacked authority");
     expect(packet.evidence).toBe("needs an owner's sign-off");
   });
+
+  it("asks triage whether to repair a gate that keeps erroring, and hands the repair session its brief", async () => {
+    const repairBrief = {
+      problem: "The gate cannot run: report.tap is gone.",
+      dead_ends: "Three free rechecks all found the report missing.",
+      scope: "Restore report.tap; never edit the checks.",
+      references: ["worker-1-0"],
+      diagnosis: "The worker's change deleted the generated report.",
+    };
+    const repairPrompts: string[] = [];
+    const triageKeys: string[] = [];
+    const agent = sessionAgent(
+      async (role, ctx) => {
+        if (role === "worker") {
+          rmSync(join(ctx.worktreePath, "report.tap"));
+          return { status: "completed", rationale: "worked, broke the gate" };
+        }
+        const caseFile = await load(ctx.dir);
+        repairPrompts.push(assemblePrompt(caseFile, gateMaintenanceRoleConfig, await resolveEvidence(ctx.dir, caseFile)).prompt);
+        writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+        return { status: "completed", rationale: "restored report.tap" };
+      },
+      (ctx) => {
+        triageKeys.push(ctx.sessionKey);
+        return Promise.resolve({ status: "fix_the_gate", rationale: "the environment lost the report", payload: repairBrief });
+      },
+    );
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    const result = await run(dir, location, ports);
+
+    expect(result.state).toBe("CLOSED");
+    // Rounds 0-2 are free rechecks with no agent; round 3 is the first with a decision.
+    expect(triageKeys).toEqual(["triage-3"]);
+    const { history } = await load(dir);
+    expect(history.filter((e) => e.t === "dispatch" && e.role === "gate-maintenance")).toEqual([
+      expect.objectContaining({ attempt: 1, briefRef: "triage-3" }),
+    ]);
+    expect(repairPrompts).toHaveLength(1);
+    expect(repairPrompts[0]).toContain(`Dead ends: ${repairBrief.dead_ends}`);
+    expect(repairPrompts[0]).toContain("Diagnosis (a hypothesis to test, not an established fact)");
+  });
+
+  it("gives a deterministic repair no brief, even after an earlier round wrote one", async () => {
+    // A repair started by the lookup table must not inherit a brief written for an earlier repair.
+    const history: HistoryEntry[] = [
+      { t: "triage", afterAttempt: 1, trigger: "gate_error", verdict: "fix_the_gate", rationale: "agent", artifactRef: "triage-3" },
+      { t: "triage", afterAttempt: 1, trigger: "gate_error", verdict: "fix_the_gate", rationale: "table", artifactRef: "triage-4" },
+    ];
+    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+    await writeRef(dir, "triage-3", { trigger: "gate_error", rationale: "agent", artifact: brief });
+    await writeRef(dir, "triage-4", { trigger: "gate_error", rationale: "table" });
+    for (const entry of history) await appendEntry(dir, entry);
+    const agent = scriptedAgent([{ status: "completed", rationale: "repaired" }]);
+
+    await advance(dir, { repoPath: "/unused", worktreePath: "/unused" }, portsWith(agent));
+
+    const repair = (await load(dir)).history.find((e) => e.t === "dispatch");
+    expect(repair).toMatchObject({ role: "gate-maintenance" });
+    expect(repair).not.toHaveProperty("briefRef");
+  });
 });
 
 describe.skipIf(!isOnPath("claude-mock"))("triage by agent through the real invocation seam", () => {

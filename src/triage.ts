@@ -35,7 +35,9 @@ export function needsJudgement({ trigger, category, remainingBudgets: b }: Triag
     case "close_failure":
       return left(b.close) === 1;
     case "gate_error":
-      return false;
+      // Rechecks are free and need no judgement; once they are spent, whether
+      // a repair is worth dispatching is a decision, while one can be paid for.
+      return left(b.gateError) <= 0 && left(b.gateMaintenance) > 0;
   }
 }
 

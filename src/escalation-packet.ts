@@ -25,7 +25,7 @@ const ROLE_LABELS = { worker: "worker", "gate-maintenance": "gate repair session
 
 export const NO_PRIOR_ATTEMPTS = "No prior attempts were triaged.";
 const NO_EVIDENCE = "No setback evidence is recorded in the case file.";
-const GATE_ERROR_EVIDENCE = "The gate could not run to completion; its error output is not kept in the case file.";
+export const GATE_ERROR_EVIDENCE = "The gate could not run to completion; its error output is not kept in the case file.";
 const GATE_FAIL_EVIDENCE = "The gate failed without recording which assertions broke.";
 
 const CloseDetail = z.object({ detail: z.string().min(1) });

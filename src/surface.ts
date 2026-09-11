@@ -255,20 +255,28 @@ async function recordMissingTerminus(
  * state a live run moves to and the state a resumed run derives from the log
  * are the same computation rather than two rules that can drift apart.
  */
+/** The triage verdict that starts a session of each role, and so may carry its brief. */
+const BRIEFING_VERDICT = { worker: "reroute", "gate-maintenance": "fix_the_gate" } as const;
+
 /**
- * The ref holding the brief for the worker attempt in flight, or undefined.
+ * The ref holding the brief for the session about to be dispatched, or undefined.
  *
- * Every worker attempt after the first was started by a `reroute` triage entry,
- * and the latest such entry is the one that started the current attempt. Its
- * ref carries an artefact only when an agent wrote a brief; a deterministic
- * reroute's ref does not, so that retry dispatches with no brief. Derived from
- * the log, so a first dispatch, a terminus-retry and a resumed run all agree.
+ * Every worker attempt after the first was started by a `reroute`, and every
+ * post-task repair by a `fix_the_gate`; the latest such entry is the one that
+ * started the current session. Its ref carries an artefact only when an agent
+ * wrote a brief, so a deterministic verdict's session dispatches with none,
+ * never with an earlier round's. A pre-task repair has no triage entry at all.
+ * Derived from the log, so a first dispatch, a retry and a resumed run agree.
  */
-async function currentBriefRef(dir: string, history: HistoryEntry[]): Promise<string | undefined> {
-  const reroute = history.findLast((e) => e.t === "triage" && e.verdict === "reroute");
-  if (reroute?.t !== "triage") return undefined;
-  const ref = await readRef(dir, reroute.artifactRef);
-  return BriefRef.safeParse(ref).success ? reroute.artifactRef : undefined;
+async function currentBriefRef(
+  dir: string,
+  history: HistoryEntry[],
+  role: "worker" | "gate-maintenance",
+): Promise<string | undefined> {
+  const start = history.findLast((e) => e.t === "triage" && e.verdict === BRIEFING_VERDICT[role]);
+  if (start?.t !== "triage") return undefined;
+  const ref = await readRef(dir, start.artifactRef);
+  return BriefRef.safeParse(ref).success ? start.artifactRef : undefined;
 }
 
 async function dispatchSession(
@@ -281,7 +289,7 @@ async function dispatchSession(
 ): Promise<AdvanceResult> {
   const sessionKey = `${role}-${attempt}-${retriesOf(caseFile.history, role, attempt)}`;
 
-  const briefRef = role === "worker" ? await currentBriefRef(dir, caseFile.history) : undefined;
+  const briefRef = await currentBriefRef(dir, caseFile.history, role);
   await appendEntry(dir, { t: "dispatch", role, attempt, sessionKey, ...(briefRef ? { briefRef } : {}) });
   const terminus = await ports.agent.invoke(
     { role },

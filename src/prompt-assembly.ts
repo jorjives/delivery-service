@@ -3,11 +3,12 @@ import { deriveBudgetsFromLog, logTail, readRef, setbackOf, type Setback } from 
 import { NewFailure, type BudgetSet, type CaseFile } from "./schema.js";
 import type { RoleConfig } from "./role-config.js";
 import { SharpenedBrief } from "./triage-role-config.js";
+import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
 
 export interface PromptSetback extends Setback {
   /** Log-derived used/max per population at the moment of the setback. */
   budgets: BudgetSet;
-  /** The worker's escalate rationale or the close report's detail; null for gate triggers. */
+  /** The worker's escalate rationale, the close report's detail, or the gate-error sentence; null for a gate failure. */
   detail: string | null;
   /** Rationales of every earlier triage round, oldest first. */
   priorRationales: string[];
@@ -72,6 +73,7 @@ async function resolveSetback(dir: string, caseFile: CaseFile): Promise<PromptSe
     const report = CloseDetail.safeParse(await readRef(dir, tail.detailRef));
     detail = report.success ? report.data.detail : null;
   }
+  if (tail?.t === "gate" && tail.status === "ERROR") detail = GATE_ERROR_EVIDENCE;
 
   return {
     ...setback,

@@ -60,6 +60,8 @@ export const triageRoleConfig: RoleConfig<TriageEnvelope> = {
     "lacked authority.",
     "On a reroute, write a brief the next worker cannot derive for itself: what earlier",
     "attempts tried and why each missed, what to touch and what to leave.",
+    "On fix_the_gate, write the brief for the repair session: what the gate could not do and",
+    "what in the environment to repair. The repair session never edits the checks themselves.",
     "Your diagnosis is a hypothesis for the next session to test, not an established fact.",
   ].join("\n"),
   envelopeSchema: TriageEnvelope,

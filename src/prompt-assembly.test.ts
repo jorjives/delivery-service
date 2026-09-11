@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { create, load, appendEntry, writeRef } from "./case-file.js";
 import { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE } from "./prompt-assembly.js";
+import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { triageRoleConfig } from "./triage-role-config.js";
 import type { BudgetSet, GateRef } from "./schema.js";
@@ -366,5 +367,15 @@ describe("the triage prompt's setback slot", () => {
     const caseFile = await load(dir);
     const { prompt } = assemblePrompt(caseFile, workerRoleConfig, await resolveEvidence(dir, caseFile));
     expect(prompt).not.toContain("## Setback");
+  });
+
+  it("says a gate error left nothing to read, rather than pointing at gate evidence that is not there", async () => {
+    await appendEntry(dir, { t: "gate", attempt: 1, status: "ERROR", newFailures: [], class: "error" });
+    const caseFile = await load(dir);
+    const { prompt } = assemblePrompt(caseFile, triageRoleConfig, await resolveEvidence(dir, caseFile));
+    const setback = prompt.slice(prompt.indexOf("## Setback"), prompt.indexOf("## Reply format"));
+    expect(setback).toContain("Trigger: gate_error");
+    expect(setback).toContain(GATE_ERROR_EVIDENCE);
+    expect(setback).not.toContain("listed under Gate evidence above");
   });
 });

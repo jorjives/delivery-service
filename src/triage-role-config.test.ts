@@ -81,5 +81,6 @@ describe("triageRoleConfig", () => {
   it("tells the session it is a read-only classifier and that its diagnosis is a hypothesis", () => {
     expect(triageRoleConfig.systemPromptFragment).toContain("read-only");
     expect(triageRoleConfig.systemPromptFragment).toContain("hypothesis");
+    expect(triageRoleConfig.systemPromptFragment).toContain("fix_the_gate");
   });
 });
