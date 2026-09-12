@@ -49,6 +49,20 @@ export const GateRef = z.discriminatedUnion("type", [
 ]);
 export type GateRef = z.infer<typeof GateRef>;
 
+/**
+ * Which closer this surface uses, as data. A project names a strategy and its
+ * parameters; it never implements one. No variant takes a base branch: the
+ * target is the branch pinned at provisioning, so an owner never restates
+ * something the harness already derived.
+ */
+export const CloserRef = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("merge-back"),
+    deleteBranch: z.boolean().optional(),
+  }),
+]);
+export type CloserRef = z.infer<typeof CloserRef>;
+
 // The gate's own three-way verdict — reused wherever a status is one report's
 // or one entry's, as opposed to a delta/verdict computed from two of them.
 export const GateStatus = z.enum(["PASS", "FAIL", "ERROR"]);

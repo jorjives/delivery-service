@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { GateRef } from "./schema.js";
+import { GateRef, CloserRef } from "./schema.js";
 
 describe("GateRef", () => {
   it("accepts a command ref with a supported parse mode", () => {
@@ -32,5 +32,19 @@ describe("GateRef", () => {
   it("rejects a ref with an unknown type", () => {
     const parsed = GateRef.safeParse({ type: "webhook", url: "http://x" });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("CloserRef", () => {
+  it("accepts the merge-back closer named with no parameters", () => {
+    expect(CloserRef.parse({ type: "merge-back" })).toEqual({ type: "merge-back" });
+  });
+
+  it("accepts an explicit request to keep the surface branch", () => {
+    expect(CloserRef.parse({ type: "merge-back", deleteBranch: false }).deleteBranch).toBe(false);
+  });
+
+  it("rejects a closer type it does not know", () => {
+    expect(CloserRef.safeParse({ type: "teleport" }).success).toBe(false);
   });
 });

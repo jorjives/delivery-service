@@ -5,6 +5,9 @@ export { createCustomGate, loadCustomGate } from "./custom-gate.js";
 export { resolveGate } from "./resolve-gate.js";
 export { recordBaseline, runCheck } from "./run-gate.js";
 export { branchName, provisionWorktree } from "./provision.js";
+export { resolveCloser } from "./resolve-closer.js";
+export { createMergeBackCloser } from "./merge-back-closer.js";
+export { failedCloser } from "./closer-support.js";
 export { advance, run } from "./surface.js";
 export { noopCloser } from "./ports.js";
 export { deterministicRouter } from "./router.js";
@@ -48,6 +51,7 @@ export type {
   BudgetPopulation,
   TaskDef,
   GateRef,
+  CloserRef,
   Assertion,
   GateReport,
   NewFailure,
