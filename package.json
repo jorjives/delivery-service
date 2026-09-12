@@ -24,6 +24,7 @@
     "demo:triage-slice-1": "npx tsx demos/triage-slice-1-informed-retry.ts",
     "demo:triage-slice-2": "npx tsx demos/triage-slice-2-escalation-packets.ts",
     "demo:triage-slice-3": "npx tsx demos/triage-slice-3-last-attempt.ts",
+    "demo:close-slice-1": "npx tsx demos/close-interface-slice-1-merge-back.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {
