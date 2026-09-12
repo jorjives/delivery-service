@@ -11,13 +11,21 @@ export function branchName(surfaceId: string): string {
   return `surface/${surfaceId}`;
 }
 
-async function resolveBaseRef(repoPath: string): Promise<string> {
+/**
+ * What the worktree branches off, in the two shapes a caller needs: `ref` for
+ * `git worktree add`, and `localBranch` for anything that must later merge into
+ * it. A remote-tracking ref such as `origin/main` cannot be merged into, so the
+ * prefix is stripped for the local branch name.
+ */
+async function resolveBaseRef(repoPath: string): Promise<{ ref: string; localBranch: string }> {
   try {
-    return await git(repoPath, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+    const ref = await git(repoPath, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
+    return { ref, localBranch: ref.replace(/^origin\//, "") };
   } catch {
     // No origin (a local-only or freshly-initialised repo): the checked-out
     // branch is the repo's default.
-    return git(repoPath, ["symbolic-ref", "--short", "HEAD"]);
+    const ref = await git(repoPath, ["symbolic-ref", "--short", "HEAD"]);
+    return { ref, localBranch: ref };
   }
 }
 
@@ -29,22 +37,24 @@ async function resolveBaseRef(repoPath: string): Promise<string> {
  * (docs/provisioning.md), so a partial worktree or a leftover branch from a
  * torn attempt is torn down and recreated rather than adopted. That makes the
  * whole function idempotent: a crash anywhere inside it is recovered by calling
- * it again. Reports whether wreckage was cleared.
+ * it again. Reports whether wreckage was cleared. Also reports the local branch
+ * the worktree was started from, which the surface pins in its header for the
+ * closer to merge into.
  */
 export async function provisionWorktree(
   dir: string,
   repoPath: string,
   worktreePath: string,
   surfaceId: string,
-): Promise<{ restarted: boolean }> {
+): Promise<{ restarted: boolean; baseBranch: string }> {
   const branch = branchName(surfaceId);
   try {
-    const baseRef = await resolveBaseRef(repoPath);
+    const { ref, localBranch } = await resolveBaseRef(repoPath);
     const removedTree = await tryGit(repoPath, ["worktree", "remove", "--force", "--", worktreePath]);
     await tryGit(repoPath, ["worktree", "prune"]);
     const removedBranch = await tryGit(repoPath, ["branch", "-D", "--", branch]);
-    await git(repoPath, ["worktree", "add", "-b", branch, "--", worktreePath, baseRef]);
-    return { restarted: removedTree || removedBranch };
+    await git(repoPath, ["worktree", "add", "-b", branch, "--", worktreePath, ref]);
+    return { restarted: removedTree || removedBranch, baseBranch: localBranch };
   } catch (err) {
     throw new ProvisioningFailure(dir, messageOf(err));
   }

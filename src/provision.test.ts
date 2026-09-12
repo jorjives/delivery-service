@@ -52,7 +52,7 @@ describe("provisionWorktree", () => {
   it("reports a clean first provision as not restarted", async () => {
     const result = await provisionWorktree(dir, repo, tree, "surface-42");
 
-    expect(result).toEqual({ restarted: false });
+    expect(result).toEqual({ restarted: false, baseBranch: "main" });
   });
 
   it("reports a provision that had to clear a leftover worktree as restarted", async () => {
@@ -60,7 +60,18 @@ describe("provisionWorktree", () => {
 
     const result = await provisionWorktree(dir, repo, tree, "surface-42");
 
-    expect(result).toEqual({ restarted: true });
+    expect(result).toEqual({ restarted: true, baseBranch: "main" });
+  });
+
+  it("reports a mergeable local branch, not a remote-tracking ref, when the repo has an origin", async () => {
+    const origin = initTempRepo("provision-origin-", { "seed.txt": "hello\n" });
+    git(repo, ["remote", "add", "origin", origin]);
+    git(repo, ["fetch", "--quiet", "origin"]);
+    git(repo, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main"]);
+
+    const result = await provisionWorktree(dir, repo, tree, "surface-42");
+
+    expect(result.baseBranch).toBe("main");
   });
 
   it("throws ProvisioningFailure naming the surface dir when the path is unusable", async () => {

@@ -94,11 +94,14 @@ export const CaseFileHeader = z.object({
   gateRef: GateRef,
   domainPrompt: z.string().optional(),
   baseline: GateReport.nullable(),
+  // The local branch this surface was provisioned from, pinned once at
+  // PROVISIONING so a later default-branch change cannot redirect the close.
+  baseBranch: z.string().nullable(),
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 
-// Header without baseline — the public input type for create()
-export type CreateHeader = Omit<CaseFileHeader, "baseline">;
+// Header without the fields the surface fills in later — the public input type for create()
+export type CreateHeader = Omit<CaseFileHeader, "baseline" | "baseBranch">;
 
 // --- Cursor ---
 

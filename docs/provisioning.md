@@ -18,9 +18,10 @@ Two things, and no more:
    the run's one repo. This is a ref-mutating op (`worktree add`), so it runs inside
    the supervisor's repo-level lock alongside `worktree remove` and the close/merge.
 2. **Write the case file header.** The immutable identity block: `surface_id`,
-   `task_def`, `gate_ref`, `worktree_ref`. The `baseline` field is created empty; the
-   fingerprint is captured later at `PRE_GATING`, before the first dispatch, never
-   here.
+   `task_def`, `gate_ref`, `worktree_ref`, and `base_branch` — the local branch the
+   worktree was started from, pinned here so a later default-branch change cannot
+   redirect the close. The `baseline` field is created empty; the fingerprint is
+   captured later at `PRE_GATING`, before the first dispatch, never here.
 
 On success the surface transitions to `PRE_GATING` with a worktree that exists and a
 case file that resumes. That is the whole job.

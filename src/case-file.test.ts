@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog, setbackOf } from "./case-file.js";
+import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setBaseBranch, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog, setbackOf } from "./case-file.js";
 import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
 import type { BudgetSet, HistoryEntry, GateReport } from "./schema.js";
 
@@ -980,5 +980,36 @@ describe("setbackOf", () => {
     expect(setbackOf(undefined)).toBeUndefined();
     expect(setbackOf({ t: "dispatch", attempt: 1, sessionKey: "worker-1-0" })).toBeUndefined();
     expect(setbackOf({ t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "completed", rationale: "ok" })).toBeUndefined();
+  });
+});
+
+const header = { surfaceId: "surface-base", taskDef: { intent: "x" }, gateRef };
+
+describe("setBaseBranch", () => {
+  it("starts null and records the branch the surface was started from", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "base-branch-"));
+    await create(dir, header, budgetDefaults);
+    expect((await load(dir)).header.baseBranch).toBeNull();
+
+    await setBaseBranch(dir, "main");
+
+    expect((await load(dir)).header.baseBranch).toBe("main");
+  });
+
+  it("refuses a second write, like every other set-once header field", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "base-branch-"));
+    await create(dir, header, budgetDefaults);
+    await setBaseBranch(dir, "main");
+
+    await expect(setBaseBranch(dir, "release")).rejects.toThrow(ImmutabilityViolation);
+  });
+
+  it("records no history entry, so the log tail still drives the state machine", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "base-branch-"));
+    await create(dir, header, budgetDefaults);
+
+    await setBaseBranch(dir, "main");
+
+    expect((await load(dir)).history).toEqual([]);
   });
 });

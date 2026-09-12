@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, readRef, setbackOf } from "./case-file.js";
+import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, readRef, setbackOf, setBaseBranch } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree } from "./provision.js";
 import { messageOf } from "./gate-support.js";
@@ -444,8 +444,9 @@ async function provisioning(
 ): Promise<AdvanceResult> {
   const worktreePath = worktreeOf(caseFile, location);
   let restarted: boolean;
+  let baseBranch: string;
   try {
-    ({ restarted } = await provisionWorktree(
+    ({ restarted, baseBranch } = await provisionWorktree(
       dir, location.repoPath, worktreePath, caseFile.header.surfaceId,
     ));
   } catch (err) {
@@ -454,6 +455,10 @@ async function provisioning(
     // triage move that helps, so it never reaches the caller as a throw.
     return abort(dir, caseFile, location, ports, "provisioning", err.detail);
   }
+
+  // Guarded rather than unconditional: provisioning legitimately runs twice
+  // when a crash lands before the cursor advance, and the pin is set-once.
+  if (caseFile.header.baseBranch === null) await setBaseBranch(dir, baseBranch);
 
   // The cursor advance is the commit point for "the worktree exists and belongs
   // to this surface" — provisioning has no history representation.

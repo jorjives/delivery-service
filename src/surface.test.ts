@@ -405,6 +405,25 @@ describe("advance", () => {
     expect(reloaded.history.filter((e) => e.t === "dispatch")).toHaveLength(2);
     expect(agent.calls).toEqual([]);
   });
+
+  it("pins the base branch the surface was provisioned from", async () => {
+    await provisioned(dir, { "report.tap": PASSING_TAP }, portsWith(unusedAgent()));
+
+    expect((await load(dir)).header.baseBranch).toBe("main");
+  });
+
+  it("re-provisions after a crash without failing on the already-pinned base branch", async () => {
+    const ports = portsWith(unusedAgent());
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+    // A crash before the cursor advance leaves the surface at PROVISIONING
+    // with the base branch already written.
+    await updateCursor(dir, { state: "PROVISIONING", worktreeRef: "" });
+
+    const result = await advance(dir, location, ports);
+
+    expect(result.state).toBe("PRE_GATING");
+    expect((await load(dir)).header.baseBranch).toBe("main");
+  });
 });
 
 describe("noopCloser", () => {

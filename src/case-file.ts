@@ -59,7 +59,7 @@ export async function create(
   header: CreateHeader,
   budgetDefaults: BudgetSet,
 ): Promise<CaseFile> {
-  const fullHeader: CaseFileHeader = { ...header, baseline: null };
+  const fullHeader: CaseFileHeader = { ...header, baseline: null, baseBranch: null };
   const cursor = {
     state: "PROVISIONING" as const,
     budgets: budgetDefaults,
@@ -200,6 +200,22 @@ export async function setBaseline(dir: string, baseline: GateReport): Promise<vo
   // for `deriveStateFromEntry`, rather than needing a special case for
   // "header.baseline was just set but nothing says so in the log".
   await appendEntry(dir, { t: "baseline", status: parsed.status });
+}
+
+/**
+ * Pin the branch the surface was provisioned from. Set-once like the baseline,
+ * and for the same reason: the close may happen much later, and must target the
+ * branch the work actually started from. Unlike the baseline it records no
+ * history entry — it advances no state, and the log tail must stay the single
+ * authority for `deriveStateFromEntry`.
+ */
+export function setBaseBranch(dir: string, branch: string): Promise<void> {
+  return setOnce(
+    dir,
+    "baseBranch",
+    (caseJson) => caseJson.header.baseBranch !== null,
+    (caseJson) => ({ ...caseJson, header: { ...caseJson.header, baseBranch: branch } }),
+  );
 }
 
 export function setOutcome(dir: string, outcome: CaseFileOutcome): Promise<void> {
