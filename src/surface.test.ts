@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -551,6 +551,33 @@ describe("the AGENT_ACTIVE edge", () => {
 
     expect(result).toEqual({ state: "ESCALATED", done: true });
     expect((await load(dir)).outcome).toMatchObject({ source: "triage", reason: "no retry can help" });
+  });
+
+  it("logs a teardown failure on an escalated surface and leaves the outcome alone", async () => {
+    // report.tap must be seeded: the case file's gateRef is `cat report.tap`, so
+    // without it the baseline gate errors and the surface never reaches the
+    // worker's escalate at all.
+    const repo = initTempRepo("surface-repo-", { "report.tap": PASSING_TAP });
+    const worktreePath = join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt");
+    const location: SurfaceLocation = { repoPath: repo, worktreePath };
+    const throwingCloser: SurfacePorts["closer"] = {
+      close: () => Promise.reject(new Error("teardown blew up")),
+    };
+    const escalatingAgent = scriptedAgent([
+      { status: "escalate", category: "authority", rationale: "I do not hold the deploy key." },
+    ]);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const result = await run(dir, location, {
+      agent: escalatingAgent,
+      triage: deterministicRouter,
+      closer: throwingCloser,
+    });
+
+    expect(result.state).toBe("ESCALATED");
+    expect((await load(dir)).outcome?.kind).toBe("escalated");
+    expect(warn.mock.calls.flat().join(" ")).toContain("teardown blew up");
+    warn.mockRestore();
   });
 });
 

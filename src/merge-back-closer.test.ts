@@ -140,4 +140,30 @@ describe("the merge-back closer", () => {
     expect(report.status).toBe("ERROR");
     expect(report.detail).toMatch(/base branch/i);
   });
+
+  it("removes the worktree and keeps the branch when the surface escalated", async () => {
+    writeFileSync(join(tree, "feature.txt"), "half-finished work\n");
+
+    const report = await createMergeBackCloser().close(ctx, { kind: "escalated" });
+
+    expect(report.status).toBe("DONE");
+    expect(existsSync(tree)).toBe(false);
+    expect(git(repo, ["branch", "--list", "surface/surface-42"])).toContain("surface/surface-42");
+    expect(report.detail).toContain("surface/surface-42");
+  });
+
+  it("removes the worktree and keeps the branch when the surface aborted", async () => {
+    const report = await createMergeBackCloser().close(ctx, { kind: "aborted" });
+
+    expect(report.status).toBe("DONE");
+    expect(existsSync(tree)).toBe(false);
+    expect(git(repo, ["branch", "--list", "surface/surface-42"])).toContain("surface/surface-42");
+  });
+
+  it("keeps the branch on a stopped surface even when it would delete it on an accept", async () => {
+    // deleteBranch defaults to true; a stopped surface must be exempt from it.
+    await createMergeBackCloser({ deleteBranch: true }).close(ctx, { kind: "escalated" });
+
+    expect(git(repo, ["branch", "--list", "surface/surface-42"])).toContain("surface/surface-42");
+  });
 });

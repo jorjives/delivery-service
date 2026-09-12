@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import type { CloseContext, CloseOutcome, CloseReport, CloserPort } from "./ports.js";
 import { messageOf } from "./gate-support.js";
 import { ensureCommitted, git, tryGit } from "./git-exec.js";
+import { removeWorktree, teardownWorktree } from "./closer-support.js";
 
 /**
  * Land the accepted work on the branch the surface was started from.
@@ -26,13 +27,11 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
   const deleteBranch = options.deleteBranch ?? true;
 
   async function cleanup(ctx: CloseContext): Promise<void> {
-    // Tolerated, as in provisioning: "already gone" is the common case on a
-    // replay. Worktree first, then branch, so a missing branch always implies
-    // a missing worktree — though with deleteBranch:false the branch can
-    // outlive the worktree, which is why callers never infer worktree
-    // presence from branch presence.
-    await tryGit(ctx.repoPath, ["worktree", "remove", "--force", "--", ctx.worktreePath]);
-    await tryGit(ctx.repoPath, ["worktree", "prune"]);
+    // Worktree first, then branch, so a missing branch always implies a missing
+    // worktree — though with deleteBranch:false the branch can outlive the
+    // worktree, which is why callers never infer worktree presence from branch
+    // presence.
+    await removeWorktree(ctx);
     if (deleteBranch) {
       // Lower-case -d is git's own "is this merged?" guard.
       await tryGit(ctx.repoPath, ["branch", "-d", "--", ctx.branch]);
@@ -113,11 +112,7 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
     close: async (ctx: CloseContext, outcome: CloseOutcome): Promise<CloseReport> => {
       try {
         if (outcome.kind !== "accepted") {
-          // Teardown of a stopped surface is the next slice's shared routine.
-          return {
-            status: "DONE",
-            detail: `The surface ended ${outcome.kind}, so nothing was merged. Its worktree and branch ${ctx.branch} were left in place.`,
-          };
+          return await teardownWorktree(ctx, outcome);
         }
         return await closeAccepted(ctx);
       } catch (err) {
