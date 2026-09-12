@@ -108,9 +108,9 @@ absence or expired auth is a project-setup problem this item cannot solve.
    tree it judges. The surface path matches the gate (`run-gate.ts`
    resolves against `SurfaceLocation.repoPath`), and matches `resolveGate`,
    whose `repoPath` is required for the same reason.
-3. **The `merge-back` closer**: idempotent ancestor check, commit, ff-only
-   merge into the pinned base branch, worktree removal, safety-checked branch
-   delete.
+3. **The `merge-back` closer**: commit, then the idempotent ancestor check,
+   ff-only merge into the pinned base branch, worktree removal, safety-checked
+   branch delete.
 4. **The `commit-to-branch` closer**: commit, remove the worktree, keep the
    branch.
 5. **Real teardown on `ESCALATED`/`ABORTED`** by every built-in: worktree
@@ -271,34 +271,54 @@ repository's configured git identity; a missing identity surfaces as an
 Every git and `gh` call is `execFile(cmd, [...argv], { cwd, env:
 cleanGitEnv() })`: argument arrays, never a shell string.
 
-**`merge-back`** acts in `repoPath`. Ordering is load-bearing: nothing touches
-`worktreePath` until the closer has confirmed there is work left to do there,
-because a crash after full cleanup but before the surface's `close` entry is
-durable causes `closing()` to re-invoke the closer against a worktree that no
-longer exists.
+**`merge-back`** acts in `repoPath`. Ordering is load-bearing in two
+directions, and both are easy to get backwards.
 
-1. **Detect, using only `repoPath` and `branch`:**
-   `git merge-base --is-ancestor <branch> <baseBranch>`.
-   - Exit 0: already merged by a prior attempt; go to cleanup.
-   - Exit 1: not merged, so cleanup cannot have started; the worktree
-     exists. Continue.
-   - `<branch>` unknown: cleanup already completed, including the branch
-     delete. Report `DONE` ("already closed") without touching the worktree.
-     Cleanup always removes the worktree before the branch, so a missing
-     branch implies a missing worktree.
-2. **Precondition:** `repoPath`'s checkout must be `baseBranch`. If not,
+Nothing may touch `worktreePath` once cleanup could have removed it, because a
+crash after full cleanup but before the surface's `close` entry is durable
+causes `closing()` to re-invoke the closer against a worktree that no longer
+exists. And nothing may probe ancestry before the worker's changes are
+committed: at the start of a first close those changes are still uncommitted,
+so `<branch>` sits exactly at the base tip, and a probe run first reports
+"already merged" — the closer would then jump to cleanup and delete the
+accepted work without ever committing or merging it. So the commit comes
+before the probe, and the worktree guard is what keeps the commit safe.
+
+1. **Guard:** an empty `baseBranch` — the surface pinned none — is an `ERROR`:
+   there is nothing to merge into.
+2. **Detect a finished close, using only `repoPath` and `branch`:**
+   `git rev-parse --verify --quiet refs/heads/<branch>`. A missing branch means
+   cleanup already ran to completion, including the branch delete; report
+   `DONE` ("already closed") without touching the worktree. Cleanup always
+   removes the worktree before the branch, so a missing branch implies a
+   missing worktree.
+3. **Commit, guarded on the worktree's own existence:**
+   `ensureCommitted(worktreePath, ...)`, run only if `worktreePath` is still on
+   disk. The guard reads the directory itself and never infers it from the
+   branch: the implication in step 2 does not run backwards, because with
+   `deleteBranch: false` the branch outlives the worktree a prior close removed.
+4. **Ancestry probe:** `git merge-base --is-ancestor <branch> <baseBranch>`.
+   - Exit 0: everything on `<branch>` is already on `baseBranch` — either a
+     prior attempt merged it, or step 3 found nothing to commit because the
+     surface changed nothing. Both are now reachable, so the single `detail`
+     written here must be true of both: it names the base branch's tip and says
+     there is nothing new to land. Go to cleanup.
+   - Exit 1: there is work to land. Continue.
+5. **Precondition:** `repoPath`'s checkout must be `baseBranch`. If not,
    report `ERROR`: `repoPath` is shared with the operator, and switching its
    checkout is not a closer's call. Item 10's repo lock is the eventual
-   relief.
-3. `ensureCommitted(worktreePath, ...)`.
-4. `git merge --ff-only <branch>`. Failure means real divergence: `FAIL`,
+   relief. This stays *after* the probe so a replay with nothing left to do
+   still reports `DONE` even if the operator has since switched the shared
+   checkout; the only cost is that a wrong-checkout first close commits the
+   work in the worktree before refusing, which leaves it safer than it found it.
+6. `git merge --ff-only <branch>`. Failure means real divergence: `FAIL`,
    `detail` naming the base branch's current tip. Nothing was touched, and
    cleanup does not run, so a later `retry_close` sees the same state.
-5. **Cleanup:** `git worktree remove --force`, `git worktree prune`
+7. **Cleanup:** `git worktree remove --force`, `git worktree prune`
    (tolerated failures, as in `provision.ts`), then, unless
    `deleteBranch: false`, `git branch -d <branch>`. The lower-case `-d` is
    git's own "is this merged" guard.
-6. `DONE`, `detail` naming the path taken: "fast-forwarded `<base>` to
+8. `DONE`, `detail` naming the path taken: "fast-forwarded `<base>` to
    `<sha>`", "already merged", or "already closed".
 
 Accepted gap: a crash strictly between worktree removal and branch deletion
