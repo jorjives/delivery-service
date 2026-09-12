@@ -38,12 +38,13 @@
 3. **`CloserRef` is not persisted in the case file header yet.** The spec pins it in `CaseFileHeader`, but nothing in this slice reads it back: `SurfacePorts.closer` is caller-supplied, and the surface never resolves a closer itself. Adding a required header field with no reader would churn every existing case-file fixture for no behaviour. The slice that assembles a driver from configuration (Item 8/9) adds it with its reader.
 4. **Merge-back's non-accept branch is a placeholder in this slice.** `outcome.kind` of `escalated`/`aborted` returns `DONE` stating the worktree was left in place. Real teardown is Slice 2's shared `teardownWorktree`, which replaces this branch.
 5. **`header.baseBranch` is `string | null`, set once, with no log entry.** Unlike `setBaseline`, it carries no state-machine meaning, so `deriveStateFromEntry` must not see it. Existing on-disk case files predating the field will not parse; the library is pre-release and no persisted fixture is checked in.
+6. **Merge-back's close checks run branch-existence and a guarded commit before the ancestry probe, reversing the design spec's step order.** The spec's merge-back step list runs `git merge-base --is-ancestor` before committing the worker's changes. Verified against real git: at that point the worker's changes are still uncommitted, so the surface branch is exactly the base tip and the probe reports "already merged" on the very first close — the accepted work is discarded before it is ever committed, and the slice's own first test (`commits the worker's changes and fast-forwards the base branch onto them`) would fail. The corrected order is: (1) `baseBranch` empty → `ERROR`; (2) `rev-parse --verify refs/heads/<branch>` missing → `DONE` "already closed"; (3) only if the worktree directory still exists, `ensureCommitted` — the existence guard is load-bearing, not cosmetic: with `deleteBranch: false` a replay can find the branch still present after cleanup already removed the worktree, and touching a missing `worktreePath` must never be attempted; (4) *then* the ancestry probe → cleanup + `DONE`; (5) the checkout-on-base precondition → `ERROR`; (6) `merge --ff-only` → `FAIL` or `DONE` + cleanup. Because the commit now happens before the ancestry probe, a genuine no-change surface can legitimately reach that branch on its first close too, so the one `detail` written there must be true of both: it names the base branch's tip and says there is nothing new to land, with "already merged" as the leading phrase the replay test matches. The checkout precondition stays *after* the ancestry probe, as the design spec has it, so a replay that has nothing left to do still reports `DONE` even if the operator has since switched the shared checkout; the only cost is that a wrong-checkout first close commits the work in the worktree before refusing, which is harmless and leaves the work safer than it found it.
 
 **Not in this slice:** the commit-to-branch closer, teardown on escalated/aborted, custom closers and `plugin-loader.ts`, the `open-pr` closer, the "writing a closer" guide, `CloseRepairBrief` threading, retry/escalation on a failed close (Slice 3 — a `FAIL`/`ERROR` close already routes to `TRIAGE` today, unchanged).
 
 ---
 
-## Task 1: Shared git execution helpers
+## Task 1: Shared git execution helpers ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/git-exec.ts`
@@ -258,7 +259,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 2: The base branch is pinned when the surface is provisioned
+## Task 2: The base branch is pinned when the surface is provisioned ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/provision.ts` (`resolveBaseRef`, `provisionWorktree` return type)
@@ -281,15 +282,12 @@ Why pin rather than resolve at close time: the close may run much later, possibl
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `src/provision.test.ts`, inside `describe("provisionWorktree", …)` (and change the two existing `toEqual({ restarted: … })` assertions to `toEqual({ restarted: …, baseBranch: "main" })`):
+In `src/provision.test.ts`, change the two existing `toEqual({ restarted: … })` assertions
+(lines 55 and 63) to `toEqual({ restarted: …, baseBranch: "main" })` — that is the
+local-branch case, so it needs no separate new test — and add one new case inside
+`describe("provisionWorktree", …)` for the remote-tracking case:
 
 ```typescript
-  it("reports the local branch the worktree was started from", async () => {
-    const result = await provisionWorktree(dir, repo, tree, "surface-42");
-
-    expect(result).toEqual({ restarted: false, baseBranch: "main" });
-  });
-
   it("reports a mergeable local branch, not a remote-tracking ref, when the repo has an origin", async () => {
     const origin = initTempRepo("provision-origin-", { "seed.txt": "hello\n" });
     git(repo, ["remote", "add", "origin", origin]);
@@ -302,13 +300,19 @@ Add to `src/provision.test.ts`, inside `describe("provisionWorktree", …)` (and
   });
 ```
 
-Add to `src/case-file.test.ts`, as a new top-level block (import `setBaseBranch` alongside the other case-file imports, and `ImmutabilityViolation` from `./errors.js` if not already imported):
+Add to `src/case-file.test.ts`, as a new top-level block. Import `setBaseBranch` alongside
+the other case-file imports; `ImmutabilityViolation` is already imported there. Note the
+file's existing fixtures: the budget set is `budgetDefaults` (not `budgets`) and `gateRef`
+is a module-level const, but there is **no** shared `header` const — each block builds its
+own header literal inline. Follow that, declaring the header inline as below:
 
 ```typescript
+const header = { surfaceId: "surface-base", taskDef: { intent: "x" }, gateRef };
+
 describe("setBaseBranch", () => {
   it("starts null and records the branch the surface was started from", async () => {
     const dir = await mkdtemp(join(tmpdir(), "base-branch-"));
-    await create(dir, header, budgets);
+    await create(dir, header, budgetDefaults);
     expect((await load(dir)).header.baseBranch).toBeNull();
 
     await setBaseBranch(dir, "main");
@@ -318,7 +322,7 @@ describe("setBaseBranch", () => {
 
   it("refuses a second write, like every other set-once header field", async () => {
     const dir = await mkdtemp(join(tmpdir(), "base-branch-"));
-    await create(dir, header, budgets);
+    await create(dir, header, budgetDefaults);
     await setBaseBranch(dir, "main");
 
     await expect(setBaseBranch(dir, "release")).rejects.toThrow(ImmutabilityViolation);
@@ -326,7 +330,7 @@ describe("setBaseBranch", () => {
 
   it("records no history entry, so the log tail still drives the state machine", async () => {
     const dir = await mkdtemp(join(tmpdir(), "base-branch-"));
-    await create(dir, header, budgets);
+    await create(dir, header, budgetDefaults);
 
     await setBaseBranch(dir, "main");
 
@@ -335,22 +339,23 @@ describe("setBaseBranch", () => {
 });
 ```
 
-(`header` and `budgets` here are the fixtures the existing `case-file.test.ts` blocks already use; reuse them rather than declaring new ones.)
+(`gateRef` and `budgetDefaults` are the existing module-level fixtures in that file; reuse them rather than declaring new ones.)
 
-Add to `src/surface.test.ts`, in the provisioning describe block:
+Add to `src/surface.test.ts`, inside `describe("advance", …)` beside the existing
+provisioning cases (that block's `beforeEach` already creates `dir` with
+`surfaceId: "surface-1"`, and the file's `provisioned()` helper performs the first
+`advance` against a real temp repo):
 
 ```typescript
   it("pins the base branch the surface was provisioned from", async () => {
-    const { dir, location, ports } = await passingSurface();
-
-    await advance(dir, location, ports);
+    await provisioned(dir, { "report.tap": PASSING_TAP }, portsWith(unusedAgent()));
 
     expect((await load(dir)).header.baseBranch).toBe("main");
   });
 
   it("re-provisions after a crash without failing on the already-pinned base branch", async () => {
-    const { dir, location, ports } = await passingSurface();
-    await advance(dir, location, ports);
+    const ports = portsWith(unusedAgent());
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
     // A crash before the cursor advance leaves the surface at PROVISIONING
     // with the base branch already written.
     await updateCursor(dir, { state: "PROVISIONING", worktreeRef: "" });
@@ -362,7 +367,8 @@ Add to `src/surface.test.ts`, in the provisioning describe block:
   });
 ```
 
-Use whichever existing helper in `src/surface.test.ts` builds a case file with a passing gate over a real temp repo (the provisioning block's own setup); `passingSurface()` above stands for that helper — do not introduce a second one.
+Reuse `provisioned()`, `portsWith()` and `PASSING_TAP` as they already exist in that
+file; introduce no second setup helper.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -530,7 +536,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 3: The closer is told which repository, branch and base branch it is closing
+## Task 3: The closer is told which repository, branch and base branch it is closing ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/ports.ts` (`CloseContext`, `noopCloser` comment)
@@ -557,44 +563,65 @@ Add to `src/surface.test.ts`:
 
 ```typescript
 describe("the close context", () => {
-  it("tells the closer the repo, the surface branch and the pinned base branch", async () => {
-    const seen: CloseContext[] = [];
-    const recordingCloser: SurfacePorts["closer"] = {
+  let dir: string;
+  let location: SurfaceLocation;
+  let seen: CloseContext[];
+  let recordingCloser: SurfacePorts["closer"];
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    location = {
+      repoPath: initTempRepo("surface-repo-", { "report.tap": PASSING_TAP }),
+      worktreePath: join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt"),
+    };
+    seen = [];
+    recordingCloser = {
       close: (ctx) => {
         seen.push(ctx);
         return Promise.resolve({ status: "DONE", detail: "recorded" });
       },
     };
-    const { dir, location, ports } = await acceptedSurface(recordingCloser);
+  });
 
-    await run(dir, location, ports);
+  it("tells the closer the repo, the surface branch and the pinned base branch", async () => {
+    const agent = sessionAgent((_role, ctx) => {
+      writeFileSync(join(ctx.worktreePath, "feature.txt"), "the change\n");
+      return Promise.resolve({ status: "completed", rationale: "added the feature" });
+    });
+
+    await run(dir, location, { agent, triage: unusedTriage(), closer: recordingCloser });
 
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       repoPath: location.repoPath,
-      branch: "surface/surface-42",
+      branch: "surface/surface-1",
       baseBranch: "main",
     });
   });
 
   it("gives an escalated surface's fire-and-log teardown the same context", async () => {
-    const seen: CloseContext[] = [];
-    const recordingCloser: SurfacePorts["closer"] = {
-      close: (ctx) => {
-        seen.push(ctx);
-        return Promise.resolve({ status: "DONE", detail: "recorded" });
-      },
-    };
-    const { dir, location, ports } = await escalatingSurface(recordingCloser);
+    // An authority-class escalate leaves the machine directly, so terminate()
+    // — not closing() — is what calls the closer here.
+    const agent = scriptedAgent([{ status: "escalate", category: "authority", rationale: "needs a human" }]);
 
-    await run(dir, location, ports);
+    const result = await run(dir, location, { agent, triage: unusedTriage(), closer: recordingCloser });
 
-    expect(seen[0]).toMatchObject({ repoPath: location.repoPath, branch: "surface/surface-42", baseBranch: "main" });
+    expect(result.state).toBe("ESCALATED");
+    expect(seen[0]).toMatchObject({
+      repoPath: location.repoPath,
+      branch: "surface/surface-1",
+      baseBranch: "main",
+    });
   });
 });
 ```
 
-`acceptedSurface` / `escalatingSurface` stand for the existing helpers in `src/surface.test.ts` that drive a surface to `CLOSING` and to `ESCALATED`; reuse them, parameterising the closer they pass in `ports`. Import `CloseContext` as a type from `./ports.js`.
+Everything above (`sessionAgent`, `scriptedAgent`, `unusedTriage`, `initTempRepo`,
+`PASSING_TAP`, `gateRef`, `budgets`) already exists in `src/surface.test.ts`; add
+nothing but the block itself. Import `CloseContext` as a type from `./ports.js`.
+Note the surface id in this file's fixtures is `surface-1`, so the derived branch is
+`surface/surface-1`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -685,7 +712,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 4: The merge-back closer
+## Task 4: The merge-back closer ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/merge-back-closer.ts`
@@ -695,7 +722,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `git`, `tryGit`, `ensureCommitted` (Task 1); `CloseContext`, `CloseOutcome`, `CloseReport`, `CloserPort` (Task 3, `src/ports.js`); `messageOf` from `./gate-support.js`.
 - Produces: `createMergeBackCloser(options?: { deleteBranch?: boolean }): CloserPort`.
 
-Ordering is load-bearing. Nothing touches `worktreePath` until the closer has established there is work still to land there, because a crash after full cleanup but before the surface's `close` entry is durable re-invokes the closer against a worktree that no longer exists. Cleanup always removes the worktree before deleting the branch, so a missing branch implies a missing worktree.
+Ordering is load-bearing, and it deliberately diverges from the design spec's merge-back step list — see Decision 6. Cleanup always removes the worktree before (optionally) deleting the branch, so a missing branch still implies a missing worktree — that half of the design spec's reasoning holds. What does not hold with `deleteBranch: false` is the reverse: the branch can survive a replay after its worktree is already gone. So the existence check is on the worktree directory itself, not inferred from the branch, and `ensureCommitted` runs guarded by it — and before the ancestry probe, never after: the probe can only see committed work, so checking ancestry first (as the spec's list does) reads an uncommitted first close as already landed and discards it.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -857,6 +884,7 @@ Expected: FAIL — cannot resolve `./merge-back-closer.js`.
 Create `src/merge-back-closer.ts`:
 
 ```typescript
+import { existsSync } from "node:fs";
 import type { CloseContext, CloseOutcome, CloseReport, CloserPort } from "./ports.js";
 import { messageOf } from "./gate-support.js";
 import { ensureCommitted, git, tryGit } from "./git-exec.js";
@@ -866,9 +894,17 @@ import { ensureCommitted, git, tryGit } from "./git-exec.js";
  *
  * Every "have I already done this?" answer comes from git state, because the
  * close report carries no resume token: a crash anywhere between the merge and
- * the surface recording the close replays this same function. The order is
- * load-bearing — nothing touches the worktree until the closer knows there is
- * work still to land, since after a full cleanup the worktree is gone.
+ * the surface recording the close replays this same function.
+ *
+ * The order is load-bearing, and deliberately not the design spec's: branch
+ * existence is checked, then (guarded by the worktree still existing)
+ * `ensureCommitted`, and only then the ancestry probe — never the reverse. The
+ * worker's changes are uncommitted at the start of a first close, so an
+ * ancestry probe run before committing sees the surface branch sitting exactly
+ * at the base tip and reports "already merged", discarding the work. The
+ * worktree-existence guard, not a branch-existence inference, is what lets a
+ * `deleteBranch: false` replay skip straight to the ancestry probe once the
+ * worktree is gone but the branch survived cleanup.
  *
  * The merge lands on the local base branch only. Nothing is pushed.
  */
@@ -878,7 +914,9 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
   async function cleanup(ctx: CloseContext): Promise<void> {
     // Tolerated, as in provisioning: "already gone" is the common case on a
     // replay. Worktree first, then branch, so a missing branch always implies
-    // a missing worktree.
+    // a missing worktree — though with deleteBranch:false the branch can
+    // outlive the worktree, which is why callers never infer worktree
+    // presence from branch presence.
     await tryGit(ctx.repoPath, ["worktree", "remove", "--force", "--", ctx.worktreePath]);
     await tryGit(ctx.repoPath, ["worktree", "prune"]);
     if (deleteBranch) {
@@ -900,13 +938,24 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
       };
     }
 
-    const alreadyMerged = await tryGit(ctx.repoPath, ["merge-base", "--is-ancestor", ctx.branch, ctx.baseBranch]);
-    if (alreadyMerged) {
+    // Guarded on the worktree's own existence, not on branch existence: with
+    // deleteBranch:false a replay can find the branch still here after an
+    // earlier close already removed the worktree, and worktreePath must never
+    // be touched once it is gone. Run before the ancestry probe below — the
+    // probe can only see committed work.
+    if (existsSync(ctx.worktreePath)) {
+      await ensureCommitted(ctx.worktreePath, `Accepted work from ${ctx.branch}`);
+    }
+
+    const nothingToLand = await tryGit(ctx.repoPath, ["merge-base", "--is-ancestor", ctx.branch, ctx.baseBranch]);
+    if (nothingToLand) {
       await cleanup(ctx);
       const sha = await git(ctx.repoPath, ["rev-parse", "--short", ctx.baseBranch]);
       return {
         status: "DONE",
-        detail: `Already merged: ${ctx.baseBranch} is at ${sha} and already contains this surface's work. Cleaned up the scratch worktree.`,
+        detail:
+          `Already merged: ${ctx.baseBranch} is at ${sha} and already has everything from ${ctx.branch} — ` +
+          `nothing new to land. Cleaned up the scratch worktree.`,
       };
     }
 
@@ -921,8 +970,6 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
       };
     }
 
-    await ensureCommitted(ctx.worktreePath, `Accepted work from ${ctx.branch}`);
-
     // The merge is its own conflict probe: --ff-only either advances the ref or
     // refuses, changing nothing either way.
     const merged = await tryGit(ctx.repoPath, ["merge", "--ff-only", "--", ctx.branch]);
@@ -931,7 +978,8 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
       return {
         status: "FAIL",
         detail:
-          `Could not fast-forward ${ctx.baseBranch} onto ${ctx.branch}: ${ctx.baseBranch} has moved on and is now at ${tip}. ` +
+          `Could not fast-forward ${ctx.baseBranch} onto ${ctx.branch}. ${ctx.baseBranch} is at ${tip}: either it has ` +
+          `moved on since this surface started, or the checkout has local changes in the way. ` +
           `Nothing was changed and the work is still on ${ctx.branch}.`,
       };
     }
@@ -971,7 +1019,7 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/merge-back-closer.test.ts`
-Expected: PASS — all eleven cases.
+Expected: PASS — all ten cases.
 
 - [ ] **Step 5: Typecheck and lint**
 
@@ -991,12 +1039,18 @@ is derived from git state because the close report carries no resume
 token, and the shared checkout is refused rather than switched when it is
 on the wrong branch.
 
+The commit happens before the ancestry probe, not after as the design
+spec's step list has it: probing ancestry first sees an uncommitted first
+close as already landed and discards the work. The probe is guarded by
+the worktree's own existence rather than the branch's, because a
+deleteBranch:false replay can find the branch outliving its worktree.
+
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 5: A project selects the closer as data
+## Task 5: A project selects the closer as data ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/closer-support.ts`
@@ -1017,7 +1071,8 @@ This mirrors `resolveGate`: total, so a caller never has to tell "failed to reso
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `src/schema.test.ts`:
+Add to `src/schema.test.ts` (import `CloserRef` as a value alongside the other schema
+imports there — it is used as `CloserRef.parse`, not as a type):
 
 ```typescript
 describe("CloserRef", () => {
@@ -1211,7 +1266,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 6: The merge-back demo
+## Task 6: The merge-back demo ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/close-interface-slice-1-merge-back.ts`
@@ -1222,6 +1277,14 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Produces: no library symbols. A runnable script whose printed output is the slice's UAT evidence.
 
 The demo follows the existing `demos/single-surface-slice-*.ts` shape: a real temporary git repository, a stand-in worker that writes a file into the worktree, a command gate over a TAP file, and printed output a reader can follow without reading the source.
+
+It is also the slice's only end-to-end proof of the first acceptance criterion — a named
+closer carrying an accepted surface all the way to `CLOSED` with the work on the base
+branch. The unit tests prove each half (`resolveCloser` → a closer that merges; the
+driver → a closer called with the right context), and the composition is proved here.
+Keep the `--- N. …` section headings: `tests/helpers.ts`'s `sectionOf` slices demo output
+on exactly that shape, and the recorded UAT test under `tests/close-interface/` — a later
+step in the workflow, not this plan's — will read them.
 
 - [ ] **Step 1: Write the demo script**
 
@@ -1249,6 +1312,7 @@ import { create, load } from "../src/case-file.js";
 import { initTempRepo } from "../src/temp-repo.js";
 import { cleanGitEnv } from "../src/git-env.js";
 import { run } from "../src/surface.js";
+import { provisionWorktree } from "../src/provision.js";
 import { resolveCloser } from "../src/resolve-closer.js";
 import type { AgentContext, AgentPort, RoleHandle, SurfaceLocation, SurfacePorts } from "../src/ports.js";
 import type { BudgetSet, CloserRef, GateRef } from "../src/schema.js";
@@ -1315,8 +1379,28 @@ async function main(): Promise<void> {
   console.log(`Scratch worktree still on disk: ${fs.existsSync(worktreePath)}\n`);
 
   console.log("--- 3. Replaying the close, as if the process had crashed just after merging ---");
+  // The crash window the UAT asks for: the merge landed, cleanup never ran. A
+  // second surface, closed with the branch kept, leaves exactly that state
+  // behind, so closing it again is the replay.
+  console.log("A close that keeps its branch leaves exactly the crash state behind — merged,");
+  console.log("but not cleaned up — so closing it a second time IS the replay.\n");
+  const keepBranch: CloserRef = { type: "merge-back", deleteBranch: false };
+  const secondTree = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "close-demo-tree-")), "wt");
+  const { baseBranch } = await provisionWorktree(dir, repo, secondTree, "surface-43");
+  fs.writeFileSync(path.join(secondTree, "second.txt"), "more accepted work\n");
+  const secondCtx = { dir, repoPath: repo, worktreePath: secondTree, branch: "surface/surface-43", baseBranch };
+
+  const first = await resolveCloser(keepBranch).close(secondCtx, { kind: "accepted" });
+  console.log(`First close:  ${first.status} — ${first.detail}`);
   const commitsBefore = git(repo, ["rev-list", "--count", "main"]);
-  const replay = await resolveCloser(closerRef).close(
+
+  const replay = await resolveCloser(keepBranch).close(secondCtx, { kind: "accepted" });
+  console.log(`Replayed:     ${replay.status} — ${replay.detail}`);
+  console.log(`Commits on main before replay: ${commitsBefore}, after: ${git(repo, ["rev-list", "--count", "main"])}`);
+  console.log(`main's history: ${git(repo, ["log", "--oneline", "main"]).split("\n").join(" | ")}\n`);
+
+  console.log("--- 4. Replaying the first surface's close, after its cleanup had finished ---");
+  const afterCleanup = await resolveCloser(closerRef).close(
     {
       dir,
       repoPath: repo,
@@ -1326,10 +1410,8 @@ async function main(): Promise<void> {
     },
     { kind: "accepted" },
   );
-  console.log(`Replayed close status: ${replay.status}`);
-  console.log(`Replayed close report: ${replay.detail}`);
-  console.log(`Commits on main before replay: ${commitsBefore}, after: ${git(repo, ["rev-list", "--count", "main"])}`);
-  console.log(`main's history is unchanged: ${git(repo, ["log", "--oneline", "main"]).split("\n").join(" | ")}`);
+  console.log(`Replayed close status: ${afterCleanup.status}`);
+  console.log(`Replayed close report: ${afterCleanup.detail}`);
 }
 
 main().catch((err: unknown) => {
@@ -1349,7 +1431,7 @@ In `package.json`, after `demo:triage-slice-3`:
 - [ ] **Step 3: Run the demo and read its output**
 
 Run: `npm run demo:close-slice-1`
-Expected: section 1 reports `CLOSED` with a base branch of `main` and a closing report naming `main` and a short commit; section 2 shows `feature.txt` on `main`, no `surface/*` branch and `Scratch worktree still on disk: false`; section 3 reports `DONE` with an "already closed" report and an unchanged commit count.
+Expected: section 1 reports `CLOSED` with a base branch of `main` and a closing report naming `main` and a short commit; section 2 shows `feature.txt` on `main`, no `surface/*` branch and `Scratch worktree still on disk: false`; section 3 shows a first close that fast-forwards `main`, then a replay reporting `DONE` with an "already merged" report and an unchanged commit count; section 4 reports `DONE` with an "already closed" report.
 
 - [ ] **Step 4: Typecheck and lint the demo**
 
@@ -1385,13 +1467,21 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 | Worktree removed and surface branch deleted, unless the project asked to keep it | 4 (`cleanup`, `deleteBranch`), 5 (parameter passed through) |
 | Report names branch and commit in plain prose, no raw git output | 4 ("says in plain prose …", with the negative assertion) |
 | Crash after merge before cleanup, replayed, reports done without merging twice | 4 ("replayed after the merge but before cleanup …") |
-| Crash after full cleanup, replayed, reports already closed without erroring on a missing worktree | 4 (branch-existence probe before anything touches the worktree) |
+| Crash after full cleanup, replayed, reports already closed without erroring on a missing worktree | 4 (branch-existence probe, then a worktree-existence guard, before anything touches the worktree) |
 | Unreadable or unknown closer reference produces an error report, never a crash | 5 (`failedCloser`, both cases) |
 | Main checkout not on the base branch: refuse, name the problem, do not switch | 4 ("refuses, without switching the checkout …") |
 
 No gaps.
 
-**2. Placeholder scan** — every step carries the real code or the real command. The three places naming an existing test helper (`passingSurface`, `acceptedSurface`, `escalatingSurface`, and `case-file.test.ts`'s `header`/`budgets`) say explicitly that they stand for helpers already in those files and must be reused rather than re-declared; that is a reuse instruction, not a deferred decision.
+**2. Placeholder scan** — every step carries the real code or the real command. Every
+helper a test leans on is one that genuinely exists today and is named exactly:
+`src/surface.test.ts`'s `provisioned`, `portsWith`, `sessionAgent`, `scriptedAgent`,
+`unusedAgent`, `unusedTriage`, `PASSING_TAP`, `gateRef` and `budgets`;
+`src/provision.test.ts`'s `git`; `src/case-file.test.ts`'s `gateRef`/`budgetDefaults`
+(that file has no shared `header` fixture, so Task 2 declares one inline). The
+surface fixtures use `surfaceId: "surface-1"`, so the derived branch in those tests is
+`surface/surface-1`; only the closer's own tests, which call `provisionWorktree`
+directly, use `surface-42`.
 
 **3. Type consistency** — `createMergeBackCloser(options?: { deleteBranch?: boolean })` is used with that shape in Tasks 4, 5 and 6. `provisionWorktree` returns `{ restarted, baseBranch }` in Task 2 and is destructured that way in Tasks 4, 5 and 6's tests. `CloseContext`'s five fields are constructed identically in Task 3's builder, Task 4's tests, Task 5's tests and Task 6's replay. `resolveCloser(ref)` is single-argument everywhere. `setBaseBranch(dir, branch)` matches its call site.
 
@@ -1401,8 +1491,9 @@ No gaps.
 |---|---|---|---|
 | Git execution | Share `provision.ts`'s wrappers | Task 1 extracts them; `provision.ts` imports; the unmodified provisioning suite is the regression proof | Right |
 | Closer selection | Mirror `GateRef`/`resolveGate` | Task 5: zod union + total resolver + `failedCloser`, no registry | Right |
-| Replay safety | Derive from git state | Task 4 probes branch existence then ancestry; no persisted cleanup marker | Right |
+| Replay safety | Derive from git state | Task 4 probes branch existence, then (guarded on the worktree) commits, then ancestry; no persisted cleanup marker | Right |
 | "Nothing to commit" | Spec's error-text match | Changed to `status --porcelain` after verifying git prints that sentence to stdout; recorded as decision 1 | Right (the spec's snippet would silently break the no-change close) |
+| Merge-back's step order | Spec's list: ancestry probe before commit | Reversed — commit (guarded on worktree existence) before the ancestry probe; recorded as decision 6 | Right (verified against real git: the spec's order reads an uncommitted first close as already merged and discards the work) |
 | Shared checkout on the wrong branch | Refuse | Task 4 returns `ERROR` and asserts the checkout is unchanged | Right |
 | `resolveCloser`'s `repoPath` | Spec mandates it | Deferred to Slice 4 with its first reader; recorded as decision 2 | Right (a dead parameter now, and the strict lint config would flag it) |
 | `closerRef` in the header | Spec pins it there | Deferred to the slice with a reader; recorded as decision 3 | Right (no reader exists; adding it churns every fixture for no behaviour) |
