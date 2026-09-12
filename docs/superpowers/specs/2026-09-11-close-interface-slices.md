@@ -97,6 +97,8 @@ can use, rather than an accepted change stranded in a scratch directory.
 
 ## Slice 2: Work Can Be Left on Its Own Branch, and Stopped Surfaces Tidy Up
 
+**Status:** ✅ Complete — 2026-09-12 — `847fbe6`
+
 **Delivers:** A project can choose to have accepted work committed to the surface's own
 branch without merging, and every surface that ends escalated or aborted has its scratch
 worktree removed while its branch is kept for whoever takes it over.
