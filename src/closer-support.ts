@@ -1,4 +1,5 @@
 import { tryGit } from "./git-exec.js";
+import { messageOf } from "./gate-support.js";
 import type { CloserPort, CloseContext, CloseOutcome, CloseReport } from "./ports.js";
 
 /**
@@ -39,5 +40,25 @@ export async function teardownWorktree(ctx: CloseContext, outcome: CloseOutcome)
     detail:
       `The surface ended ${outcome.kind}, so nothing was landed. Removed its scratch worktree and kept ` +
       `branch ${ctx.branch}, where the work was left for whoever takes it over.`,
+  };
+}
+
+/**
+ * Every built-in closer shares this shape: a stopped surface (anything but
+ * "accepted") always tears down the same way via `teardownWorktree`, and an
+ * "accepted" surface routes to the closer's own landing logic, which never
+ * throws at the driver — an environment problem becomes an ERROR report,
+ * exactly as it does for a gate.
+ */
+export function closerFromAcceptedHandler(closeAccepted: (ctx: CloseContext) => Promise<CloseReport>): CloserPort {
+  return {
+    close: async (ctx: CloseContext, outcome: CloseOutcome): Promise<CloseReport> => {
+      try {
+        if (outcome.kind !== "accepted") return await teardownWorktree(ctx, outcome);
+        return await closeAccepted(ctx);
+      } catch (err) {
+        return { status: "ERROR", detail: `The close could not run: ${messageOf(err)}` };
+      }
+    },
   };
 }

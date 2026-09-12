@@ -1,8 +1,7 @@
 import { existsSync } from "node:fs";
-import type { CloseContext, CloseOutcome, CloseReport, CloserPort } from "./ports.js";
-import { messageOf } from "./gate-support.js";
+import type { CloseContext, CloseReport, CloserPort } from "./ports.js";
 import { ensureCommitted, git, tryGit } from "./git-exec.js";
-import { removeWorktree, teardownWorktree } from "./closer-support.js";
+import { closerFromAcceptedHandler, removeWorktree } from "./closer-support.js";
 
 /**
  * Land the accepted work on the branch the surface was started from.
@@ -108,18 +107,5 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
     };
   }
 
-  return {
-    close: async (ctx: CloseContext, outcome: CloseOutcome): Promise<CloseReport> => {
-      try {
-        if (outcome.kind !== "accepted") {
-          return await teardownWorktree(ctx, outcome);
-        }
-        return await closeAccepted(ctx);
-      } catch (err) {
-        // A closer never throws at the driver: an environment problem is an
-        // ERROR report, which routes to close-triage like any other.
-        return { status: "ERROR", detail: `The close could not run: ${messageOf(err)}` };
-      }
-    },
-  };
+  return closerFromAcceptedHandler(closeAccepted);
 }
