@@ -106,6 +106,11 @@ export const CaseFileHeader = z.object({
   surfaceId: z.string(),
   taskDef: TaskDef,
   gateRef: GateRef,
+  // The closer this surface was started with, pinned at CREATE like gateRef so a
+  // later configuration change cannot redirect an in-flight surface to a
+  // different closer. Optional: case files written before closers were pinned
+  // stay valid, and they carry a caller-supplied closer instead.
+  closerRef: CloserRef.optional(),
   domainPrompt: z.string().optional(),
   baseline: GateReport.nullable(),
   // The local branch this surface was provisioned from, pinned once at

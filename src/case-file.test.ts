@@ -52,6 +52,45 @@ describe("create", () => {
   });
 });
 
+describe("closerRef pinning", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "case-file-test-"));
+  });
+
+  it("persists the closer reference in the header, so a later configuration change cannot redirect the surface", async () => {
+    await create(dir, {
+      surfaceId: "surface-1",
+      taskDef: { intent: "fix bug" },
+      gateRef,
+      closerRef: { type: "merge-back", deleteBranch: false },
+    }, budgetDefaults);
+
+    const caseJson = JSON.parse(await readFile(join(dir, "case.json"), "utf-8"));
+    expect(caseJson.header.closerRef).toEqual({ type: "merge-back", deleteBranch: false });
+
+    const loaded = await load(dir);
+    expect(loaded.header.closerRef).toEqual({ type: "merge-back", deleteBranch: false });
+  });
+
+  it("rejects an unknown closer reference at create, rather than persisting it", async () => {
+    await expect(create(dir, {
+      surfaceId: "surface-1",
+      taskDef: { intent: "fix bug" },
+      gateRef,
+      closerRef: { type: "teleport" } as never,
+    }, budgetDefaults)).rejects.toThrow();
+  });
+
+  it("loads a case file written before closers were pinned", async () => {
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "fix bug" }, gateRef }, budgetDefaults);
+
+    const loaded = await load(dir);
+    expect(loaded.header.closerRef).toBeUndefined();
+  });
+});
+
 describe("appendEntry", () => {
   let dir: string;
 
