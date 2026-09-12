@@ -10,9 +10,9 @@ import { ensureCommitted, git, tryGit } from "./git-exec.js";
  * close report carries no resume token: a crash anywhere between the merge and
  * the surface recording the close replays this same function.
  *
- * The order is load-bearing, and deliberately not the design spec's: branch
- * existence is checked, then (guarded by the worktree still existing)
- * `ensureCommitted`, and only then the ancestry probe — never the reverse. The
+ * The order is load-bearing: branch existence is checked, then (guarded by the
+ * worktree still existing) `ensureCommitted`, and only then the ancestry probe
+ * — never the reverse. The
  * worker's changes are uncommitted at the start of a first close, so an
  * ancestry probe run before committing sees the surface branch sitting exactly
  * at the base tip and reports "already merged", discarding the work. The
