@@ -1,10 +1,6 @@
-import { execFile as execFileCb } from "node:child_process";
-import { promisify } from "node:util";
 import { ProvisioningFailure } from "./errors.js";
 import { messageOf } from "./gate-support.js";
-import { cleanGitEnv } from "./git-env.js";
-
-const execFile = promisify(execFileCb);
+import { git, tryGit } from "./git-exec.js";
 
 /**
  * The surface_id → branch scheme, settled by the single-surface state machine
@@ -13,22 +9,6 @@ const execFile = promisify(execFileCb);
  */
 export function branchName(surfaceId: string): string {
   return `surface/${surfaceId}`;
-}
-
-async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFile("git", args, { cwd, env: cleanGitEnv() });
-  return stdout.trim();
-}
-
-/** Best-effort clean-up: reports whether the command actually did something. */
-async function tryGit(cwd: string, args: string[]): Promise<boolean> {
-  try {
-    await git(cwd, args);
-    return true;
-  } catch {
-    // Nothing to remove is the common case.
-    return false;
-  }
 }
 
 async function resolveBaseRef(repoPath: string): Promise<string> {

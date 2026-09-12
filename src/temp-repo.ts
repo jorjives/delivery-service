@@ -6,8 +6,9 @@ import { cleanGitEnv } from "./git-env.js";
 
 /**
  * Test and demo support: create a throwaway git repository seeded with `files`
- * and a single commit on `main`. Identity is passed with `-c` so the fixture
- * does not depend on the machine's global git config.
+ * and a single commit on `main`. Identity is written into the repository's own
+ * config so the seed commit, and any commit made in a worktree of this repo,
+ * works on a machine with no global git identity.
  */
 export function initTempRepo(prefix: string, files: Record<string, string>): string {
   const repo = mkdtempSync(join(tmpdir(), prefix));
@@ -16,15 +17,13 @@ export function initTempRepo(prefix: string, files: Record<string, string>): str
   };
 
   git(["init", "-b", "main"]);
+  git(["config", "user.email", "harness@example.invalid"]);
+  git(["config", "user.name", "Harness"]);
   for (const [name, contents] of Object.entries(files)) {
     writeFileSync(join(repo, name), contents);
   }
   git(["add", "-A"]);
-  git([
-    "-c", "user.email=harness@example.invalid",
-    "-c", "user.name=Harness",
-    "commit", "-m", "seed",
-  ]);
+  git(["commit", "-m", "seed"]);
 
   return repo;
 }
