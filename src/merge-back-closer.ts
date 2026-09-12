@@ -12,10 +12,10 @@ import { ensureCommitted, git, tryGit } from "./git-exec.js";
  *
  * The order is load-bearing: branch existence is checked, then (guarded by the
  * worktree still existing) `ensureCommitted`, and only then the ancestry probe
- * — never the reverse. The
- * worker's changes are uncommitted at the start of a first close, so an
- * ancestry probe run before committing sees the surface branch sitting exactly
- * at the base tip and reports "already merged", discarding the work. The
+ * — never the reverse. The worker's changes are uncommitted at the start of a
+ * first close, so an ancestry probe run before committing sees the surface
+ * branch sitting exactly at the base tip and reports "already merged",
+ * discarding the work. The
  * worktree-existence guard, not a branch-existence inference, is what lets a
  * `deleteBranch: false` replay skip straight to the ancestry probe once the
  * worktree is gone but the branch survived cleanup.
