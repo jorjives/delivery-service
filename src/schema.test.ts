@@ -41,10 +41,19 @@ describe("CloserRef", () => {
   });
 
   it("accepts an explicit request to keep the surface branch", () => {
-    expect(CloserRef.parse({ type: "merge-back", deleteBranch: false }).deleteBranch).toBe(false);
+    const parsed = CloserRef.parse({ type: "merge-back", deleteBranch: false });
+    if (parsed.type === "merge-back") {
+      expect(parsed.deleteBranch).toBe(false);
+    } else {
+      throw new Error("Expected merge-back variant");
+    }
   });
 
   it("rejects a closer type it does not know", () => {
     expect(CloserRef.safeParse({ type: "teleport" }).success).toBe(false);
+  });
+
+  it("accepts the commit-to-branch closer named with no parameters", () => {
+    expect(CloserRef.safeParse({ type: "commit-to-branch" }).success).toBe(true);
   });
 });

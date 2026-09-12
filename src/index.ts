@@ -7,6 +7,7 @@ export { recordBaseline, runCheck } from "./run-gate.js";
 export { branchName, provisionWorktree } from "./provision.js";
 export { resolveCloser } from "./resolve-closer.js";
 export { createMergeBackCloser } from "./merge-back-closer.js";
+export { createCommitToBranchCloser } from "./commit-to-branch-closer.js";
 export { failedCloser, teardownWorktree } from "./closer-support.js";
 export { advance, run } from "./surface.js";
 export { noopCloser } from "./ports.js";

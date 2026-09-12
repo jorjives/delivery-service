@@ -60,6 +60,9 @@ export const CloserRef = z.discriminatedUnion("type", [
     type: z.literal("merge-back"),
     deleteBranch: z.boolean().optional(),
   }),
+  // No parameters: the branch to commit to is the surface's own, and the COULD-tier
+  // `push` is deliberately absent until it is built rather than parsed and ignored.
+  z.object({ type: z.literal("commit-to-branch") }),
 ]);
 export type CloserRef = z.infer<typeof CloserRef>;
 

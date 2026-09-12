@@ -61,4 +61,17 @@ describe("resolveCloser", () => {
     expect(report.status).toBe("ERROR");
     expect(report.detail).toMatch(/closer reference/i);
   });
+
+  it("resolves a commit-to-branch reference to a closer that keeps the branch", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+    const mainTip = git(repo, ["rev-parse", "main"]);
+    const closer = resolveCloser({ type: "commit-to-branch" });
+
+    const report = await closer.close(ctx, { kind: "accepted" });
+
+    expect(report.status).toBe("DONE");
+    expect(report.detail).toContain("surface/surface-42");
+    expect(git(repo, ["rev-parse", "main"])).toBe(mainTip);
+    expect(git(repo, ["branch", "--list", "surface/surface-42"])).toContain("surface/surface-42");
+  });
 });

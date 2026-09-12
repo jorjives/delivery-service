@@ -1,5 +1,6 @@
 import type { CloserPort } from "./ports.js";
 import { createMergeBackCloser } from "./merge-back-closer.js";
+import { createCommitToBranchCloser } from "./commit-to-branch-closer.js";
 import { failedCloser } from "./closer-support.js";
 import { CloserRef } from "./schema.js";
 
@@ -16,5 +17,11 @@ export function resolveCloser(closerRef: CloserRef): CloserPort {
     return failedCloser(`Cannot resolve closer reference: ${parsed.error.message}`);
   }
 
-  return createMergeBackCloser({ deleteBranch: parsed.data.deleteBranch });
+  const ref = parsed.data;
+  switch (ref.type) {
+    case "merge-back":
+      return createMergeBackCloser({ deleteBranch: ref.deleteBranch });
+    case "commit-to-branch":
+      return createCommitToBranchCloser();
+  }
 }
