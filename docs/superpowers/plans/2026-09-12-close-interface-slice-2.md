@@ -1,5 +1,6 @@
 # Close Interface — Slice 2: Work Can Be Left on Its Own Branch, and Stopped Surfaces Tidy Up
 
+> **Status:** ✅ Complete — 2026-09-12 — `847fbe6`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 2 of `docs/superpowers/specs/2026-09-11-close-interface-slices.md`
