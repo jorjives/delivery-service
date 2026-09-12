@@ -20,6 +20,8 @@ custom-closer path with its guide, then the SHOULD-tier pull request closer.
 
 ## Slice 1: Accepted Work Is Merged Into the Base Branch
 
+**Status:** ✅ Complete — 2026-09-12 — `be223a1`
+
 **Delivers:** When a surface's work is accepted, a project configured with the
 merge-back closer gets that work committed and fast-forwarded into the branch the
 surface was started from, with the scratch worktree and surface branch cleaned up and a
