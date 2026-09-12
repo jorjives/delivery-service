@@ -31,6 +31,11 @@ describe("UAT: accepted work is merged into the base branch", () => {
     expect(stdout).toContain('closerRef = {"type":"merge-back"}');
   });
 
+  it("AC: the closer reference is pinned in the case file header and resolved from there", () => {
+    expect(stdout).toContain('Closer pinned in the case file header: {"type":"merge-back"}');
+    expect(stdout).toContain("resolved from the pinned header, not from configuration");
+  });
+
   it("UAT: the demo says plainly that the merge is local and nothing is pushed", () => {
     expect(stdout).toContain("The merge lands on the LOCAL base branch");
     expect(stdout).toContain("Nothing is pushed anywhere");

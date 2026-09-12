@@ -63,13 +63,22 @@ async function main(): Promise<void> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "close-demo-case-"));
   const worktreePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "close-demo-tree-")), "wt");
   const location: SurfaceLocation = { repoPath: repo, worktreePath };
+
+  await create(dir, { surfaceId: "surface-42", taskDef: { goal: "add the feature" }, gateRef, closerRef }, budgets);
+
+  // The closer is pinned in the header at create, then resolved from what is on
+  // disk — so changing the project's configuration now cannot redirect this
+  // surface to a different closer, however long it sits before it closes.
+  const pinned = (await load(dir)).header.closerRef;
+  if (!pinned) throw new Error("the closer reference was not pinned in the header");
+  console.log(`Closer pinned in the case file header: ${JSON.stringify(pinned)}`);
+  console.log("The closer below is resolved from the pinned header, not from configuration.\n");
+
   const ports: SurfacePorts = {
     agent: workingAgent,
     triage: unusedTriage,
-    closer: resolveCloser(closerRef),
+    closer: resolveCloser(pinned),
   };
-
-  await create(dir, { surfaceId: "surface-42", taskDef: { goal: "add the feature" }, gateRef }, budgets);
   const result = await run(dir, location, ports);
 
   const caseFile = await load(dir);
