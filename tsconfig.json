@@ -6,11 +6,10 @@
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "esModuleInterop": true,
-    "declaration": true,
-    "outDir": "dist",
-    "rootDir": "src",
+    "allowJs": true,
+    "noEmit": true,
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src"]
+  "include": ["src", "demos", "tests", "*.ts", "*.js"]
 }

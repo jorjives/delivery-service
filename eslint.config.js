@@ -8,23 +8,7 @@ export default defineConfig(
   {
     languageOptions: {
       parserOptions: {
-        projectService: {
-          allowDefaultProject: [
-            "*.js",
-            "*.ts",
-            "demos/*.ts",
-            "tests/*.ts",
-            "tests/agent-invocation-primitive/*.ts",
-            "tests/case-file-persistence/*.ts",
-            "tests/gate-interface/*.ts",
-            "tests/single-surface-state-machine/*.ts",
-            "tests/triage-and-router/*.ts",
-          ],
-          // ponytail: raw count ceiling, keeps needing a bump as slices add
-          // demos/tests files; a real fix gives demos/tests their own
-          // tsconfig project instead of piggybacking on the default one.
-          maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 60,
-        },
+        projectService: true,
         tsconfigRootDir: import.meta.dirname,
       },
     },
