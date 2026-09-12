@@ -77,6 +77,16 @@ Verified citations against source: `src/provision.ts` (`resolveBaseRef`,
 
 Two findings:
 
+> **Superseded during delivery.** Finding 1's diagnosis is sound but its
+> prescribed fix is not: reordering merge-back's steps 1/2 closes the
+> crash-after-cleanup window and opens a worse one, because an ancestry probe
+> run before `ensureCommitted` cannot see the worker's uncommitted changes and
+> reports "already merged" on every first close. Both windows close by
+> guarding the commit on the worktree's own existence instead of reordering
+> around it. Corrected in
+> `docs/superpowers/specs/2026-09-11-close-interface-design.md`; the round-2
+> approval of this reorder, below, is superseded with it.
+
 1. **Load-bearing idempotency bug.** `merge-back` and `commit-to-branch`
    (§5.1, §5.2) call `ensureCommitted(ctx.worktreePath, ...)` as their first
    step, before their own idempotency detect-then-skip check — but a

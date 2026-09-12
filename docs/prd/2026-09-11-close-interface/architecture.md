@@ -336,6 +336,18 @@ Operates in `ctx.repoPath` (the shared origin checkout), not the worktree,
 because merging *into* `baseBranch` must happen where that branch is checked
 out.
 
+> **Superseded during delivery.** The step order below — ancestry probe
+> first, `ensureCommitted` second — is wrong, and so is the reasoning given
+> for it. The probe cannot see the worker's uncommitted changes, so on a
+> first close `<branch>` still sits at the base tip and the probe reports
+> "already merged": the closer would skip to cleanup and delete the accepted
+> work unmerged. The commit must come first, guarded on the worktree's own
+> existence rather than on what the probe established. Corrected in
+> `docs/superpowers/specs/2026-09-11-close-interface-design.md` (§Architecture,
+> `merge-back`), which `src/merge-back-closer.ts` implements. Left in place
+> as the audit trail of how the error was reached; see this PRD's
+> `review-log.md` round-1 finding 1.
+
 **Ordering is load-bearing, not incidental.** Cleanup (step 4) removes
 `ctx.worktreePath`. If the idempotency check ran *after* a worktree-touching
 step, a crash after full cleanup but before the surface's own `close` entry

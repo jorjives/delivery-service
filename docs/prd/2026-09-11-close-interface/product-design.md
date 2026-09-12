@@ -216,6 +216,13 @@ close path specifically.
 
 **Trigger**: `CLOSING`, `outcome.kind: "accepted"`.
 
+> **Superseded during delivery.** Step 1 below probes ancestry before the
+> worker's changes are committed, which on a first close reports "already
+> merged" and sends the closer to cleanup with the accepted work still
+> uncommitted. The commit comes first. Corrected in
+> `docs/superpowers/specs/2026-09-11-close-interface-design.md`; the rest of
+> this flow (ff-only merge, `-d` branch delete, `FAIL` on divergence) stands.
+
 1. Check whether the surface branch is already an ancestor of the base
    branch (`git merge-base --is-ancestor`, `research.md` §3.1, §3.4). If so,
    a prior attempt already merged (e.g. a crash between merge and cleanup on
