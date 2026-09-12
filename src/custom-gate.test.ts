@@ -15,6 +15,10 @@ function writeGateModule(source: string): string {
   return file;
 }
 
+// Absolute module paths ignore the repo root, so these tests pass one that is
+// deliberately not the directory the gate module lives in.
+const REPO_ROOT = "/tmp/not-the-gate-directory";
+
 function ctx(worktreePath = "/tmp/test-worktree"): GateContext {
   return {
     worktreePath,
@@ -36,11 +40,24 @@ export default {
 };
 `;
 
+describe("custom gate loading", () => {
+  it("requires a repo root: omitting it must not type-check", () => {
+    // @ts-expect-error both take a required repoPath, so a relative modulePath
+    // can never silently resolve against process.cwd().
+    const loadWithoutRepoRoot: (modulePath: string) => unknown = loadCustomGate;
+    // @ts-expect-error see above.
+    const createWithoutRepoRoot: (modulePath: string) => unknown = createCustomGate;
+
+    expect(loadWithoutRepoRoot).toBe(loadCustomGate);
+    expect(createWithoutRepoRoot).toBe(createCustomGate);
+  });
+});
+
 describe("loadCustomGate", () => {
   it("loads a default export and runs both methods against a worktree", async () => {
     const modulePath = writeGateModule(WORKING_GATE);
 
-    const gate = await loadCustomGate(modulePath);
+    const gate = await loadCustomGate(REPO_ROOT, modulePath);
     const baseline = await gate.baseline(ctx("/worktrees/alpha"));
     const check = await gate.check(ctx("/worktrees/alpha"));
 
@@ -70,7 +87,7 @@ describe("loadCustomGate", () => {
       };
     `);
 
-    const gate = await loadCustomGate(modulePath, "myGate");
+    const gate = await loadCustomGate(REPO_ROOT, modulePath, "myGate");
     const report = await gate.baseline(ctx());
 
     expect(report.assertions[0]?.id).toBe("named");
@@ -79,7 +96,7 @@ describe("loadCustomGate", () => {
   it("resolves a relative module path against the supplied base directory", async () => {
     const modulePath = writeGateModule(WORKING_GATE);
 
-    const gate = await loadCustomGate("./gate.mjs", "default", path.dirname(modulePath));
+    const gate = await loadCustomGate(path.dirname(modulePath), "./gate.mjs");
     const report = await gate.baseline(ctx());
 
     expect(report.status).toBe("PASS");
@@ -88,8 +105,8 @@ describe("loadCustomGate", () => {
   it("throws GateModuleLoadFailure naming the path when the module does not resolve", async () => {
     const missing = path.join(os.tmpdir(), "no-such-gate-module-xyz.mjs");
 
-    await expect(loadCustomGate(missing)).rejects.toThrow(GateModuleLoadFailure);
-    await expect(loadCustomGate(missing)).rejects.toThrow(missing);
+    await expect(loadCustomGate(REPO_ROOT, missing)).rejects.toThrow(GateModuleLoadFailure);
+    await expect(loadCustomGate(REPO_ROOT, missing)).rejects.toThrow(missing);
   });
 
   it("throws InvalidGateExport naming the missing method, before either method runs", async () => {
@@ -99,8 +116,8 @@ describe("loadCustomGate", () => {
       };
     `);
 
-    await expect(loadCustomGate(modulePath)).rejects.toThrow(InvalidGateExport);
-    await expect(loadCustomGate(modulePath)).rejects.toThrow(/check/);
+    await expect(loadCustomGate(REPO_ROOT, modulePath)).rejects.toThrow(InvalidGateExport);
+    await expect(loadCustomGate(REPO_ROOT, modulePath)).rejects.toThrow(/check/);
   });
 
   it("throws InvalidGateExport naming a missing baseline method", async () => {
@@ -110,17 +127,17 @@ describe("loadCustomGate", () => {
       };
     `);
 
-    await expect(loadCustomGate(modulePath)).rejects.toThrow(InvalidGateExport);
-    await expect(loadCustomGate(modulePath)).rejects.toThrow(/baseline/);
+    await expect(loadCustomGate(REPO_ROOT, modulePath)).rejects.toThrow(InvalidGateExport);
+    await expect(loadCustomGate(REPO_ROOT, modulePath)).rejects.toThrow(/baseline/);
   });
 
   it("throws InvalidGateExport when the named export is absent", async () => {
     const modulePath = writeGateModule(WORKING_GATE);
 
-    await expect(loadCustomGate(modulePath, "notThere")).rejects.toThrow(
+    await expect(loadCustomGate(REPO_ROOT, modulePath, "notThere")).rejects.toThrow(
       InvalidGateExport,
     );
-    await expect(loadCustomGate(modulePath, "notThere")).rejects.toThrow(/notThere/);
+    await expect(loadCustomGate(REPO_ROOT, modulePath, "notThere")).rejects.toThrow(/notThere/);
   });
 
   it("turns an exception thrown by baseline into an ERROR report", async () => {
@@ -131,7 +148,7 @@ describe("loadCustomGate", () => {
       };
     `);
 
-    const gate = await loadCustomGate(modulePath);
+    const gate = await loadCustomGate(REPO_ROOT, modulePath);
     const report = await gate.baseline(ctx());
 
     expect(report.status).toBe("ERROR");
@@ -147,7 +164,7 @@ describe("loadCustomGate", () => {
       };
     `);
 
-    const gate = await loadCustomGate(modulePath);
+    const gate = await loadCustomGate(REPO_ROOT, modulePath);
     const report = await gate.check(ctx());
 
     expect(report.status).toBe("ERROR");
@@ -162,7 +179,7 @@ describe("loadCustomGate", () => {
       };
     `);
 
-    const gate = await loadCustomGate(modulePath);
+    const gate = await loadCustomGate(REPO_ROOT, modulePath);
     const report = await gate.baseline(ctx());
 
     expect(report.status).toBe("ERROR");
@@ -182,7 +199,7 @@ describe("loadCustomGate", () => {
       export default { baseline: async () => dupe, check: async () => dupe };
     `);
 
-    const gate = await loadCustomGate(modulePath);
+    const gate = await loadCustomGate(REPO_ROOT, modulePath);
     const report = await gate.baseline(ctx());
 
     expect(report.status).toBe("ERROR");
@@ -194,7 +211,7 @@ describe("createCustomGate", () => {
   it("runs a working custom gate without the caller loading it first", async () => {
     const modulePath = writeGateModule(WORKING_GATE);
 
-    const gate = createCustomGate(modulePath);
+    const gate = createCustomGate(REPO_ROOT, modulePath);
     const report = await gate.baseline(ctx("/worktrees/beta"));
 
     expect(report.status).toBe("PASS");
@@ -204,7 +221,7 @@ describe("createCustomGate", () => {
   it("reports an unresolvable module path as an ERROR report, not a throw", async () => {
     const missing = path.join(os.tmpdir(), "no-such-gate-module-abc.mjs");
 
-    const gate = createCustomGate(missing);
+    const gate = createCustomGate(REPO_ROOT, missing);
     const report = await gate.baseline(ctx());
 
     expect(report.status).toBe("ERROR");
@@ -217,7 +234,7 @@ describe("createCustomGate", () => {
       export default { baseline: async () => ({ status: "PASS", assertions: [] }) };
     `);
 
-    const gate = createCustomGate(modulePath);
+    const gate = createCustomGate(REPO_ROOT, modulePath);
 
     for (const report of [await gate.baseline(ctx()), await gate.check(ctx())]) {
       expect(report.status).toBe("ERROR");

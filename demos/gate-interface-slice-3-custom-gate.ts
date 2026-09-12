@@ -65,19 +65,19 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(worktree, "alpha.txt"), "alpha");
   fs.writeFileSync(path.join(worktree, "beta.txt"), "beta");
 
-  const workingGate = await loadCustomGate(workingPath);
+  const workingGate = await loadCustomGate(tmp, workingPath);
   printReport("Working custom gate — baseline", await workingGate.baseline(ctx(worktree)));
   printReport("Working custom gate — check", await workingGate.check(ctx(worktree)));
 
   // --- A named export other than the default ---
-  const namedGate = await loadCustomGate(workingPath, "strictGate");
+  const namedGate = await loadCustomGate(tmp, workingPath, "strictGate");
   printReport("Named export 'strictGate' — baseline", await namedGate.baseline(ctx(worktree)));
 
   // --- A module path that does not resolve ---
   const missingPath = path.join(tmp, "not-a-real-gate.mjs");
   printReport(
     "Broken — module path does not resolve",
-    await createCustomGate(missingPath).baseline(ctx(worktree)),
+    await createCustomGate(tmp, missingPath).baseline(ctx(worktree)),
   );
 
   // --- A module whose export is missing `check`, rejected at load time ---
@@ -87,7 +87,7 @@ async function main(): Promise<void> {
     "export default { baseline: async () => ({ status: 'PASS', assertions: [] }) };\n",
   );
   try {
-    await loadCustomGate(incompletePath);
+    await loadCustomGate(tmp, incompletePath);
     console.log("\n=== Broken — export missing 'check' ===");
     console.log("UNEXPECTED: the invalid gate loaded without error");
   } catch (err) {
@@ -103,7 +103,7 @@ async function main(): Promise<void> {
     "  check: async () => ({ status: 'PASS', assertions: [] }),",
     "};",
   ].join("\n"));
-  const throwingGate = await loadCustomGate(throwingPath);
+  const throwingGate = await loadCustomGate(tmp, throwingPath);
   printReport("Throwing gate — baseline", await throwingGate.baseline(ctx(worktree)));
 
   fs.rmSync(tmp, { recursive: true, force: true });

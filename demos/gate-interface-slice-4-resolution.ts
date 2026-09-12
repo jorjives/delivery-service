@@ -24,17 +24,30 @@ function printReport(label: string, report: GateReport): void {
   }
 }
 
-async function runBaseline(label: string, ref: GateRef, worktreePath: string): Promise<void> {
+// The repo root and the worktree are separate directories on purpose: a custom
+// gate's relative module path resolves against the repo root, never against the
+// worktree the gate is judging.
+async function runBaseline(
+  label: string,
+  ref: GateRef,
+  repoPath: string,
+  worktreePath: string,
+): Promise<void> {
   const ctx: GateContext = { worktreePath, taskDef: {}, gateRef: ref };
-  printReport(label, await resolveGate(ref, worktreePath).baseline(ctx));
+  printReport(label, await resolveGate(ref, repoPath).baseline(ctx));
 }
 
 async function main(): Promise<void> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "resolve-gate-demo-"));
+  const repoPath = path.join(tmp, "repo");
+  const worktreePath = path.join(tmp, "tree");
+  fs.mkdirSync(repoPath);
+  fs.mkdirSync(worktreePath);
 
-  // A custom gate module for the custom-type reference to load.
+  // A custom gate module for the custom-type reference to load. It lives in the
+  // repo root, outside the worktree.
   fs.writeFileSync(
-    path.join(tmp, "licence-gate.mjs"),
+    path.join(repoPath, "licence-gate.mjs"),
     [
       "const report = async (ctx) => ({",
       '  status: "PASS",',
@@ -53,25 +66,29 @@ async function main(): Promise<void> {
       command: "printf '1..2\\nok 1 - alpha\\nnot ok 2 - beta\\n'",
       parseMode: "tap",
     },
-    tmp,
+    repoPath,
+    worktreePath,
   );
 
   await runBaseline(
     "custom ref — resolves and runs",
     { type: "custom", modulePath: "./licence-gate.mjs" },
-    tmp,
+    repoPath,
+    worktreePath,
   );
 
   await runBaseline(
     "custom ref with a bad module path — resolution fails as a report",
     { type: "custom", modulePath: "./no-such-gate.mjs" },
-    tmp,
+    repoPath,
+    worktreePath,
   );
 
   await runBaseline(
     "command ref with an unsupported parse mode — resolution fails as a report",
     { type: "command", command: "true", parseMode: "xunit" } as unknown as GateRef,
-    tmp,
+    repoPath,
+    worktreePath,
   );
 
   console.log("\nAll four references were handled without throwing.");

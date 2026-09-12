@@ -39,18 +39,20 @@ function guard(
 }
 
 /**
- * Load a user-supplied gate module. `modulePath` is resolved against
- * `baseDir` (the current working directory by default); absolute paths pass through
- * unchanged. Throws `GateModuleLoadFailure` if the module cannot be imported
- * and `InvalidGateExport` if the selected export is not a gate — both before
- * any gate method is called.
+ * Load a user-supplied gate module. A relative `modulePath` is resolved
+ * against `repoPath`, the repository root — never the worktree under judgement
+ * and never the process's working directory, so the caller must say which root
+ * it means; absolute paths pass through unchanged. Throws
+ * `GateModuleLoadFailure` if the module cannot be imported and
+ * `InvalidGateExport` if the selected export is not a gate — both before any
+ * gate method is called.
  */
 export async function loadCustomGate(
+  repoPath: string,
   modulePath: string,
   exportName = "default",
-  baseDir: string = process.cwd(),
 ): Promise<Gate> {
-  const absolutePath = resolve(baseDir, modulePath);
+  const absolutePath = resolve(repoPath, modulePath);
 
   let loaded: Record<string, unknown>;
   try {
@@ -88,15 +90,15 @@ export async function loadCustomGate(
  * "failed to load" and "failed to run" must look the same to the caller.
  */
 export function createCustomGate(
+  repoPath: string,
   modulePath: string,
   exportName?: string,
-  baseDir?: string,
 ): Gate {
   let gate: Promise<Gate> | undefined;
   const run =
     (method: "baseline" | "check") =>
     async (ctx: GateContext): Promise<GateReport> => {
-      gate ??= loadCustomGate(modulePath, exportName, baseDir);
+      gate ??= loadCustomGate(repoPath, modulePath, exportName);
       try {
         return await (await gate)[method](ctx);
       } catch (err) {

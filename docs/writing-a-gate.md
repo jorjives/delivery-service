@@ -150,7 +150,10 @@ To load and call it yourself:
 ```ts
 import { loadCustomGate } from "./src/index.js";
 
-const gate = await loadCustomGate("/home/me/gates/json-gate.mjs");
+// The first argument is the repository root a relative `modulePath` resolves
+// against. It is required, so a gate can never be loaded from whichever
+// directory the process happens to be running in.
+const gate = await loadCustomGate("/home/me/project", "/home/me/gates/json-gate.mjs");
 const ctx = {
   worktreePath: "/tmp/my-run/tree",
   taskDef: {},

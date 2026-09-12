@@ -166,8 +166,8 @@ export function resolveCloser(closerRef: CloserRef, repoPath: string): CloserPor
 the repo root (`SurfaceLocation.repoPath`), never the worktree the worker
 edits, so an agent can never rewrite the closer that lands its own work. The
 surface path matches the gate, which `run-gate.ts` resolves against
-`location.repoPath`; the signature is stricter than `resolveGate`, whose
-`baseDir` still defaults to `process.cwd()`.
+`location.repoPath`, and the signature matches `resolveGate`, whose `repoPath`
+is required for the same reason.
 
 Total and pure, exactly like `resolveGate` (`src/resolve-gate.ts:16-26`): an
 unparseable `CloserRef` yields a `CloserPort` whose `close()` always returns

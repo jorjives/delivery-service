@@ -44,7 +44,7 @@ describe("the 'writing a gate' guide", () => {
     writeFileSync(join(worktreePath, "good.json"), "{}");
     writeFileSync(join(worktreePath, "broken.json"), "{");
 
-    const gate = await loadCustomGate(modulePath);
+    const gate = await loadCustomGate(tmp, modulePath);
     const ctx: GateContext = { worktreePath, taskDef: {}, gateRef: { type: "custom", modulePath } };
 
     const baseline = await gate.baseline(ctx);

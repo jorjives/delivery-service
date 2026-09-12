@@ -106,8 +106,8 @@ absence or expired auth is a project-setup problem this item cannot solve.
    repo root, never the worktree or the process's working directory).
    `repoPath` is required, so no caller can load the closer from inside the
    tree it judges. The surface path matches the gate (`run-gate.ts`
-   resolves against `SurfaceLocation.repoPath`); the signature is stricter
-   than `resolveGate`, whose `baseDir` still defaults to `process.cwd()`.
+   resolves against `SurfaceLocation.repoPath`), and matches `resolveGate`,
+   whose `repoPath` is required for the same reason.
 3. **The `merge-back` closer**: idempotent ancestor check, commit, ff-only
    merge into the pinned base branch, worktree removal, safety-checked branch
    delete.
