@@ -91,8 +91,11 @@ async function main(): Promise<void> {
   const decision = await authority.canUseTool(
     OUT_OF_ROLE_TOOL,
     { command: "rm -rf build" },
-    { signal: new AbortController().signal },
+    { signal: new AbortController().signal, requestId: "authority-demo-1", toolUseID: "toolu_demo_1" },
   );
+  // The SDK's callback type allows a null "no answer"; the harness's guard
+  // always decides, so a null here would be a bug worth seeing loudly.
+  if (decision === null) throw new Error("the tool authority returned no decision");
 
   console.log("2. What the session is told when it reaches outside that list");
   console.log(`   Decision: ${decision.behavior}`);

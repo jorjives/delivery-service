@@ -2,13 +2,13 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { create, appendEntry, load, writeRef, readRef } from "../src/index.js";
-import type { HistoryEntry } from "../src/index.js";
+import type { CreateHeader, HistoryEntry } from "../src/index.js";
 
 async function main() {
   const dir = await mkdtemp(join(tmpdir(), "case-file-demo-ref-storage-"));
   console.log(`Case directory: ${dir}\n`);
 
-  const header = {
+  const header: CreateHeader = {
     surfaceId: "demo-surface-ref-storage",
     taskDef: { intent: "Demonstrate reference storage" },
     gateRef: { type: "command", command: "npm test", parseMode: "tap" },

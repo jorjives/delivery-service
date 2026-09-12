@@ -2,8 +2,9 @@ import { mkdtemp, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { create, appendEntry, load, logTail, rebuild, resumeAction } from "../src/index.js";
+import type { CreateHeader } from "../src/index.js";
 
-const header = {
+const header: CreateHeader = {
   surfaceId: "demo-surface-2",
   taskDef: { intent: "Demonstrate crash recovery" },
   gateRef: { type: "command", command: "npm test", parseMode: "tap" },

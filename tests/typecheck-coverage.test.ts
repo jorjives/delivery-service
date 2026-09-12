@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { REPO_ROOT } from "./helpers";
+import { REPO_ROOT } from "./helpers.js";
 
 // `npm run lint`'s tsc step only guards what the tsconfig includes. When demos
 // and tests sit outside it they compile nowhere, so a signature change can go

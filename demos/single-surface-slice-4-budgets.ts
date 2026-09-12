@@ -18,7 +18,15 @@ import { initTempRepo } from "../src/temp-repo.js";
 import { advance, run } from "../src/surface.js";
 import { deterministicRouter } from "../src/router.js";
 import { noopCloser } from "../src/ports.js";
-import type { AgentPort, CloserPort, SurfaceLocation, SurfacePorts, Terminus } from "../src/ports.js";
+import type {
+  AgentContext,
+  AgentPort,
+  CloserPort,
+  RoleHandle,
+  SurfaceLocation,
+  SurfacePorts,
+  Terminus,
+} from "../src/ports.js";
 import type { BudgetPopulation, BudgetSet, GateRef } from "../src/schema.js";
 
 const budgets: BudgetSet = {
@@ -91,7 +99,7 @@ async function runScenario(scenario: Scenario): Promise<void> {
 
 /** A worker that always reports the same terminus, whatever the role. */
 function alwaysWorker(terminus: Terminus): AgentPort {
-  return { invoke: () => Promise.resolve(terminus) };
+  return { invoke: (() => Promise.resolve(terminus)) as AgentPort["invoke"] };
 }
 
 async function main(): Promise<void> {
@@ -125,13 +133,13 @@ async function main(): Promise<void> {
     burn: "repair session dispatched",
     ports: {
       agent: {
-        invoke: (roleCfg, ctx) => {
+        invoke: ((roleCfg: RoleHandle, ctx: AgentContext) => {
           if (roleCfg.role === "worker") {
             fs.rmSync(path.join(ctx.worktreePath, "report.tap"), { force: true });
             return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
           }
           return Promise.resolve({ status: "completed", rationale: "repaired nothing" });
-        },
+        }) as AgentPort["invoke"],
       },
       triage: deterministicRouter,
       closer: noopCloser,

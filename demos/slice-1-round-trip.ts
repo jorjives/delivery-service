@@ -2,13 +2,14 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { create, appendEntry, load } from "../src/index.js";
+import type { CreateHeader } from "../src/index.js";
 
 async function main() {
   const dir = await mkdtemp(join(tmpdir(), "case-file-demo-"));
   console.log(`Case directory: ${dir}\n`);
 
   // Create
-  const header = {
+  const header: CreateHeader = {
     surfaceId: "demo-surface-1",
     taskDef: { intent: "Demonstrate the round trip" },
     gateRef: { type: "command", command: "npm test", parseMode: "tap" },

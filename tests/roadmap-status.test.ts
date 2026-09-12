@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { REPO_ROOT } from "./helpers";
+import { REPO_ROOT } from "./helpers.js";
 
 // The completion step marks a design spec complete but not its roadmap item,
 // so roadmap readers (Spec View, autoloop discovery) see finished items as

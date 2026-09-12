@@ -2,8 +2,9 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { create, setBaseline, setOutcome, updateCursor, appendEntry, load, ImmutabilityViolation } from "../src/index.js";
+import type { CreateHeader } from "../src/index.js";
 
-const header = {
+const header: CreateHeader = {
   surfaceId: "demo-surface-3",
   taskDef: { intent: "Demonstrate write-once fields" },
   gateRef: { type: "command", command: "npm test", parseMode: "tap" },

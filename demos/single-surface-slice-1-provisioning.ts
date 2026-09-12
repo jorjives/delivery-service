@@ -16,7 +16,7 @@ import { create, load } from "../src/case-file.js";
 import { initTempRepo } from "../src/temp-repo.js";
 import { advance } from "../src/surface.js";
 import { noopCloser } from "../src/ports.js";
-import type { AgentPort, SurfaceLocation, SurfacePorts } from "../src/ports.js";
+import type { AgentContext, AgentPort, RoleHandle, SurfaceLocation, SurfacePorts } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
 
 const budgets: BudgetSet = {
@@ -43,15 +43,16 @@ const idleAgent: AgentPort = {
 
 /** Writes the missing report file, so the next baseline succeeds. */
 const repairingAgent: AgentPort = {
-  invoke: (_roleCfg, ctx) => {
+  invoke: ((_roleCfg: RoleHandle, ctx: AgentContext) => {
     fs.writeFileSync(path.join(ctx.worktreePath, "report.tap"), PASSING_TAP);
     return Promise.resolve({ status: "completed", rationale: "restored the missing report.tap" });
-  },
+  }) as AgentPort["invoke"],
 };
 
 /** Claims success every time but never actually fixes anything. */
 const uselessAgent: AgentPort = {
-  invoke: () => Promise.resolve({ status: "completed", rationale: "claims to have fixed it" }),
+  invoke: (() =>
+    Promise.resolve({ status: "completed", rationale: "claims to have fixed it" })) as AgentPort["invoke"],
 };
 
 async function runSurface(

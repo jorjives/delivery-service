@@ -72,7 +72,7 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     "AC: each packet's decision reads as a question for a human, and differs by cause: authority, no budget left, and triage failure read differently",
     () => {
       const [, authority, budget, unusable] = allSections();
-      const decisionOf = (s: string) => s.slice(s.indexOf("Decision:"), s.indexOf("Evidence:"));
+      const decisionOf = (s = "") => s.slice(s.indexOf("Decision:"), s.indexOf("Evidence:"));
       const authorityDecision = decisionOf(authority);
       const budgetDecision = decisionOf(budget);
       const unusableDecision = decisionOf(unusable);

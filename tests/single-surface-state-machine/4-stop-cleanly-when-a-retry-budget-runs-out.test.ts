@@ -116,7 +116,7 @@ describe("UAT: stop cleanly when a retry budget runs out", () => {
     // Both runs land on the identical budget line and session count.
     const budgetLines = [...s.matchAll(/^ {15}correction 3\/3.*$/gm)];
     expect(budgetLines).toHaveLength(2);
-    expect(budgetLines[0][0]).toBe(budgetLines[1][0]);
+    expect(budgetLines[0]?.[0]).toBe(budgetLines[1]?.[0]);
   });
 
   it("UAT: every scenario's printed retry count exactly matches its budget's cap before escalating", () => {

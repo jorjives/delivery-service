@@ -2,7 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { create, incrementBudget } from "../src/index.js";
-import type { BudgetPopulation } from "../src/index.js";
+import type { BudgetPopulation, CreateHeader } from "../src/index.js";
 
 const budgetDefaults = {
   correction: { used: 0, max: 3 },
@@ -17,7 +17,7 @@ async function main() {
   console.log(`Case directory: ${dir}\n`);
 
   // Create case file
-  const header = {
+  const header: CreateHeader = {
     surfaceId: "demo-surface-budget",
     taskDef: { intent: "Demonstrate budget tracking" },
     gateRef: { type: "command", command: "npm test", parseMode: "tap" },

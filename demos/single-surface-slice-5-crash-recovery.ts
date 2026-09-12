@@ -18,7 +18,14 @@ import { initTempRepo } from "../src/temp-repo.js";
 import { advance, run } from "../src/surface.js";
 import { deterministicRouter } from "../src/router.js";
 import { noopCloser } from "../src/ports.js";
-import type { SurfaceLocation, SurfacePorts, Terminus } from "../src/ports.js";
+import type {
+  AgentContext,
+  AgentPort,
+  RoleHandle,
+  SurfaceLocation,
+  SurfacePorts,
+  Terminus,
+} from "../src/ports.js";
 import type { BudgetPopulation, BudgetSet, GateRef } from "../src/schema.js";
 
 const budgets: BudgetSet = {
@@ -93,7 +100,7 @@ function killingSession(ports: SurfacePorts, n: number): SurfacePorts {
 
 /** An agent that always returns the same terminus, whatever the role. */
 function always(terminus: Terminus): SurfacePorts["agent"] {
-  return { invoke: () => Promise.resolve(terminus) };
+  return { invoke: (() => Promise.resolve(terminus)) as AgentPort["invoke"] };
 }
 
 async function runScenario(scenario: Scenario): Promise<boolean> {
@@ -185,7 +192,7 @@ async function main(): Promise<void> {
       killSession: 2,
       ports: () => ({
         agent: {
-          invoke: (roleCfg, ctx) => {
+          invoke: ((roleCfg: RoleHandle, ctx: AgentContext) => {
             if (roleCfg.role === "worker") {
               fs.rmSync(path.join(ctx.worktreePath, "report.tap"), { force: true });
               return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
@@ -197,7 +204,7 @@ async function main(): Promise<void> {
             // resume can conjure them back; the guarantee is that a crash
             // repeats nothing and loses nothing already recorded.
             return Promise.resolve({ status: "incomplete", rationale: "the repair session hit its cap" });
-          },
+          }) as AgentPort["invoke"],
         },
         triage: deterministicRouter,
         closer: noopCloser,
