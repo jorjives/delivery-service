@@ -66,6 +66,11 @@ with the codebase's existing schema library.
 - [ ] An unreadable or unknown closer reference produces an error report, never a crash
 - [ ] If the main checkout is not on the base branch, the closer refuses with an error
       naming the problem and does not switch the checkout
+- [ ] The closer named for a surface is pinned in its case file header at provisioning
+      and resolved from there, so changing the project's configuration afterwards cannot
+      redirect an in-flight surface to a different closer
+      (added after the slice closed: the spec pins `closerRef` in the header, and no
+      slice below asked for it; delivered separately)
 
 ### UAT
 
