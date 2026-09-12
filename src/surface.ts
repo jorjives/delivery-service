@@ -1,14 +1,14 @@
 import { z } from "zod";
 import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, readRef, setbackOf, setBaseBranch } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
-import { provisionWorktree } from "./provision.js";
+import { provisionWorktree, branchName } from "./provision.js";
 import { messageOf } from "./gate-support.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
 import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
 import { EscalationPacket } from "./triage-role-config.js";
-import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict } from "./ports.js";
+import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext } from "./ports.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
 export interface AdvanceResult {
@@ -26,6 +26,23 @@ export interface AdvanceResult {
 function worktreeOf(caseFile: CaseFile, location: SurfaceLocation): string {
   // `create` writes worktreeRef: "" — the "not yet provisioned" sentinel.
   return caseFile.cursor.worktreeRef || location.worktreePath;
+}
+
+/**
+ * One place builds the closer's context, so the accept path and the
+ * fire-and-log teardown path can never disagree about what a closer is given.
+ * `baseBranch` is empty only if provisioning never completed, which no state
+ * that reaches a closer can be; a closer that needs it reports the gap itself
+ * rather than the driver guessing a branch.
+ */
+function closeContextOf(dir: string, caseFile: CaseFile, location: SurfaceLocation): CloseContext {
+  return {
+    worktreePath: worktreeOf(caseFile, location),
+    dir,
+    repoPath: location.repoPath,
+    branch: branchName(caseFile.header.surfaceId),
+    baseBranch: caseFile.header.baseBranch ?? "",
+  };
 }
 
 function locationOf(caseFile: CaseFile, location: SurfaceLocation): SurfaceLocation {
@@ -66,10 +83,7 @@ async function terminate(
   await setOutcome(dir, outcome);
   await updateCursor(dir, { state });
   try {
-    await ports.closer.close(
-      { worktreePath: worktreeOf(caseFile, location), dir },
-      { kind: outcome.kind },
-    );
+    await ports.closer.close(closeContextOf(dir, caseFile, location), { kind: outcome.kind });
   } catch (err) {
     console.warn(`Closer teardown failed for ${dir}: ${messageOf(err)}`);
   }
@@ -570,10 +584,7 @@ async function closing(
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
-  const report = await ports.closer.close(
-    { worktreePath: worktreeOf(caseFile, location), dir },
-    { kind: "accepted" },
-  );
+  const report = await ports.closer.close(closeContextOf(dir, caseFile, location), { kind: "accepted" });
 
   const priorCloses = caseFile.history.filter((e) => e.t === "close").length;
   const detailRef = await writeRef(dir, `close-${priorCloses}`, report);

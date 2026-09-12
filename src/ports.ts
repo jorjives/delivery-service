@@ -84,9 +84,19 @@ export interface TriagePort {
 
 // --- CloserPort (Item 6 supplies merge-back / open-PR / teardown closers) ---
 
+/**
+ * What a closer is given. `worktreePath` and `dir` are this surface's own;
+ * `repoPath` is the checkout the worktree was created from and is shared with
+ * the operator, which is why a closer may act on it but must never switch its
+ * checked-out branch. `branch` is derived from the surface id, and `baseBranch`
+ * is the local branch pinned when the surface was provisioned.
+ */
 export interface CloseContext {
   worktreePath: string;
   dir: string;
+  repoPath: string;
+  branch: string;
+  baseBranch: string;
 }
 
 export interface CloseOutcome {

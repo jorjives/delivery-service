@@ -16,7 +16,7 @@ import { NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { isOnPath } from "./on-path.js";
-import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus } from "./ports.js";
+import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition } from "./errors.js";
 import type { BudgetPopulation, BudgetSet, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
@@ -429,7 +429,7 @@ describe("advance", () => {
 describe("noopCloser", () => {
   it("reports DONE and does no teardown", async () => {
     const report = await noopCloser.close(
-      { worktreePath: "/unused", dir: "/unused" },
+      { worktreePath: "/unused", dir: "/unused", repoPath: "/unused", branch: "surface/test", baseBranch: "main" },
       { kind: "escalated" },
     );
     expect(report.status).toBe("DONE");
@@ -1865,4 +1865,58 @@ describe("resume parity: an interrupted run reaches the same outcome as a straig
       expect(await summarise(stopped.dir)).toEqual(reference);
     });
   }
+});
+
+describe("the close context", () => {
+  let dir: string;
+  let location: SurfaceLocation;
+  let seen: CloseContext[];
+  let recordingCloser: SurfacePorts["closer"];
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    location = {
+      repoPath: initTempRepo("surface-repo-", { "report.tap": PASSING_TAP }),
+      worktreePath: join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt"),
+    };
+    seen = [];
+    recordingCloser = {
+      close: (ctx) => {
+        seen.push(ctx);
+        return Promise.resolve({ status: "DONE", detail: "recorded" });
+      },
+    };
+  });
+
+  it("tells the closer the repo, the surface branch and the pinned base branch", async () => {
+    const agent = sessionAgent((_role, ctx) => {
+      writeFileSync(join(ctx.worktreePath, "feature.txt"), "the change\n");
+      return Promise.resolve({ status: "completed", rationale: "added the feature" });
+    });
+
+    await run(dir, location, { agent, triage: unusedTriage(), closer: recordingCloser });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toMatchObject({
+      repoPath: location.repoPath,
+      branch: "surface/surface-1",
+      baseBranch: "main",
+    });
+  });
+
+  it("gives an escalated surface's fire-and-log teardown the same context", async () => {
+    // An authority-class escalate leaves the machine directly, so terminate()
+    // — not closing() — is what calls the closer here.
+    const agent = scriptedAgent([{ status: "escalate", category: "authority", rationale: "needs a human" }]);
+
+    const result = await run(dir, location, { agent, triage: unusedTriage(), closer: recordingCloser });
+
+    expect(result.state).toBe("ESCALATED");
+    expect(seen[0]).toMatchObject({
+      repoPath: location.repoPath,
+      branch: "surface/surface-1",
+      baseBranch: "main",
+    });
+  });
 });
