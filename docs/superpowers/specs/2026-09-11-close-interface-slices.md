@@ -216,6 +216,7 @@ and accepted work is never quietly thrown back into a retry loop it cannot fix.
 ## Slice 4: An Extender Writes Their Own Closer From the Guide
 
 **Status:** ✅ Complete — 2026-09-13 — `334ba55`
+**Tests:** ✅ Recorded — 2026-09-13 — `1ab0e5d4b65cfd62b191d5ad4e18fd210168c2ea` — cli — 1 UAT + 2 AC, 4 skipped
 
 **Delivers:** An extender can write a closer for their project, reference it by module
 path, and have any failure in it reported safely, working only from a "writing a closer"
