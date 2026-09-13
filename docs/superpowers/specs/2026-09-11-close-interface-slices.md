@@ -157,6 +157,8 @@ task, and a person picking up an escalation always finds the work where it was l
 
 ## Slice 3: A Close That Cannot Complete Is Retried, Then Handed to a Person With the Reason
 
+**Status:** ✅ Complete — 2026-09-13 — `02fed8e`
+
 **Delivers:** When a closer cannot finish, for example because the base branch has moved
 on, the harness retries the real close while budget remains and then escalates with a
 packet whose evidence says in plain prose what blocked it, never sending the accepted work
