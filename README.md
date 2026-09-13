@@ -14,4 +14,5 @@ npm test
 - [Design docs](docs/)
 - [Configuring a role](docs/configuring-a-role.md): set up a worker or gate-maintenance agent
 - [Writing a gate](docs/writing-a-gate.md): configure the command gate or write your own
+- [Writing a closer](docs/writing-a-closer.md): name a built-in closer or write your own
 - [Contributing](CONTRIBUTING.md)
