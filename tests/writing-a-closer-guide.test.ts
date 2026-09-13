@@ -40,6 +40,7 @@ describe("the 'writing a closer' guide", () => {
     expect(guide).toMatch(/origin/);
     expect(guide).toContain("resolveCloser(");
     expect(guide).toContain("npm run demo:close-slice-4");
+    expect(guide).toContain("npm run demo:close-slice-5");
     expect(guide).not.toContain("—"); // no em-dashes in outward-facing copy
   });
 

@@ -58,6 +58,8 @@ left in place after the pull request opens, for follow-up commits. A missing
 `gh`, an expired sign-in or a missing permission is reported as `"ERROR"` naming
 the fix; a pull request GitHub declines, for example because of branch
 protection, is `"FAIL"`.
+To watch it open a pull request, reuse it on a repeat close, and report an
+expired sign-in, against a stand-in for `gh` with no network: `npm run demo:close-slice-5`.
 
 Whoever runs the surface turns the pinned reference into a closer and passes it
 in the surface's ports:
