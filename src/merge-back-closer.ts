@@ -83,16 +83,32 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
     }
 
     // The merge is its own conflict probe: --ff-only either advances the ref or
-    // refuses, changing nothing either way.
+    // refuses, changing nothing either way. Only once it has refused is the
+    // reason worth a second call: a base branch that is no longer an ancestor of
+    // the surface branch has moved on, which is a decision for a person (FAIL);
+    // anything else that stopped a fast-forward the history allows is the
+    // checkout itself being in the way (ERROR).
     const merged = await tryGit(ctx.repoPath, ["merge", "--ff-only", "--", ctx.branch]);
     if (!merged) {
       const tip = await git(ctx.repoPath, ["rev-parse", "--short", ctx.baseBranch]);
+      const diverged = !(await tryGit(ctx.repoPath, ["merge-base", "--is-ancestor", ctx.baseBranch, ctx.branch]));
+      if (diverged) {
+        return {
+          status: "FAIL",
+          detail:
+            `${ctx.baseBranch} has moved on since this surface started: it is now at ${tip}, which ${ctx.branch} ` +
+            `does not include, so ${ctx.baseBranch} cannot be fast-forwarded onto the work. Nothing was changed and ` +
+            `the work is still on ${ctx.branch}. Bring ${ctx.branch} up to date with ${ctx.baseBranch}, or undo the ` +
+            `new commits on ${ctx.baseBranch}, and close again; or choose a different close.`,
+        };
+      }
       return {
-        status: "FAIL",
+        status: "ERROR",
         detail:
-          `Could not fast-forward ${ctx.baseBranch} onto ${ctx.branch}. ${ctx.baseBranch} is at ${tip}: either it has ` +
-          `moved on since this surface started, or the checkout has local changes in the way. ` +
-          `Nothing was changed and the work is still on ${ctx.branch}.`,
+          `git would not fast-forward ${ctx.baseBranch} (at ${tip}) onto ${ctx.branch}, although the history allows ` +
+          `it, so something in the checkout at ${ctx.repoPath} is in the way, most often uncommitted or untracked ` +
+          `files the merge would overwrite. Nothing was changed and the work is still on ${ctx.branch}. ` +
+          `Clear what is in the way in that checkout and close again.`,
       };
     }
 

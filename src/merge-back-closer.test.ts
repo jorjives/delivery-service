@@ -119,7 +119,7 @@ describe("the merge-back closer", () => {
     expect(existsSync(tree)).toBe(true);
   });
 
-  it("reports a diverged base branch as a refusal, leaving the repo and worktree untouched", async () => {
+  it("reports a diverged base branch as a refusal naming its tip, leaving the repo and worktree untouched", async () => {
     writeFileSync(join(tree, "feature.txt"), "the work\n");
     writeFileSync(join(repo, "other.txt"), "moved on\n");
     git(repo, ["add", "-A"]);
@@ -129,7 +129,45 @@ describe("the merge-back closer", () => {
     const report = await createMergeBackCloser().close(ctx, accepted);
 
     expect(report.status).toBe("FAIL");
+    expect(report.detail).toContain("main has moved on");
     expect(report.detail).toContain(git(repo, ["rev-parse", "--short", "main"]));
+    expect(report.detail).toContain("surface/surface-42");
+    // One cause, stated plainly: no hedge about local changes.
+    expect(report.detail).not.toMatch(/local changes/i);
+    expect(git(repo, ["rev-parse", "main"])).toBe(tip);
+    expect(git(repo, ["status", "--porcelain"])).toBe("");
+    expect(existsSync(tree)).toBe(true);
+  });
+
+  it("gives the same refusal when the diverged close is retried, without committing the work twice", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+    writeFileSync(join(repo, "other.txt"), "moved on\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-m", "main moved on"]);
+
+    const first = await createMergeBackCloser().close(ctx, accepted);
+    const second = await createMergeBackCloser().close(ctx, accepted);
+
+    expect(first.status).toBe("FAIL");
+    expect(first.detail).toContain("main has moved on");
+    expect(second).toEqual(first);
+    expect(git(repo, ["rev-list", "--count", "main..surface/surface-42"])).toBe("1");
+  });
+
+  it("reports files in the checkout that block the fast-forward as an environment error, changing nothing", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+    // Untracked in the shared checkout, and in the way of the incoming file.
+    writeFileSync(join(repo, "feature.txt"), "someone's scratch file\n");
+    const tip = git(repo, ["rev-parse", "main"]);
+
+    const report = await createMergeBackCloser().close(ctx, accepted);
+
+    expect(report.status).toBe("ERROR");
+    expect(report.detail).toContain("main");
+    expect(report.detail).toMatch(/in the way/i);
+    expect(report.detail).not.toMatch(/moved on/i);
+    // Plain prose, not git's own refusal text.
+    expect(report.detail).not.toMatch(/would be overwritten|Aborting/);
     expect(git(repo, ["rev-parse", "main"])).toBe(tip);
     expect(existsSync(tree)).toBe(true);
   });
