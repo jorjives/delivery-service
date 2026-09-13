@@ -80,6 +80,29 @@ export class InvalidGateExport extends Error {
   }
 }
 
+export class CloserModuleLoadFailure extends Error {
+  readonly code = "CLOSER_MODULE_LOAD_FAILURE" as const;
+  constructor(
+    readonly modulePath: string,
+    readonly detail: string,
+  ) {
+    super(`CloserModuleLoadFailure: cannot load custom closer module "${modulePath}": ${detail}`);
+    this.name = "CloserModuleLoadFailure";
+  }
+}
+
+export class InvalidCloserExport extends Error {
+  readonly code = "INVALID_CLOSER_EXPORT" as const;
+  constructor(
+    readonly modulePath: string,
+    readonly exportName: string,
+    readonly detail: string,
+  ) {
+    super(`InvalidCloserExport: export "${exportName}" of "${modulePath}" is not a closer: ${detail}`);
+    this.name = "InvalidCloserExport";
+  }
+}
+
 export class MissingBaseline extends Error {
   readonly code = "MISSING_BASELINE" as const;
   constructor(readonly surfaceDir: string) {

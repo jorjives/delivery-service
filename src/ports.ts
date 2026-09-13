@@ -1,4 +1,4 @@
-import type { Budget, BudgetPopulation, BudgetSet, CaseFile } from "./schema.js";
+import type { Budget, BudgetPopulation, BudgetSet, CaseFile, CloseReport } from "./schema.js";
 import type { CloseRepairBrief, EscalationPacket, SharpenedBrief, TriageEnvelope } from "./triage-role-config.js";
 
 // --- AgentPort (createAgentPort in agent-invoke.ts is the SDK-backed implementation) ---
@@ -106,10 +106,7 @@ export interface CloseOutcome {
   kind: "accepted" | "escalated" | "aborted";
 }
 
-export interface CloseReport {
-  status: "DONE" | "FAIL" | "ERROR";
-  detail: string;
-}
+export type { CloseReport };
 
 export interface CloserPort {
   close(ctx: CloseContext, outcome: CloseOutcome): Promise<CloseReport>;

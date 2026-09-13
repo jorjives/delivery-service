@@ -85,6 +85,16 @@ export const GateReport = z.object({
 });
 export type GateReport = z.infer<typeof GateReport>;
 
+/**
+ * What a closer returns. A schema, as `GateReport` is, so a custom closer's
+ * return value is validated at runtime before the harness believes it.
+ */
+export const CloseReport = z.object({
+  status: z.enum(["DONE", "FAIL", "ERROR"]),
+  detail: z.string(),
+});
+export type CloseReport = z.infer<typeof CloseReport>;
+
 export const NewFailure = z.object({
   id: z.string(),
   baselineOutcome: z.enum(["PASS", "ABSENT"]),

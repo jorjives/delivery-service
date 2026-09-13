@@ -9,6 +9,7 @@ export { resolveCloser } from "./resolve-closer.js";
 export { createMergeBackCloser } from "./merge-back-closer.js";
 export { createCommitToBranchCloser } from "./commit-to-branch-closer.js";
 export { failedCloser, teardownWorktree } from "./closer-support.js";
+export { createCustomCloser, loadCustomCloser } from "./custom-closer.js";
 export { advance, run } from "./surface.js";
 export { noopCloser } from "./ports.js";
 export { deterministicRouter } from "./router.js";
@@ -70,6 +71,8 @@ export {
   DuplicateIdError,
   GateModuleLoadFailure,
   InvalidGateExport,
+  CloserModuleLoadFailure,
+  InvalidCloserExport,
   MissingBaseline,
   ProvisioningFailure,
   IllegalStateTransition,

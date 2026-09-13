@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { GateRef, CloserRef } from "./schema.js";
+import { GateRef, CloserRef, CloseReport } from "./schema.js";
 
 describe("GateRef", () => {
   it("accepts a command ref with a supported parse mode", () => {
@@ -55,5 +55,19 @@ describe("CloserRef", () => {
 
   it("accepts the commit-to-branch closer named with no parameters", () => {
     expect(CloserRef.safeParse({ type: "commit-to-branch" }).success).toBe(true);
+  });
+});
+
+describe("CloseReport", () => {
+  it("accepts each of the three statuses with a detail", () => {
+    for (const status of ["DONE", "FAIL", "ERROR"]) {
+      expect(CloseReport.safeParse({ status, detail: "what happened" }).success).toBe(true);
+    }
+  });
+
+  it("rejects an unknown status, a missing detail, and a non-object", () => {
+    expect(CloseReport.safeParse({ status: "OK", detail: "x" }).success).toBe(false);
+    expect(CloseReport.safeParse({ status: "DONE" }).success).toBe(false);
+    expect(CloseReport.safeParse(undefined).success).toBe(false);
   });
 });

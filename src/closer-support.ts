@@ -2,6 +2,11 @@ import { tryGit } from "./git-exec.js";
 import { messageOf } from "./gate-support.js";
 import type { CloserPort, CloseContext, CloseOutcome, CloseReport } from "./ports.js";
 
+/** An ERROR close report: the one shape every "could not close" reaches the driver in. */
+export function closeError(detail: string): CloseReport {
+  return { status: "ERROR", detail };
+}
+
 /**
  * A closer that reports the same failure however it is called. Resolution
  * failures use this so a caller never has to distinguish "failed to resolve"
@@ -9,7 +14,7 @@ import type { CloserPort, CloseContext, CloseOutcome, CloseReport } from "./port
  * does for gates.
  */
 export function failedCloser(detail: string): CloserPort {
-  return { close: () => Promise.resolve({ status: "ERROR", detail }) };
+  return { close: () => Promise.resolve(closeError(detail)) };
 }
 
 /**
