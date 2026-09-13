@@ -41,9 +41,23 @@ A surface pins its closer in the case file header as a `closerRef`, passed to
 // Built in: commit the work to the surface's own branch and keep the branch.
 { type: "commit-to-branch" }
 
+// Built in: commit the work, push the surface's branch to origin, and open a GitHub pull request into the base branch.
+{ type: "open-pr" }
+
 // Your own closer module.
 { type: "custom", modulePath: "closers/notify.mjs", exportName: "default" }
 ```
+
+`open-pr` runs the GitHub command-line tool, `gh`, as whoever runs the harness,
+so only projects that name it need `gh` installed and signed in: install it from
+https://cli.github.com and run `gh auth login` first. The harness never takes or
+stores a token. The repository's `origin` remote must be the GitHub repository.
+The closing report is the pull request's address; closing again finds the pull
+request already open and reports it rather than opening a second. The worktree is
+left in place after the pull request opens, for follow-up commits. A missing
+`gh`, an expired sign-in or a missing permission is reported as `"ERROR"` naming
+the fix; a pull request GitHub declines, for example because of branch
+protection, is `"FAIL"`.
 
 Whoever runs the surface turns the pinned reference into a closer and passes it
 in the surface's ports:

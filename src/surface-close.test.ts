@@ -1,12 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, delimiter } from "node:path";
 import { create, load, readRef } from "./case-file.js";
-import { initTempRepo } from "./temp-repo.js";
+import { initTempRepo, addLocalOrigin } from "./temp-repo.js";
 import { cleanGitEnv } from "./git-env.js";
+import { createGhStandIn } from "./gh-stand-in.js";
 import { advance, run, type AdvanceResult } from "./surface.js";
 import { resolveCloser } from "./resolve-closer.js";
 import { deterministicRouter } from "./router.js";
@@ -278,5 +279,36 @@ describe("a project's own closer, referenced by module path", () => {
     expect(report?.status).toBe("ERROR");
     expect(report?.detail).toContain(MODULE_PATH);
     expect(report?.detail).toContain("the notification service is unreachable");
+  });
+});
+
+describe("an accepted surface closed by opening a pull request", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("ends CLOSED with its branch pushed, a pull request against the base branch, and the address as its report", async () => {
+    const standIn = createGhStandIn();
+    vi.stubEnv("PATH", `${standIn.binDir}${delimiter}${process.env.PATH ?? ""}`);
+    const dir = await mkdtemp(join(tmpdir(), "surface-close-case-"));
+    const repo = initTempRepo("surface-close-repo-", { "report.tap": PASSING_TAP });
+    const origin = addLocalOrigin(repo);
+    const location = { repoPath: repo, worktreePath: join(await mkdtemp(join(tmpdir(), "surface-close-tree-")), "wt") };
+    const closerRef: CloserRef = { type: "open-pr" };
+    await create(dir, { surfaceId: "surface-7", taskDef: { intent: "add the feature" }, gateRef, closerRef }, budgets);
+    const pinned = (await load(dir)).header.closerRef;
+    if (!pinned) throw new Error("closerRef was not pinned");
+
+    const result = await run(dir, location, {
+      agent: worker,
+      triage: deterministicRouter,
+      closer: resolveCloser(pinned, repo),
+    });
+
+    expect(result.state).toBe("CLOSED");
+    expect((await load(dir)).outcome?.reason).toBe("https://github.com/example/project/pull/1");
+    expect(git(origin, ["show", `${BRANCH}:feature.txt`])).toBe("the feature");
+    expect(standIn.pullRequests()).toEqual([expect.objectContaining({ head: BRANCH, base: "main" })]);
+    expect(existsSync(location.worktreePath)).toBe(true);
   });
 });

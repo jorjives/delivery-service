@@ -115,7 +115,7 @@ export interface CloserPort {
 /**
  * An inert closer for tests and demos: reports DONE and performs no infra work,
  * so the worktree is left in place. The shipped closers are in
- * merge-back-closer.ts and commit-to-branch-closer.ts.
+ * merge-back-closer.ts, commit-to-branch-closer.ts and open-pr-closer.ts.
  */
 export const noopCloser: CloserPort = {
   close: () => Promise.resolve({ status: "DONE", detail: "no-op closer" }),

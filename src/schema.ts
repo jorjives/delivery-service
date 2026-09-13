@@ -65,6 +65,10 @@ export const CloserRef = z.discriminatedUnion("type", [
   // No parameters: the branch to commit to is the surface's own, and the COULD-tier
   // `push` is deliberately absent until it is built rather than parsed and ignored.
   z.object({ type: z.literal("commit-to-branch") }),
+  // No parameters: the pull request targets the pinned base branch. The spec's
+  // titleTemplate/bodyTemplate are deliberately absent until an owner needs
+  // them; the defaults name the surface and the task.
+  z.object({ type: z.literal("open-pr") }),
   z.object({
     type: z.literal("custom"),
     modulePath: z.string(),

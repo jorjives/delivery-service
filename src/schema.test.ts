@@ -68,6 +68,10 @@ describe("CloserRef", () => {
   it("rejects a custom closer with no module path", () => {
     expect(CloserRef.safeParse({ type: "custom" }).success).toBe(false);
   });
+
+  it("accepts the open-pr closer named with no parameters", () => {
+    expect(CloserRef.parse({ type: "open-pr" })).toEqual({ type: "open-pr" });
+  });
 });
 
 describe("CloseReport", () => {

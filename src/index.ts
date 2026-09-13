@@ -8,6 +8,7 @@ export { branchName, provisionWorktree } from "./provision.js";
 export { resolveCloser } from "./resolve-closer.js";
 export { createMergeBackCloser } from "./merge-back-closer.js";
 export { createCommitToBranchCloser } from "./commit-to-branch-closer.js";
+export { createOpenPrCloser } from "./open-pr-closer.js";
 export { failedCloser, teardownWorktree } from "./closer-support.js";
 export { createCustomCloser, loadCustomCloser } from "./custom-closer.js";
 export { advance, run } from "./surface.js";

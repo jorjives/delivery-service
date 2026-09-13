@@ -35,6 +35,9 @@ describe("the 'writing a closer' guide", () => {
     expect(guide).toMatch(/secret/i);
     expect(guide).toContain('type: "custom"');
     expect(guide).toContain('type: "merge-back"');
+    expect(guide).toContain('type: "open-pr"');
+    expect(guide).toContain("gh auth login");
+    expect(guide).toMatch(/origin/);
     expect(guide).toContain("resolveCloser(");
     expect(guide).toContain("npm run demo:close-slice-4");
     expect(guide).not.toContain("—"); // no em-dashes in outward-facing copy
