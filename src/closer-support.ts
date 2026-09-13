@@ -62,7 +62,7 @@ export function closerFromAcceptedHandler(closeAccepted: (ctx: CloseContext) => 
         if (outcome.kind !== "accepted") return await teardownWorktree(ctx, outcome);
         return await closeAccepted(ctx);
       } catch (err) {
-        return { status: "ERROR", detail: `The close could not run: ${messageOf(err)}` };
+        return closeError(`The close could not run: ${messageOf(err)}`);
       }
     },
   };
