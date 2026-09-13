@@ -160,4 +160,76 @@ describe("the open-pr closer", () => {
     expect(report.status).toBe("ERROR");
     expect(report.detail).toMatch(/base branch/i);
   });
+
+  describe("when GitHub cannot be used", () => {
+    beforeEach(() => {
+      writeFileSync(join(tree, "feature.txt"), "the work\n");
+    });
+
+    it("names the missing GitHub tool and how to install it", async () => {
+      const missing = createOpenPrCloser({ ghCommand: join(tmpdir(), "no-such-gh-for-open-pr") });
+
+      const report = await missing.close(ctx, accepted);
+
+      expect(report.status).toBe("ERROR");
+      expect(report.detail).toMatch(/not installed/i);
+      expect(report.detail).toContain("https://cli.github.com");
+    });
+
+    it.each(["signed-out", "expired"] as const)("says GitHub sign-in is needed and how, when gh is %s", async (mode) => {
+      standIn.setMode(mode);
+
+      const report = await closer().close(ctx, accepted);
+
+      expect(report.status).toBe("ERROR");
+      expect(report.detail).toMatch(/GitHub sign-in is needed/);
+      expect(report.detail).toContain("gh auth login");
+      expect(standIn.pullRequests()).toEqual([]);
+    });
+
+    it("names missing permission and how to fix it", async () => {
+      standIn.setMode("forbidden");
+
+      const report = await closer().close(ctx, accepted);
+
+      expect(report.status).toBe("ERROR");
+      expect(report.detail).toMatch(/permission/i);
+      expect(report.detail).toContain("gh auth refresh");
+    });
+
+    it("names an unreachable GitHub as a network problem", async () => {
+      standIn.setMode("offline");
+
+      const report = await closer().close(ctx, accepted);
+
+      expect(report.status).toBe("ERROR");
+      expect(report.detail).toMatch(/could not reach GitHub/i);
+    });
+
+    it("reports a pull request refused for a content reason as a FAIL carrying the reason", async () => {
+      standIn.refuseCreate(
+        "pull request create failed: GraphQL: Pull requests into main are blocked by a branch protection rule (createPullRequest)",
+      );
+
+      const report = await closer().close(ctx, accepted);
+
+      expect(report.status).toBe("FAIL");
+      expect(report.detail).toContain("blocked by a branch protection rule");
+      expect(report.detail).toContain(BRANCH);
+      expect(standIn.pullRequests()).toEqual([]);
+    });
+
+    it("never writes a token gh printed into the report", async () => {
+      standIn.refuseCreate(
+        "pull request create failed: ghp_abc123SECRET456 rejected at https://x-access-token:ghs_S3CR3Tvalue@github.com/example/project",
+      );
+
+      const report = await closer().close(ctx, accepted);
+
+      expect(report.status).toBe("FAIL");
+      expect(report.detail).not.toContain("ghp_abc123SECRET456");
+      expect(report.detail).not.toContain("ghs_S3CR3Tvalue");
+      expect(report.detail).toContain("[redacted]");
+    });
+  });
 });

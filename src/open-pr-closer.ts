@@ -14,6 +14,66 @@ const execFile = promisify(execFileCb);
 const OpenPullRequests = z.array(z.object({ url: z.string() }));
 
 /**
+ * What a failed gh call left to go on. Node's execFile error carries `code`:
+ * the exit code as a number, or a spawn error string such as "ENOENT".
+ */
+interface GhFailure {
+  missing: boolean;
+  exitCode: number | null;
+  stderr: string;
+}
+
+function ghFailureOf(err: unknown): GhFailure {
+  const { code, stderr } = err as { code?: unknown; stderr?: unknown };
+  return {
+    missing: code === "ENOENT",
+    exitCode: typeof code === "number" ? code : null,
+    stderr: typeof stderr === "string" ? stderr : "",
+  };
+}
+
+// GitHub token prefixes, and credentials embedded in a URL.
+const TOKEN = /\b(?:gh[pousr]_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+)/g;
+const URL_CREDENTIALS = /\/\/[^/\s@]+@/g;
+
+/** gh's own first line of explanation, safe to quote: any token or credentialed URL is redacted. */
+function reasonOf(failure: GhFailure): string {
+  const line = failure.stderr.split("\n").map((l) => l.trim()).find(Boolean) ?? "gh gave no reason";
+  return line.replace(TOKEN, "[redacted]").replace(URL_CREDENTIALS, "//[redacted]@");
+}
+
+/**
+ * The GitHub access problems any gh call can hit, each an ERROR naming its
+ * fix; null when the failure is something else. Recognised from gh's own
+ * signals: a spawn ENOENT, its documented exit code 4 for "authentication
+ * required", and the HTTP status it prints.
+ */
+function accessProblem(failure: GhFailure): CloseReport | null {
+  if (failure.missing) {
+    return closeError(
+      "The GitHub command-line tool (gh) is not installed, or not on the PATH the harness runs with, so no pull " +
+        "request could be opened. Install it from https://cli.github.com, run gh auth login, then close again.",
+    );
+  }
+  if (failure.exitCode === 4 || /HTTP 401|Bad credentials|gh auth login/i.test(failure.stderr)) {
+    return closeError(
+      "GitHub sign-in is needed: gh is not signed in, or its sign-in has expired, so no pull request could be " +
+        "opened. Run gh auth login as the person or account the harness runs as, then close again.",
+    );
+  }
+  if (/HTTP 403|does not have the correct permissions|not accessible/i.test(failure.stderr)) {
+    return closeError(
+      "gh is signed in, but that GitHub account lacks permission to open pull requests on this repository. Run " +
+        "gh auth refresh -s repo, or get write access to the repository, then close again.",
+    );
+  }
+  if (/error connecting to|could not resolve host|timed? ?out/i.test(failure.stderr)) {
+    return closeError("gh could not reach GitHub, so no pull request could be opened. Check the network and close again.");
+  }
+  return null;
+}
+
+/**
  * Title and body for the pull request. The title is the first line of the
  * task's first text field, so a reviewer sees what was asked for; the body
  * carries the whole task definition. Both reach gh as single argv entries.
@@ -84,7 +144,19 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
       );
     }
 
-    const listed = await gh(ctx.repoPath, ["pr", "list", `--head=${ctx.branch}`, "--state=open", "--json=url"]);
+    let listed: string;
+    try {
+      listed = await gh(ctx.repoPath, ["pr", "list", `--head=${ctx.branch}`, "--state=open", "--json=url"]);
+    } catch (err) {
+      const failure = ghFailureOf(err);
+      return (
+        accessProblem(failure) ??
+        closeError(
+          `gh could not check whether ${ctx.branch} already has an open pull request: ${reasonOf(failure)}. ` +
+            `Check that origin is the GitHub repository and that gh can reach it from ${ctx.repoPath}, then close again.`,
+        )
+      );
+    }
     const existing = OpenPullRequests.parse(JSON.parse(listed))[0];
     if (existing) {
       return {
@@ -97,14 +169,31 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
 
     const { header } = await load(ctx.dir);
     const { title, body } = describePullRequest(header.surfaceId, header.taskDef, ctx);
-    const created = await gh(ctx.repoPath, [
-      "pr",
-      "create",
-      `--base=${ctx.baseBranch}`,
-      `--head=${ctx.branch}`,
-      `--title=${title}`,
-      `--body=${body}`,
-    ]);
+    let created: string;
+    try {
+      created = await gh(ctx.repoPath, [
+        "pr",
+        "create",
+        `--base=${ctx.baseBranch}`,
+        `--head=${ctx.branch}`,
+        `--title=${title}`,
+        `--body=${body}`,
+      ]);
+    } catch (err) {
+      const failure = ghFailureOf(err);
+      // Anything that is not an access problem is GitHub declining this pull
+      // request (branch protection, no commits between the branches): a
+      // decision a person can make, so FAIL rather than ERROR.
+      return (
+        accessProblem(failure) ?? {
+          status: "FAIL",
+          detail:
+            `GitHub refused to open a pull request from ${ctx.branch} into ${ctx.baseBranch}: ${reasonOf(failure)}. ` +
+            `The work is committed and pushed on ${ctx.branch}. Resolve the refusal on GitHub, or choose a different ` +
+            `close, then close again.`,
+        }
+      );
+    }
     const url = created.split("\n").map((line) => line.trim()).filter(Boolean).at(-1) ?? created;
     return { status: "DONE", detail: url };
   }
