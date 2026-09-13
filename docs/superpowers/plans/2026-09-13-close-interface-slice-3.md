@@ -1,5 +1,6 @@
 # Close Interface — Slice 3: A Close That Cannot Complete Is Retried, Then Handed to a Person With the Reason
 
+> **Status:** ✅ Complete — 2026-09-13 — `02fed8e`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 3 of `docs/superpowers/specs/2026-09-11-close-interface-slices.md`
