@@ -1,6 +1,7 @@
 # Close Interface — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-09-11-close-interface-design.md`
+> **Status:** ✅ Complete — 2026-09-13 — all 5 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** this item has no end-user product surface yet; a CLI (Item 8) and
@@ -274,6 +275,8 @@ already plug in a gate.
 ---
 
 ## Slice 5: Accepted Work Opens a Pull Request
+
+**Status:** ✅ Complete — 2026-09-13 — `835ca45`
 
 **Delivers:** A project can choose to have accepted work pushed and opened as a GitHub
 pull request, with the pull request's address as the closing report, a repeat attempt

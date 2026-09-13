@@ -6,6 +6,7 @@ roadmap_item: 6
 
 # Close Interface — Design
 
+> **Status:** ✅ Complete — 2026-09-13 — all 5 slices delivered
 > Roadmap: `docs/superpowers/specs/2026-09-04-delivery-harness-roadmap.md`, Item 6.
 > Mechanism spec this design implements: `docs/single-surface-control-flow.md` §Close interface, `docs/provisioning.md`.
 > Builds on: `2026-09-07-single-surface-state-machine-design.md` (CLOSING / terminal edges, `CloserPort`), `2026-09-10-triage-and-router-design.md` (close-triage, `CloseRepairBrief`), `2026-09-04-gate-interface-design.md` (resolution precedent).
