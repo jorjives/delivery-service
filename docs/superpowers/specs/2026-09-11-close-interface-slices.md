@@ -277,6 +277,7 @@ already plug in a gate.
 ## Slice 5: Accepted Work Opens a Pull Request
 
 **Status:** ✅ Complete — 2026-09-13 — `835ca45`
+**Tests:** ✅ Recorded — 2026-09-13 — `0533b1b` — cli — 1 UAT + 4 AC, 3 skipped
 
 **Delivers:** A project can choose to have accepted work pushed and opened as a GitHub
 pull request, with the pull request's address as the closing report, a repeat attempt
