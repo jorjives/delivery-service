@@ -1,5 +1,6 @@
 # Close Interface — Slice 5: Accepted Work Opens a Pull Request
 
+> **Status:** ✅ Complete — 2026-09-13 — `835ca45`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 5 of `docs/superpowers/specs/2026-09-11-close-interface-slices.md`
