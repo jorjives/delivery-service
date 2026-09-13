@@ -27,6 +27,7 @@
     "demo:close-slice-1": "npx tsx demos/close-interface-slice-1-merge-back.ts",
     "demo:close-slice-2": "npx tsx demos/close-interface-slice-2-branch-and-teardown.ts",
     "demo:close-slice-3": "npx tsx demos/close-interface-slice-3-close-failure.ts",
+    "demo:close-slice-4": "npx tsx demos/close-interface-slice-4-custom-closer.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {
