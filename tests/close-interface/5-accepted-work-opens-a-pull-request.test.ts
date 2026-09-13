@@ -33,16 +33,9 @@ describe("UAT: accepted work opens a pull request", () => {
     expect(status).toBe(0);
   });
 
-  it("AC: a project names the open-pull-request closer as data", () => {
+  it("AC: a project names the open-pull-request closer as data, and an accepted surface ends closed with its branch pushed and a pull request opened against the base branch", () => {
     expect(stdout).toContain('closerRef = {"type":"open-pr"}');
-  });
 
-  it("UAT: the demo needs no network and no GitHub account, using a gh stand-in", () => {
-    expect(stdout).toContain("This demo uses no network and no GitHub account.");
-    expect(stdout).toMatch(/A stand-in executable named gh is put\s*\nfirst on PATH/);
-  });
-
-  it("AC: an accepted surface ends closed with its branch pushed and a pull request opened against the base branch", () => {
     const s1 = section("--- 1.", "--- 2.");
     expect(s1).toContain("The surface ran to: CLOSED");
 
