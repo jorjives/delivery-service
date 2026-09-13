@@ -113,13 +113,12 @@ export interface CloserPort {
 }
 
 /**
- * The closer this item ships: reports DONE and performs no infra work. The
- * worktree is deliberately left in place for inspection — real teardown is
- * Item 6's, and orphan collection Item 10's.
+ * An inert closer for tests and demos: reports DONE and performs no infra work,
+ * so the worktree is left in place. The shipped closers are in
+ * merge-back-closer.ts and commit-to-branch-closer.ts.
  */
 export const noopCloser: CloserPort = {
-  close: () =>
-    Promise.resolve({ status: "DONE", detail: "no-op closer (Item 6 ships real closers)" }),
+  close: () => Promise.resolve({ status: "DONE", detail: "no-op closer" }),
 };
 
 // --- What the driver is called with ---
