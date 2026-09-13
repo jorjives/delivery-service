@@ -27,3 +27,19 @@ export function initTempRepo(prefix: string, files: Record<string, string>): str
 
   return repo;
 }
+
+/**
+ * Test and demo support: give `repo` a bare repository on this machine as its
+ * `origin`, with `main` pushed, so a closer can push without any network.
+ * Returns the bare repository's path, for asserting on what arrived there.
+ */
+export function addLocalOrigin(repo: string): string {
+  const origin = mkdtempSync(join(tmpdir(), "origin-"));
+  const git = (cwd: string, args: string[]): void => {
+    execFileSync("git", args, { cwd, stdio: "pipe", env: cleanGitEnv() });
+  };
+  git(origin, ["init", "--bare", "-b", "main"]);
+  git(repo, ["remote", "add", "origin", origin]);
+  git(repo, ["push", "origin", "main"]);
+  return origin;
+}
