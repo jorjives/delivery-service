@@ -27,13 +27,16 @@ const authority = { kind: "authority", role: "worker" } satisfies EscalationCaus
 const budget = {
   kind: "budget", population: "correction", budget: { used: 3, max: 3 }, detail: "no retry remains",
 } satisfies EscalationCause;
+const closeBudget = {
+  kind: "budget", population: "close", budget: { used: 3, max: 3 }, detail: "no retry remains",
+} satisfies EscalationCause;
 const triageFailure = {
   kind: "triage_failure",
   rationale:
     "triage did not produce a usable verdict: triage session did not complete: the session ended without reporting a result. Escalating rather than guessing.",
 } satisfies EscalationCause;
 const repairGaveUp = { kind: "repair_gave_up" } satisfies EscalationCause;
-const all: EscalationCause[] = [authority, budget, triageFailure, repairGaveUp];
+const all: EscalationCause[] = [authority, budget, closeBudget, triageFailure, repairGaveUp];
 
 describe("buildEscalationPacket", () => {
   it.each(all.map((cause) => [cause.kind, cause] as const))(
@@ -81,6 +84,18 @@ describe("buildEscalationPacket", () => {
     expect(buildEscalationPacket(authority, facts).dead_ends).toBe(NO_PRIOR_ATTEMPTS);
     expect(buildEscalationPacket(authority, { ...facts, priorRationales: ["first", "second"] }).dead_ends)
       .toBe("1. first\n2. second");
+  });
+
+  it("asks a person to resolve what blocked a close, or choose another, once no close retry remains", () => {
+    const { decision } = buildEscalationPacket(closeBudget, facts);
+
+    expect(decision).toBe(
+      "No close retry budget remains (3/3 used), so the accepted work has not landed. " +
+        "Decide whether to resolve what the closer reports below, such as a base branch that has moved on, " +
+        "and close again, or choose a different close.",
+    );
+    // Accepted work is never sent back into the task.
+    expect(decision).not.toMatch(/amend the task|abandon/);
   });
 
   it("never presents a stack trace or a bare internal code as a packet's message", () => {

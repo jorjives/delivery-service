@@ -66,6 +66,15 @@ function decisionFor(cause: EscalationCause): string {
     case "repair_gave_up":
       return "The gate repair session gave up. Decide whether to repair the check yourself, amend the task, or abandon it.";
     case "budget":
+      if (cause.population === "close") {
+        // The work was already accepted: the question is how to land it, never
+        // whether to amend or abandon the task. The closer's report is the evidence.
+        return (
+          `No close retry budget remains (${cause.budget.used}/${cause.budget.max} used), so the accepted work has not landed. ` +
+          "Decide whether to resolve what the closer reports below, such as a base branch that has moved on, " +
+          "and close again, or choose a different close."
+        );
+      }
       return `No ${POPULATION_LABELS[cause.population]} budget remains (${cause.budget.used}/${cause.budget.max} used). Decide whether to continue manually, amend the task, or abandon it.`;
     case "triage_failure":
       return "Triage could not reach a verdict. Decide how to proceed from the evidence below.";
