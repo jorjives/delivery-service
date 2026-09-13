@@ -204,4 +204,17 @@ describe("the merge-back closer", () => {
 
     expect(git(repo, ["branch", "--list", "surface/surface-42"])).toContain("surface/surface-42");
   });
+
+  it("behaves the same when handed a repair brief", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+    writeFileSync(join(repo, "other.txt"), "moved on\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-m", "main moved on"]);
+    const repairBrief = { problem: "p", dead_ends: "d", scope: "s", references: [], diagnosis: "rebase first" };
+
+    const without = await createMergeBackCloser().close(ctx, accepted);
+    const withBrief = await createMergeBackCloser().close({ ...ctx, repairBrief }, accepted);
+
+    expect(withBrief).toEqual(without);
+  });
 });

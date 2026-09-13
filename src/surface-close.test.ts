@@ -10,8 +10,9 @@ import { cleanGitEnv } from "./git-env.js";
 import { advance, run, type AdvanceResult } from "./surface.js";
 import { deterministicRouter } from "./router.js";
 import { createMergeBackCloser } from "./merge-back-closer.js";
+import { createAgentTriage } from "./triage.js";
 import { EscalationPacket } from "./triage-role-config.js";
-import type { AgentContext, AgentPort, SurfaceLocation, SurfacePorts, TriagePort } from "./ports.js";
+import type { AgentContext, AgentPort, CloseContext, SurfaceLocation, SurfacePorts, TriagePort, TriageTerminus } from "./ports.js";
 import type { BudgetSet, GateRef, HistoryEntry } from "./schema.js";
 
 const budgets: BudgetSet = {
@@ -163,5 +164,66 @@ describe("a close that cannot complete, with the real merge-back closer", () => 
     expect(triages.some((e) => e.t === "triage" && e.verdict === "reroute")).toBe(false);
     // The worker ran once, before acceptance, and was never dispatched again.
     expect(history.filter((e) => e.t === "dispatch")).toHaveLength(1);
+  });
+});
+
+describe("the repair brief on a retried close", () => {
+  const brief = {
+    problem: "main moved on under the merge",
+    dead_ends: "a plain fast-forward was refused",
+    scope: "land the accepted change only",
+    references: ["close-0"],
+    diagnosis: "rebase the surface branch onto main before merging",
+  };
+
+  /** A closer that refuses once, then lands, recording the context each accepted close saw. */
+  function recordingCloser(): SurfacePorts["closer"] & { seen: CloseContext[] } {
+    const seen: CloseContext[] = [];
+    return {
+      seen,
+      close: (ctx, outcome) => {
+        if (outcome.kind !== "accepted") return Promise.resolve({ status: "DONE", detail: "torn down" });
+        seen.push(ctx);
+        return Promise.resolve(
+          seen.length === 1 ? { status: "FAIL", detail: "main has moved on" } : { status: "DONE", detail: "landed" },
+        );
+      },
+    };
+  }
+
+  function agentWithTriage(triage: () => Promise<TriageTerminus>): AgentPort {
+    return {
+      invoke: ((role: { role: string }, ctx: AgentContext) =>
+        role.role === "triage" ? triage() : worker.invoke({ role: "worker" }, ctx)) as AgentPort["invoke"],
+    };
+  }
+
+  it("hands the closer the brief triage's agent wrote for the retry, and none on the first close", async () => {
+    const closer = recordingCloser();
+    const agent = agentWithTriage(() =>
+      Promise.resolve({ status: "retry_close", rationale: "worth one more try", payload: brief }),
+    );
+    // One close slot: the last slot is where triage's agent is engaged.
+    const oneSlot = { ...budgets, close: { used: 0, max: 1 } };
+    const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer };
+    const { dir, location } = await toClosing(ports, oneSlot);
+
+    const result = await run(dir, location, ports);
+
+    expect(result.state).toBe("CLOSED");
+    expect(closer.seen).toHaveLength(2);
+    expect(closer.seen[0]?.repairBrief).toBeUndefined();
+    expect(closer.seen[1]?.repairBrief).toEqual(brief);
+  });
+
+  it("hands the closer no brief when the deterministic router ordered the retry", async () => {
+    const closer = recordingCloser();
+    const ports: SurfacePorts = { agent: worker, triage: deterministicRouter, closer };
+    const { dir, location } = await toClosing(ports);
+
+    await run(dir, location, ports);
+
+    expect(closer.seen).toHaveLength(2);
+    expect(closer.seen.every((ctx) => !("repairBrief" in ctx))).toBe(true);
   });
 });

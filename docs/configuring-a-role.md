@@ -243,7 +243,7 @@ rather than acted on.
 |---|---|---|
 | `reroute` | the gate failed, the worker is stuck | a brief for the next worker: `problem`, `dead_ends`, `scope`, `references`, `diagnosis` |
 | `fix_the_gate` | the gate could not run | the same brief shape, for the repair session |
-| `retry_close` | the close failed | the same brief shape, kept in the case file |
+| `retry_close` | the close failed | the same brief shape, kept in the case file and handed to the closer on the retried close as `repairBrief` (the built-in closers ignore it) |
 | `escalate` | any setback | a packet for a person: `decision`, `evidence`, `dead_ends`, `why_now`, `references` |
 | `abort` | any setback | `{ reason }` |
 | `incomplete` | (the harness's own verdict) | none: the session produced nothing usable, and the harness escalates rather than guessing |

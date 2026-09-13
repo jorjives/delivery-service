@@ -7,7 +7,7 @@ import { recordBaseline, runCheck } from "./run-gate.js";
 import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
-import { EscalationPacket } from "./triage-role-config.js";
+import { EscalationPacket, type SharpenedBrief } from "./triage-role-config.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext } from "./ports.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
@@ -269,24 +269,35 @@ async function recordMissingTerminus(
 const BRIEFING_VERDICT = { worker: "reroute", "gate-maintenance": "fix_the_gate" } as const;
 
 /**
- * The ref holding the brief for the session about to be dispatched, or undefined.
+ * The brief carried by the latest triage round with `verdict`, or undefined.
  *
+ * The latest such round is the one that started the session or close about to
+ * run. Its ref carries an artefact only when an agent wrote a brief, so a
+ * deterministic verdict's round yields none, never an earlier round's. Derived
+ * from the log, so a first run, a retry and a resumed run agree.
+ */
+async function briefStartedBy(
+  dir: string,
+  history: HistoryEntry[],
+  verdict: "reroute" | "fix_the_gate" | "retry_close",
+): Promise<{ artifactRef: string; brief: SharpenedBrief } | undefined> {
+  const start = history.findLast((e) => e.t === "triage" && e.verdict === verdict);
+  if (start?.t !== "triage") return undefined;
+  const ref = BriefRef.safeParse(await readRef(dir, start.artifactRef));
+  return ref.success ? { artifactRef: start.artifactRef, brief: ref.data.artifact } : undefined;
+}
+
+/**
+ * The ref holding the brief for the session about to be dispatched, or undefined.
  * Every worker attempt after the first was started by a `reroute`, and every
- * post-task repair by a `fix_the_gate`; the latest such entry is the one that
- * started the current session. Its ref carries an artefact only when an agent
- * wrote a brief, so a deterministic verdict's session dispatches with none,
- * never with an earlier round's. A pre-task repair has no triage entry at all.
- * Derived from the log, so a first dispatch, a retry and a resumed run agree.
+ * post-task repair by a `fix_the_gate`. A pre-task repair has no triage entry.
  */
 async function currentBriefRef(
   dir: string,
   history: HistoryEntry[],
   role: "worker" | "gate-maintenance",
 ): Promise<string | undefined> {
-  const start = history.findLast((e) => e.t === "triage" && e.verdict === BRIEFING_VERDICT[role]);
-  if (start?.t !== "triage") return undefined;
-  const ref = await readRef(dir, start.artifactRef);
-  return BriefRef.safeParse(ref).success ? start.artifactRef : undefined;
+  return (await briefStartedBy(dir, history, BRIEFING_VERDICT[role]))?.artifactRef;
 }
 
 /**
@@ -576,7 +587,8 @@ async function gating(
  * events: GATING decided the change is good, this decides what happens to it.
  *
  * The ref key counts prior close entries so a retried close cannot overwrite
- * the detail an earlier close entry still points at.
+ * the detail an earlier close entry still points at. A close retried by triage's
+ * agent is handed the brief it wrote as ctx.repairBrief.
  */
 async function closing(
   dir: string,
@@ -584,7 +596,12 @@ async function closing(
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
-  const report = await ports.closer.close(closeContextOf(dir, caseFile, location), { kind: "accepted" });
+  // Inlined rather than passed on as a ref: a closer has no later reader to
+  // defer to. Only a retry_close round can precede a close, so the latest one
+  // is the round that ordered this retry.
+  const repairBrief = (await briefStartedBy(dir, caseFile.history, "retry_close"))?.brief;
+  const ctx: CloseContext = { ...closeContextOf(dir, caseFile, location), ...(repairBrief ? { repairBrief } : {}) };
+  const report = await ports.closer.close(ctx, { kind: "accepted" });
 
   const priorCloses = caseFile.history.filter((e) => e.t === "close").length;
   const detailRef = await writeRef(dir, `close-${priorCloses}`, report);

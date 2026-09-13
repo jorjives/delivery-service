@@ -1,5 +1,5 @@
 import type { Budget, BudgetPopulation, BudgetSet, CaseFile } from "./schema.js";
-import type { EscalationPacket, SharpenedBrief, TriageEnvelope } from "./triage-role-config.js";
+import type { CloseRepairBrief, EscalationPacket, SharpenedBrief, TriageEnvelope } from "./triage-role-config.js";
 
 // --- AgentPort (createAgentPort in agent-invoke.ts is the SDK-backed implementation) ---
 
@@ -89,7 +89,9 @@ export interface TriagePort {
  * `repoPath` is the checkout the worktree was created from and is shared with
  * the operator, which is why a closer may act on it but must never switch its
  * checked-out branch. `branch` is derived from the surface id, and `baseBranch`
- * is the local branch pinned when the surface was provisioned.
+ * is the local branch pinned when the surface was provisioned. `repairBrief` is
+ * set only on a close retried by triage's agent, which wrote it; a first close
+ * and a deterministic retry have none. No built-in closer reads it.
  */
 export interface CloseContext {
   worktreePath: string;
@@ -97,6 +99,7 @@ export interface CloseContext {
   repoPath: string;
   branch: string;
   baseBranch: string;
+  repairBrief?: CloseRepairBrief;
 }
 
 export interface CloseOutcome {

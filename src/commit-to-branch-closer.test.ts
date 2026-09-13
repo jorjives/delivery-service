@@ -111,4 +111,15 @@ describe("the commit-to-branch closer", () => {
     expect(report.status).toBe("ERROR");
     expect(report.detail).toMatch(/could not run/i);
   });
+
+  it("behaves the same when handed a repair brief", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+    const repairBrief = { problem: "p", dead_ends: "d", scope: "s", references: [], diagnosis: "commit it" };
+
+    const report = await createCommitToBranchCloser().close({ ...ctx, repairBrief }, accepted);
+
+    expect(report.status).toBe("DONE");
+    expect(report.detail).toContain("surface/surface-42");
+    expect(git(repo, ["show", "surface/surface-42:feature.txt"])).toBe("the work");
+  });
 });
