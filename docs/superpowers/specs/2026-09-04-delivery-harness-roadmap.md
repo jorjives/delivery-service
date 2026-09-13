@@ -236,6 +236,8 @@ genuine decisions.
 
 ## Item 6: Close Interface
 
+**Status:** ✅ Complete — 2026-09-13 — spec: `docs/superpowers/specs/2026-09-11-close-interface-design.md`
+
 **Delivers:** A pluggable close action that runs after acceptance, separating
 the "work is correct" decision from the "do something with it" action (merge,
 open PR, cleanup, teardown).
