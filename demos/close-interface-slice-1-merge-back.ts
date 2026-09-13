@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   const ports: SurfacePorts = {
     agent: workingAgent,
     triage: unusedTriage,
-    closer: resolveCloser(pinned),
+    closer: resolveCloser(pinned, repo),
   };
   const result = await run(dir, location, ports);
 
@@ -106,17 +106,17 @@ async function main(): Promise<void> {
   fs.writeFileSync(path.join(secondTree, "second.txt"), "more accepted work\n");
   const secondCtx = { dir, repoPath: repo, worktreePath: secondTree, branch: "surface/surface-43", baseBranch };
 
-  const first = await resolveCloser(keepBranch).close(secondCtx, { kind: "accepted" });
+  const first = await resolveCloser(keepBranch, repo).close(secondCtx, { kind: "accepted" });
   console.log(`First close:  ${first.status} — ${first.detail}`);
   const commitsBefore = git(repo, ["rev-list", "--count", "main"]);
 
-  const replay = await resolveCloser(keepBranch).close(secondCtx, { kind: "accepted" });
+  const replay = await resolveCloser(keepBranch, repo).close(secondCtx, { kind: "accepted" });
   console.log(`Replayed:     ${replay.status} — ${replay.detail}`);
   console.log(`Commits on main before replay: ${commitsBefore}, after: ${git(repo, ["rev-list", "--count", "main"])}`);
   console.log(`main's history: ${git(repo, ["log", "--oneline", "main"]).split("\n").join(" | ")}\n`);
 
   console.log("--- 4. Replaying the first surface's close, after its cleanup had finished ---");
-  const afterCleanup = await resolveCloser(closerRef).close(
+  const afterCleanup = await resolveCloser(closerRef, repo).close(
     {
       dir,
       repoPath: repo,

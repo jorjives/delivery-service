@@ -67,7 +67,7 @@ async function main(): Promise<void> {
   await create(dir, { surfaceId: "surface-61", taskDef: { goal: "add the feature" }, gateRef, closerRef }, budgets);
   const pinned = (await load(dir)).header.closerRef;
   if (!pinned) throw new Error("the closer reference was not pinned in the header");
-  const ports: SurfacePorts = { agent: workingAgent, triage: deterministicRouter, closer: resolveCloser(pinned) };
+  const ports: SurfacePorts = { agent: workingAgent, triage: deterministicRouter, closer: resolveCloser(pinned, repo) };
 
   // --- Accept the work, stopping just before the close ---
   let step: AdvanceResult;

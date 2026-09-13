@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { mkdtemp } from "node:fs/promises";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,12 +8,13 @@ import { create, load, readRef } from "./case-file.js";
 import { initTempRepo } from "./temp-repo.js";
 import { cleanGitEnv } from "./git-env.js";
 import { advance, run, type AdvanceResult } from "./surface.js";
+import { resolveCloser } from "./resolve-closer.js";
 import { deterministicRouter } from "./router.js";
 import { createMergeBackCloser } from "./merge-back-closer.js";
 import { createAgentTriage } from "./triage.js";
 import { EscalationPacket } from "./triage-role-config.js";
 import type { AgentContext, AgentPort, CloseContext, SurfaceLocation, SurfacePorts, TriagePort, TriageTerminus } from "./ports.js";
-import type { BudgetSet, GateRef, HistoryEntry } from "./schema.js";
+import type { BudgetSet, CloserRef, GateRef, HistoryEntry } from "./schema.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -225,5 +226,57 @@ describe("the repair brief on a retried close", () => {
 
     expect(closer.seen).toHaveLength(2);
     expect(closer.seen.every((ctx) => !("repairBrief" in ctx))).toBe(true);
+  });
+});
+
+describe("a project's own closer, referenced by module path", () => {
+  const MODULE_PATH = "closers/project-closer.mjs";
+
+  /** A surface whose pinned closerRef names a module written into the repo root, not the worktree. */
+  async function surfaceWithCustomCloser(source: string): Promise<{ dir: string; location: SurfaceLocation; ports: SurfacePorts }> {
+    const dir = await mkdtemp(join(tmpdir(), "surface-custom-close-case-"));
+    const repo = initTempRepo("surface-custom-close-repo-", { "report.tap": PASSING_TAP });
+    mkdirSync(join(repo, "closers"));
+    writeFileSync(join(repo, MODULE_PATH), source);
+    const location = { repoPath: repo, worktreePath: join(await mkdtemp(join(tmpdir(), "surface-custom-close-tree-")), "wt") };
+    const closerRef: CloserRef = { type: "custom", modulePath: MODULE_PATH };
+    await create(dir, { surfaceId: "surface-7", taskDef: { intent: "add the feature" }, gateRef, closerRef }, budgets);
+    const pinned = (await load(dir)).header.closerRef;
+    if (!pinned) throw new Error("the closer reference was not pinned");
+    return { dir, location, ports: { agent: worker, triage: deterministicRouter, closer: resolveCloser(pinned, repo) } };
+  }
+
+  it("closes an accepted surface with the project's closer, recording the closer's own report", async () => {
+    const { dir, location, ports } = await surfaceWithCustomCloser(
+      `export default { async close(ctx, outcome) { return { status: "DONE", detail: "project closer: " + outcome.kind + " " + ctx.branch + " onto " + ctx.baseBranch }; } };`,
+    );
+
+    const result = await run(dir, location, ports);
+
+    expect(result.state).toBe("CLOSED");
+    const caseFile = await load(dir);
+    const detail = "project closer: accepted surface/surface-7 onto main";
+    expect(caseFile.outcome?.reason).toBe(detail);
+    expect(await closeReports(dir, caseFile.history)).toEqual([{ status: "DONE", detail }]);
+  });
+
+  it("sends a closer that throws to close-triage with an error naming the module, instead of crashing", async () => {
+    const { dir, location, ports } = await surfaceWithCustomCloser(
+      `export default { async close() { throw new Error("the notification service is unreachable"); } };`,
+    );
+    let step: AdvanceResult;
+    do {
+      step = await advance(dir, location, ports);
+    } while (step.state !== "CLOSING" && !step.done);
+    expect(step.state).toBe("CLOSING");
+
+    step = await advance(dir, location, ports);
+
+    expect(step).toEqual({ state: "TRIAGE", done: false });
+    const caseFile = await load(dir);
+    const [report] = (await closeReports(dir, caseFile.history)) as { status: string; detail: string }[];
+    expect(report?.status).toBe("ERROR");
+    expect(report?.detail).toContain(MODULE_PATH);
+    expect(report?.detail).toContain("the notification service is unreachable");
   });
 });

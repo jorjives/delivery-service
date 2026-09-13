@@ -101,7 +101,7 @@ async function main(): Promise<void> {
   const acceptedResult = await run(acceptedDir, acceptedLocation, {
     agent: workingAgent,
     triage: unusedTriage,
-    closer: resolveCloser(acceptedPinned),
+    closer: resolveCloser(acceptedPinned, repo),
   });
   const acceptedCase = await load(acceptedDir);
 
@@ -132,7 +132,7 @@ async function main(): Promise<void> {
   const stuckResult = await run(stuckDir, stuckLocation, {
     agent: stuckAgent,
     triage: unusedTriage,
-    closer: resolveCloser(stuckPinned),
+    closer: resolveCloser(stuckPinned, repo),
   });
   const stuckCase = await load(stuckDir);
 

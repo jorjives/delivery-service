@@ -50,10 +50,12 @@ export const GateRef = z.discriminatedUnion("type", [
 export type GateRef = z.infer<typeof GateRef>;
 
 /**
- * Which closer this surface uses, as data. A project names a strategy and its
- * parameters; it never implements one. No variant takes a base branch: the
- * target is the branch pinned at provisioning, so an owner never restates
- * something the harness already derived.
+ * Which closer this surface uses, as data. A project names a built-in strategy
+ * and its parameters, or points at its own closer module; it never implements
+ * one inline. No variant takes a base branch: the target is the branch pinned
+ * at provisioning, so an owner never restates something the harness already
+ * derived. A `custom` `modulePath` that is relative resolves against the
+ * repository root, never the worktree, exactly as a custom gate's does.
  */
 export const CloserRef = z.discriminatedUnion("type", [
   z.object({
@@ -63,6 +65,11 @@ export const CloserRef = z.discriminatedUnion("type", [
   // No parameters: the branch to commit to is the surface's own, and the COULD-tier
   // `push` is deliberately absent until it is built rather than parsed and ignored.
   z.object({ type: z.literal("commit-to-branch") }),
+  z.object({
+    type: z.literal("custom"),
+    modulePath: z.string(),
+    exportName: z.string().optional(),
+  }),
 ]);
 export type CloserRef = z.infer<typeof CloserRef>;
 

@@ -56,6 +56,18 @@ describe("CloserRef", () => {
   it("accepts the commit-to-branch closer named with no parameters", () => {
     expect(CloserRef.safeParse({ type: "commit-to-branch" }).success).toBe(true);
   });
+
+  it("accepts a custom closer referenced by module path, with or without an export name", () => {
+    expect(CloserRef.parse({ type: "custom", modulePath: "closers/notify.mjs" })).toEqual({
+      type: "custom",
+      modulePath: "closers/notify.mjs",
+    });
+    expect(CloserRef.safeParse({ type: "custom", modulePath: "closers/notify.mjs", exportName: "slack" }).success).toBe(true);
+  });
+
+  it("rejects a custom closer with no module path", () => {
+    expect(CloserRef.safeParse({ type: "custom" }).success).toBe(false);
+  });
 });
 
 describe("CloseReport", () => {
