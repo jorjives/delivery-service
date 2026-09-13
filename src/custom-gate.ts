@@ -1,40 +1,25 @@
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
 import type { Gate, GateContext } from "./command-gate.js";
 import { GateReport } from "./schema.js";
 import { GateModuleLoadFailure, InvalidGateExport } from "./errors.js";
 import { errorReport, messageOf, duplicateIdReport } from "./gate-support.js";
+import { guardMethod, loadPlugin } from "./plugin-loader.js";
 
-// Safety net: a custom gate is third-party code. Whatever it throws — sync or
-// async — becomes an ERROR report, never an exception reaching the harness; and
-// whatever it returns must be a valid, duplicate-free GateReport before the
-// harness is allowed to believe it.
+// A custom gate's report must also be duplicate-free, which is gate-specific,
+// so it is checked after the shared guard has validated the shape.
 function guard(
   call: (ctx: GateContext) => Promise<GateReport>,
   method: string,
   modulePath: string,
 ): (ctx: GateContext) => Promise<GateReport> {
+  const guarded = guardMethod(call, GateReport, errorReport, {
+    plugin: "Custom gate",
+    reportName: "GateReport",
+    method,
+    modulePath,
+  });
   return async (ctx) => {
-    let returned: unknown;
-    try {
-      returned = await call(ctx);
-    } catch (err) {
-      return errorReport(
-        `Custom gate "${modulePath}" threw during ${method}: ${messageOf(err)}`,
-      );
-    }
-
-    const parsed = GateReport.safeParse(returned);
-    if (!parsed.success) {
-      return errorReport(
-        `Custom gate "${modulePath}" did not return a valid GateReport from ${method}: ${parsed.error.message}`,
-      );
-    }
-
-    const dup = duplicateIdReport(parsed.data.assertions);
-    if (dup) return dup;
-
-    return parsed.data;
+    const report = await guarded(ctx);
+    return duplicateIdReport(report.assertions) ?? report;
   };
 }
 
@@ -52,32 +37,10 @@ export async function loadCustomGate(
   modulePath: string,
   exportName = "default",
 ): Promise<Gate> {
-  const absolutePath = resolve(repoPath, modulePath);
-
-  let loaded: Record<string, unknown>;
-  try {
-    loaded = (await import(pathToFileURL(absolutePath).href)) as Record<string, unknown>;
-  } catch (err) {
-    throw new GateModuleLoadFailure(modulePath, messageOf(err));
-  }
-
-  const exported = loaded[exportName];
-  if (typeof exported !== "object" || exported === null) {
-    throw new InvalidGateExport(
-      modulePath,
-      exportName,
-      exported === undefined ? "export not found" : "export is not an object",
-    );
-  }
-
-  const candidate = exported as Partial<Gate>;
-  for (const method of ["baseline", "check"] as const) {
-    if (typeof candidate[method] !== "function") {
-      throw new InvalidGateExport(modulePath, exportName, `missing "${method}" method`);
-    }
-  }
-
-  const gate = exported as Gate;
+  const gate = await loadPlugin<Gate>(repoPath, modulePath, exportName, ["baseline", "check"], {
+    loadFailure: GateModuleLoadFailure,
+    invalidExport: InvalidGateExport,
+  });
   return {
     baseline: guard((ctx) => gate.baseline(ctx), "baseline", modulePath),
     check: guard((ctx) => gate.check(ctx), "check", modulePath),
