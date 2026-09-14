@@ -53,7 +53,6 @@ const readOnlyWorker: RoleConfig = {
 const OUT_OF_ROLE_TOOL = "Bash";
 
 async function main(): Promise<void> {
-
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-authority-case-"));
   const worktreePath = fs.mkdtempSync(path.join(os.tmpdir(), "agent-authority-tree-"));
   const scriptPath = path.join(dir, "mock.json");

@@ -19,8 +19,7 @@
 
 import { execFileSync } from "node:child_process";
 import { describe, it, expect } from "vitest";
-import { cleanGitEnv } from "../../src/git-env.js";
-import { runTsx, REPO_ROOT } from "../helpers.js";
+import { gitGrepFiles, runTsx, REPO_ROOT } from "../helpers.js";
 
 const CREDENTIAL_ENV_NAMES = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 
@@ -55,33 +54,15 @@ describe("UAT: the scripted agent is there after a plain install", () => {
   });
 
   it("AC: no test, demo or guide names claude-mock as the bare executable or skips when it is not linked", () => {
-    const filesMatching = (pattern: string): string[] => {
-      try {
-        return execFileSync(
-          "git",
-          [
-            "grep",
-            "-l",
-            "-E",
-            pattern,
-            "--",
-            "src",
-            "demos",
-            "tests",
-            "docs/configuring-a-role.md",
-            ":(exclude)tests/scripted-agent-reachability.test.ts",
-            ":(exclude)tests/agent-mock/2-the-scripted-agent-is-there-after-a-plain-install.test.ts",
-          ],
-          { cwd: REPO_ROOT, encoding: "utf-8", env: cleanGitEnv() },
-        )
-          .split("\n")
-          .filter(Boolean);
-      } catch (err) {
-        if ((err as { status?: number }).status === 1) return []; // git grep found nothing
-        throw err;
-      }
-    };
-    expect(filesMatching('pathToClaudeCodeExecutable: "claude-mock"')).toEqual([]);
-    expect(filesMatching("isOnPath|mockMissing|claude-mock is not on PATH")).toEqual([]);
+    const scope = [
+      "src",
+      "demos",
+      "tests",
+      "docs/configuring-a-role.md",
+      ":(exclude)tests/scripted-agent-reachability.test.ts",
+      ":(exclude)tests/agent-mock/2-the-scripted-agent-is-there-after-a-plain-install.test.ts",
+    ];
+    expect(gitGrepFiles('pathToClaudeCodeExecutable: "claude-mock"', scope)).toEqual([]);
+    expect(gitGrepFiles("isOnPath|mockMissing|claude-mock is not on PATH", scope)).toEqual([]);
   });
 });

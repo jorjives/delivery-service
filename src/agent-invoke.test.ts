@@ -12,7 +12,6 @@ import { InvalidRoleConfig } from "./errors.js";
 import type { AgentContext } from "./ports.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 
-
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
   gateError: { used: 0, max: 3 },

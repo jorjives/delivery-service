@@ -168,5 +168,4 @@ describe("UAT: triage judges the last attempt and rechecks broken gates for free
       }
     },
   );
-
 });

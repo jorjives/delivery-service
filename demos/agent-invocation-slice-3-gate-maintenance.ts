@@ -39,7 +39,6 @@ const budgets: BudgetSet = {
 };
 
 async function main(): Promise<void> {
-
   const run = fs.mkdtempSync(path.join(os.tmpdir(), "agent-gate-maint-"));
   const dir = path.join(run, "case");
   const worktreePath = path.join(run, "tree");

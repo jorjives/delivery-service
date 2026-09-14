@@ -114,5 +114,4 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     expect(packets).not.toMatch(/^\s*Error:/m);
     expect(packets).not.toContain("[object Object]");
   });
-
 });
