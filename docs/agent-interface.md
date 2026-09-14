@@ -223,8 +223,12 @@ correspondence is exact:
 - **Envelope** ↔ the expectation's `json` field (structured output on the result).
 - **Worktree edits** ↔ the expectation's `effects` (`write` / `edit`, applied for
   real inside `cwd`).
-- **Terminus mapping** ↔ what the harness does with the mock's reply; an unmatched
-  or malformed reply exercises the `INCOMPLETE_TERMINUS` path.
+- **Terminus mapping** ↔ what the harness does with the mock's reply. A prompt no
+  expectation matches, a `reply` with no `json`, a `json` the role's schema rejects, and a
+  scripted `fail` each exercise the `INCOMPLETE_TERMINUS` path
+  (`src/scripted-surface-run.test.ts` proves each through a whole surface). An unmatched
+  prompt and a scripted `fail` both read as a session that ended in an error; only the
+  journal's `unmatched` event tells them apart.
 - **Verification** ↔ the journal, which records what prompt the harness actually
   sent and which expectations it consumed.
 
