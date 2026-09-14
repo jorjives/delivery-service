@@ -273,6 +273,8 @@ accepted, open a pull request" without implementing the closer interface.
 
 ## Item 7: Agent Mock
 
+**Status:** ✅ Complete — 2026-09-14 — spec: `docs/superpowers/specs/2026-09-13-agent-mock-design.md`
+
 **Delivers:** A testing seam that replaces the real agent SDK with scripted
 expectations, enabling deterministic end-to-end tests of the entire harness
 without live API calls.
