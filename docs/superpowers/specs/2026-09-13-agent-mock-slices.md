@@ -254,6 +254,7 @@ extender can only rely on that if they can provoke failures deterministically.
 ## Slice 5: Test Your Own Pipeline by Following One Guide
 
 **Status:** ✅ Complete — 2026-09-14 — `24d4aae`
+**Tests:** ✅ Recorded — 2026-09-14 — `807f167` — cli — 1 UAT + 7 AC, 0 skipped
 **Delivers:** An extender who has written a gate, a closer and role configurations can go
 from nothing to passing scripted tests of their own pipeline by following a single guide,
 without reading harness source.
