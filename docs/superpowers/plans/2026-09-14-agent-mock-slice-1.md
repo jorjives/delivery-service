@@ -14,7 +14,7 @@
 ## Global Constraints
 
 - **Buy-vs-build (Build note):** build `fakeAgentPort` over a mapped handler record reusing the `RoleConfigs` shape. No test-double library (no `vitest-mock-extended`, no `sinon`, no `vi.fn` wrappers as the double). `AgentPort`, `RoleTerminusMap`, `SurfacePorts` and `createAgentPort` do not change.
-- **Exactly two owned casts:** after this slice, `grep -rn 'as AgentPort\["invoke"\]' src demos tests` prints exactly two lines: `src/agent-invoke.ts` (`createAgentPort`) and `src/agent-port-double.ts` (`fakeAgentPort`).
+- **Exactly two owned casts:** after this slice, `grep -rn --exclude=invoke-cast-guard.test.ts 'as AgentPort\["invoke"\]' src demos tests` prints exactly two lines: `src/agent-invoke.ts` (`createAgentPort`) and `src/agent-port-double.ts` (`fakeAgentPort`). (The guard's own regression test holds the cast inside a string fixture, which the lint rule does not flag, so the grep excludes it.)
 - **Operability / DX (Operational note):** `src/testing.ts` is a new public entry point with the same adopter-facing stability promise as `src/index.ts`. It exports `fakeAgentPort` and the `RoleHandlers` type and nothing else. `src/index.ts` gains no exports and does not change.
 - **No new dependency**, runtime or dev. No new CI step: the guard rides the existing `npm run lint` (CI, `make verify`, `.githooks/pre-push`).
 - **Observable behaviour preserved:** migrated tests keep their names and assertions; migrated demos print the same output modulo temp paths, commit hashes and timestamps.
@@ -33,7 +33,7 @@
 
 ---
 
-### Task 1: The honest double and the public testing entry point
+### Task 1: The honest double and the public testing entry point ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/agent-port-double.ts`, `src/testing.ts`, `src/agent-port-double.test.ts`
@@ -230,7 +230,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: The harness's unit tests use the honest double
+### Task 2: The harness's unit tests use the honest double ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/surface.test.ts:19,35-58` (`sessionAgent`, `unusedAgent`, imports)
@@ -368,7 +368,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: The demos use the honest double
+### Task 3: The demos use the honest double ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify (stand-ins moved to `fakeAgentPort`):
@@ -624,7 +624,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 4: A new cast fails lint
+### Task 4: A new cast fails lint ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `tests/invoke-cast-guard.test.ts`
@@ -711,8 +711,8 @@ Expected: PASS, 3 tests.
 Run: `npx eslint .`
 Expected: exit 0 (Tasks 2 and 3 removed every other cast).
 
-Run: `grep -rn 'as AgentPort\["invoke"\]' src demos tests`
-Expected: exactly two lines, one in `src/agent-invoke.ts` and one in `src/agent-port-double.ts`.
+Run: `grep -rn --exclude=invoke-cast-guard.test.ts 'as AgentPort\["invoke"\]' src demos tests`
+Expected: exactly two lines, one in `src/agent-invoke.ts` and one in `src/agent-port-double.ts`. (Without the exclude, a third line appears: the string fixture `CAST` in `tests/invoke-cast-guard.test.ts`, which is text, not a cast.)
 
 - [ ] **Step 6: Tell contributors**
 
@@ -742,7 +742,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 5: The honest-double demo
+### Task 5: The honest-double demo ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/agent-mock-slice-1-honest-double.ts`
