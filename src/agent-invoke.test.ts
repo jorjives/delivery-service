@@ -5,18 +5,13 @@ import { join } from "node:path";
 import { create } from "./case-file.js";
 import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
-import { isOnPath } from "./on-path.js";
+import { mockSessionEnvironment } from "./testing.js";
 import { createToolAuthority } from "./tool-authority.js";
 import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
 import { InvalidRoleConfig } from "./errors.js";
 import type { AgentContext } from "./ports.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 
-/**
- * claude-mock is a sibling project installed with `npm link`, not vendored
- * here, so this tier skips rather than fails when it is absent.
- */
-const hasMock = isOnPath("claude-mock");
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -31,12 +26,14 @@ const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode
 let dir: string;
 let worktreePath: string;
 let scriptPath: string;
+let journalPath: string;
 let ctx: AgentContext;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "invoke-case-"));
   worktreePath = await mkdtemp(join(tmpdir(), "invoke-tree-"));
   scriptPath = join(dir, "mock.json");
+  journalPath = join(dir, "journal.jsonl");
   ctx = { worktreePath, dir, sessionKey: "worker-1-0" };
   await create(dir, { surfaceId: "s-1", taskDef: { intent: "add a greeting" }, gateRef }, budgets);
 });
@@ -46,15 +43,12 @@ async function script(expectations: unknown[]): Promise<void> {
   await writeFile(scriptPath, JSON.stringify(expectations), "utf-8");
 }
 
-/** Point the SDK at the mock instead of the real CLI. */
-function useMock(): { pathToClaudeCodeExecutable: string; env: Record<string, string | undefined> } {
-  return {
-    pathToClaudeCodeExecutable: "claude-mock",
-    env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath },
-  };
+/** Point the SDK at the vendored mock instead of the real CLI. */
+function useMock() {
+  return mockSessionEnvironment({ scriptPath, journalPath });
 }
 
-describe.skipIf(!hasMock)("invoke against a scripted agent session", () => {
+describe("invoke against a scripted agent session", () => {
   it("returns one completed terminus carrying the agent's explanation", async () => {
     await script([{ json: { status: "completed", rationale: "added the greeting endpoint" } }]);
     const terminus = await invoke(workerRoleConfig, ctx, useMock());
@@ -111,12 +105,8 @@ describe.skipIf(!hasMock)("invoke against a scripted agent session", () => {
 
   // The journal records the user turn only; `systemPrompt` determinism is Task 3's.
   it("sends the identical request twice from the same starting case file", async () => {
-    const journalPath = join(dir, "journal.jsonl");
     await script([{ json: { status: "completed", rationale: "either run" } }]);
-    const sdk = {
-      pathToClaudeCodeExecutable: "claude-mock",
-      env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: journalPath },
-    };
+    const sdk = useMock();
 
     await invoke(workerRoleConfig, { ...ctx, sessionKey: "worker-1-0" }, sdk);
     await invoke(workerRoleConfig, { ...ctx, sessionKey: "worker-1-1" }, sdk);
@@ -151,7 +141,7 @@ describe("the session options the primitive builds", () => {
     return buildSessionOptions(
       workerRoleConfig,
       ctx,
-      { pathToClaudeCodeExecutable: "claude-mock", env: { A: "1" } },
+      { pathToClaudeCodeExecutable: "/path/to/claude", env: { A: "1" } },
       createToolAuthority(workerRoleConfig, worktreePath).canUseTool,
     );
   }
@@ -185,10 +175,10 @@ describe("the session options the primitive builds", () => {
       ctx,
       // A caller reaching for a permission field cannot: the parameter type has no
       // such field, and nothing is spread. Cast to prove the runtime behaviour too.
-      { pathToClaudeCodeExecutable: "claude-mock", permissionMode: "bypassPermissions" } as never,
+      { pathToClaudeCodeExecutable: "/path/to/claude", permissionMode: "bypassPermissions" } as never,
       createToolAuthority(workerRoleConfig, worktreePath).canUseTool,
     );
-    expect(built.pathToClaudeCodeExecutable).toBe("claude-mock");
+    expect(built.pathToClaudeCodeExecutable).toBe("/path/to/claude");
     expect(built.permissionMode).toBe("default");
   });
 
@@ -197,7 +187,7 @@ describe("the session options the primitive builds", () => {
   });
 });
 
-describe.skipIf(!hasMock)("invoke with the guard installed", () => {
+describe("invoke with the guard installed", () => {
   it("still drives a scripted session to a clean terminus", async () => {
     await script([{ json: { status: "completed", rationale: "guard installed, run unaffected" } }]);
     const terminus = await invoke(workerRoleConfig, ctx, useMock());
@@ -208,7 +198,7 @@ describe.skipIf(!hasMock)("invoke with the guard installed", () => {
   });
 });
 
-describe.skipIf(!hasMock)("invoking gate-maintenance through the same seam as the worker", () => {
+describe("invoking gate-maintenance through the same seam as the worker", () => {
   it("repairs an environment file and returns a completed terminus, as the worker's clean case does", async () => {
     await writeFile(join(worktreePath, ".env"), "PORT=\n", "utf-8");
     await script([
@@ -244,7 +234,7 @@ describe("createAgentPort", () => {
   });
 });
 
-describe.skipIf(!hasMock)("createAgentPort against a scripted session", () => {
+describe("createAgentPort against a scripted session", () => {
   it("runs each role with its own config through the one invoke seam", async () => {
     await script([
       // claude-mock matches the user turn only; the literal "reroute" appears in the

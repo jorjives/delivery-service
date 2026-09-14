@@ -15,8 +15,7 @@ import { triageRoleConfig, EscalationPacket } from "./triage-role-config.js";
 import { NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
-import { isOnPath } from "./on-path.js";
-import { fakeAgentPort } from "./testing.js";
+import { fakeAgentPort, mockSessionEnvironment } from "./testing.js";
 import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition } from "./errors.js";
@@ -1558,7 +1557,7 @@ describe("escalation packets", () => {
   });
 });
 
-describe.skipIf(!isOnPath("claude-mock"))("triage by agent through the real invocation seam", () => {
+describe("triage by agent through the real invocation seam", () => {
   it("delivers the triage brief's dead ends into the retried worker's actual request", async () => {
     const localBrief = {
       problem: "the second assertion fails",
@@ -1580,7 +1579,7 @@ describe.skipIf(!isOnPath("claude-mock"))("triage by agent through the real invo
     ]), "utf-8");
     const agent = createAgentPort(
       { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig },
-      { pathToClaudeCodeExecutable: "claude-mock", env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: journalPath } },
+      mockSessionEnvironment({ scriptPath, journalPath }),
     );
     const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
