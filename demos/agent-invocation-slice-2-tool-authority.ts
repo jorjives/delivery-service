@@ -14,9 +14,9 @@
  * the guard is genuinely installed on the live call path. Full end-to-end
  * enforcement rests on the real agent runtime. This is a known, documented gap.
  *
- * Requires `claude-mock` on PATH for section 4. It is a sibling project, not
- * vendored in this repo: install it with `npm link` from its own checkout. No
- * live API call is made, and no API key is needed.
+ * Section 4 runs against `claude-mock`, vendored in `vendor/claude-mock` and
+ * installed by `npm install`: no other setup. No live API call is made, and no
+ * API key is needed.
  *
  * Usage: npx tsx demos/agent-invocation-slice-2-tool-authority.ts
  */
@@ -27,7 +27,7 @@ import { create } from "../src/case-file.js";
 import { invoke } from "../src/agent-invoke.js";
 import { WorkerEnvelope } from "../src/role-config.js";
 import { authorityRefusal, createToolAuthority } from "../src/tool-authority.js";
-import { isOnPath } from "../src/on-path.js";
+import { mockSessionEnvironment } from "../src/testing.js";
 import type { RoleConfig } from "../src/role-config.js";
 import type { AgentContext } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
@@ -52,23 +52,12 @@ const readOnlyWorker: RoleConfig = {
 
 const OUT_OF_ROLE_TOOL = "Bash";
 
-function requireMock(): void {
-  if (isOnPath("claude-mock")) return;
-  console.error(
-    "claude-mock is not on PATH.\n\n" +
-      "It is a scripted fake `claude` binary from a sibling project, deliberately not\n" +
-      "vendored into this repo. Install it with `npm link` from its own checkout, then\n" +
-      "run this demo again. Nothing here calls a live API.",
-  );
-  process.exit(1);
-}
-
 async function main(): Promise<void> {
-  requireMock();
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-authority-case-"));
   const worktreePath = fs.mkdtempSync(path.join(os.tmpdir(), "agent-authority-tree-"));
   const scriptPath = path.join(dir, "mock.json");
+  const journalPath = path.join(dir, "journal.jsonl");
 
   await create(
     dir,
@@ -113,10 +102,7 @@ async function main(): Promise<void> {
     "utf-8",
   );
   const ctx: AgentContext = { worktreePath, dir, sessionKey: "worker-1-0" };
-  const clean = await invoke(readOnlyWorker, ctx, {
-    pathToClaudeCodeExecutable: "claude-mock",
-    env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath },
-  });
+  const clean = await invoke(readOnlyWorker, ctx, mockSessionEnvironment({ scriptPath, journalPath }));
 
   console.log("4. A real invocation with the guard installed (via claude-mock)");
   console.log(`   Result: ${clean.status} — ${clean.rationale}`);

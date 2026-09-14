@@ -6,9 +6,8 @@
 // Drives the slice's own UAT demo script (npx tsx demos/agent-invocation-slice-3-gate-maintenance.ts)
 // and asserts on its printed output, covering the slice's UAT and its acceptance criteria.
 //
-// Requires `claude-mock` (a sibling project, not vendored here) on PATH for the demo's clean-
-// completion scenario. When it is absent the demo prints an explanatory message and exits non-zero
-// rather than crashing; this test asserts on that message in that case instead of failing opaquely.
+// The demo's clean-completion scenario runs against claude-mock, vendored in vendor/claude-mock and
+// installed by `npm install`, so this test never skips.
 //
 // Per the slice's own documented limit, `claude-mock` models no tool permissions, so the "tries to
 // edit a project check" scenario drives the harness's own decision path (createToolAuthority,
@@ -23,19 +22,13 @@ import { join } from "node:path";
 describe("UAT: configure a second role using the same seam, nothing rebuilt", () => {
   const { stdout, status } = runTsx(["demos/agent-invocation-slice-3-gate-maintenance.ts"]);
 
-  const mockMissing = stdout.includes("claude-mock is not on PATH");
   const section = (from: string, to?: string): string => sectionOf(stdout, from, to);
 
-  it("demo script runs to completion, or explains plainly that claude-mock is required", () => {
-    if (mockMissing) {
-      expect(status).not.toBe(0);
-      expect(stdout).toContain("claude-mock is not on PATH");
-      return;
-    }
+  it("demo script runs to completion", () => {
     expect(status).toBe(0);
   });
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: the gate-maintenance role is invoked through the identical seam used for the worker — a new configuration, not new code",
     () => {
       const s = section("1. The gate-maintenance role's configuration", "2. Scenario: repair");
@@ -45,7 +38,7 @@ describe("UAT: configure a second role using the same seam, nothing rebuilt", ()
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: a gate-maintenance session that repairs the environment cleanly returns a completed result, exactly as the worker's clean-completion case does",
     () => {
       const s = section("2. Scenario: repair", "3. Scenario: try to edit");
@@ -55,7 +48,7 @@ describe("UAT: configure a second role using the same seam, nothing rebuilt", ()
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: gate-maintenance's config grants it Edit, but it cannot reach the project's actual checks — only the surrounding environment — even though Edit is within its permitted tools",
     () => {
       const s = section("3. Scenario: try to edit", "4. What this shows");

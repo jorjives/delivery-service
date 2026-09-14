@@ -7,9 +7,9 @@
  * session: one clean completion, one escalation, one reply that does not match
  * the shape the worker must emit.
  *
- * Requires `claude-mock` on PATH. It is a sibling project, not vendored in this
- * repo: install it with `npm link` from its own checkout. No live API call is
- * made, and no API key is needed.
+ * Runs against `claude-mock`, vendored in `vendor/claude-mock` and installed by
+ * `npm install`: no other setup. No live API call is made, and no API key is
+ * needed.
  *
  * This demo does NOT prove tool authority is enforced — the mock models no tool
  * permissions. That guarantee rests on the real SDK and is Slice 2's demo.
@@ -22,7 +22,7 @@ import * as path from "node:path";
 import { create } from "../src/case-file.js";
 import { invoke } from "../src/agent-invoke.js";
 import { workerRoleConfig } from "../src/role-config.js";
-import { isOnPath } from "../src/on-path.js";
+import { mockSessionEnvironment } from "../src/testing.js";
 import type { AgentContext, Terminus } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
 
@@ -55,17 +55,6 @@ const scenarios: { name: string; reply: unknown }[] = [
   },
 ];
 
-function requireMock(): void {
-  if (isOnPath("claude-mock")) return;
-  console.error(
-    "claude-mock is not on PATH.\n\n" +
-      "It is a scripted fake `claude` binary from a sibling project, deliberately not\n" +
-      "vendored into this repo. Install it with `npm link` from its own checkout, then\n" +
-      "run this demo again. Nothing here calls a live API.",
-  );
-  process.exit(1);
-}
-
 function describe(terminus: Terminus): string {
   switch (terminus.status) {
     case "completed":
@@ -78,11 +67,10 @@ function describe(terminus: Terminus): string {
 }
 
 async function main(): Promise<void> {
-  requireMock();
-
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agent-demo-case-"));
   const worktreePath = fs.mkdtempSync(path.join(os.tmpdir(), "agent-demo-tree-"));
   const scriptPath = path.join(dir, "mock.json");
+  const journalPath = path.join(dir, "journal.jsonl");
 
   await create(
     dir,
@@ -103,10 +91,7 @@ async function main(): Promise<void> {
 
   for (const scenario of scenarios) {
     fs.writeFileSync(scriptPath, JSON.stringify([{ json: scenario.reply }]), "utf-8");
-    const terminus = await invoke(workerRoleConfig, ctx, {
-      pathToClaudeCodeExecutable: "claude-mock",
-      env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath },
-    });
+    const terminus = await invoke(workerRoleConfig, ctx, mockSessionEnvironment({ scriptPath, journalPath }));
     console.log(`Scenario: ${scenario.name}`);
     console.log(`  Result: ${describe(terminus)}\n`);
   }

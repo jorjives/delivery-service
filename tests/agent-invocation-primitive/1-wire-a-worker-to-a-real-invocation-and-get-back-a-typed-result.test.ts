@@ -7,9 +7,8 @@
 // and asserts on its printed result for each of the three scripted scenarios, covering the
 // slice's UAT and its acceptance criteria.
 //
-// Requires `claude-mock` (a sibling project, not vendored here) on PATH. When it is absent the
-// demo prints an explanatory message and exits non-zero rather than crashing; this test asserts
-// on that message in that case instead of failing opaquely.
+// Runs against claude-mock, vendored in vendor/claude-mock and installed by `npm install`, so it
+// never skips.
 //
 // AC "a crash, a cut-off session, or a mismatched reply all return the same did-not-complete
 // result" has three sub-cases: the demo only scripts the mismatched-reply sub-case. The crash
@@ -35,23 +34,16 @@ import { runTsx } from "../helpers.js";
 describe("UAT: wire a worker to a real invocation and get back a typed result", () => {
   const { stdout, status } = runTsx(["demos/agent-invocation-slice-1-worker-invocation.ts"]);
 
-  const mockMissing = stdout.includes("claude-mock is not on PATH");
-
   function section(from: string, to?: string): string {
     const start = stdout.indexOf(from);
     return to ? stdout.slice(start, stdout.indexOf(to)) : stdout.slice(start);
   }
 
-  it("demo script runs to completion, or explains plainly that claude-mock is required", () => {
-    if (mockMissing) {
-      expect(status).not.toBe(0);
-      expect(stdout).toContain("claude-mock is not on PATH");
-      return;
-    }
+  it("demo script runs to completion", () => {
     expect(status).toBe(0);
   });
 
-  it.skipIf(mockMissing)(
+  it(
     "UAT: prints the worker role and its permitted tools before running any scenario",
     () => {
       const s = section("Role:", "Scenario: the agent finishes cleanly");
@@ -60,7 +52,7 @@ describe("UAT: wire a worker to a real invocation and get back a typed result", 
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: a scripted session that replies cleanly returns a single completed result carrying the agent's explanation",
     () => {
       const s = section("Scenario: the agent finishes cleanly", "Scenario: the agent escalates");
@@ -68,7 +60,7 @@ describe("UAT: wire a worker to a real invocation and get back a typed result", 
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: a scripted session that reports it cannot proceed returns a single escalate result naming the category",
     () => {
       const s = section(
@@ -80,7 +72,7 @@ describe("UAT: wire a worker to a real invocation and get back a typed result", 
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: a reply that doesn't match the expected shape returns the same did-not-complete result, with a plain-English reason and no raw error or stack trace",
     () => {
       const s = section("Scenario: the agent replies with the wrong shape");
@@ -92,7 +84,7 @@ describe("UAT: wire a worker to a real invocation and get back a typed result", 
     },
   );
 
-  it.skipIf(mockMissing)("demo exercises all three scenarios", () => {
+  it("demo exercises all three scenarios", () => {
     expect(stdout).toContain("Scenario: the agent finishes cleanly");
     expect(stdout).toContain("Scenario: the agent escalates");
     expect(stdout).toContain("Scenario: the agent replies with the wrong shape");
