@@ -1,5 +1,6 @@
 # Agent Mock — Slice 2: The Scripted Agent Is There After a Plain Install
 
+> **Status:** ✅ Complete — 2026-09-14 — `6730b5e`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 2 of `docs/superpowers/specs/2026-09-13-agent-mock-slices.md`
@@ -42,7 +43,7 @@
 
 ---
 
-### Task 1: Vendor claude-mock so `npm install` provides it
+### Task 1: Vendor claude-mock so `npm install` provides it ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `vendor/claude-mock/` (copied: `package.json`, `package-lock.json`, `README.md`, `tsconfig.json`, `vitest.config.ts`, `src/cli.ts`, `src/mock.ts`, `test/sdk.test.ts`; built: `dist/cli.js`, `dist/mock.js`, `dist/cli.js.map`, `dist/mock.js.map`)
@@ -75,7 +76,7 @@ const BUILT = ["cli.js", "mock.js"];
 const ALLOWED_IMPORTS = new Set(["node:crypto", "node:fs", "node:path", "node:readline", "./mock.js"]);
 
 describe("the vendored scripted agent", () => {
-  it("is installed by npm install from vendor/claude-mock, with nothing linked globally", () => {
+  it("is installed by npm install as a copy of vendor/claude-mock", () => {
     // A copy, not a symlink: a linked file: dependency makes npm install the vendored
     // project's own devDependencies (TypeScript 5, Vitest 4, a second Agent SDK) beside
     // ours. .npmrc's install-links=true is what keeps it a copy.
@@ -292,7 +293,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: `mockSessionEnvironment`, the one way to point a session at the mock
+### Task 2: `mockSessionEnvironment`, the one way to point a session at the mock ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/mock-session.ts`, `src/mock-session.test.ts`
@@ -544,7 +545,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: The harness's own unit suites stop skipping
+### Task 3: The harness's own unit suites stop skipping ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/agent-invoke.test.ts`, `src/surface.test.ts`
@@ -635,7 +636,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 4: The agent-invocation demos and their UAT tests run on a fresh clone
+### Task 4: The agent-invocation demos and their UAT tests run on a fresh clone ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `demos/agent-invocation-slice-1-worker-invocation.ts`, `demos/agent-invocation-slice-2-tool-authority.ts`, `demos/agent-invocation-slice-3-gate-maintenance.ts`
@@ -832,7 +833,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 5: The triage demos, their UAT tests and the role guide; guard against regression
+### Task 5: The triage demos, their UAT tests and the role guide; guard against regression ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `tests/scripted-agent-reachability.test.ts`
@@ -845,7 +846,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Consumes: `mockSessionEnvironment({ scriptPath, journalPath })` from `../src/testing.js` (Task 2).
 - Produces: `tests/scripted-agent-reachability.test.ts`, the standing guard for the slice's "no test names the executable or relies on PATH" criterion.
 
-- [ ] **Step 1: Tidy first: drop the skipped placeholders whose pointers the headers already carry**
+- [x] **Step 1: Tidy first: drop the skipped placeholders whose pointers the headers already carry**
 
 The three triage UAT tests hold nine `it.skip(…, () => {})` placeholders that test nothing: each only names where an AC is covered, and each file's header comment already states the same pointer. They make the suite summary report skipped scripted-agent tests, which this slice's UAT says it must not.
 
@@ -868,7 +869,7 @@ scripted-agent tests where nothing was being skipped.
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 2: Write the failing guard test**
+- [x] **Step 2: Write the failing guard test**
 
 Create `tests/scripted-agent-reachability.test.ts`:
 
@@ -910,7 +911,7 @@ describe("reaching the scripted agent", () => {
 });
 ```
 
-- [ ] **Step 3: Run it to verify it fails**
+- [x] **Step 3: Run it to verify it fails**
 
 Run: `npx vitest run tests/scripted-agent-reachability.test.ts`
 Expected: FAIL.
@@ -919,7 +920,7 @@ Expected: FAIL.
 
 (If any Task 3 or Task 4 file appears, that task is incomplete: fix it there.)
 
-- [ ] **Step 4: Migrate the three triage demos**
+- [x] **Step 4: Migrate the three triage demos**
 
 In **each** of the three triage demos:
 
@@ -977,7 +978,7 @@ with
   const inner = createAgentPort(configs, mockSessionEnvironment({ scriptPath, journalPath: journal }));
 ```
 
-- [ ] **Step 5: Migrate the three triage UAT tests**
+- [x] **Step 5: Migrate the three triage UAT tests**
 
 In **each** of the three test files:
 
@@ -1033,7 +1034,7 @@ Additionally, in `tests/triage-and-router/3-…test.ts`:
    ```
    (the surrounding `"const verdict = await invoke(",`, `"  triageRoleConfig,",`, `'  { worktreePath, dir, sessionKey: "triage-0" },',` and `");",` lines stay).
 
-- [ ] **Step 6: Make the role guide's offline sections true**
+- [x] **Step 6: Make the role guide's offline sections true**
 
 In `docs/configuring-a-role.md`, "## Trying it offline": replace the opening paragraph and the first `ts` block
 
@@ -1101,14 +1102,14 @@ with
   mockSessionEnvironment({ scriptPath: "/tmp/my-triage/mock.json", journalPath: "/tmp/my-triage/journal.jsonl" }),
 ```
 
-- [ ] **Step 7: Delete the dead PATH probe**
+- [x] **Step 7: Delete the dead PATH probe**
 
 Run: `git grep -n "on-path" -- src demos tests; echo "exit=$?"`
 Expected: no output and `exit=1`: nothing imports it any more (Tasks 3 and 4 and Steps 4-5 removed every import).
 
 Run: `git rm src/on-path.ts`
 
-- [ ] **Step 8: Run the guard and the migrated suites to verify they pass**
+- [x] **Step 8: Run the guard and the migrated suites to verify they pass**
 
 Run: `npx vitest run tests/scripted-agent-reachability.test.ts`
 Expected: PASS (2 tests).
@@ -1122,7 +1123,7 @@ Expected: PASS, and the summary line shows no `skipped` count.
 Run: `npx eslint demos/triage-slice-*.ts tests/triage-and-router tests/scripted-agent-reachability.test.ts && npx tsc --noEmit`
 Expected: exit 0.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add tests/scripted-agent-reachability.test.ts demos/triage-slice-1-informed-retry.ts demos/triage-slice-2-escalation-packets.ts demos/triage-slice-3-last-attempt.ts tests/triage-and-router docs/configuring-a-role.md
@@ -1135,3 +1136,36 @@ guide names the bare command or gates on PATH again.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ```
+
+---
+
+### Task 6: Verify the slice as a fresh clone would see it
+
+**Files:** none (verification only; no commit).
+
+**Interfaces:**
+- Consumes: everything Tasks 1-5 committed.
+- Produces: nothing.
+
+Each task ran only its own subset. This task runs the slice's UAT the way CI and a fresh clone do: from a clean install of the committed tree, with the whole lint and test run. It stays inside this worktree: a clean `node_modules` from `npm ci` off committed files is the in-place equivalent of a fresh clone.
+
+- [ ] **Step 1: Confirm everything the install needs is committed**
+
+Run: `git status --porcelain; git ls-files .npmrc vendor/claude-mock/dist/cli.js vendor/README.md`
+Expected: no `git status` output; all three paths listed.
+
+- [ ] **Step 2: Reinstall from the lockfile, as CI and `make verify` do**
+
+Run: `rm -rf node_modules && npm ci --no-audit --no-fund`
+Expected: exit 0; `node_modules/@jorj/claude-mock` is a directory, not a symlink (`test ! -L node_modules/@jorj/claude-mock && echo copy` prints `copy`).
+
+Run: `git status --porcelain`
+Expected: no output (the install rewrote nothing tracked, including `package-lock.json`).
+
+- [ ] **Step 3: Run the UAT's demo and the whole suite**
+
+Run: `npm run demo:agent-slice-1`
+Expected: exit 0; prints the typed `completed` result, with no "claude-mock is not on PATH".
+
+Run: `npm run lint && npm test`
+Expected: both exit 0; the vitest summary shows no `skipped` or `todo` count.
