@@ -91,29 +91,4 @@ describe("UAT: a stuck worker's retry is informed by triage, not re-dispatched b
     },
   );
 
-  it.skip(
-    "AC: a worker that escalates for lack of authority is passed straight to escalation; triage is " +
-      "never asked — not exercised by this demo (both scenarios trigger an exhaustion-class escalation); " +
-      "see src/triage.test.ts's authority tests",
-    () => {},
-  );
-
-  it.skip(
-    "AC: triage is given read-only tools and cannot be configured into editing the worktree — " +
-      "not demonstrable via claude-mock (it does not enforce a role's tool list); see src/triage.test.ts",
-    () => {},
-  );
-
-  it.skip(
-    "AC: assembling triage's prompt twice from the same case file produces the identical request; " +
-      "worker and gate-maintenance prompts are unchanged from before this item — not observable from " +
-      "this demo's printed output; see src/prompt-assembly.test.ts",
-    () => {},
-  );
-
-  it.skip(
-    "AC: a crash mid-triage resumes to the same triage round and produces the same request — not " +
-      "exercised by this demo; see tests/single-surface-state-machine/5-resume-a-surface-after-a-crash-to-the-same-outcome.test.ts",
-    () => {},
-  );
 });

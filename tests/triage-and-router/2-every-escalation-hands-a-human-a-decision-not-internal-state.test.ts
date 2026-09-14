@@ -122,10 +122,4 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     expect(packets).not.toContain("[object Object]");
   });
 
-  it.skip(
-    "AC: a failed close can end only in a close retry, an escalation, or an abort — the exhaustive " +
-      "claim is not observable from this demo's single failed-close scenario; see src/surface.test.ts's " +
-      "close-failure routing tests",
-    () => {},
-  );
 });

@@ -183,33 +183,4 @@ describe("UAT: triage judges the last attempt and rechecks broken gates for free
     },
   );
 
-  it.skip(
-    "AC: a close failure with exactly one close slot left engages the triage agent — not exercised by " +
-      "this demo (none of its four scenarios drive a close); see src/surface.test.ts's close-failure " +
-      "triage tests",
-    () => {},
-  );
-
-  it.skip(
-    "AC: with a population's budget spent, no triage agent is called and the surface escalates with a " +
-      "packet — not exercised by this demo; see src/surface.test.ts's \"escalates a gate failure once the " +
-      'correction budget is at cap" and budget-cap tests',
-    () => {},
-  );
-
-  it.skip(
-    "AC: without a triage agent wired in, a gate that keeps erroring still reaches gate maintenance after " +
-      "its rechecks, as it did before this item — not exercised by this demo (every scenario wires an " +
-      'agent-backed triage port); see src/surface.test.ts\'s "rechecks a gate that keeps erroring until ' +
-      'rechecks are spent, then repairs it and re-checks the same attempt" test, which uses the ' +
-      "deterministic router alone",
-    () => {},
-  );
-
-  it.skip(
-    "AC: when both recheck and gate-maintenance budgets are spent, the surface escalates — not exercised " +
-      "by this demo; see src/surface.test.ts's \"escalates instead of dispatching when the gate-maintenance " +
-      'budget is already spent" test',
-    () => {},
-  );
 });
