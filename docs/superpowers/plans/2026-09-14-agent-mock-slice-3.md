@@ -1,5 +1,6 @@
 # Agent Mock — Slice 3: Prove a Whole Pipeline Against a Scripted Agent
 
+> **Status:** ✅ Complete — 2026-09-14 — `babd20f`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 3 of `docs/superpowers/specs/2026-09-13-agent-mock-slices.md`
@@ -39,7 +40,7 @@
 
 ---
 
-### Task 1: Typed script and journal helpers
+### Task 1: Typed script and journal helpers ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/testing.test.ts` (moved from `src/agent-port-double.test.ts`, then extended)
@@ -142,8 +143,12 @@ import type { JournalEvent, MockExpectation, MockScript } from "./testing.js";
 
 const scratch = () => mkdtemp(join(tmpdir(), "mock-script-"));
 
-/** True only when A and B are assignable both ways. */
-type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+/**
+ * True only when A and B are the same type. Mutual assignability is not enough
+ * here: every field of an expectation is optional, so a mirror missing one would
+ * still be assignable both ways.
+ */
+type Same<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2) ? true : false;
 
 describe("the script types", () => {
   it("mirror claude-mock's own script format exactly", () => {
@@ -433,6 +438,8 @@ Expected: PASS.
 Run: `npx tsc --noEmit && npx eslint src/mock-script.ts src/mock-script.test.ts src/testing.ts src/testing.test.ts`
 Expected: no output. (tsc is what enforces the `Same<...>` mirror check and the `@ts-expect-error` control.)
 
+Mutation check (do not commit): temporarily delete `promptMatches?: string;` from `MockExpectation["when"]` in `src/mock-script.ts` and run `npx tsc --noEmit`. Expected: an error on the `expectation` line of `src/mock-script.test.ts`. Restore the field and rerun: no output. (A mutual-assignability `Same` would miss this, because every expectation field is optional.)
+
 - [ ] **Step 8: Record the mirror in `vendor/README.md`**
 
 In `vendor/README.md`, replace the paragraph:
@@ -477,7 +484,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: Replace hand-rolled journal parsing with the typed helpers
+### Task 2: Replace hand-rolled journal parsing with the typed helpers ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/agent-invoke.test.ts:1-20` (import), `:113-117` (parse)
@@ -491,6 +498,8 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 - Produces: nothing new; no observable behaviour changes.
 
 The existing tests are the safety net here: this is a refactor, so they must pass before and after, and the two demos must print the same output.
+
+Note: the five parsers keep only `matched` prompts, while `promptsSent` also keeps `unmatched` ones. This is deliberate ("what the harness sent"), and it changes nothing observable here: none of these scripts leaves a prompt unmatched (each has a catch-all or routes every prompt), which the before/after runs confirm.
 
 - [ ] **Step 1: Capture the demos' output and run the affected tests before the change**
 
@@ -653,7 +662,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: `runSurfaceAgainstMock`, one scripted end-to-end surface run
+### Task 3: `runSurfaceAgainstMock`, one scripted end-to-end surface run ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/scripted-surface-run.ts`
@@ -926,7 +935,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-### Task 4: The scripted-pipeline demo
+### Task 4: The scripted-pipeline demo ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/agent-mock-slice-3-scripted-pipeline.ts`
