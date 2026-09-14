@@ -1,5 +1,6 @@
 # Agent Mock — Slice 5: Test Your Own Pipeline by Following One Guide
 
+> **Status:** ✅ Complete — 2026-09-14 — `24d4aae`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 5 of `docs/superpowers/specs/2026-09-13-agent-mock-slices.md`
