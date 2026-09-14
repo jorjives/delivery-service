@@ -29,6 +29,7 @@
     "demo:close-slice-3": "npx tsx demos/close-interface-slice-3-close-failure.ts",
     "demo:close-slice-4": "npx tsx demos/close-interface-slice-4-custom-closer.ts",
     "demo:close-slice-5": "npx tsx demos/close-interface-slice-5-open-pr.ts",
+    "demo:mock-slice-1": "npx tsx demos/agent-mock-slice-1-honest-double.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {
