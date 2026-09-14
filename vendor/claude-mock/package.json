@@ -1,0 +1,24 @@
+{
+  "name": "@jorj/claude-mock",
+  "version": "0.1.0",
+  "description": "Scripted fake Claude Code CLI for testing agent harnesses offline",
+  "type": "module",
+  "bin": {
+    "claude-mock": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x dist/cli.js",
+    "dev": "tsc --watch",
+    "test": "npm run build && vitest run"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "private": true,
+  "devDependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.3.245",
+    "@types/node": "^25.5.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.2"
+  }
+}

@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@jorj/claude-mock": "file:vendor/claude-mock",
     "@types/node": "^26.4.1",
     "eslint": "^10.9.1",
     "tsx": "^4.23.13",

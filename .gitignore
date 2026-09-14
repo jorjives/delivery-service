@@ -1,3 +1,6 @@
 node_modules/
 dist/
 .claude/worktrees/
+
+# The vendored scripted agent ships prebuilt so installing needs no build step (vendor/README.md).
+!vendor/claude-mock/dist/
