@@ -20,8 +20,9 @@ import { execFileSync } from "node:child_process";
 const CREDENTIAL_ENV_NAMES = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 
 describe("UAT: prove a whole pipeline against a scripted agent", () => {
+  const { stdout, status } = runTsx(["demos/agent-mock-slice-3-scripted-pipeline.ts"]);
+
   it("UAT: a script whose worker writes a change and reports completion is judged by the real gate and landed by the real closer", () => {
-    const { stdout, status } = runTsx(["demos/agent-mock-slice-3-scripted-pipeline.ts"]);
     expect(status).toBe(0);
     const first = sectionOf(stdout, "--- 1. The script given to the agent", "--- 2.");
     expect(first).toContain("Surface finished:     CLOSED");
@@ -29,7 +30,6 @@ describe("UAT: prove a whole pipeline against a scripted agent", () => {
   });
 
   it("AC: the journal shows the task's wording in the prompt the harness sent the worker, and the consumption check passes when everything was used", () => {
-    const { stdout } = runTsx(["demos/agent-mock-slice-3-scripted-pipeline.ts"]);
     const second = sectionOf(stdout, "--- 2. What the harness sent the worker", "--- 3.");
     expect(second).toContain("add a greeting file that says hello");
     expect(second).toContain("The task's wording reached the worker: yes");
@@ -37,7 +37,6 @@ describe("UAT: prove a whole pipeline against a scripted agent", () => {
   });
 
   it("AC: a prompt matching nothing ends the run unclosed, and the consumption failure shows both the still-waiting expectation and the prompt that matched nothing", () => {
-    const { stdout } = runTsx(["demos/agent-mock-slice-3-scripted-pipeline.ts"]);
     const third = sectionOf(stdout, "--- 3. The same run with a typo");
     expect(third).toContain("Surface finished:     ESCALATED");
     expect(third).toContain("greeting.txt on main: (not on main)");
