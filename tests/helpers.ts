@@ -39,3 +39,11 @@ export function sectionOf(stdout: string, from: string, to?: string): string {
   const start = stdout.indexOf(from);
   return to ? stdout.slice(start, stdout.indexOf(to)) : stdout.slice(start);
 }
+
+/** A guide's fenced ```ts block whose first line is `// <name>`, exactly as a reader copies it. */
+export function snippetFrom(guide: string, name: string): string {
+  const start = guide.indexOf("```ts\n// " + name + "\n");
+  if (start === -1) throw new Error(`the guide has no \`\`\`ts block starting with // ${name}`);
+  const body = start + "```ts\n".length;
+  return guide.slice(body, guide.indexOf("```", body));
+}

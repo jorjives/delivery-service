@@ -19,16 +19,10 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect, afterAll } from "vitest";
-import { REPO_ROOT, runTsx, sectionOf } from "../helpers.js";
+import { REPO_ROOT, runTsx, sectionOf, snippetFrom } from "../helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "utf-8");
-
-/** The guide's fenced ```ts block whose first line is `// <name>`, exactly as a reader copies it. */
-function snippet(name: string): string {
-  const start = guide.indexOf("```ts\n// " + name + "\n");
-  const body = start + "```ts\n".length;
-  return guide.slice(body, guide.indexOf("```", body));
-}
+const snippet = (name: string) => snippetFrom(guide, name);
 
 // The guide tells a reader to save each snippet at the repository root; a uniquely named
 // file avoids colliding with anything a reader (or another test run) has in place.

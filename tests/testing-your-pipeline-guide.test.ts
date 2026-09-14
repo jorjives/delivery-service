@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { REPO_ROOT, runTsx, sectionOf } from "./helpers.js";
+import { REPO_ROOT, runTsx, sectionOf, snippetFrom } from "./helpers.js";
 import { cleanGitEnv } from "../src/git-env.js";
 import { MockNotInstalled } from "../src/errors.js";
 import { DID_NOT_COMPLETE, workerRoleConfig } from "../src/index.js";
@@ -20,13 +20,7 @@ const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "ut
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 const env = Object.fromEntries(Object.entries(cleanGitEnv()).filter(([name]) => !CREDENTIALS.includes(name)));
 
-/** The guide's ```ts block that starts with `// <name>`, exactly as a reader would copy it. */
-function snippet(name: string): string {
-  const start = guide.indexOf("```ts\n// " + name + "\n");
-  if (start === -1) throw new Error(`the guide has no \`\`\`ts block starting with // ${name}`);
-  const body = start + "```ts\n".length;
-  return guide.slice(body, guide.indexOf("```", body));
-}
+const snippet = (name: string) => snippetFrom(guide, name);
 
 // A reader saves each snippet at the repository root, so it imports "./src/...".
 // Staged outside the checkout instead, those imports point back at it. The package.json
