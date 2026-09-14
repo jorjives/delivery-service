@@ -15,7 +15,7 @@ import { triageRoleConfig, EscalationPacket } from "./triage-role-config.js";
 import { NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
-import { fakeAgentPort, mockSessionEnvironment } from "./testing.js";
+import { fakeAgentPort, mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition } from "./errors.js";
@@ -1586,10 +1586,7 @@ describe("triage by agent through the real invocation seam", () => {
 
     expect((await run(dir, location, ports)).state).toBe("CLOSED");
 
-    const prompts = (await readFile(journalPath, "utf-8"))
-      .split("\n").filter((l) => l !== "")
-      .map((l) => JSON.parse(l) as { event: string; prompt?: string })
-      .filter((e) => e.event === "matched").map((e) => e.prompt ?? "");
+    const prompts = promptsSent(await readJournal(journalPath));
     expect(prompts).toHaveLength(3);
     expect(prompts[1]).toContain("## Setback");
     expect(prompts[2]).toContain(`Dead ends: ${localBrief.dead_ends}`);

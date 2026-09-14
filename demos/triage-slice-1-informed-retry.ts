@@ -25,7 +25,7 @@ import { createAgentTriage } from "../src/triage.js";
 import { triageRoleConfig } from "../src/triage-role-config.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "../src/role-config.js";
 import { initTempRepo } from "../src/temp-repo.js";
-import { mockSessionEnvironment } from "../src/testing.js";
+import { mockSessionEnvironment, promptsSent, readJournal } from "../src/testing.js";
 import { noopCloser } from "../src/ports.js";
 import type { AgentPort, SurfaceLocation, SurfacePorts } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
@@ -66,12 +66,6 @@ function mockSession(scratch: string, script: unknown[]) {
   return { journalPath, session: mockSessionEnvironment({ scriptPath, journalPath }) };
 }
 
-function sentPrompts(journalPath: string): string[] {
-  return fs.readFileSync(journalPath, "utf-8").split("\n").filter((l) => l !== "")
-    .map((l) => JSON.parse(l) as { event: string; prompt?: string })
-    .filter((e) => e.event === "matched").map((e) => e.prompt ?? "");
-}
-
 const indent = (text: string) => text.split("\n").map((l) => `   ${l}`).join("\n");
 
 async function informedRetry(): Promise<void> {
@@ -88,7 +82,7 @@ async function informedRetry(): Promise<void> {
   const ports: SurfacePorts = { agent, triage: createAgentTriage(agent), closer: noopCloser };
 
   const result = await run(dir, location, ports);
-  const [, triagePrompt = "", secondWorker = ""] = sentPrompts(journalPath);
+  const [, triagePrompt = "", secondWorker = ""] = promptsSent(await readJournal(journalPath));
   const { history } = await load(dir);
   const triaged = history.find((e) => e.t === "triage");
 

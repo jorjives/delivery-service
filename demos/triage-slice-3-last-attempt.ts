@@ -28,7 +28,7 @@ import { triageRoleConfig, EscalationPacket } from "../src/triage-role-config.js
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "../src/role-config.js";
 import { SETBACK_LABELS } from "../src/escalation-packet.js";
 import { initTempRepo } from "../src/temp-repo.js";
-import { mockSessionEnvironment } from "../src/testing.js";
+import { mockSessionEnvironment, promptsSent, readJournal } from "../src/testing.js";
 import { noopCloser } from "../src/ports.js";
 import type { AgentPort, TriageInput } from "../src/ports.js";
 import type { BudgetSet, GateRef, HistoryEntry } from "../src/schema.js";
@@ -82,16 +82,9 @@ interface Ran {
   history: HistoryEntry[];
   /** The session keys of the triage rounds the agent was actually asked about. */
   agentRounds: Set<string>;
-  /** Every prompt the mock matched, in order. */
+  /** Every prompt the harness sent the mock, in order. */
   prompts: string[];
   packet?: EscalationPacket;
-}
-
-function sentPrompts(journal: string): string[] {
-  if (!fs.existsSync(journal)) return [];
-  return fs.readFileSync(journal, "utf-8").split("\n").filter((l) => l !== "")
-    .map((l) => JSON.parse(l) as { event: string; prompt?: string })
-    .filter((e) => e.event === "matched").map((e) => e.prompt ?? "");
 }
 
 /** Run one surface to its end with the agent-backed triage port, and record who decided each round. */
@@ -127,7 +120,7 @@ async function runSurface(name: string, scenario: Scenario): Promise<Ran> {
     state: result.state,
     history,
     agentRounds,
-    prompts: sentPrompts(journal),
+    prompts: promptsSent(await readJournal(journal)),
     ...(parsed?.success ? { packet: parsed.data } : {}),
   };
 }

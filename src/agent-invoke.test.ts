@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { create } from "./case-file.js";
 import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
-import { mockSessionEnvironment } from "./testing.js";
+import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import { createToolAuthority } from "./tool-authority.js";
 import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
 import { InvalidRoleConfig } from "./errors.js";
@@ -110,12 +110,7 @@ describe("invoke against a scripted agent session", () => {
     await invoke(workerRoleConfig, { ...ctx, sessionKey: "worker-1-0" }, sdk);
     await invoke(workerRoleConfig, { ...ctx, sessionKey: "worker-1-1" }, sdk);
 
-    const prompts = (await readFile(journalPath, "utf-8"))
-      .split("\n")
-      .filter((line) => line !== "")
-      .map((line) => JSON.parse(line) as { event: string; prompt?: string })
-      .filter((entry) => entry.event === "matched")
-      .map((entry) => entry.prompt);
+    const prompts = promptsSent(await readJournal(journalPath));
 
     expect(prompts).toHaveLength(2);
     expect(prompts[1]).toBe(prompts[0]);

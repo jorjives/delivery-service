@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { create } from "./case-file.js";
@@ -7,7 +7,7 @@ import { invoke } from "./agent-invoke.js";
 import { workerRoleConfig } from "./role-config.js";
 import { MockNotInstalled } from "./errors.js";
 import { resolveMockExecutable } from "./mock-session.js";
-import { mockSessionEnvironment } from "./testing.js";
+import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import type { BudgetSet } from "./schema.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
@@ -82,10 +82,6 @@ describe("a session driven through the helper", () => {
     );
 
     expect(terminus).toEqual({ status: "completed", rationale: "added the greeting" });
-    const events = (await readFile(journalPath, "utf-8"))
-      .split("\n")
-      .filter((line) => line !== "")
-      .map((line) => JSON.parse(line) as { event: string; prompt?: string });
-    expect(events.find((e) => e.event === "matched")?.prompt).toContain("add a greeting");
+    expect(promptsSent(await readJournal(journalPath))[0]).toContain("add a greeting");
   });
 });
