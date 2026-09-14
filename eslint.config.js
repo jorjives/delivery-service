@@ -14,6 +14,22 @@ export default defineConfig(
     },
   },
   {
+    // createAgentPort and fakeAgentPort own the only two casts the generic
+    // AgentPort contract forces; anywhere else the cast hides a wrong reply.
+    ignores: ["src/agent-invoke.ts", "src/agent-port-double.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "TSAsExpression > TSIndexedAccessType[objectType.typeName.name='AgentPort'][indexType.literal.value='invoke']",
+          message:
+            'Build agent doubles with fakeAgentPort from src/testing.ts: a cast to AgentPort["invoke"] lets a reply of the wrong shape for its role compile.',
+        },
+      ],
+    },
+  },
+  {
     ignores: ["dist/", "node_modules/"],
   }
 );

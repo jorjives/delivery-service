@@ -22,6 +22,12 @@ binary from a sibling project. It is not vendored here: install it with `npm lin
 own checkout so `claude-mock` resolves on `PATH`. Without it those tests skip — they never
 fail — and `npm test` still passes.
 
+To stand in for an agent in a test or demo, build the double with `fakeAgentPort` from
+`src/testing.ts`, supplying a reply only for the roles the test exercises. Each reply is
+type-checked against its role, and a role with no reply fails the test by name. Do not cast
+to `AgentPort["invoke"]`: the linter rejects it, because the cast lets a reply of the wrong
+shape compile.
+
 ## Pull requests
 
 - Branch from `main`
