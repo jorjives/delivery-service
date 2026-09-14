@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { cleanGitEnv } from "../src/git-env.js";
 
@@ -46,4 +47,19 @@ export function snippetFrom(guide: string, name: string): string {
   if (start === -1) throw new Error(`the guide has no \`\`\`ts block starting with // ${name}`);
   const body = start + "```ts\n".length;
   return guide.slice(body, guide.indexOf("```", body));
+}
+
+/** The compiled `delivery` command, as `npm run build` leaves it. */
+export const DELIVERY_BIN = join(REPO_ROOT, "dist", "cli", "main.js");
+
+/** Run the compiled `delivery` command as a person would, capturing what it prints and how it exits. */
+export function runDelivery(
+  args: string[],
+  { cwd = REPO_ROOT, env = process.env }: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+): { stdout: string; stderr: string; status: number | null } {
+  if (!existsSync(DELIVERY_BIN)) {
+    throw new Error("dist/cli/main.js is missing: run `npm run build` (npm test does this for you)");
+  }
+  const { stdout, stderr, status } = spawnSync(process.execPath, [DELIVERY_BIN, ...args], { cwd, env, encoding: "utf-8" });
+  return { stdout, stderr, status };
 }

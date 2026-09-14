@@ -2,8 +2,12 @@
   "name": "delivery-service",
   "version": "0.0.1",
   "type": "module",
+  "bin": {
+    "delivery": "./dist/cli/main.js"
+  },
   "scripts": {
-    "test": "vitest run",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/cli/main.js",
+    "test": "npm run build && vitest run",
     "test:watch": "vitest",
     "lint": "eslint . && tsc --noEmit",
     "typecheck": "tsc --noEmit",
@@ -49,6 +53,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.266",
+    "commander": "^14.0.3",
     "zod": "^4.5.4"
   }
 }

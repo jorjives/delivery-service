@@ -11,11 +11,26 @@ npm install
 ## Development
 
 ```bash
-npm test            # run tests once
-npm run test:watch  # run tests in watch mode
+npm run build       # compile src/ into dist/, including the `delivery` command
+npm test            # build, then run tests once
+npm run test:watch  # run tests in watch mode (run `npm run build` first)
 npm run lint        # ESLint + TypeScript strict check
 npm run typecheck   # TypeScript only
 ```
+
+`npm test` builds first because some tests run the compiled `delivery` command the way a
+person would, through `runDelivery` in `tests/helpers.ts`. When you run vitest directly or in
+watch mode, run `npm run build` first, and again after changing `src/`.
+
+To run the command from a checkout, build and link it, which puts `delivery` on your `PATH`:
+
+```bash
+npm run build
+npm link
+delivery --help
+```
+
+or run it straight from source with `npx tsx src/cli/main.ts --help`.
 
 Some tests and demos drive the real Claude Agent SDK against `claude-mock`, a scripted fake
 `claude` binary vendored in `vendor/claude-mock` (see `vendor/README.md`). `npm install`
