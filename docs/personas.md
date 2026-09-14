@@ -85,3 +85,15 @@ to a non-technical reader. This is the roadmap's COULD-tier ask for Item 5 (full
 non-technical authoring/reporting is Item 9/11's build) — Dana's bar today is "the
 packet doesn't actively mislead or block her if she's the one who opens it," not
 "the packet is written for her by default."
+
+**Goal extension (added by `cli-and-configuration-design`, autonomous run
+`20260914T200704Z`, for Item 8 — CLI and Configuration):** the goal above was
+written before a CLI existed and only covers Dana *reading* run output. Item 8's
+roadmap text promotes her to first-touch user of the tool itself: "The CLI is the
+first thing a non-technical user touches... a user who runs the tool with a repo
+and a task description, and nothing else, should get a working run." Her primary
+goal for this phase is extended to include **starting** a run — she should be
+able to install the harness and get a working run from a repo and a task
+description alone, with sensible built-in defaults, no config file, and no code.
+See `docs/prd/2026-09-14-cli-and-configuration/product-design.md` for the journey
+this drives. Her goal of reading escalation output, above, is unchanged.
