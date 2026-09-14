@@ -3,7 +3,9 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Expectation, Script } from "../vendor/claude-mock/src/mock.js";
-import { assertFullyConsumed, promptsSent, readJournal, writeMockScript } from "./testing.js";
+import { assertFullyConsumed, expectEnvelope, promptsSent, readJournal, writeMockScript } from "./testing.js";
+import { workerRoleConfig } from "./role-config.js";
+import { triageRoleConfig } from "./triage-role-config.js";
 import type { JournalEvent, MockExpectation, MockScript } from "./testing.js";
 
 const scratch = () => mkdtemp(join(tmpdir(), "mock-script-"));
@@ -173,5 +175,51 @@ describe("assertFullyConsumed", () => {
     expect(() => assertFullyConsumed([], { expectations: [{ json: {} }] })).toThrow(
       "The script was not fully used: 1 of 1 expectations never matched a prompt.\n  expectation 0: waiting for any prompt",
     );
+  });
+});
+
+describe("expectEnvelope", () => {
+  const FIX = "Fix the envelope. To script a malformed reply on purpose, write it into the expectation's json directly, without expectEnvelope.";
+
+  function messageOf(write: () => unknown): string {
+    try {
+      write();
+    } catch (err) {
+      return (err as Error).message;
+    }
+    return "(did not throw)";
+  }
+
+  it("hands back a valid envelope unchanged, ready to be an expectation's json", () => {
+    const envelope = { status: "completed" as const, rationale: "wrote greeting.txt" };
+
+    expect(expectEnvelope(workerRoleConfig, envelope)).toBe(envelope);
+  });
+
+  it("checks the envelope against the role it is scripted for, at compile time and when the script is written", () => {
+    const verdict = { status: "abort" as const, rationale: "the task is already done upstream", payload: { reason: "nothing left to change" } };
+
+    expect(expectEnvelope(triageRoleConfig, verdict)).toBe(verdict);
+    // @ts-expect-error a triage verdict is not a worker result, so the compiler refuses it
+    expect(messageOf(() => expectEnvelope(workerRoleConfig, verdict)).split("\n")[0]).toBe("The scripted envelope is not a valid worker result:");
+  });
+
+  it("rejects, where the script is written, an envelope the compiler accepts but the role does not, naming each field and the fix", () => {
+    const lines = messageOf(() => expectEnvelope(workerRoleConfig, { status: "completed", rationale: "" })).split("\n");
+
+    expect(lines).toEqual([
+      "The scripted envelope is not a valid worker result:",
+      expect.stringMatching(/^ {2}rationale: \S/),
+      FIX,
+    ]);
+  });
+
+  it("does not stand between a deliberately malformed envelope and a script written directly", async () => {
+    const scriptPath = join(await scratch(), "mock.json");
+    const malformed: MockScript = { expectations: [{ json: { status: "completed", rationale: "" } }] };
+
+    await writeMockScript(scriptPath, malformed);
+
+    expect(JSON.parse(await readFile(scriptPath, "utf-8"))).toEqual(malformed);
   });
 });

@@ -1,4 +1,5 @@
 import { readFile, writeFile } from "node:fs/promises";
+import type { RoleConfig } from "./role-config.js";
 
 /*
  * Typed views over claude-mock's own script and journal formats
@@ -96,4 +97,27 @@ export function assertFullyConsumed(journal: JournalEvent[], script: MockScript)
       : ["", "Prompts the harness sent that matched no expectation:", ...unmatched.flatMap((prompt, i) => [`--- prompt ${i + 1} ---`, prompt])]),
   ];
   throw new Error(lines.join("\n"));
+}
+
+/**
+ * An envelope for a scripted expectation's `json`, checked where the script is
+ * written: against the role's reply type by the compiler, and against the
+ * role's own `envelopeSchema` at runtime, which also catches what the compiler
+ * cannot (an empty rationale, say). Without it, a slip in a scripted envelope
+ * surfaces only as an unintended incomplete attempt, far from its cause.
+ *
+ * Returns the envelope it was given, unchanged, so the script is exactly what
+ * the author wrote. To script a malformed reply on purpose, put it in `json`
+ * directly: `writeMockScript` never validates envelopes.
+ */
+export function expectEnvelope<E>(roleCfg: RoleConfig<E>, envelope: NoInfer<E>): E {
+  const parsed = roleCfg.envelopeSchema.safeParse(envelope);
+  if (parsed.success) return envelope;
+  throw new Error(
+    [
+      `The scripted envelope is not a valid ${roleCfg.role} result:`,
+      ...parsed.error.issues.map((issue) => `  ${issue.path.join(".") || "(root)"}: ${issue.message}`),
+      "Fix the envelope. To script a malformed reply on purpose, write it into the expectation's json directly, without expectEnvelope.",
+    ].join("\n"),
+  );
 }

@@ -29,6 +29,9 @@ repository made with `initTempRepo`. It returns the run's result and the parsed 
 `promptsSent(journal)` shows what the harness sent, and `assertFullyConsumed(journal, script)`
 fails naming any expectation the run never used. Every agent session re-reads the whole
 script, so give each expectation a `when` clause once a run makes more than one call.
+Build each scripted envelope with `expectEnvelope(roleConfig, envelope)`, so a malformed one
+fails where it is written rather than as an unexplained incomplete attempt; to script a
+malformed reply on purpose, put it in the expectation's `json` directly.
 
 To stand in for an agent in a test or demo, build the double with `fakeAgentPort` from
 `src/testing.ts`, supplying a reply only for the roles the test exercises. Each reply is
