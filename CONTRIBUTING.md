@@ -17,10 +17,11 @@ npm run lint        # ESLint + TypeScript strict check
 npm run typecheck   # TypeScript only
 ```
 
-Some tests drive the real Claude Agent SDK against `claude-mock`, a scripted fake `claude`
-binary from a sibling project. It is not vendored here: install it with `npm link` from its
-own checkout so `claude-mock` resolves on `PATH`. Without it those tests skip — they never
-fail — and `npm test` still passes.
+Some tests and demos drive the real Claude Agent SDK against `claude-mock`, a scripted fake
+`claude` binary vendored in `vendor/claude-mock` (see `vendor/README.md`). `npm install`
+provides it, so those tests always run, locally and in CI. Point a session at it with
+`mockSessionEnvironment({ scriptPath, journalPath })` from `src/testing.ts`; never name the
+`claude-mock` command or rely on `PATH`.
 
 To stand in for an agent in a test or demo, build the double with `fakeAgentPort` from
 `src/testing.ts`, supplying a reply only for the roles the test exercises. Each reply is

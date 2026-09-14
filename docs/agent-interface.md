@@ -231,9 +231,12 @@ correspondence is exact:
 Because the mock sits at the CLI seam the SDK spawns, an SDK shape change surfaces
 as a parse failure against the real primitive rather than a passing fiction.
 
-`claude-mock` is a **sibling project, not vendored into this repo**. Install it with
-`npm link` from its own checkout so that `claude-mock` resolves on `PATH`; the mock-backed
-tests and the invocation demos skip or refuse to run without it. Vendoring it is Item 7's.
+`claude-mock` is **vendored** in `vendor/claude-mock`: the sibling project's source,
+unchanged, with its prebuilt `dist/` committed, installed by `npm install`
+(`vendor/README.md` records the upstream commit and how to update the copy). Tests and demos
+reach it through `mockSessionEnvironment` from `src/testing.ts`, which resolves the installed
+copy by absolute path and hands it the script and journal locations, so nothing depends on
+`PATH` and no mock-backed suite skips.
 
 ## Open items
 
