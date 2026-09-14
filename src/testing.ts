@@ -7,3 +7,5 @@ export { fakeAgentPort } from "./agent-port-double.js";
 export type { RoleHandlers } from "./agent-port-double.js";
 export { mockSessionEnvironment } from "./mock-session.js";
 export type { MockSessionPaths } from "./mock-session.js";
+export { assertFullyConsumed, promptsSent, readJournal, writeMockScript } from "./mock-script.js";
+export type { JournalEvent, MockExpectation, MockScript } from "./mock-script.js";

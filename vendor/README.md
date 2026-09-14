@@ -26,8 +26,11 @@ devDependencies (TypeScript 5, Vitest 4, a second Agent SDK) beside the harness'
 Tests and demos never name the command: they call `mockSessionEnvironment` from
 `src/testing.ts`, which resolves the installed copy by absolute path.
 
-The vendored TypeScript is not linted or type-checked by this repository
-(`eslint.config.js`, `tests/typecheck-coverage.test.ts`); it belongs to its own project.
+The vendored TypeScript is not linted by this repository and is not part of its
+`tsconfig.json` include (`eslint.config.js`, `tests/typecheck-coverage.test.ts`); it belongs
+to its own project. One file is compiled here indirectly: `src/mock-script.test.ts` imports
+the script types from `vendor/claude-mock/src/mock.ts` to prove `src/mock-script.ts` mirrors
+them.
 
 ### Updating it
 
@@ -47,6 +50,10 @@ cp -p "$BUILD"/dist/*.js "$BUILD"/dist/*.js.map vendor/claude-mock/dist/ && rm -
 npm ci
 npm test
 ```
+
+`src/mock-script.ts` mirrors the script and journal formats as plain types. After a sync,
+`npm run lint` fails if the script types drifted; the journal events are written ad hoc in
+`src/cli.ts`, so compare its `journal({...})` calls against `JournalEvent` by eye.
 
 Then update the upstream commit above. `npm ci` (not `npm install`) is what refreshes the
 copy in `node_modules`, because the package version does not change between syncs.

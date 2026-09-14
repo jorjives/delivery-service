@@ -4,7 +4,14 @@ import * as index from "./index.js";
 
 describe("the public testing entry point", () => {
   it("publishes the testing API and nothing else", () => {
-    expect(Object.keys(testing).sort()).toEqual(["fakeAgentPort", "mockSessionEnvironment"]);
+    expect(Object.keys(testing).sort()).toEqual([
+      "assertFullyConsumed",
+      "fakeAgentPort",
+      "mockSessionEnvironment",
+      "promptsSent",
+      "readJournal",
+      "writeMockScript",
+    ]);
   });
 
   it("leaves the main entry point unchanged", () => {
