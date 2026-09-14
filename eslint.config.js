@@ -30,6 +30,8 @@ export default defineConfig(
     },
   },
   {
-    ignores: ["dist/", "node_modules/", "vendor/"],
+    // examples/ holds plain JavaScript projects a person copies out; they are
+    // outside tsconfig.json, so typed linting cannot parse them.
+    ignores: ["dist/", "node_modules/", "vendor/", "examples/"],
   }
 );

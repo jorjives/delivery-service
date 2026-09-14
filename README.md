@@ -42,6 +42,8 @@ so `git status` does not change) and its working copy under
 `delivery --help` and `delivery run --help` list the options; `--no-color`, or setting
 `NO_COLOR`, turns colour off.
 
+To try it on something small first, use the [sample project](examples/sample-project/README.md).
+
 ## Documentation
 
 - [Design docs](docs/)
