@@ -8,9 +8,8 @@
 // criteria. A second invocation drives the configuring-a-role guide's own "Your first
 // triage invocation" example verbatim, covering the guide-following AC.
 //
-// Requires `claude-mock` (a sibling project, not vendored here) on PATH. When it is absent
-// the demo prints an explanatory message and exits non-zero rather than crashing; this test
-// asserts on that message in that case instead of failing opaquely.
+// Runs against claude-mock, vendored in vendor/claude-mock and installed by `npm install`, so
+// it never skips.
 //
 // Three ACs are not observable from this demo's four scenarios (none of which exercise a
 // close failure, a spent correction/close budget, or a surface with no triage agent wired
@@ -29,24 +28,17 @@ import { mkdtempSync, writeFileSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runTsx, sectionOf, REPO_ROOT } from "../helpers.js";
-import { isOnPath } from "../../src/on-path.js";
 
 describe("UAT: triage judges the last attempt and rechecks broken gates for free", () => {
   const { stdout, status } = runTsx(["demos/triage-slice-3-last-attempt.ts"]);
 
-  const mockMissing = stdout.includes("claude-mock is not on PATH");
   const section = (from: string, to?: string): string => sectionOf(stdout, from, to);
 
-  it("demo script runs to completion, or explains plainly that claude-mock is required", () => {
-    if (mockMissing) {
-      expect(status).not.toBe(0);
-      expect(stdout).toContain("claude-mock is not on PATH");
-      return;
-    }
+  it("demo script runs to completion", () => {
     expect(status).toBe(0);
   });
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: a gate failure with exactly one correction slot left engages the triage agent, which may retry or escalate",
     () => {
       const retry = section("1. The last correction slot: the triage agent chooses one more retry", "2. The last correction slot: the triage agent chooses to escalate");
@@ -61,7 +53,7 @@ describe("UAT: triage judges the last attempt and rechecks broken gates for free
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC (guide): a gate that errors is re-run against the same baseline while its recheck budget lasts, with no agent call and no gate-maintenance session",
     () => {
       const s = section("3. A gate that errors once, then passes on its free recheck", "4. A gate that keeps erroring");
@@ -72,7 +64,7 @@ describe("UAT: triage judges the last attempt and rechecks broken gates for free
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: once rechecks are spent and gate-maintenance budget remains, triage decides whether to repair the gate; a repair session receives triage's brief",
     () => {
       const s = section("4. A gate that keeps erroring", "5. What this shows");
@@ -92,10 +84,6 @@ describe("UAT: triage judges the last attempt and rechecks broken gates for free
   it(
     "AC: following only the guide's Triage chapter, an extender can configure triage and get a typed verdict back without reading the harness source",
     () => {
-      if (!isOnPath("claude-mock")) {
-        expect(stdout).toContain("claude-mock is not on PATH"); // consistent with the demo's own gate
-        return;
-      }
       // Mirrors docs/configuring-a-role.md's "Your first triage invocation" example
       // verbatim: the guide's own runnable script, run from the repo root exactly as
       // the guide instructs, asserting on the exact line the guide says it prints.
@@ -135,6 +123,7 @@ describe("UAT: triage judges the last attempt and rechecks broken gates for free
         script,
         [
           `import { create, invoke, triageRoleConfig } from ${JSON.stringify(join(REPO_ROOT, "src/index.js"))};`,
+          `import { mockSessionEnvironment } from ${JSON.stringify(join(REPO_ROOT, "src/testing.js"))};`,
           "",
           `const dir = ${JSON.stringify(dir)};`,
           `const worktreePath = ${JSON.stringify(worktreePath)};`,
@@ -158,10 +147,7 @@ describe("UAT: triage judges the last attempt and rechecks broken gates for free
           "const verdict = await invoke(",
           "  triageRoleConfig,",
           '  { worktreePath, dir, sessionKey: "triage-0" },',
-          "  {",
-          '    pathToClaudeCodeExecutable: "claude-mock",',
-          `    env: { ...process.env, CLAUDE_MOCK_SCRIPT: ${JSON.stringify(mockScript)} },`,
-          "  },",
+          `  mockSessionEnvironment({ scriptPath: ${JSON.stringify(mockScript)}, journalPath: ${JSON.stringify(join(scratch, "journal.jsonl"))} }),`,
           ");",
           "",
           'if (verdict.status === "reroute") {',

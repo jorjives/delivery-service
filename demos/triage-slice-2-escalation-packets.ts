@@ -8,9 +8,9 @@
  * unusable; and a failed close that the triage agent wrongly answers with
  * "retry the worker".
  *
- * Requires `claude-mock` on PATH. It is a sibling project, not vendored in this
- * repo: install it with `npm link` from its own checkout. No live API call is
- * made, and no API key is needed. `claude-mock` does not enforce a role's tool
+ * Section 4 runs against `claude-mock`, vendored in `vendor/claude-mock` and
+ * installed by `npm install`: no other setup. No live API call is made, and no
+ * API key is needed. `claude-mock` does not enforce a role's tool
  * list, so this demo shows nothing about triage's read-only authority.
  *
  * Usage: npm run demo:triage-slice-2
@@ -26,7 +26,7 @@ import { deterministicRouter } from "../src/router.js";
 import { triageRoleConfig, EscalationPacket } from "../src/triage-role-config.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "../src/role-config.js";
 import { initTempRepo } from "../src/temp-repo.js";
-import { isOnPath } from "../src/on-path.js";
+import { mockSessionEnvironment } from "../src/testing.js";
 import { noopCloser } from "../src/ports.js";
 import type { AgentPort, CloserPort, SurfacePorts, TriagePort } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
@@ -75,24 +75,10 @@ const refusingCloser: CloserPort = {
     ),
 };
 
-function requireMock(): void {
-  if (isOnPath("claude-mock")) return;
-  console.error(
-    "claude-mock is not on PATH.\n\n" +
-      "It is a scripted fake `claude` binary from a sibling project, deliberately not\n" +
-      "vendored into this repo. Install it with `npm link` from its own checkout, then\n" +
-      "run this demo again. Nothing here calls a live API.",
-  );
-  process.exit(1);
-}
-
 function mockSession(scratch: string, script: unknown[]) {
   const scriptPath = path.join(scratch, "mock.json");
   fs.writeFileSync(scriptPath, JSON.stringify(script), "utf-8");
-  return {
-    pathToClaudeCodeExecutable: "claude-mock",
-    env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: path.join(scratch, "journal.jsonl") },
-  };
+  return mockSessionEnvironment({ scriptPath, journalPath: path.join(scratch, "journal.jsonl") });
 }
 
 interface Scenario {
@@ -157,8 +143,6 @@ function printPacket(heading: string, r: Escalated): void {
 }
 
 async function main(): Promise<void> {
-  requireMock();
-
   // Each session re-reads the whole script, so expectations are routed by prompt
   // content: only triage's prompt has a Setback slot, so it is matched first.
   printPacket("1. The triage agent escalates", await escalateOne("triage-escalates", {

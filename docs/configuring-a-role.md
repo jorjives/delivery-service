@@ -155,17 +155,23 @@ with the whole machine the run executes on.
 
 ## Trying it offline
 
-`claude-mock` is a scripted stand-in for the `claude` command. It is a separate
-project, not included here: install it with `npm link` from its own checkout so
-that `claude-mock` works from your shell. Then pass a third argument to `invoke`:
+`claude-mock` is a scripted stand-in for the `claude` command. It is vendored in
+`vendor/claude-mock` and installed by `npm install`, so there is nothing else to set
+up. `mockSessionEnvironment` points a session at it, with the script it replays and
+the journal it writes; pass that as the third argument to `invoke`:
 
 ```ts
+import { mockSessionEnvironment } from "./src/testing.js";
+
 const ctx = { worktreePath, dir, sessionKey: "gate-maintenance-1-0" };
-const result = await invoke(gateMaintenanceRoleConfig, ctx, {
-  pathToClaudeCodeExecutable: "claude-mock",
-  env: { ...process.env, CLAUDE_MOCK_SCRIPT: "/tmp/my-run/mock.json" },
-});
+const result = await invoke(
+  gateMaintenanceRoleConfig,
+  ctx,
+  mockSessionEnvironment({ scriptPath: "/tmp/my-run/mock.json", journalPath: "/tmp/my-run/journal.jsonl" }),
+);
 ```
+
+The session makes no network call and needs no API key.
 
 where `/tmp/my-run/mock.json` scripts what the agent does and replies, for example:
 
@@ -277,6 +283,7 @@ it with `npx tsx first-triage.ts`:
 ```ts
 import { mkdirSync } from "node:fs";
 import { create, invoke, triageRoleConfig } from "./src/index.js";
+import { mockSessionEnvironment } from "./src/testing.js";
 
 const dir = "/tmp/my-triage/case";
 const worktreePath = "/tmp/my-triage/tree";
@@ -302,10 +309,7 @@ await create(
 const verdict = await invoke(
   triageRoleConfig,
   { worktreePath, dir, sessionKey: "triage-0" },
-  {
-    pathToClaudeCodeExecutable: "claude-mock",
-    env: { ...process.env, CLAUDE_MOCK_SCRIPT: "/tmp/my-triage/mock.json" },
-  },
+  mockSessionEnvironment({ scriptPath: "/tmp/my-triage/mock.json", journalPath: "/tmp/my-triage/journal.jsonl" }),
 );
 
 if (verdict.status === "reroute") {

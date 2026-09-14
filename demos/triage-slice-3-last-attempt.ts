@@ -10,9 +10,9 @@
  *   4. A gate that keeps erroring: rechecked, then triage sends a repair
  *      session that receives its brief.
  *
- * Requires `claude-mock` on PATH. It is a sibling project, not vendored in this
- * repo: install it with `npm link` from its own checkout. No live API call is
- * made, and no API key is needed. `claude-mock` does not enforce a role's tool
+ * Runs against `claude-mock`, vendored in `vendor/claude-mock` and installed by
+ * `npm install`: no other setup. No live API call is made, and no API key is
+ * needed. `claude-mock` does not enforce a role's tool
  * list, so this demo shows nothing about triage's read-only authority.
  *
  * Usage: npm run demo:triage-slice-3
@@ -28,7 +28,7 @@ import { triageRoleConfig, EscalationPacket } from "../src/triage-role-config.js
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "../src/role-config.js";
 import { SETBACK_LABELS } from "../src/escalation-packet.js";
 import { initTempRepo } from "../src/temp-repo.js";
-import { isOnPath } from "../src/on-path.js";
+import { mockSessionEnvironment } from "../src/testing.js";
 import { noopCloser } from "../src/ports.js";
 import type { AgentPort, TriageInput } from "../src/ports.js";
 import type { BudgetSet, GateRef, HistoryEntry } from "../src/schema.js";
@@ -71,17 +71,6 @@ const repairBrief = {
   diagnosis: "The worker's change truncated the generated report.",
 };
 
-function requireMock(): void {
-  if (isOnPath("claude-mock")) return;
-  console.error(
-    "claude-mock is not on PATH.\n\n" +
-      "It is a scripted fake `claude` binary from a sibling project, deliberately not\n" +
-      "vendored into this repo. Install it with `npm link` from its own checkout, then\n" +
-      "run this demo again. Nothing here calls a live API.",
-  );
-  process.exit(1);
-}
-
 interface Scenario {
   script: unknown[];
   budgets?: Partial<BudgetSet>;
@@ -121,10 +110,7 @@ async function runSurface(name: string, scenario: Scenario): Promise<Ran> {
   const scriptPath = path.join(scratch, "mock.json");
   const journal = path.join(scratch, "journal.jsonl");
   fs.writeFileSync(scriptPath, JSON.stringify(scenario.script), "utf-8");
-  const inner = createAgentPort(configs, {
-    pathToClaudeCodeExecutable: "claude-mock",
-    env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: journal },
-  });
+  const inner = createAgentPort(configs, mockSessionEnvironment({ scriptPath, journalPath: journal }));
   const agentRounds = new Set<string>();
   const agent: AgentPort = {
     invoke: (roleCfg, ctx) => {
@@ -168,8 +154,6 @@ function printCounts(r: Ran): void {
 }
 
 async function main(): Promise<void> {
-  requireMock();
-
   // Each session re-reads the whole script, so expectations are routed by prompt
   // content. Only triage's prompt has a Setback slot, so it is matched first;
   // only a briefed session's prompt contains that brief's dead ends.

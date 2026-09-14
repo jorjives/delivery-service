@@ -6,9 +6,8 @@
 // Drives the slice's own UAT demo script (npx tsx demos/triage-slice-1-informed-retry.ts)
 // and asserts on its printed output, covering the slice's UAT and its acceptance criteria.
 //
-// Requires `claude-mock` (a sibling project, not vendored here) on PATH. When it is absent
-// the demo prints an explanatory message and exits non-zero rather than crashing; this test
-// asserts on that message in that case instead of failing opaquely.
+// Runs against claude-mock, vendored in vendor/claude-mock and installed by `npm install`, so it
+// never skips.
 //
 // Four ACs are not observable from this demo's two scenarios (a stuck-worker retry and a plain
 // gate failure) and are covered elsewhere instead: authority escalation (both scenarios trigger
@@ -25,19 +24,13 @@ import { runTsx, sectionOf } from "../helpers.js";
 describe("UAT: a stuck worker's retry is informed by triage, not re-dispatched blind", () => {
   const { stdout, status } = runTsx(["demos/triage-slice-1-informed-retry.ts"]);
 
-  const mockMissing = stdout.includes("claude-mock is not on PATH");
   const section = (from: string, to?: string): string => sectionOf(stdout, from, to);
 
-  it("demo script runs to completion, or explains plainly that claude-mock is required", () => {
-    if (mockMissing) {
-      expect(status).not.toBe(0);
-      expect(stdout).toContain("claude-mock is not on PATH");
-      return;
-    }
+  it("demo script runs to completion", () => {
     expect(status).toBe(0);
   });
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: a worker that escalates as stuck with correction budget left is triaged by the triage agent, not by the lookup table alone",
     () => {
       const s = section("1. The stuck worker's setback", "2. What triage was asked");
@@ -47,7 +40,7 @@ describe("UAT: a stuck worker's retry is informed by triage, not re-dispatched b
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: when triage decides to retry, the next worker's prompt contains triage's brief (problem, dead ends, scope, references, and a diagnosis marked as a hypothesis) alongside the verbatim gate evidence, as two visibly separate sections",
     () => {
       const s = section("4. The second worker's request", "5. A plain gate failure");
@@ -61,7 +54,7 @@ describe("UAT: a stuck worker's retry is informed by triage, not re-dispatched b
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: the retried worker's prompt contains the previous round's dead ends, not merely an empty brief",
     () => {
       const s = section("4. The second worker's request", "5. A plain gate failure");
@@ -69,7 +62,7 @@ describe("UAT: a stuck worker's retry is informed by triage, not re-dispatched b
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: a plain gate failure with more than one correction slot left is routed with no agent call at all, exactly as before, and its retry carries no brief",
     () => {
       const s = section("5. A plain gate failure", "6. What this shows");
@@ -80,7 +73,7 @@ describe("UAT: a stuck worker's retry is informed by triage, not re-dispatched b
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: triage's own prompt shows the setback, the remaining budgets, and the rationales of earlier triage rounds, or a fixed sentence saying there were none",
     () => {
       const s = section("2. What triage was asked", "3. Triage's verdict");

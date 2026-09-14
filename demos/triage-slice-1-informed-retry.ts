@@ -7,9 +7,9 @@
  * dispatched; prints the triage request, the verdict and the second worker's
  * request. Then runs a plain gate failure and shows no triage agent was called.
  *
- * Requires `claude-mock` on PATH. It is a sibling project, not vendored in this
- * repo: install it with `npm link` from its own checkout. No live API call is
- * made, and no API key is needed. `claude-mock` does not enforce a role's tool
+ * Runs against `claude-mock`, vendored in `vendor/claude-mock` and installed by
+ * `npm install`: no other setup. No live API call is made, and no API key is
+ * needed. `claude-mock` does not enforce a role's tool
  * list, so this demo shows nothing about triage's read-only authority; that is
  * proven by unit tests and, live, by the real agent runtime.
  *
@@ -25,7 +25,7 @@ import { createAgentTriage } from "../src/triage.js";
 import { triageRoleConfig } from "../src/triage-role-config.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "../src/role-config.js";
 import { initTempRepo } from "../src/temp-repo.js";
-import { isOnPath } from "../src/on-path.js";
+import { mockSessionEnvironment } from "../src/testing.js";
 import { noopCloser } from "../src/ports.js";
 import type { AgentPort, SurfaceLocation, SurfacePorts } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
@@ -50,17 +50,6 @@ const brief = {
   diagnosis: "The greeting is probably read from a translations file rather than written in code.",
 };
 
-function requireMock(): void {
-  if (isOnPath("claude-mock")) return;
-  console.error(
-    "claude-mock is not on PATH.\n\n" +
-      "It is a scripted fake `claude` binary from a sibling project, deliberately not\n" +
-      "vendored into this repo. Install it with `npm link` from its own checkout, then\n" +
-      "run this demo again. Nothing here calls a live API.",
-  );
-  process.exit(1);
-}
-
 /** A fresh case file and repo; the surface is provisioned by the first advance. */
 async function surface(name: string): Promise<{ dir: string; location: SurfaceLocation; scratch: string }> {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), `triage-demo-${name}-`));
@@ -74,10 +63,7 @@ function mockSession(scratch: string, script: unknown[]) {
   const scriptPath = path.join(scratch, "mock.json");
   const journalPath = path.join(scratch, "journal.jsonl");
   fs.writeFileSync(scriptPath, JSON.stringify(script), "utf-8");
-  return {
-    journalPath,
-    session: { pathToClaudeCodeExecutable: "claude-mock", env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: journalPath } },
-  };
+  return { journalPath, session: mockSessionEnvironment({ scriptPath, journalPath }) };
 }
 
 function sentPrompts(journalPath: string): string[] {
@@ -158,7 +144,6 @@ async function plainGateFailure(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  requireMock();
   await informedRetry();
   await plainGateFailure();
   console.log("6. What this shows");

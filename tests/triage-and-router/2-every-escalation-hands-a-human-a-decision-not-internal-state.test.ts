@@ -6,9 +6,8 @@
 // Drives the slice's own UAT demo script (npx tsx demos/triage-slice-2-escalation-packets.ts)
 // and asserts on its printed output, covering the slice's UAT and its acceptance criteria.
 //
-// Requires `claude-mock` (a sibling project, not vendored here) on PATH. When it is absent
-// the demo prints an explanatory message and exits non-zero rather than crashing; this test
-// asserts on that message in that case instead of failing opaquely.
+// Runs against claude-mock, vendored in vendor/claude-mock and installed by `npm install`, so
+// this test never skips.
 //
 // "A failed close can end only in a close retry, an escalation, or an abort" is not separately
 // observable from this demo's printed output beyond the naming already covered by the section 5
@@ -22,15 +21,9 @@ import { runTsx, sectionOf } from "../helpers.js";
 describe("UAT: every escalation hands a human a decision, not internal state", () => {
   const { stdout, status } = runTsx(["demos/triage-slice-2-escalation-packets.ts"]);
 
-  const mockMissing = stdout.includes("claude-mock is not on PATH");
   const section = (from: string, to?: string): string => sectionOf(stdout, from, to);
 
-  it("demo script runs to completion, or explains plainly that claude-mock is required", () => {
-    if (mockMissing) {
-      expect(status).not.toBe(0);
-      expect(stdout).toContain("claude-mock is not on PATH");
-      return;
-    }
+  it("demo script runs to completion", () => {
     expect(status).toBe(0);
   });
 
@@ -42,7 +35,7 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     section('5. A failed close answered with "retry the worker"', "6. What this shows"),
   ];
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: an escalation decided by the triage agent stores the agent's packet with all five parts",
     () => {
       const s = allSections()[0];
@@ -55,7 +48,7 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: an authority escalation, a budget-exhaustion escalation, and an unusable-triage-output escalation each store a packet with all five parts",
     () => {
       for (const s of [allSections()[1], allSections()[2], allSections()[3]]) {
@@ -68,7 +61,7 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: each packet's decision reads as a question for a human, and differs by cause: authority, no budget left, and triage failure read differently",
     () => {
       const [, authority, budget, unusable] = allSections();
@@ -85,7 +78,7 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: a packet produced because a budget ran out says plainly that no budget remains and shows it as used out of maximum",
     () => {
       const s = allSections()[2];
@@ -93,7 +86,7 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     "AC: triage output that is missing, malformed, or of the wrong shape escalates with a plain-English reason, never defaults to a retry, and never shows a raw error",
     () => {
       const s = allSections()[3];
@@ -105,7 +98,7 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     },
   );
 
-  it.skipIf(mockMissing)(
+  it(
     'AC: a triage agent that answers "retry the worker" to a failed close is escalated instead, with a reason naming the verdict and the verdicts that were allowed',
     () => {
       const s = allSections()[4];
@@ -115,7 +108,7 @@ describe("UAT: every escalation hands a human a decision, not internal state", (
     },
   );
 
-  it.skipIf(mockMissing)("AC: no packet contains a stack trace or a bare internal code presented as the message", () => {
+  it("AC: no packet contains a stack trace or a bare internal code presented as the message", () => {
     const packets = allSections().join("\n");
     expect(packets).not.toMatch(/at \S+ \(.*:\d+:\d+\)/);
     expect(packets).not.toMatch(/^\s*Error:/m);
