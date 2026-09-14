@@ -1,4 +1,4 @@
-import type { Budget, BudgetPopulation } from "./schema.js";
+import type { Budget, BudgetPopulation, BudgetSet } from "./schema.js";
 
 /**
  * The one sentence a budget cap escalates with.
@@ -22,3 +22,17 @@ export function budgetExhausted(
 ): string {
   return `${population} budget exhausted (${budget.used}/${budget.max}): ${detail}`;
 }
+
+/**
+ * The caps a run starts with when its caller names none. These are the numbers
+ * the demos and tests already shared, lifted into one place so the command line
+ * and any library caller start from the same set. Every `used` is 0: usage is
+ * harness state, counted from the log, never a default.
+ */
+export const DEFAULT_BUDGETS: BudgetSet = {
+  correction: { used: 0, max: 3 },
+  gateError: { used: 0, max: 3 },
+  gateMaintenance: { used: 0, max: 2 },
+  terminus: { used: 0, max: 5 },
+  close: { used: 0, max: 3 },
+};
