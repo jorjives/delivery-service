@@ -38,7 +38,7 @@
 
 ---
 
-### Task 1: The guide's happy path, stand-in choice and journal assertions, kept honest by a test
+### Task 1: The guide's happy path, stand-in choice and journal assertions, kept honest by a test ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `docs/testing-your-pipeline.md`
@@ -49,7 +49,7 @@
 - Modify: `tests/scripted-agent-reachability.test.ts` (`SCOPE`)
 
 **Interfaces:**
-- Consumes: `REPO_ROOT`, `sectionOf(stdout, from, to?)`, `runTsx(args)` (`tests/helpers.ts`); `cleanGitEnv()` (`src/git-env.ts`); `assertFullyConsumed(journal: JournalEvent[], script: MockScript): void`, `JournalEvent`, `MockScript` (`src/testing.ts`).
+- Consumes: `REPO_ROOT`, `sectionOf(stdout, from, to?)`, `runTsx(args)` (`tests/helpers.ts`); `cleanGitEnv()` (`src/git-env.ts`); `assertFullyConsumed(journal: JournalEvent[], script: MockScript): void`, `expectEnvelope`, `fakeAgentPort`, `JournalEvent`, `MockScript` (`src/testing.ts`); `workerRoleConfig` (`src/index.ts`); `MockNotInstalled` (`src/errors.ts`, not public: the test checks the guide quotes its message).
 - Produces:
   - `runTsx(args: string[], env?: NodeJS.ProcessEnv): { stdout: string; status: number }`: `env` omitted means inherit, as before.
   - `docs/testing-your-pipeline.md` with these `##` headings in this order: `What you need`, `Choosing a stand-in`, `Worked example: the happy path`, `Asserting what the harness sent, and that the script was used`, `When the test itself is wrong`, `Watch it run`. Task 2 inserts three sections immediately before `## When the test itself is wrong`.
@@ -97,7 +97,9 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { REPO_ROOT, runTsx, sectionOf } from "./helpers.js";
 import { cleanGitEnv } from "../src/git-env.js";
-import { assertFullyConsumed, type JournalEvent, type MockScript } from "../src/testing.js";
+import { MockNotInstalled } from "../src/errors.js";
+import { workerRoleConfig } from "../src/index.js";
+import { assertFullyConsumed, expectEnvelope, fakeAgentPort, type JournalEvent, type MockScript } from "../src/testing.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "utf-8");
 
@@ -186,6 +188,27 @@ describe("the 'testing your delivery pipeline' guide", () => {
     }
     expect(message).not.toBe("");
     for (const line of message.split("\n")) expect(guide).toContain(line);
+  });
+
+  it("quotes each authoring mistake's message exactly as the testing API words it", async () => {
+    const wrong = sectionOf(guide, "## When the test itself is wrong", "## Watch it run");
+    expect(wrong).toContain(new MockNotInstalled("<path>").message);
+
+    const missingRole = await fakeAgentPort({})
+      .invoke({ role: "triage" }, { worktreePath: "/w", dir: "/d", sessionKey: "k" })
+      .then(() => "", (err: unknown) => (err as Error).message);
+    expect(missingRole).toMatch(/triage/);
+    expect(wrong).toContain(missingRole);
+
+    let malformed = "";
+    try {
+      expectEnvelope(workerRoleConfig, { status: "completed", rationale: "" });
+    } catch (err) {
+      malformed = (err as Error).message;
+    }
+    const [heading = ""] = malformed.split("\n");
+    expect(heading).toMatch(/worker/);
+    expect(wrong).toContain(heading);
   });
 
   it("type-checks every snippet it tells a reader to save", () => {
@@ -519,7 +542,10 @@ configurations together through a whole surface against the scripted agent, foll
 - [ ] **Step 6: Run the guide test to verify it passes**
 
 Run: `npx vitest run tests/testing-your-pipeline-guide.test.ts tests/agent-invocation-primitive/3-configure-a-second-role-using-the-same-seam-nothing-rebuilt.test.ts`
-Expected: PASS, 6 tests in the guide test (the second file still passes: it reads `docs/configuring-a-role.md`, which only gained a paragraph).
+Expected: PASS, 7 tests in the guide test (the second file still passes: it reads `docs/configuring-a-role.md`, which only gained a paragraph).
+
+Then run: `npx eslint tests/testing-your-pipeline-guide.test.ts tests/helpers.ts`
+Expected: no output.
 
 If the happy-path run fails, read the `stdout` in the assertion diff: it holds the worked test's own `node:test` failure, usually `assertFullyConsumed`'s message naming the prompt sent.
 
@@ -623,7 +649,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 2: The misbehaviour example, the incomplete cases and what the scripted agent cannot prove
+### Task 2: The misbehaviour example, the incomplete cases and what the scripted agent cannot prove ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `docs/testing-your-pipeline.md` (three sections inserted before `## When the test itself is wrong`)
@@ -652,14 +678,13 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "no
 Replace:
 
 ```ts
-import { cleanGitEnv } from "../src/git-env.js";
+import { workerRoleConfig } from "../src/index.js";
 ```
 
 with:
 
 ```ts
-import { cleanGitEnv } from "../src/git-env.js";
-import { DID_NOT_COMPLETE } from "../src/index.js";
+import { DID_NOT_COMPLETE, workerRoleConfig } from "../src/index.js";
 ```
 
 Replace:
@@ -711,7 +736,7 @@ Insert these tests immediately before `  it("is where the role guide's offline q
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `npx vitest run tests/testing-your-pipeline-guide.test.ts`
-Expected: FAIL, 4 tests: "type-checks every snippet" and "runs its worked misbehaviour test" with `the guide has no ```ts block starting with // misbehaviour.test.ts`; "lists each way a reply ends as incomplete" and "says plainly that the scripted agent cannot prove" on missing text. The other 5 pass.
+Expected: FAIL, 4 tests: "type-checks every snippet" and "runs its worked misbehaviour test" with `the guide has no ```ts block starting with // misbehaviour.test.ts`; "lists each way a reply ends as incomplete" and "says plainly that the scripted agent cannot prove" on missing text. The other 6 pass.
 
 - [ ] **Step 3: Add the three sections to the guide**
 
@@ -913,7 +938,7 @@ npm run demo:agent-slice-2
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run tests/testing-your-pipeline-guide.test.ts`
-Expected: PASS, 9 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Lint the test file**
 
