@@ -38,6 +38,20 @@ provides it, so those tests always run, locally and in CI. Point a session at it
 `mockSessionEnvironment({ scriptPath, journalPath })` from `src/testing.ts`; never name the
 `claude-mock` command or rely on `PATH`.
 
+To run the `delivery` command itself against `claude-mock`, set `DELIVERY_TEST_MOCK_SCRIPT` to
+the path of a script written with `writeMockScript` from `src/testing.ts`. Every agent session in
+the run then goes to `claude-mock`, the sign-in check is skipped, and the journal is written next
+to the script as `<script>.journal.jsonl`:
+
+```bash
+DELIVERY_TEST_MOCK_SCRIPT=/tmp/scratch/mock.json delivery run --task "add a hello function"
+```
+
+This seam is for contributors only: it needs the dev dependency, so an installed copy refuses
+it with a plain message, and it is deliberately left out of `--help`. `src/cli/run-command.test.ts`
+drives the command in-process this way; `runDelivery` in `tests/helpers.ts` drives the compiled
+binary.
+
 To prove a gate, a closer and role configurations work together, run one surface end to end
 against `claude-mock` with `runSurfaceAgainstMock` from `src/testing.ts`, in a scratch
 repository made with `initTempRepo`. It returns the run's result and the parsed journal:
