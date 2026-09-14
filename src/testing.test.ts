@@ -10,6 +10,7 @@ describe("the public testing entry point", () => {
       "mockSessionEnvironment",
       "promptsSent",
       "readJournal",
+      "runSurfaceAgainstMock",
       "writeMockScript",
     ]);
   });

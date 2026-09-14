@@ -9,3 +9,5 @@ export { mockSessionEnvironment } from "./mock-session.js";
 export type { MockSessionPaths } from "./mock-session.js";
 export { assertFullyConsumed, promptsSent, readJournal, writeMockScript } from "./mock-script.js";
 export type { JournalEvent, MockExpectation, MockScript } from "./mock-script.js";
+export { runSurfaceAgainstMock } from "./scripted-surface-run.js";
+export type { ScriptedSurfaceResult, ScriptedSurfaceRun } from "./scripted-surface-run.js";

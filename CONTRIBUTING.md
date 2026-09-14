@@ -23,6 +23,13 @@ provides it, so those tests always run, locally and in CI. Point a session at it
 `mockSessionEnvironment({ scriptPath, journalPath })` from `src/testing.ts`; never name the
 `claude-mock` command or rely on `PATH`.
 
+To prove a gate, a closer and role configurations work together, run one surface end to end
+against `claude-mock` with `runSurfaceAgainstMock` from `src/testing.ts`, in a scratch
+repository made with `initTempRepo`. It returns the run's result and the parsed journal:
+`promptsSent(journal)` shows what the harness sent, and `assertFullyConsumed(journal, script)`
+fails naming any expectation the run never used. Every agent session re-reads the whole
+script, so give each expectation a `when` clause once a run makes more than one call.
+
 To stand in for an agent in a test or demo, build the double with `fakeAgentPort` from
 `src/testing.ts`, supplying a reply only for the roles the test exercises. Each reply is
 type-checked against its role, and a role with no reply fails the test by name. Do not cast
