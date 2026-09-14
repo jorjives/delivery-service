@@ -198,6 +198,8 @@ own delivery pipeline end to end, deterministically and at no cost.
 
 ## Slice 4: Prove the Pipeline Copes When the Agent Misbehaves
 
+**Status:** ✅ Complete — 2026-09-14 — `3fcd776`
+**Tests:** ✅ Recorded — 2026-09-14 — `734c1f1` — cli — 1 UAT + 7 AC, 0 skipped
 **Delivers:** An extender can script an agent that replies badly, gives up, or produces
 work the gate rejects, and see the pipeline take the incomplete, escalation or retry path
 it should.
