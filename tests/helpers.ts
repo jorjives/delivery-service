@@ -20,11 +20,12 @@ export function gitGrepFiles(pattern: string, scope: string[]): string[] {
   }
 }
 
-export function runTsx(args: string[]): { stdout: string; status: number } {
+export function runTsx(args: string[], env?: NodeJS.ProcessEnv): { stdout: string; status: number } {
   try {
     const stdout = execFileSync("npx", ["tsx", ...args], {
       cwd: REPO_ROOT,
       encoding: "utf-8",
+      env,
     });
     return { stdout, status: 0 };
   } catch (err) {

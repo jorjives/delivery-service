@@ -195,6 +195,10 @@ The mock does not model tool permissions, so it cannot show a refusal happening
 inside a live session. The demos show the refusal by driving the harness's own
 decision directly; the live guarantee comes from the real `claude` runtime.
 
+This section is the single-role quick start. To test your gate, closer and role
+configurations together through a whole surface against the scripted agent, follow
+[Testing your delivery pipeline](testing-your-pipeline.md).
+
 ## Triage
 
 Triage decides what happens after a setback: the gate failed, the gate could not
