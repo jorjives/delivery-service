@@ -32,6 +32,9 @@ script, so give each expectation a `when` clause once a run makes more than one 
 Build each scripted envelope with `expectEnvelope(roleConfig, envelope)`, so a malformed one
 fails where it is written rather than as an unexplained incomplete attempt; to script a
 malformed reply on purpose, put it in the expectation's `json` directly.
+`docs/testing-your-pipeline.md` teaches the same API to adopters, and
+`tests/testing-your-pipeline-guide.test.ts` runs its worked tests: change the guide with the
+testing API.
 
 To stand in for an agent in a test or demo, build the double with `fakeAgentPort` from
 `src/testing.ts`, supplying a reply only for the roles the test exercises. Each reply is

@@ -240,7 +240,8 @@ unchanged, with its prebuilt `dist/` committed, installed by `npm install`
 (`vendor/README.md` records the upstream commit and how to update the copy). Tests and demos
 reach it through `mockSessionEnvironment` from `src/testing.ts`, which resolves the installed
 copy by absolute path and hands it the script and journal locations, so nothing depends on
-`PATH` and no mock-backed suite skips.
+`PATH` and no mock-backed suite skips. [Testing your delivery pipeline](testing-your-pipeline.md)
+is the adopter's guide to testing a pipeline with it.
 
 ## Open items
 
