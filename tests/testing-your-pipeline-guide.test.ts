@@ -3,7 +3,7 @@
 // the guide's own worked tests the way the guide tells a reader to, so they
 // cannot drift from the API they teach.
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,7 +11,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { REPO_ROOT, runTsx, sectionOf } from "./helpers.js";
 import { cleanGitEnv } from "../src/git-env.js";
 import { MockNotInstalled } from "../src/errors.js";
-import { workerRoleConfig } from "../src/index.js";
+import { DID_NOT_COMPLETE, workerRoleConfig } from "../src/index.js";
 import { assertFullyConsumed, expectEnvelope, fakeAgentPort, type JournalEvent, type MockScript } from "../src/testing.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "utf-8");
@@ -125,7 +125,7 @@ describe("the 'testing your delivery pipeline' guide", () => {
   });
 
   it("type-checks every snippet it tells a reader to save", () => {
-    for (const name of ["fake-agent.ts", "happy-path.test.ts"]) stage(name);
+    for (const name of ["fake-agent.ts", "happy-path.test.ts", "misbehaviour.test.ts"]) stage(name);
     let errors = "";
     try {
       execFileSync("npx", ["tsc", "-p", join(scratch, "tsconfig.json")], { cwd: REPO_ROOT, encoding: "utf-8", stdio: "pipe" });
@@ -134,6 +134,35 @@ describe("the 'testing your delivery pipeline' guide", () => {
     }
     expect(errors).toBe("");
   }, 60_000);
+
+  it("runs its worked misbehaviour test as written, and both cases pass", () => {
+    const stdout = runWorkedTest("misbehaviour.test.ts");
+    expect(stdout).toContain("✔ a worker that escalates for authority stops the surface at once");
+    expect(stdout).toContain("✔ a change the gate rejects goes back to the worker, and only the passing attempt lands");
+    expect(stdout).toContain("ℹ pass 2");
+    expect(guide).toContain("ℹ pass 2");
+  }, 60_000);
+
+  it("lists each way a reply ends as incomplete, with the rationale the harness records", () => {
+    const incomplete = sectionOf(guide, "## When a reply ends as incomplete", "## What the scripted agent cannot prove");
+    for (const reason of [DID_NOT_COMPLETE.errored, DID_NOT_COMPLETE.noEnvelope, DID_NOT_COMPLETE.wrongShape]) {
+      expect(incomplete).toContain(`worker session did not complete: ${reason}`);
+    }
+    for (const scripted of ["`promptContains`", "`reply`", "`json`", "`fail: { message }`"]) expect(incomplete).toContain(scripted);
+    expect(incomplete).toContain('"unmatched"');
+    expect(incomplete).toContain("terminus budget exhausted (<used>/<max>): ");
+  });
+
+  it("says plainly that the scripted agent cannot prove tool-permission refusals, and where they are tested", () => {
+    const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong");
+    expect(limits).toMatch(/The scripted agent cannot prove that a role is refused a tool it was not\s+given\./);
+    expect(limits).toContain("`allowedTools`");
+    for (const file of ["src/tool-authority.test.ts", "src/agent-invoke.test.ts"]) {
+      expect(limits).toContain(`\`${file}\``);
+      expect(existsSync(join(REPO_ROOT, file))).toBe(true);
+    }
+    expect(limits).toContain("npm run demo:agent-slice-2");
+  });
 
   it("is where the role guide's offline quick start points", () => {
     const roleGuide = readFileSync(join(REPO_ROOT, "docs/configuring-a-role.md"), "utf-8");

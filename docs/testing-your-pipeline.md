@@ -252,6 +252,196 @@ must hold; leave `when` out to match any prompt. Because every session starts
 from the top, give each expectation a `when` once a run makes more than one
 agent call, and put the more specific expectation first.
 
+## Worked example: when the agent misbehaves
+
+Trust in a pipeline comes from seeing it refuse bad work. These two tests
+provoke that on cue: a worker that gives up for want of authority, and a worker
+whose first change breaks a check the gate measures.
+
+```ts
+// misbehaviour.test.ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  deterministicRouter, gateMaintenanceRoleConfig, load, triageRoleConfig, workerRoleConfig,
+  type BudgetSet, type CloserRef, type GateRef,
+} from "./src/index.js";
+import { assertFullyConsumed, expectEnvelope, promptsSent, runSurfaceAgainstMock, type MockScript } from "./src/testing.js";
+
+const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode: "tap" };
+const closerRef: CloserRef = { type: "merge-back" };
+const roleConfigs = { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig };
+const budgets: BudgetSet = {
+  correction: { used: 0, max: 2 },
+  gateError: { used: 0, max: 2 },
+  gateMaintenance: { used: 0, max: 1 },
+  terminus: { used: 0, max: 2 },
+  close: { used: 0, max: 2 },
+};
+const intent = "add a greeting file that says hello";
+const PASSING = "1..2\nok 1 - alpha\nok 2 - beta\n";
+const FAILING = "1..2\nok 1 - alpha\nnot ok 2 - beta\n";
+const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+
+/** Run one surface with `script`, in a throwaway git repository whose gate passes before the worker starts. */
+async function runScripted(script: MockScript) {
+  const repoPath = mkdtempSync(join(tmpdir(), "pipeline-repo-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repoPath, env, encoding: "utf-8" });
+  git("init", "-b", "main");
+  git("config", "user.email", "pipeline-test@example.invalid");
+  git("config", "user.name", "Pipeline test");
+  writeFileSync(join(repoPath, "report.tap"), PASSING);
+  git("add", "-A");
+  git("commit", "-m", "seed");
+
+  const scratch = mkdtempSync(join(tmpdir(), "pipeline-run-"));
+  const dir = join(scratch, "case");
+  mkdirSync(dir);
+  const ran = await runSurfaceAgainstMock({
+    dir,
+    location: { repoPath, worktreePath: join(scratch, "worktree") },
+    header: { surfaceId: "greeting", taskDef: { intent }, gateRef, closerRef },
+    budgets,
+    roleConfigs,
+    triage: () => deterministicRouter,
+    script,
+  });
+  return { ...ran, dir, git };
+}
+
+test("a worker that escalates for authority stops the surface at once", async () => {
+  const rationale = "deploying needs a production credential this worker was not given";
+  const script: MockScript = {
+    expectations: [{ json: expectEnvelope(workerRoleConfig, { status: "escalate", category: "authority", rationale }) }],
+  };
+
+  const { result, journal } = await runScripted(script);
+
+  assertFullyConsumed(journal, script);
+  assert.equal(promptsSent(journal).length, 1);
+  assert.equal(result.state, "ESCALATED");
+  assert.equal(result.outcome?.reason, rationale);
+});
+
+test("a change the gate rejects goes back to the worker, and only the passing attempt lands", async () => {
+  const script: MockScript = {
+    expectations: [
+      // Every session reads the script from the top and takes the first expectation that matches,
+      // so the retry, keyed on the failure the gate reports, comes before the first attempt.
+      {
+        when: { promptContains: "2 - beta (PASS -> FAIL)" },
+        effects: [{ write: { path: "report.tap", content: PASSING } }, { write: { path: "greeting.txt", content: "hello\n" } }],
+        json: expectEnvelope(workerRoleConfig, { status: "completed", rationale: "fixed beta and wrote greeting.txt" }),
+      },
+      {
+        when: { promptContains: intent },
+        effects: [{ write: { path: "report.tap", content: FAILING } }],
+        json: expectEnvelope(workerRoleConfig, { status: "completed", rationale: "wrote the greeting, breaking beta" }),
+      },
+    ],
+  };
+
+  const { result, journal, dir, git } = await runScripted(script);
+
+  assertFullyConsumed(journal, script);
+  const { history } = await load(dir);
+  assert.deepEqual(history.flatMap((entry) => (entry.t === "gate" ? [entry.status] : [])), ["FAIL", "PASS"]);
+  assert.equal(result.state, "CLOSED");
+  assert.equal(git("show", "main:report.tap"), PASSING);
+  assert.equal(git("show", "main:greeting.txt"), "hello\n");
+});
+```
+
+Save it beside the first as `misbehaviour.test.ts` and run it the same way:
+
+```bash
+npx tsx --test misbehaviour.test.ts
+```
+
+Both tests pass. The output ends like this:
+
+```text
+✔ a worker that escalates for authority stops the surface at once
+✔ a change the gate rejects goes back to the worker, and only the passing attempt lands
+ℹ tests 2
+ℹ pass 2
+ℹ fail 0
+```
+
+What they show:
+
+- **An escalation for authority is final.** The worker's `escalate` result with
+  category `authority` ends the surface `ESCALATED` at once, with the worker's
+  rationale as the outcome's reason: one agent session, no retry, no triage.
+- **A change the gate rejects is retried, not accepted.** The first attempt
+  breaks the `beta` check. The gate measures that against the baseline it took
+  before the worker started and fails the attempt, and triage sends it back.
+  The retried worker's prompt carries the gate's evidence, each newly failing
+  check written as `<name> (<before> -> <after>)`, here
+  `2 - beta (PASS -> FAIL)`, so the script keys the retry on that. Only the
+  passing attempt reaches `main`.
+
+With your own gate, the evidence line is whatever your gate names its failing
+check; read it from `promptsSent(journal)` in a first failing run.
+
+## When a reply ends as incomplete
+
+An agent session that produces nothing usable ends with status `incomplete` and
+a plain-English `rationale`, never an exception. For the worker, these are the
+ways a script provokes it:
+
+| You script | The attempt's `rationale` | How to tell it apart |
+|---|---|---|
+| a `when` whose `promptContains` or `promptMatches` no prompt satisfies | `worker session did not complete: the session ended in an error before it reported a result` | the journal has an `"unmatched"` event, and `assertFullyConsumed` shows the prompt |
+| a `reply` with no `json` | `worker session did not complete: the session ended without reporting a result` | |
+| `json` that is not a valid result for the role, such as a triage verdict for the worker | `worker session did not complete: the session replied with something that is not a valid result for this role` | `expectEnvelope` would have refused it as you wrote it, so write it into `json` directly |
+| `fail: { message }` | `worker session did not complete: the session ended in an error before it reported a result` | no `"unmatched"` event; your message is not repeated in the rationale |
+
+Another role reads the same, with its own name first: `triage session did not
+complete: ...`.
+
+What the surface does next: each incomplete attempt uses one slot of the
+`terminus` budget and the attempt is run again. When the budget is used up the
+surface ends `ESCALATED`, and `result.outcome.reason` reads
+`terminus budget exhausted (<used>/<max>): ` followed by the last rationale. To
+see every attempt's rationale, read the terminus entries of `load(dir)`'s
+`history`, where `t` is `"terminus"`.
+
+Expectations left unused are not an incomplete attempt: nothing in the run
+notices them. `assertFullyConsumed` is how you find out.
+
+## What the scripted agent cannot prove
+
+**The scripted agent cannot prove that a role is refused a tool it was not
+given.** It does not model `allowedTools` at all. It makes no tool calls: the
+files a script's `effects` write are written by the scripted agent itself, so the
+harness's permission guard never sees them. A script can change a file your
+role has no tool to touch, and the test still passes. A passing scripted test is
+not evidence that your `allowedTools` are enforced.
+
+That guarantee is tested where it is enforced instead:
+
+- **`src/tool-authority.test.ts`** tests the guard itself: it allows the tools a
+  role names, refuses any other, refuses a permitted tool aimed outside the
+  worktree, and reports each refusal in a sentence naming the role and what it
+  tried.
+- **`src/agent-invoke.test.ts`** ("the session options the primitive builds")
+  tests that every real session is started with that guard as the Agent SDK's
+  permission decision point, with no setting that would route around it.
+- **In a live session**, the real `claude` runtime consults the guard before
+  every tool call, and a refusal comes back as `incomplete`, as
+  [Configuring a role](configuring-a-role.md) describes.
+
+To watch the guard's decisions on out-of-role and out-of-worktree calls:
+
+```bash
+npm run demo:agent-slice-2
+```
+
 ## When the test itself is wrong
 
 | What went wrong | What you see |
