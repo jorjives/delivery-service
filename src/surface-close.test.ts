@@ -14,7 +14,8 @@ import { deterministicRouter } from "./router.js";
 import { createMergeBackCloser } from "./merge-back-closer.js";
 import { createAgentTriage } from "./triage.js";
 import { EscalationPacket } from "./triage-role-config.js";
-import type { AgentContext, AgentPort, CloseContext, SurfaceLocation, SurfacePorts, TriagePort, TriageTerminus } from "./ports.js";
+import { fakeAgentPort } from "./testing.js";
+import type { AgentContext, AgentPort, CloseContext, SurfaceLocation, SurfacePorts, TriagePort, TriageTerminus, Terminus } from "./ports.js";
 import type { BudgetSet, CloserRef, GateRef, HistoryEntry } from "./schema.js";
 
 const budgets: BudgetSet = {
@@ -33,14 +34,14 @@ function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
 }
 
+/** Writes the feature and completes. */
+function writeFeature(ctx: AgentContext): Promise<Terminus> {
+  writeFileSync(join(ctx.worktreePath, "feature.txt"), "the feature\n");
+  return Promise.resolve({ status: "completed", rationale: "wrote feature.txt" });
+}
+
 /** A worker that writes the feature and completes. Any other role must not be asked. */
-const worker: AgentPort = {
-  invoke: ((role: { role: string }, ctx: AgentContext) => {
-    if (role.role !== "worker") return Promise.reject(new Error(`${role.role} was not expected here`));
-    writeFileSync(join(ctx.worktreePath, "feature.txt"), "the feature\n");
-    return Promise.resolve({ status: "completed", rationale: "wrote feature.txt" });
-  }) as AgentPort["invoke"],
-};
+const worker: AgentPort = fakeAgentPort({ worker: writeFeature });
 
 /**
  * Provision a surface against a fresh repo and advance it until the work is
@@ -194,10 +195,7 @@ describe("the repair brief on a retried close", () => {
   }
 
   function agentWithTriage(triage: () => Promise<TriageTerminus>): AgentPort {
-    return {
-      invoke: ((role: { role: string }, ctx: AgentContext) =>
-        role.role === "triage" ? triage() : worker.invoke({ role: "worker" }, ctx)) as AgentPort["invoke"],
-    };
+    return fakeAgentPort({ worker: writeFeature, triage });
   }
 
   it("hands the closer the brief triage's agent wrote for the retry, and none on the first close", async () => {

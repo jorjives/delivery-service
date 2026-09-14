@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createAgentTriage, needsJudgement, toTriageVerdict } from "./triage.js";
+import { fakeAgentPort } from "./testing.js";
 import type { AgentContext, AgentPort, TriageInput, TriageTerminus } from "./ports.js";
 import type { BudgetSet, CaseFile } from "./schema.js";
 import { DID_NOT_COMPLETE } from "./agent-invoke.js";
@@ -33,18 +34,17 @@ const brief = { problem: "p", dead_ends: "attempt 1 edited the wrong file", scop
 /** An agent port that answers triage with `reply` and records every call. */
 function triageAgent(reply: TriageTerminus): AgentPort & { calls: AgentContext[] } {
   const calls: AgentContext[] = [];
-  const run = (roleCfg: { role: string }, c: AgentContext) => {
-    if (roleCfg.role !== "triage") return Promise.reject(new Error(`unexpected ${roleCfg.role} session`));
-    calls.push(c);
-    return Promise.resolve(reply);
-  };
-  return { calls, invoke: run as AgentPort["invoke"] };
+  const agent = fakeAgentPort({
+    triage: (c) => {
+      calls.push(c);
+      return Promise.resolve(reply);
+    },
+  });
+  return Object.assign(agent, { calls });
 }
 
 /** An agent port that fails the test if it is called at all. */
-const forbiddenAgent: AgentPort = {
-  invoke: (() => Promise.reject(new Error("no agent call was expected"))) as AgentPort["invoke"],
-};
+const forbiddenAgent: AgentPort = fakeAgentPort({});
 
 describe("needsJudgement", () => {
   it("engages the agent for a stuck worker while a correction slot is left", () => {

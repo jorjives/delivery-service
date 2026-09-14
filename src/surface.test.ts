@@ -16,6 +16,7 @@ import { NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { isOnPath } from "./on-path.js";
+import { fakeAgentPort } from "./testing.js";
 import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition } from "./errors.js";
@@ -33,28 +34,24 @@ const budgets: BudgetSet = {
 const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode: "tap" };
 
 /**
- * Build an agent port from per-role functions. `AgentPort.invoke` is generic
- * over the role, which a plain function cannot satisfy, so the single cast
- * lives here rather than in every fake. A role with no function rejects.
+ * Build an agent port from one function for both worker-kind roles (it is told
+ * which), and an optional triage function. A role with no function rejects,
+ * naming the role.
  */
 function sessionAgent(
   worker: (role: "worker" | "gate-maintenance", ctx: AgentContext) => Promise<Terminus>,
   triage?: (ctx: AgentContext) => Promise<TriageTerminus>,
 ): AgentPort {
-  const run = (roleCfg: { role: string }, ctx: AgentContext) => {
-    if (roleCfg.role === "triage") {
-      return triage ? triage(ctx) : Promise.reject(new Error("the triage agent was not expected here"));
-    }
-    return worker(roleCfg.role as "worker" | "gate-maintenance", ctx);
-  };
-  return { invoke: run as AgentPort["invoke"] };
+  return fakeAgentPort({
+    worker: (ctx) => worker("worker", ctx),
+    "gate-maintenance": (ctx) => worker("gate-maintenance", ctx),
+    triage,
+  });
 }
 
 /** An agent that must never be called in this scenario. */
 function unusedAgent(): SurfacePorts["agent"] {
-  return {
-    invoke: () => Promise.reject(new Error("agent.invoke was not expected here")),
-  };
+  return fakeAgentPort({});
 }
 
 function unusedTriage(): SurfacePorts["triage"] {
