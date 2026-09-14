@@ -7,6 +7,7 @@ seeded_by: [50-20260912T085724Z-agent-port-test-doubles-need-a-cast.md]
 
 # Agent Mock — Design
 
+> **Status:** ✅ Complete — 2026-09-14 — all 5 slices delivered
 > Roadmap: `docs/superpowers/specs/2026-09-04-delivery-harness-roadmap.md`, Item 7.
 > Mechanism spec this design extends: `docs/agent-interface.md` §Relationship to the mock.
 > Builds on: `2026-09-09-agent-invocation-primitive-design.md` (Item 4: `invoke`, `AgentPort`, `SessionEnvironment`), `2026-09-07-single-surface-state-machine-design.md` (surface driver, `SurfacePorts`), `2026-09-04-gate-interface-design.md` (defers end-to-end gate testing to this item), `2026-09-11-close-interface-design.md` (Item 6: closers, real-temp-repo testing pattern).

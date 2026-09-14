@@ -1,6 +1,7 @@
 # Agent Mock — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-09-13-agent-mock-design.md`
+> **Status:** ✅ Complete — 2026-09-14 — all 5 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** this item has no end-user product surface; a CLI (Item 8) and
@@ -252,6 +253,7 @@ extender can only rely on that if they can provoke failures deterministically.
 
 ## Slice 5: Test Your Own Pipeline by Following One Guide
 
+**Status:** ✅ Complete — 2026-09-14 — `24d4aae`
 **Delivers:** An extender who has written a gate, a closer and role configurations can go
 from nothing to passing scripted tests of their own pipeline by following a single guide,
 without reading harness source.
