@@ -48,7 +48,7 @@
 
 ---
 
-### Task 1: `expectEnvelope`, authoring-time envelope validation
+### Task 1: `expectEnvelope`, authoring-time envelope validation ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/mock-script.ts` (add a type import and `expectEnvelope`)
@@ -148,7 +148,7 @@ describe("expectEnvelope", () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/mock-script.test.ts src/testing.test.ts`
-Expected: FAIL. The first three `expectEnvelope` tests fail with `expectEnvelope is not a function`; the export-list test fails on the missing `"expectEnvelope"`. The fourth `expectEnvelope` test and every Slice 3 test PASS.
+Expected: FAIL. The first two `expectEnvelope` tests fail with `expectEnvelope is not a function`; the third fails its `toEqual`, because `messageOf` catches that same TypeError and its message is not the expected three lines; the export-list test fails on the missing `"expectEnvelope"`. The fourth `expectEnvelope` test and every Slice 3 test PASS.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -234,7 +234,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 2: Prove each misbehaviour through a whole scripted surface
+### Task 2: Prove each misbehaviour through a whole scripted surface ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/scripted-surface-run.test.ts` (imports; two helpers; replace one Slice 3 test; new `describe`)
@@ -439,7 +439,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 3: The misbehaving-agent demo
+### Task 3: The misbehaving-agent demo ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/agent-mock-slice-4-misbehaving-agent.ts`
@@ -455,7 +455,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   - `--- 5. The worker escalates for authority ---`
   - `--- 6. The worker's change fails the gate ---`
 
-- [ ] **Step 1: Write the demo**
+- [x] **Step 1: Write the demo**
 
 Create `demos/agent-mock-slice-4-misbehaving-agent.ts`:
 
@@ -628,7 +628,7 @@ async function main(): Promise<void> {
 await main();
 ```
 
-- [ ] **Step 2: Add the npm script**
+- [x] **Step 2: Add the npm script**
 
 In `package.json` `scripts`, after `"demo:mock-slice-3": "npx tsx demos/agent-mock-slice-3-scripted-pipeline.ts",` add:
 
@@ -636,7 +636,7 @@ In `package.json` `scripts`, after `"demo:mock-slice-3": "npx tsx demos/agent-mo
     "demo:mock-slice-4": "npx tsx demos/agent-mock-slice-4-misbehaving-agent.ts",
 ```
 
-- [ ] **Step 3: Run the demo and read its output**
+- [x] **Step 3: Run the demo and read its output**
 
 Run: `npm run demo:mock-slice-4`
 Expected, exit 0, and:
@@ -655,7 +655,7 @@ Expected: no lint output; PASS.
 Run: `grep -n "—" demos/agent-mock-slice-4-misbehaving-agent.ts`
 Expected: no output (no em-dashes in demo copy).
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add demos/agent-mock-slice-4-misbehaving-agent.ts package.json
