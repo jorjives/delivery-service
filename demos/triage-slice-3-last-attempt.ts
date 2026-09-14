@@ -127,10 +127,10 @@ async function runSurface(name: string, scenario: Scenario): Promise<Ran> {
   });
   const agentRounds = new Set<string>();
   const agent: AgentPort = {
-    invoke: ((roleCfg, ctx) => {
+    invoke: (roleCfg, ctx) => {
       if (roleCfg.role === "triage") agentRounds.add(ctx.sessionKey);
       return inner.invoke(roleCfg, ctx);
-    }) as AgentPort["invoke"],
+    },
   };
 
   const result = await run(dir, location, { agent, triage: createAgentTriage(agent), closer: noopCloser });

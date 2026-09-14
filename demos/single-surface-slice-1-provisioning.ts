@@ -16,8 +16,9 @@ import { create, load } from "../src/case-file.js";
 import { initTempRepo } from "../src/temp-repo.js";
 import { advance } from "../src/surface.js";
 import { noopCloser } from "../src/ports.js";
-import type { AgentContext, AgentPort, RoleHandle, SurfaceLocation, SurfacePorts } from "../src/ports.js";
+import type { AgentPort, SurfaceLocation, SurfacePorts } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
+import { fakeAgentPort } from "../src/testing.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -37,23 +38,20 @@ const unusedTriage: SurfacePorts["triage"] = {
 };
 
 /** Never called: this project's gate runs fine. */
-const idleAgent: AgentPort = {
-  invoke: () => Promise.reject(new Error("no repair should be dispatched")),
-};
+const idleAgent: AgentPort = fakeAgentPort({});
 
 /** Writes the missing report file, so the next baseline succeeds. */
-const repairingAgent: AgentPort = {
-  invoke: ((_roleCfg: RoleHandle, ctx: AgentContext) => {
+const repairingAgent: AgentPort = fakeAgentPort({
+  "gate-maintenance": (ctx) => {
     fs.writeFileSync(path.join(ctx.worktreePath, "report.tap"), PASSING_TAP);
     return Promise.resolve({ status: "completed", rationale: "restored the missing report.tap" });
-  }) as AgentPort["invoke"],
-};
+  },
+});
 
 /** Claims success every time but never actually fixes anything. */
-const uselessAgent: AgentPort = {
-  invoke: (() =>
-    Promise.resolve({ status: "completed", rationale: "claims to have fixed it" })) as AgentPort["invoke"],
-};
+const uselessAgent: AgentPort = fakeAgentPort({
+  "gate-maintenance": () => Promise.resolve({ status: "completed", rationale: "claims to have fixed it" }),
+});
 
 async function runSurface(
   label: string,

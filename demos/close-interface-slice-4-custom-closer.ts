@@ -21,8 +21,9 @@ import { advance, run, type AdvanceResult } from "../src/surface.js";
 import { resolveCloser } from "../src/resolve-closer.js";
 import { deterministicRouter } from "../src/router.js";
 import { EscalationPacket } from "../src/triage-role-config.js";
-import type { AgentContext, AgentPort, CloseContext, RoleHandle, SurfaceLocation, SurfacePorts } from "../src/ports.js";
+import type { AgentPort, CloseContext, SurfaceLocation, SurfacePorts } from "../src/ports.js";
 import type { BudgetSet, CloserRef, GateRef } from "../src/schema.js";
+import { fakeAgentPort } from "../src/testing.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -59,12 +60,12 @@ export default {
 `;
 
 /** Stands in for a worker that finishes the job. */
-const workingAgent: AgentPort = {
-  invoke: ((_role: RoleHandle, ctx: AgentContext) => {
+const workingAgent: AgentPort = fakeAgentPort({
+  worker: (ctx) => {
     fs.writeFileSync(path.join(ctx.worktreePath, "feature.txt"), "the feature the task asked for\n");
     return Promise.resolve({ status: "completed", rationale: "wrote feature.txt" });
-  }) as AgentPort["invoke"],
-};
+  },
+});
 
 async function surfaceWith(
   repo: string,

@@ -133,10 +133,10 @@ async function plainGateFailure(): Promise<void> {
   const inner = createAgentPort(configs, session);
   let triageAgentCalls = 0;
   const counting: AgentPort = {
-    invoke: ((roleCfg, ctx) => {
+    invoke: (roleCfg, ctx) => {
       if (roleCfg.role === "triage") triageAgentCalls += 1;
       return inner.invoke(roleCfg, ctx);
-    }) as AgentPort["invoke"],
+    },
   };
   const ports: SurfacePorts = { agent: counting, triage: createAgentTriage(counting), closer: noopCloser };
 

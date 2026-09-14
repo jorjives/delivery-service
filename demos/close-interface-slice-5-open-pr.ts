@@ -24,8 +24,9 @@ import { resolveCloser } from "../src/resolve-closer.js";
 import { branchName } from "../src/provision.js";
 import { deterministicRouter } from "../src/router.js";
 import { EscalationPacket } from "../src/triage-role-config.js";
-import type { AgentContext, AgentPort, RoleHandle, SurfaceLocation, SurfacePorts } from "../src/ports.js";
+import type { AgentPort, SurfaceLocation, SurfacePorts } from "../src/ports.js";
 import type { BudgetSet, CloserRef, GateRef } from "../src/schema.js";
+import { fakeAgentPort } from "../src/testing.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -44,12 +45,12 @@ function git(cwd: string, args: string[]): string {
 }
 
 /** Stands in for a worker that finishes the job. */
-const workingAgent: AgentPort = {
-  invoke: ((_role: RoleHandle, ctx: AgentContext) => {
+const workingAgent: AgentPort = fakeAgentPort({
+  worker: (ctx) => {
     fs.writeFileSync(path.join(ctx.worktreePath, "feature.txt"), "the feature the task asked for\n");
     return Promise.resolve({ status: "completed", rationale: "wrote feature.txt" });
-  }) as AgentPort["invoke"],
-};
+  },
+});
 
 async function startSurface(repo: string, surfaceId: string): Promise<{ dir: string; location: SurfaceLocation; ports: SurfacePorts }> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "close5-demo-case-"));

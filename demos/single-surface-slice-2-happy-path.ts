@@ -15,8 +15,9 @@ import { create, load } from "../src/case-file.js";
 import { initTempRepo } from "../src/temp-repo.js";
 import { advance } from "../src/surface.js";
 import { noopCloser } from "../src/ports.js";
-import type { AgentContext, AgentPort, RoleHandle, SurfaceLocation, SurfacePorts } from "../src/ports.js";
+import type { AgentPort, SurfaceLocation, SurfacePorts } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
+import { fakeAgentPort } from "../src/testing.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -35,12 +36,12 @@ const unusedTriage: SurfacePorts["triage"] = {
 };
 
 /** Adds a file to the worktree and leaves the gate passing. */
-const cleanWorker: AgentPort = {
-  invoke: ((_roleCfg: RoleHandle, ctx: AgentContext) => {
+const cleanWorker: AgentPort = fakeAgentPort({
+  worker: (ctx) => {
     fs.writeFileSync(path.join(ctx.worktreePath, "feature.txt"), "the change\n");
     return Promise.resolve({ status: "completed", rationale: "added the feature" });
-  }) as AgentPort["invoke"],
-};
+  },
+});
 
 async function main(): Promise<void> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "surface-demo-case-"));

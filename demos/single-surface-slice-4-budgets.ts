@@ -19,15 +19,14 @@ import { advance, run } from "../src/surface.js";
 import { deterministicRouter } from "../src/router.js";
 import { noopCloser } from "../src/ports.js";
 import type {
-  AgentContext,
   AgentPort,
   CloserPort,
-  RoleHandle,
   SurfaceLocation,
   SurfacePorts,
   Terminus,
 } from "../src/ports.js";
 import type { BudgetPopulation, BudgetSet, GateRef } from "../src/schema.js";
+import { fakeAgentPort } from "../src/testing.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -97,9 +96,10 @@ async function runScenario(scenario: Scenario): Promise<void> {
   console.log(`Outcome:   ${outcome} — ${reason}`);
 }
 
-/** A worker that always reports the same terminus, whatever the role. */
+/** A stand-in that gives the same reply to every worker and repair session. */
 function alwaysWorker(terminus: Terminus): AgentPort {
-  return { invoke: (() => Promise.resolve(terminus)) as AgentPort["invoke"] };
+  const reply = () => Promise.resolve(terminus);
+  return fakeAgentPort({ worker: reply, "gate-maintenance": reply });
 }
 
 async function main(): Promise<void> {
@@ -132,15 +132,13 @@ async function main(): Promise<void> {
     population: "gateMaintenance",
     burn: "repair session dispatched",
     ports: {
-      agent: {
-        invoke: ((roleCfg: RoleHandle, ctx: AgentContext) => {
-          if (roleCfg.role === "worker") {
-            fs.rmSync(path.join(ctx.worktreePath, "report.tap"), { force: true });
-            return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
-          }
-          return Promise.resolve({ status: "completed", rationale: "repaired nothing" });
-        }) as AgentPort["invoke"],
-      },
+      agent: fakeAgentPort({
+        worker: (ctx) => {
+          fs.rmSync(path.join(ctx.worktreePath, "report.tap"), { force: true });
+          return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
+        },
+        "gate-maintenance": () => Promise.resolve({ status: "completed", rationale: "repaired nothing" }),
+      }),
       triage: deterministicRouter,
       closer: noopCloser,
     },

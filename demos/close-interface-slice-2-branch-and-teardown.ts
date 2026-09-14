@@ -22,8 +22,9 @@ import { cleanGitEnv } from "../src/git-env.js";
 import { run } from "../src/surface.js";
 import { resolveCloser } from "../src/resolve-closer.js";
 import { teardownWorktree } from "../src/closer-support.js";
-import type { AgentContext, AgentPort, RoleHandle, SurfaceLocation, SurfacePorts } from "../src/ports.js";
+import type { AgentPort, SurfaceLocation, SurfacePorts } from "../src/ports.js";
 import type { BudgetSet, CloserRef, GateRef } from "../src/schema.js";
+import { fakeAgentPort } from "../src/testing.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -42,20 +43,20 @@ function git(cwd: string, args: string[]): string {
 }
 
 /** Stands in for a worker that finishes the job. */
-const workingAgent: AgentPort = {
-  invoke: ((_role: RoleHandle, ctx: AgentContext) => {
+const workingAgent: AgentPort = fakeAgentPort({
+  worker: (ctx) => {
     fs.writeFileSync(path.join(ctx.worktreePath, "feature.txt"), "the feature the task asked for\n");
     return Promise.resolve({ status: "completed", rationale: "wrote feature.txt" });
-  }) as AgentPort["invoke"],
-};
+  },
+});
 
 /**
  * Stands in for a worker that cannot finish and hands the task back. It commits
  * what it managed, which is why the kept branch is worth anything: teardown
  * removes the scratch directory, so uncommitted work in it goes with it.
  */
-const stuckAgent: AgentPort = {
-  invoke: ((_role: RoleHandle, ctx: AgentContext) => {
+const stuckAgent: AgentPort = fakeAgentPort({
+  worker: (ctx) => {
     fs.writeFileSync(path.join(ctx.worktreePath, "half-done.txt"), "as far as I got\n");
     git(ctx.worktreePath, ["add", "-A"]);
     git(ctx.worktreePath, ["commit", "-m", "as far as I got"]);
@@ -64,8 +65,8 @@ const stuckAgent: AgentPort = {
       category: "authority",
       rationale: "Finishing this needs the deploy key, which I do not hold.",
     });
-  }) as AgentPort["invoke"],
-};
+  },
+});
 
 const unusedTriage: SurfacePorts["triage"] = {
   triage: () => Promise.reject(new Error("no setback is expected in this demo")),

@@ -17,15 +17,14 @@ import { advance } from "../src/surface.js";
 import { deterministicRouter } from "../src/router.js";
 import { noopCloser } from "../src/ports.js";
 import type {
-  AgentContext,
   AgentPort,
   CloserPort,
-  RoleHandle,
   SurfaceLocation,
   SurfacePorts,
   Terminus,
 } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
+import { fakeAgentPort } from "../src/testing.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -53,18 +52,15 @@ function agentOf(
   repair?: (worktreePath: string) => Terminus,
 ): AgentPort {
   let i = 0;
-  return {
-    invoke: ((roleCfg: RoleHandle, ctx: AgentContext) => {
-      if (roleCfg.role === "gate-maintenance") {
-        if (!repair) throw new Error("no repair step scripted");
-        return Promise.resolve(repair(ctx.worktreePath));
-      }
+  return fakeAgentPort({
+    worker: (ctx) => {
       const step = workerSteps[Math.min(i, workerSteps.length - 1)];
       i += 1;
       if (!step) throw new Error("no worker step scripted");
       return Promise.resolve(step(ctx.worktreePath));
-    }) as AgentPort["invoke"],
-  };
+    },
+    "gate-maintenance": repair && ((ctx) => Promise.resolve(repair(ctx.worktreePath))),
+  });
 }
 
 async function runScenario(

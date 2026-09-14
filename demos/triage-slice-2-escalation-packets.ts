@@ -121,10 +121,10 @@ async function escalateOne(name: string, scenario: Scenario): Promise<Escalated>
   const inner = createAgentPort(configs, mockSession(scratch, scenario.script));
   let triageCalls = 0;
   const agent: AgentPort = {
-    invoke: ((roleCfg, ctx) => {
+    invoke: (roleCfg, ctx) => {
       if (roleCfg.role === "triage") triageCalls += 1;
       return inner.invoke(roleCfg, ctx);
-    }) as AgentPort["invoke"],
+    },
   };
   const ports: SurfacePorts = {
     agent,
