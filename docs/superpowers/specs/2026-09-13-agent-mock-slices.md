@@ -21,6 +21,7 @@ story.
 ## Slice 1: Write an Agent Stand-in the Compiler Checks
 
 **Status:** ✅ Complete — 2026-09-14 — `b480ebe`
+**Tests:** ✅ Recorded — 2026-09-14 — `f6fba69` — cli — 1 UAT + 4 AC, 0 skipped
 **Delivers:** An extender or contributor can stand in for any agent role in a test with a
 double whose replies the type checker verifies against that role, with no cast, and every
 existing stand-in in the harness is written this way.
