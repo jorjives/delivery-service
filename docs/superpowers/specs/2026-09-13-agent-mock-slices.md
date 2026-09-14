@@ -137,6 +137,7 @@ this makes offline verification the default for every adopter and every CI run.
 
 ## Slice 3: Prove a Whole Pipeline Against a Scripted Agent
 
+**Status:** ✅ Complete — 2026-09-14 — `babd20f`
 **Delivers:** An extender can run their real gate, real closer and role configurations
 through a complete surface, worker to gate to close, against a scripted agent in a
 scratch repository, and assert what the harness sent and that the script was fully used.
