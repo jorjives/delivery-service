@@ -80,6 +80,7 @@ passes is evidence, not luck, for every extender and for every later roadmap ite
 ## Slice 2: The Scripted Agent Is There After a Plain Install
 
 **Status:** ✅ Complete — 2026-09-14 — `6730b5e`
+**Tests:** ✅ Recorded — 2026-09-14 — `a37e82b` — cli — 1 UAT + 3 AC, 0 skipped
 **Delivers:** On a fresh clone, installing dependencies is enough to run every
 scripted-agent test and demo; none of them skips or refuses for want of a separately
 linked tool.
