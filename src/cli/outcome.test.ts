@@ -3,8 +3,8 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
-import { create, load, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
-import type { CaseFileOutcome } from "../schema.js";
+import { appendEntry, create, load, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
+import type { CaseFileOutcome, CloserRef } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import { EXIT } from "./failures.js";
 import { summariseOutcome } from "./outcome.js";
@@ -20,8 +20,11 @@ const packet: EscalationPacket = {
   references: ["worker-1-0"],
 };
 
-/** A finished run's record, as the run loop leaves it. */
-async function finishedRun(outcome: (dir: string) => Promise<CaseFileOutcome>) {
+/** A finished run's record, as the run loop leaves it: the closer it was started with, and what that closer reported. */
+async function finishedRun(
+  outcome: (dir: string) => Promise<CaseFileOutcome>,
+  { closerRef = { type: "commit-to-branch" }, closeDetail }: { closerRef?: CloserRef; closeDetail?: string } = {},
+) {
   const dir = await mkdtemp(join(tmpdir(), "outcome-"));
   await create(
     dir,
@@ -29,11 +32,15 @@ async function finishedRun(outcome: (dir: string) => Promise<CaseFileOutcome>) {
       surfaceId: RUN_ID,
       taskDef: { intent: "add a hello function" },
       gateRef: { type: "command", command: "npm test", parseMode: "exitcode" },
-      closerRef: { type: "commit-to-branch" },
+      closerRef,
     },
     DEFAULT_BUDGETS,
   );
   await setBaseBranch(dir, "main");
+  if (closeDetail !== undefined) {
+    const detailRef = await writeRef(dir, "close-0", { status: "DONE", detail: closeDetail });
+    await appendEntry(dir, { t: "close", status: "DONE", detailRef });
+  }
   await setOutcome(dir, await outcome(dir));
   return { dir, caseFile: await load(dir) };
 }
@@ -102,5 +109,67 @@ describe("summariseOutcome", () => {
       details: [],
       exitCode: EXIT.aborted,
     });
+  });
+});
+
+const closed = async (): Promise<CaseFileOutcome> => ({ kind: "closed", source: "closer", reason: "committed", at: AT });
+
+describe("where a closed run says its work went", () => {
+  it("names the branch, and says the base branch is untouched, for a run committed to a branch", async () => {
+    const { dir, caseFile } = await finishedRun(closed, { closerRef: { type: "commit-to-branch" } });
+    const summary = await summariseOutcome(dir, caseFile);
+    expect(summary.headline).toBe(
+      `Done: the change for "add a hello function" passed \`npm test\` and is committed on branch surface/${RUN_ID}.`,
+    );
+    expect(summary.details).toEqual([`main was not changed. To look at the work: git log surface/${RUN_ID}`]);
+  });
+
+  it("says the work is on the base branch for a run that merged back", async () => {
+    const { dir, caseFile } = await finishedRun(closed, { closerRef: { type: "merge-back" } });
+    const summary = await summariseOutcome(dir, caseFile);
+    expect(summary.headline).toBe('Done: the change for "add a hello function" passed `npm test` and is merged into main.');
+    expect(summary.details).toEqual(["To look at the work: git log main"]);
+    expect(summary.exitCode).toBe(EXIT.ok);
+  });
+
+  it("gives the pull request's address for a run that opened one", async () => {
+    const { dir, caseFile } = await finishedRun(closed, {
+      closerRef: { type: "open-pr" },
+      closeDetail: "https://github.com/me/project/pull/7",
+    });
+    const summary = await summariseOutcome(dir, caseFile);
+    expect(summary.headline).toBe(
+      `Done: the change for "add a hello function" passed \`npm test\` and is on branch surface/${RUN_ID}, with a pull request open.`,
+    );
+    expect(summary.details).toEqual(["The pull request: https://github.com/me/project/pull/7"]);
+  });
+
+  it("repeats a custom closer's own report, because only it knows what it did", async () => {
+    const { dir, caseFile } = await finishedRun(closed, {
+      closerRef: { type: "custom", modulePath: "./closers/notify.mjs" },
+      closeDetail: "Told the release channel and tagged v2.",
+    });
+    const summary = await summariseOutcome(dir, caseFile);
+    expect(summary.headline).toBe('Done: the change for "add a hello function" passed `npm test` and your own closer finished it.');
+    expect(summary.details).toEqual(["Your closer says: Told the release channel and tagged v2."]);
+  });
+
+  it("still says something useful when a closer left no readable report", async () => {
+    const { dir, caseFile } = await finishedRun(closed, { closerRef: { type: "open-pr" } });
+    const summary = await summariseOutcome(dir, caseFile);
+    expect(summary.details).toEqual([`main was not changed. To look at the work: git log surface/${RUN_ID}`]);
+  });
+
+  it("speaks as if the work were committed to a branch for a run that pinned no closer at all", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "outcome-no-closer-"));
+    await create(
+      dir,
+      { surfaceId: RUN_ID, taskDef: { intent: "add a hello function" }, gateRef: { type: "command", command: "npm test", parseMode: "exitcode" } },
+      DEFAULT_BUDGETS,
+    );
+    await setBaseBranch(dir, "main");
+    await setOutcome(dir, await closed());
+    const summary = await summariseOutcome(dir, await load(dir));
+    expect(summary.headline).toContain(`is committed on branch surface/${RUN_ID}.`);
   });
 });
