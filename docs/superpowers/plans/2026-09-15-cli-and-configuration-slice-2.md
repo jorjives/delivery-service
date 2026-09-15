@@ -21,7 +21,8 @@
 - **Flags this slice adds (spec's command surface, verbatim):** `--task-file <path>`, `--gate-command <cmd>`, `--closer <type>`, `--config <file>`. `--gate-command` is shorthand for `{ type: "command", command: <cmd>, parseMode: "exitcode" }`; `--closer` takes a built-in type with no required fields. "A `custom` gate or closer, a non-default `parseMode`, or closer options such as `merge-back`'s `deleteBranch` are expressed in the config file only."
 - **Exit codes (slice 1, unchanged):** `EXIT = { ok: 0, unexpected: 1, configuration: 2, agentRuntime: 3, escalated: 4, aborted: 5 }` in `src/cli/failures.ts`. Every refusal this slice adds is `EXIT.configuration`.
 - **Copy:** "Every message names the problem and the fix without harness vocabulary ('worktree', 'envelope', 'surface', a state name)." British English, no em-dashes in any user-facing string or document. The command speaks in the first person ("I can't use...", "I couldn't find..."), matching slice 1's existing messages.
-- **Deliberate differences from the spec's error table, and why:** the unknown-closer message ends "To use your own, put `{ "type": "custom", "modulePath": "./closers/mine.js" }` in delivery.config.json." rather than the spec's bare fragment, because a reader on the command line needs to be told *where* that object goes. The custom gate and closer load failures keep slice 1's existing wording in `src/cli/failures.ts` verbatim, which already names the module path, the detail and the guide; this slice only makes them reachable before a run starts.
+- **Deliberate differences from the spec's error table, and why:** the unknown-closer message ends "To use your own, put `{ "type": "custom", "modulePath": "./closers/mine.js" }` in delivery.config.json." rather than the spec's bare fragment, because a reader on the command line needs to be told *where* that object goes. The custom gate and closer load failures keep slice 1's existing wording in `src/cli/failures.ts` verbatim, which already names the module path, the detail and the guide; this slice only makes them reachable before a run starts. The built-in closers are listed in the order the library's own `CloserRef` union declares them (`merge-back`, `commit-to-branch`, `open-pr`), not the spec's prose order, because deriving the list from the schema is what stops the two disagreeing when a closer is added; the AC asks for the choices, not an order.
+- **Which folder a relative path is relative to:** `--task-file` resolves against the folder the command was run in (`ctx.cwd`); `--config`, and the upward walk that finds an unnamed file, resolve against `--repo` (which defaults to that same folder). The two differ only when someone passes `--repo` and a relative `--config` together, and the README describes `--config` as a path to a config file without promising a base. Leave it; do not add a second cwd parameter to `loadConfig` for it.
 - **Exact user-facing strings are constants the tests import,** as in slice 1: `CONFIG_KEYS`, `NO_SUCH_CONFIG`, `unknownCloser`, `describeProblem` (`src/cli/config.ts`); `NO_TASK`, `BOTH_TASKS`, `NO_TASK_FILE` (`src/cli/settings.ts`); `NO_CHECK`, `NOT_A_REPOSITORY`, `UNCOMMITTED_NOTE` (`src/cli/project.ts`).
 - **Refusal ordering (slice 1's rule, extended):** repository, then the config file (found, read, valid), then the task, then the check, then the closer, then any custom module, then the agent runtime preflight, then the uncommitted-changes note, and only then is anything written. A refusal leaves the repository exactly as it was.
 - **Resume is not in this slice.** Slice 3 owns re-running and `delivery resume`, including the rule that a resumed run keeps the gate, closer and task it started with. Nothing here reads an existing case file.
@@ -33,14 +34,15 @@
 
 - **Reactive, the "no check" message is now wrong:** `NO_CHECK` in `src/cli/project.ts` tells the user to add a `test` script, because slice 1 had no `--gate-command`. This slice gives them that flag, so the message becomes the spec's wording → Task 3.
 - **Reactive, the closing sentence describes only `commit-to-branch`:** `src/cli/outcome.ts` always says "committed on branch X, base not changed", which is false for a `merge-back` or `open-pr` run this slice makes reachable → Task 5.
-- **Reactive, `README.md` describes a command with nothing to configure:** it gains a "Configure it once" section covering the file, the four keys, the flags, the environment variables and the precedence order → Task 6.
+- **Reactive, `README.md` describes a command with nothing to configure:** it gains a "Configure it once" section covering the file, the four keys, the flags, the environment variables and the precedence order → Task 6. Its existing "Run a task from the command line" section and its exit-code table both state as fact that the work is committed to a new branch, which is now only the default → Task 6 qualifies both.
+- **Reactive, `delivery run --help` describes one closing action:** the `run` command's own description in `src/cli/program.ts` ends "and the result is committed to a new branch", which `--closer` and the config file now contradict → Task 6.
 - **Reactive, `docs/writing-a-gate.md` describes `gateRef` as something a library caller passes to `create()`:** it gains the two-sentence note that the same shape goes in `delivery.config.json` under `gate`, and that the command loads the module before it starts → Task 6.
 - **Reactive, `docs/writing-a-closer.md` describes `closerRef` the same way,** and says an unintelligible `closerRef` becomes an ERROR report rather than an exception, which stays true of the library but is no longer what a command-line user meets → it gains the matching note → Task 6.
 - **Unchanged, checked:** `CONTRIBUTING.md` (no new build, test or run step; the `DELIVERY_TEST_MOCK_SCRIPT` seam is untouched); `examples/sample-project/` and its README (`tests/sample-project.test.ts` asserts the folder holds exactly `README.md`, `add.js`, `add.test.js` and `package.json`, so no config file is shipped, and its zero-config walkthrough still works); `package.json` (`zod` and `commander` are already dependencies; no new script); `.github/workflows/ci.yml`, `Makefile`, `.githooks/pre-push` (all call `npm test`, unchanged); `vitest.config.ts` and `tsconfig.json` (new files sit under the existing `src/**` globs and include paths); `eslint.config.js`; `docs/configuring-a-role.md` and `docs/testing-your-pipeline.md` (library behaviour, unchanged); `docs/provisioning.md`; `vendor/README.md`.
 
 ---
 
-### Task 1: The config file's shape, and what the command says about a file it can't use
+### Task 1: The config file's shape, and what the command says about a file it can't use ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/config.ts`
@@ -297,7 +299,7 @@ EOF
 
 ---
 
-### Task 2: Finding and reading the config file
+### Task 2: Finding and reading the config file ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/config.ts`
@@ -453,6 +455,12 @@ describe("naming a config file yourself", () => {
     });
   });
 
+  it("treats DELIVERY_CONFIG set to nothing as not set, and goes on looking", async () => {
+    const { repo } = tree();
+    write(repo, "delivery.config.json", JSON.stringify({ closer: { type: "open-pr" } }));
+    expect(await found(repo, repo, { DELIVERY_CONFIG: "" })).toEqual({ closer: { type: "open-pr" } });
+  });
+
   it("refuses a named file that isn't there, rather than quietly falling back to discovery", async () => {
     const { repo } = tree();
     write(repo, "delivery.config.json", JSON.stringify({ closer: { type: "open-pr" } }));
@@ -544,7 +552,9 @@ export async function loadConfig({
   flag: string | undefined;
   env: NodeJS.ProcessEnv;
 }): Promise<DeliveryConfig> {
-  const named = flag ?? env.DELIVERY_CONFIG;
+  // An empty DELIVERY_CONFIG is CI writing an input nobody filled in: not a
+  // file called "", and not a reason to refuse before discovery has run.
+  const named = flag ?? (env.DELIVERY_CONFIG || undefined);
   let file: string | undefined;
   if (named !== undefined) {
     file = resolve(startDir, named);
@@ -596,7 +606,7 @@ EOF
 
 ---
 
-### Task 3: Which setting wins: flag, then environment, then file, then default
+### Task 3: Which setting wins: flag, then environment, then file, then default ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/settings.ts`
@@ -705,7 +715,11 @@ describe("what the run is asked to do", () => {
 
 describe("what checks the work", () => {
   it("turns --gate-command into a check that passes when the command exits 0", async () => {
-    expect((await settings({ gateCommand: "make check" })).gateRef).toEqual({ type: "command", command: "make check", parseMode: "exitcode" });
+    expect((await settings({ task: TASK, gateCommand: "make check" })).gateRef).toEqual({
+      type: "command",
+      command: "make check",
+      parseMode: "exitcode",
+    });
   });
 
   it("falls back to DELIVERY_GATE_COMMAND, then to the config file, then to the project's test script", async () => {
@@ -762,6 +776,13 @@ describe("what happens to accepted work", () => {
     const config: DeliveryConfig = { closer: { type: "merge-back" } };
     expect((await settings({ task: TASK, closer: "commit-to-branch" }, { env, config })).closerRef).toEqual({ type: "commit-to-branch" });
     expect((await settings({ task: TASK }, { env, config })).closerRef).toEqual({ type: "open-pr" });
+  });
+
+  it("treats an environment variable set to nothing as not set, so CI's empty input doesn't beat the file", async () => {
+    const config: DeliveryConfig = { closer: { type: "merge-back" }, gate: NPM_TEST };
+    const env = { DELIVERY_CLOSER: "", DELIVERY_GATE_COMMAND: "" };
+    expect((await settings({ task: TASK }, { env, config })).closerRef).toEqual({ type: "merge-back" });
+    expect((await settings({ task: TASK }, { env, config })).gateRef).toEqual(NPM_TEST);
   });
 
   it("refuses a closer type it doesn't know, listing the choices", async () => {
@@ -885,8 +906,16 @@ async function taskFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: Deliver
   throw new Refusal(NO_TASK, EXIT.configuration);
 }
 
+/**
+ * An environment variable set to nothing is not set. CI writes
+ * `DELIVERY_CLOSER=` for an input nobody filled in, and taking that literally
+ * would refuse the run over a closer type of `""` or check the work with an
+ * empty command, in both cases ignoring the file the project checked in.
+ */
+const fromEnv = (value: string | undefined): string | undefined => value || undefined;
+
 async function gateFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryConfig, repoPath: string): Promise<GateRef> {
-  const command = flags.gateCommand ?? env.DELIVERY_GATE_COMMAND;
+  const command = flags.gateCommand ?? fromEnv(env.DELIVERY_GATE_COMMAND);
   // `exitcode` is the only parse mode that assumes nothing about the command's output,
   // so it is the one a flag can safely stand for; the rest are named in the file.
   if (command !== undefined) return { type: "command", command, parseMode: "exitcode" };
@@ -894,7 +923,7 @@ async function gateFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: Deliver
 }
 
 function closerFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryConfig): CloserRef {
-  const named = flags.closer ?? env.DELIVERY_CLOSER;
+  const named = flags.closer ?? fromEnv(env.DELIVERY_CLOSER);
   if (named === undefined) return config.closer ?? DEFAULT_CLOSER;
   // A type with no required fields parses on its own; `custom` does not, because it
   // needs a module path, which is what the config file is for.
@@ -948,8 +977,11 @@ export const NO_TASK = 'Tell me what to do: add `--task "describe the change you
 with:
 
 ```ts
-export { NO_TASK } from "./settings.js";
+import { NO_TASK } from "./settings.js";
+export { NO_TASK };
 ```
+
+An `export … from` alone would not compile here: `runCommand` still refers to `NO_TASK` by name until Task 6 moves that refusal into the resolver, and a bare re-export creates no local binding. Task 6 collapses this pair back to `export { NO_TASK } from "./settings.js";` once the throw site is gone.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -988,7 +1020,7 @@ EOF
 
 ---
 
-### Task 4: A custom gate or closer that cannot be loaded stops the command before it starts
+### Task 4: A custom gate or closer that cannot be loaded stops the command before it starts ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/settings.ts`
@@ -1133,7 +1165,7 @@ EOF
 
 ---
 
-### Task 5: A closed run says where the work actually went
+### Task 5: A closed run says where the work actually went ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/outcome.ts`
@@ -1373,7 +1405,7 @@ EOF
 
 ---
 
-### Task 6: `delivery run` takes its settings from the file, the flags and the environment
+### Task 6: `delivery run` takes its settings from the file, the flags and the environment ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/program.ts`
@@ -1574,9 +1606,10 @@ Expected: FAIL; the config file is ignored, so the merge-back run commits to a b
 
 - [ ] **Step 3: Write the implementation**
 
-In `src/cli/program.ts`, add the four options to the `run` command, between `--task` and `--repo`:
+In `src/cli/program.ts`, add the four options to the `run` command, between `--task` and `--repo`, and change the `run` description's closing clause, which promises one closing action:
 
 ```ts
+    .description("start a run: the agent works on the task, your check decides whether it is good, and the result is delivered the way your config file asks (by default, committed to a new branch)")
     .option("--task <text>", "what you want done, in plain English")
     .option("--task-file <path>", "read what you want done from a file")
     .option("--gate-command <command>", "the command that checks the agent's work: it passes when the command exits 0")
@@ -1663,7 +1696,7 @@ Expected: PASS, including the slice 1 tests already in the file.
 
 - [ ] **Step 5: Update the README**
 
-In `README.md`, insert this section immediately after the "Run a task from the command line" section (before `## Documentation`):
+In `README.md`, first qualify the two places that state one closing action as fact. In "Run a task from the command line", change "and commits the work to a new branch; your base branch is not touched" to "and, unless you configure otherwise, commits the work to a new branch without touching your base branch"; in the exit-code table, change row `0` to "The run finished and the work was delivered". Then insert this section immediately after that section (before `## Documentation`):
 
 ````markdown
 ## Configure it once
