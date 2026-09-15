@@ -1,6 +1,7 @@
-import { execFile } from "node:child_process";
+import { execFile as execFileCb } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import { promisify } from "node:util";
 import { z } from "zod";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import { mockSessionEnvironment } from "../mock-session.js";
@@ -77,24 +78,27 @@ export function resolveRuntime(
   return undefined;
 }
 
+const execFile = promisify(execFileCb);
+
 const AuthStatus = z.object({ loggedIn: z.boolean() });
 
 /**
  * What `claude auth status --json` reports, or undefined when the binary would
  * not run or said something unreadable. A signed-out runtime exits non-zero
- * with the same JSON on stdout, so stdout is read whatever the exit code.
+ * with the same JSON on stdout, so stdout is read whatever the exit code
+ * (Node attaches stdout to a rejected execFile's error too).
  */
-function authStatus(runtime: string, env: NodeJS.ProcessEnv): Promise<{ loggedIn: boolean } | undefined> {
-  return new Promise((resolve) => {
-    execFile(runtime, ["auth", "status", "--json"], { env, timeout: 30_000 }, (_err, stdout) => {
-      try {
-        const parsed = AuthStatus.safeParse(JSON.parse(stdout));
-        resolve(parsed.success ? parsed.data : undefined);
-      } catch {
-        resolve(undefined);
-      }
-    });
-  });
+async function authStatus(runtime: string, env: NodeJS.ProcessEnv): Promise<{ loggedIn: boolean } | undefined> {
+  const stdout = await execFile(runtime, ["auth", "status", "--json"], { env, timeout: 30_000 }).then(
+    (result) => result.stdout,
+    (err: unknown) => (err as { stdout?: string }).stdout,
+  );
+  try {
+    const parsed = AuthStatus.safeParse(JSON.parse(stdout ?? ""));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
