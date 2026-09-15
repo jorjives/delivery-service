@@ -22,6 +22,7 @@ public rehearsal mode) is not sliced.
 
 ## Slice 1: Run a Task From the Command Line With Nothing Configured
 
+**Status:** ✅ Complete — 2026-09-15 — `6c490c9`
 **Delivers:** A person inside a git repository with a test script can type one `delivery run` command with a task description and get a finished run, with plain-language progress and a plain-language outcome, without writing any configuration or code.
 
 **Operational note:** This slice introduces a compiled build of the harness with a runnable `delivery` command, and a regression harness that drives the compiled command against scratch repositories with the agent routed to the vendored scripted agent through a contributor-only test seam (documented for contributors, never shown in the command's help). CI must build before those tests run. Runs keep their record inside the repository in a self-ignoring folder and their working copy outside the repository under the user's state directory, following the estate's autoloop convention.
