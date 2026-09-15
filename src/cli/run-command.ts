@@ -15,8 +15,8 @@ import { summariseOutcome } from "./outcome.js";
 import { createProgress, paint } from "./output.js";
 import { findRepository, hasUncommittedChanges, inferGate, UNCOMMITTED_NOTE } from "./project.js";
 import { prepareRunDir, runIdFor, runPlace } from "./run-location.js";
-
-export const NO_TASK = 'Tell me what to do: add `--task "describe the change you want"`.';
+import { NO_TASK } from "./settings.js";
+export { NO_TASK };
 
 /** The one closer a run uses when nothing else is configured: it needs only git, and leaves a branch to inspect before trusting it. */
 const DEFAULT_CLOSER: CloserRef = { type: "commit-to-branch" };

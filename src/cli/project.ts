@@ -9,7 +9,8 @@ export const NOT_A_REPOSITORY =
   "This isn't a git repository yet. The harness needs one to track changes: run `git init` here, or point `--repo` at one.";
 
 export const NO_CHECK =
-  "I couldn't find a command to check the agent's work with. Add a `test` script to your `package.json` that passes when a change is good.";
+  "I couldn't find a command to check the agent's work with. Tell me what marks a change as good, for example " +
+  '`--gate-command "npm test"`, or add a `test` script to your `package.json`.';
 
 export const UNCOMMITTED_NOTE =
   "Note: you have uncommitted changes. The agent works from your last commit, so it won't see them.";
