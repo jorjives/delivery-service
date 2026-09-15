@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { DeliveryConfig, describeProblem, unknownCloser } from "./config.js";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { configCandidates, DeliveryConfig, describeProblem, loadConfig, NO_SUCH_CONFIG, unknownCloser } from "./config.js";
+import { EXIT, Refusal } from "./failures.js";
 
 const FILE = "delivery.config.json";
 
@@ -91,5 +95,147 @@ describe("unknownCloser", () => {
 
   it("copes with a closer type that is not a string at all", () => {
     expect(unknownCloser(undefined)).toContain("I don't know that closer type.");
+  });
+});
+
+/** A folder tree standing in for a checkout: `<parent>/repo/sub/deep`, with the repository root at `repo`. */
+function tree(): { parent: string; repo: string; sub: string; deep: string } {
+  const parent = mkdtempSync(join(tmpdir(), "config-tree-"));
+  const repo = join(parent, "repo");
+  const sub = join(repo, "sub");
+  const deep = join(sub, "deep");
+  mkdirSync(deep, { recursive: true });
+  return { parent, repo, sub, deep };
+}
+
+const write = (dir: string, name: string, contents: string): string => {
+  const file = join(dir, name);
+  writeFileSync(file, contents);
+  return file;
+};
+
+/** Load the config a run would use, with nothing named on the command line or in the environment. */
+const found = (startDir: string, repoPath: string, env: NodeJS.ProcessEnv = {}) =>
+  loadConfig({ startDir, repoPath, flag: undefined, env });
+
+async function refusalOf(promise: Promise<unknown>): Promise<Refusal> {
+  const err = await promise.then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  expect(err).toBeInstanceOf(Refusal);
+  return err as Refusal;
+}
+
+describe("finding a config file nobody named", () => {
+  it("uses one in the folder the command was run from", async () => {
+    const { repo, deep } = tree();
+    write(deep, "delivery.config.json", JSON.stringify({ closer: { type: "merge-back" } }));
+    expect(await found(deep, repo)).toEqual({ closer: { type: "merge-back" } });
+  });
+
+  it("walks up to the repository root to find one", async () => {
+    const { repo, deep } = tree();
+    write(repo, "delivery.config.json", JSON.stringify({ closer: { type: "open-pr" } }));
+    expect(await found(deep, repo)).toEqual({ closer: { type: "open-pr" } });
+  });
+
+  it("prefers the nearest one", async () => {
+    const { repo, sub, deep } = tree();
+    write(repo, "delivery.config.json", JSON.stringify({ closer: { type: "open-pr" } }));
+    write(sub, "delivery.config.json", JSON.stringify({ closer: { type: "merge-back" } }));
+    expect(await found(deep, repo)).toEqual({ closer: { type: "merge-back" } });
+  });
+
+  it("stops at the repository root, so a stray file above it is never used", async () => {
+    const { parent, repo, deep } = tree();
+    write(parent, "delivery.config.json", JSON.stringify({ closer: { type: "merge-back" } }));
+    expect(await found(deep, repo)).toEqual({});
+    expect(configCandidates(deep, repo).every((candidate) => candidate.startsWith(repo))).toBe(true);
+  });
+
+  it("is not an error when there is no config file at all", async () => {
+    const { repo, deep } = tree();
+    expect(await found(deep, repo)).toEqual({});
+  });
+});
+
+describe("reading a config file", () => {
+  it("reads a .js module's default export", async () => {
+    const { repo } = tree();
+    write(repo, "delivery.config.js", 'export default { budgets: { correction: 5 } };\n');
+    expect(await found(repo, repo)).toEqual({ budgets: { correction: 5 } });
+  });
+
+  it("reads a .mjs module's default export", async () => {
+    const { repo } = tree();
+    write(repo, "delivery.config.mjs", 'export default { closer: { type: "merge-back" } };\n');
+    expect(await found(repo, repo)).toEqual({ closer: { type: "merge-back" } });
+  });
+
+  it("refuses a .json file that is not JSON, naming the file", async () => {
+    const { repo } = tree();
+    const file = write(repo, "delivery.config.json", "{ not json");
+    const refusal = await refusalOf(found(repo, repo));
+    expect(refusal.message).toContain(`I can't read ${file}: it isn't valid JSON`);
+    expect(refusal.exitCode).toBe(EXIT.configuration);
+  });
+
+  it("refuses a file whose contents the harness can't use, naming the setting", async () => {
+    const { repo } = tree();
+    const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
+    const refusal = await refusalOf(found(repo, repo));
+    expect(refusal.message).toBe(
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`gate\`, \`closer\` and \`budgets\`.`,
+    );
+    expect(refusal.exitCode).toBe(EXIT.configuration);
+  });
+});
+
+describe("naming a config file yourself", () => {
+  it("uses the file --config names, wherever it is", async () => {
+    const { parent, repo } = tree();
+    write(repo, "delivery.config.json", JSON.stringify({ closer: { type: "open-pr" } }));
+    write(parent, "elsewhere.json", JSON.stringify({ closer: { type: "merge-back" } }));
+    expect(await loadConfig({ startDir: repo, repoPath: repo, flag: join(parent, "elsewhere.json"), env: {} })).toEqual({
+      closer: { type: "merge-back" },
+    });
+  });
+
+  it("resolves a relative --config against the folder the command was run from", async () => {
+    const { repo, deep } = tree();
+    write(deep, "elsewhere.json", JSON.stringify({ closer: { type: "merge-back" } }));
+    expect(await loadConfig({ startDir: deep, repoPath: repo, flag: "elsewhere.json", env: {} })).toEqual({
+      closer: { type: "merge-back" },
+    });
+  });
+
+  it("uses DELIVERY_CONFIG when no --config is given", async () => {
+    const { parent, repo } = tree();
+    const file = write(parent, "from-env.json", JSON.stringify({ closer: { type: "merge-back" } }));
+    expect(await found(repo, repo, { DELIVERY_CONFIG: file })).toEqual({ closer: { type: "merge-back" } });
+  });
+
+  it("lets --config beat DELIVERY_CONFIG", async () => {
+    const { parent, repo } = tree();
+    const fromEnv = write(parent, "from-env.json", JSON.stringify({ closer: { type: "merge-back" } }));
+    const fromFlag = write(parent, "from-flag.json", JSON.stringify({ closer: { type: "open-pr" } }));
+    expect(await loadConfig({ startDir: repo, repoPath: repo, flag: fromFlag, env: { DELIVERY_CONFIG: fromEnv } })).toEqual({
+      closer: { type: "open-pr" },
+    });
+  });
+
+  it("treats DELIVERY_CONFIG set to nothing as not set, and goes on looking", async () => {
+    const { repo } = tree();
+    write(repo, "delivery.config.json", JSON.stringify({ closer: { type: "open-pr" } }));
+    expect(await found(repo, repo, { DELIVERY_CONFIG: "" })).toEqual({ closer: { type: "open-pr" } });
+  });
+
+  it("refuses a named file that isn't there, rather than quietly falling back to discovery", async () => {
+    const { repo } = tree();
+    write(repo, "delivery.config.json", JSON.stringify({ closer: { type: "open-pr" } }));
+    const refusal = await refusalOf(loadConfig({ startDir: repo, repoPath: repo, flag: "missing.json", env: {} }));
+    expect(refusal.message).toBe(NO_SUCH_CONFIG("missing.json"));
+    expect(refusal.exitCode).toBe(EXIT.configuration);
   });
 });
