@@ -1,5 +1,6 @@
 # CLI and Configuration — Slice 1: Run a Task From the Command Line With Nothing Configured
 
+> **Status:** ✅ Complete — 2026-09-15 — `6c490c9`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 1 of `docs/superpowers/specs/2026-09-14-cli-and-configuration-slices.md`
