@@ -27,6 +27,7 @@ export interface RunFlags {
   closer?: string;
   config?: string;
   repo?: string;
+  fresh?: boolean;
 }
 
 /** Everything a run needs to be created, once every source of settings has had its say. */
@@ -42,7 +43,13 @@ export function taskIntent(taskDef: TaskDef): string {
   return typeof taskDef.intent === "string" && taskDef.intent.trim() !== "" ? taskDef.intent.trim() : "run";
 }
 
-async function taskFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryConfig, cwd: string): Promise<TaskDef> {
+/**
+ * The task this invocation named, from the flag, the file it points at or the
+ * environment. Undefined when nobody named one: a task sitting in the project's
+ * config file is not something the person typed just now, which is what decides
+ * whether a run is being resumed or started.
+ */
+export async function explicitIntent(flags: RunFlags, env: NodeJS.ProcessEnv, cwd: string): Promise<string | undefined> {
   if (flags.task !== undefined && flags.taskFile !== undefined) throw new Refusal(BOTH_TASKS, EXIT.configuration);
 
   let fromFile: string | undefined;
@@ -54,7 +61,11 @@ async function taskFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: Deliver
     }
   }
 
-  const intent = (flags.task ?? fromFile ?? env.DELIVERY_TASK)?.trim();
+  return (flags.task ?? fromFile ?? env.DELIVERY_TASK)?.trim() || undefined;
+}
+
+async function taskFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryConfig, cwd: string): Promise<TaskDef> {
+  const intent = await explicitIntent(flags, env, cwd);
   if (intent) return { intent };
   if (config.task) return config.task;
   throw new Refusal(NO_TASK, EXIT.configuration);

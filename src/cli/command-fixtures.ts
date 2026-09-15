@@ -1,0 +1,106 @@
+import { mkdtempSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
+import { DEFAULT_BUDGETS } from "../budgets.js";
+import { create } from "../case-file.js";
+import { writeMockScript, type MockScript } from "../mock-script.js";
+import { resolveCloser } from "../resolve-closer.js";
+import { deterministicRouter } from "../router.js";
+import { advance } from "../surface.js";
+import { fakeAgentPort } from "../agent-port-double.js";
+import type { AgentContext, Terminus } from "../ports.js";
+import type { GateRef } from "../schema.js";
+import { runCli } from "./program.js";
+import { prepareRunDir, runIdFor, runPlace, runsRoot } from "./run-location.js";
+import { DEFAULT_CLOSER } from "./settings.js";
+
+export { runsRoot };
+
+/** Test support: the scratch project the command tests run against, and the task they give it. */
+export const PACKAGE = JSON.stringify({ name: "scratch", private: true, scripts: { test: "exit 0" } });
+export const TASK = "add a function that says hello to a name, with a test";
+export const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
+
+/** A whole run, agent sessions and git included, needs longer than vitest's default. */
+export const RUN_TIMEOUT = 60_000;
+
+/** A scripted agent that does the task and says so. */
+export const completes: MockScript = {
+  expectations: [
+    {
+      effects: [{ write: { path: "hello.js", content: "export const hello = (name) => `hello ${name}`;\n" } }],
+      json: { status: "completed", rationale: "added hello.js" },
+    },
+  ],
+};
+
+/** A claude-mock script file, for the contributor test seam. */
+export async function scriptFile(script: MockScript): Promise<string> {
+  const path = join(mkdtempSync(join(tmpdir(), "command-script-")), "mock.json");
+  await writeMockScript(path, script);
+  return path;
+}
+
+export interface DeliveryIo {
+  cwd: string;
+  env?: NodeJS.ProcessEnv;
+  isTTY?: boolean;
+  /** What a person types at the command's questions. Given any, standard input reports itself as a terminal. */
+  answers?: string[];
+}
+
+/** Test support: run `delivery <args>` in process, capturing what it prints. Working copies go under a scratch state folder unless the caller names one. */
+export async function delivery(args: string[], { cwd, env = {}, isTTY = false, answers = [] }: DeliveryIo) {
+  let stdout = "";
+  let stderr = "";
+  const exitCode = await runCli({
+    argv: args,
+    cwd,
+    env: { ...process.env, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "command-state-")), ...env },
+    stdin: Object.assign(Readable.from(answers.map((answer) => `${answer}\n`)), { isTTY: answers.length > 0 || undefined }),
+    stdout: { write: (text: string) => (stdout += text), isTTY },
+    stderr: { write: (text: string) => (stderr += text) },
+  });
+  return { exitCode, stdout, stderr };
+}
+
+/** The branch a closing or escalating run names. */
+export function branchIn(stdout: string): string {
+  const match = /branch (surface\/\S+?)\.?$/m.exec(stdout);
+  if (!match?.[1]) throw new Error(`no branch named in:\n${stdout}`);
+  return match[1];
+}
+
+/** A worker that leaves its change on disk, as the real one does, so the check has something to pass. */
+export const writesHello = async (ctx: AgentContext): Promise<Terminus> => {
+  await writeFile(join(ctx.worktreePath, "hello.js"), "export const hello = (name) => `hello ${name}`;\n");
+  return { status: "completed", rationale: "added hello.js" };
+};
+
+/**
+ * Test support: a run that was interrupted. Its record is on disk with no
+ * outcome, exactly as killing `delivery run` leaves it. The run is driven with
+ * the same library the command drives, then stopped after `steps` advances;
+ * `worker` is what the agent did before the stop, and rejecting from it is a
+ * session that died mid-flight, the one window a clean stop between advances
+ * cannot reach. `state` is the state folder the resuming command must also be
+ * given, so both processes compute the same place for the working copy.
+ */
+export async function interruptedRun(
+  repo: string,
+  state: string,
+  { task, steps, worker }: { task: string; steps: number; worker: (ctx: AgentContext) => Promise<Terminus> },
+): Promise<string> {
+  const runId = runIdFor(task, new Date());
+  const { dir, location } = runPlace(repo, runId, { XDG_STATE_HOME: state });
+  await prepareRunDir(repo, dir);
+  await create(dir, { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER }, DEFAULT_BUDGETS);
+  const ports = { agent: fakeAgentPort({ worker }), triage: deterministicRouter, closer: resolveCloser(DEFAULT_CLOSER, repo) };
+  for (let step = 0; step < steps; step++) {
+    // The interruption is the last advance, so a rejecting worker throws here.
+    await advance(dir, location, ports).catch(() => undefined);
+  }
+  return runId;
+}

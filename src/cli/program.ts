@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Command, CommanderError } from "commander";
+import type { CliStdin } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
 import { useColour } from "./output.js";
 import { runCommand, type RunOptions } from "./run-command.js";
@@ -10,6 +11,7 @@ export interface CliIo {
   argv: string[];
   cwd: string;
   env: NodeJS.ProcessEnv;
+  stdin: CliStdin;
   stdout: { write(text: string): unknown; isTTY?: boolean };
   stderr: { write(text: string): unknown };
 }
@@ -52,6 +54,7 @@ export async function runCli(io: CliIo): Promise<number> {
         cwd: io.cwd,
         env: io.env,
         colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
+        stdin: io.stdin,
         writeLine: (line) => io.stdout.write(`${line}\n`),
       });
     });

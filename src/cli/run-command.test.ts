@@ -4,69 +4,29 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanGitEnv } from "../git-env.js";
-import { writeMockScript, type MockScript } from "../mock-script.js";
+import type { MockScript } from "../mock-script.js";
 import { SurfaceState } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
+import { branchIn, completes, delivery, PACKAGE, RUN_TIMEOUT, TASK, scriptFile } from "./command-fixtures.js";
 import { unknownCloser } from "./config.js";
 import { EXIT, UNEXPECTED_FOOTER } from "./failures.js";
-import { runCli } from "./program.js";
 import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
 import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
 
-const TASK = "add a function that says hello to a name, with a test";
-const PACKAGE = JSON.stringify({ name: "scratch", private: true, scripts: { test: "exit 0" } });
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 const ESC = "[";
-const RUN_TIMEOUT = 60_000;
 
 function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
 }
-
-/** A claude-mock script file for the contributor test seam. */
-async function scriptFile(script: MockScript): Promise<string> {
-  const path = join(mkdtempSync(join(tmpdir(), "run-command-script-")), "mock.json");
-  await writeMockScript(path, script);
-  return path;
-}
-
-const completes: MockScript = {
-  expectations: [
-    {
-      effects: [{ write: { path: "hello.js", content: "export const hello = (name) => `hello ${name}`;\n" } }],
-      json: { status: "completed", rationale: "added hello.js" },
-    },
-  ],
-};
 
 const escalates: MockScript = {
   expectations: [
     { json: { status: "escalate", category: "authority", rationale: "the task asks me to delete files I was not given" } },
   ],
 };
-
-/** Run `delivery <args>` in-process, capturing what it prints. Working copies go under a scratch state folder. */
-async function delivery(args: string[], { cwd, env = {}, isTTY = false }: { cwd: string; env?: NodeJS.ProcessEnv; isTTY?: boolean }) {
-  let stdout = "";
-  let stderr = "";
-  const exitCode = await runCli({
-    argv: args,
-    cwd,
-    env: { ...process.env, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "run-command-state-")), ...env },
-    stdout: { write: (text: string) => (stdout += text), isTTY },
-    stderr: { write: (text: string) => (stderr += text) },
-  });
-  return { exitCode, stdout, stderr };
-}
-
-/** The branch a closing or escalating run names. */
-function branchIn(stdout: string): string {
-  const match = /branch (surface\/\S+?)\.?$/m.exec(stdout);
-  if (!match?.[1]) throw new Error(`no branch named in:\n${stdout}`);
-  return match[1];
-}
 
 describe("delivery run", () => {
   it(
@@ -434,5 +394,108 @@ describe("delivery run with a config file", () => {
     const { stdout } = await delivery(["run", "--help"], { cwd: mkdtempSync(join(tmpdir(), "run-command-help-")) });
     for (const option of ["--task-file", "--gate-command", "--closer", "--config"]) expect(stdout).toContain(option);
     expect(stdout).not.toContain(TEST_MOCK_SCRIPT);
+  });
+});
+
+describe("picking up a run that didn't finish", () => {
+  it(
+    "carries on from where it stopped instead of starting over, and says so",
+    async () => {
+      const repo = initTempRepo("run-command-resume-", { "package.json": PACKAGE });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const { interruptedRun, writesHello, runsRoot } = await import("./command-fixtures.js");
+      const runId = await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello });
+
+      const { exitCode, stdout, stderr } = await delivery(["run"], {
+        cwd: repo,
+        env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(stderr).toBe("");
+      expect(stdout).toContain(`Resuming run ${runId}: ${TASK}`);
+      expect(stdout).toContain("Picking up where it left off: checking the agent's work.");
+      expect(stdout).not.toContain("Starting run");
+      expect(exitCode).toBe(EXIT.ok);
+      expect(branchIn(stdout)).toBe(`surface/${runId}`);
+      expect(readdirSync(runsRoot(repo))).toEqual([runId]);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "picks the same run up when it is given the task that run is already doing",
+    async () => {
+      const repo = initTempRepo("run-command-resume-same-", { "package.json": PACKAGE });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const { interruptedRun, writesHello } = await import("./command-fixtures.js");
+      const runId = await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello });
+
+      const { stdout, exitCode } = await delivery(["run", "--task", TASK], {
+        cwd: repo,
+        env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(stdout).toContain(`Resuming run ${runId}`);
+      expect(exitCode).toBe(EXIT.ok);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "says what it had to put right when the run was stopped in the middle of something",
+    async () => {
+      const repo = initTempRepo("run-command-recovery-", { "package.json": PACKAGE });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const { interruptedRun } = await import("./command-fixtures.js");
+      await interruptedRun(repo, state, {
+        task: TASK,
+        steps: 3,
+        worker: () => Promise.reject(new Error("the machine was switched off")),
+      });
+
+      const { stdout, exitCode } = await delivery(["run"], {
+        cwd: repo,
+        env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(stdout).toContain("Had to put something right: recorded a missing terminus for worker attempt 1");
+      expect(exitCode).toBe(EXIT.ok);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "starts a new run when the only run for that task already finished",
+    async () => {
+      const repo = initTempRepo("run-command-finished-", { "package.json": PACKAGE });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const first = await delivery(["run", "--task", TASK], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      expect(first.exitCode).toBe(EXIT.ok);
+
+      // Delay to ensure different timestamps (runIdFor strips milliseconds)
+      await new Promise((resolve) => setTimeout(resolve, 1100));
+
+      const second = await delivery(["run", "--task", TASK], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+      expect(second.stdout).toContain("Starting run");
+      expect(second.stdout).not.toContain("Picking up");
+      expect(branchIn(second.stdout)).not.toBe(branchIn(first.stdout));
+    },
+    RUN_TIMEOUT * 2 + 2000,
+  );
+
+  it("stops with the folder named when a run's record cannot be read back", async () => {
+    const repo = initTempRepo("run-command-corrupt-", { "package.json": PACKAGE });
+    const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+    const { interruptedRun, writesHello, runsRoot } = await import("./command-fixtures.js");
+    const runId = await interruptedRun(repo, state, { task: TASK, steps: 1, worker: writesHello });
+    writeFileSync(join(runsRoot(repo), runId, "case.json"), "{ this is not json");
+
+    const { exitCode, stderr } = await delivery(["run", "--task", TASK], { cwd: repo, env: { XDG_STATE_HOME: state } });
+
+    expect(stderr).toContain(join(runsRoot(repo), runId));
+    expect(stderr).toContain("Remove that folder to start afresh.");
+    expect(stderr).not.toContain("at Object.");
+    expect(exitCode).toBe(EXIT.unexpected);
   });
 });
