@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { DEFAULT_BUDGETS } from "../budgets.js";
+import type { ResumeAction } from "../case-file.js";
+import type { CaseFile, GateRef, HistoryEntry } from "../schema.js";
 import { SurfaceState } from "../schema.js";
-import { createProgress, paint, STEP_PHRASES, useColour } from "./output.js";
+import { createProgress, paint, pickingUp, putRight, RESUME_PHRASES, STEP_PHRASES, useColour } from "./output.js";
 
 const ESC = "[";
 
@@ -88,5 +91,44 @@ describe("createProgress", () => {
     const lines: string[] = [];
     createProgress((line) => lines.push(line), false).step("CLOSING");
     expect(lines.join("")).not.toContain(ESC);
+  });
+});
+
+const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
+
+/** A case file with the given log tail, which is what decides where a resumed run picks up. */
+function caseFileEndingIn(tail: HistoryEntry | undefined): CaseFile {
+  return {
+    header: { surfaceId: "reverse-a-word-20260915T213012Z", taskDef: { intent: "reverse a word" }, gateRef: GATE, baseline: null, baseBranch: null },
+    cursor: { state: "GATING", budgets: DEFAULT_BUDGETS, worktreeRef: "/tmp/copy" },
+    history: tail ? [tail] : [],
+  };
+}
+
+describe("what a resumed run says it is picking up", () => {
+  it("says what happens next in the same words the step lines use", () => {
+    const caseFile = caseFileEndingIn({ t: "terminus", attempt: 1, sessionKey: "worker-1-1", status: "completed", rationale: "added it" });
+    expect(pickingUp(caseFile)).toBe("Picking up where it left off: checking the agent's work.");
+  });
+
+  it("has a phrase for a run that was stopped before anything was recorded", () => {
+    expect(pickingUp(caseFileEndingIn(undefined))).toBe("Picking up where it left off: getting the agent going.");
+  });
+
+  it("never shows a raw state name, whatever the run was doing", () => {
+    for (const phrase of Object.values(RESUME_PHRASES)) {
+      expect(phrase).toBe(phrase.toLowerCase());
+    }
+  });
+
+  it("has a phrase for every way a run can be picked up", () => {
+    const actions: ResumeAction[] = ["start", "incomplete_terminus", "gate", "triage", "close", "act_on_verdict", "close_triage", "done"];
+    for (const action of actions) expect(RESUME_PHRASES[action]).toBeTruthy();
+  });
+});
+
+describe("what a resumed run says it put right", () => {
+  it("leads with plain language, then the harness's own account of what it fixed", () => {
+    expect(putRight("re-created the working copy")).toBe("Had to put something right: re-created the working copy.");
   });
 });

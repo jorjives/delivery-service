@@ -1,5 +1,7 @@
 import { styleText } from "node:util";
-import type { SurfaceState } from "../schema.js";
+import { logTail, resumeAction } from "../case-file.js";
+import type { ResumeAction } from "../case-file.js";
+import type { CaseFile, SurfaceState } from "../schema.js";
 
 /**
  * Whether to print colour at all. Off when `--no-color` was passed, when
@@ -63,4 +65,36 @@ export function createProgress(writeLine: (line: string) => void, colour: boolea
       writeLine(paint(colour, "quiet", `- ${phrase}`));
     },
   };
+}
+
+/**
+ * Every way a run can be picked up, as a person reads it. `ResumeAction` is a
+ * closed set, so the table is total: a new one does not compile until it has a
+ * phrase. The wording matches `STEP_PHRASES` wherever the two describe the same
+ * work, so "picking up where it left off" and the step lines that follow it
+ * speak one language.
+ */
+export const RESUME_PHRASES: Record<ResumeAction, string> = {
+  start: "getting the agent going",
+  incomplete_terminus: "the agent stopped without finishing",
+  gate: "checking the agent's work",
+  triage: "deciding what to do about a setback",
+  act_on_verdict: "acting on what it decided about the last setback",
+  close: "wrapping up",
+  close_triage: "deciding what to do about a delivery that didn't finish",
+  done: "finishing off",
+};
+
+/** What this run will do first now it has been picked up, read from its log rather than its cursor, which a kill can leave behind. */
+export function pickingUp(caseFile: CaseFile): string {
+  return `Picking up where it left off: ${RESUME_PHRASES[resumeAction(logTail(caseFile))]}.`;
+}
+
+/**
+ * Something a resumed run had to fix before it could go on. The harness's own
+ * account is printed as it wrote it: it is free-form, so paraphrasing it here
+ * would be a lookup table that silently stops matching.
+ */
+export function putRight(recovery: string): string {
+  return `Had to put something right: ${recovery}.`;
 }
