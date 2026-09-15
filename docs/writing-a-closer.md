@@ -80,6 +80,17 @@ A `closerRef` the harness cannot understand (an unknown `type`, a missing
 `modulePath`) is not an exception: it resolves to a closer whose every report is
 `"ERROR"`, naming what was wrong.
 
+From the command line, the same shape goes in `delivery.config.json` under `closer`, and
+`--closer` names one of the three built-in types for a single run:
+
+```json
+{ "closer": { "type": "custom", "modulePath": "closers/notify.mjs" } }
+```
+
+`delivery run` checks the closer before it starts rather than letting it become an `"ERROR"`
+report: an unknown type stops the command listing the choices, and a custom module it cannot
+load stops it with the path named.
+
 ## The contract
 
 A closer is any object with one method:

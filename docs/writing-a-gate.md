@@ -140,6 +140,17 @@ Reference it from the case file header:
 `exportName` selects a named export instead of `default`, so one module can hold
 several gates.
 
+From the command line, the same shape goes in `delivery.config.json` under `gate`, so a project
+names its gate once and writes no wiring code:
+
+```json
+{ "gate": { "type": "custom", "modulePath": "./gates/json-gate.mjs" } }
+```
+
+`delivery run` loads the module before it starts, so a wrong path, or an export missing
+`baseline` or `check`, stops the command with the path named rather than failing part way
+through a run.
+
 **The module is loaded from outside the worktree.** A relative `modulePath` is
 resolved against the repository root (`repoPath`), never the worktree the surface
 is running in, so the agent being judged cannot edit the gate that judges it and

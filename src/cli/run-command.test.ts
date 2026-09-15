@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanGitEnv } from "../git-env.js";
@@ -8,9 +8,11 @@ import { writeMockScript, type MockScript } from "../mock-script.js";
 import { SurfaceState } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
+import { unknownCloser } from "./config.js";
 import { EXIT, UNEXPECTED_FOOTER } from "./failures.js";
 import { runCli } from "./program.js";
 import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
+import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
 
 const TASK = "add a function that says hello to a name, with a test";
@@ -268,5 +270,169 @@ describe("delivery run", () => {
     const { exitCode, stderr } = await delivery(["run", "--bogus"], { cwd: tmpdir() });
     expect(exitCode).toBe(EXIT.configuration);
     expect(stderr).toContain("unknown option '--bogus'");
+  });
+});
+
+const configIn = (repo: string, config: unknown): void => writeFileSync(join(repo, "delivery.config.json"), JSON.stringify(config));
+
+describe("delivery run with a config file", () => {
+  it(
+    "uses the closer and the limits the file asks for, merging the work into the base branch",
+    async () => {
+      const repo = initTempRepo("run-command-config-merge-", { "package.json": PACKAGE });
+      configIn(repo, { closer: { type: "merge-back" }, budgets: { correction: 5 } });
+      const mainBefore = git(repo, ["rev-parse", "main"]);
+
+      const { exitCode, stdout, stderr } = await delivery(["run", "--task", TASK], {
+        cwd: repo,
+        env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(stderr).toBe("");
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain(`Done: the change for "${TASK}" passed \`npm test\` and is merged into main.`);
+      expect(git(repo, ["rev-parse", "main"])).not.toBe(mainBefore);
+      expect(git(repo, ["show", "main:hello.js"])).toContain("hello");
+
+      const runId = /Starting run (\S+):/.exec(stdout)?.[1] ?? "";
+      const caseJson = JSON.parse(readFileSync(join(repo, ".delivery", "runs", runId, "case.json"), "utf-8")) as {
+        header: { closerRef: unknown };
+        cursor: { budgets: { correction: unknown; terminus: unknown } };
+      };
+      expect(caseJson.header.closerRef).toEqual({ type: "merge-back" });
+      expect(caseJson.cursor.budgets.correction).toEqual({ used: 0, max: 5 });
+      expect(caseJson.cursor.budgets.terminus).toEqual({ used: 0, max: 5 });
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "lets --closer beat the file, leaving the work on its own branch",
+    async () => {
+      const repo = initTempRepo("run-command-config-flag-", { "package.json": PACKAGE });
+      configIn(repo, { closer: { type: "merge-back" } });
+      const mainBefore = git(repo, ["rev-parse", "main"]);
+
+      const { exitCode, stdout } = await delivery(["run", "--task", TASK, "--closer", "commit-to-branch"], {
+        cwd: repo,
+        env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(exitCode).toBe(EXIT.ok);
+      const branch = branchIn(stdout);
+      expect(stdout).toContain(`is committed on branch ${branch}.`);
+      expect(git(repo, ["rev-parse", "main"])).toBe(mainBefore);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "finds the file from a folder inside the repository, and takes the task and the check from it",
+    async () => {
+      const repo = initTempRepo("run-command-config-walk-", { "package.json": PACKAGE });
+      configIn(repo, { task: { intent: TASK }, gate: { type: "command", command: "npm test", parseMode: "exitcode" } });
+      mkdirSync(join(repo, "packages", "web"), { recursive: true });
+
+      const { exitCode, stdout } = await delivery(["run"], {
+        cwd: join(repo, "packages", "web"),
+        env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain(`Starting run ${branchIn(stdout).replace("surface/", "")}: ${TASK}`);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it("stops at once on a closer type it doesn't know, listing the choices and leaving nothing behind", async () => {
+    const repo = initTempRepo("run-command-config-bad-closer-", { "package.json": PACKAGE });
+    configIn(repo, { closer: { type: "teleport" } });
+
+    const { exitCode, stdout, stderr } = await delivery(["run", "--task", TASK], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe(`${unknownCloser("teleport")}\n`);
+    expect(stdout).toBe("");
+    expect(existsSync(join(repo, ".delivery"))).toBe(false);
+  });
+
+  it("stops on an unknown setting in the file, naming it", async () => {
+    const repo = initTempRepo("run-command-config-bad-key-", { "package.json": PACKAGE });
+    configIn(repo, { closr: { type: "merge-back" } });
+
+    const { exitCode, stderr } = await delivery(["run", "--task", TASK], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("there's no setting called `closr`");
+    expect(stderr).not.toContain("    at ");
+  });
+
+  it("stops on a custom gate it can't load, naming the module and the guide", async () => {
+    const repo = initTempRepo("run-command-config-bad-gate-", { "package.json": PACKAGE });
+    configIn(repo, { gate: { type: "custom", modulePath: "./gates/nope.mjs" } });
+
+    const { exitCode, stderr } = await delivery(["run", "--task", TASK], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("Couldn't load the custom gate at `./gates/nope.mjs`");
+    expect(stderr).toContain("docs/writing-a-gate.md");
+    expect(stderr).not.toContain("    at ");
+    expect(existsSync(join(repo, ".delivery"))).toBe(false);
+  });
+
+  it("takes the task from a file and the check from a flag, in a project with no package.json at all", async () => {
+    const repo = initTempRepo("run-command-task-file-", { "README.md": "hi\n" });
+    writeFileSync(join(repo, "task.txt"), `${TASK}\n`);
+
+    const { exitCode, stdout } = await delivery(["run", "--task-file", "task.txt", "--gate-command", "true"], {
+      cwd: repo,
+      env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+    });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(`Starting run ${branchIn(stdout).replace("surface/", "")}: ${TASK}`);
+  }, RUN_TIMEOUT);
+
+  it("refuses --task and --task-file together", async () => {
+    const repo = initTempRepo("run-command-both-tasks-", { "package.json": PACKAGE });
+    const { exitCode, stderr } = await delivery(["run", "--task", TASK, "--task-file", "task.txt"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe(`${BOTH_TASKS}\n`);
+  });
+
+  it("uses the config file --config names instead of the one beside the code", async () => {
+    const repo = initTempRepo("run-command-config-flagfile-", { "package.json": PACKAGE });
+    // A file the harness would refuse outright, so a run that finishes proves it was never read.
+    configIn(repo, { closer: { type: "teleport" } });
+    writeFileSync(join(repo, "ci.json"), JSON.stringify({ closer: { type: "commit-to-branch" } }));
+
+    const { exitCode, stdout } = await delivery(["run", "--task", TASK, "--config", "ci.json"], {
+      cwd: repo,
+      env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+    });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(`is committed on branch ${branchIn(stdout)}.`);
+  }, RUN_TIMEOUT);
+
+  it("takes the environment's settings over the file's", async () => {
+    const repo = initTempRepo("run-command-env-", { "package.json": PACKAGE });
+    configIn(repo, { closer: { type: "merge-back" } });
+
+    // The refusal names the environment's closer, not the file's, which is how we know
+    // DELIVERY_CLOSER was the one that won; DELIVERY_TASK stands in for the missing --task.
+    const { exitCode, stderr } = await delivery(["run"], {
+      cwd: repo,
+      env: { DELIVERY_TASK: TASK, DELIVERY_CLOSER: "flapjack" },
+    });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe(`${unknownCloser("flapjack")}\n`);
+  });
+
+  it("lists the new options in `delivery run --help`, and still never the contributor test seam", async () => {
+    const { stdout } = await delivery(["run", "--help"], { cwd: mkdtempSync(join(tmpdir(), "run-command-help-")) });
+    for (const option of ["--task-file", "--gate-command", "--closer", "--config"]) expect(stdout).toContain(option);
+    expect(stdout).not.toContain(TEST_MOCK_SCRIPT);
   });
 });
