@@ -27,7 +27,7 @@
 - **An `npm init` placeholder test script (`echo "Error: no test specified" && exit 1`) counts as no check:** it always fails, so any change would pass the delta.
 - **Build:** `"build": "rm -rf dist && tsc -p tsconfig.build.json && chmod +x dist/cli/main.js"`; `"test": "npm run build && vitest run"`, the claude-mock precedent, so CI, `make verify` and the pre-push hook build before tests with no change of their own. `dist/` is already git-ignored. `tsconfig.build.json` includes only `src` and excludes `src/**/*.test.ts` (compiling with `tsconfig.json` would emit `.js` beside every demo and test).
 - **Every tracked `.ts` file outside `vendor/` is inside `tsconfig.json`'s `include`** (`tests/typecheck-coverage.test.ts`): new files live under `src/cli/` and `tests/`. `examples/` holds only `.js`, `.json` and `.md`, and is added to ESLint's ignores (typed linting rejects files outside the tsconfig).
-- **Verified before planning:** every module and test in Tasks 1 to 9 was built in a scratch prototype against this repository's `src/`: 86 tests passing, `tsc` and ESLint clean, and the compiled `dist/cli/main.js` run through the test seam produced the expected lines, branch and exit code. The sample project's `npm test` was run passing and shown to fail when `add` is broken. Nothing of the prototype is in the worktree.
+- **Verified before planning:** every module and test in Tasks 1 to 9 was built in a scratch prototype against this repository's `src/`: 86 tests passing, `tsc` and ESLint clean, and the compiled `dist/cli/main.js` run through the test seam produced the expected lines, branch and exit code. The sample project's `npm test` was run passing and shown to fail when `add` is broken. Nothing of the prototype is in the worktree. Review edits made after the prototype, not re-verified by it: the INCOMPLETE_TERMINUS phrase, the escalated and provisioning-abort outcome wording (Task 8), the single catch in `runCli` (Task 9), and the compiled-build run test (Task 9).
 - **Commands:** run everything from the worktree root; never `cd` into another checkout. If `node_modules` is missing, run `npm ci --no-audit --no-fund` first. Run only each task's own targeted tests. Tests that run `dist/cli/main.js` need `npm run build` first; the task steps say so.
 - **TDD and commits:** red, then green, then commit. Every commit message is one line saying what changed, a blank line, a paragraph saying why, a blank line, and `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
 
@@ -35,7 +35,7 @@
 
 - **Inherited (Operational note), compiled build and runnable command:** `tsconfig.build.json`, `package.json` `build`/`test` scripts and `bin`, the `commander` dependency → Task 3.
 - **Inherited (Operational note), CI builds before the compiled-command tests:** satisfied by `"test": "npm run build && vitest run"`; `.github/workflows/ci.yml`, `Makefile` and `.githooks/pre-push` all call `npm test` and so need no edit → Task 3 (checked, unchanged).
-- **Inherited (Operational note), regression harness for the compiled command:** `tests/helpers.ts` gains `DELIVERY_BIN` and `runDelivery`, with smoke tests in `tests/delivery-command.test.ts` → Task 3. The recorded UAT test that drives full runs through it belongs to the UAT phase, not this plan.
+- **Inherited (Operational note), regression harness for the compiled command:** `tests/helpers.ts` gains `DELIVERY_BIN` and `runDelivery`, with smoke tests in `tests/delivery-command.test.ts` → Task 3, and one full run of the compiled command through the test seam → Task 9. The recorded UAT test covering every acceptance criterion through it belongs to the UAT phase, not this plan.
 - **Inherited (Operational note), contributor-only test seam:** `DELIVERY_TEST_MOCK_SCRIPT` in `src/cli/agent-session.ts` → Task 7; documented in `CONTRIBUTING.md` in Task 9, when the command honours it; its absence from `run --help` is asserted in Task 9.
 - **Inherited (Operational note), self-ignoring record folder and working copy under the state directory:** `src/cli/run-location.ts` → Task 6.
 - **Proactive, contributor local-run story:** `CONTRIBUTING.md` gains `npm run build`, why `npm test` builds first, `npm link`, and running from source with `npx tsx src/cli/main.ts` → Task 3; the scripted-run seam → Task 9.
@@ -46,7 +46,7 @@
 
 ---
 
-### Task 1: The default budget set as a library constant
+### Task 1: The default budget set as a library constant ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/budgets.ts`
@@ -152,7 +152,7 @@ EOF
 
 ---
 
-### Task 2: Every failure as one plain-language message and exit code
+### Task 2: Every failure as one plain-language message and exit code ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/failures.ts`
@@ -463,7 +463,7 @@ EOF
 
 ---
 
-### Task 3: A compiled `delivery` command with help and version
+### Task 3: A compiled `delivery` command with help and version ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `tsconfig.build.json`
@@ -722,7 +722,7 @@ EOF
 
 ---
 
-### Task 4: Plain-language progress lines and colour rules
+### Task 4: Plain-language progress lines and colour rules ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/output.ts`
@@ -885,7 +885,8 @@ export const STEP_PHRASES: Record<SurfaceState, string> = {
   PROVISIONING: "setting up",
   PRE_GATING: "checking the starting point",
   AGENT_ACTIVE: "the agent is working",
-  INCOMPLETE_TERMINUS: "the agent stopped without finishing, so trying again",
+  // Not "so trying again": with the terminus budget spent, this routes to a person instead.
+  INCOMPLETE_TERMINUS: "the agent stopped without finishing",
   GATING: "checking the agent's work",
   TRIAGE: "deciding what to do about a setback",
   GATE_MAINTENANCE: "the agent is fixing something",
@@ -938,7 +939,7 @@ EOF
 
 ---
 
-### Task 5: Find the repository, infer the check, notice uncommitted work
+### Task 5: Find the repository, infer the check, notice uncommitted work ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/project.ts`
@@ -1129,7 +1130,7 @@ EOF
 
 ---
 
-### Task 6: Where a run keeps its record and its working copy
+### Task 6: Where a run keeps its record and its working copy ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/run-location.ts`
@@ -1350,7 +1351,7 @@ EOF
 
 ---
 
-### Task 7: Check the agent can start, or route it to the scripted agent
+### Task 7: Check the agent can start, or route it to the scripted agent ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/agent-session.ts`
@@ -1661,7 +1662,7 @@ EOF
 
 ---
 
-### Task 8: A finished run's outcome in the task's terms
+### Task 8: A finished run's outcome in the task's terms ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/outcome.ts`
@@ -1745,7 +1746,7 @@ describe("summariseOutcome", () => {
         "What the harness saw:",
         packet.evidence,
         "",
-        `Nothing was changed on main. The work so far is kept on branch surface/${RUN_ID}.`,
+        "Nothing was changed on main.",
       ],
       exitCode: EXIT.escalated,
     });
@@ -1758,15 +1759,26 @@ describe("summariseOutcome", () => {
     expect(summary.exitCode).toBe(EXIT.escalated);
   });
 
-  it("says why an aborted run stopped, exiting aborted", async () => {
+  it("says in plain language why a run that could not set up stopped, keeping git's words as detail, exiting aborted", async () => {
     const { dir, caseFile } = await finishedRun(async () => ({
       kind: "aborted",
       source: "provisioning",
-      reason: "fatal: invalid reference: main",
+      reason: "Command failed: git worktree add -b surface/x -- /s/x main\nfatal: invalid reference: main",
       at: AT,
     }));
     expect(await summariseOutcome(dir, caseFile)).toEqual({
-      headline: "The run stopped: fatal: invalid reference: main",
+      headline:
+        "The run stopped: I couldn't set up a working copy of the repository. Check it has at least one commit, and that you can write to it.",
+      tone: "stopped",
+      details: ["Details: Command failed: git worktree add -b surface/x -- /s/x main\nfatal: invalid reference: main"],
+      exitCode: EXIT.aborted,
+    });
+  });
+
+  it("says why any other aborted run stopped, exiting aborted", async () => {
+    const { dir, caseFile } = await finishedRun(async () => ({ kind: "aborted", source: "triage", reason: "the task cannot be done", at: AT }));
+    expect(await summariseOutcome(dir, caseFile)).toEqual({
+      headline: "The run stopped: the task cannot be done",
       tone: "stopped",
       details: [],
       exitCode: EXIT.aborted,
@@ -1844,12 +1856,25 @@ export async function summariseOutcome(dir: string, caseFile: CaseFile): Promise
         details: [
           ...(packet ? ["", "What the harness saw:", packet.evidence] : []),
           "",
-          `Nothing was changed on ${base}. The work so far is kept on branch ${branch}.`,
+          // Not "the work is kept on the branch": a stopped run's closer force-removes the
+          // working copy without committing, so the branch holds none of this run's edits.
+          `Nothing was changed on ${base}.`,
         ],
         exitCode: EXIT.escalated,
       };
     }
     case "aborted":
+      // A provisioning abort's reason is raw git output ("worktree", the branch scheme):
+      // lead with what to fix, and keep git's words beneath it for diagnosis.
+      if (outcome.source === "provisioning") {
+        return {
+          headline:
+            "The run stopped: I couldn't set up a working copy of the repository. Check it has at least one commit, and that you can write to it.",
+          tone: "stopped",
+          details: [`Details: ${outcome.reason}`],
+          exitCode: EXIT.aborted,
+        };
+      }
       return {
         headline: `The run stopped: ${outcome.reason}`,
         tone: "stopped",
@@ -1885,7 +1910,7 @@ EOF
 
 ---
 
-### Task 9: `delivery run` drives a run with nothing configured
+### Task 9: `delivery run` drives a run with nothing configured ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/run-command.ts`
@@ -1893,6 +1918,7 @@ EOF
 - Modify: `CONTRIBUTING.md`
 - Modify: `README.md`
 - Test: `src/cli/run-command.test.ts`
+- Test: `tests/delivery-command.test.ts` (one compiled-build run through the test seam)
 
 **Interfaces:**
 - Consumes:
@@ -2065,7 +2091,7 @@ describe("delivery run", () => {
       });
 
       expect(exitCode).toBe(EXIT.aborted);
-      expect(stdout).toContain("The run stopped: ");
+      expect(stdout).toContain("The run stopped: I couldn't set up a working copy of the repository. Check it has at least one commit");
     },
     RUN_TIMEOUT,
   );
@@ -2184,10 +2210,51 @@ describe("delivery run", () => {
 });
 ```
 
+The in-process tests above exercise `src/`. The Operational note's regression harness drives the *compiled* command, where `package.json` and the vendored mock are resolved from `dist/` by relative path, so add one full run through the built binary. In `tests/delivery-command.test.ts`, replace the imports with:
+
+```ts
+import { describe, expect, it } from "vitest";
+import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { TEST_MOCK_SCRIPT } from "../src/cli/agent-session.js";
+import { EXIT } from "../src/cli/failures.js";
+import { writeMockScript } from "../src/mock-script.js";
+import { initTempRepo } from "../src/temp-repo.js";
+import { DELIVERY_BIN, REPO_ROOT, runDelivery } from "./helpers.js";
+```
+
+and add this test inside the `describe` block:
+
+```ts
+  it("runs a task end to end from the compiled build, with the agent routed through the contributor test seam", async () => {
+    const repo = initTempRepo("delivery-command-run-", {
+      "package.json": JSON.stringify({ name: "scratch", private: true, scripts: { test: "exit 0" } }),
+    });
+    const script = join(mkdtempSync(join(tmpdir(), "delivery-command-script-")), "mock.json");
+    await writeMockScript(script, {
+      expectations: [
+        {
+          effects: [{ write: { path: "hello.js", content: "export const hello = (name) => `hello ${name}`;\n" } }],
+          json: { status: "completed", rationale: "added hello.js" },
+        },
+      ],
+    });
+
+    const { stdout, stderr, status } = runDelivery(["run", "--task", "add a hello function"], {
+      cwd: repo,
+      env: { ...process.env, [TEST_MOCK_SCRIPT]: script, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "delivery-command-state-")) },
+    });
+
+    expect(status, `${stdout}\n${stderr}`).toBe(EXIT.ok);
+    expect(stdout).toMatch(/committed on branch surface\/add-a-hello-function-\d{8}T\d{6}Z\./);
+  }, 60_000);
+```
+
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `npx vitest run src/cli/run-command.test.ts`
-Expected: FAIL; cannot find module `./run-command.js`.
+Expected: FAIL; cannot find module `./run-command.js`. Then run `npm run build && npx vitest run tests/delivery-command.test.ts`: the new compiled-build test FAILS with exit 2 and `unknown command 'run'` on stderr, because the built program has no `run` yet.
 
 - [ ] **Step 3: Implement the run command**
 
@@ -2321,19 +2388,14 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--task <text>", "what you want done, in plain English")
     .option("--repo <path>", "the git repository to work on (default: the current folder)")
     .action(async (options: RunOptions, command: Command) => {
+      // A throw here rejects parseAsync with the original error, rendered once below.
       const { color } = command.optsWithGlobals<{ color: boolean }>();
-      try {
-        exitCode = await runCommand(options, {
-          cwd: io.cwd,
-          env: io.env,
-          colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
-          writeLine: (line) => io.stdout.write(`${line}\n`),
-        });
-      } catch (err) {
-        const failure = renderFailure(err);
-        io.stderr.write(`${failure.message}\n`);
-        exitCode = failure.exitCode;
-      }
+      exitCode = await runCommand(options, {
+        cwd: io.cwd,
+        env: io.env,
+        colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
+        writeLine: (line) => io.stdout.write(`${line}\n`),
+      });
     });
 
   try {
@@ -2413,7 +2475,7 @@ binary.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/cli/run-command.ts src/cli/run-command.test.ts src/cli/program.ts README.md CONTRIBUTING.md
+git add src/cli/run-command.ts src/cli/run-command.test.ts src/cli/program.ts tests/delivery-command.test.ts README.md CONTRIBUTING.md
 git commit -F - <<'EOF'
 Add delivery run: a full run from a task description with nothing configured
 
@@ -2431,7 +2493,7 @@ EOF
 
 ---
 
-### Task 10: A sample project to try the first run on
+### Task 10: A sample project to try the first run on ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `examples/sample-project/package.json`
