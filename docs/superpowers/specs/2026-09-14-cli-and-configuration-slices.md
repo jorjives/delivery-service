@@ -69,6 +69,7 @@ public rehearsal mode) is not sliced.
 
 ## Slice 2: Choose Your Own Check, Closing Action and Limits
 
+**Status:** ✅ Complete — 2026-09-15 — `a55de17`
 **Delivers:** An extender can name their own gate, closer and attempt limits, either in a `delivery.config.json` checked into their repository or as flags and environment variables for a single run, including their own custom gate and closer modules.
 
 **Build note:** Validate the configuration with the zod schemas the library already defines for tasks, gates and closers, composed rather than re-described. Find and load the config file with the standard library (walk up to the repository root); do not add a multi-format config loader.
