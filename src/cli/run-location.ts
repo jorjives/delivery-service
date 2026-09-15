@@ -39,6 +39,11 @@ export function stateHome(env: NodeJS.ProcessEnv): string {
   return xdg && isAbsolute(xdg) ? xdg : join(homedir(), ".local", "state");
 }
 
+/** Where a repository keeps every run's record: inside the repository, so nobody has to remember where it is. */
+export function runsRoot(repoPath: string): string {
+  return join(repoPath, ".delivery", "runs");
+}
+
 export interface RunPlace {
   /** The run's record: inside the repository, so nobody has to remember where it is. */
   dir: string;
@@ -53,7 +58,7 @@ export interface RunPlace {
  */
 export function runPlace(repoPath: string, runId: string, env: NodeJS.ProcessEnv): RunPlace {
   return {
-    dir: join(repoPath, ".delivery", "runs", runId),
+    dir: join(runsRoot(repoPath), runId),
     location: {
       repoPath,
       worktreePath: join(stateHome(env), "delivery-service", "worktrees", repoKey(repoPath), runId),

@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { cleanGitEnv } from "../git-env.js";
 import { initTempRepo } from "../temp-repo.js";
-import { prepareRunDir, repoKey, runIdFor, runPlace, stateHome } from "./run-location.js";
+import { prepareRunDir, repoKey, runIdFor, runPlace, runsRoot, stateHome } from "./run-location.js";
 
 const AT = new Date("2026-09-14T21:03:09.123Z");
 
@@ -56,6 +56,15 @@ describe("runPlace", () => {
         worktreePath: "/state/delivery-service/worktrees/home-dana-app/add-a-thing-20260914T210309Z",
       },
     });
+  });
+});
+
+describe("runsRoot", () => {
+  it("is where every run's record in a repository lives", () => {
+    expect(runsRoot("/tmp/project")).toBe("/tmp/project/.delivery/runs");
+    expect(runPlace("/tmp/project", "add-a-thing-20260914T210309Z", {}).dir).toBe(
+      join(runsRoot("/tmp/project"), "add-a-thing-20260914T210309Z"),
+    );
   });
 });
 
