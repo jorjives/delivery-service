@@ -1,5 +1,6 @@
 # CLI and Configuration — Slice 2: Choose Your Own Check, Closing Action and Limits
 
+> **Status:** ✅ Complete — 2026-09-15 — `a55de17`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 2 of `docs/superpowers/specs/2026-09-14-cli-and-configuration-slices.md`
