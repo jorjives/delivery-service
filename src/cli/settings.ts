@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { CloserRef } from "../schema.js";
 import type { BudgetSet, GateRef, TaskDef } from "../schema.js";
+import { loadCustomCloser } from "../custom-closer.js";
+import { loadCustomGate } from "../custom-gate.js";
 import { unknownCloser, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 import { inferGate } from "./project.js";
@@ -109,4 +111,18 @@ export async function resolveSettings(
     closerRef: closerFrom(flags, env, config),
     budgets: budgetsFrom(config),
   };
+}
+
+/**
+ * Load a custom gate or closer now, rather than when the run first needs it.
+ * Resolution is deliberately total in the library, so a module that cannot be
+ * loaded becomes an ERROR report and the run spends a budget finding out. On the
+ * command line that is the wrong shape: a wrong path is a mistake in the
+ * project's configuration, so it stops the command before anything is
+ * provisioned, with the path and the guide named. Loading twice costs nothing:
+ * Node caches the module.
+ */
+export async function checkCustomModules(gateRef: GateRef, closerRef: CloserRef, repoPath: string): Promise<void> {
+  if (gateRef.type === "custom") await loadCustomGate(repoPath, gateRef.modulePath, gateRef.exportName);
+  if (closerRef.type === "custom") await loadCustomCloser(repoPath, closerRef.modulePath, closerRef.exportName);
 }

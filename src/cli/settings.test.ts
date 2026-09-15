@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { unknownCloser, type DeliveryConfig } from "./config.js";
-import { EXIT, Refusal } from "./failures.js";
+import { EXIT, Refusal, renderFailure } from "./failures.js";
 import { NO_CHECK } from "./project.js";
-import { BOTH_TASKS, NO_TASK, NO_TASK_FILE, resolveSettings, taskIntent, type RunFlags } from "./settings.js";
+import { BOTH_TASKS, checkCustomModules, NO_TASK, NO_TASK_FILE, resolveSettings, taskIntent, type RunFlags } from "./settings.js";
 
 const TASK = "add a function that says goodbye to a name, with a test";
 const NPM_TEST = { type: "command", command: "npm test", parseMode: "exitcode" } as const;
@@ -201,5 +201,63 @@ describe("taskIntent", () => {
 
   it("falls back to a plain word for a task shaped some other way, so a run still gets a name", () => {
     expect(taskIntent({ goal: "something else" })).toBe("run");
+  });
+});
+
+const WORKING_GATE = "export default { baseline: async () => ({ status: 'PASS', assertions: [] }), check: async () => ({ status: 'PASS', assertions: [] }) };\n";
+const WORKING_CLOSER = "export default { close: async () => ({ status: 'DONE', detail: 'closed' }) };\n";
+
+/** What the user would see, and the code the command would exit with, for a module the harness can't use. */
+async function failureFor(promise: Promise<unknown>) {
+  const err = await promise.then(
+    () => undefined,
+    (e: unknown) => e,
+  );
+  expect(err).toBeDefined();
+  return renderFailure(err);
+}
+
+describe("checking a custom gate or closer before the run starts", () => {
+  it("accepts modules that export what their contracts need", async () => {
+    const repoPath = project({ "gate.mjs": WORKING_GATE, "closer.mjs": WORKING_CLOSER });
+    await expect(
+      checkCustomModules({ type: "custom", modulePath: "./gate.mjs" }, { type: "custom", modulePath: "./closer.mjs" }, repoPath),
+    ).resolves.toBeUndefined();
+  });
+
+  it("does nothing for the built-in gate and closer", async () => {
+    await expect(checkCustomModules(NPM_TEST, { type: "commit-to-branch" }, project())).resolves.toBeUndefined();
+  });
+
+  it("stops on a gate module that isn't there, naming the path and the guide, with no stack trace", async () => {
+    const failure = await failureFor(
+      checkCustomModules({ type: "custom", modulePath: "./gates/nope.mjs" }, { type: "commit-to-branch" }, project()),
+    );
+    expect(failure.message).toContain("Couldn't load the custom gate at `./gates/nope.mjs`");
+    expect(failure.message).toContain("docs/writing-a-gate.md");
+    expect(failure.message).not.toContain("    at ");
+    expect(failure.exitCode).toBe(EXIT.configuration);
+  });
+
+  it("stops on a gate module that doesn't export what a gate needs", async () => {
+    const repoPath = project({ "half.mjs": "export default { baseline: async () => ({ status: 'PASS', assertions: [] }) };\n" });
+    const failure = await failureFor(checkCustomModules({ type: "custom", modulePath: "./half.mjs" }, { type: "commit-to-branch" }, repoPath));
+    expect(failure.message).toContain("Couldn't load the custom gate at `./half.mjs`");
+    expect(failure.message).toContain('missing "check" method');
+    expect(failure.exitCode).toBe(EXIT.configuration);
+  });
+
+  it("stops on a closer module that isn't there, naming the path and the closer guide", async () => {
+    const failure = await failureFor(checkCustomModules(NPM_TEST, { type: "custom", modulePath: "./closers/nope.mjs" }, project()));
+    expect(failure.message).toContain("Couldn't load the custom closer at `./closers/nope.mjs`");
+    expect(failure.message).toContain("docs/writing-a-closer.md");
+    expect(failure.exitCode).toBe(EXIT.configuration);
+  });
+
+  it("stops on a closer module that doesn't export a close method", async () => {
+    const repoPath = project({ "empty.mjs": "export default {};\n" });
+    const failure = await failureFor(checkCustomModules(NPM_TEST, { type: "custom", modulePath: "./empty.mjs" }, repoPath));
+    expect(failure.message).toContain('missing "close" method');
+    expect(failure.exitCode).toBe(EXIT.configuration);
   });
 });
