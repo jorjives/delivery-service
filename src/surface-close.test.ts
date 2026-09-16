@@ -1,12 +1,11 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
+import { git } from "../tests/helpers.js";
 import { create, load, readRef } from "./case-file.js";
 import { initTempRepo, addLocalOrigin } from "./temp-repo.js";
-import { cleanGitEnv } from "./git-env.js";
 import { createGhStandIn } from "./gh-stand-in.js";
 import { advance, run, type AdvanceResult } from "./surface.js";
 import { resolveCloser } from "./resolve-closer.js";
@@ -29,10 +28,6 @@ const budgets: BudgetSet = {
 const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode: "tap" };
 const PASSING_TAP = "1..2\nok 1 - alpha\nok 2 - beta\n";
 const BRANCH = "surface/surface-7";
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
-}
 
 /** Writes the feature and completes. */
 function writeFeature(ctx: AgentContext): Promise<Terminus> {

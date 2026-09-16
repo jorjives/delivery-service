@@ -9,24 +9,19 @@
 // network, no API key and no real Claude Code sign-in.
 
 import { describe, expect, it } from "vitest";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cleanGitEnv } from "../../src/git-env.js";
 import { writeMockScript, type MockScript } from "../../src/mock-script.js";
 import { TEST_MOCK_SCRIPT, NOT_SIGNED_IN } from "../../src/cli/agent-session.js";
 import { EXIT, UNEXPECTED_FOOTER } from "../../src/cli/failures.js";
 import { NOT_A_REPOSITORY, NO_CHECK, UNCOMMITTED_NOTE } from "../../src/cli/project.js";
-import { REPO_ROOT, runDelivery } from "../helpers.js";
+import { REPO_ROOT, runDelivery, git } from "../helpers.js";
 
 const TASK = "add a function that says hello to a name, with a test";
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 const RUN_TIMEOUT = 60_000;
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
-}
 
 async function scriptFile(script: MockScript): Promise<string> {
   const path = join(mkdtempSync(join(tmpdir(), "uat-slice-1-script-")), "mock.json");

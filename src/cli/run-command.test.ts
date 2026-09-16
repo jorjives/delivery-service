@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cleanGitEnv } from "../git-env.js";
+import { git } from "../../tests/helpers.js";
 import type { MockScript } from "../mock-script.js";
 import { SurfaceState } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
@@ -17,10 +16,6 @@ import { NO_TASK } from "./run-command.js";
 
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 const ESC = "[";
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
-}
 
 const escalates: MockScript = {
   expectations: [

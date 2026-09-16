@@ -11,21 +11,16 @@
 // it a real SIGINT, as slice 3's recording does.
 
 import { describe, expect, it } from "vitest";
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { cleanGitEnv } from "../../src/git-env.js";
 import { writeMockScript, type MockScript } from "../../src/mock-script.js";
 import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { EXIT } from "../../src/cli/failures.js";
-import { REPO_ROOT, runDelivery } from "../helpers.js";
+import { REPO_ROOT, runDelivery, git } from "../helpers.js";
 
 const RUN_TIMEOUT = 60_000;
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
-}
 
 async function scriptFile(script: MockScript): Promise<string> {
   const path = join(mkdtempSync(join(tmpdir(), "uat-slice-4-script-")), "mock.json");

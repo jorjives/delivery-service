@@ -1,14 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { join } from "node:path";
+import { git as gitSync } from "../tests/helpers.js";
 import { git, tryGit, ensureCommitted } from "./git-exec.js";
 import { initTempRepo } from "./temp-repo.js";
-import { cleanGitEnv } from "./git-env.js";
-
-function gitSync(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
-}
 
 describe("git", () => {
   let repo: string;

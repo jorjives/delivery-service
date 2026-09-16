@@ -1,18 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { existsSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { git } from "../tests/helpers.js";
 import { createMergeBackCloser } from "./merge-back-closer.js";
 import { provisionWorktree } from "./provision.js";
 import { initTempRepo } from "./temp-repo.js";
-import { cleanGitEnv } from "./git-env.js";
 import type { CloseContext } from "./ports.js";
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
-}
 
 const accepted = { kind: "accepted" } as const;
 

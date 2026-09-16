@@ -3,12 +3,10 @@
 // runs the guide's own worked example, so it cannot drift from the contract.
 
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { REPO_ROOT } from "./helpers.js";
-import { cleanGitEnv } from "../src/git-env.js";
+import { git, REPO_ROOT } from "./helpers.js";
 import { initTempRepo } from "../src/temp-repo.js";
 import { branchName, provisionWorktree, resolveCloser, type CloseContext, type CloserRef } from "../src/index.js";
 
@@ -18,10 +16,6 @@ function exampleCloser(): string {
   const match = /```js\n(\/\/ merge-back-closer\.mjs\n[\s\S]*?)```/.exec(guide);
   if (!match?.[1]) throw new Error("guide has no ```js block starting with // merge-back-closer.mjs");
   return match[1];
-}
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
 }
 
 describe("the 'writing a closer' guide", () => {
