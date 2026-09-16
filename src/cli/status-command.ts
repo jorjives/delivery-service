@@ -10,7 +10,7 @@ import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
 import { nextStepPhrase, paint } from "./output.js";
 import { runPlace } from "./run-location.js";
-import { allRuns, NOTHING_HERE, readableUtc, readRun, startedAt, startedInstant, type RunRecord } from "./runs.js";
+import { allRuns, describeRun, NOTHING_HERE, readableUtc, readRun, startedAt, startedInstant, type RunRecord } from "./runs.js";
 import { taskIntent } from "./settings.js";
 
 /**
@@ -178,6 +178,51 @@ export async function statusDocument(record: RunRecord, ctx: CommandContext): Pr
   };
 }
 
+/** How a run ended, as a person reads it in a list. Total over the four names, so a new one does not compile until it has words. */
+const OUTCOME_WORDS: Record<RunOutcomeName, string> = {
+  closed: "finished",
+  escalated: "needs a decision from you",
+  aborted: "stopped before it finished",
+  unfinished: "hasn't finished yet",
+};
+
+export const ALL_AND_ONE =
+  "Use either `--all` or a run id, not both: `--all` lists every run, and a run id reads one of them in full.";
+
+/**
+ * Newest first, by the second each run id carries rather than by when its
+ * record was last written: a list is a history, so resuming an old run today
+ * does not make it the newest. A run id with no stamp sorts last, and the sort
+ * is stable, so runs that started in the same second keep the order they came
+ * in.
+ */
+export function newestFirst(records: RunRecord[]): RunRecord[] {
+  const startedOf = (record: RunRecord): string => startedInstant(record.runId) ?? "";
+  return [...records].sort((a, b) => (startedOf(a) < startedOf(b) ? 1 : startedOf(a) > startedOf(b) ? -1 : 0));
+}
+
+/** Every run this repository holds, one to a line: which run, when it started, what it was asked to do, and how it ended. */
+export function runListing(records: RunRecord[]): string[] {
+  if (records.length === 0) return [NOTHING_HERE];
+  return [
+    `${records.length} run${records.length === 1 ? "" : "s"} in this repository, newest first:`,
+    ...records.map((record) => `  ${describeRun(record)} (${OUTCOME_WORDS[runSummary(record).outcome]})`),
+    "To read one in full: delivery status <run-id>",
+  ];
+}
+
+/**
+ * `delivery status --all`: every run this repository holds, rather than one.
+ * Listing nothing is a complete answer, so an empty repository exits ok here,
+ * unlike a lookup of a run that is not there, which is a failure to answer.
+ */
+async function listRuns(repoPath: string, ctx: CommandContext): Promise<ExitCode> {
+  const records = newestFirst(await allRuns(repoPath));
+  if (ctx.json) ctx.writeLine(JSON.stringify(records.map(runSummary), null, 2));
+  else for (const line of runListing(records)) ctx.writeLine(line);
+  return EXIT.ok;
+}
+
 /**
  * What `delivery status` was given on the command line besides the run id.
  * `--last` is accepted and documented as the explicit form of the default, so
@@ -187,6 +232,8 @@ export async function statusDocument(record: RunRecord, ctx: CommandContext): Pr
  */
 export interface StatusOptions {
   repo?: string;
+  /** List every run this repository holds instead of reading one. */
+  all?: boolean;
 }
 
 /** The run this command means when no id was given: the one whose record was written most recently, finished or not. */
@@ -204,7 +251,12 @@ async function mostRecent(repoPath: string): Promise<RunRecord> {
  * made, never what the run itself decided.
  */
 export async function statusCommand(runId: string | undefined, options: StatusOptions, ctx: CommandContext): Promise<ExitCode> {
+  // Before the repository is even looked for: a usage mistake is the same
+  // mistake wherever it was typed, and hearing about the folder first would
+  // send the reader after the wrong problem.
+  if (options.all && runId !== undefined) throw new Refusal(ALL_AND_ONE, EXIT.configuration);
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+  if (options.all) return listRuns(repoPath, ctx);
   const record = runId === undefined ? await mostRecent(repoPath) : await readRun(repoPath, runId);
   // Indented rather than one line: a person reads this output too, and a parser does not mind.
   if (ctx.json) ctx.writeLine(JSON.stringify(await statusDocument(record, ctx), null, 2));

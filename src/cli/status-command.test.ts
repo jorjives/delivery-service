@@ -11,7 +11,7 @@ import { ESCALATION, delivery, PACKAGE, writeRunRecord } from "./command-fixture
 import { EXIT } from "./failures.js";
 import { runPlace, runsRoot } from "./run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
-import { statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
+import { ALL_AND_ONE, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
 
@@ -395,5 +395,89 @@ describe("one run's status as one JSON document", () => {
     const { location } = runPlace(repo, RUN_ID, ctx.env);
     await mkdir(location.worktreePath, { recursive: true });
     expect((await statusDocument(await readRun(repo, RUN_ID), ctx)).worktree).toBe(location.worktreePath);
+  });
+});
+
+describe("delivery status --all", () => {
+  /** Three runs in one repository: one finished, one that needed a person, one still going. */
+  async function threeRuns(prefix: string): Promise<string> {
+    const repo = initTempRepo(prefix, { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: "add-a-hello-20260914T210309Z", task: "add a hello", outcome: CLOSED });
+    await writeRunRecord(repo, {
+      runId: "delete-the-greeting-20260915T090000Z",
+      task: "delete the greeting",
+      outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: AT },
+      packet: ESCALATION,
+    });
+    await writeRunRecord(repo, { runId: "add-a-goodbye-20260916T113000Z", task: "add a goodbye" });
+    return repo;
+  }
+
+  it("lists every run, newest first, with its task and how it ended", async () => {
+    const repo = await threeRuns("status-all-");
+
+    const { stdout, exitCode } = await delivery(["status", "--all"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.split("\n").filter((line) => line.startsWith("  "))).toEqual([
+      "  add-a-goodbye-20260916T113000Z, started 2026-09-16 11:30 UTC: add a goodbye (hasn't finished yet)",
+      "  delete-the-greeting-20260915T090000Z, started 2026-09-15 09:00 UTC: delete the greeting (needs a decision from you)",
+      "  add-a-hello-20260914T210309Z, started 2026-09-14 21:03 UTC: add a hello (finished)",
+    ]);
+  });
+
+  it("lists every run as JSON, newest first, with the four things a script sorts and filters on", async () => {
+    const repo = await threeRuns("status-all-json-");
+
+    const { stdout, exitCode } = await delivery(["status", "--all", "--json"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(JSON.parse(stdout)).toEqual([
+      { run: "add-a-goodbye-20260916T113000Z", task: "add a goodbye", startedAt: "2026-09-16T11:30:00Z", outcome: "unfinished" },
+      { run: "delete-the-greeting-20260915T090000Z", task: "delete the greeting", startedAt: "2026-09-15T09:00:00Z", outcome: "escalated" },
+      { run: "add-a-hello-20260914T210309Z", task: "add a hello", startedAt: "2026-09-14T21:03:09Z", outcome: "closed" },
+    ]);
+  });
+
+  it("orders by when each run started, not by which record was written last", async () => {
+    const repo = await threeRuns("status-all-order-");
+    // The newest run's record is now the least recently written, which is what
+    // resuming an older run leaves behind. It is still the newest run.
+    await backdate(join(runsRoot(repo), "add-a-goodbye-20260916T113000Z"));
+
+    const { stdout } = await delivery(["status", "--all"], { cwd: repo });
+
+    expect(stdout).toContain("  add-a-goodbye-20260916T113000Z");
+    expect(stdout.indexOf("add-a-goodbye")).toBeLessThan(stdout.indexOf("add-a-hello"));
+  });
+
+  it("says there is nothing here yet, and exits ok: an empty list is an answer", async () => {
+    const repo = initTempRepo("status-all-empty-", { "package.json": PACKAGE });
+
+    const plain = await delivery(["status", "--all"], { cwd: repo });
+    const json = await delivery(["status", "--all", "--json"], { cwd: repo });
+
+    expect(plain.exitCode).toBe(EXIT.ok);
+    expect(plain.stdout).toContain(NOTHING_HERE);
+    expect(json.exitCode).toBe(EXIT.ok);
+    expect(JSON.parse(json.stdout)).toEqual([]);
+  });
+
+  it("stops when it is given both --all and a run id, rather than quietly ignoring one", async () => {
+    const repo = await threeRuns("status-all-conflict-");
+
+    const { stderr, exitCode } = await delivery(["status", "--all", "add-a-hello-20260914T210309Z"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(ALL_AND_ONE);
+    expect(stderr).not.toContain("    at ");
+  });
+
+  it("describes --all in the command's own help", async () => {
+    const repo = initTempRepo("status-all-help-", { "package.json": PACKAGE });
+
+    const { stdout } = await delivery(["status", "--help"], { cwd: repo });
+
+    expect(stdout).toContain("--all");
   });
 });

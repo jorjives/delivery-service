@@ -102,6 +102,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .description("say what happened to a run: how it finished, or what decision it needs from you, without changing anything")
     .argument("[run-id]", "the run to read (default: the one touched most recently)")
     .option("--last", "read the run touched most recently, which is also what no run id means")
+    .option("--all", "list every run in this repository, newest first, instead of reading one")
     .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
     .action(async (runId: string | undefined, options: StatusOptions, command: Command) => {
       exitCode = await statusCommand(runId, options, contextFor(io, command));
