@@ -118,6 +118,19 @@ What you get depends on how the run ended:
 needs your decision is still a successful read. The exit codes in the table above are the run's
 own, reported by `delivery run`.
 
+Add `--json` to get the same information as one JSON document instead of sentences:
+
+```bash
+delivery status --last --json
+```
+
+It carries the run id, the task, when it started and finished, how it ended, the sentences the
+plain-language report prints about it, the branch, the base branch, where the run's record is,
+and, for a run that stopped for a decision, every field of the escalation packet. Every key is
+always present: a `null` means "not that kind of run", so
+a script never has to check whether a key is there. A run that could not be found is still a
+plain-language message on standard error and exit 2, not JSON.
+
 ## Configure it once
 
 Settings that belong to a project live in a `delivery.config.json` beside your code. The
