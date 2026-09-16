@@ -31,3 +31,7 @@ A tiny project to try the harness on: one function, one test, and a `test` scrip
 
 6. If the run stops before it finishes, run `delivery run` again in the same folder. It picks
    up where it left off rather than starting over.
+
+7. To check on a run later, in a new terminal, run `delivery status` in the same folder. It
+   prints what happened without changing anything: if the run needs a decision from you, that
+   comes first, with the evidence behind it underneath.

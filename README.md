@@ -64,6 +64,31 @@ something else is ignored with a note saying so. Asking for a different task whi
 unfinished stops the command: finish that run with `delivery resume`, or add `--fresh` to start
 the new task and leave the old run to pick up later.
 
+## See what happened to a run
+
+To find out how a run ended, in a new terminal or days later:
+
+```bash
+delivery status
+```
+
+It reads the run touched most recently and says what happened to it. `delivery status <run-id>`
+names a run instead, and `delivery status --last` is the explicit form of the default. It only
+ever reads: it never moves a run on, so it is safe to run while one is still going.
+
+What you get depends on how the run ended:
+
+- **Finished:** what was done, when it finished, and the branch the work is on.
+- **Stopped for a decision:** the decision it needs from you first, then the evidence behind it,
+  what had already been tried, why it stopped when it did, and the agent sessions it covers, all
+  in the harness's own words. Then where its branch, its working copy and its record are.
+- **Stopped for another reason:** why, in plain language.
+- **Not finished yet:** what picking it up will carry on with, and the command to do that.
+
+`status` exits 0 whenever it could read the run and 2 when it could not find one, so a run that
+needs your decision is still a successful read. The exit codes in the table above are the run's
+own, reported by `delivery run`.
+
 ## Configure it once
 
 Settings that belong to a project live in a `delivery.config.json` beside your code. The
