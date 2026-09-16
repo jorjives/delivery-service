@@ -56,18 +56,9 @@ export function gitGrepFiles(pattern: string, scope: string[]): string[] {
   }
 }
 
-export function runTsx(args: string[], env?: NodeJS.ProcessEnv): { stdout: string; status: number } {
-  try {
-    const stdout = execFileSync("npx", ["tsx", ...args], {
-      cwd: REPO_ROOT,
-      encoding: "utf-8",
-      env,
-    });
-    return { stdout, status: 0 };
-  } catch (err) {
-    const e = err as { stdout?: string; status?: number };
-    return { stdout: e.stdout ?? "", status: e.status ?? 1 };
-  }
+export function runTsx(args: string[], env?: NodeJS.ProcessEnv): { stdout: string; stderr: string; status: number } {
+  const { stdout, stderr, status } = spawnSync("npx", ["tsx", ...args], { cwd: REPO_ROOT, encoding: "utf-8", env });
+  return { stdout, stderr, status: status ?? 1 };
 }
 
 /** Slices a UAT demo's numbered console output between two section headings. */
