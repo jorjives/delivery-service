@@ -200,11 +200,12 @@ describe("AC: delivery status --all lists every run in the repository with run i
     expect(listingJson.status).toBe(EXIT.ok);
     const summaries = JSON.parse(listingJson.stdout) as Array<{ run: string; task: string; startedAt: string | null; outcome: string }>;
     expect(summaries).toHaveLength(1);
-    expect(summaries[0]).toMatchObject({ task: "add a function that says hi", outcome: "closed" });
-    expect(summaries[0].startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    const [summary] = summaries;
+    expect(summary).toMatchObject({ task: "add a function that says hi", outcome: "closed" });
+    expect(summary?.startedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
     const listingPlain = runDelivery(["status", "--all"], { cwd: repo, env });
-    expect(listingPlain.stdout).toContain(summaries[0].run);
+    expect(listingPlain.stdout).toContain(summary?.run);
     expect(listingPlain.stdout).toContain("add a function that says hi");
     expect(listingPlain.stdout).toContain("(finished)");
   });
