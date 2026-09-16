@@ -23,7 +23,7 @@
 - **The deliberate exception to that copy rule** is the escalation packet's own five fields, which the spec says to print **verbatim**. They are the harness's own account, already written for a person (`src/escalation-packet.ts:60-95`), and paraphrasing them here is exactly what the slice exists to prevent. They are printed under plain-language headings, unchanged.
 - **Colour:** decorative only, through `paint` (`src/cli/output.ts`), which is already off when `--no-color` is passed, `NO_COLOR` is set or stdout is not a terminal. Every line `status` prints says its meaning in words.
 - **Refusal ordering:** repository first (`findRepository`), then the run. A repository with no runs at all, and a run id that names nothing, are both `EXIT.configuration` with a message saying how to start a run.
-- **Commands:** run everything from the worktree root; never `cd` into another checkout. If `node_modules` is missing, run `npm ci --no-audit --no-fund` first. Run only each task's own targeted tests (`npx vitest run <file> -t "<name>"`). No task here needs `npm run build`: every test drives `runCli` in process.
+- **Commands:** run everything from the worktree root; never `cd` into another checkout. If `node_modules` is missing, run `npm ci --no-audit --no-fund` first. Run only each task's own targeted tests while working (`npx vitest run <file> -t "<name>"`); the last task ends with one wider check (Task 3, Step 8). No task's own tests need `npm run build`: they all drive `runCli` in process. The one wider check at the end runs `npm test`, which builds first, because the earlier slices' acceptance tests drive the compiled command.
 - **TDD and commits:** red, then green, then commit. Every commit message is one line saying what changed, a blank line, a paragraph saying why, a blank line, and `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.
 
 ## Two decisions this plan makes, and why
@@ -39,11 +39,11 @@ Recorded here because this was an unattended run with no human to validate them.
 - **Proactive, a new subcommand needs its own help:** `delivery status` is registered in `src/cli/program.ts` with a description and help for `[run-id]`, `--last` and `--repo`, and appears in `delivery --help`'s command list → Task 3.
 - **Reactive, `README.md` describes a tool that can start and resume runs but never report on one:** it gains a "See what happened to a run" section covering bare `status`, `status <run-id>`, `status --last`, what each kind of outcome prints, and that it only ever reads → Task 3.
 - **Reactive, `examples/sample-project/README.md` walks a person through a first run and a resumed one, and stops there:** its walkthrough gains the one-line "check on it later" step, which is what the slice's UAT asks a person to do → Task 3. (`tests/sample-project.test.ts` asserts the folder's file list, not the README's text, so editing it is safe.)
-- **Unchanged, checked:** `CONTRIBUTING.md` (no new build, test or run step; the `DELIVERY_TEST_MOCK_SCRIPT` seam is untouched and still accurate, and `status` never starts an agent so the seam does not apply to it); `package.json` (no new dependency, no new script, `bin` and `exports` unchanged); `.github/workflows/ci.yml`, `Makefile`, `.githooks/pre-push` (all call `npm test`); `vitest.config.ts`, `tsconfig.json`, `tsconfig.build.json`, `eslint.config.js` (the new file sits under the existing `src/**` globs); `docs/writing-a-gate.md`, `docs/writing-a-closer.md`, `docs/configuring-a-role.md`, `docs/testing-your-pipeline.md`, `docs/provisioning.md`, `docs/single-surface-control-flow.md` (library contracts and control flow, unchanged: this slice adds no library API and changes no gate, closer, role or state behaviour); `examples/sample-project/package.json`, `add.js`, `add.test.js`.
+- **Unchanged, checked:** `CONTRIBUTING.md` (no new build, test or run step; the `DELIVERY_TEST_MOCK_SCRIPT` seam is untouched and still accurate, and `status` never starts an agent so the seam does not apply to it); `package.json` (no new dependency, no new script, `bin` and `exports` unchanged); `.github/workflows/ci.yml`, `Makefile`, `.githooks/pre-push` (all call `npm test`); `vitest.config.ts`, `tsconfig.json`, `tsconfig.build.json`, `eslint.config.js` (the new file sits under the existing `src/**` globs); `docs/writing-a-gate.md`, `docs/writing-a-closer.md`, `docs/configuring-a-role.md`, `docs/testing-your-pipeline.md`, `docs/provisioning.md`, `docs/single-surface-control-flow.md`, `docs/multi-surface-control-flow.md`, `docs/agent-interface.md` (library contracts and control flow, unchanged: this slice adds no library API and changes no gate, closer, role or state behaviour); `examples/sample-project/package.json`, `add.js`, `add.test.js`.
 
 ---
 
-### Task 1: Every run a repository holds, and a finish time a person can read
+### Task 1: Every run a repository holds, and a finish time a person can read ✅ DONE (deliver-slice)
 
 Discovery today only answers "which runs did not finish" (`unfinishedRuns`), because resume is the only thing that has ever asked. `status --last`, and bare `status`, mean the most recently touched run whether it finished or not, so the general question moves underneath and the resume question becomes a filter over it. `readableUtc` is the same job `startedAt` already does for a run id's own timestamp, done once for an ISO 8601 string so a finished run can say when it finished in the same words.
 
@@ -85,9 +85,9 @@ describe("every run a repository holds", () => {
     const repo = await scratchRepo();
     const older = await writeRun(repo, "reverse-a-word-20260915T210000Z", "reverse a word", true);
     const newer = await writeRun(repo, "add-a-greeting-20260915T211500Z", "add a greeting", true);
-    const long_ago = new Date("2026-09-15T21:00:00.000Z");
-    await utimes(join(older, "case.json"), long_ago, long_ago);
-    await utimes(join(older, "log.jsonl"), long_ago, long_ago);
+    const longAgo = new Date("2026-09-15T21:00:00.000Z");
+    await utimes(join(older, "case.json"), longAgo, longAgo);
+    await utimes(join(older, "log.jsonl"), longAgo, longAgo);
 
     const [first] = await allRuns(repo);
     expect(first?.dir).toBe(newer);
@@ -202,7 +202,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 2: What one run's record says
+### Task 2: What one run's record says ✅ DONE (deliver-slice)
 
 The report itself, as a list of lines, with no discovery, no writing and no process around it. Three small exports move out of the way first, so this composes what is already written rather than restating it: `nextStep` is the phrase `pickingUp` already looks up, and `packetOf` is the packet read `summariseOutcome` already does.
 
@@ -551,7 +551,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 3: `delivery status` reads a run without changing it
+### Task 3: `delivery status` reads a run without changing it ✅ DONE (deliver-slice)
 
 The command around the report: which run this invocation means, the two ways of not finding one, and the documentation that says the command exists.
 
@@ -674,7 +674,7 @@ describe("delivery status", () => {
     const top = await delivery(["--help"], { cwd: repo });
     const own = await delivery(["status", "--help"], { cwd: repo });
 
-    expect(top.stdout).toContain("status");
+    expect(top.stdout).toContain("status [options] [run-id]");
     expect(own.stdout).toContain("Usage: delivery status");
     expect(own.stdout).toContain("--last");
     expect(own.stdout).toContain("--repo");
@@ -811,7 +811,16 @@ In `examples/sample-project/README.md`, add a step after the existing step 6 (th
 Run: `npx vitest run src/cli/status-command.test.ts -t "describes itself in the help"`
 Expected: PASS — the command, `--last` and `--repo` are all registered exactly as the README describes them.
 
-- [ ] **Step 8: Commit the documentation**
+- [ ] **Step 8: Check nothing else moved**
+
+Run: `npm run lint && npm test`
+Expected: PASS — the new file lints and typechecks under the existing globs, and slices 1 to 3 still
+pass, which is what proves `nextStep`, `packetOf` and `unfinishedRuns` were split out rather than
+changed. `npm test` builds first, which the slice-1 to slice-3 acceptance tests need because they
+drive the compiled command rather than `runCli` in process. If anything here fails, fix it before
+committing; do not commit a red suite.
+
+- [ ] **Step 9: Commit the documentation**
 
 ```bash
 git add README.md examples/sample-project/README.md
@@ -832,3 +841,4 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - **Do not add `--all` or `--json`.** Both are SHOULD-tier and belong to slice 6 of the slice scope. `status` here reports on exactly one run.
 - **Do not change what `delivery run` prints at the end of an escalated run.** Its short form (decision, then evidence) is slice 1's, is asserted by `tests/cli-and-configuration/1-*.test.ts` and `src/cli/outcome.test.ts`, and is deliberately shorter than `status`'s: the person at the terminal watched the run happen, and the person reading `status` did not.
 - **Do not make `status` advance anything**, including "just to refresh the cursor". The read-only test is there because a report that quietly moved a run on would be worse than no report.
+- **Report the worktree discrepancy as spec drift when the slice is marked complete.** The design spec's Diagnosability note and this slice's AC 4 both say an escalated run keeps its working copy for inspection, but `teardownWorktree` (`src/closer-support.ts:41-49`) removes it on every outcome that is not `accepted`, keeping only the branch. Decision 2 above resolves this honestly in `status`, which is the whole of this slice's remit; whoever verifies AC 4 must not read "The agent's working copy has been cleared away." as a failure, and whoever closes the slice should record that the spec, not the code, is the thing that is wrong. Changing the closers is out of scope here: it is library behaviour, it would contradict `summariseOutcome`'s existing "Nothing was changed on `<base>`" copy, and this slice's own constraint is that nothing outside `src/cli/` changes.
