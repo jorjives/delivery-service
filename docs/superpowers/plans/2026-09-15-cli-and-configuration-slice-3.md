@@ -1,4 +1,5 @@
 # CLI and Configuration — Slice 3: Pick Up a Run That Was Interrupted
+> **Status:** ✅ Complete — 2026-09-16 — `c064b18`
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
