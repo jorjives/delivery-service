@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Readable } from "node:stream";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { create, setOutcome } from "../case-file.js";
 import { CorruptCaseFile } from "../errors.js";
 import type { GateRef } from "../schema.js";
 import { runsRoot } from "./run-location.js";
-import { describeRun, readRun, startedAt, unfinishedRuns } from "./runs.js";
+import { chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_TO_RESUME, readRun, severalRuns, startedAt, unfinishedRuns } from "./runs.js";
+import { Refusal } from "./failures.js";
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
 
@@ -94,5 +96,62 @@ describe("how a run is described to a person", () => {
     expect(record && describeRun(record)).toBe(
       "reverse-a-word-20260915T213012Z, started 2026-09-15 21:30 UTC: add a function that reverses a word, with a test",
     );
+  });
+});
+
+/** A command context reading the answers a person would type, with `isTTY` saying whether anyone is there to type them. */
+function answering(answers: string[], { interactive }: { interactive: boolean }) {
+  const lines: string[] = [];
+  const stdin = Object.assign(Readable.from(answers.map((answer) => `${answer}\n`)), { isTTY: interactive || undefined });
+  return { ctx: { cwd: "/", env: {}, colour: false, stdin, writeLine: (line: string) => lines.push(line) }, lines };
+}
+
+describe("choosing which run to pick up", () => {
+  it("takes the only unfinished run without asking", async () => {
+    const repo = await scratchRepo();
+    await writeRun(repo, "reverse-a-word-20260915T210000Z", "reverse a word");
+    const { ctx, lines } = answering([], { interactive: true });
+
+    expect((await chooseRun(await unfinishedRuns(repo), ctx)).runId).toBe("reverse-a-word-20260915T210000Z");
+    expect(lines).toEqual([]);
+  });
+
+  it("lists them and asks when there is more than one", async () => {
+    const repo = await scratchRepo();
+    await writeRun(repo, "reverse-a-word-20260915T210000Z", "reverse a word");
+    await writeRun(repo, "add-a-greeting-20260915T211500Z", "add a greeting");
+    const records = await unfinishedRuns(repo);
+    const { ctx, lines } = answering(["2"], { interactive: true });
+
+    expect((await chooseRun(records, ctx)).runId).toBe(records[1]?.runId);
+    expect(lines.join("\n")).toContain("  1. add-a-greeting-20260915T211500Z, started 2026-09-15 21:15 UTC: add a greeting");
+    expect(lines.join("\n")).toContain("  2. reverse-a-word-20260915T210000Z, started 2026-09-15 21:00 UTC: reverse a word");
+  });
+
+  it("leaves every run alone when the answer names none of them", async () => {
+    const repo = await scratchRepo();
+    await writeRun(repo, "reverse-a-word-20260915T210000Z", "reverse a word");
+    await writeRun(repo, "add-a-greeting-20260915T211500Z", "add a greeting");
+    const { ctx } = answering([""], { interactive: true });
+
+    await expect(chooseRun(await unfinishedRuns(repo), ctx)).rejects.toThrow(NOTHING_CHOSEN);
+  });
+
+  it("prints the list and stops when nobody is there to answer", async () => {
+    const repo = await scratchRepo();
+    await writeRun(repo, "reverse-a-word-20260915T210000Z", "reverse a word");
+    await writeRun(repo, "add-a-greeting-20260915T211500Z", "add a greeting");
+    const { ctx } = answering([], { interactive: false });
+
+    const refusal = await chooseRun(await unfinishedRuns(repo), ctx).catch((err: unknown) => err);
+    expect(refusal).toBeInstanceOf(Refusal);
+    expect((refusal as Refusal).message).toContain("reverse-a-word-20260915T210000Z");
+    expect((refusal as Refusal).message).toContain("delivery resume --last");
+    expect((refusal as Refusal).exitCode).toBe(2);
+  });
+
+  it("says plainly when there is nothing to pick up", async () => {
+    const { ctx } = answering([], { interactive: true });
+    await expect(chooseRun([], ctx)).rejects.toThrow(NOTHING_TO_RESUME);
   });
 });

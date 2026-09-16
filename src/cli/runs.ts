@@ -1,10 +1,13 @@
 import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { createInterface } from "node:readline";
 import { load } from "../case-file.js";
 import { FileNotFound } from "../errors.js";
 import type { CaseFile } from "../schema.js";
 import { runsRoot } from "./run-location.js";
 import { taskIntent } from "./settings.js";
+import type { CommandContext } from "./context.js";
+import { EXIT, Refusal } from "./failures.js";
 
 /** One run's record, read back from the repository: everything a command needs to report on it or pick it up. */
 export interface RunRecord {
@@ -85,4 +88,55 @@ export function unfinishedRunFound(record: RunRecord): string {
     `There's a run that didn't finish (started \`${startedAt(record.runId)}\`, task: \`${taskIntent(record.caseFile.header.taskDef)}\`). ` +
     "Run `delivery resume` to finish it, or add `--fresh` to start this new task anyway."
   );
+}
+
+export const NOTHING_TO_RESUME =
+  'There\'s no run here that didn\'t finish, so there is nothing to pick up. Start one with `delivery run --task "..."`.';
+
+export const NOTHING_CHOSEN =
+  "That isn't one of the numbers in the list, so I've left every run alone. Run `delivery resume <run-id>` when you know which one you want.";
+
+/** Every run that didn't finish, for a terminal with nobody in front of it to read in its log. */
+export function severalRuns(records: RunRecord[]): string {
+  return [
+    "More than one run didn't finish:",
+    ...records.map((record) => `  ${describeRun(record)}`),
+    "Say which one to pick up: `delivery resume <run-id>`, or `delivery resume --last` for the one touched most recently.",
+  ].join("\n");
+}
+
+/** The first line the user types, and nothing else: the answer to one question, not a session. */
+async function firstLine(stdin: CommandContext["stdin"]): Promise<string> {
+  const lines = createInterface({ input: stdin });
+  try {
+    for await (const line of lines) return line;
+    return "";
+  } finally {
+    lines.close();
+  }
+}
+
+/**
+ * Which run this command means. One is unambiguous. Several are not, so a
+ * person is asked rather than guessed at, and a terminal with nobody in front
+ * of it is given the list and stopped: picking one for a script would sooner or
+ * later finish the wrong run.
+ */
+export async function chooseRun(records: RunRecord[], ctx: CommandContext): Promise<RunRecord> {
+  const [first] = records;
+  if (first === undefined) throw new Refusal(NOTHING_TO_RESUME, EXIT.configuration);
+  if (records.length === 1) return first;
+  if (ctx.stdin.isTTY !== true) throw new Refusal(severalRuns(records), EXIT.configuration);
+
+  ctx.writeLine("More than one run didn't finish. Which one should I pick up?");
+  records.forEach((record, index) => ctx.writeLine(`  ${index + 1}. ${describeRun(record)}`));
+  ctx.writeLine("Type its number and press Enter.");
+  const chosen = records[Number((await firstLine(ctx.stdin)).trim()) - 1];
+  if (chosen === undefined) throw new Refusal(NOTHING_CHOSEN, EXIT.configuration);
+  return chosen;
+}
+
+/** Why a finished run cannot be picked up: it is done, and reopening it would deliver its work twice. */
+export function alreadyFinished(runId: string): string {
+  return `The run \`${runId}\` has already finished, so there is nothing to pick up. Start a new one with \`delivery run --task "..."\`.`;
 }

@@ -559,4 +559,42 @@ describe("picking up a run that didn't finish", () => {
     },
     RUN_TIMEOUT,
   );
+
+  it(
+    "asks which run to pick up when more than one didn't finish",
+    async () => {
+      const repo = initTempRepo("run-command-several-", { "package.json": PACKAGE });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const { interruptedRun, writesHello } = await import("./command-fixtures.js");
+      const older = await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello });
+      const newer = await interruptedRun(repo, state, { task: "add a goodbye function, with a test", steps: 3, worker: writesHello });
+
+      const { stdout, exitCode } = await delivery(["run"], {
+        cwd: repo,
+        env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+        answers: ["2"],
+      });
+
+      expect(stdout).toContain(`  1. ${newer}`);
+      expect(stdout).toContain(`  2. ${older}`);
+      expect(stdout).toContain(`Resuming run ${older}`);
+      expect(exitCode).toBe(EXIT.ok);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it("prints the list and stops when more than one didn't finish and nobody can answer", async () => {
+    const repo = initTempRepo("run-command-several-ci-", { "package.json": PACKAGE });
+    const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+    const { interruptedRun, writesHello } = await import("./command-fixtures.js");
+    const first = await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello });
+    const second = await interruptedRun(repo, state, { task: "add a goodbye function, with a test", steps: 3, worker: writesHello });
+
+    const { stderr, exitCode } = await delivery(["run"], { cwd: repo, env: { XDG_STATE_HOME: state } });
+
+    expect(stderr).toContain(first);
+    expect(stderr).toContain(second);
+    expect(stderr).toContain("delivery resume --last");
+    expect(exitCode).toBe(EXIT.configuration);
+  });
 });
