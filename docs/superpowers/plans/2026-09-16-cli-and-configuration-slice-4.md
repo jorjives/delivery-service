@@ -1,5 +1,6 @@
 # CLI and Configuration — Slice 4: See What Happened to a Run After the Fact
 
+> **Status:** ✅ Complete — 2026-09-16 — `f802401`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 4 of `docs/superpowers/specs/2026-09-14-cli-and-configuration-slices.md`
