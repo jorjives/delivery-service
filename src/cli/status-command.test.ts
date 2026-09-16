@@ -311,6 +311,16 @@ describe("delivery status --json", () => {
     expect(document.worktree).toBeNull();
     expect(document.dir).toBe(join(runsRoot(repo), RUN_ID));
   });
+
+  it("says plainly on standard error, not as JSON, when the id names nothing", async () => {
+    const repo = initTempRepo("status-json-unknown-", { "package.json": PACKAGE });
+
+    const { stdout, stderr, exitCode } = await delivery(["status", "never-ran-20260101T000000Z", "--json"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("I couldn't find that run's record");
+  });
 });
 
 describe("one run's status as one JSON document", () => {
@@ -385,44 +395,5 @@ describe("one run's status as one JSON document", () => {
     const { location } = runPlace(repo, RUN_ID, ctx.env);
     await mkdir(location.worktreePath, { recursive: true });
     expect((await statusDocument(await readRun(repo, RUN_ID), ctx)).worktree).toBe(location.worktreePath);
-  });
-});
-
-describe("delivery status --json (new document format)", () => {
-  it("prints one JSON document instead of the plain-language lines, and still exits ok", async () => {
-    const repo = initTempRepo("status-json-", { "package.json": PACKAGE });
-    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });
-
-    const { stdout, exitCode } = await delivery(["status", "--json"], { cwd: repo });
-
-    expect(exitCode).toBe(EXIT.ok);
-    const document = JSON.parse(stdout) as RunStatusDocument;
-    expect(document).toMatchObject({ run: RUN_ID, task: TASK, outcome: "closed", branch: `surface/${RUN_ID}` });
-    expect(stdout).not.toContain("It finished 2026-09-14 21:05 UTC.");
-  });
-
-  it("hands an escalated run's whole packet to a script, and exits ok because reading it worked", async () => {
-    const repo = initTempRepo("status-json-escalated-", { "package.json": PACKAGE });
-    await writeRunRecord(repo, {
-      runId: RUN_ID,
-      task: TASK,
-      outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: AT },
-      packet: ESCALATION,
-    });
-
-    const { stdout, exitCode } = await delivery(["status", RUN_ID, "--json"], { cwd: repo });
-
-    expect(exitCode).toBe(EXIT.ok);
-    expect((JSON.parse(stdout) as RunStatusDocument).escalation).toEqual(ESCALATION);
-  });
-
-  it("says plainly on standard error, not as JSON, when the id names nothing", async () => {
-    const repo = initTempRepo("status-json-unknown-", { "package.json": PACKAGE });
-
-    const { stdout, stderr, exitCode } = await delivery(["status", "never-ran-20260101T000000Z", "--json"], { cwd: repo });
-
-    expect(exitCode).toBe(EXIT.configuration);
-    expect(stdout).toBe("");
-    expect(stderr).toContain("I couldn't find that run's record");
   });
 });
