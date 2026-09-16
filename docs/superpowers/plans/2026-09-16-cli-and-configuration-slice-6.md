@@ -1,4 +1,5 @@
 # CLI and Configuration — Slice 6: Script Against Runs With Machine-Readable Output
+> **Status:** ✅ Complete — 2026-09-16 — `67a47d8`
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
