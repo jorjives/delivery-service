@@ -11,7 +11,7 @@ import { ESCALATION, delivery, PACKAGE, writeRunRecord } from "./command-fixture
 import { EXIT } from "./failures.js";
 import { runPlace, runsRoot } from "./run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
-import { statusReport } from "./status-command.js";
+import { statusReport, type StatusRecord } from "./status-command.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
 
@@ -252,5 +252,65 @@ describe("delivery status", () => {
     expect(own.stdout).toContain("Usage: delivery status");
     expect(own.stdout).toContain("--last");
     expect(own.stdout).toContain("--repo");
+  });
+});
+
+describe("delivery status --json", () => {
+  it("prints one JSON document instead of the plain-language lines, for a run that hasn't finished", async () => {
+    const repo = initTempRepo("status-json-unfinished-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK });
+
+    const { stdout, exitCode } = await delivery(["status", "--json", "--last"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const lines = stdout.split("\n").filter(Boolean);
+    expect(lines).toHaveLength(1);
+    const record = JSON.parse(lines.at(0) ?? "") as StatusRecord;
+    expect(record).toEqual({
+      runId: RUN_ID,
+      task: TASK,
+      startedAt: "2026-09-14 21:03 UTC",
+      finished: false,
+      nextStep: "getting the agent going",
+    });
+    expect(stdout).not.toContain("This run hasn't finished");
+  });
+
+  it("reports a closed run as a document naming the outcome, not the plain-language sentence", async () => {
+    const repo = initTempRepo("status-json-closed-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });
+
+    const { stdout } = await delivery(["status", "--json", "--last"], { cwd: repo });
+
+    const record = JSON.parse(stdout.trim()) as StatusRecord;
+    expect(record).toEqual({
+      runId: RUN_ID,
+      task: TASK,
+      startedAt: "2026-09-14 21:03 UTC",
+      finished: true,
+      outcome: "closed",
+      at: "2026-09-14 21:05 UTC",
+      headline: `Done: the change for "${TASK}" passed \`npm test\` and is committed on branch surface/${RUN_ID}.`,
+      details: [`main was not changed. To look at the work: git log surface/${RUN_ID}`],
+    });
+  });
+
+  it("carries the escalation packet and where the work was kept, unparaphrased, for an escalated run", async () => {
+    const repo = initTempRepo("status-json-escalated-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, {
+      runId: RUN_ID,
+      task: TASK,
+      outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: AT },
+      packet: ESCALATION,
+    });
+
+    const { stdout } = await delivery(["status", "--json", "--last"], { cwd: repo });
+
+    const record = JSON.parse(stdout.trim()) as StatusRecord;
+    expect(record.outcome).toBe("escalated");
+    expect(record.packet).toEqual(ESCALATION);
+    expect(record.branch).toBe(`surface/${RUN_ID}`);
+    expect(record.worktreePath).toBeNull();
+    expect(record.recordDir).toBe(join(runsRoot(repo), RUN_ID));
   });
 });
