@@ -44,6 +44,26 @@ so `git status` does not change) and its working copy under
 
 To try it on something small first, use the [sample project](examples/sample-project/README.md).
 
+## Pick up a run that was interrupted
+
+If a run stops before it finishes, because you closed the terminal, pressed Ctrl-C or the
+machine restarted, run the same command again in the same repository:
+
+```bash
+delivery run
+```
+
+It finds the run that didn't finish, says what it is picking up, and carries on from there
+rather than starting over. `delivery resume` does the same and never starts a new run: give it
+a run id, or `--last` for the run touched most recently. If more than one run didn't finish, it
+lists them and asks which one; in a script or a CI step, where nobody can answer, it prints the
+list and stops.
+
+A run keeps the task, the check and the closing action it started with, so a flag asking for
+something else is ignored with a note saying so. Asking for a different task while a run is
+unfinished stops the command: finish that run with `delivery resume`, or add `--fresh` to start
+the new task and leave the old run to pick up later.
+
 ## Configure it once
 
 Settings that belong to a project live in a `delivery.config.json` beside your code. The

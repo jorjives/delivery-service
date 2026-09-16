@@ -28,3 +28,6 @@ A tiny project to try the harness on: one function, one test, and a `test` scrip
 
 5. When it finishes, the last message names a branch. Look at the work with
    `git log <branch>`; `main` is unchanged.
+
+6. If the run stops before it finishes, run `delivery run` again in the same folder. It picks
+   up where it left off rather than starting over.

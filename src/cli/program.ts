@@ -3,6 +3,7 @@ import { Command, CommanderError } from "commander";
 import type { CliStdin } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
 import { useColour } from "./output.js";
+import { resumeCommand, type ResumeOptions } from "./resume-command.js";
 import { runCommand, type RunOptions } from "./run-command.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
@@ -52,6 +53,23 @@ export async function runCli(io: CliIo): Promise<number> {
       // A throw here rejects parseAsync with the original error, rendered once below.
       const { color } = command.optsWithGlobals<{ color: boolean }>();
       exitCode = await runCommand(options, {
+        cwd: io.cwd,
+        env: io.env,
+        colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
+        stdin: io.stdin,
+        writeLine: (line) => io.stdout.write(`${line}\n`),
+      });
+    });
+
+  program
+    .command("resume")
+    .description("pick up a run that didn't finish, without ever starting a new one")
+    .argument("[run-id]", "the run to pick up (default: the one that didn't finish)")
+    .option("--last", "pick up the run touched most recently, without asking")
+    .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
+    .action(async (runId: string | undefined, options: ResumeOptions, command: Command) => {
+      const { color } = command.optsWithGlobals<{ color: boolean }>();
+      exitCode = await resumeCommand(runId, options, {
         cwd: io.cwd,
         env: io.env,
         colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
