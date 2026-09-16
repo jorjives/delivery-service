@@ -110,6 +110,7 @@ public rehearsal mode) is not sliced.
 
 ## Slice 3: Pick Up a Run That Was Interrupted
 
+**Status:** ✅ Complete — 2026-09-16 — `c064b18`
 **Delivers:** If a run is interrupted (the terminal closed, the machine restarted, Ctrl-C), the person runs the same command again, or `delivery resume`, and the run carries on from where it stopped instead of starting over.
 
 ### Prerequisites
