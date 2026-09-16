@@ -105,7 +105,6 @@ export const NOTHING_TO_RESUME =
 export const NOTHING_HERE =
   'No runs have been started in this repository yet, so there is nothing to report on. Start one with `delivery run --task "..."`.';
 
-
 export const NOTHING_CHOSEN =
   "That isn't one of the numbers in the list, so I've left every run alone. Run `delivery resume <run-id>` when you know which one you want.";
 
