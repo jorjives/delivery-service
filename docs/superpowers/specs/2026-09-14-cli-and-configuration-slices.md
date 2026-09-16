@@ -150,6 +150,7 @@ public rehearsal mode) is not sliced.
 ## Slice 4: See What Happened to a Run After the Fact
 
 **Status:** ✅ Complete — 2026-09-16 — `f802401`
+**Tests:** ✅ Recorded — 2026-09-16 — `8405fa7` — cli — 1 UAT + 5 AC, 0 skipped
 
 **Delivers:** Someone who was not watching when a run ended can type `delivery status` in the repository and read the outcome, and for an escalated run the full escalation packet, in plain language.
 
