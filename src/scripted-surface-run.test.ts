@@ -1,10 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { mkdtemp } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { load } from "./case-file.js";
-import { cleanGitEnv } from "./git-env.js";
+import { git } from "../tests/helpers.js";
 import { initTempRepo } from "./temp-repo.js";
 import { deterministicRouter } from "./router.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
@@ -30,10 +29,6 @@ const PASSING_TAP = "1..2\nok 1 - alpha\nok 2 - beta\n";
 const FAILING_TAP = "1..2\nok 1 - alpha\nnot ok 2 - beta\n";
 const INTENT = "add a greeting file that says hello";
 const roleConfigs = { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig };
-
-function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
-}
 
 /** A worker that, when its prompt contains `trigger`, writes one file and reports completion. */
 function workerScript(trigger: string, write: { path: string; content: string }): MockScript {
