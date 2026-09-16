@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { logTail, resumeAction, type ResumeAction } from "../case-file.js";
 import { branchName } from "../provision.js";
-import type { CaseFileOutcome, SurfaceState } from "../schema.js";
+import type { SurfaceState } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
@@ -93,67 +93,6 @@ export async function statusReport(record: RunRecord, ctx: CommandContext): Prom
     ...(outcome.kind === "aborted" ? summary.details : []),
     ...whereToLook(record, ctx),
   ];
-}
-
-/**
- * One run's record, as a script reads it: the same facts `statusReport` puts
- * into prose, structured instead of paraphrased. `packet`, `branch`,
- * `worktreePath` and `recordDir` are only present once a run has stopped
- * without closing: a closed run has nothing left to look at, and an
- * unfinished one has no outcome yet to carry them.
- */
-export interface StatusRecord {
-  runId: string;
-  task: string;
-  startedAt: string;
-  finished: boolean;
-  nextStep?: string;
-  outcome?: CaseFileOutcome["kind"];
-  at?: string;
-  headline?: string;
-  details?: string[];
-  packet?: EscalationPacket;
-  branch?: string;
-  worktreePath?: string | null;
-  recordDir?: string;
-}
-
-/**
- * `delivery status --json`: the same run record `statusReport` describes in
- * prose, as one document a script can parse without scraping sentences.
- */
-export async function statusRecord(record: RunRecord, ctx: CommandContext): Promise<StatusRecord> {
-  const { caseFile, dir, runId } = record;
-  const task = taskIntent(caseFile.header.taskDef);
-  const started = startedAt(runId);
-  const { outcome } = caseFile;
-
-  if (!outcome) {
-    return { runId, task, startedAt: started, finished: false, nextStep: nextStepPhrase(caseFile) };
-  }
-
-  const summary = await summariseOutcome(dir, caseFile);
-  const base: StatusRecord = {
-    runId,
-    task,
-    startedAt: started,
-    finished: true,
-    outcome: outcome.kind,
-    at: readableUtc(outcome.at),
-    headline: summary.headline,
-    details: summary.details,
-  };
-  if (outcome.kind === "closed") return base;
-
-  const packet = outcome.kind === "escalated" ? await packetOf(dir, outcome.packetRef) : undefined;
-  const { location } = runPlace(record.repoPath, record.runId, ctx.env);
-  return {
-    ...base,
-    ...(packet ? { packet } : {}),
-    branch: branchName(caseFile.header.surfaceId),
-    worktreePath: existsSync(location.worktreePath) ? location.worktreePath : null,
-    recordDir: dir,
-  };
 }
 
 /** How a run ended, as one word a script can switch on. "unfinished" is the fourth: a run that is still resumable has not ended at all. */

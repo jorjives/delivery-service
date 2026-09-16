@@ -11,7 +11,7 @@ import { ESCALATION, delivery, PACKAGE, writeRunRecord } from "./command-fixture
 import { EXIT } from "./failures.js";
 import { runPlace, runsRoot } from "./run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
-import { statusDocument, statusReport, type RunStatusDocument, type StatusRecord } from "./status-command.js";
+import { statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
 
