@@ -7,7 +7,18 @@ import { DEFAULT_BUDGETS } from "../budgets.js";
 import { unknownCloser, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal, renderFailure } from "./failures.js";
 import { NO_CHECK } from "./project.js";
-import { BOTH_TASKS, checkCustomModules, ignoredNote, ignoredSettings, NO_TASK, NO_TASK_FILE, resolveSettings, taskIntent, type RunFlags } from "./settings.js";
+import {
+  BOTH_TASKS,
+  checkCustomModules,
+  explicitIntent,
+  ignoredNote,
+  ignoredSettings,
+  NO_TASK,
+  NO_TASK_FILE,
+  resolveSettings,
+  taskIntent,
+  type RunFlags,
+} from "./settings.js";
 
 const TASK = "add a function that says goodbye to a name, with a test";
 const NPM_TEST = { type: "command", command: "npm test", parseMode: "exitcode" } as const;
@@ -21,11 +32,12 @@ function project(files: Record<string, string> = {}): string {
 
 const withTestScript = { "package.json": JSON.stringify({ name: "scratch", scripts: { test: "node --test" } }) };
 
-function settings(
+async function settings(
   flags: RunFlags,
   { env = {}, config = {}, repoPath = project(withTestScript) }: { env?: NodeJS.ProcessEnv; config?: DeliveryConfig; repoPath?: string } = {},
 ) {
-  return resolveSettings(flags, { env, cwd: repoPath, repoPath, config });
+  const intent = await explicitIntent(flags, env, repoPath);
+  return resolveSettings(flags, { env, intent, repoPath, config });
 }
 
 async function refusalOf(promise: Promise<unknown>): Promise<Refusal> {

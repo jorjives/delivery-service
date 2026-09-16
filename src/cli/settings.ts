@@ -64,8 +64,7 @@ export async function explicitIntent(flags: RunFlags, env: NodeJS.ProcessEnv, cw
   return (flags.task ?? fromFile ?? env.DELIVERY_TASK)?.trim() || undefined;
 }
 
-async function taskFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryConfig, cwd: string): Promise<TaskDef> {
-  const intent = await explicitIntent(flags, env, cwd);
+function taskFrom(intent: string | undefined, config: DeliveryConfig): TaskDef {
   if (intent) return { intent };
   if (config.task) return config.task;
   throw new Refusal(NO_TASK, EXIT.configuration);
@@ -141,11 +140,17 @@ function budgetsFrom(config: DeliveryConfig): BudgetSet {
  */
 export async function resolveSettings(
   flags: RunFlags,
-  { env, cwd, repoPath, config }: { env: NodeJS.ProcessEnv; cwd: string; repoPath: string; config: DeliveryConfig },
+  {
+    env,
+    intent,
+    repoPath,
+    config,
+  }: { env: NodeJS.ProcessEnv; intent: string | undefined; repoPath: string; config: DeliveryConfig },
 ): Promise<Settings> {
+  const gateRef = await gateFrom(flags, env, config, repoPath);
   return {
-    taskDef: await taskFrom(flags, env, config, cwd),
-    gateRef: await gateFrom(flags, env, config, repoPath),
+    taskDef: taskFrom(intent, config),
+    gateRef,
     closerRef: closerFrom(flags, env, config),
     budgets: budgetsFrom(config),
   };

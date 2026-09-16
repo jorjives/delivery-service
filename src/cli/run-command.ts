@@ -42,19 +42,19 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
     if (ignored.length > 0) ctx.writeLine(ignoredNote(ignored));
     return resumeRun(resuming, ctx);
   }
-  return startRun(options, { startDir, repoPath }, ctx);
+  return startRun(options, { startDir, repoPath, intent }, ctx);
 }
 
 /** Start a run: work out what it should do from the project's config file, the flags and the environment, check the agent can start, then drive it. */
 async function startRun(
   options: RunOptions,
-  { startDir, repoPath }: { startDir: string; repoPath: string },
+  { startDir, repoPath, intent }: { startDir: string; repoPath: string; intent: string | undefined },
   ctx: CommandContext,
 ): Promise<ExitCode> {
   const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
   const { taskDef, gateRef, closerRef, budgets } = await resolveSettings(options, {
     env: ctx.env,
-    cwd: ctx.cwd,
+    intent,
     repoPath,
     config,
   });
@@ -62,12 +62,12 @@ async function startRun(
   const session = await agentSession(ctx.env);
   if (await hasUncommittedChanges(repoPath)) ctx.writeLine(UNCOMMITTED_NOTE);
 
-  const intent = taskIntent(taskDef);
-  const runId = runIdFor(intent, new Date());
+  const resolvedIntent = taskIntent(taskDef);
+  const runId = runIdFor(resolvedIntent, new Date());
   const { dir } = runPlace(repoPath, runId, ctx.env);
   await prepareRunDir(repoPath, dir);
   const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef }, budgets);
-  ctx.writeLine(`Starting run ${runId}: ${intent}`);
+  ctx.writeLine(`Starting run ${runId}: ${resolvedIntent}`);
 
   const progress = createProgress(ctx.writeLine, ctx.colour);
   progress.step("PROVISIONING");

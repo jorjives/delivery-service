@@ -54,19 +54,14 @@ export async function unfinishedRuns(repoPath: string): Promise<RunRecord[]> {
     return []; // nothing has ever run here
   }
 
-  const found: { record: RunRecord; touchedAt: number }[] = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    let record: RunRecord;
-    try {
-      record = await readRun(repoPath, entry.name);
-    } catch (err) {
-      if (err instanceof FileNotFound) continue;
+  const read = await Promise.all(
+    entries.filter((entry) => entry.isDirectory()).map((entry) => readRun(repoPath, entry.name).catch((err) => {
+      if (err instanceof FileNotFound) return undefined;
       throw err;
-    }
-    if (record.caseFile.outcome) continue;
-    found.push({ record, touchedAt: await touchedAt(record.dir) });
-  }
+    })),
+  );
+  const unfinished = read.filter((record): record is RunRecord => record !== undefined && !record.caseFile.outcome);
+  const found = await Promise.all(unfinished.map(async (record) => ({ record, touchedAt: await touchedAt(record.dir) })));
   return found.sort((a, b) => b.touchedAt - a.touchedAt).map(({ record }) => record);
 }
 
