@@ -17,4 +17,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
+      # The same `npm test` as everywhere else, plus the two release checks that
+      # pack and install a real tarball. They are skipped without this variable,
+      # which is set here and nowhere else, so `make verify` stays registry-free
+      # whatever `CI` is set to around it.
       - run: npm test
+        env:
+          DELIVERY_PACK_TESTS: "1"
+      # The third release check: what `npm publish` would send, without sending it.
+      # It contacts the registry, so `make verify` leaves it out and CI carries it.
+      - run: npm publish --dry-run
