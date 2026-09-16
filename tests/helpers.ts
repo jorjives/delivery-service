@@ -20,9 +20,13 @@ export function useScratch(): (prefix: string) => string {
   };
 }
 
-/** Run a git command against a working copy, with a clean, deterministic git env. */
+/**
+ * Run a git command against a working copy, with a clean, deterministic git env.
+ * Stderr is captured (it stays on the thrown error), so a probe that is expected
+ * to fail does not print `fatal: ...` into an otherwise green test run.
+ */
 export function git(cwd: string, args: string[]): string {
-  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
+  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv(), stdio: "pipe" }).trim();
 }
 
 /** `npm pack` the checkout into `destination` (as `npm publish` would) and return the tarball's path. */
