@@ -186,6 +186,7 @@ public rehearsal mode) is not sliced.
 
 ## Slice 5: Install the Harness Like Any Other Tool and Follow the Guide
 
+**Status:** ✅ Complete — 2026-09-16 — `7bdfff8`
 **Delivers:** A newcomer installs the harness as a package, follows `docs/getting-started.md` from a fresh folder to a finished run against the sample project, and the package is ready to publish the moment a licence is chosen.
 
 **Operational note:** This slice changes how the harness is released and verified. CI gains three checks: the getting-started guide executed as a test against the built command and the sample project (the agent routed to the scripted agent, as the testing guide's own test already does), an install from a locally packed copy with the installed command run, and a publish dry-run. A release job versions the package and writes the changelog from changeset entries on merges to the main branch; its publish step stays disabled, and no licence field is added, until a human chooses a licence. Contributors gain a step for describing their change in a changeset.
