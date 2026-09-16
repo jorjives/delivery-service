@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # Opens or updates a version pull request from the changeset files on main:
+      # it bumps the version and writes the changelog entry. Merging that pull
+      # request is what makes a release.
+      # Needs "Allow GitHub Actions to create and approve pull requests" enabled in
+      # the repository's Actions settings; without it the action fails when it tries
+      # to open the version pull request. That setting is the only thing this job
+      # needs beyond the default GITHUB_TOKEN while publishing stays off.
+      - uses: changesets/action@v1
+        with:
+          version: npx changeset version
+          # publish: npx changeset publish
+          #
+          # Publishing is deliberately off. Two things a person must settle first:
+          #   1. A licence. There is no LICENSE file and package.json declares no
+          #      `license`. The same decision settles the effective licence of the
+          #      vendored claude-mock copy (vendor/README.md).
+          #   2. The name. `delivery-service` on npmjs.com belongs to someone else,
+          #      so the first publish needs a scope or a different name.
+          # When both are settled: add LICENSE and the `license` field, add the
+          # NPM_TOKEN secret, and uncomment the publish line above.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -71,10 +71,36 @@ type-checked against its role, and a role with no reply fails the test by name. 
 to `AgentPort["invoke"]`: the linter rejects it, because the cast lets a reply of the wrong
 shape compile.
 
+## Describing your change
+
+Every change that a user of the package would notice needs a changeset: a short
+file describing the change in plain sentences, which becomes the changelog entry.
+
+```bash
+npx changeset
+```
+
+Pick `patch`, `minor` or `major`, then write a sentence or two saying what changed
+from a reader's point of view. Commit the file it writes under `.changeset/` with
+your change. On a merge to `main`, the release workflow turns the changesets it
+finds into a version bump and a `CHANGELOG.md` entry.
+
+Publishing is off until a licence is chosen. Three further release checks exist:
+packing the package and installing it into an empty folder, running that
+install's `delivery --version`, and `npm publish --dry-run`. The first two live
+in `tests/packaging.ci.test.ts` and `tests/getting-started-guide-install.ci.test.ts`,
+each gated on the `DELIVERY_PACK_TESTS` environment variable, because installing
+a real tarball resolves the package's runtime dependencies from the registry or
+the npm cache: a bare local `npm test` skips them and stays offline; CI runs
+them, because its `npm test` step sets `DELIVERY_PACK_TESTS=1`. Run one yourself
+with `DELIVERY_PACK_TESTS=1 npx vitest run <file>`. The dry run is a separate
+CI-only step, since `make verify` would otherwise reach the registry.
+
 ## Pull requests
 
 - Branch from `main`
 - Tests must pass (`npm test`)
 - Lint must pass (`npm run lint`)
 - One concern per PR
+- A changeset describes anything a user would notice (`npx changeset`)
 - Code style is enforced by the linter, not by convention
