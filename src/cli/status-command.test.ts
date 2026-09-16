@@ -1,15 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, mkdir } from "node:fs/promises";
+import { readFileSync, statSync } from "node:fs";
+import { mkdtemp, mkdir, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import type { CaseFileOutcome } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
-import { ESCALATION, writeRunRecord } from "./command-fixtures.js";
+import { ESCALATION, delivery, PACKAGE, writeRunRecord } from "./command-fixtures.js";
+import { EXIT } from "./failures.js";
 import { runPlace, runsRoot } from "./run-location.js";
-import { readRun } from "./runs.js";
+import { NOTHING_HERE, readRun } from "./runs.js";
 import { statusReport } from "./status-command.js";
+import { initTempRepo } from "../temp-repo.js";
 
 const AT = "2026-09-14T21:05:09.123Z";
 const RUN_ID = "add-a-hello-function-20260914T210309Z";
@@ -138,5 +141,113 @@ describe("what a run's record says about an aborted run", () => {
       "It stopped 2026-09-14 21:05 UTC.",
     ]);
     expect(lines).toContain(`  The branch surface/${RUN_ID} was kept.`);
+  });
+});
+
+const CLOSED = { kind: "closed", source: "closer", reason: "committed", at: AT } as const;
+
+/** Push a record's write times into the past, so "most recently touched" is settled by the test rather than by how fast the disk was. */
+async function backdate(dir: string): Promise<void> {
+  const longAgo = new Date("2026-09-14T21:04:00.000Z");
+  for (const name of ["case.json", "log.jsonl"]) await utimes(join(dir, name), longAgo, longAgo);
+}
+
+describe("delivery status", () => {
+  it("reports on the run whose id it is given", async () => {
+    const repo = initTempRepo("status-named-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });
+    await writeRunRecord(repo, { runId: "add-a-goodbye-20260914T220000Z", task: "add a goodbye" });
+
+    const { stdout, exitCode } = await delivery(["status", RUN_ID], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(`Run ${RUN_ID}`);
+    expect(stdout).toContain("It finished 2026-09-14 21:05 UTC.");
+    expect(stdout).not.toContain("add a goodbye");
+  });
+
+  it("reports on the run touched most recently, whether it is asked with --last or with nothing at all", async () => {
+    const repo = initTempRepo("status-last-", { "package.json": PACKAGE });
+    await backdate(await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED }));
+    await writeRunRecord(repo, { runId: "add-a-goodbye-20260914T220000Z", task: "add a goodbye" });
+
+    const withFlag = await delivery(["status", "--last"], { cwd: repo });
+    const bare = await delivery(["status"], { cwd: repo });
+
+    expect(withFlag.stdout).toBe(bare.stdout);
+    expect(bare.exitCode).toBe(EXIT.ok);
+    expect(bare.stdout).toContain("Run add-a-goodbye-20260914T220000Z");
+  });
+
+  it("exits ok after reporting an escalated run: reading it is not the run's own outcome", async () => {
+    const repo = initTempRepo("status-escalated-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, {
+      runId: RUN_ID,
+      task: TASK,
+      outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: AT },
+      packet: ESCALATION,
+    });
+
+    const { stdout, exitCode } = await delivery(["status", "--last"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const decision = stdout.indexOf(`This needs your decision: ${ESCALATION.decision}`);
+    expect(decision).toBeGreaterThan(-1);
+    expect(stdout.indexOf(ESCALATION.evidence)).toBeGreaterThan(decision);
+    expect(stdout.indexOf(ESCALATION.dead_ends)).toBeGreaterThan(stdout.indexOf(ESCALATION.evidence));
+    expect(stdout.indexOf(ESCALATION.why_now)).toBeGreaterThan(stdout.indexOf(ESCALATION.dead_ends));
+    expect(stdout.indexOf("Where to look:")).toBeGreaterThan(stdout.indexOf(ESCALATION.why_now));
+  });
+
+  it("leaves the run's record exactly as it found it", async () => {
+    const repo = initTempRepo("status-read-only-", { "package.json": PACKAGE });
+    const dir = await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });
+    const before = ["case.json", "log.jsonl"].map((name) => ({
+      text: readFileSync(join(dir, name), "utf-8"),
+      touched: statSync(join(dir, name)).mtimeMs,
+    }));
+
+    await delivery(["status", "--last"], { cwd: repo });
+
+    expect(
+      ["case.json", "log.jsonl"].map((name) => ({
+        text: readFileSync(join(dir, name), "utf-8"),
+        touched: statSync(join(dir, name)).mtimeMs,
+      })),
+    ).toEqual(before);
+  });
+
+  it("says how to start a run when this repository has never had one, and stops", async () => {
+    const repo = initTempRepo("status-empty-", { "package.json": PACKAGE });
+
+    const { stderr, exitCode } = await delivery(["status"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(NOTHING_HERE);
+    expect(stderr).not.toContain("    at ");
+  });
+
+  it("says how to start a run when the id names nothing, and stops", async () => {
+    const repo = initTempRepo("status-unknown-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });
+
+    const { stderr, exitCode } = await delivery(["status", "never-ran-20260101T000000Z"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("I couldn't find that run's record");
+    expect(stderr).toContain('delivery run --task "..."');
+    expect(stderr).not.toContain("    at ");
+  });
+
+  it("describes itself in the help, and is listed among the commands", async () => {
+    const repo = initTempRepo("status-help-", { "package.json": PACKAGE });
+
+    const top = await delivery(["--help"], { cwd: repo });
+    const own = await delivery(["status", "--help"], { cwd: repo });
+
+    expect(top.stdout).toContain("status [options] [run-id]");
+    expect(own.stdout).toContain("Usage: delivery status");
+    expect(own.stdout).toContain("--last");
+    expect(own.stdout).toContain("--repo");
   });
 });

@@ -1,11 +1,14 @@
 import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { branchName } from "../provision.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
+import { EXIT, Refusal, type ExitCode } from "./failures.js";
+import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
 import { nextStep, paint } from "./output.js";
 import { runPlace } from "./run-location.js";
-import { readableUtc, startedAt, type RunRecord } from "./runs.js";
+import { allRuns, NOTHING_HERE, readableUtc, readRun, startedAt, type RunRecord } from "./runs.js";
 import { taskIntent } from "./settings.js";
 
 /**
@@ -88,4 +91,36 @@ export async function statusReport(record: RunRecord, ctx: CommandContext): Prom
     ...(outcome.kind === "aborted" ? summary.details : []),
     ...whereToLook(record, ctx),
   ];
+}
+
+/**
+ * What `delivery status` was given on the command line besides the run id.
+ * `--last` is accepted and documented as the explicit form of the default, so
+ * it is not a field here: with no id at all this command already reports the
+ * run touched most recently, and a field nothing reads would invite someone to
+ * wire up a second meaning it does not have.
+ */
+export interface StatusOptions {
+  repo?: string;
+}
+
+/** The run this command means when no id was given: the one whose record was written most recently, finished or not. */
+async function mostRecent(repoPath: string): Promise<RunRecord> {
+  const [latest] = await allRuns(repoPath);
+  if (latest === undefined) throw new Refusal(NOTHING_HERE, EXIT.configuration);
+  return latest;
+}
+
+/**
+ * `delivery status`: read one run's record and say what happened to it, for
+ * whoever was not watching when it ended. It only ever reads, so it is safe to
+ * run against a run that is still going, and a run that needed a person is
+ * still a successful read: the exit code says whether the report could be
+ * made, never what the run itself decided.
+ */
+export async function statusCommand(runId: string | undefined, options: StatusOptions, ctx: CommandContext): Promise<ExitCode> {
+  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+  const record = runId === undefined ? await mostRecent(repoPath) : await readRun(repoPath, runId);
+  for (const line of await statusReport(record, ctx)) ctx.writeLine(line);
+  return EXIT.ok;
 }

@@ -5,6 +5,7 @@ import { EXIT, renderFailure } from "./failures.js";
 import { useColour } from "./output.js";
 import { resumeCommand, type ResumeOptions } from "./resume-command.js";
 import { runCommand, type RunOptions } from "./run-command.js";
+import { statusCommand, type StatusOptions } from "./status-command.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
 export interface CliIo {
@@ -70,6 +71,23 @@ export async function runCli(io: CliIo): Promise<number> {
     .action(async (runId: string | undefined, options: ResumeOptions, command: Command) => {
       const { color } = command.optsWithGlobals<{ color: boolean }>();
       exitCode = await resumeCommand(runId, options, {
+        cwd: io.cwd,
+        env: io.env,
+        colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
+        stdin: io.stdin,
+        writeLine: (line) => io.stdout.write(`${line}\n`),
+      });
+    });
+
+  program
+    .command("status")
+    .description("say what happened to a run: how it finished, or what decision it needs from you, without changing anything")
+    .argument("[run-id]", "the run to read (default: the one touched most recently)")
+    .option("--last", "read the run touched most recently, which is also what no run id means")
+    .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
+    .action(async (runId: string | undefined, options: StatusOptions, command: Command) => {
+      const { color } = command.optsWithGlobals<{ color: boolean }>();
+      exitCode = await statusCommand(runId, options, {
         cwd: io.cwd,
         env: io.env,
         colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
