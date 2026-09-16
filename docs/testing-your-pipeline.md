@@ -10,19 +10,20 @@ does: that your gate judges the change, your closer lands it, and a bad reply is
 retried or escalated as your budgets say. It proves nothing about how well a
 real agent would do the work.
 
-Everything below is imported from the harness's two entry points, from the
-repository root: `./src/index.js`, and `./src/testing.js` for the testing API
-(the harness is not published as a package yet). Run the snippets with
-`npx tsx`.
+Everything below is imported from the harness's two entry points:
+`delivery-service`, and `delivery-service/testing` for the testing API. Run the
+snippets with `npx tsx`.
 
 ## What you need
 
 - Node.js 22 or later, and `git`.
-- A clone of the harness with `npm install` run in it. The scripted agent,
-  `claude-mock`, is vendored in `vendor/claude-mock` and installed with
-  everything else.
+- The harness installed in your project with `npm install`, as
+  [Getting started](getting-started.md) describes. The scripted agent,
+  `claude-mock`, is vendored in the harness checkout and installed with
+  everything else there, so the sections that use it need that checkout:
+  `fakeAgentPort` works from an installed copy alone.
 
-Nothing else: no global setup, nothing to link or put on your `PATH`, no
+Nothing else: no global setup, no project-local setup beyond the install above, no
 network and no API key. Every session the testing API starts runs the scripted
 agent and is given no credentials, even when your shell has some.
 
@@ -46,7 +47,7 @@ reaches:
 
 ```ts
 // fake-agent.ts
-import { fakeAgentPort } from "./src/testing.js";
+import { fakeAgentPort } from "delivery-service/testing";
 
 const agent = fakeAgentPort({
   worker: async () => ({ status: "completed", rationale: "made the change" }),
@@ -77,8 +78,8 @@ import { join } from "node:path";
 import {
   deterministicRouter, gateMaintenanceRoleConfig, triageRoleConfig, workerRoleConfig,
   type BudgetSet, type CloserRef, type GateRef,
-} from "./src/index.js";
-import { assertFullyConsumed, expectEnvelope, promptsSent, runSurfaceAgainstMock, type MockScript } from "./src/testing.js";
+} from "delivery-service";
+import { assertFullyConsumed, expectEnvelope, promptsSent, runSurfaceAgainstMock, type MockScript } from "delivery-service/testing";
 
 // Your pipeline: put your own gate, closer, role configurations and budgets here.
 const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode: "tap" };
@@ -269,8 +270,8 @@ import { join } from "node:path";
 import {
   deterministicRouter, gateMaintenanceRoleConfig, load, triageRoleConfig, workerRoleConfig,
   type BudgetSet, type CloserRef, type GateRef,
-} from "./src/index.js";
-import { assertFullyConsumed, expectEnvelope, promptsSent, runSurfaceAgainstMock, type MockScript } from "./src/testing.js";
+} from "delivery-service";
+import { assertFullyConsumed, expectEnvelope, promptsSent, runSurfaceAgainstMock, type MockScript } from "delivery-service/testing";
 
 const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode: "tap" };
 const closerRef: CloserRef = { type: "merge-back" };

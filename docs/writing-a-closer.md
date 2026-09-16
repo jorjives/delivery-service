@@ -24,8 +24,9 @@ What the harness does with the report:
 A failed close is never sent back to the worker: the work is already accepted.
 
 Everything below is imported from the harness's single entry point,
-`./src/index.js` from the repository root (the harness is not published as a
-package yet). Run the snippets with `npx tsx`.
+`delivery-service`. Install it in your project as
+[Getting started](getting-started.md) describes, then run the snippets with
+`npx tsx`.
 
 ## Choosing a closer
 
@@ -65,7 +66,7 @@ Whoever runs the surface turns the pinned reference into a closer and passes it
 in the surface's ports:
 
 ```ts
-import { load, resolveCloser } from "./src/index.js";
+import { load, resolveCloser } from "delivery-service";
 
 const { header } = await load(dir);
 if (!header.closerRef) throw new Error(`no closer pinned for ${dir}`);
@@ -96,7 +97,7 @@ load stops it with the path named.
 A closer is any object with one method:
 
 ```ts
-import type { CloseContext, CloseOutcome, CloseReport } from "./src/index.js";
+import type { CloseContext, CloseOutcome, CloseReport } from "delivery-service";
 
 interface Closer {
   close(ctx: CloseContext, outcome: CloseOutcome): Promise<CloseReport>;
@@ -312,7 +313,7 @@ several closers.
 To try it on a real surface's worktree without running a whole surface:
 
 ```ts
-import { branchName, provisionWorktree, resolveCloser } from "./src/index.js";
+import { branchName, provisionWorktree, resolveCloser } from "delivery-service";
 
 const repoPath = "/home/me/project";
 const dir = "/tmp/closer-try/case";

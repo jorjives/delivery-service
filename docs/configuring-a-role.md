@@ -25,8 +25,9 @@ A mistake in any field throws `InvalidRoleConfig`, naming the field, before an
 agent is started. It is never reported as a failed run.
 
 Everything below is imported from the harness's single entry point,
-`./src/index.js` from the repository root (the harness is not published as a
-package yet). Run the snippets with `npx tsx`.
+`delivery-service`. Install it in your project as
+[Getting started](getting-started.md) describes, then run the snippets with
+`npx tsx`.
 
 ## The two reference configurations
 
@@ -36,7 +37,7 @@ narrow the tools if you want.
 **Worker**: makes the change the task asks for, inside the working tree.
 
 ```ts
-import { WorkerEnvelope, type RoleConfig } from "./src/index.js";
+import { WorkerEnvelope, type RoleConfig } from "delivery-service";
 
 export const myWorker: RoleConfig = {
   role: "worker",
@@ -54,7 +55,7 @@ export const myWorker: RoleConfig = {
 and never touches the checks themselves.
 
 ```ts
-import { WorkerEnvelope, type RoleConfig } from "./src/index.js";
+import { WorkerEnvelope, type RoleConfig } from "delivery-service";
 
 export const myGateMaintenance: RoleConfig = {
   role: "gate-maintenance",
@@ -83,7 +84,7 @@ from the case file and runs the agent inside the worktree.
 
 ```ts
 import { mkdirSync } from "node:fs";
-import { create, invoke, gateMaintenanceRoleConfig } from "./src/index.js";
+import { create, invoke, gateMaintenanceRoleConfig } from "delivery-service";
 
 const dir = "/tmp/my-run/case";          // the case file directory
 const worktreePath = "/tmp/my-run/tree"; // the agent's working tree
@@ -161,7 +162,7 @@ up. `mockSessionEnvironment` points a session at it, with the script it replays 
 the journal it writes; pass that as the third argument to `invoke`:
 
 ```ts
-import { mockSessionEnvironment } from "./src/testing.js";
+import { mockSessionEnvironment } from "delivery-service/testing";
 
 const ctx = { worktreePath, dir, sessionKey: "gate-maintenance-1-0" };
 const result = await invoke(
@@ -208,7 +209,7 @@ same kind of role as the other two: one configuration, the same `invoke`.
 ### The reference configuration
 
 ```ts
-import { TriageEnvelope, READ_ONLY_TOOLS, type RoleConfig } from "./src/index.js";
+import { TriageEnvelope, READ_ONLY_TOOLS, type RoleConfig } from "delivery-service";
 
 export const myTriage: RoleConfig<TriageEnvelope> = {
   role: "triage",
@@ -286,8 +287,8 @@ it with `npx tsx first-triage.ts`:
 
 ```ts
 import { mkdirSync } from "node:fs";
-import { create, invoke, triageRoleConfig } from "./src/index.js";
-import { mockSessionEnvironment } from "./src/testing.js";
+import { create, invoke, triageRoleConfig } from "delivery-service";
+import { mockSessionEnvironment } from "delivery-service/testing";
 
 const dir = "/tmp/my-triage/case";
 const worktreePath = "/tmp/my-triage/tree";
@@ -336,7 +337,7 @@ A run takes one agent port for every role, and a triage port built from it:
 import {
   createAgentPort, createAgentTriage, noopCloser, run,
   workerRoleConfig, gateMaintenanceRoleConfig, triageRoleConfig,
-} from "./src/index.js";
+} from "delivery-service";
 
 const agent = createAgentPort({
   worker: workerRoleConfig,

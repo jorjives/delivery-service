@@ -3,7 +3,7 @@
 // the guide's own worked tests the way the guide tells a reader to, so they
 // cannot drift from the API they teach.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -22,12 +22,20 @@ const env = Object.fromEntries(Object.entries(cleanGitEnv()).filter(([name]) => 
 
 const snippet = (name: string) => snippetFrom(guide, name);
 
-// A reader saves each snippet at the repository root, so it imports "./src/...".
-// Staged outside the checkout instead, those imports point back at it. The package.json
-// makes the scratch files ES modules, as the repository's own package.json does for a
-// reader's; the tsconfig type-checks them with the repository's own compiler options.
+// A reader installs the package and imports it by name, so the snippets are staged
+// in a scratch folder where `delivery-service` resolves to this checkout through its
+// own `exports` map: the same two entry points an installed copy offers, `dist/` and
+// all. The package.json makes the scratch files ES modules, as a reader's would; the
+// tsconfig type-checks them with the repository's own compiler options.
 const scratch = mkdtempSync(join(tmpdir(), "pipeline-guide-"));
 writeFileSync(join(scratch, "package.json"), JSON.stringify({ type: "module" }));
+mkdirSync(join(scratch, "node_modules"));
+// A link, not a copy: `exports` is what is being exercised. The existing afterAll's
+// rmSync unlinks it rather than following it into the checkout, so leave that as it is.
+symlinkSync(REPO_ROOT, join(scratch, "node_modules", "delivery-service"), "dir");
+if (!existsSync(join(REPO_ROOT, "dist", "index.d.ts"))) {
+  throw new Error("dist is missing or has no types: run `npm run build` (npm test does this for you)");
+}
 writeFileSync(
   join(scratch, "tsconfig.json"),
   JSON.stringify({
@@ -40,9 +48,11 @@ afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 function stage(name: string): string {
   const source = snippet(name);
-  if (!source.includes('from "./src/')) throw new Error(`${name} does not import the harness from "./src/"`);
+  if (!source.includes('from "delivery-service')) {
+    throw new Error(`${name} does not import the harness from "delivery-service"`);
+  }
   const path = join(scratch, name);
-  writeFileSync(path, source.replaceAll('from "./src/', `from "${REPO_ROOT}/src/`));
+  writeFileSync(path, source); // staged verbatim: the scratch folder resolves the package by name
   return path;
 }
 

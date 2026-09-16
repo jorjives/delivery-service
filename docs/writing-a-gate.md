@@ -21,15 +21,16 @@ reached" below). Your gate never decides pass or fail for the change; it only
 reports what it measured.
 
 Everything below is imported from the harness's single entry point,
-`./src/index.js` from the repository root (the harness is not published as a
-package yet). Run the snippets with `npx tsx`.
+`delivery-service`. Install it in your project as
+[Getting started](getting-started.md) describes, then run the snippets with
+`npx tsx`.
 
 ## The contract
 
 A gate is any object with two methods:
 
 ```ts
-import type { GateContext, GateReport } from "./src/index.js";
+import type { GateContext, GateReport } from "delivery-service";
 
 interface Gate {
   baseline(ctx: GateContext): Promise<GateReport>;
@@ -159,7 +160,7 @@ make a failure disappear rather than fix it. An absolute path works too.
 To load and call it yourself:
 
 ```ts
-import { loadCustomGate } from "./src/index.js";
+import { loadCustomGate } from "delivery-service";
 
 // The first argument is the repository root a relative `modulePath` resolves
 // against. It is required, so a gate can never be loaded from whichever
@@ -240,7 +241,7 @@ because a gate that could not run says nothing about the agent's work.
 To compute a verdict yourself, or to watch the rule applied end to end:
 
 ```ts
-import { computeDelta } from "./src/index.js";
+import { computeDelta } from "delivery-service";
 
 const delta = computeDelta(baselineReport, checkReport, { failOnNewAssertions: false });
 // { pass, newFailures: [{ id, baselineOutcome, checkOutcome, detail }], class: "fail" | "error" | null }

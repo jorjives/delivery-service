@@ -68,7 +68,7 @@ describe("UAT: configure a second role using the same seam, nothing rebuilt", ()
     expect(guide).toContain('role: "gate-maintenance"');
     expect(guide).toContain("workerRoleConfig");
     expect(guide).toContain("gateMaintenanceRoleConfig");
-    expect(guide).toContain('import { WorkerEnvelope, type RoleConfig } from "./src/index.js"');
+    expect(guide).toContain('import { WorkerEnvelope, type RoleConfig } from "delivery-service"');
 
     // A runnable first invocation, not just a description.
     expect(guide).toContain("await invoke(");
