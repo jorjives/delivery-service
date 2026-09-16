@@ -24,8 +24,8 @@ function checkOf(caseFile: CaseFile): string {
   return gateRef.type === "command" ? `\`${gateRef.command}\`` : "the check";
 }
 
-/** The packet the escalation recorded, or undefined when the run has none to show. */
-async function packetOf(dir: string, packetRef: string | undefined): Promise<EscalationPacket | undefined> {
+/** The packet the escalation recorded, or undefined when the run has none to show. Shared with `status`, which prints all of it. */
+export async function packetOf(dir: string, packetRef: string | undefined): Promise<EscalationPacket | undefined> {
   if (packetRef === undefined) return undefined;
   const parsed = EscalationPacket.safeParse(await readRef(dir, packetRef));
   return parsed.success ? parsed.data : undefined;

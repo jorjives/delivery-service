@@ -1,17 +1,18 @@
 import { mkdtempSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { DEFAULT_BUDGETS } from "../budgets.js";
-import { create } from "../case-file.js";
+import { create, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
 import { writeMockScript, type MockScript } from "../mock-script.js";
 import { resolveCloser } from "../resolve-closer.js";
 import { deterministicRouter } from "../router.js";
 import { advance } from "../surface.js";
 import { fakeAgentPort } from "../agent-port-double.js";
 import type { AgentContext, Terminus } from "../ports.js";
-import type { GateRef } from "../schema.js";
+import type { CaseFileOutcome, GateRef } from "../schema.js";
+import type { EscalationPacket } from "../triage-role-config.js";
 import { runCli } from "./program.js";
 import { prepareRunDir, runIdFor, runPlace, runsRoot } from "./run-location.js";
 import { DEFAULT_CLOSER } from "./settings.js";
@@ -103,4 +104,34 @@ export async function interruptedRun(
     await advance(dir, location, ports).catch(() => undefined);
   }
   return runId;
+}
+
+/** Test support: the packet a stopped run leaves for whoever picks it up, in the shape `src/escalation-packet.ts` builds. */
+export const ESCALATION: EscalationPacket = {
+  decision:
+    "The worker stopped because it judged it lacked authority. Decide whether to grant that authority or take the action yourself.",
+  evidence: "the task asks me to delete files I was not given",
+  dead_ends: "1. The first attempt rewrote the caller instead of the function.",
+  why_now: "The worker reported that it lacks the authority to go on; an authority limit goes straight to a person.",
+  references: ["worker-1-0", "triage-1-0"],
+};
+
+/**
+ * Test support: one run's record on disk, exactly as the run loop leaves it,
+ * without paying for a whole run. No `outcome` leaves it unfinished, which is
+ * what an interruption leaves behind.
+ */
+export async function writeRunRecord(
+  repoPath: string,
+  { runId, task = TASK, outcome, packet }: { runId: string; task?: string; outcome?: CaseFileOutcome; packet?: EscalationPacket },
+): Promise<string> {
+  const dir = join(runsRoot(repoPath), runId);
+  await mkdir(dir, { recursive: true });
+  await create(dir, { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER }, DEFAULT_BUDGETS);
+  await setBaseBranch(dir, "main");
+  if (outcome) {
+    const packetRef = packet === undefined ? undefined : await writeRef(dir, "escalation", packet);
+    await setOutcome(dir, { ...outcome, ...(packetRef === undefined ? {} : { packetRef }) });
+  }
+  return dir;
 }

@@ -85,9 +85,14 @@ export const RESUME_PHRASES: Record<ResumeAction, string> = {
   done: "finishing off",
 };
 
-/** What this run will do first now it has been picked up, read from its log rather than its cursor, which a kill can leave behind. */
+/** What a run will do first when it is picked up, read from its log rather than its cursor, which a kill can leave behind. */
+export function nextStep(caseFile: CaseFile): string {
+  return RESUME_PHRASES[resumeAction(logTail(caseFile))];
+}
+
+/** What this run will do first now it has been picked up. */
 export function pickingUp(caseFile: CaseFile): string {
-  return `Picking up where it left off: ${RESUME_PHRASES[resumeAction(logTail(caseFile))]}.`;
+  return `Picking up where it left off: ${nextStep(caseFile)}.`;
 }
 
 /**
