@@ -17,8 +17,8 @@ A tiny project to try the harness on: one function, one test, and a `test` scrip
 
 2. Make sure Claude Code is signed in (`claude auth status`), or set `ANTHROPIC_API_KEY`.
 
-3. If `delivery` is not on your `PATH` yet, run `npm run build && npm link` in the harness
-   checkout.
+3. If `delivery` is not on your `PATH` yet, install it as
+   [Getting started](../../docs/getting-started.md) describes.
 
 4. Run:
 

@@ -4,6 +4,11 @@ A deterministically gated agent delivery harness.
 
 ## Quick start
 
+New here? [Getting started](docs/getting-started.md) takes you from installing the command to a
+finished run against the sample project.
+
+Working on the harness itself:
+
 ```bash
 npm install
 npm test
@@ -23,8 +28,9 @@ without touching your base branch. It prints a line for each step and ends by na
 decision from you, by saying what that decision is.
 
 You need Node 22 or later, git, and a signed-in Claude Code (`claude auth login`, or set
-`ANTHROPIC_API_KEY`). The command checks the sign-in before it starts. Until the package is
-published, build and link the command from this checkout with `npm run build && npm link`.
+`ANTHROPIC_API_KEY`). The command checks the sign-in before it starts. To install the command,
+follow [Getting started](docs/getting-started.md): it packs this checkout and installs the
+result, because the package is not on the public registry until a licence is chosen.
 
 Each run keeps its record in `.delivery/runs/` in your repository (the folder ignores itself,
 so `git status` does not change) and its working copy under
@@ -129,6 +135,7 @@ or a custom module it can't load all stop the command before it starts, naming w
 
 ## Documentation
 
+- [Getting started](docs/getting-started.md): install the command and finish your first run
 - [Design docs](docs/)
 - [Configuring a role](docs/configuring-a-role.md): set up a worker or gate-maintenance agent
 - [Writing a gate](docs/writing-a-gate.md): configure the command gate or write your own
