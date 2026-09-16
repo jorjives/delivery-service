@@ -16,44 +16,25 @@
 // keep for `make verify`, a recorded UAT is expected to touch the real registry.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
-import { cleanGitEnv } from "../../src/git-env.js";
+import { describe, expect, it } from "vitest";
 import { writeMockScript, type MockScript } from "../../src/testing.js";
 import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { EXIT } from "../../src/cli/failures.js";
-import { REPO_ROOT, runDelivery } from "../helpers.js";
+import { git, packTarball, REPO_ROOT, runDelivery, useScratch } from "../helpers.js";
 
 const INSTALL_TIMEOUT = 120_000;
 const RUN_TIMEOUT = 60_000;
 
-const scratches: string[] = [];
-const scratch = (prefix: string): string => {
-  const path = mkdtempSync(join(tmpdir(), prefix));
-  scratches.push(path);
-  return path;
-};
-afterAll(() => {
-  for (const path of scratches) rmSync(path, { recursive: true, force: true });
-});
-
-const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
+const scratch = useScratch();
 
 describe("UAT: install the harness from a packed copy and follow the guide to a finished run", () => {
   it(
     "prints the version from an installed copy, finishes the guide's task, and the changelog names the release",
     async () => {
       // Step 1: pack the harness, in a new empty folder, and install it as the guide says.
-      const packDestination = scratch("uat5-pack-");
-      const [{ filename }] = JSON.parse(
-        execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", packDestination], {
-          cwd: REPO_ROOT,
-          encoding: "utf-8",
-        }),
-      ) as [{ filename: string }];
-      const tarball = join(packDestination, filename);
+      const tarball = packTarball(scratch("uat5-pack-"));
 
       const installPrefix = scratch("uat5-install-");
       execFileSync(
@@ -131,14 +112,7 @@ describe("AC: the package ships only its built output, readme and changelog, and
 
 describe("AC: running the installed command via npx, without installing, also works", () => {
   it("prints the version through npx --package against the packed tarball", () => {
-    const packDestination = scratch("uat5-npx-pack-");
-    const [{ filename }] = JSON.parse(
-      execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", packDestination], {
-        cwd: REPO_ROOT,
-        encoding: "utf-8",
-      }),
-    ) as [{ filename: string }];
-    const tarball = join(packDestination, filename);
+    const tarball = packTarball(scratch("uat5-npx-pack-"));
     const { version } = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf-8")) as { version: string };
 
     const printed = execFileSync("npx", ["--yes", "--package", tarball, "delivery", "--version"], {

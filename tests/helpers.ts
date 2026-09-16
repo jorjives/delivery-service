@@ -1,9 +1,40 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { afterAll } from "vitest";
 import { cleanGitEnv } from "../src/git-env.js";
 
 export const REPO_ROOT = join(import.meta.dirname, "..");
+
+/** A fresh temp dir per call; every dir this file made is removed after its tests finish. */
+export function useScratch(): (prefix: string) => string {
+  const scratches: string[] = [];
+  afterAll(() => {
+    for (const path of scratches) rmSync(path, { recursive: true, force: true });
+  });
+  return (prefix: string) => {
+    const path = mkdtempSync(join(tmpdir(), prefix));
+    scratches.push(path);
+    return path;
+  };
+}
+
+/** Run a git command against a working copy, with a clean, deterministic git env. */
+export function git(cwd: string, args: string[]): string {
+  return execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
+}
+
+/** `npm pack` the checkout into `destination` (as `npm publish` would) and return the tarball's path. */
+export function packTarball(destination: string): string {
+  const [{ filename }] = JSON.parse(
+    execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", destination], {
+      cwd: REPO_ROOT,
+      encoding: "utf-8",
+    }),
+  ) as [{ filename: string }];
+  return join(destination, filename);
+}
 
 /** Paths (tracked by git) matching an extended-regex pattern, scoped to the given pathspecs. */
 export function gitGrepFiles(pattern: string, scope: string[]): string[] {

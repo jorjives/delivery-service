@@ -8,11 +8,10 @@
 // dependencies, so this stays out of a plain local `npm test`/`make verify`.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { REPO_ROOT, sectionOf } from "./helpers.js";
+import { beforeAll, describe, expect, it } from "vitest";
+import { packTarball, REPO_ROOT, sectionOf, useScratch } from "./helpers.js";
 
 // Reading the guide, not just the tarball, ties this file to Task 3: it fails with
 // ENOENT until docs/getting-started.md exists, the same way the offline guide test does.
@@ -21,25 +20,10 @@ const { version } = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "ut
 const INSTALL_TIMEOUT = 300_000;
 let tarball: string;
 
-const scratches: string[] = [];
-const scratch = (prefix: string): string => {
-  const path = mkdtempSync(join(tmpdir(), prefix));
-  scratches.push(path);
-  return path;
-};
-afterAll(() => {
-  for (const path of scratches) rmSync(path, { recursive: true, force: true });
-});
+const scratch = useScratch();
 
 beforeAll(() => {
-  const destination = scratch("gs-pack-");
-  const [report] = JSON.parse(
-    execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", destination], {
-      cwd: REPO_ROOT,
-      encoding: "utf-8",
-    }),
-  ) as [{ filename: string }];
-  tarball = join(destination, report.filename);
+  tarball = packTarball(scratch("gs-pack-"));
 }, INSTALL_TIMEOUT);
 
 describe.skipIf(!process.env.DELIVERY_PACK_TESTS)("packing and installing the guide's way", () => {

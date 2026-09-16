@@ -12,38 +12,21 @@
 // other test files are running the compiled command at the same time.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { REPO_ROOT } from "./helpers.js";
+import { beforeAll, describe, expect, it } from "vitest";
+import { packTarball, REPO_ROOT, useScratch } from "./helpers.js";
 
 const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf-8")) as { version: string };
 
 const INSTALL_TIMEOUT = 300_000;
 let tarball: string;
 
-// Scratch folders hold a tarball and a whole node_modules tree apiece: cleared, as
-// tests/testing-your-pipeline-guide.test.ts clears its own.
-const scratches: string[] = [];
-const scratch = (prefix: string): string => {
-  const path = mkdtempSync(join(tmpdir(), prefix));
-  scratches.push(path);
-  return path;
-};
-afterAll(() => {
-  for (const path of scratches) rmSync(path, { recursive: true, force: true });
-});
+// Scratch folders hold a tarball and a whole node_modules tree apiece.
+const scratch = useScratch();
 
 beforeAll(() => {
-  const destination = scratch("delivery-pack-");
-  const [report] = JSON.parse(
-    execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", destination], {
-      cwd: REPO_ROOT,
-      encoding: "utf-8",
-    }),
-  ) as [{ filename: string }];
-  tarball = join(destination, report.filename);
+  tarball = packTarball(scratch("delivery-pack-"));
 }, INSTALL_TIMEOUT);
 
 describe.skipIf(!process.env.DELIVERY_PACK_TESTS)("the packed tarball", () => {

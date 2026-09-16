@@ -10,30 +10,19 @@
 // dev dependency and so is absent from an installed copy (design, Testing). The
 // file they run is the same `dist/cli/main.js` an install would contain.
 
-import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { cleanGitEnv } from "../src/git-env.js";
+import { beforeAll, describe, expect, it } from "vitest";
 import { writeMockScript, type MockScript } from "../src/testing.js";
 import { TEST_MOCK_SCRIPT } from "../src/cli/agent-session.js";
 import { EXIT } from "../src/cli/failures.js";
-import { REPO_ROOT, runDelivery, sectionOf } from "./helpers.js";
+import { git, REPO_ROOT, runDelivery, sectionOf, useScratch } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/getting-started.md"), "utf-8");
 const RUN_TIMEOUT = 120_000;
 
-// A whole sample project: cleared, as tests/testing-your-pipeline-guide.test.ts clears its own.
-const scratches: string[] = [];
-const scratch = (prefix: string): string => {
-  const path = mkdtempSync(join(tmpdir(), prefix));
-  scratches.push(path);
-  return path;
-};
-afterAll(() => {
-  for (const path of scratches) rmSync(path, { recursive: true, force: true });
-});
+// A whole sample project.
+const scratch = useScratch();
 
 /** A ```text block: what the guide says you will see. */
 function outputBlock(section: string): string[] {
@@ -54,9 +43,6 @@ function taskInGuide(): string {
   if (!match?.[1]) throw new Error("the guide has no `delivery run --task \"...\"` command");
   return match[1];
 }
-
-const git = (cwd: string, args: string[]) =>
-  execFileSync("git", args, { cwd, encoding: "utf-8", env: cleanGitEnv() }).trim();
 
 /** A scripted agent that writes the greeting the guide's task asks for, so the sample project's `npm test` passes. */
 const completes: MockScript = {
