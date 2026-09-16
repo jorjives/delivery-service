@@ -45,6 +45,29 @@ so `git status` does not change) and its working copy under
 | 4 | The run stopped because it needs a decision from you |
 | 5 | The run stopped before it could finish |
 
+For a script or a CI step, add `--json`:
+
+```bash
+delivery run --json --task "add a function that says hello to a name, with a test"
+```
+
+Instead of the plain-language lines, each step prints as one JSON object on its own line, with
+the harness's own state name, whether the run is over, anything the step had to put right, and
+when it happened:
+
+```text
+{"state":"PROVISIONING","done":false,"at":"2026-09-16T12:00:00.000Z"}
+{"state":"AGENT_ACTIVE","done":false,"at":"2026-09-16T12:00:11.284Z"}
+{"state":"CLOSED","done":true,"at":"2026-09-16T12:01:39.002Z"}
+```
+
+The exit codes are the same ones in the table above, so a script reads the outcome from the exit
+code and the detail from `delivery status --json`. Everything that is not a step, such as which
+run started, any warning and the closing sentence, goes to standard error, so standard output is
+only ever JSON.
+`--json` works on `delivery resume` and `delivery status` too. Without it the output is
+plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
+
 `delivery --help` and `delivery run --help` list the options; `--no-color`, or setting
 `NO_COLOR`, turns colour off.
 
