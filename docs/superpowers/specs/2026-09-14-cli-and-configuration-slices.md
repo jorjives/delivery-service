@@ -226,6 +226,8 @@ public rehearsal mode) is not sliced.
 
 ## Slice 6: Script Against Runs With Machine-Readable Output
 
+**Status:** ✅ Complete — 2026-09-16 — `67a47d8`
+
 **Delivers:** An engineer can list every run in a repository and get run progress and status as JSON, so scripts and CI steps can act on outcomes without parsing prose.
 
 ### Prerequisites
