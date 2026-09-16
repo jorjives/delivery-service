@@ -35,3 +35,7 @@ A tiny project to try the harness on: one function, one test, and a `test` scrip
 7. To check on a run later, in a new terminal, run `delivery status` in the same folder. It
    prints what happened without changing anything: if the run needs a decision from you, that
    comes first, with the evidence behind it underneath.
+
+8. After a few runs, `delivery status --all` lists all of them, newest first, with what each one
+   was asked to do and whether it finished. Add `--json` to any of these commands to get the
+   same information as data for a script.

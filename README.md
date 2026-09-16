@@ -131,6 +131,28 @@ always present: a `null` means "not that kind of run", so
 a script never has to check whether a key is there. A run that could not be found is still a
 plain-language message on standard error and exit 2, not JSON.
 
+### See every run
+
+To see the whole history of runs in a repository:
+
+```bash
+delivery status --all
+```
+
+```text
+3 runs in this repository, newest first:
+  add-a-goodbye-20260916T113000Z, started 2026-09-16 11:30 UTC: add a goodbye (hasn't finished yet)
+  delete-the-greeting-20260915T090000Z, started 2026-09-15 09:00 UTC: delete the greeting (needs a decision from you)
+  add-a-hello-20260914T210309Z, started 2026-09-14 21:03 UTC: add a hello (finished)
+To read one in full: delivery status <run-id>
+```
+
+`--all --json` gives the same list as an array, each entry with the run id, the task, the
+instant it started and how it ended, so a script can filter it. The list is ordered by when
+each run started, so it is a history; `delivery status` with no run id reports the run you were
+last working on, which is not always the newest one. A repository with no runs yet lists nothing
+and exits 0.
+
 ## Configure it once
 
 Settings that belong to a project live in a `delivery.config.json` beside your code. The
