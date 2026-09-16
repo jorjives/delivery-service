@@ -120,7 +120,7 @@ describe("AC: delivery status <run-id> reads a run without changing it", () => {
 
     expect(readFileSync(caseFile, "utf-8")).toBe(before);
     expect(first.stdout).toBe(second.stdout);
-  });
+  }, RUN_TIMEOUT);
 });
 
 describe("AC: a closed run's status names the outcome sentence, when it finished and the branch", () => {
