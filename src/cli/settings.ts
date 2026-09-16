@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { CloserRef } from "../schema.js";
-import type { BudgetSet, GateRef, TaskDef } from "../schema.js";
+import type { BudgetSet, CaseFileHeader, GateRef, TaskDef } from "../schema.js";
 import { loadCustomCloser } from "../custom-closer.js";
 import { loadCustomGate } from "../custom-gate.js";
 import { unknownCloser, type DeliveryConfig } from "./config.js";
@@ -95,6 +95,33 @@ function closerFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryCon
   const parsed = CloserRef.safeParse({ type: named });
   if (!parsed.success) throw new Refusal(unknownCloser(named), EXIT.configuration);
   return parsed.data;
+}
+
+/**
+ * The settings this invocation asked for that a run already under way cannot
+ * take: its check and closing action were pinned when it started, so changing
+ * them mid-flight would make its own record a lie. Naming the flag or the
+ * variable the value came from is what tells the user which one to drop.
+ */
+export function ignoredSettings(flags: RunFlags, env: NodeJS.ProcessEnv, header: CaseFileHeader): string[] {
+  const ignored: string[] = [];
+  const command = flags.gateCommand ?? fromEnv(env.DELIVERY_GATE_COMMAND);
+  if (command !== undefined && !(header.gateRef.type === "command" && header.gateRef.command === command)) {
+    ignored.push(flags.gateCommand !== undefined ? "--gate-command" : "DELIVERY_GATE_COMMAND");
+  }
+  const closer = flags.closer ?? fromEnv(env.DELIVERY_CLOSER);
+  if (closer !== undefined && closer !== (header.closerRef ?? DEFAULT_CLOSER).type) {
+    ignored.push(flags.closer !== undefined ? "--closer" : "DELIVERY_CLOSER");
+  }
+  // A config file only ever reaches a run that is starting, so naming it is the
+  // only way someone who pointed at one learns that it changed nothing.
+  if (flags.config !== undefined) ignored.push("--config");
+  return ignored;
+}
+
+/** One note for everything this invocation asked for that the run it picked up will not do. */
+export function ignoredNote(names: string[]): string {
+  return `Note: a run keeps the settings it started with, so ${names.join(" and ")} ${names.length === 1 ? "was" : "were"} ignored.`;
 }
 
 /** The default caps with whichever ones the project set laid over them. Nothing is used yet: usage is counted from the run's log. */

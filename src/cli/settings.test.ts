@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { CaseFileHeader } from "../schema.js";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { unknownCloser, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal, renderFailure } from "./failures.js";
 import { NO_CHECK } from "./project.js";
-import { BOTH_TASKS, checkCustomModules, NO_TASK, NO_TASK_FILE, resolveSettings, taskIntent, type RunFlags } from "./settings.js";
+import { BOTH_TASKS, checkCustomModules, ignoredNote, ignoredSettings, NO_TASK, NO_TASK_FILE, resolveSettings, taskIntent, type RunFlags } from "./settings.js";
 
 const TASK = "add a function that says goodbye to a name, with a test";
 const NPM_TEST = { type: "command", command: "npm test", parseMode: "exitcode" } as const;
@@ -259,5 +260,44 @@ describe("checking a custom gate or closer before the run starts", () => {
     const failure = await failureFor(checkCustomModules(NPM_TEST, { type: "custom", modulePath: "./empty.mjs" }, repoPath));
     expect(failure.message).toContain('missing "close" method');
     expect(failure.exitCode).toBe(EXIT.configuration);
+  });
+});
+
+describe("what a resumed run cannot take from this invocation", () => {
+  const PINNED: CaseFileHeader = {
+    surfaceId: "reverse-a-word-20260915T213012Z",
+    taskDef: { intent: "reverse a word" },
+    gateRef: { type: "command", command: "npm test", parseMode: "exitcode" },
+    closerRef: { type: "commit-to-branch" },
+    baseline: null,
+    baseBranch: null,
+  };
+
+  it("names a flag that asks for something the run did not start with", () => {
+    expect(ignoredSettings({ gateCommand: "npm run verify" }, {}, PINNED)).toEqual(["--gate-command"]);
+    expect(ignoredSettings({ closer: "merge-back" }, {}, PINNED)).toEqual(["--closer"]);
+  });
+
+  it("names the environment variable when that is where the setting came from", () => {
+    expect(ignoredSettings({}, { DELIVERY_CLOSER: "merge-back" }, PINNED)).toEqual(["DELIVERY_CLOSER"]);
+  });
+
+  it("says nothing when the flag asks for what the run is already doing", () => {
+    expect(ignoredSettings({ gateCommand: "npm test", closer: "commit-to-branch" }, {}, PINNED)).toEqual([]);
+  });
+
+  it("says nothing when no flag was given at all", () => {
+    expect(ignoredSettings({}, { DELIVERY_CLOSER: "" }, PINNED)).toEqual([]);
+  });
+
+  it("names --config, which a run already under way never reads", () => {
+    expect(ignoredSettings({ config: "delivery.config.json" }, {}, PINNED)).toEqual(["--config"]);
+  });
+
+  it("reads as one note, however many settings it names", () => {
+    expect(ignoredNote(["--closer"])).toBe("Note: a run keeps the settings it started with, so --closer was ignored.");
+    expect(ignoredNote(["--gate-command", "--closer"])).toBe(
+      "Note: a run keeps the settings it started with, so --gate-command and --closer were ignored.",
+    );
   });
 });

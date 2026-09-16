@@ -78,3 +78,11 @@ export function startedAt(runId: string): string {
 export function describeRun(record: RunRecord): string {
   return `${record.runId}, started ${startedAt(record.runId)}: ${taskIntent(record.caseFile.header.taskDef)}`;
 }
+
+/** Why a new task cannot simply start: a run is already under way, and which one, so the user can choose between finishing it and setting it aside. */
+export function unfinishedRunFound(record: RunRecord): string {
+  return (
+    `There's a run that didn't finish (started \`${startedAt(record.runId)}\`, task: \`${taskIntent(record.caseFile.header.taskDef)}\`). ` +
+    "Run `delivery resume` to finish it, or add `--fresh` to start this new task anyway."
+  );
+}

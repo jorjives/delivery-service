@@ -498,4 +498,65 @@ describe("picking up a run that didn't finish", () => {
     expect(stderr).not.toContain("at Object.");
     expect(exitCode).toBe(EXIT.unexpected);
   });
+
+  it("stops when a different task is asked for, naming the run that didn't finish", async () => {
+    const repo = initTempRepo("run-command-different-", { "package.json": PACKAGE });
+    const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+    const { interruptedRun, writesHello, runsRoot } = await import("./command-fixtures.js");
+    const { startedAt } = await import("./runs.js");
+    const runId = await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello });
+
+    const { exitCode, stdout, stderr } = await delivery(["run", "--task", "something different"], {
+      cwd: repo,
+      env: { XDG_STATE_HOME: state },
+    });
+
+    expect(stderr).toContain(`task: \`${TASK}\``);
+    expect(stderr).toContain(startedAt(runId));
+    expect(stderr).toContain("Run `delivery resume` to finish it, or add `--fresh` to start this new task anyway.");
+    expect(stdout).toBe("");
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(readdirSync(runsRoot(repo))).toEqual([runId]);
+  });
+
+  it(
+    "starts the new task with --fresh and leaves the old run there to pick up",
+    async () => {
+      const repo = initTempRepo("run-command-fresh-", { "package.json": PACKAGE });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const { interruptedRun, writesHello, runsRoot } = await import("./command-fixtures.js");
+      const interrupted = await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello });
+
+      const { exitCode, stdout } = await delivery(["run", "--task", "add a goodbye function, with a test", "--fresh"], {
+        cwd: repo,
+        env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(stdout).toContain("Starting run");
+      expect(exitCode).toBe(EXIT.ok);
+      expect(readdirSync(runsRoot(repo))).toContain(interrupted);
+      expect(readdirSync(runsRoot(repo))).toHaveLength(2);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "notes what it ignored when a flag asks a resumed run for something else",
+    async () => {
+      const repo = initTempRepo("run-command-ignored-", { "package.json": PACKAGE });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const { interruptedRun, writesHello } = await import("./command-fixtures.js");
+      await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello });
+
+      const { stdout, exitCode } = await delivery(["run", "--closer", "merge-back"], {
+        cwd: repo,
+        env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(stdout).toContain("Note: a run keeps the settings it started with, so --closer was ignored.");
+      expect(stdout).toContain("is committed on branch");
+      expect(exitCode).toBe(EXIT.ok);
+    },
+    RUN_TIMEOUT,
+  );
 });

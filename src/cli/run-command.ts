@@ -4,12 +4,12 @@ import type { CommandContext } from "./context.js";
 import { driveToOutcome, resumeRun } from "./drive.js";
 import { agentSession } from "./agent-session.js";
 import { loadConfig } from "./config.js";
-import { type ExitCode } from "./failures.js";
+import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { createProgress } from "./output.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
 import { prepareRunDir, runIdFor, runPlace } from "./run-location.js";
-import { unfinishedRuns } from "./runs.js";
-import { checkCustomModules, explicitIntent, resolveSettings, taskIntent, type RunFlags } from "./settings.js";
+import { unfinishedRuns, unfinishedRunFound } from "./runs.js";
+import { checkCustomModules, explicitIntent, ignoredNote, ignoredSettings, resolveSettings, taskIntent, type RunFlags } from "./settings.js";
 
 export { NO_TASK } from "./settings.js";
 
@@ -27,12 +27,19 @@ export type RunOptions = RunFlags;
 export async function runCommand(options: RunOptions, ctx: CommandContext): Promise<ExitCode> {
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
-  const unfinished = await unfinishedRuns(repoPath);
+  const unfinished = options.fresh ? [] : await unfinishedRuns(repoPath);
   const intent = await explicitIntent(options, ctx.env, ctx.cwd);
-  const resuming = unfinished.find(
-    (record) => intent === undefined || taskIntent(record.caseFile.header.taskDef) === intent,
-  );
-  if (resuming) return resumeRun(resuming, ctx);
+  const [mostRecent] = unfinished;
+  if (mostRecent) {
+    // A task the user typed settles which run they mean without asking; anything
+    // else would resume a run they did not name.
+    const resuming =
+      intent === undefined ? mostRecent : unfinished.find((record) => taskIntent(record.caseFile.header.taskDef) === intent);
+    if (!resuming) throw new Refusal(unfinishedRunFound(mostRecent), EXIT.configuration);
+    const ignored = ignoredSettings(options, ctx.env, resuming.caseFile.header);
+    if (ignored.length > 0) ctx.writeLine(ignoredNote(ignored));
+    return resumeRun(resuming, ctx);
+  }
   return startRun(options, { startDir, repoPath }, ctx);
 }
 
