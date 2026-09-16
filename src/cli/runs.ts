@@ -37,8 +37,7 @@ async function touchedAt(dir: string): Promise<number> {
 }
 
 /**
- * The runs this repository is still holding: a record with no outcome, which is
- * what an interrupted run leaves behind. Most recently touched first, so "the
+ * Every run this repository is holding, most recently touched first, so "the
  * last one" needs no other bookkeeping.
  *
  * A folder with no record in it was never a run (the process died between
@@ -46,7 +45,7 @@ async function touchedAt(dir: string): Promise<number> {
  * that is there but cannot be read back is the user's to hear about, so it is
  * not swallowed: it stops the command with the message that names the folder.
  */
-export async function unfinishedRuns(repoPath: string): Promise<RunRecord[]> {
+export async function allRuns(repoPath: string): Promise<RunRecord[]> {
   let entries;
   try {
     entries = await readdir(runsRoot(repoPath), { withFileTypes: true });
@@ -55,14 +54,24 @@ export async function unfinishedRuns(repoPath: string): Promise<RunRecord[]> {
   }
 
   const read = await Promise.all(
-    entries.filter((entry) => entry.isDirectory()).map((entry) => readRun(repoPath, entry.name).catch((err) => {
-      if (err instanceof FileNotFound) return undefined;
-      throw err;
-    })),
+    entries.filter((entry) => entry.isDirectory()).map((entry) =>
+      readRun(repoPath, entry.name).catch((err) => {
+        if (err instanceof FileNotFound) return undefined;
+        throw err;
+      }),
+    ),
   );
-  const unfinished = read.filter((record): record is RunRecord => record !== undefined && !record.caseFile.outcome);
-  const found = await Promise.all(unfinished.map(async (record) => ({ record, touchedAt: await touchedAt(record.dir) })));
+  const found = await Promise.all(
+    read
+      .filter((record): record is RunRecord => record !== undefined)
+      .map(async (record) => ({ record, touchedAt: await touchedAt(record.dir) })),
+  );
   return found.sort((a, b) => b.touchedAt - a.touchedAt).map(({ record }) => record);
+}
+
+/** The runs this repository is still holding: a record with no outcome, which is what an interrupted run leaves behind. */
+export async function unfinishedRuns(repoPath: string): Promise<RunRecord[]> {
+  return (await allRuns(repoPath)).filter((record) => !record.caseFile.outcome);
 }
 
 /** The UTC second a run started, which its id already carries (`src/cli/run-location.ts`), as a person reads it. */
@@ -70,6 +79,11 @@ export function startedAt(runId: string): string {
   const stamp = /-(\d{8}T\d{6}Z)$/.exec(runId)?.[1];
   if (stamp === undefined) return "an unknown time";
   return `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)} ${stamp.slice(9, 11)}:${stamp.slice(11, 13)} UTC`;
+}
+
+/** An ISO 8601 timestamp as a person reads it: the date, the minute, and the zone it is in. */
+export function readableUtc(iso: string): string {
+  return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
 }
 
 /** One run on one line: which run, when it started, and what it was asked to do. */
@@ -87,6 +101,10 @@ export function unfinishedRunFound(record: RunRecord): string {
 
 export const NOTHING_TO_RESUME =
   'There\'s no run here that didn\'t finish, so there is nothing to pick up. Start one with `delivery run --task "..."`.';
+
+export const NOTHING_HERE =
+  'No runs have been started in this repository yet, so there is nothing to report on. Start one with `delivery run --task "..."`.';
+
 
 export const NOTHING_CHOSEN =
   "That isn't one of the numbers in the list, so I've left every run alone. Run `delivery resume <run-id>` when you know which one you want.";
