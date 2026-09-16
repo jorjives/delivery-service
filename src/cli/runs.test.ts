@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
@@ -8,7 +8,7 @@ import { create, setOutcome } from "../case-file.js";
 import { CorruptCaseFile } from "../errors.js";
 import type { GateRef } from "../schema.js";
 import { runsRoot } from "./run-location.js";
-import { chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_TO_RESUME, readRun, severalRuns, startedAt, unfinishedRuns } from "./runs.js";
+import { chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_TO_RESUME, readRun, startedAt, unfinishedRuns } from "./runs.js";
 import { Refusal } from "./failures.js";
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
