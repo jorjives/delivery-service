@@ -8,7 +8,7 @@ import { create, setOutcome } from "../case-file.js";
 import { CorruptCaseFile } from "../errors.js";
 import type { GateRef } from "../schema.js";
 import { runsRoot } from "./run-location.js";
-import { allRuns, chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_HERE, NOTHING_TO_RESUME, readRun, readableUtc, startedAt, unfinishedRuns } from "./runs.js";
+import { allRuns, chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_HERE, NOTHING_TO_RESUME, readRun, readableUtc, startedAt, startedInstant, unfinishedRuns } from "./runs.js";
 import { Refusal } from "./failures.js";
 import { plainReporter } from "./report.js";
 
@@ -200,6 +200,15 @@ describe("every run a repository holds", () => {
 describe("a time a person can read", () => {
   it("reads an ISO timestamp back as a date, a time and the zone it is in", () => {
     expect(readableUtc("2026-09-14T21:05:09.123Z")).toBe("2026-09-14 21:05 UTC");
+  });
+
+  it("reads the instant a run started off its own id, as a timestamp a script can parse", () => {
+    expect(startedInstant("add-a-hello-20260914T210309Z")).toBe("2026-09-14T21:03:09Z");
+  });
+
+  it("has no instant for a run id that carries no stamp, and says so rather than inventing one", () => {
+    expect(startedInstant("handwritten")).toBeNull();
+    expect(startedAt("handwritten")).toBe("an unknown time");
   });
 
   it("says when there is nothing in this repository to report on, and how to start something", () => {

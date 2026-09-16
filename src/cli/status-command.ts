@@ -1,15 +1,16 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+import { logTail, resumeAction, type ResumeAction } from "../case-file.js";
 import { branchName } from "../provision.js";
-import type { CaseFileOutcome } from "../schema.js";
+import type { CaseFileOutcome, SurfaceState } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
-import { nextStep, paint } from "./output.js";
+import { nextStepPhrase, paint } from "./output.js";
 import { runPlace } from "./run-location.js";
-import { allRuns, NOTHING_HERE, readableUtc, readRun, startedAt, type RunRecord } from "./runs.js";
+import { allRuns, NOTHING_HERE, readableUtc, readRun, startedAt, startedInstant, type RunRecord } from "./runs.js";
 import { taskIntent } from "./settings.js";
 
 /**
@@ -70,7 +71,7 @@ export async function statusReport(record: RunRecord, ctx: CommandContext): Prom
   if (!outcome) {
     return [
       opening,
-      paint(ctx.colour, "quiet", `This run hasn't finished. Picking it up will carry on with ${nextStep(caseFile)}.`),
+      paint(ctx.colour, "quiet", `This run hasn't finished. Picking it up will carry on with ${nextStepPhrase(caseFile)}.`),
       `To finish it: delivery resume ${runId}`,
     ];
   }
@@ -128,7 +129,7 @@ export async function statusRecord(record: RunRecord, ctx: CommandContext): Prom
   const { outcome } = caseFile;
 
   if (!outcome) {
-    return { runId, task, startedAt: started, finished: false, nextStep: nextStep(caseFile) };
+    return { runId, task, startedAt: started, finished: false, nextStep: nextStepPhrase(caseFile) };
   }
 
   const summary = await summariseOutcome(dir, caseFile);
@@ -152,6 +153,89 @@ export async function statusRecord(record: RunRecord, ctx: CommandContext): Prom
     branch: branchName(caseFile.header.surfaceId),
     worktreePath: existsSync(location.worktreePath) ? location.worktreePath : null,
     recordDir: dir,
+  };
+}
+
+/** How a run ended, as one word a script can switch on. "unfinished" is the fourth: a run that is still resumable has not ended at all. */
+export type RunOutcomeName = "closed" | "escalated" | "aborted" | "unfinished";
+
+/** One run at a glance: which run, what it was asked to do, when it started and how it ended. */
+export interface RunSummary {
+  run: string;
+  task: string;
+  /** ISO 8601, from the run id itself; null when the id carries no stamp. */
+  startedAt: string | null;
+  outcome: RunOutcomeName;
+}
+
+/**
+ * Everything the plain-language report says about one run, as one document.
+ * Every key is always there: a null says "not that kind of run", so a reader
+ * never has to probe for a key, and the shape is the same for all four
+ * outcomes. The harness's own names are used unchanged, because this is the
+ * one place they are meant to be read.
+ */
+export interface RunStatusDocument extends RunSummary {
+  /** The state the record is in. */
+  state: SurfaceState;
+  finishedAt: string | null;
+  /** How it ended, in the harness's own words. */
+  reason: string | null;
+  /** Unfinished only: what picking it up would do first. */
+  nextStep: ResumeAction | null;
+  /** Finished only: the sentence the plain-language report leads with. */
+  summary: string | null;
+  /**
+   * The lines the plain-language report prints under that sentence, empty for a
+   * run that has not finished. Not always derivable from the fields beside it: a
+   * pull-request closer names its pull request here, and a custom closer says
+   * whatever only it knows.
+   */
+  details: string[];
+  branch: string;
+  base: string | null;
+  /** Everything this run recorded. */
+  dir: string;
+  /** The agent's working copy, while it is still on disk. */
+  worktree: string | null;
+  escalation: EscalationPacket | null;
+}
+
+/** One run at a glance, from its record. */
+export function runSummary(record: RunRecord): RunSummary {
+  return {
+    run: record.runId,
+    task: taskIntent(record.caseFile.header.taskDef),
+    startedAt: startedInstant(record.runId),
+    outcome: record.caseFile.outcome?.kind ?? "unfinished",
+  };
+}
+
+/**
+ * One run's record as a script reads it: the same information `statusReport`
+ * says in sentences, over the same record, read once. Nothing here advances
+ * anything either.
+ */
+export async function statusDocument(record: RunRecord, ctx: CommandContext): Promise<RunStatusDocument> {
+  const { caseFile, dir, runId } = record;
+  const { outcome } = caseFile;
+  const { location } = runPlace(record.repoPath, runId, ctx.env);
+  const packet = outcome?.kind === "escalated" ? await packetOf(dir, outcome.packetRef) : undefined;
+  // Read once, as the report reads it, so the two can never say different things.
+  const summary = outcome ? await summariseOutcome(dir, caseFile) : undefined;
+  return {
+    ...runSummary(record),
+    state: caseFile.cursor.state,
+    finishedAt: outcome?.at ?? null,
+    reason: outcome?.reason ?? null,
+    nextStep: outcome ? null : resumeAction(logTail(caseFile)),
+    summary: summary?.headline ?? null,
+    details: summary?.details ?? [],
+    branch: branchName(caseFile.header.surfaceId),
+    base: caseFile.header.baseBranch ?? null,
+    dir,
+    worktree: existsSync(location.worktreePath) ? location.worktreePath : null,
+    escalation: packet ?? null,
   };
 }
 
@@ -183,10 +267,8 @@ async function mostRecent(repoPath: string): Promise<RunRecord> {
 export async function statusCommand(runId: string | undefined, options: StatusOptions, ctx: CommandContext): Promise<ExitCode> {
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
   const record = runId === undefined ? await mostRecent(repoPath) : await readRun(repoPath, runId);
-  if (ctx.json) {
-    ctx.writeLine(JSON.stringify(await statusRecord(record, ctx)));
-  } else {
-    for (const line of await statusReport(record, ctx)) ctx.writeLine(line);
-  }
+  // Indented rather than one line: a person reads this output too, and a parser does not mind.
+  if (ctx.json) ctx.writeLine(JSON.stringify(await statusDocument(record, ctx), null, 2));
+  else for (const line of await statusReport(record, ctx)) ctx.writeLine(line);
   return EXIT.ok;
 }

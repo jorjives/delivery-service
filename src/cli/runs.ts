@@ -74,11 +74,21 @@ export async function unfinishedRuns(repoPath: string): Promise<RunRecord[]> {
   return (await allRuns(repoPath)).filter((record) => !record.caseFile.outcome);
 }
 
-/** The UTC second a run started, which its id already carries (`src/cli/run-location.ts`), as a person reads it. */
-export function startedAt(runId: string): string {
+/**
+ * The UTC instant a run started, which its id already carries
+ * (`src/cli/run-location.ts`), as a timestamp a script can parse. `null` for an
+ * id that carries no stamp, rather than a made-up time.
+ */
+export function startedInstant(runId: string): string | null {
   const stamp = /-(\d{8}T\d{6}Z)$/.exec(runId)?.[1];
-  if (stamp === undefined) return "an unknown time";
-  return `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)} ${stamp.slice(9, 11)}:${stamp.slice(11, 13)} UTC`;
+  if (stamp === undefined) return null;
+  return `${stamp.slice(0, 4)}-${stamp.slice(4, 6)}-${stamp.slice(6, 8)}T${stamp.slice(9, 11)}:${stamp.slice(11, 13)}:${stamp.slice(13, 15)}Z`;
+}
+
+/** When a run started, as a person reads it. */
+export function startedAt(runId: string): string {
+  const instant = startedInstant(runId);
+  return instant === null ? "an unknown time" : readableUtc(instant);
 }
 
 /** An ISO 8601 timestamp as a person reads it: the date, the minute, and the zone it is in. */

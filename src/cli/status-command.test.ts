@@ -11,7 +11,7 @@ import { ESCALATION, delivery, PACKAGE, writeRunRecord } from "./command-fixture
 import { EXIT } from "./failures.js";
 import { runPlace, runsRoot } from "./run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
-import { statusReport, type StatusRecord } from "./status-command.js";
+import { statusDocument, statusReport, type RunStatusDocument, type StatusRecord } from "./status-command.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
 
@@ -263,15 +263,13 @@ describe("delivery status --json", () => {
     const { stdout, exitCode } = await delivery(["status", "--json", "--last"], { cwd: repo });
 
     expect(exitCode).toBe(EXIT.ok);
-    const lines = stdout.split("\n").filter(Boolean);
-    expect(lines).toHaveLength(1);
-    const record = JSON.parse(lines.at(0) ?? "") as StatusRecord;
-    expect(record).toEqual({
-      runId: RUN_ID,
+    const document = JSON.parse(stdout) as RunStatusDocument;
+    expect(document).toMatchObject({
+      run: RUN_ID,
       task: TASK,
-      startedAt: "2026-09-14 21:03 UTC",
-      finished: false,
-      nextStep: "getting the agent going",
+      startedAt: "2026-09-14T21:03:09Z",
+      outcome: "unfinished",
+      nextStep: "start",
     });
     expect(stdout).not.toContain("This run hasn't finished");
   });
@@ -282,17 +280,17 @@ describe("delivery status --json", () => {
 
     const { stdout } = await delivery(["status", "--json", "--last"], { cwd: repo });
 
-    const record = JSON.parse(stdout.trim()) as StatusRecord;
-    expect(record).toEqual({
-      runId: RUN_ID,
+    const document = JSON.parse(stdout.trim()) as RunStatusDocument;
+    expect(document).toMatchObject({
+      run: RUN_ID,
       task: TASK,
-      startedAt: "2026-09-14 21:03 UTC",
-      finished: true,
+      startedAt: "2026-09-14T21:03:09Z",
       outcome: "closed",
-      at: "2026-09-14 21:05 UTC",
-      headline: `Done: the change for "${TASK}" passed \`npm test\` and is committed on branch surface/${RUN_ID}.`,
-      details: [`main was not changed. To look at the work: git log surface/${RUN_ID}`],
+      finishedAt: AT,
+      reason: "committed",
+      nextStep: null,
     });
+    expect(document.summary).toContain(`Done: the change for "${TASK}"`);
   });
 
   it("carries the escalation packet and where the work was kept, unparaphrased, for an escalated run", async () => {
@@ -306,11 +304,125 @@ describe("delivery status --json", () => {
 
     const { stdout } = await delivery(["status", "--json", "--last"], { cwd: repo });
 
-    const record = JSON.parse(stdout.trim()) as StatusRecord;
-    expect(record.outcome).toBe("escalated");
-    expect(record.packet).toEqual(ESCALATION);
-    expect(record.branch).toBe(`surface/${RUN_ID}`);
-    expect(record.worktreePath).toBeNull();
-    expect(record.recordDir).toBe(join(runsRoot(repo), RUN_ID));
+    const document = JSON.parse(stdout.trim()) as RunStatusDocument;
+    expect(document.outcome).toBe("escalated");
+    expect(document.escalation).toEqual(ESCALATION);
+    expect(document.branch).toBe(`surface/${RUN_ID}`);
+    expect(document.worktree).toBeNull();
+    expect(document.dir).toBe(join(runsRoot(repo), RUN_ID));
+  });
+});
+
+describe("one run's status as one JSON document", () => {
+  it("says the run, the task, when it started and that it hasn't finished, with what picking it up would do first", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "status-repo-"));
+    const ctx = await context();
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK });
+
+    const document = await statusDocument(await readRun(repo, RUN_ID), ctx);
+
+    expect(document).toMatchObject({
+      run: RUN_ID,
+      task: TASK,
+      startedAt: "2026-09-14T21:03:09Z",
+      outcome: "unfinished",
+      nextStep: "start",
+      finishedAt: null,
+      reason: null,
+      summary: null,
+      details: [],
+      escalation: null,
+      branch: `surface/${RUN_ID}`,
+      base: "main",
+      dir: join(runsRoot(repo), RUN_ID),
+    });
+  });
+
+  it("says how a closed run ended, in the same sentence the plain-language report leads with", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "status-repo-"));
+    const ctx = await context();
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });
+    const record = await readRun(repo, RUN_ID);
+
+    const document = await statusDocument(record, ctx);
+    const lines = await statusReport(record, ctx);
+
+    expect(document).toMatchObject({
+      outcome: "closed",
+      finishedAt: AT,
+      reason: "committed",
+      nextStep: null,
+      escalation: null,
+    });
+    expect(document.summary).toBe(lines[1]);
+    // The lines the report prints under that sentence, which a closer such as
+    // open-pr fills with something no other field carries.
+    expect(document.details).toEqual(lines.slice(3));
+  });
+
+  it("carries every field of the packet a run escalated with", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "status-repo-"));
+    const ctx = await context();
+    await writeRunRecord(repo, {
+      runId: RUN_ID,
+      task: TASK,
+      outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: AT },
+      packet: ESCALATION,
+    });
+
+    const document = await statusDocument(await readRun(repo, RUN_ID), ctx);
+
+    expect(document.outcome).toBe("escalated");
+    expect(document.escalation).toEqual(ESCALATION);
+  });
+
+  it("names the agent's working copy while it is on disk, and says null once it is gone", async () => {
+    const repo = await mkdtemp(join(tmpdir(), "status-repo-"));
+    const ctx = await context();
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });
+    expect((await statusDocument(await readRun(repo, RUN_ID), ctx)).worktree).toBeNull();
+
+    const { location } = runPlace(repo, RUN_ID, ctx.env);
+    await mkdir(location.worktreePath, { recursive: true });
+    expect((await statusDocument(await readRun(repo, RUN_ID), ctx)).worktree).toBe(location.worktreePath);
+  });
+});
+
+describe("delivery status --json (new document format)", () => {
+  it("prints one JSON document instead of the plain-language lines, and still exits ok", async () => {
+    const repo = initTempRepo("status-json-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });
+
+    const { stdout, exitCode } = await delivery(["status", "--json"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const document = JSON.parse(stdout) as RunStatusDocument;
+    expect(document).toMatchObject({ run: RUN_ID, task: TASK, outcome: "closed", branch: `surface/${RUN_ID}` });
+    expect(stdout).not.toContain("It finished 2026-09-14 21:05 UTC.");
+  });
+
+  it("hands an escalated run's whole packet to a script, and exits ok because reading it worked", async () => {
+    const repo = initTempRepo("status-json-escalated-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, {
+      runId: RUN_ID,
+      task: TASK,
+      outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: AT },
+      packet: ESCALATION,
+    });
+
+    const { stdout, exitCode } = await delivery(["status", RUN_ID, "--json"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect((JSON.parse(stdout) as RunStatusDocument).escalation).toEqual(ESCALATION);
+  });
+
+  it("says plainly on standard error, not as JSON, when the id names nothing", async () => {
+    const repo = initTempRepo("status-json-unknown-", { "package.json": PACKAGE });
+
+    const { stdout, stderr, exitCode } = await delivery(["status", "never-ran-20260101T000000Z", "--json"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("I couldn't find that run's record");
   });
 });
