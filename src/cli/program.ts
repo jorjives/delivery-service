@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { Command, CommanderError } from "commander";
-import type { CliStdin } from "./context.js";
+import type { CommandContext, CliStdin } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
 import { useColour } from "./output.js";
+import { jsonReporter, plainReporter, type RunReporter } from "./report.js";
 import { resumeCommand, type ResumeOptions } from "./resume-command.js";
 import { runCommand, type RunOptions } from "./run-command.js";
 import { statusCommand, type StatusOptions } from "./status-command.js";
@@ -22,6 +23,36 @@ export interface CliIo {
 const { version } = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf-8")) as { version: string };
 
 /**
+ * How this invocation tells a run: plain-language lines for a person, or one
+ * JSON object per step for a script, with everything that is not a step kept
+ * off standard output so a reader never has to filter it back out.
+ */
+function reporterFor(io: CliIo, { json, colour }: { json: boolean; colour: boolean }): RunReporter {
+  const writeLine = (line: string) => io.stdout.write(`${line}\n`);
+  return json ? jsonReporter(writeLine, (line) => io.stderr.write(`${line}\n`)) : plainReporter(writeLine, colour);
+}
+
+/**
+ * What every command gets from this process. Built once here rather than at
+ * each command, so `--json` and `--no-color` cannot mean one thing to `run` and
+ * another to `status`. Colour is off under `--json`: an escape code inside a
+ * JSON line would break the one thing that option is for.
+ */
+function contextFor(io: CliIo, command: Command): CommandContext {
+  const { color, json = false } = command.optsWithGlobals<{ color: boolean; json?: boolean }>();
+  const colour = !json && useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY });
+  return {
+    cwd: io.cwd,
+    env: io.env,
+    colour,
+    json,
+    stdin: io.stdin,
+    writeLine: (line) => io.stdout.write(`${line}\n`),
+    report: reporterFor(io, { json, colour }),
+  };
+}
+
+/**
  * Parse `io.argv`, run the command it names, and return the exit code. Never
  * throws and never prints a stack trace: every failure is rendered by
  * `renderFailure`, and a usage mistake (an unknown option or command) is a
@@ -36,6 +67,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .version(version, "-V, --version", "print the harness version")
     .option("--no-color", "print without colour")
+    .option("--json", "print machine-readable output: one JSON object per step while a run happens, and one JSON document from status")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
     .configureOutput({ writeOut: (text) => io.stdout.write(text), writeErr: (text) => io.stderr.write(text) });
@@ -52,14 +84,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--fresh", "start a new run even though one didn't finish, leaving that one to pick up later")
     .action(async (options: RunOptions, command: Command) => {
       // A throw here rejects parseAsync with the original error, rendered once below.
-      const { color } = command.optsWithGlobals<{ color: boolean }>();
-      exitCode = await runCommand(options, {
-        cwd: io.cwd,
-        env: io.env,
-        colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
-        stdin: io.stdin,
-        writeLine: (line) => io.stdout.write(`${line}\n`),
-      });
+      exitCode = await runCommand(options, contextFor(io, command));
     });
 
   program
@@ -69,14 +94,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--last", "pick up the run touched most recently, without asking")
     .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
     .action(async (runId: string | undefined, options: ResumeOptions, command: Command) => {
-      const { color } = command.optsWithGlobals<{ color: boolean }>();
-      exitCode = await resumeCommand(runId, options, {
-        cwd: io.cwd,
-        env: io.env,
-        colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
-        stdin: io.stdin,
-        writeLine: (line) => io.stdout.write(`${line}\n`),
-      });
+      exitCode = await resumeCommand(runId, options, contextFor(io, command));
     });
 
   program
@@ -86,14 +104,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--last", "read the run touched most recently, which is also what no run id means")
     .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
     .action(async (runId: string | undefined, options: StatusOptions, command: Command) => {
-      const { color } = command.optsWithGlobals<{ color: boolean }>();
-      exitCode = await statusCommand(runId, options, {
-        cwd: io.cwd,
-        env: io.env,
-        colour: useColour({ flag: color, env: io.env, isTTY: io.stdout.isTTY }),
-        stdin: io.stdin,
-        writeLine: (line) => io.stdout.write(`${line}\n`),
-      });
+      exitCode = await statusCommand(runId, options, contextFor(io, command));
     });
 
   try {

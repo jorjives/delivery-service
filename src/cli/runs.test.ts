@@ -10,6 +10,7 @@ import type { GateRef } from "../schema.js";
 import { runsRoot } from "./run-location.js";
 import { allRuns, chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_HERE, NOTHING_TO_RESUME, readRun, readableUtc, startedAt, unfinishedRuns } from "./runs.js";
 import { Refusal } from "./failures.js";
+import { plainReporter } from "./report.js";
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
 
@@ -102,8 +103,9 @@ describe("how a run is described to a person", () => {
 /** A command context reading the answers a person would type, with `isTTY` saying whether anyone is there to type them. */
 function answering(answers: string[], { interactive }: { interactive: boolean }) {
   const lines: string[] = [];
+  const writeLine = (line: string) => lines.push(line);
   const stdin = Object.assign(Readable.from(answers.map((answer) => `${answer}\n`)), { isTTY: interactive || undefined });
-  return { ctx: { cwd: "/", env: {}, colour: false, stdin, writeLine: (line: string) => lines.push(line) }, lines };
+  return { ctx: { cwd: "/", env: {}, colour: false, json: false, stdin, writeLine, report: plainReporter(writeLine, false) }, lines };
 }
 
 describe("choosing which run to pick up", () => {

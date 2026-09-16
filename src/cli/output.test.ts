@@ -3,7 +3,7 @@ import { DEFAULT_BUDGETS } from "../budgets.js";
 import type { ResumeAction } from "../case-file.js";
 import type { CaseFile, GateRef, HistoryEntry } from "../schema.js";
 import { SurfaceState } from "../schema.js";
-import { createProgress, paint, pickingUp, putRight, RESUME_PHRASES, STEP_PHRASES, useColour } from "./output.js";
+import { paint, pickingUp, putRight, RESUME_PHRASES, STEP_PHRASES, useColour } from "./output.js";
 
 const ESC = "[";
 
@@ -64,33 +64,6 @@ describe("STEP_PHRASES", () => {
     expect(STEP_PHRASES.GATE_MAINTENANCE).toBe("the agent is fixing something");
     expect(STEP_PHRASES.CLOSING).toBe("wrapping up");
     expect(STEP_PHRASES.CLOSED).toBe("done");
-  });
-});
-
-describe("createProgress", () => {
-  it("writes one plain line per step", () => {
-    const lines: string[] = [];
-    const progress = createProgress((line) => lines.push(line), false);
-    progress.step("PROVISIONING");
-    progress.step("PRE_GATING");
-    progress.step("AGENT_ACTIVE");
-    expect(lines).toEqual(["- setting up", "- checking the starting point", "- the agent is working"]);
-  });
-
-  it("does not repeat a step that reads the same as the one before", () => {
-    const lines: string[] = [];
-    const progress = createProgress((line) => lines.push(line), false);
-    progress.step("AGENT_ACTIVE");
-    progress.step("AGENT_ACTIVE");
-    progress.step("GATING");
-    progress.step("AGENT_ACTIVE");
-    expect(lines).toEqual(["- the agent is working", "- checking the agent's work", "- the agent is working"]);
-  });
-
-  it("prints no escape codes when colour is off", () => {
-    const lines: string[] = [];
-    createProgress((line) => lines.push(line), false).step("CLOSING");
-    expect(lines.join("")).not.toContain(ESC);
   });
 });
 

@@ -13,6 +13,7 @@ import { runPlace, runsRoot } from "./run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
 import { statusReport } from "./status-command.js";
 import { initTempRepo } from "../temp-repo.js";
+import { plainReporter } from "./report.js";
 
 const AT = "2026-09-14T21:05:09.123Z";
 const RUN_ID = "add-a-hello-function-20260914T210309Z";
@@ -24,8 +25,10 @@ async function context(): Promise<CommandContext> {
     cwd: "/nowhere",
     env: { XDG_STATE_HOME: await mkdtemp(join(tmpdir(), "status-state-")) },
     colour: false,
+    json: false,
     stdin: Object.assign(Readable.from([]), { isTTY: undefined }),
     writeLine: () => undefined,
+    report: plainReporter(() => undefined, false),
   };
 }
 

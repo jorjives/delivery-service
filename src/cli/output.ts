@@ -49,24 +49,6 @@ export const STEP_PHRASES: Record<SurfaceState, string> = {
   ABORTED: "stopped",
 };
 
-export interface Progress {
-  /** Say what the run is doing next. A step that reads the same as the last one is not repeated. */
-  step(state: SurfaceState): void;
-}
-
-/** Plain, append-only progress lines: no cursor movement, spinners or box drawing, so logs and screen readers read it as printed. */
-export function createProgress(writeLine: (line: string) => void, colour: boolean): Progress {
-  let last: string | undefined;
-  return {
-    step(state) {
-      const phrase = STEP_PHRASES[state];
-      if (phrase === last) return;
-      last = phrase;
-      writeLine(paint(colour, "quiet", `- ${phrase}`));
-    },
-  };
-}
-
 /**
  * Every way a run can be picked up, as a person reads it. `ResumeAction` is a
  * closed set, so the table is total: a new one does not compile until it has a

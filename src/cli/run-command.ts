@@ -5,7 +5,6 @@ import { driveToOutcome, resumeRun } from "./drive.js";
 import { agentSession } from "./agent-session.js";
 import { loadConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
-import { createProgress } from "./output.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
 import { prepareRunDir, runIdFor, runPlace } from "./run-location.js";
 import { chooseRun, unfinishedRuns, unfinishedRunFound } from "./runs.js";
@@ -39,7 +38,7 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
         : unfinished.find((record) => taskIntent(record.caseFile.header.taskDef) === intent);
     if (!resuming) throw new Refusal(unfinishedRunFound(mostRecent), EXIT.configuration);
     const ignored = ignoredSettings(options, ctx.env, resuming.caseFile.header);
-    if (ignored.length > 0) ctx.writeLine(ignoredNote(ignored));
+    if (ignored.length > 0) ctx.report.note(ignoredNote(ignored));
     return resumeRun(resuming, ctx);
   }
   return startRun(options, { startDir, repoPath, intent }, ctx);
@@ -60,16 +59,17 @@ async function startRun(
   });
   await checkCustomModules(gateRef, closerRef, repoPath);
   const session = await agentSession(ctx.env);
-  if (await hasUncommittedChanges(repoPath)) ctx.writeLine(UNCOMMITTED_NOTE);
+  if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
 
   const resolvedIntent = taskIntent(taskDef);
   const runId = runIdFor(resolvedIntent, new Date());
   const { dir } = runPlace(repoPath, runId, ctx.env);
   await prepareRunDir(repoPath, dir);
   const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef }, budgets);
-  ctx.writeLine(`Starting run ${runId}: ${resolvedIntent}`);
+  ctx.report.note(`Starting run ${runId}: ${resolvedIntent}`);
 
-  const progress = createProgress(ctx.writeLine, ctx.colour);
-  progress.step("PROVISIONING");
-  return driveToOutcome({ runId, repoPath, dir, caseFile }, session, progress, ctx);
+  // Said before the first advance, because provisioning is the slowest step and
+  // a person watching should not wait in silence for it.
+  ctx.report.step({ state: "PROVISIONING", done: false });
+  return driveToOutcome({ runId, repoPath, dir, caseFile }, session, ctx);
 }

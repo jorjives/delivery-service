@@ -11,7 +11,7 @@ import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
 import { type ExitCode } from "./failures.js";
 import { summariseOutcome } from "./outcome.js";
-import { createProgress, paint, pickingUp, putRight, type Progress } from "./output.js";
+import { pickingUp } from "./output.js";
 import { runPlace } from "./run-location.js";
 import type { RunRecord } from "./runs.js";
 import { checkCustomModules, DEFAULT_CLOSER, taskIntent } from "./settings.js";
@@ -29,7 +29,6 @@ import { checkCustomModules, DEFAULT_CLOSER, taskIntent } from "./settings.js";
 export async function driveToOutcome(
   record: RunRecord,
   session: SessionEnvironment,
-  progress: Progress,
   ctx: CommandContext,
 ): Promise<ExitCode> {
   const { dir, repoPath, runId } = record;
@@ -48,13 +47,11 @@ export async function driveToOutcome(
   let result: AdvanceResult;
   do {
     result = await advance(dir, location, ports);
-    progress.step(result.state);
-    if (result.recovery) ctx.writeLine(putRight(result.recovery));
+    ctx.report.step(result);
   } while (!result.done);
 
   const summary = await summariseOutcome(dir, await load(dir));
-  ctx.writeLine(paint(ctx.colour, summary.tone, summary.headline));
-  for (const line of summary.details) ctx.writeLine(line);
+  ctx.report.outcome(summary);
   return summary.exitCode;
 }
 
@@ -68,7 +65,7 @@ export async function resumeRun(record: RunRecord, ctx: CommandContext): Promise
   const { header } = record.caseFile;
   await checkCustomModules(header.gateRef, header.closerRef ?? DEFAULT_CLOSER, record.repoPath);
   const session = await agentSession(ctx.env);
-  ctx.writeLine(`Resuming run ${record.runId}: ${taskIntent(header.taskDef)}`);
-  ctx.writeLine(pickingUp(record.caseFile));
-  return driveToOutcome(record, session, createProgress(ctx.writeLine, ctx.colour), ctx);
+  ctx.report.note(`Resuming run ${record.runId}: ${taskIntent(header.taskDef)}`);
+  ctx.report.note(pickingUp(record.caseFile));
+  return driveToOutcome(record, session, ctx);
 }

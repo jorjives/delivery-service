@@ -140,9 +140,9 @@ export async function chooseRun(records: RunRecord[], ctx: CommandContext): Prom
   if (records.length === 1) return first;
   if (ctx.stdin.isTTY !== true) throw new Refusal(severalRuns(records), EXIT.configuration);
 
-  ctx.writeLine("More than one run didn't finish. Which one should I pick up?");
-  records.forEach((record, index) => ctx.writeLine(`  ${index + 1}. ${describeRun(record)}`));
-  ctx.writeLine("Type its number and press Enter.");
+  ctx.report.note("More than one run didn't finish. Which one should I pick up?");
+  records.forEach((record, index) => ctx.report.note(`  ${index + 1}. ${describeRun(record)}`));
+  ctx.report.note("Type its number and press Enter.");
   const chosen = records[Number((await firstLine(ctx.stdin)).trim()) - 1];
   if (chosen === undefined) throw new Refusal(NOTHING_CHOSEN, EXIT.configuration);
   return chosen;
