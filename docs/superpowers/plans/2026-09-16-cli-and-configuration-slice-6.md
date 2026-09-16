@@ -31,7 +31,7 @@ Recorded here because this was an unattended run with no human to validate them.
 
 2. **A step record carries exactly the four fields the acceptance criterion names**, `state`, `done`, `recovery` (when there is one) and `at`, and nothing else. The run id is deliberately not on it: a script that needs it reads the "Starting run …" note from standard error, or calls `delivery status --all --json`, which exists in this same slice and gives every run's id. Adding a fifth field would mean plumbing the run id into a reporter that is built before the run id exists, to solve a problem two commands already solve.
 
-3. **Under `--json`, standard output carries machine-readable output and nothing else.** Every human note, every prompt and every error goes to standard error instead: the "Starting run" line, the uncommitted-changes warning, the ignored-settings note, the "which run should I pick up" prompt, and every refusal. A script can therefore pipe stdout straight into a parser without a filter, and a person watching still sees the words. This is why `chooseRun`'s prompt moves onto the reporter rather than staying on `ctx.writeLine`.
+3. **Under `--json`, standard output carries machine-readable output and nothing else.** Every human note, every prompt and every error goes to standard error instead: the "Starting run" line, the uncommitted-changes warning, the ignored-settings note, the "which run should I pick up" prompt, the closing sentence and the lines under it, and every refusal. A script can therefore pipe stdout straight into a parser without a filter, and a person watching still sees the words. This is why `chooseRun`'s prompt moves onto the reporter rather than staying on `ctx.writeLine`.
 
 4. **`status --all` orders by the run's own start time, newest first; bare `status` and `--last` keep most-recently-touched.** The acceptance criterion says "newest first", and a run id carries the UTC second it started, so sorting on it needs no filesystem times and gives the same answer twice running. The two orders can differ, when an old run is resumed today, and that is correct: a list is a history, while `--last` means "the one I was just working on". The README says which is which.
 
@@ -50,7 +50,7 @@ Recorded here because this was an unattended run with no human to validate them.
 
 ---
 
-### Task 1: One JSON object per step, and one seam in front of the run's words
+### Task 1: One JSON object per step, and one seam in front of the run's words ✅ DONE (deliver-slice)
 
 Today the run loop writes its own lines in three places: `run-command.ts` writes "Starting run …", the uncommitted-changes note and the ignored-settings note; `drive.ts` writes "Resuming run …", "Picking up where it left off …", the recovery note, the outcome headline and its details; and `createProgress` writes the step lines. `--json` has to change all of them at once, so they all move behind one seam first. `plainReporter` is today's behaviour, unchanged, with the step line and its recovery note finally in one place instead of split across `output.ts` and `drive.ts`. `jsonReporter` is the new rendering. Building the reporter once in `program.ts` also collapses the three identical context literals there into one builder.
 
@@ -79,7 +79,7 @@ Today the run loop writes its own lines in three places: `run-command.ts` writes
 - Changed signature: `driveToOutcome(record: RunRecord, session: SessionEnvironment, ctx: CommandContext): Promise<ExitCode>` (the `progress` parameter is gone).
 - Removed: `Progress` and `createProgress` from `src/cli/output.ts`. Everything else that file exports (`useColour`, `Tone`, `paint`, `STEP_PHRASES`, `RESUME_PHRASES`, `nextStep`, `pickingUp`, `putRight`) stays exactly as it is.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Create `src/cli/report.test.ts`:
 
@@ -190,12 +190,16 @@ describe("telling a script what a run is doing", () => {
     expect(records).toHaveLength(2);
   });
 
-  it("keeps everything that is not a step off the machine-readable stream", () => {
+  it("keeps everything that is not a step off the machine-readable stream, the closing sentence included", () => {
     const { records, notes, reporter } = scripted();
     reporter.note("Starting run add-a-hello-20260916T120000Z: add a hello");
     reporter.outcome(SUMMARY);
     expect(records).toEqual([]);
-    expect(notes).toEqual(["Starting run add-a-hello-20260916T120000Z: add a hello"]);
+    expect(notes).toEqual([
+      "Starting run add-a-hello-20260916T120000Z: add a hello",
+      SUMMARY.headline,
+      ...SUMMARY.details,
+    ]);
   });
 });
 
@@ -225,6 +229,8 @@ describe("delivery run --json", () => {
       expect(stdout).not.toContain("- setting up");
       expect(stdout).not.toContain("Done: the change");
       expect(stderr).toContain("Starting run");
+      // The words a person watching still needs, on the stream a parser ignores.
+      expect(stderr).toContain("Done: the change");
     },
     RUN_TIMEOUT,
   );
@@ -280,12 +286,12 @@ describe("plain language in every environment", () => {
 
 Then delete the whole `describe("createProgress", …)` block from `src/cli/output.test.ts` (lines 70-95) and drop `createProgress` from that file's import on line 6, leaving `import { paint, pickingUp, putRight, RESUME_PHRASES, STEP_PHRASES, useColour } from "./output.js";`. Its three cases are reproduced above against `plainReporter`, which is what replaces it.
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/cli/report.test.ts`
 Expected: FAIL — `Failed to load .../report.js` (the module does not exist yet).
 
-- [ ] **Step 3: Write the implementation**
+- [x] **Step 3: Write the implementation**
 
 First create `src/cli/report.ts`:
 
@@ -352,9 +358,10 @@ export function plainReporter(writeLine: (line: string) => void, colour: boolean
  * The run as a script reads it: one JSON object per line on standard output,
  * and nothing else, so a reader can parse a line at a time while the run is
  * still going. Everything a person would want to be told goes to standard
- * error instead, where it is still read but never parsed. The outcome needs no
- * record of its own: the last step already said the run is over, and the exit
- * code says how it ended.
+ * error instead, where it is still read but never parsed, the closing sentence
+ * included: the outcome needs no record of its own, because the last step
+ * already said the run is over and the exit code says how it ended, but a
+ * person reading the log still needs the words.
  */
 export function jsonReporter(
   writeRecord: (line: string) => void,
@@ -372,8 +379,10 @@ export function jsonReporter(
       };
       writeRecord(JSON.stringify(record));
     },
-    outcome() {
-      // Deliberately nothing: see the note above.
+    outcome(summary) {
+      // On the note stream, never as a record: see the note above.
+      writeNote(summary.headline);
+      for (const line of summary.details) writeNote(line);
     },
   };
 }
@@ -545,17 +554,17 @@ with `import { plainReporter } from "./report.js";` added to that file's imports
 
 with `import { plainReporter } from "./report.js";` added to its imports.
 
-- [ ] **Step 4: Run the tests to verify they pass**
+- [x] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/cli/report.test.ts`
-Expected: PASS — all twelve cases.
+Expected: PASS — all thirteen cases.
 
 Then the files whose insides moved, to confirm nothing a person sees has changed:
 
 Run: `npx vitest run src/cli/output.test.ts src/cli/runs.test.ts src/cli/run-command.test.ts src/cli/resume-command.test.ts src/cli/status-command.test.ts`
 Expected: PASS — in particular `run-command.test.ts`'s "prints one plain-language line per step and never a raw state name" and `resume-command.test.ts`'s resume wording, which are the proof that `plainReporter` reproduces `createProgress` and the lines around it exactly.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/cli/report.ts src/cli/report.test.ts src/cli/output.ts src/cli/output.test.ts src/cli/context.ts src/cli/program.ts src/cli/drive.ts src/cli/run-command.ts src/cli/runs.ts src/cli/runs.test.ts src/cli/status-command.test.ts
@@ -574,7 +583,7 @@ environment.
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
 
-- [ ] **Step 6: Document `--json` for a run**
+- [x] **Step 6: Document `--json` for a run**
 
 In `README.md`, in the "Run a task from the command line" section, add this immediately after the exit-code table and before the `delivery --help` paragraph:
 
@@ -597,17 +606,18 @@ when it happened:
 
 The exit codes are the same ones in the table above, so a script reads the outcome from the exit
 code and the detail from `delivery status --json`. Everything that is not a step, such as which
-run started and any warning, goes to standard error, so standard output is only ever JSON.
+run started, any warning and the closing sentence, goes to standard error, so standard output is
+only ever JSON.
 `--json` works on `delivery resume` and `delivery status` too. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
 ````
 
-- [ ] **Step 7: Confirm the documented option is the real one**
+- [x] **Step 7: Confirm the documented option is the real one**
 
 Run: `npx vitest run src/cli/report.test.ts -t "offers --json on the command itself"`
 Expected: PASS — `--json` is registered on the program and shows in both `delivery --help` and `delivery run --help`, exactly as the README says.
 
-- [ ] **Step 8: Commit the documentation**
+- [x] **Step 8: Commit the documentation**
 
 ```bash
 git add README.md
@@ -623,7 +633,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 2: One run's status as one JSON document
+### Task 2: One run's status as one JSON document ✅ DONE (deliver-slice)
 
 `statusReport` (slice 4) already turns a record into the lines a person reads. This adds the same information as data beside it, over the same record, with no second read of the case file and no second vocabulary: the run id, the task and how it ended come from one small `RunSummary` that Task 3's listing will share, and the rest is the fields the prose renders. Every key is always present, with `null` for "not this kind of run", so a script reads a fixed shape rather than probing for keys.
 
@@ -631,7 +641,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Modify: `src/cli/runs.ts` (`startedInstant`, with `startedAt` re-expressed over it)
 - Modify: `src/cli/runs.test.ts`
 - Modify: `src/cli/output.ts` (rename `nextStep` to `nextStepPhrase`)
-- Modify: `src/cli/output.test.ts` (no rename needed: it tests `pickingUp`, not `nextStep`)
+- Unchanged, checked: `src/cli/output.test.ts` (it tests `pickingUp`, never `nextStep` by name, so the rename needs nothing there)
 - Modify: `src/cli/status-command.ts`
 - Modify: `src/cli/status-command.test.ts`
 - Modify: `README.md`
@@ -645,7 +655,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 - Produces, from `src/cli/status-command.ts`:
   - `type RunOutcomeName = "closed" | "escalated" | "aborted" | "unfinished"`
   - `interface RunSummary { run: string; task: string; startedAt: string | null; outcome: RunOutcomeName }`
-  - `interface RunStatusDocument extends RunSummary { state: SurfaceState; finishedAt: string | null; reason: string | null; nextStep: ResumeAction | null; summary: string | null; branch: string; base: string | null; dir: string; worktree: string | null; escalation: EscalationPacket | null }`
+  - `interface RunStatusDocument extends RunSummary { state: SurfaceState; finishedAt: string | null; reason: string | null; nextStep: ResumeAction | null; summary: string | null; details: string[]; branch: string; base: string | null; dir: string; worktree: string | null; escalation: EscalationPacket | null }`
   - `function runSummary(record: RunRecord): RunSummary`
   - `function statusDocument(record: RunRecord, ctx: CommandContext): Promise<RunStatusDocument>`
   - `statusCommand` keeps its signature; `StatusOptions` is unchanged in this task.
@@ -687,6 +697,7 @@ describe("one run's status as one JSON document", () => {
       finishedAt: null,
       reason: null,
       summary: null,
+      details: [],
       escalation: null,
       branch: `surface/${RUN_ID}`,
       base: "main",
@@ -711,6 +722,9 @@ describe("one run's status as one JSON document", () => {
       escalation: null,
     });
     expect(document.summary).toBe(lines[1]);
+    // The lines the report prints under that sentence, which a closer such as
+    // open-pr fills with something no other field carries.
+    expect(document.details).toEqual(lines.slice(3));
   });
 
   it("carries every field of the packet a run escalated with", async () => {
@@ -861,6 +875,13 @@ export interface RunStatusDocument extends RunSummary {
   nextStep: ResumeAction | null;
   /** Finished only: the sentence the plain-language report leads with. */
   summary: string | null;
+  /**
+   * The lines the plain-language report prints under that sentence, empty for a
+   * run that has not finished. Not always derivable from the fields beside it: a
+   * pull-request closer names its pull request here, and a custom closer says
+   * whatever only it knows.
+   */
+  details: string[];
   branch: string;
   base: string | null;
   /** Everything this run recorded. */
@@ -890,13 +911,16 @@ export async function statusDocument(record: RunRecord, ctx: CommandContext): Pr
   const { outcome } = caseFile;
   const { location } = runPlace(record.repoPath, runId, ctx.env);
   const packet = outcome?.kind === "escalated" ? await packetOf(dir, outcome.packetRef) : undefined;
+  // Read once, as the report reads it, so the two can never say different things.
+  const summary = outcome ? await summariseOutcome(dir, caseFile) : undefined;
   return {
     ...runSummary(record),
     state: caseFile.cursor.state,
     finishedAt: outcome?.at ?? null,
     reason: outcome?.reason ?? null,
     nextStep: outcome ? null : resumeAction(logTail(caseFile)),
-    summary: outcome ? (await summariseOutcome(dir, caseFile)).headline : null,
+    summary: summary?.headline ?? null,
+    details: summary?.details ?? [],
     branch: branchName(caseFile.header.surfaceId),
     base: caseFile.header.baseBranch ?? null,
     dir,
@@ -952,9 +976,10 @@ Add `--json` to get the same information as one JSON document instead of sentenc
 delivery status --last --json
 ```
 
-It carries the run id, the task, when it started and finished, how it ended, the branch, the
-base branch, where the run's record is, and, for a run that stopped for a decision, every field
-of the escalation packet. Every key is always present: a `null` means "not that kind of run", so
+It carries the run id, the task, when it started and finished, how it ended, the sentences the
+plain-language report prints about it, the branch, the base branch, where the run's record is,
+and, for a run that stopped for a decision, every field of the escalation packet. Every key is
+always present: a `null` means "not that kind of run", so
 a script never has to check whether a key is there. A run that could not be found is still a
 plain-language message on standard error and exit 2, not JSON.
 ````
@@ -980,7 +1005,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Every run in the repository, at a glance
+### Task 3: Every run in the repository, at a glance ✅ DONE (deliver-slice)
 
 The last of the three: a listing rather than a lookup. `allRuns` (slice 4) already reads every record, so this adds the ordering the criterion asks for, the words for each outcome, and the two renderings, plus the documents and the changeset that say the whole slice exists.
 
@@ -1158,15 +1183,20 @@ export interface StatusOptions {
 }
 ```
 
+(`--last` needs no conflict check beside `ALL_AND_ONE`: it is not a field on this
+interface at all, because it is the explicit spelling of the default rather than a
+second meaning, so `--all --last` reads as `--all` and nothing is quietly dropped.)
+
 and take the listing branch first in `statusCommand`:
 
 ```ts
 export async function statusCommand(runId: string | undefined, options: StatusOptions, ctx: CommandContext): Promise<ExitCode> {
+  // Before the repository is even looked for: a usage mistake is the same
+  // mistake wherever it was typed, and hearing about the folder first would
+  // send the reader after the wrong problem.
+  if (options.all && runId !== undefined) throw new Refusal(ALL_AND_ONE, EXIT.configuration);
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
-  if (options.all) {
-    if (runId !== undefined) throw new Refusal(ALL_AND_ONE, EXIT.configuration);
-    return listRuns(repoPath, ctx);
-  }
+  if (options.all) return listRuns(repoPath, ctx);
   const record = runId === undefined ? await mostRecent(repoPath) : await readRun(repoPath, runId);
   // Indented rather than one line: a person reads this output too, and a parser does not mind.
   if (ctx.json) ctx.writeLine(JSON.stringify(await statusDocument(record, ctx), null, 2));
@@ -1280,7 +1310,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 - **Do not add a TTY check anywhere.** The spec is explicit: "There is no automatic switch to a different format when stdout is not a TTY." `--json` is the only thing that changes the format, and `report.test.ts`'s "plain language in every environment" case exists to fail if anyone adds one later.
 - **Do not put anything but JSON on standard output under `--json`.** That includes the "Starting run" line, the uncommitted-changes warning, the ignored-settings note, `chooseRun`'s question and every refusal. If a new message appears in the run path later, it is a `ctx.report.note`, never a `ctx.writeLine`.
-- **Do not add a record for the outcome to the `run --json` stream.** The last step record already carries `done: true` and the terminal state, and the exit code says how it ended. A script that wants the branch calls `delivery status --last --json`, which this slice also delivers.
+- **Do not add a record for the outcome to the `run --json` stream.** The last step record already carries `done: true` and the terminal state, and the exit code says how it ended. A script that wants the branch calls `delivery status --last --json`, which this slice also delivers. The outcome's own sentences are still said, on standard error with the other notes, so a person reading a CI log is not left with a run that stops mid-stream and an escalation whose decision was never printed.
 - **Do not change what the plain-language stream says.** `plainReporter` is `createProgress` plus the two lines that sat around it in `drive.ts`, moved, not rewritten. `run-command.test.ts`'s step-phrase case and the slice 1 to 5 acceptance tests in `tests/cli-and-configuration/` are the proof; if any of them changes, the move was not faithful.
 - **Do not add `delivery init`.** It is slice 7 of the slice scope.
 - **`--json` on `delivery resume` is deliberate, not an accident of the global option.** Resume drives the same loop as `run`, so a scheduled retry gets the same stream. It needs no separate test: `report.test.ts` covers the reporter, and `resume-command.test.ts` covers the command.
