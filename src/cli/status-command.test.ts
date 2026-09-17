@@ -439,6 +439,19 @@ describe("a run that answers for a task on the project's list", () => {
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain("It is task 2 of 2 on your list.");
   });
+
+  it("still reports, with no queue line, against a config file that fails to load", async () => {
+    const repo = initTempRepo("status-queue-broken-config-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ nonsenseKey: true }),
+    });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK });
+
+    const { exitCode, stdout } = await delivery(["status", RUN_ID], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).not.toContain("on your list");
+  });
 });
 
 describe("delivery status --all", () => {

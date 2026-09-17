@@ -239,9 +239,21 @@ async function mostRecent(repoPath: string): Promise<RunRecord> {
   return latest;
 }
 
-/** Where this run's task sits in the project's list as it is written now. Nothing for a run the list doesn't ask for, and for a project with no list. */
+/**
+ * Where this run's task sits in the project's list as it is written now.
+ * Nothing for a run the list doesn't ask for, for a project with no list, and
+ * for a config file that fails to load: unlike `run` and `validate`, `status`
+ * reads the file only to annotate a report, never to gate one, so a broken
+ * file just means no queue line rather than a refusal.
+ */
 async function positionOf(record: RunRecord, startDir: string, ctx: CommandContext): Promise<QueuePosition | undefined> {
-  const config = await loadConfig({ startDir, repoPath: record.repoPath, flag: undefined, env: ctx.env });
+  let config;
+  try {
+    config = await loadConfig({ startDir, repoPath: record.repoPath, flag: undefined, env: ctx.env });
+  } catch (err) {
+    if (err instanceof Refusal) return undefined;
+    throw err;
+  }
   return queuePositionOf(queueTasks(config), record.caseFile.header.taskDef);
 }
 
