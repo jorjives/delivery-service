@@ -63,6 +63,7 @@ is not sliced.
 
 ## Slice 2: Queue Several Tasks in Plain Words and Run Them in Order
 
+**Status:** ✅ Complete — 2026-09-17 — `65dea82`
 **Delivers:** A project owner lists the things they want done as plain sentences in the configuration file, and one `delivery run` works through them in order, picking up where it left off after an interruption or an edit to the list.
 
 **Operational note:** Queue progress is never stored anywhere of its own; it is worked out afresh on every command from the records of the runs that already exist. There is no queue state file or lock to back up, migrate or repair, and a queue's history is inspected with the existing run listing.
