@@ -7,7 +7,7 @@ seeded_by: [50-20260913T211119Z-choose-a-licence-before-open-sourcing.md]
 
 # CLI and Configuration — Design
 
-> **Status:** Draft — autonomous design-team run, not human-reviewed
+> **Status:** ✅ Complete — 2026-09-17 — all 7 slices delivered
 > Roadmap: `docs/superpowers/specs/2026-09-04-delivery-harness-roadmap.md`, Item 8.
 > Builds on: `2026-09-07-single-surface-state-machine-design.md` (`advance`, `run`, `SurfacePorts`, resume), `2026-09-04-gate-interface-design.md` (`GateRef`, command gate), `2026-09-11-close-interface-design.md` (`CloserRef`, built-in closers), `2026-09-09-agent-invocation-primitive-design.md` (`createAgentPort`, role configs), `2026-09-10-triage-and-router-design.md` (`deterministicRouter`, `EscalationPacket`), `2026-09-13-agent-mock-design.md` (`src/testing.ts`, vendored `claude-mock`, guide-as-test pattern).
 > Personas: `docs/personas.md` (team-derived, assumed, not human-confirmed; Dana's goal extended in place by this run).
