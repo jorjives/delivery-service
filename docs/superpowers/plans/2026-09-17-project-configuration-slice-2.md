@@ -1,5 +1,6 @@
 # Project Configuration — Slice 2: Queue Several Tasks in Plain Words and Run Them in Order
 
+> **Status:** ✅ Complete — 2026-09-17 — `65dea82`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 2 of `docs/superpowers/specs/2026-09-17-project-configuration-slices.md`
@@ -564,7 +565,7 @@ EOF
 
 ---
 
-### Task 3: Walking the list
+### Task 3: Walking the list ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/settings.ts:33-39` (`Settings` splits), `:141-157` (`resolveSettings` splits); `src/cli/drive.ts` (gains `startRun`); `src/cli/queue.ts` (gains the driver and its wording); `src/cli/run-command.ts` (whole file: dispatch); `src/cli/program.ts:79-81` (the `run` description); `README.md` (a new section)
@@ -1162,7 +1163,7 @@ EOF
 
 ---
 
-### Task 4: `delivery status` says which task of how many
+### Task 4: `delivery status` says which task of how many ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/status-command.ts` (`statusReport`, `statusDocument`, `RunStatusDocument`, `statusCommand`); `README.md` (the "See what happened to a run" bullets)
