@@ -309,6 +309,8 @@ your delivery pipeline".
 
 ## Item 8: CLI and Configuration
 
+**Status:** ✅ Complete — 2026-09-17 — spec: `docs/superpowers/specs/2026-09-14-cli-and-configuration-design.md`
+
 **Delivers:** A command-line interface for configuring and launching harness
 runs: pointing at a repo, registering a gate and closer, supplying a task
 queue, and setting budget caps.
