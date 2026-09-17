@@ -1,5 +1,5 @@
 import { createAgentPort } from "../agent-invoke.js";
-import { load } from "../case-file.js";
+import { create, load } from "../case-file.js";
 import { resolveCloser } from "../resolve-closer.js";
 import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
 import { deterministicRouter } from "../router.js";
@@ -7,14 +7,44 @@ import { advance, type AdvanceResult } from "../surface.js";
 import { triageRoleConfig } from "../triage-role-config.js";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import type { SurfacePorts } from "../ports.js";
+import type { TaskDef } from "../schema.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
 import { type ExitCode } from "./failures.js";
 import { summariseOutcome } from "./outcome.js";
 import { pickingUp } from "./output.js";
-import { runPlace } from "./run-location.js";
+import { prepareRunDir, runIdFor, runPlace } from "./run-location.js";
 import type { RunRecord } from "./runs.js";
-import { checkCustomModules, DEFAULT_CLOSER, taskIntent } from "./settings.js";
+import { checkCustomModules, DEFAULT_CLOSER, taskIntent, type ProjectSettings } from "./settings.js";
+
+/** A run about to exist: what it is being asked to do, and everything its project asks of every run. */
+export interface RunStart extends ProjectSettings {
+  repoPath: string;
+  taskDef: TaskDef;
+}
+
+/**
+ * Start one run and drive it to its end: give it an id from its own words and
+ * the second it began, write its record, and say so before the first step,
+ * because setting up is the slowest part and a person watching should not wait
+ * in silence for it. Everything that can refuse — the check, the closing
+ * action, the agent runtime — has already refused by the time this is called,
+ * so from here on there is a record on disk for whatever happens next.
+ */
+export async function startRun(
+  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt }: RunStart,
+  session: SessionEnvironment,
+  ctx: CommandContext,
+): Promise<ExitCode> {
+  const intent = taskIntent(taskDef);
+  const runId = runIdFor(intent, new Date());
+  const { dir } = runPlace(repoPath, runId, ctx.env);
+  await prepareRunDir(repoPath, dir);
+  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt }, budgets);
+  ctx.report.note(`Starting run ${runId}: ${intent}`);
+  ctx.report.step({ state: "PROVISIONING", done: false });
+  return driveToOutcome({ runId, repoPath, dir, caseFile }, session, ctx);
+}
 
 /**
  * Drive one run to its end, whether it was created a moment ago or left behind
@@ -55,17 +85,11 @@ export async function driveToOutcome(
   return summary.exitCode;
 }
 
-/**
- * Pick a run up where it stopped. It keeps the task, the check and the closing
- * action it started with, so nothing here is resolved again; the custom modules
- * those settings name are loaded first, so a module that has since been moved
- * stops the command rather than becoming a setback mid-run.
- */
-export async function resumeRun(record: RunRecord, ctx: CommandContext): Promise<ExitCode> {
+export async function resumeRun(record: RunRecord, ctx: CommandContext, session?: SessionEnvironment): Promise<ExitCode> {
   const { header } = record.caseFile;
   await checkCustomModules(header.gateRef, header.closerRef ?? DEFAULT_CLOSER, record.repoPath);
-  const session = await agentSession(ctx.env);
+  const started = session ?? (await agentSession(ctx.env));
   ctx.report.note(`Resuming run ${record.runId}: ${taskIntent(header.taskDef)}`);
   ctx.report.note(pickingUp(record.caseFile));
-  return driveToOutcome(record, session, ctx);
+  return driveToOutcome(record, started, ctx);
 }

@@ -1,14 +1,22 @@
 import { resolve } from "node:path";
-import { create } from "../case-file.js";
 import type { CommandContext } from "./context.js";
-import { driveToOutcome, resumeRun } from "./drive.js";
+import { resumeRun, startRun } from "./drive.js";
 import { agentSession } from "./agent-session.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
-import { prepareRunDir, runIdFor, runPlace } from "./run-location.js";
+import { queueTasks, runQueue } from "./queue.js";
 import { chooseRun, unfinishedRuns, unfinishedRunFound } from "./runs.js";
-import { checkCustomModules, explicitIntent, ignoredNote, ignoredSettings, resolveSettings, taskIntent, type RunFlags } from "./settings.js";
+import {
+  checkCustomModules,
+  explicitIntent,
+  ignoredNote,
+  ignoredSettings,
+  resolveProject,
+  resolveSettings,
+  taskIntent,
+  type RunFlags,
+} from "./settings.js";
 
 export { NO_TASK } from "./settings.js";
 
@@ -16,18 +24,22 @@ export { NO_TASK } from "./settings.js";
 export type RunOptions = RunFlags;
 
 /**
- * `delivery run`: pick up the run that didn't finish, or start a new one.
+ * `delivery run`: work down the project's list of tasks, or pick up the run
+ * that didn't finish, or start a new one.
  *
- * Discovery comes first, because a run that is already under way settles what
- * this invocation is for: its settings are pinned in its own record, so the
- * config file, the flags and the defaults are only resolved on the way to a
- * new run.
+ * The project's file is read first, because a list of tasks is the project's
+ * own plan for itself and only the file can say there is one. A task named on
+ * the command line is something a person is asking for right now, so it wins:
+ * it runs on its own and the list is left alone.
  */
 export async function runCommand(options: RunOptions, ctx: CommandContext): Promise<ExitCode> {
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
-  const unfinished = options.fresh ? [] : await unfinishedRuns(repoPath);
   const intent = await explicitIntent(options, ctx.env, ctx.cwd);
+  const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
+  if (intent === undefined && config.tasks) return startQueue(options, { repoPath, config }, ctx);
+
+  const unfinished = options.fresh ? [] : await unfinishedRuns(repoPath);
   const [mostRecent] = unfinished;
   if (mostRecent) {
     // A task the user typed settles which run they mean without asking; anything
@@ -41,35 +53,35 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
     if (ignored.length > 0) ctx.report.note(ignoredNote(ignored));
     return resumeRun(resuming, ctx);
   }
-  return startRun(options, { startDir, repoPath, intent }, ctx);
+  return startOne(options, { repoPath, intent, config }, ctx);
 }
 
-/** Start a run: work out what it should do from the project's config file, the flags and the environment, check the agent can start, then drive it. */
-async function startRun(
+/**
+ * Work down the project's list. What the whole list shares is settled once
+ * here — the check, the closing action, the limits, the description, and the
+ * modules those name — and the list itself decides when an agent is first
+ * needed, so a list with nothing left to do answers without one.
+ */
+async function startQueue(
   options: RunOptions,
-  { startDir, repoPath, intent }: { startDir: string; repoPath: string; intent: string | undefined },
+  { repoPath, config }: { repoPath: string; config: DeliveryConfig },
   ctx: CommandContext,
 ): Promise<ExitCode> {
-  const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
-  const { taskDef, gateRef, closerRef, budgets, domainPrompt } = await resolveSettings(options, {
-    env: ctx.env,
-    intent,
-    repoPath,
-    config,
-  });
-  await checkCustomModules(gateRef, closerRef, repoPath);
+  const project = await resolveProject(options, { env: ctx.env, repoPath, config });
+  await checkCustomModules(project.gateRef, project.closerRef, repoPath);
+  if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
+  return runQueue(queueTasks(config), project, { repoPath }, ctx);
+}
+
+/** Start one run: work out what it should do from the project's config file, the flags and the environment, check the agent can start, then drive it. */
+async function startOne(
+  options: RunOptions,
+  { repoPath, intent, config }: { repoPath: string; intent: string | undefined; config: DeliveryConfig },
+  ctx: CommandContext,
+): Promise<ExitCode> {
+  const settings = await resolveSettings(options, { env: ctx.env, intent, repoPath, config });
+  await checkCustomModules(settings.gateRef, settings.closerRef, repoPath);
   const session = await agentSession(ctx.env);
   if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
-
-  const resolvedIntent = taskIntent(taskDef);
-  const runId = runIdFor(resolvedIntent, new Date());
-  const { dir } = runPlace(repoPath, runId, ctx.env);
-  await prepareRunDir(repoPath, dir);
-  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt }, budgets);
-  ctx.report.note(`Starting run ${runId}: ${resolvedIntent}`);
-
-  // Said before the first advance, because provisioning is the slowest step and
-  // a person watching should not wait in silence for it.
-  ctx.report.step({ state: "PROVISIONING", done: false });
-  return driveToOutcome({ runId, repoPath, dir, caseFile }, session, ctx);
+  return startRun({ repoPath, ...settings }, session, ctx);
 }

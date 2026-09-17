@@ -73,6 +73,53 @@ plain-language lines everywhere, piped or in CI included: nothing switches forma
 
 To try it on something small first, use the [sample project](examples/sample-project/README.md).
 
+## Work through a list of tasks
+
+Put the things you want done in your `delivery.config.json`, in the order you want them:
+
+```json
+{
+  "tasks": [
+    "add a page that shows who's on call today",
+    "let someone swap their on-call day with a teammate",
+    "send a reminder the morning before someone's on-call day starts"
+  ]
+}
+```
+
+Then:
+
+```bash
+delivery run
+```
+
+It works down the list one task at a time, each as an ordinary run with its own branch and its
+own record, and says which task it is on:
+
+```text
+Task 1 of 3: add a page that shows who's on call today
+- setting up
+- checking the starting point
+- the agent is working
+- checking the agent's work
+- wrapping up
+Done: the change for "add a page that shows who's on call today" passed `npm test` and is
+committed on branch surface/add-a-page-that-shows-20260917T090000Z.
+
+Task 2 of 3: let someone swap their on-call day with a teammate
+…
+```
+
+Run it again whenever you like: it works out where it got to from the runs already in the
+repository, so an interrupted list picks up the task it was on and carries on from there. A task
+that needs a decision from you stops the list there rather than skipping past it, and running the
+command again stops in the same place until you deal with it.
+
+The list is yours to edit between runs. A new entry anywhere runs in its place; reordering
+changes only the order they are visited in; deleting an entry leaves its run in the history; and
+rewording an entry makes it a new task, which is also how you deliberately run a finished task
+again. `delivery run --task "..."` always runs exactly that one task and leaves the list alone.
+
 ## Pick up a run that was interrupted
 
 If a run stops before it finishes, because you closed the terminal, pressed Ctrl-C or the

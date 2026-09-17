@@ -30,14 +30,18 @@ export interface RunFlags {
   fresh?: boolean;
 }
 
-/** Everything a run needs to be created, once every source of settings has had its say. */
-export interface Settings {
-  taskDef: TaskDef;
+/** What a project asks of every run of it: how work is checked, what happens to it, how many attempts a setback gets, and what the project is. */
+export interface ProjectSettings {
   gateRef: GateRef;
   closerRef: CloserRef;
   budgets: BudgetSet;
   /** What this project is, from the config file, pinned into the run when it starts. Absent when the project didn't say. */
   domainPrompt?: string;
+}
+
+/** Everything a run needs to be created: what this one is being asked to do, and everything the project asks of all of them. */
+export interface Settings extends ProjectSettings {
+  taskDef: TaskDef;
 }
 
 /** The task's own words, for the run's id and the line that announces it. A task is opaque to the harness, so one shaped another way still gets a run. */
@@ -135,11 +139,28 @@ function budgetsFrom(config: DeliveryConfig): BudgetSet {
 }
 
 /**
- * What this run will use, from every source that has a say: a flag beats an
- * environment variable, which beats the config file, which beats the built-in
- * default. Everything that can refuse does so here, before the run's record or
- * its working copy exists.
+ * What every run of this project uses, from every source that has a say: a flag
+ * beats an environment variable, which beats the config file, which beats the
+ * built-in default. Everything that can refuse does so here, before any run's
+ * record or working copy exists. Separate from the task because a list of tasks
+ * resolves this once and then asks it of each entry in turn.
  */
+export async function resolveProject(
+  flags: RunFlags,
+  { env, repoPath, config }: { env: NodeJS.ProcessEnv; repoPath: string; config: DeliveryConfig },
+): Promise<ProjectSettings> {
+  return {
+    gateRef: await gateFrom(flags, env, config, repoPath),
+    closerRef: closerFrom(flags, env, config),
+    budgets: budgetsFrom(config),
+    // Only the file can say what the project is: it is prose about the
+    // repository, not something a person retypes per run, so there is no flag
+    // and no environment variable to lay over it.
+    domainPrompt: config.domain,
+  };
+}
+
+/** What one run will use: what it is being asked to do, and everything its project asks of every run. */
 export async function resolveSettings(
   flags: RunFlags,
   {
@@ -149,17 +170,7 @@ export async function resolveSettings(
     config,
   }: { env: NodeJS.ProcessEnv; intent: string | undefined; repoPath: string; config: DeliveryConfig },
 ): Promise<Settings> {
-  const gateRef = await gateFrom(flags, env, config, repoPath);
-  return {
-    taskDef: taskFrom(intent, config),
-    gateRef,
-    closerRef: closerFrom(flags, env, config),
-    budgets: budgetsFrom(config),
-    // Only the file can say what the project is: it is prose about the
-    // repository, not something a person retypes per run, so there is no flag
-    // and no environment variable to lay over it.
-    domainPrompt: config.domain,
-  };
+  return { taskDef: taskFrom(intent, config), ...(await resolveProject(flags, { env, repoPath, config })) };
 }
 
 /**

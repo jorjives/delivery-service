@@ -7,12 +7,13 @@ import type { MockScript } from "../mock-script.js";
 import { SurfaceState } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
-import { branchIn, completes, delivery, PACKAGE, RUN_TIMEOUT, TASK, scriptFile } from "./command-fixtures.js";
+import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot } from "./command-fixtures.js";
 import { unknownCloser } from "./config.js";
 import { EXIT, UNEXPECTED_FOOTER } from "./failures.js";
 import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
 import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
+import { EVERY_TASK_DONE } from "./queue.js";
 
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 const ESC = "[";
@@ -413,6 +414,195 @@ describe("delivery run with a config file", () => {
     const { stdout } = await delivery(["run", "--help"], { cwd: mkdtempSync(join(tmpdir(), "run-command-help-")) });
     for (const option of ["--task-file", "--gate-command", "--closer", "--config"]) expect(stdout).toContain(option);
     expect(stdout).not.toContain(TEST_MOCK_SCRIPT);
+  });
+});
+
+describe("delivery run with a list of tasks", () => {
+  // Deliberately distinct in their first five words: `runIdFor` slugs only
+  // those, over a stamp with one-second granularity, so two tasks that share
+  // an opening would give two back-to-back runs the same id.
+  const PAGE = "add a hello function that greets a name, with a test";
+  const SWAP = "write a goodbye function that farewells a name, with a test";
+
+  it(
+    "works down the list, one ordinary run at a time, saying which task it is on",
+    async () => {
+      const repo = initTempRepo("run-command-queue-", {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({ tasks: [PAGE, SWAP] }),
+      });
+
+      const { exitCode, stdout } = await delivery(["run"], {
+        cwd: repo,
+        env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain(`Task 1 of 2: ${PAGE}`);
+      expect(stdout).toContain(`Task 2 of 2: ${SWAP}`);
+      expect(stdout).toContain(`Done: the change for "${PAGE}" passed \`npm test\``);
+      expect(stdout).toContain(`Done: the change for "${SWAP}" passed \`npm test\``);
+      expect(stdout).toContain(EVERY_TASK_DONE);
+      expect(readdirSync(runsRoot(repo))).toHaveLength(2);
+      // The list is the order of visiting: task 1 is announced before task 2.
+      expect(stdout.indexOf("Task 1 of 2")).toBeLessThan(stdout.indexOf("Task 2 of 2"));
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "runs exactly the task the command line named and leaves the list alone",
+    async () => {
+      const repo = initTempRepo("run-command-queue-adhoc-", {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({ tasks: [PAGE, SWAP] }),
+      });
+
+      const { exitCode, stdout } = await delivery(["run", "--task", "add a function that shouts, with a test"], {
+        cwd: repo,
+        env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).not.toContain("Task 1 of");
+      expect(readdirSync(runsRoot(repo))).toHaveLength(1);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "picks the unfinished task up where it stopped, then carries on down the list",
+    async () => {
+      const repo = initTempRepo("run-command-queue-resume-", {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({ tasks: [PAGE, SWAP] }),
+      });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const { interruptedRun, writesHello } = await import("./command-fixtures.js");
+      const interrupted = await interruptedRun(repo, state, { task: PAGE, steps: 3, worker: writesHello });
+
+      const { exitCode, stdout } = await delivery(["run"], {
+        cwd: repo,
+        env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain(`Task 1 of 2: ${PAGE}`);
+      expect(stdout).toContain(`Resuming run ${interrupted}`);
+      expect(stdout).toContain(`Task 2 of 2: ${SWAP}`);
+      // One record for the task it picked up, one for the task it went on to.
+      expect(readdirSync(runsRoot(repo))).toHaveLength(2);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "runs what an edit added and what an edit reworded, and nothing else, framed by the list as it is now",
+    async () => {
+      const repo = initTempRepo("run-command-queue-edited-", {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({ tasks: [PAGE, SWAP] }),
+      });
+      const closed = { kind: "closed", source: "close", reason: "the work was committed", at: "2026-09-17T09:00:00.000Z" } as const;
+      await writeRunRecord(repo, { runId: "add-a-hello-20260917T090000Z", task: PAGE, outcome: closed });
+      await writeRunRecord(repo, { runId: "add-a-goodbye-20260917T100000Z", task: SWAP, outcome: closed });
+
+      // The edit a person makes between two invocations: one entry inserted at
+      // the top, one reworded, the rest untouched.
+      const FRESH = "create a shouting function that upper-cases a name, with a test";
+      const REWORDED = `${SWAP}, politely`;
+      writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ tasks: [FRESH, PAGE, REWORDED] }));
+
+      const { exitCode, stdout } = await delivery(["run"], {
+        cwd: repo,
+        env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain(`Task 1 of 3: ${FRESH}`);
+      expect(stdout).toContain(`Task 3 of 3: ${REWORDED}`);
+      // The entry that was not edited keeps its finished run and is passed over.
+      expect(stdout).not.toContain("Task 2 of 3");
+      expect(stdout).toContain(EVERY_TASK_DONE);
+      // The two runs that already existed, plus one for each entry that changed.
+      expect(readdirSync(runsRoot(repo))).toHaveLength(4);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it("says every task is done, and starts nothing, when each one already has a finished run", async () => {
+    const repo = initTempRepo("run-command-queue-done-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ tasks: [PAGE, SWAP] }),
+    });
+    const closed = { kind: "closed", source: "close", reason: "the work was committed", at: "2026-09-17T09:00:00.000Z" } as const;
+    await writeRunRecord(repo, { runId: "add-a-hello-20260917T090000Z", task: PAGE, outcome: closed });
+    await writeRunRecord(repo, { runId: "add-a-goodbye-20260917T100000Z", task: SWAP, outcome: closed });
+
+    // No scripted agent and no credential: a list with nothing left to do is an
+    // answer this command can give without one.
+    const { exitCode, stdout } = await delivery(["run"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(EVERY_TASK_DONE);
+    expect(readdirSync(runsRoot(repo))).toHaveLength(2);
+  });
+
+  it("stops at a task that needs a decision, names it, and stops at the same one next time", async () => {
+    const repo = initTempRepo("run-command-queue-escalated-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ tasks: [PAGE, SWAP] }),
+    });
+    await writeRunRecord(repo, {
+      runId: "add-a-hello-20260917T090000Z",
+      task: PAGE,
+      outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: "2026-09-17T09:05:00.000Z" },
+      packet: ESCALATION,
+    });
+
+    const first = await delivery(["run"], { cwd: repo });
+    const second = await delivery(["run"], { cwd: repo });
+
+    for (const attempt of [first, second]) {
+      expect(attempt.exitCode).toBe(EXIT.escalated);
+      expect(attempt.stdout).toContain(`Task 1 of 2: ${PAGE}`);
+      expect(attempt.stdout).toContain(`This needs your decision: ${ESCALATION.decision}`);
+      expect(attempt.stdout).toContain("Task 1 of 2 needs your decision before I can go on, so I've left the rest of the list alone.");
+      expect(attempt.stdout).not.toContain("Task 2 of 2");
+    }
+    // Nothing was started for the task behind it, either time.
+    expect(readdirSync(runsRoot(repo))).toEqual(["add-a-hello-20260917T090000Z"]);
+  });
+
+  it("stops at a task whose run was stopped, with the exit code a stopped run already uses", async () => {
+    const repo = initTempRepo("run-command-queue-aborted-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ tasks: [PAGE, SWAP] }),
+    });
+    await writeRunRecord(repo, {
+      runId: "add-a-hello-20260917T090000Z",
+      task: PAGE,
+      outcome: { kind: "aborted", source: "close", reason: "the closing action failed", at: "2026-09-17T09:05:00.000Z" },
+    });
+
+    const { exitCode, stdout } = await delivery(["run"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.aborted);
+    expect(stdout).toContain("Task 1 of 2 stopped before it finished, so I've left the rest of the list alone.");
+    expect(stdout).not.toContain("Task 2 of 2");
+  });
+
+  it("refuses a file that sets both one task and a list, before anything is set up", async () => {
+    const repo = initTempRepo("run-command-queue-both-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ task: { intent: PAGE }, tasks: [PAGE] }),
+    });
+
+    const { exitCode, stderr } = await delivery(["run"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("this project has both `task` and `tasks` set.");
+    expect(existsSync(join(repo, ".delivery", "runs"))).toBe(false);
   });
 });
 
