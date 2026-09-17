@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { cleanGitEnv } from "../git-env.js";
 import { initTempRepo } from "../temp-repo.js";
 import { EXIT, Refusal } from "./failures.js";
-import { findRepository, hasUncommittedChanges, inferGate, NO_CHECK, NOT_A_REPOSITORY } from "./project.js";
+import { findRepository, hasUncommittedChanges, inferGate, inferredCheck, NO_CHECK, NOT_A_REPOSITORY } from "./project.js";
 
 const withTest = (test: string) => JSON.stringify({ name: "scratch", scripts: { test } });
 
@@ -56,6 +56,24 @@ describe("inferGate", () => {
     const refusal = await refusalOf(inferGate(repo));
     expect(refusal.message).toBe(NO_CHECK);
     expect(refusal.exitCode).toBe(EXIT.configuration);
+  });
+});
+
+describe("inferredCheck", () => {
+  it("is the project's own npm test when it has a test script to run", async () => {
+    const repo = initTempRepo("project-check-", { "package.json": withTest("node --test") });
+    expect(await inferredCheck(repo)).toBe("npm test");
+  });
+
+  it.each([
+    ["no package.json", {}],
+    ["a package.json with no scripts", { "package.json": JSON.stringify({ name: "scratch" }) }],
+    ["an empty test script", { "package.json": withTest("  ") }],
+    ["npm init's always-failing placeholder", { "package.json": withTest('echo "Error: no test specified" && exit 1') }],
+    ["a package.json that is not JSON", { "package.json": "{ not json" }],
+  ])("has nothing to suggest for %s, rather than refusing", async (_label, files: Record<string, string>) => {
+    const repo = initTempRepo("project-no-check-", { "README.md": "hi\n", ...files });
+    expect(await inferredCheck(repo)).toBeUndefined();
   });
 });
 

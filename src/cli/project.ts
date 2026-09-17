@@ -33,15 +33,26 @@ const TestScript = z.object({ scripts: z.object({ test: z.string().trim().min(1)
 const NPM_INIT_PLACEHOLDER = "no test specified";
 
 /**
+ * The check this project's own `package.json` implies, or nothing when it
+ * implies none. `npm init`'s placeholder is nothing: it always fails, so a
+ * check built on it would accept any change, which is no check at all dressed
+ * as one. Undefined rather than a refusal, because "there isn't one" is a
+ * question `delivery init` asks and a refusal `delivery run` makes, and they
+ * should not infer it separately.
+ */
+export async function inferredCheck(repoPath: string): Promise<string | undefined> {
+  const script = await testScript(repoPath);
+  return script === undefined || script.includes(NPM_INIT_PLACEHOLDER) ? undefined : "npm test";
+}
+
+/**
  * The default check: the repository's own `npm test`, judged by its exit code
  * alone, the one parse mode that assumes nothing about the runner's output.
  */
 export async function inferGate(repoPath: string): Promise<GateRef> {
-  const script = await testScript(repoPath);
-  if (script === undefined || script.includes(NPM_INIT_PLACEHOLDER)) {
-    throw new Refusal(NO_CHECK, EXIT.configuration);
-  }
-  return { type: "command", command: "npm test", parseMode: "exitcode" };
+  const command = await inferredCheck(repoPath);
+  if (command === undefined) throw new Refusal(NO_CHECK, EXIT.configuration);
+  return { type: "command", command, parseMode: "exitcode" };
 }
 
 async function testScript(repoPath: string): Promise<string | undefined> {
