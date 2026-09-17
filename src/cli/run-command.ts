@@ -51,7 +51,7 @@ async function startRun(
   ctx: CommandContext,
 ): Promise<ExitCode> {
   const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
-  const { taskDef, gateRef, closerRef, budgets } = await resolveSettings(options, {
+  const { taskDef, gateRef, closerRef, budgets, domainPrompt } = await resolveSettings(options, {
     env: ctx.env,
     intent,
     repoPath,
@@ -65,7 +65,7 @@ async function startRun(
   const runId = runIdFor(resolvedIntent, new Date());
   const { dir } = runPlace(repoPath, runId, ctx.env);
   await prepareRunDir(repoPath, dir);
-  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef }, budgets);
+  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt }, budgets);
   ctx.report.note(`Starting run ${runId}: ${resolvedIntent}`);
 
   // Said before the first advance, because provisioning is the slowest step and

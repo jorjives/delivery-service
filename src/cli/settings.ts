@@ -36,6 +36,8 @@ export interface Settings {
   gateRef: GateRef;
   closerRef: CloserRef;
   budgets: BudgetSet;
+  /** What this project is, from the config file, pinned into the run when it starts. Absent when the project didn't say. */
+  domainPrompt?: string;
 }
 
 /** The task's own words, for the run's id and the line that announces it. A task is opaque to the harness, so one shaped another way still gets a run. */
@@ -153,6 +155,10 @@ export async function resolveSettings(
     gateRef,
     closerRef: closerFrom(flags, env, config),
     budgets: budgetsFrom(config),
+    // Only the file can say what the project is: it is prose about the
+    // repository, not something a person retypes per run, so there is no flag
+    // and no environment variable to lay over it.
+    domainPrompt: config.domain,
   };
 }
 

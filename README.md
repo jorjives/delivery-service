@@ -179,6 +179,7 @@ same object works too, for a project that needs to compute a value.
 
 ```json
 {
+  "domain": "A small internal tool that tracks who's on call this week. Node.js, Express, a SQLite file for storage.",
   "gate": { "type": "command", "command": "npm test", "parseMode": "exitcode" },
   "closer": { "type": "merge-back" },
   "budgets": { "correction": 5 }
@@ -188,6 +189,7 @@ same object works too, for a project that needs to compute a value.
 | Setting | What it says |
 |---|---|
 | `task` | What you want done, when it is the same every run |
+| `domain` | What your project is, in your own words: every agent on every run of it is told this before its own instructions. A run keeps the description it started with, so editing it changes the next run, not one already going. A long one is easiest in a `delivery.config.js` with a template literal. |
 | `gate` | What decides whether a change is good: see [Writing a gate](docs/writing-a-gate.md) |
 | `closer` | What happens to accepted work: see [Writing a closer](docs/writing-a-closer.md) |
 | `budgets` | How many attempts each kind of setback gets before the run asks a person: `correction`, `gateError`, `gateMaintenance`, `terminus` and `close`, each a whole number. Anything you leave out keeps its default (3, 3, 2, 5 and 3). |

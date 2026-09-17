@@ -95,6 +95,17 @@ describe("what the run is asked to do", () => {
   });
 });
 
+describe("what the run is told about the project", () => {
+  it("carries the project's description through to the run's settings, word for word", async () => {
+    const domain = "A small internal tool that tracks who's on call this week. All user-facing messages are written in French.";
+    expect((await settings({ task: TASK }, { config: { domain } })).domainPrompt).toBe(domain);
+  });
+
+  it("leaves it unset when the project didn't describe itself, so the run is exactly what it was before", async () => {
+    expect((await settings({ task: TASK })).domainPrompt).toBeUndefined();
+  });
+});
+
 describe("what checks the work", () => {
   it("turns --gate-command into a check that passes when the command exits 0", async () => {
     expect((await settings({ task: TASK, gateCommand: "make check" })).gateRef).toEqual({

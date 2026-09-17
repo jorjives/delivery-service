@@ -226,6 +226,30 @@ describe("delivery run", () => {
     expect(exitCode).toBe(EXIT.configuration);
     expect(stderr).toContain("unknown option '--bogus'");
   });
+
+  it(
+    "pins the project's description into the run's record when the run starts",
+    async () => {
+      const domain = "A small internal tool that tracks who's on call. All user-facing messages are written in French.";
+      const repo = initTempRepo("run-command-domain-", {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({ domain }),
+      });
+
+      const { exitCode, stdout } = await delivery(["run", "--task", TASK], {
+        cwd: repo,
+        env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(exitCode).toBe(EXIT.ok);
+      const runId = branchIn(stdout).replace("surface/", "");
+      const caseJson = JSON.parse(readFileSync(join(repo, ".delivery", "runs", runId, "case.json"), "utf-8")) as {
+        header: { domainPrompt?: string };
+      };
+      expect(caseJson.header.domainPrompt).toBe(domain);
+    },
+    RUN_TIMEOUT,
+  );
 });
 
 const configIn = (repo: string, config: unknown): void => writeFileSync(join(repo, "delivery.config.json"), JSON.stringify(config));

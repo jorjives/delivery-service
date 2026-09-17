@@ -36,10 +36,13 @@ beforeEach(async () => {
 });
 
 describe("assemblePrompt", () => {
-  it("puts the role fragment and the domain prompt in the system prompt", async () => {
+  it.each([
+    ["worker", workerRoleConfig, "You are the worker on a gated delivery harness."],
+    ["gate maintenance", gateMaintenanceRoleConfig, "You are gate maintenance on a gated delivery harness."],
+  ])("puts the role fragment and the domain prompt in %s's system prompt", async (_role, roleCfg, opening) => {
     const caseFile = await load(dir);
-    const { systemPrompt } = assemblePrompt(caseFile, workerRoleConfig, await resolveEvidence(dir, caseFile));
-    expect(systemPrompt).toContain("You are the worker on a gated delivery harness.");
+    const { systemPrompt } = assemblePrompt(caseFile, roleCfg, await resolveEvidence(dir, caseFile));
+    expect(systemPrompt).toContain(opening);
     expect(systemPrompt).toContain("This is a Python service.");
   });
 
