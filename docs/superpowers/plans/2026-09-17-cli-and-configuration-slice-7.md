@@ -34,13 +34,13 @@ Recorded here because this was an unattended run with no human to validate them.
 
 3. **The closer choices are derived from the library's own list, and a test pins them to it.** `BUILT_IN_CLOSERS` (`src/cli/config.ts:18-20`) is built from `CloserRef`'s own options, so `unknownCloser` can never list a closer the harness does not have. The wizard's menu is asserted against that same list, so adding a fourth built-in closer to the schema fails the wizard's test until it has a choice with a one-line description. The descriptions cannot be derived, because they are the plain-language part, so that test is the only thing holding the two together.
 
-4. **The overwrite question is asked first, before the three.** The acceptance criterion says only "it asks before overwriting". Asking first means someone who is keeping the file they have answers one question instead of four and finds out immediately; asking last means answering three questions and then throwing the answers away. It also means the "leaves the file untouched" case touches nothing at all, not even the inferred check.
+4. **The overwrite question is asked first, before the three, and it covers all three config forms.** The acceptance criterion says only "it asks before overwriting". Asking first means someone who is keeping the file they have answers one question instead of four and finds out immediately; asking last means answering three questions and then throwing the answers away. It also means the "leaves the file untouched" case touches nothing at all, not even the inferred check. "Already there" means any of `delivery.config.json`, `.js` or `.mjs`, not just the one this command writes: `configCandidates` lists `.json` first and `loadConfig` takes the first hit (`src/cli/config.ts:119-129,165`), so writing a `.json` over somebody's computed `delivery.config.js` would stop that file being used without anybody being asked, which is the thing this criterion exists to prevent.
 
 5. **The file is written at the top of the repository, not in the folder the command was run from.** Config discovery (`configCandidates`, `src/cli/config.ts:119-129`) walks from the working folder *up* to the repository root. A file written into a subfolder would therefore be invisible to a `delivery run` from anywhere else in the project, which is the opposite of what "set up this project" means. `--repo <path>` names the repository, as it does on `run`, `resume` and `status`.
 
 6. **`--no-color` reaches the prompts through a partial theme; `NO_COLOR` is the library's own job.** `initCommand` prints no colour itself, so the only colour in an `init` is the prompt chrome. `@inquirer/prompts` honours `NO_COLOR` through its colour library, which is the standard the spec names first, but it cannot see our `--no-color` flag. A partial theme whose `style` functions return their argument unchanged, passed only when `ctx.colour` is false, closes that gap in ten lines. *If `PLAIN_THEME` will not typecheck against the installed version's `Theme` type, drop the theme, keep `inquirerAsk(colour)`'s signature, and leave a comment naming the ceiling: `NO_COLOR` still works and `init`'s own output is colourless either way. Do not spend a task fighting the types.*
 
-7. **`init` ignores `--json`.** `--json` exists for scripts, and a script has no terminal, and `init` refuses without one: the combination reaches `NEEDS_A_TERMINAL` on standard error before anything is printed on standard output, so stdout under `--json` stays empty rather than becoming unparseable prose. A caller who wants a config file without a person writes the file; that is the format slice 2 documents and this command's whole output.
+7. **`init` ignores `--json`.** `--json` exists for scripts, and a script has no terminal, and `init` refuses without one: from a pipe or from CI the combination reaches `NEEDS_A_TERMINAL` on standard error before anything is printed on standard output, so stdout stays empty rather than becoming unparseable prose. From a terminal, `delivery init --json` still asks its questions and still prints its one prose line, because nothing this command produces is machine-readable except the file itself; that is not worth a refusal of its own. A caller who wants a config file without a person writes the file, which is the format slice 2 documents.
 
 ## Scaffolding Impact
 
@@ -54,7 +54,7 @@ Recorded here because this was an unattended run with no human to validate them.
 
 ---
 
-### Task 1: The check the wizard can suggest
+### Task 1: The check the wizard can suggest ✅ DONE (deliver-slice)
 
 `inferGate` (`src/cli/project.ts:39-45`) answers two questions at once today: "what is this project's check?" and "is there one at all?", by throwing `NO_CHECK` when there is not. The wizard needs the first answer without the second, because "no test script" is a question to ask, not a refusal. Rather than infer twice, split the inference out and let `inferGate` refuse over it. The placeholder rule (`npm init`'s always-failing `no test specified`, which would accept any change) moves with the inference and so keeps applying to both callers.
 
@@ -101,7 +101,7 @@ Expected: FAIL. TypeScript and vitest both object that `inferredCheck` is not ex
 
 - [ ] **Step 3: Write the implementation**
 
-In `src/cli/project.ts`, replace the body of `inferGate` (lines 39-45) with the two functions below. Nothing else in the file changes: `TestScript`, `NPM_INIT_PLACEHOLDER`, `testScript`, `NO_CHECK` and `hasUncommittedChanges` all stay exactly as they are.
+In `src/cli/project.ts`, replace `inferGate` **and its doc comment** (lines 35-45) with the two functions below; the snippet carries the replacement comment, so leaving the old one in place would duplicate it. Nothing else in the file changes: `TestScript`, `NPM_INIT_PLACEHOLDER`, `testScript`, `NO_CHECK` and `hasUncommittedChanges` all stay exactly as they are.
 
 ```ts
 /**
@@ -150,7 +150,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 2: The three questions, and the file they write
+### Task 2: The three questions, and the file they write ✅ DONE (deliver-slice)
 
 The whole of the wizard's behaviour, with the asking injected. Everything a person sees is here, as data or as an exported constant, so every acceptance criterion in the slice is asserted directly rather than through a rendered terminal. The file is built by `DeliveryConfig.parse`, the same schema `delivery run` will read it back with, so `init` cannot write a file its own loader would refuse.
 
@@ -159,7 +159,7 @@ The whole of the wizard's behaviour, with the asking injected. Everything a pers
 - Create: `src/cli/init.test.ts`
 
 **Interfaces:**
-- Consumes: `inferredCheck(repoPath)` (Task 1). `findRepository(path)` (`src/cli/project.ts:19`). `CONFIG_BASENAME`, `DeliveryConfig`, `BUILT_IN_CLOSERS` (`src/cli/config.ts:11,18,56`). `DEFAULT_CLOSER` (`src/cli/settings.ts:20`). `CommandContext` (`src/cli/context.ts:7`). `EXIT`, `Refusal`, `ExitCode` (`src/cli/failures.ts`).
+- Consumes: `inferredCheck(repoPath)` (Task 1). `findRepository(path)`, `NOT_A_REPOSITORY` (`src/cli/project.ts:19,8`). `CONFIG_BASENAME`, `CONFIG_EXTENSIONS`, `DeliveryConfig`, `BUILT_IN_CLOSERS` (`src/cli/config.ts:11,12,18,56`). `DEFAULT_CLOSER` (`src/cli/settings.ts:20`). `CommandContext` (`src/cli/context.ts:7`). `EXIT`, `Refusal`, `ExitCode` (`src/cli/failures.ts`).
 - Produces:
   - `interface TextQuestion { message: string; default?: string; required?: boolean }`
   - `interface Choice { value: string; name: string; description: string }`
@@ -170,7 +170,7 @@ The whole of the wizard's behaviour, with the asking injected. Everything a pers
   - `initCommand(options: InitOptions, ctx: CommandContext, ask: Ask): Promise<ExitCode>`
   - `checkQuestion(suggested: string | undefined): TextQuestion`, `CLOSER_QUESTION: ChoiceQuestion`, `TASK_QUESTION: TextQuestion`, `overwriteQuestion(file: string): ConfirmQuestion`
   - `configFrom({ check, closer, task }: { check: string; closer: string; task: string }): DeliveryConfig`
-  - `CONFIG_FILE(repoPath: string): string`, `NEEDS_A_TERMINAL: string`, `LEFT_ALONE(file: string): string`, `WRITTEN(file: string): string`
+  - `CONFIG_FILE(repoPath: string): string`, `existingConfig(repoPath: string): string | undefined`, `NEEDS_A_TERMINAL: string`, `LEFT_ALONE(file: string): string`, `WRITTEN(file: string): string`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -187,6 +187,7 @@ import { PACKAGE } from "./command-fixtures.js";
 import { BUILT_IN_CLOSERS, loadConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal } from "./failures.js";
+import { NOT_A_REPOSITORY } from "./project.js";
 import { plainReporter } from "./report.js";
 import { DEFAULT_CLOSER, resolveSettings } from "./settings.js";
 import {
@@ -344,6 +345,20 @@ describe("a config file that is already there", () => {
     expect(asked).toHaveLength(4);
     expect(JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"))).toMatchObject({ closer: DEFAULT_CLOSER, task: { intent: TASK } });
   });
+
+  it("asks about a computed config file too, because the file it writes would be used instead of it", async () => {
+    const repo = sample();
+    const computed = join(repo, "delivery.config.js");
+    writeFileSync(computed, "export default {};\n");
+    const { ask, asked } = scriptedAsk({ confirm: false });
+    const { ctx, lines } = context(repo);
+
+    expect(await initCommand({}, ctx, ask)).toBe(EXIT.ok);
+
+    expect(existsSync(CONFIG_FILE(repo))).toBe(false);
+    expect(asked).toHaveLength(1);
+    expect(lines).toEqual([LEFT_ALONE(computed)]);
+  });
 });
 
 describe("when there is nobody to answer", () => {
@@ -366,6 +381,19 @@ describe("when there is nobody to answer", () => {
     const err = await initCommand({}, context(notARepo, { interactive: false }).ctx, scriptedAsk().ask).catch((e: unknown) => e);
 
     expect((err as Refusal).message).toBe(NEEDS_A_TERMINAL);
+  });
+});
+
+describe("a folder that isn't a repository", () => {
+  it("says so in the same words every other command uses, with the configuration exit code", async () => {
+    const notARepo = mkdtempSync(join(tmpdir(), "init-not-repo-"));
+    const { ask, asked } = scriptedAsk();
+
+    const err = await initCommand({}, context(notARepo).ctx, ask).catch((e: unknown) => e);
+
+    expect((err as Refusal).message).toBe(NOT_A_REPOSITORY);
+    expect((err as Refusal).exitCode).toBe(EXIT.configuration);
+    expect(asked).toEqual([]);
   });
 });
 
@@ -398,7 +426,7 @@ Create `src/cli/init.ts`:
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { CONFIG_BASENAME, DeliveryConfig } from "./config.js";
+import { CONFIG_BASENAME, CONFIG_EXTENSIONS, DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository, inferredCheck } from "./project.js";
@@ -457,6 +485,16 @@ export interface InitOptions {
  */
 export const CONFIG_FILE = (repoPath: string): string => join(repoPath, `${CONFIG_BASENAME}.json`);
 
+/**
+ * The config file this project already has, whichever form it takes. All three,
+ * not just the one this command writes: discovery prefers the `.json`, so a
+ * `.json` written over somebody's computed `delivery.config.js` would stop that
+ * file being used without anybody having been asked.
+ */
+export function existingConfig(repoPath: string): string | undefined {
+  return CONFIG_EXTENSIONS.map((extension) => join(repoPath, CONFIG_BASENAME + extension)).find((candidate) => existsSync(candidate));
+}
+
 export const NEEDS_A_TERMINAL =
   "`delivery init` asks you a few questions, so it needs a terminal to type the answers in. " +
   `Run it in a terminal, or write a ${CONFIG_BASENAME}.json yourself: the README says what goes in it.`;
@@ -505,7 +543,9 @@ export const TASK_QUESTION: TextQuestion = {
 };
 
 export const overwriteQuestion = (file: string): ConfirmQuestion => ({
-  message: `There's already a ${file}. Shall I replace it?`,
+  message: file.endsWith(".json")
+    ? `There's already a ${file}. Shall I replace it with your answers?`
+    : `There's already a ${file}. I can only write a ${CONFIG_BASENAME}.json, and that would be used instead of it. Shall I?`,
   default: false,
 });
 
@@ -540,8 +580,9 @@ export async function initCommand(options: InitOptions, ctx: CommandContext, ask
 
   // Asked first, not last: someone who is keeping the file they have should not
   // have to answer three questions to find that out.
-  if (existsSync(file) && !(await ask.confirm(overwriteQuestion(file)))) {
-    ctx.writeLine(LEFT_ALONE(file));
+  const existing = existingConfig(repoPath);
+  if (existing !== undefined && !(await ask.confirm(overwriteQuestion(existing)))) {
+    ctx.writeLine(LEFT_ALONE(existing));
     return EXIT.ok;
   }
 
@@ -558,7 +599,7 @@ export async function initCommand(options: InitOptions, ctx: CommandContext, ask
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/cli/init.test.ts`
-Expected: PASS, all eleven tests.
+Expected: PASS, all thirteen tests.
 
 If "asks three questions and writes exactly those three answers" fails on key order inside the written JSON, that is `DeliveryConfig.parse` rebuilding the object in the schema's own order. The assertion compares parsed values, not text, so it should not: if it does, the failure is a real mismatch in the values and not the order.
 
@@ -585,7 +626,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Asking with @inquirer, and a `delivery init` people can find
+### Task 3: Asking with @inquirer, and a `delivery init` people can find ✅ DONE (deliver-slice)
 
 The wizard becomes a command. This task adds the one file that imports the prompt library, registers the subcommand so it appears in `--help`, and updates everything that now describes the harness incompletely: the README (which documents the config file and had no way to author it by answering questions), the sample project's walkthrough (which walks through every other `delivery` command), and a changeset (which `CONTRIBUTING.md` requires for anything a user would notice).
 
@@ -720,7 +761,7 @@ If it times out rather than failing on an assertion, the library is not driving 
 
 - [ ] **Step 6: Register the command**
 
-In `src/cli/program.ts`, add two imports beside the existing ones (`init` before `resume` keeps them alphabetical, as they already are):
+In `src/cli/program.ts`, add two imports in the file's existing alphabetical order: `./init.js` after `./failures.js` (line 4), and `./prompts.js` after `./output.js` (line 5).
 
 ```ts
 import { initCommand, type InitOptions } from "./init.js";
@@ -827,6 +868,11 @@ because the command asks questions, it says so and stops when there is no termin
 
 Run: `npx vitest run src/cli/prompts.test.ts src/cli/init.test.ts && npx eslint src/cli/prompts.ts src/cli/prompts.test.ts src/cli/program.ts && npx tsc --noEmit`
 Expected: PASS and clean.
+
+- [ ] **Step 12b: Run the whole suite once**
+
+Run: `npm test` (which builds first, then runs vitest).
+Expected: PASS. This is the slice's only full run, and the one thing that catches what the targeted runs cannot: `tests/typecheck-coverage.test.ts` over the two new `src/cli/` files, `tests/packaging.test.ts` over the changed `package.json`, `tests/delivery-command.test.ts` and `tests/sample-project.test.ts` over the changed docs and the new subcommand, and `tests/getting-started-guide.test.ts` again from a clean build.
 
 - [ ] **Step 13: Commit**
 
