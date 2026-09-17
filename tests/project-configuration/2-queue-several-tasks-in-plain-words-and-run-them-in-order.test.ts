@@ -15,7 +15,7 @@
 
 import { describe, expect, it } from "vitest";
 import { execFileSync, spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { writeMockScript, type MockScript } from "../../src/mock-script.js";
@@ -69,7 +69,7 @@ function heldOpen(intent: string, path: string, content: string): MockScript["ex
 
 /** The run id a closing sentence's branch names, once the branch is stripped back to it. */
 function runIdsIn(stdout: string): string[] {
-  return [...stdout.matchAll(/Starting run (\S+?):/g)].map(([, runId]) => runId);
+  return [...stdout.matchAll(/Starting run (\S+?):/g)].flatMap(([, runId]) => (runId === undefined ? [] : [runId]));
 }
 
 /**
@@ -85,7 +85,6 @@ function interruptOnOccurrence(
   return new Promise((resolvePromise, reject) => {
     const child = spawn(process.execPath, [join(REPO_ROOT, "dist", "cli", "main.js"), ...args], { cwd, env });
     let stdout = "";
-    let seen = 0;
     let interrupted = false;
     child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString();
@@ -277,7 +276,7 @@ describe("AC: `delivery status` for a run answering a queue entry says which tas
       },
     });
     expect(run.status).toBe(EXIT.ok);
-    const [runId1] = runIdsIn(run.stdout);
+    const [runId1 = ""] = runIdsIn(run.stdout);
 
     const status = runDelivery(["status", runId1], { cwd: repo });
     expect(status.status).toBe(EXIT.ok);
