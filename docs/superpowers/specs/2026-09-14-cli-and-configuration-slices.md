@@ -263,6 +263,7 @@ public rehearsal mode) is not sliced.
 ## Slice 7: Set Up a Project by Answering a Few Questions
 
 **Status:** ✅ Complete — 2026-09-17 — `b9d748f`
+**Tests:** ✅ Recorded — 2026-09-17 — `f71256b` — cli — 1 UAT + 3 AC, 0 skipped
 **Delivers:** A project owner types `delivery init` and answers prompts for the check, the closing action and a first task, and gets a `delivery.config.json` that the next `delivery run` uses.
 
 **Build note:** Use @inquirer/prompts for the prompts, following the estate precedent of autoloop's setup wizard; not @clack/prompts or a hand-rolled prompt loop.
