@@ -580,6 +580,35 @@ describe("picking up a run that didn't finish", () => {
   );
 
   it(
+    "keeps the description the run started with, even after the file it came from is rewritten",
+    async () => {
+      const started = "A tool that tracks who's on call. All user-facing messages are written in French.";
+      const repo = initTempRepo("run-command-domain-pinned-", {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({ domain: started }),
+      });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const { interruptedRun, writesHello } = await import("./command-fixtures.js");
+      const runId = await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello, domain: started });
+
+      // The owner edits the project's description while the run is stopped.
+      writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ domain: "Rewritten after the run began." }));
+      const { exitCode, stdout } = await delivery(["run"], {
+        cwd: repo,
+        env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(stdout).toContain(`Resuming run ${runId}`);
+      expect(exitCode).toBe(EXIT.ok);
+      const caseJson = JSON.parse(readFileSync(join(repo, ".delivery", "runs", runId, "case.json"), "utf-8")) as {
+        header: { domainPrompt?: string };
+      };
+      expect(caseJson.header.domainPrompt).toBe(started);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
     "asks which run to pick up when more than one didn't finish",
     async () => {
       const repo = initTempRepo("run-command-several-", { "package.json": PACKAGE });

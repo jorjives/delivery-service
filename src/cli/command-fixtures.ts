@@ -92,12 +92,12 @@ export const writesHello = async (ctx: AgentContext): Promise<Terminus> => {
 export async function interruptedRun(
   repo: string,
   state: string,
-  { task, steps, worker }: { task: string; steps: number; worker: (ctx: AgentContext) => Promise<Terminus> },
+  { task, steps, worker, domain }: { task: string; steps: number; worker: (ctx: AgentContext) => Promise<Terminus>; domain?: string },
 ): Promise<string> {
   const runId = runIdFor(task, new Date());
   const { dir, location } = runPlace(repo, runId, { XDG_STATE_HOME: state });
   await prepareRunDir(repo, dir);
-  await create(dir, { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER }, DEFAULT_BUDGETS);
+  await create(dir, { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER, domainPrompt: domain }, DEFAULT_BUDGETS);
   const ports = { agent: fakeAgentPort({ worker }), triage: deterministicRouter, closer: resolveCloser(DEFAULT_CLOSER, repo) };
   for (let step = 0; step < steps; step++) {
     // The interruption is the last advance, so a rejecting worker throws here.
