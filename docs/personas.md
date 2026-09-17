@@ -97,3 +97,20 @@ able to install the harness and get a working run from a repo and a task
 description alone, with sensible built-in defaults, no config file, and no code.
 See `docs/prd/2026-09-14-cli-and-configuration/product-design.md` for the journey
 this drives. Her goal of reading escalation output, above, is unchanged.
+
+**Goal extension (added by `project-configuration-design`, autonomous run
+`20260917T121214Z`, for Item 9 — Project Configuration; ASSUMED, not
+human-confirmed):** Item 8 got Dana a single working run from a repo and a task
+description, with no config file. Item 9's roadmap text asks more of her: "a
+non-technical project owner can set up a project using only declarative
+configuration and built-in components, without writing any code." Her goal is
+extended again to cover **authoring and running a small project**, not just one
+task: she describes her project in prose, lists a few tasks in her own words,
+picks a way to check the work and a way to land it from built-in options, and
+can see — before anything runs — what the agent will be told and whether her
+setup is complete. She never opens `delivery.config.json` by hand, never sees
+the words "worktree", "envelope", "surface" or "role config", and a broken setup
+tells her the one thing to fix in her own words, not the harness's. See
+`docs/prd/2026-09-17-project-configuration/product-design.md` for the journeys
+this drives. Her goals above (first run, reading escalation output) are
+unchanged.
