@@ -1,5 +1,6 @@
 # Project Configuration — Slice 1: Describe Your Project Once and Every Agent Hears It
 
+> **Status:** ✅ Complete — 2026-09-17 — `4ba5827`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 1 of `docs/superpowers/specs/2026-09-17-project-configuration-slices.md`
