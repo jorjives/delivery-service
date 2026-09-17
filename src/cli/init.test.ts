@@ -2,63 +2,16 @@ import { describe, expect, it } from "vitest";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
 import { initTempRepo } from "../temp-repo.js";
 import { PACKAGE } from "./command-fixtures.js";
 import { BUILT_IN_CLOSERS, loadConfig } from "./config.js";
-import type { CommandContext } from "./context.js";
 import { EXIT, Refusal } from "./failures.js";
+import { context, scriptedAsk } from "./init-fixtures.js";
 import { NOT_A_REPOSITORY } from "./project.js";
-import { plainReporter } from "./report.js";
 import { DEFAULT_CLOSER, resolveSettings } from "./settings.js";
-import {
-  CONFIG_FILE,
-  initCommand,
-  LEFT_ALONE,
-  NEEDS_A_TERMINAL,
-  WRITTEN,
-  type Ask,
-  type ChoiceQuestion,
-  type ConfirmQuestion,
-  type TextQuestion,
-} from "./init.js";
+import { CONFIG_FILE, initCommand, LEFT_ALONE, NEEDS_A_TERMINAL, WRITTEN, type ChoiceQuestion, type TextQuestion } from "./init.js";
 
 const TASK = "add a function that says hello to a name, with a test";
-
-/** A command context with somebody at the terminal, unless the test says there is nobody. */
-function context(cwd: string, { interactive = true }: { interactive?: boolean } = {}) {
-  const lines: string[] = [];
-  const writeLine = (line: string): void => void lines.push(line);
-  const stdin = Object.assign(Readable.from([]), { isTTY: interactive || undefined });
-  const ctx: CommandContext = { cwd, env: {}, colour: false, json: false, stdin, writeLine, report: plainReporter(writeLine, false) };
-  return { ctx, lines };
-}
-
-/**
- * A person answering the questions in the order they are asked, recording each
- * question so a test can assert on what was actually offered. An answer left
- * out is Enter: the question's own default.
- */
-function scriptedAsk({ texts = [], choice, confirm }: { texts?: (string | undefined)[]; choice?: string; confirm?: boolean } = {}) {
-  const asked: (TextQuestion | ChoiceQuestion | ConfirmQuestion)[] = [];
-  const queue = [...texts];
-  const ask: Ask = {
-    text(question) {
-      asked.push(question);
-      // An answer of `undefined` is Enter: whatever the question offered.
-      return Promise.resolve(queue.shift() ?? question.default ?? "");
-    },
-    choose(question) {
-      asked.push(question);
-      return Promise.resolve(choice ?? question.default);
-    },
-    confirm(question) {
-      asked.push(question);
-      return Promise.resolve(confirm ?? question.default);
-    },
-  };
-  return { ask, asked };
-}
 
 const sample = (files: Record<string, string> = { "package.json": PACKAGE }) => initTempRepo("init-", { "README.md": "hi\n", ...files });
 

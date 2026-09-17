@@ -19,12 +19,11 @@ import { describe, expect, it } from "vitest";
 import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Readable } from "node:stream";
 import { writeMockScript, type MockScript } from "../../src/mock-script.js";
 import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { BUILT_IN_CLOSERS, loadConfig } from "../../src/cli/config.js";
-import type { CommandContext } from "../../src/cli/context.js";
 import { EXIT } from "../../src/cli/failures.js";
+import { context, scriptedAsk } from "../../src/cli/init-fixtures.js";
 import {
   CLOSER_QUESTION,
   CONFIG_FILE,
@@ -32,12 +31,9 @@ import {
   LEFT_ALONE,
   NEEDS_A_TERMINAL,
   WRITTEN,
-  type Ask,
   type ChoiceQuestion,
-  type ConfirmQuestion,
   type TextQuestion,
 } from "../../src/cli/init.js";
-import { plainReporter } from "../../src/cli/report.js";
 import { DEFAULT_CLOSER, resolveSettings } from "../../src/cli/settings.js";
 import { REPO_ROOT, runDelivery, git } from "../helpers.js";
 
@@ -69,36 +65,6 @@ function sampleProjectCopy(): string {
 const completes = (path: string, content: string): MockScript => ({
   expectations: [{ effects: [{ write: { path, content } }], json: { status: "completed", rationale: `added ${path}` } }],
 });
-
-/** A command context with somebody at the terminal, as `delivery init` needs to even start. */
-function context(cwd: string) {
-  const lines: string[] = [];
-  const writeLine = (line: string): void => void lines.push(line);
-  const stdin = Object.assign(Readable.from([]), { isTTY: true });
-  const ctx: CommandContext = { cwd, env: {}, colour: false, json: false, stdin, writeLine, report: plainReporter(writeLine, false) };
-  return { ctx, lines };
-}
-
-/** A person answering the wizard's questions in the order they are asked, by pressing Enter for anything left out. */
-function scriptedAsk({ texts = [], choice, confirm }: { texts?: (string | undefined)[]; choice?: string; confirm?: boolean } = {}) {
-  const asked: (TextQuestion | ChoiceQuestion | ConfirmQuestion)[] = [];
-  const queue = [...texts];
-  const ask: Ask = {
-    text(question) {
-      asked.push(question);
-      return Promise.resolve(queue.shift() ?? question.default ?? "");
-    },
-    choose(question) {
-      asked.push(question);
-      return Promise.resolve(choice ?? question.default);
-    },
-    confirm(question) {
-      asked.push(question);
-      return Promise.resolve(confirm ?? question.default);
-    },
-  };
-  return { ask, asked };
-}
 
 describe("UAT: set up a project for the harness by answering questions instead of writing a file", () => {
   it(
