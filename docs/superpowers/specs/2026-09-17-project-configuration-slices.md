@@ -25,6 +25,7 @@ is not sliced.
 
 ## Slice 1: Describe Your Project Once and Every Agent Hears It
 
+**Status:** ✅ Complete — 2026-09-17 — `4ba5827`
 **Delivers:** A project owner writes a sentence or two about their project in the checked-in configuration file, and every run from then on tells the agent that context, without retyping it per task.
 
 **Build note:** Reuse the domain-prompt field the case file and prompt assembly already carry; this slice adds only a producer for it from the configuration file. Do not add a second route for getting project context into a prompt. Extend the existing configuration schema and its existing plain-language problem describer rather than adding a loader or an error-formatting library.
