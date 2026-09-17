@@ -10,7 +10,7 @@ import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
 import { nextStepPhrase, paint } from "./output.js";
 import { runPlace } from "./run-location.js";
-import { allRuns, describeRun, NOTHING_HERE, readableUtc, readRun, startedAt, startedInstant, type RunRecord } from "./runs.js";
+import { allRuns, describeRun, newestFirst, NOTHING_HERE, readableUtc, readRun, startedAt, startedInstant, type RunRecord } from "./runs.js";
 import { taskIntent } from "./settings.js";
 
 /**
@@ -188,18 +188,6 @@ const OUTCOME_WORDS: Record<RunOutcomeName, string> = {
 
 export const ALL_AND_ONE =
   "Use either `--all` or a run id, not both: `--all` lists every run, and a run id reads one of them in full.";
-
-/**
- * Newest first, by the second each run id carries rather than by when its
- * record was last written: a list is a history, so resuming an old run today
- * does not make it the newest. A run id with no stamp sorts last, and the sort
- * is stable, so runs that started in the same second keep the order they came
- * in.
- */
-export function newestFirst(records: RunRecord[]): RunRecord[] {
-  const startedOf = (record: RunRecord): string => startedInstant(record.runId) ?? "";
-  return [...records].sort((a, b) => (startedOf(a) < startedOf(b) ? 1 : startedOf(a) > startedOf(b) ? -1 : 0));
-}
 
 /** Every run this repository holds, one to a line: which run, when it started, what it was asked to do, and how it ended. */
 export function runListing(records: RunRecord[]): string[] {

@@ -91,6 +91,18 @@ export function startedAt(runId: string): string {
   return instant === null ? "an unknown time" : readableUtc(instant);
 }
 
+/**
+ * Newest first, by the second each run id carries rather than by when its
+ * record was last written: a list is a history, so resuming an old run today
+ * does not make it the newest. A run id with no stamp sorts last, and the sort
+ * is stable, so runs that started in the same second keep the order they came
+ * in.
+ */
+export function newestFirst(records: RunRecord[]): RunRecord[] {
+  const startedOf = (record: RunRecord): string => startedInstant(record.runId) ?? "";
+  return [...records].sort((a, b) => (startedOf(a) < startedOf(b) ? 1 : startedOf(a) > startedOf(b) ? -1 : 0));
+}
+
 /** An ISO 8601 timestamp as a person reads it: the date, the minute, and the zone it is in. */
 export function readableUtc(iso: string): string {
   return `${iso.slice(0, 10)} ${iso.slice(11, 16)} UTC`;
