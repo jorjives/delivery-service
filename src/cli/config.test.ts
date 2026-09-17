@@ -15,7 +15,7 @@ function problemFor(raw: unknown): string {
 }
 
 describe("what a config file may contain", () => {
-  it("accepts exactly task, gate, closer and budgets, in the shapes the library already documents", () => {
+  it("accepts exactly task, domain, gate, closer and budgets, in the shapes the library already documents", () => {
     const config = {
       task: { intent: "add a function that says goodbye to a name, with a test" },
       gate: { type: "command", command: "npm test", parseMode: "exitcode" },
@@ -37,6 +37,17 @@ describe("what a config file may contain", () => {
     expect(DeliveryConfig.parse({})).toEqual({});
   });
 
+  it("accepts a project description as one plain prose value, beside the settings it already took", () => {
+    const config = {
+      domain: "A small internal tool that tracks who's on call this week. Node.js, Express, a SQLite file for storage.",
+      task: { intent: "add a function that says goodbye to a name, with a test" },
+      gate: { type: "command", command: "npm test", parseMode: "exitcode" },
+      closer: { type: "merge-back", deleteBranch: true },
+      budgets: { correction: 5 },
+    };
+    expect(DeliveryConfig.parse(config)).toEqual(config);
+  });
+
   it("takes a cap per attempt category and leaves the rest unset, so they keep their defaults", () => {
     expect(DeliveryConfig.parse({ budgets: { close: 2 } })).toEqual({ budgets: { close: 2 } });
     expect(DeliveryConfig.parse({ budgets: { correction: 5, gateError: 4, gateMaintenance: 3, terminus: 9, close: 2 } })).toEqual({
@@ -52,7 +63,7 @@ describe("what a config file may contain", () => {
 describe("what it says about a file it can't use", () => {
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `gate`, `closer` and `budgets`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `domain`, `gate`, `closer` and `budgets`.",
     );
   });
 
@@ -82,6 +93,16 @@ describe("what it says about a file it can't use", () => {
 
   it("answers an unknown closer type with the choices, not with a schema complaint", () => {
     expect(problemFor({ closer: { type: "teleport" } })).toBe(unknownCloser("teleport"));
+  });
+
+  it.each([[""], ["   "], ["\n\t "]])("names an empty project description and the two ways out (%j)", (value) => {
+    expect(problemFor({ domain: value })).toBe(
+      "I can't use delivery.config.json: `domain` is empty. Describe your project in a sentence or two, or remove it.",
+    );
+  });
+
+  it("still names a description given the wrong kind of value altogether, rather than calling it empty", () => {
+    expect(problemFor({ domain: 42 })).toContain("I can't use delivery.config.json: the setting `domain` is `42`");
   });
 });
 
@@ -181,12 +202,28 @@ describe("reading a config file", () => {
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });
 
+  it("refuses an empty project description as it loads the file, with the configuration exit code", async () => {
+    const { repo } = tree();
+    const file = write(repo, "delivery.config.json", JSON.stringify({ domain: "   " }));
+    const refusal = await refusalOf(found(repo, repo));
+    expect(refusal.message).toBe(
+      `I can't use ${file}: \`domain\` is empty. Describe your project in a sentence or two, or remove it.`,
+    );
+    expect(refusal.exitCode).toBe(EXIT.configuration);
+  });
+
+  it("takes a long description from a .js module, which is where a template literal goes", async () => {
+    const { repo } = tree();
+    write(repo, "delivery.config.js", "export default { domain: `Two paragraphs.\n\nThe second one.` };\n");
+    expect(await found(repo, repo)).toEqual({ domain: "Two paragraphs.\n\nThe second one." });
+  });
+
   it("refuses a file whose contents the harness can't use, naming the setting", async () => {
     const { repo } = tree();
     const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
     const refusal = await refusalOf(found(repo, repo));
     expect(refusal.message).toBe(
-      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`gate\`, \`closer\` and \`budgets\`.`,
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`domain\`, \`gate\`, \`closer\` and \`budgets\`.`,
     );
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });

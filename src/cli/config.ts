@@ -11,8 +11,8 @@ import { EXIT, Refusal } from "./failures.js";
 export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
-/** The four keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `gate`, `closer` and `budgets`";
+/** The five keys a config file takes, as the sentence a refusal ends with. */
+export const CONFIG_KEYS = "`task`, `domain`, `gate`, `closer` and `budgets`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -48,6 +48,14 @@ export const Budgets = z
 export type Budgets = z.infer<typeof Budgets>;
 
 /**
+ * Something a person wrote, in their own words. Whitespace alone is nothing
+ * written, so it is refused here rather than pinned into a run and sent to an
+ * agent as a blank line. The text is kept exactly as typed: it is prose, and
+ * trimming it would edit the owner's words.
+ */
+const Prose = z.string().refine((text) => text.trim() !== "");
+
+/**
  * The whole of a `delivery.config.json`. `task`, `gate` and `closer` are the
  * library's own schemas, composed rather than restated, so the file can never
  * drift from what the harness accepts. `.strict()` on both objects means a typo
@@ -56,6 +64,10 @@ export type Budgets = z.infer<typeof Budgets>;
 export const DeliveryConfig = z
   .object({
     task: TaskDef.optional(),
+    // What this project is, in the owner's own words, sent to every agent on
+    // every run of it. One string at both altitudes: a long one is written in
+    // the `.js` form with a template literal, not in a file of its own.
+    domain: Prose.optional(),
     gate: GateRef.optional(),
     closer: CloserRef.optional(),
     budgets: Budgets.optional(),
@@ -89,6 +101,12 @@ export function describeProblem(file: string, error: z.ZodError, raw: unknown): 
     return `I can't use ${file}: there's no setting called \`${issue.keys[0]}\`. ${takes}`;
   }
   if (where === "closer.type") return unknownCloser(valueAt(raw, issue.path));
+  // A string that is there but says nothing is the one mistake worth its own
+  // sentence; anything else at this key is a value of the wrong kind, and the
+  // general sentence below quotes it back.
+  if (where === "domain" && typeof valueAt(raw, issue.path) === "string") {
+    return `I can't use ${file}: \`domain\` is empty. Describe your project in a sentence or two, or remove it.`;
+  }
   if (issue.path[0] === "budgets" && issue.path.length > 1) {
     return (
       `I can't use ${file}: the limit \`${where}\` is \`${JSON.stringify(valueAt(raw, issue.path))}\`. ` +
