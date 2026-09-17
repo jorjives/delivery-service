@@ -39,3 +39,8 @@ A tiny project to try the harness on: one function, one test, and a `test` scrip
 8. After a few runs, `delivery status --all` lists all of them, newest first, with what each one
    was asked to do and whether it finished. Add `--json` to any of these commands to get the
    same information as data for a script.
+
+9. To set the project up without typing flags every time, run `delivery init`. It asks what
+   command checks the work, what should happen to work that passes, and what you would like
+   done, then writes your answers to `delivery.config.json`. After that, `delivery run` on its
+   own does what you asked for.

@@ -153,6 +153,23 @@ each run started, so it is a history; `delivery status` with no run id reports t
 last working on, which is not always the newest one. A repository with no runs yet lists nothing
 and exits 0.
 
+## Set it up by answering a few questions
+
+If you would rather not write the config file yourself:
+
+```bash
+delivery init
+```
+
+It asks three things: what command checks the agent's work (offering your project's own
+`npm test` when it has one), what should happen to work that passes, and the first thing you
+would like done. It writes the answers to a `delivery.config.json` at the top of the
+repository, which the next `delivery run` picks up with no flags at all. If there is already a
+config file there, it asks before replacing it and leaves it as it was if you say no.
+
+It asks questions, so it needs a terminal. Run in a pipe or in CI it says so and stops, rather
+than guessing an answer on your behalf.
+
 ## Configure it once
 
 Settings that belong to a project live in a `delivery.config.json` beside your code. The

@@ -2,7 +2,9 @@ import { readFileSync } from "node:fs";
 import { Command, CommanderError } from "commander";
 import type { CommandContext, CliStdin } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
+import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
+import { inquirerAsk } from "./prompts.js";
 import { jsonReporter, plainReporter, type RunReporter } from "./report.js";
 import { resumeCommand, type ResumeOptions } from "./resume-command.js";
 import { runCommand, type RunOptions } from "./run-command.js";
@@ -106,6 +108,17 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
     .action(async (runId: string | undefined, options: StatusOptions, command: Command) => {
       exitCode = await statusCommand(runId, options, contextFor(io, command));
+    });
+
+  program
+    .command("init")
+    .description(
+      "set this project up by answering a few questions: what command checks the agent's work, what happens to work that passes, and the first thing you'd like done",
+    )
+    .option("--repo <path>", "the git repository to set up (default: the current folder)")
+    .action(async (options: InitOptions, command: Command) => {
+      const ctx = contextFor(io, command);
+      exitCode = await initCommand(options, ctx, inquirerAsk(ctx.colour));
     });
 
   try {

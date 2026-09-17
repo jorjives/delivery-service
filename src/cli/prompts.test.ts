@@ -1,0 +1,30 @@
+import { describe, expect, it } from "vitest";
+import { PassThrough } from "node:stream";
+import { inquirerAsk } from "./prompts.js";
+
+/**
+ * Wait for the prompt to be drawn before answering it, by watching for its own
+ * words rather than by sleeping: a fixed wait would be a guess that is either
+ * slow or flaky, and this fails fast if the question never appears at all.
+ */
+async function untilShown(shown: () => string, text: string): Promise<void> {
+  for (let turn = 0; turn < 200 && !shown().includes(text); turn++) {
+    await new Promise((settle) => setImmediate(settle));
+  }
+  expect(shown()).toContain(text);
+}
+
+describe("asking with @inquirer/prompts", () => {
+  it("puts the question on the stream it was given and answers with what was typed", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let shown = "";
+    output.on("data", (chunk: Buffer) => (shown += chunk.toString()));
+
+    const answer = inquirerAsk(false, { input, output }).text({ message: "What command should I run?", required: true });
+    await untilShown(() => shown, "What command should I run?");
+    input.write("npm test\n");
+
+    expect(await answer).toBe("npm test");
+  });
+});
