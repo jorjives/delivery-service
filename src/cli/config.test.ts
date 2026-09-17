@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configCandidates, DeliveryConfig, describeProblem, loadConfig, NO_SUCH_CONFIG, unknownCloser } from "./config.js";
+import { configCandidates, DeliveryConfig, describeProblem, loadConfig, NO_SUCH_CONFIG, structureTask, unknownCloser } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 
 const FILE = "delivery.config.json";
@@ -15,7 +15,7 @@ function problemFor(raw: unknown): string {
 }
 
 describe("what a config file may contain", () => {
-  it("accepts exactly task, domain, gate, closer and budgets, in the shapes the library already documents", () => {
+  it("accepts exactly task, tasks, domain, gate, closer and budgets, in the shapes the library already documents", () => {
     const config = {
       task: { intent: "add a function that says goodbye to a name, with a test" },
       gate: { type: "command", command: "npm test", parseMode: "exitcode" },
@@ -58,12 +58,98 @@ describe("what a config file may contain", () => {
   it("never takes a used counter, which is the harness's own state", () => {
     expect(DeliveryConfig.safeParse({ budgets: { correction: { used: 0, max: 5 } } }).success).toBe(false);
   });
+
+  it("accepts an ordered list of plain sentences", () => {
+    const config = {
+      tasks: [
+        "add a page that shows who's on call today",
+        "let someone swap their on-call day with a teammate",
+      ],
+    };
+    expect(DeliveryConfig.parse(config)).toEqual(config);
+  });
+
+  it("accepts a task written as an object, keeping the fields the harness has no use for", () => {
+    const config = { tasks: [{ intent: "add a page that shows who's on call today", area: "billing", priority: 2 }] };
+    expect(DeliveryConfig.parse(config)).toEqual(config);
+  });
+});
+
+describe("turning what someone wrote into a task", () => {
+  it("makes a sentence the same shape --task already makes, without its surrounding space", () => {
+    expect(structureTask("  add a page that shows who's on call today  ")).toEqual({
+      intent: "add a page that shows who's on call today",
+    });
+  });
+
+  it("leaves a task object exactly as it was written", () => {
+    const entry = { intent: "add a page that shows who's on call today", area: "billing" };
+    expect(structureTask(entry)).toEqual(entry);
+  });
 });
 
 describe("what it says about a file it can't use", () => {
+  it("refuses one task and a list of tasks in the same file, rather than guessing which was meant", () => {
+    expect(problemFor({ task: { intent: "add a page" }, tasks: ["add a page"] })).toBe(
+      "I can't use delivery.config.json: this project has both `task` and `tasks` set. Use `tasks` for a list of things to do, or `task` for a single one-off, not both.",
+    );
+  });
+
+  it("names an empty list and both ways out", () => {
+    expect(problemFor({ tasks: [] })).toBe(
+      "I can't use delivery.config.json: `tasks` is empty. Add at least one sentence describing what you want done, or remove `tasks` and use `--task` for a single run.",
+    );
+  });
+
+  it.each([[""], ["   "], ["\n\t "]])("names the item of the list that is empty, and the two ways out (%j)", (value) => {
+    expect(problemFor({ tasks: ["add a page that shows who's on call today", value] })).toBe(
+      "I can't use delivery.config.json: `tasks` item 2 is empty. Add a sentence describing what you want done, or remove it.",
+    );
+  });
+
+  it("names an empty task object's sentence the same way", () => {
+    expect(problemFor({ tasks: [{ intent: "  ", area: "billing" }] })).toBe(
+      "I can't use delivery.config.json: `tasks` item 1 is empty. Add a sentence describing what you want done, or remove it.",
+    );
+  });
+
+  it("names a `tasks` that isn't a list at all, rather than calling it empty", () => {
+    expect(problemFor({ tasks: "add a page" })).toBe(
+      'I can\'t use delivery.config.json: `tasks` is `"add a page"`. It is a list of the things you want done, one sentence each, in the order you want them.',
+    );
+  });
+
+  it("names an entry that is neither a sentence nor a task object, quoting what was written", () => {
+    expect(problemFor({ tasks: [42] })).toBe(
+      "I can't use delivery.config.json: `tasks` item 1 is `42`. Each one is a sentence describing what you want done, or an object with an `intent` sentence in it.",
+    );
+  });
+
+  it("refuses two entries that are the same task, naming both and the fix", () => {
+    expect(problemFor({ tasks: ["add a page", "swap a day", "add a page"] })).toBe(
+      "I can't use delivery.config.json: tasks 1 and 3 are the same task, so I couldn't tell their runs apart. Reword one, or remove it.",
+    );
+  });
+
+  it("treats a sentence and the object that means the same thing as one task", () => {
+    expect(problemFor({ tasks: ["add a page", { intent: "add a page" }] })).toBe(
+      "I can't use delivery.config.json: tasks 1 and 2 are the same task, so I couldn't tell their runs apart. Reword one, or remove it.",
+    );
+  });
+
+  it("does not call two entries the same when one carries a field the other doesn't", () => {
+    expect(DeliveryConfig.safeParse({ tasks: ["add a page", { intent: "add a page", area: "billing" }] }).success).toBe(true);
+  });
+
+  it("leads with the empty entry rather than the duplicate it also makes", () => {
+    expect(problemFor({ tasks: ["  ", "  "] })).toBe(
+      "I can't use delivery.config.json: `tasks` item 1 is empty. Add a sentence describing what you want done, or remove it.",
+    );
+  });
+
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `domain`, `gate`, `closer` and `budgets`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `gate`, `closer` and `budgets`.",
     );
   });
 
@@ -72,6 +158,9 @@ describe("what it says about a file it can't use", () => {
       "I can't use delivery.config.json: there's no setting called `corection`. `budgets` doesn't take it.",
     );
   });
+
+  // Updated as part of adding tasks: previously mentioned only five keys
+  // Now we have six: task, tasks, domain, gate, closer, budgets
 
   it.each([["five"], [0], [-1], [2.5]])("names a limit that is not a whole number of attempts (%p)", (value) => {
     expect(problemFor({ budgets: { correction: value } })).toBe(
@@ -223,7 +312,17 @@ describe("reading a config file", () => {
     const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
     const refusal = await refusalOf(found(repo, repo));
     expect(refusal.message).toBe(
-      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`domain\`, \`gate\`, \`closer\` and \`budgets\`.`,
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`gate\`, \`closer\` and \`budgets\`.`,
+    );
+    expect(refusal.exitCode).toBe(EXIT.configuration);
+  });
+
+  it("refuses a list with an empty item as it loads the file, with the configuration exit code", async () => {
+    const { repo } = tree();
+    const file = write(repo, "delivery.config.json", JSON.stringify({ tasks: ["add a page", ""] }));
+    const refusal = await refusalOf(found(repo, repo));
+    expect(refusal.message).toBe(
+      `I can't use ${file}: \`tasks\` item 2 is empty. Add a sentence describing what you want done, or remove it.`,
     );
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });

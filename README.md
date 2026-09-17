@@ -188,7 +188,8 @@ same object works too, for a project that needs to compute a value.
 
 | Setting | What it says |
 |---|---|
-| `task` | What you want done, when it is the same every run |
+| `task` | One thing you want done, when it is the same every run. Use this or `tasks`, not both. |
+| `tasks` | A list of things you want done, in the order you want them, each a sentence in your own words. `delivery run` with no `--task` works down the list, one run at a time. Editing the list between runs is expected: a new entry runs in its place, a reworded entry is a new task, and an entry you delete leaves its run in the history. |
 | `domain` | What your project is, in your own words: every agent on every run of it is told this before its own instructions. A run keeps the description it started with, so editing it changes the next run, not one already going. A long one is easiest in a `delivery.config.js` with a template literal. |
 | `gate` | What decides whether a change is good: see [Writing a gate](docs/writing-a-gate.md) |
 | `closer` | What happens to accepted work: see [Writing a closer](docs/writing-a-closer.md) |

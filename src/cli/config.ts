@@ -2,6 +2,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
 import { CloserRef, GateRef, TaskDef } from "../schema.js";
@@ -11,8 +12,8 @@ import { EXIT, Refusal } from "./failures.js";
 export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
-/** The five keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `domain`, `gate`, `closer` and `budgets`";
+/** The six keys a config file takes, as the sentence a refusal ends with. */
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `gate`, `closer` and `budgets`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -56,6 +57,32 @@ export type Budgets = z.infer<typeof Budgets>;
 const Prose = z.string().refine((text) => text.trim() !== "");
 
 /**
+ * One thing a project wants done, as its owner wrote it: a sentence, or an
+ * object carrying that sentence and anything else the project keeps beside it.
+ * The extra fields mean nothing to the harness and are passed through
+ * untouched, so a project can annotate its own list without asking permission.
+ */
+export const QueueEntry = z.union([Prose, z.looseObject({ intent: Prose })]);
+export type QueueEntry = z.infer<typeof QueueEntry>;
+
+/**
+ * An entry as the run machinery takes it. A sentence becomes exactly the shape
+ * `--task` already produces, so a listed task and an ad-hoc one of the same
+ * words are one task; an object is already that shape and is returned as
+ * written. Deterministic on purpose: this is what `validate` and `preview` must
+ * be able to do with no agent, no spend and no credential.
+ */
+export function structureTask(entry: QueueEntry): TaskDef {
+  return typeof entry === "string" ? { intent: entry.trim() } : entry;
+}
+
+export const BOTH_TASK_AND_TASKS =
+  "this project has both `task` and `tasks` set. Use `tasks` for a list of things to do, or `task` for a single one-off, not both.";
+
+export const sameTask = (first: number, second: number): string =>
+  `tasks ${first} and ${second} are the same task, so I couldn't tell their runs apart. Reword one, or remove it.`;
+
+/**
  * The whole of a `delivery.config.json`. `task`, `gate` and `closer` are the
  * library's own schemas, composed rather than restated, so the file can never
  * drift from what the harness accepts. `.strict()` on both objects means a typo
@@ -64,6 +91,11 @@ const Prose = z.string().refine((text) => text.trim() !== "");
 export const DeliveryConfig = z
   .object({
     task: TaskDef.optional(),
+    // The things this project wants done, in the order it wants them. A list is
+    // the project's own plan for itself; `task` is one thing done over and over.
+    // Having both would leave `delivery run` with no honest answer, so the
+    // refinement below refuses it.
+    tasks: z.array(QueueEntry).min(1).optional(),
     // What this project is, in the owner's own words, sent to every agent on
     // every run of it. One string at both altitudes: a long one is written in
     // the `.js` form with a template literal, not in a file of its own.
@@ -72,7 +104,20 @@ export const DeliveryConfig = z
     closer: CloserRef.optional(),
     budgets: Budgets.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((config, ctx) => {
+    if (config.task && config.tasks) ctx.addIssue({ code: "custom", message: BOTH_TASK_AND_TASKS, path: ["tasks"] });
+    // Which run answers which entry is decided by what the entry says, so two
+    // entries that say the same thing would share one run and one of them could
+    // never be done. Refused here, at load, so every command that reads the
+    // file inherits the guarantee. A hand-written list is a handful of entries:
+    // comparing each against the ones before it is not worth a lookup table.
+    const structured = (config.tasks ?? []).map(structureTask);
+    structured.forEach((taskDef, index) => {
+      const first = structured.findIndex((earlier) => isDeepStrictEqual(earlier, taskDef));
+      if (first !== index) ctx.addIssue({ code: "custom", message: sameTask(first + 1, index + 1), path: ["tasks"] });
+    });
+  });
 export type DeliveryConfig = z.infer<typeof DeliveryConfig>;
 
 /** The value the file actually held at an issue's path, so a complaint can quote it back. */
@@ -101,6 +146,37 @@ export function describeProblem(file: string, error: z.ZodError, raw: unknown): 
     return `I can't use ${file}: there's no setting called \`${issue.keys[0]}\`. ${takes}`;
   }
   if (where === "closer.type") return unknownCloser(valueAt(raw, issue.path));
+  if (issue.path[0] === "tasks" && issue.path.length > 1) {
+    const item = Number(issue.path[1]) + 1;
+    // A string that is there but says nothing is the one mistake worth its own
+    // sentence, wherever in the entry it sits; anything else is an entry of the
+    // wrong kind, quoted back whole.
+    const offending = valueAt(raw, issue.path);
+    if (typeof offending === "string" && offending.trim() === "") {
+      return `I can't use ${file}: \`tasks\` item ${item} is empty. Add a sentence describing what you want done, or remove it.`;
+    }
+    return (
+      `I can't use ${file}: \`tasks\` item ${item} is \`${JSON.stringify(valueAt(raw, issue.path.slice(0, 2)))}\`. ` +
+      "Each one is a sentence describing what you want done, or an object with an `intent` sentence in it."
+    );
+  }
+  if (where === "tasks") {
+    // The whole-file rules say their own sentence. An empty list and something
+    // that is not a list at all are different mistakes: naming the second as
+    // the first would send the reader to add an entry to a value that could
+    // not hold one.
+    if (issue.code === "custom") return `I can't use ${file}: ${issue.message}`;
+    if (issue.code === "too_small") {
+      return (
+        `I can't use ${file}: \`tasks\` is empty. Add at least one sentence describing what you want done, ` +
+        "or remove `tasks` and use `--task` for a single run."
+      );
+    }
+    return (
+      `I can't use ${file}: \`tasks\` is \`${JSON.stringify(valueAt(raw, issue.path))}\`. ` +
+      "It is a list of the things you want done, one sentence each, in the order you want them."
+    );
+  }
   // A string that is there but says nothing is the one mistake worth its own
   // sentence; anything else at this key is a value of the wrong kind, and the
   // general sentence below quotes it back.
