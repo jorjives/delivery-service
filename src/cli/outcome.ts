@@ -3,6 +3,7 @@ import { branchName } from "../provision.js";
 import { CloseReport } from "../schema.js";
 import type { CaseFile, CloserRef } from "../schema.js";
 import { EscalationPacket } from "../triage-role-config.js";
+import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import type { Tone } from "./output.js";
 
@@ -133,4 +134,11 @@ export async function summariseOutcome(dir: string, caseFile: CaseFile): Promise
         exitCode: EXIT.aborted,
       };
   }
+}
+
+/** Summarise a finished run's outcome and tell the reporter, for the two places that finish a run this way: driving it to its end, and retelling one that already ended. */
+export async function reportOutcome(dir: string, caseFile: CaseFile, ctx: CommandContext): Promise<ExitCode> {
+  const summary = await summariseOutcome(dir, caseFile);
+  ctx.report.outcome(summary);
+  return summary.exitCode;
 }

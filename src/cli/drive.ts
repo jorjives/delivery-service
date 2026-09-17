@@ -11,7 +11,7 @@ import type { TaskDef } from "../schema.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
 import { type ExitCode } from "./failures.js";
-import { summariseOutcome } from "./outcome.js";
+import { reportOutcome } from "./outcome.js";
 import { pickingUp } from "./output.js";
 import { prepareRunDir, runIdFor, runPlace } from "./run-location.js";
 import type { RunRecord } from "./runs.js";
@@ -80,9 +80,7 @@ export async function driveToOutcome(
     ctx.report.step(result);
   } while (!result.done);
 
-  const summary = await summariseOutcome(dir, await load(dir));
-  ctx.report.outcome(summary);
-  return summary.exitCode;
+  return reportOutcome(dir, await load(dir), ctx);
 }
 
 export async function resumeRun(record: RunRecord, ctx: CommandContext, session?: SessionEnvironment): Promise<ExitCode> {

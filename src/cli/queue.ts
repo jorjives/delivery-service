@@ -6,7 +6,7 @@ import { structureTask, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { resumeRun, startRun } from "./drive.js";
 import { EXIT, type ExitCode } from "./failures.js";
-import { summariseOutcome } from "./outcome.js";
+import { reportOutcome } from "./outcome.js";
 import { allRuns, newestFirst, type RunRecord } from "./runs.js";
 import { taskIntent, type ProjectSettings } from "./settings.js";
 
@@ -63,13 +63,6 @@ export function listStopped(position: QueuePosition, exitCode: ExitCode): string
     : `${which} stopped before it finished, so I've left the rest of the list alone.`;
 }
 
-/** What a run that already ended did, said again for whoever is looking at the list today rather than watching that run. */
-async function retell(record: RunRecord, ctx: CommandContext): Promise<ExitCode> {
-  const summary = await summariseOutcome(record.dir, record.caseFile);
-  ctx.report.outcome(summary);
-  return summary.exitCode;
-}
-
 /**
  * Work down the list, one ordinary run at a time. Progress is read from the
  * runs already on disk rather than remembered, so an interruption anywhere
@@ -111,7 +104,8 @@ export async function runQueue(
       existing === undefined
         ? await startRun({ repoPath, taskDef, ...project }, await agent(), ctx)
         : existing.caseFile.outcome
-          ? await retell(existing, ctx)
+          ? // What a run that already ended did, said again for whoever is looking at the list today rather than watching that run.
+            await reportOutcome(existing.dir, existing.caseFile, ctx)
           : await resumeRun(existing, ctx, await agent());
 
     if (exitCode !== EXIT.ok) {
