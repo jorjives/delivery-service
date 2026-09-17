@@ -5,10 +5,12 @@ import { branchName } from "../provision.js";
 import type { SurfaceState } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
+import { loadConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
 import { nextStepPhrase, paint } from "./output.js";
+import { queuePositionOf, queueTasks, type QueuePosition } from "./queue.js";
 import { runPlace } from "./run-location.js";
 import { allRuns, describeRun, newestFirst, NOTHING_HERE, readableUtc, readRun, startedAt, startedInstant, type RunRecord } from "./runs.js";
 import { taskIntent } from "./settings.js";
@@ -63,14 +65,17 @@ function whereToLook(record: RunRecord, ctx: CommandContext): string[] {
  * the time, and where its work was kept. Pure over the record: this reads, and
  * never advances anything.
  */
-export async function statusReport(record: RunRecord, ctx: CommandContext): Promise<string[]> {
+export async function statusReport(record: RunRecord, ctx: CommandContext, position?: QueuePosition): Promise<string[]> {
   const { caseFile, dir, runId } = record;
-  const opening = `Run ${runId}, started ${startedAt(runId)}: ${taskIntent(caseFile.header.taskDef)}`;
+  const opening = [
+    `Run ${runId}, started ${startedAt(runId)}: ${taskIntent(caseFile.header.taskDef)}`,
+    ...(position ? [`It is task ${position.task} of ${position.of} on your list.`] : []),
+  ];
   const { outcome } = caseFile;
 
   if (!outcome) {
     return [
-      opening,
+      ...opening,
       paint(ctx.colour, "quiet", `This run hasn't finished. Picking it up will carry on with ${nextStepPhrase(caseFile)}.`),
       `To finish it: delivery resume ${runId}`,
     ];
@@ -78,7 +83,7 @@ export async function statusReport(record: RunRecord, ctx: CommandContext): Prom
 
   const summary = await summariseOutcome(dir, caseFile);
   const finished = [
-    opening,
+    ...opening,
     paint(ctx.colour, summary.tone, summary.headline),
     `${outcome.kind === "closed" ? "It finished" : "It stopped"} ${readableUtc(outcome.at)}.`,
   ];
@@ -138,6 +143,8 @@ export interface RunStatusDocument extends RunSummary {
   /** The agent's working copy, while it is still on disk. */
   worktree: string | null;
   escalation: EscalationPacket | null;
+  /** Where this run's task sits in the project's list as it is written now, or null when the list doesn't ask for it. */
+  queue: QueuePosition | null;
 }
 
 /** One run at a glance, from its record. */
@@ -155,7 +162,7 @@ export function runSummary(record: RunRecord): RunSummary {
  * says in sentences, over the same record, read once. Nothing here advances
  * anything either.
  */
-export async function statusDocument(record: RunRecord, ctx: CommandContext): Promise<RunStatusDocument> {
+export async function statusDocument(record: RunRecord, ctx: CommandContext, position?: QueuePosition): Promise<RunStatusDocument> {
   const { caseFile, dir, runId } = record;
   const { outcome } = caseFile;
   const { location } = runPlace(record.repoPath, runId, ctx.env);
@@ -175,6 +182,7 @@ export async function statusDocument(record: RunRecord, ctx: CommandContext): Pr
     dir,
     worktree: existsSync(location.worktreePath) ? location.worktreePath : null,
     escalation: packet ?? null,
+    queue: position ?? null,
   };
 }
 
@@ -231,6 +239,12 @@ async function mostRecent(repoPath: string): Promise<RunRecord> {
   return latest;
 }
 
+/** Where this run's task sits in the project's list as it is written now. Nothing for a run the list doesn't ask for, and for a project with no list. */
+async function positionOf(record: RunRecord, startDir: string, ctx: CommandContext): Promise<QueuePosition | undefined> {
+  const config = await loadConfig({ startDir, repoPath: record.repoPath, flag: undefined, env: ctx.env });
+  return queuePositionOf(queueTasks(config), record.caseFile.header.taskDef);
+}
+
 /**
  * `delivery status`: read one run's record and say what happened to it, for
  * whoever was not watching when it ended. It only ever reads, so it is safe to
@@ -243,11 +257,13 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   // mistake wherever it was typed, and hearing about the folder first would
   // send the reader after the wrong problem.
   if (options.all && runId !== undefined) throw new Refusal(ALL_AND_ONE, EXIT.configuration);
-  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+  const startDir = resolve(ctx.cwd, options.repo ?? ".");
+  const repoPath = await findRepository(startDir);
   if (options.all) return listRuns(repoPath, ctx);
   const record = runId === undefined ? await mostRecent(repoPath) : await readRun(repoPath, runId);
+  const position = await positionOf(record, startDir, ctx);
   // Indented rather than one line: a person reads this output too, and a parser does not mind.
-  if (ctx.json) ctx.writeLine(JSON.stringify(await statusDocument(record, ctx), null, 2));
-  else for (const line of await statusReport(record, ctx)) ctx.writeLine(line);
+  if (ctx.json) ctx.writeLine(JSON.stringify(await statusDocument(record, ctx, position), null, 2));
+  else for (const line of await statusReport(record, ctx, position)) ctx.writeLine(line);
   return EXIT.ok;
 }

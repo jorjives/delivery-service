@@ -161,6 +161,9 @@ What you get depends on how the run ended:
 - **Stopped for another reason:** why, in plain language.
 - **Not finished yet:** what picking it up will carry on with, and the command to do that.
 
+If the run's task is on your `tasks` list, it also says which task of how many it is, worked out
+from the list as it is written now.
+
 `status` exits 0 whenever it could read the run and 2 when it could not find one, so a run that
 needs your decision is still a successful read. The exit codes in the table above are the run's
 own, reported by `delivery run`.
@@ -171,10 +174,10 @@ Add `--json` to get the same information as one JSON document instead of sentenc
 delivery status --last --json
 ```
 
-It carries the run id, the task, when it started and finished, how it ended, the sentences the
-plain-language report prints about it, the branch, the base branch, where the run's record is,
-and, for a run that stopped for a decision, every field of the escalation packet. Every key is
-always present: a `null` means "not that kind of run", so
+It carries the run id, the task, where that task sits on your list, when it started and finished,
+how it ended, the sentences the plain-language report prints about it, the branch, the base
+branch, where the run's record is, and, for a run that stopped for a decision, every field of the
+escalation packet. Every key is always present: a `null` means "not that kind of run", so
 a script never has to check whether a key is there. A run that could not be found is still a
 plain-language message on standard error and exit 2, not JSON.
 

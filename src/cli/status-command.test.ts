@@ -398,6 +398,49 @@ describe("one run's status as one JSON document", () => {
   });
 });
 
+describe("a run that answers for a task on the project's list", () => {
+  it("says which task of how many it is", async () => {
+    const ctx = await context();
+    const repo = await mkdtemp(join(tmpdir(), "status-queue-"));
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK });
+    const lines = await statusReport(await readRun(repo, RUN_ID), ctx, { task: 2, of: 3 });
+
+    expect(lines[1]).toBe("It is task 2 of 3 on your list.");
+  });
+
+  it("says nothing of the kind about a run the list doesn't ask for", async () => {
+    const ctx = await context();
+    const repo = await mkdtemp(join(tmpdir(), "status-queue-none-"));
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK });
+    const lines = await statusReport(await readRun(repo, RUN_ID), ctx);
+
+    expect(lines.join("\n")).not.toContain("on your list");
+  });
+
+  it("carries the same position in the machine-readable document, and a null when there is none", async () => {
+    const ctx = await context();
+    const repo = await mkdtemp(join(tmpdir(), "status-queue-json-"));
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK });
+    const record = await readRun(repo, RUN_ID);
+
+    expect((await statusDocument(record, ctx, { task: 2, of: 3 })).queue).toEqual({ task: 2, of: 3 });
+    expect((await statusDocument(record, ctx)).queue).toBeNull();
+  });
+
+  it("works the position out from the project's file as it is written now", async () => {
+    const repo = initTempRepo("status-queue-command-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ tasks: ["something else entirely", TASK] }),
+    });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK });
+
+    const { exitCode, stdout } = await delivery(["status", RUN_ID], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain("It is task 2 of 2 on your list.");
+  });
+});
+
 describe("delivery status --all", () => {
   /** Three runs in one repository: one finished, one that needed a person, one still going. */
   async function threeRuns(prefix: string): Promise<string> {
