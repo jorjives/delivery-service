@@ -187,10 +187,10 @@ describe("the session options the primitive builds", () => {
     "hands the $role session a schema the CLI accepts, without a $schema key",
     (roleCfg) => {
       const built = buildSessionOptions(
-        roleCfg as never,
+        roleCfg,
         ctx,
         {},
-        createToolAuthority(roleCfg as never, worktreePath).canUseTool,
+        createToolAuthority(roleCfg, worktreePath).canUseTool,
       );
       const format = built.outputFormat as { type: string; schema: Record<string, unknown> };
       expect(format.type).toBe("json_schema");
