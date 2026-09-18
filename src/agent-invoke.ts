@@ -61,10 +61,15 @@ export function buildSessionOptions(
   canUseTool: CanUseTool,
   systemPrompt = "",
 ): Options {
+  // Zod stamps a `$schema` meta-schema URI on the root, which the Claude Code
+  // binary cannot resolve and rejects outright, failing every session before
+  // the model is reached. The schema itself is unchanged by dropping it.
+  const schema = z.toJSONSchema(roleCfg.envelopeSchema);
+  delete schema.$schema;
   return {
     cwd: ctx.worktreePath,
     systemPrompt,
-    outputFormat: { type: "json_schema", schema: z.toJSONSchema(roleCfg.envelopeSchema) },
+    outputFormat: { type: "json_schema", schema },
     canUseTool,
     settingSources: [],
     permissionMode: "default",

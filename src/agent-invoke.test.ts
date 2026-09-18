@@ -179,6 +179,25 @@ describe("the session options the primitive builds", () => {
   it("still points the session at the run's worktree", () => {
     expect(options().cwd).toBe(worktreePath);
   });
+
+  // The Claude Code binary rejects a `$schema` meta-schema key in --json-schema
+  // ("no schema with key or ref ..."), so every session fails before the model
+  // is reached. Zod emits that key by default; no role's schema may carry it.
+  it.each([workerRoleConfig, gateMaintenanceRoleConfig, triageRoleConfig])(
+    "hands the $role session a schema the CLI accepts, without a $schema key",
+    (roleCfg) => {
+      const built = buildSessionOptions(
+        roleCfg as never,
+        ctx,
+        {},
+        createToolAuthority(roleCfg as never, worktreePath).canUseTool,
+      );
+      const format = built.outputFormat as { type: string; schema: Record<string, unknown> };
+      expect(format.type).toBe("json_schema");
+      expect(format.schema).not.toHaveProperty("$schema");
+      expect(Object.keys(format.schema).length).toBeGreaterThan(0);
+    },
+  );
 });
 
 describe("invoke with the guard installed", () => {
