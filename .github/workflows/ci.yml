@@ -16,7 +16,6 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      - run: npm run lint
       # The same `npm test` as everywhere else, plus the two release checks that
       # pack and install a real tarball. They are skipped without this variable,
       # which is set here and nowhere else, so `make verify` stays registry-free

@@ -1,5 +1,4 @@
 #!/bin/sh
 # Mirror CI checks locally before push
 set -e
-npm run lint
 npm test

@@ -12,13 +12,15 @@ npm install
 
 ```bash
 npm run build       # compile src/ into dist/, including the `delivery` command
-npm test            # build, then run tests once
+npm test            # lint, build, then run tests once
 npm run test:watch  # run tests in watch mode (run `npm run build` first)
 npm run lint        # ESLint + TypeScript strict check
 npm run typecheck   # TypeScript only
 ```
 
-`npm test` builds first because some tests run the compiled `delivery` command the way a
+`npm test` lints first, so green always means lint and tests together, the same as
+`make verify` and CI: a test that runs but fails lint is not green. It builds before running
+the tests because some tests run the compiled `delivery` command the way a
 person would, through `runDelivery` in `tests/helpers.ts`. When you run vitest directly or in
 watch mode, run `npm run build` first, and again after changing `src/`.
 
@@ -99,8 +101,7 @@ CI-only step, since `make verify` would otherwise reach the registry.
 ## Pull requests
 
 - Branch from `main`
-- Tests must pass (`npm test`)
-- Lint must pass (`npm run lint`)
+- `npm test` must pass (it runs lint as well as the tests)
 - One concern per PR
 - A changeset describes anything a user would notice (`npx changeset`)
 - Code style is enforced by the linter, not by convention
