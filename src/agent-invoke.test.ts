@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { PassThrough } from "node:stream";
 import { join } from "node:path";
 import { create } from "./case-file.js";
 import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
@@ -180,23 +182,31 @@ describe("the session options the primitive builds", () => {
     expect(options().cwd).toBe(worktreePath);
   });
 
-  // The Claude Code binary rejects a `$schema` meta-schema key in --json-schema
-  // ("no schema with key or ref ..."), so every session fails before the model
-  // is reached. Zod emits that key by default; no role's schema may carry it.
+  // claude-mock never reads --json-schema, but the real runtime validates it at
+  // startup and exits 1 on a schema it cannot compile, failing every session before
+  // the model is reached. So each role's schema goes through the SDK to the runtime
+  // it ships, and only the initialize handshake is awaited: no turn, no credentials,
+  // no network.
   it.each([workerRoleConfig, gateMaintenanceRoleConfig, triageRoleConfig])(
-    "hands the $role session a schema the CLI accepts, without a $schema key",
-    (roleCfg) => {
-      const built = buildSessionOptions(
-        roleCfg,
-        ctx,
-        {},
-        createToolAuthority(roleCfg, worktreePath).canUseTool,
-      );
-      const format = built.outputFormat as { type: string; schema: Record<string, unknown> };
-      expect(format.type).toBe("json_schema");
-      expect(format.schema).not.toHaveProperty("$schema");
-      expect(Object.keys(format.schema).length).toBeGreaterThan(0);
+    "hands the $role session a schema the real runtime starts with",
+    async (roleCfg) => {
+      const home = await mkdtemp(join(tmpdir(), "invoke-runtime-home-"));
+      const session = query({
+        prompt: new PassThrough({ objectMode: true }),
+        options: buildSessionOptions(
+          roleCfg,
+          ctx,
+          { env: { PATH: process.env.PATH, HOME: home, CLAUDE_CONFIG_DIR: home } },
+          createToolAuthority(roleCfg, worktreePath).canUseTool,
+        ),
+      });
+      try {
+        await expect(session.initializationResult()).resolves.toBeDefined();
+      } finally {
+        session.close();
+      }
     },
+    30_000,
   );
 });
 
