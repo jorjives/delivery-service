@@ -18,10 +18,9 @@ npm run lint        # ESLint + TypeScript strict check
 npm run typecheck   # TypeScript only
 ```
 
-`npm test` lints first, so green always means lint and tests together, the same as
-`make verify` and CI: a test that runs but fails lint is not green. It builds before running
-the tests because some tests run the compiled `delivery` command the way a
-person would, through `runDelivery` in `tests/helpers.ts`. When you run vitest directly or in
+`npm test` lints first, so green means lint and tests together, the same as `make verify`
+and CI. It builds before running the tests because some tests run the compiled `delivery`
+command the way a person would, through `runDelivery` in `tests/helpers.ts`. When you run vitest directly or in
 watch mode, run `npm run build` first, and again after changing `src/`.
 
 To run the command from a checkout, build and link it, which puts `delivery` on your `PATH`:
