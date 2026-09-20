@@ -4,8 +4,8 @@ import { mkdtemp, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
-import { create } from "./case-file.js";
-import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
+import { create, readRef } from "./case-file.js";
+import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef } from "./agent-invoke.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import { createToolAuthority } from "./tool-authority.js";
@@ -104,6 +104,28 @@ describe("invoke against a scripted agent session", () => {
     expect(terminus.rationale).toContain("worker");
   });
 
+  // Keeping the error out of the rationale is not licence to destroy it: without
+  // a record naming the cause, diagnosing a session that never ran means patching
+  // the built harness by hand.
+  it("keeps the error the session reported beside the case file", async () => {
+    await script([{ fail: { message: "TypeError: Cannot read properties of undefined\n    at foo (/x/y.js:42:9)" } }]);
+    const terminus = await invoke(workerRoleConfig, ctx, useMock());
+
+    expect(terminus.rationale).toContain(DID_NOT_COMPLETE.errored);
+    expect(await readRef(dir, sessionErrorRef(ctx.sessionKey))).toEqual({
+      sessionKey: "worker-1-0",
+      role: "worker",
+      reason: DID_NOT_COMPLETE.errored,
+      cause: "TypeError: Cannot read properties of undefined\n    at foo (/x/y.js:42:9)",
+    });
+  });
+
+  it("writes no failure record for a session that completed cleanly", async () => {
+    await script([{ json: { status: "completed", rationale: "nothing went wrong" } }]);
+    await invoke(workerRoleConfig, ctx, useMock());
+    await expect(readRef(dir, sessionErrorRef(ctx.sessionKey))).rejects.toThrow();
+  });
+
   // The journal records the user turn only; `systemPrompt` determinism is Task 3's.
   it("sends the identical request twice from the same starting case file", async () => {
     await script([{ json: { status: "completed", rationale: "either run" } }]);
@@ -129,6 +151,20 @@ describe("invoke without a runnable session", () => {
     expect(terminus.status).toBe("incomplete");
     expect(terminus.rationale).toContain(DID_NOT_COMPLETE.notRun);
     expect(terminus.rationale).not.toContain("ENOENT");
+  });
+
+  it("keeps the error that stopped the session starting beside the case file", async () => {
+    await script([{ reply: "unreachable" }]);
+    await invoke(workerRoleConfig, ctx, {
+      pathToClaudeCodeExecutable: join(dir, "no-such-binary"),
+      env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath },
+    });
+
+    const record = await readRef(dir, sessionErrorRef(ctx.sessionKey));
+    expect(record).toMatchObject({ sessionKey: "worker-1-0", role: "worker", reason: DID_NOT_COMPLETE.notRun });
+    // The runtime names the binary it could not start — the fact the fixed
+    // rationale cannot carry, and the one a diagnosis turns on.
+    expect((record as { cause: string }).cause).toContain("no-such-binary");
   });
 });
 

@@ -1,6 +1,6 @@
 import { query, type CanUseTool, type Options, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { load } from "./case-file.js";
+import { load, writeRef } from "./case-file.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
@@ -28,6 +28,54 @@ export const DID_NOT_COMPLETE = {
 
 function incomplete(roleCfg: RoleConfig<unknown>, reason: string): Incomplete {
   return { status: "incomplete", rationale: `${roleCfg.role} session did not complete: ${reason}` };
+}
+
+/**
+ * Where a session's failure cause is kept: a ref beside the case file, named
+ * after the session that produced it. An escalation packet already lists every
+ * dispatch's session key under `references`, so a person holding one can find
+ * the record without being told the convention.
+ */
+export function sessionErrorRef(sessionKey: string): string {
+  return `session-error-${sessionKey}`;
+}
+
+/** The runtime's own words about a session that ended badly, from either result shape. */
+function errorTextOf(result: SDKResultMessage): string {
+  return result.subtype === "success" ? result.result : result.errors.join("\n");
+}
+
+/**
+ * Keep the cause of a session that produced nothing usable where a person can
+ * find it.
+ *
+ * Keeping it out of the rationale is not licence to destroy it. The fixed
+ * sentences above are right for the *reader* of a case file, but the runtime's
+ * own words are the only evidence of why a session would not start, and
+ * discarding them leaves no diagnosis path short of patching the built harness
+ * by hand.
+ *
+ * Best effort on purpose: this is evidence, not an outcome. A failed write is a
+ * disk problem with nowhere left to report it, and must never turn a session
+ * that merely did not complete into a throw out of `invoke()`.
+ */
+async function recordFailureCause(
+  roleCfg: RoleConfig<unknown>,
+  ctx: AgentContext,
+  reason: string,
+  cause: string,
+): Promise<void> {
+  if (cause === "") return;
+  try {
+    await writeRef(ctx.dir, sessionErrorRef(ctx.sessionKey), {
+      sessionKey: ctx.sessionKey,
+      role: roleCfg.role,
+      reason,
+      cause,
+    });
+  } catch {
+    // The evidence is already lost with the disk that would hold it.
+  }
 }
 
 /**
@@ -120,7 +168,8 @@ export async function invoke<E>(
   let result: SDKResultMessage | undefined;
   try {
     result = await lastResult(prompt, options);
-  } catch {
+  } catch (err) {
+    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.notRun, String(err));
     return authorityRefusal(roleCfg, authority.refusals, []) ?? incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   }
 
@@ -129,6 +178,7 @@ export async function invoke<E>(
 
   if (!result) return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   if (result.subtype !== "success" || result.is_error) {
+    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.errored, errorTextOf(result));
     return incomplete(roleCfg, DID_NOT_COMPLETE.errored);
   }
   if (result.structured_output === undefined) {

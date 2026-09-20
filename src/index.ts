@@ -85,7 +85,7 @@ export type { Envelope, RoleConfig } from "./role-config.js";
 export { SharpenedBrief, GateRepairBrief, CloseRepairBrief, EscalationPacket, TriageEnvelope, triageRoleConfig } from "./triage-role-config.js";
 export { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE } from "./prompt-assembly.js";
 export type { AssembledPrompt, PromptEvidence, PromptSetback } from "./prompt-assembly.js";
-export { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
+export { invoke, DID_NOT_COMPLETE, sessionErrorRef, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
 export type { SessionEnvironment, RoleConfigs } from "./agent-invoke.js";
 export { createToolAuthority, refusalSentence, outsideWorktreeSentence, authorityRefusal } from "./tool-authority.js";
 export type { ToolAuthority } from "./tool-authority.js";
