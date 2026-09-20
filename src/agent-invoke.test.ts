@@ -149,8 +149,10 @@ describe("invoke without a runnable session", () => {
       env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath },
     });
     expect(terminus.status).toBe("incomplete");
-    expect(terminus.rationale).toContain(DID_NOT_COMPLETE.notRun);
-    expect(terminus.rationale).not.toContain("ENOENT");
+    // Exactly the fixed sentence and nothing else. The SDK's own message names
+    // the binary it could not start (and never says "ENOENT"), so asserting on
+    // the whole rationale is what actually pins "no raw error text leaks here".
+    expect(terminus.rationale).toBe(`worker session did not complete: ${DID_NOT_COMPLETE.notRun}`);
   });
 
   it("keeps the error that stopped the session starting beside the case file", async () => {
