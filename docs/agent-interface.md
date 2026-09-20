@@ -169,8 +169,15 @@ call aimed outside the worktree → INCOMPLETE_TERMINUS (authority refusal)
 
 `INCOMPLETE_TERMINUS` is defined negatively and uniformly: *any* end that did not
 produce a valid, role-legal, schema-conforming envelope. This is what lets the
-control flow treat "the agent never cleanly signalled" as one edge with one budget,
-whether the cause was a crash or a schema violation.
+control flow treat "the agent never cleanly signalled" as one edge, whether the
+cause was a crash or a schema violation.
+
+One end of the list is not uniform in what the edge *does* with it. A session the
+runtime refused to start never happened, so no retry of it can land differently;
+the primitive marks that terminus `notRun`, and the edge escalates it after one
+attempt instead of spending the retry budget. The mark is the fact — no session
+ran — and the edge owns the policy; the rationale a person reads is the same
+fixed sentence either way.
 
 ## Tool authority
 

@@ -65,7 +65,7 @@ AGENT_ACTIVE               (fresh reconstructed session, driven via SDK)
 
 INCOMPLETE_TERMINUS        (abnormal — agent never cleanly signalled; also the crash path)
   → AGENT_ACTIVE           (terminus-retry budget remains)
-  → ESCALATED              (exhausted)
+  → ESCALATED              (exhausted, or the runtime never started a session)
 
 GATING                     (post-task gate; compared against the baseline fingerprint)
   → CLOSING                (accepted — no new failures)
@@ -100,6 +100,14 @@ Notes:
   schema validation. On the other two edges the agent signalled intent (completed,
   or escalate-with-category) and you can route on it; here there is no signal, so
   the only moves are retry-on-terminus-budget or give up.
+- **A session the runtime never started is not retried.** The retry budget exists
+  because a further attempt might land differently, and for a session that was
+  refused before its first token nothing between attempts can differ — so those
+  spawns cost real money and real delay to reach the same end. That terminus
+  carries `notRun`, and both edges that retry an incomplete terminus (this one and
+  `GATE_MAINTENANCE`'s) check it ahead of their budget, exactly as an authority
+  limit is checked ahead of the router's table. It escalates after one attempt,
+  naming the runtime rather than a budget. The other causes above keep their retries.
 - **A retried terminus re-dispatches into the tree as it was left.** A crashed
   session may have made partial worktree edits before dying. The fresh worker treats
   that dirty tree as found-state (plus its distilled history), exactly as it treats

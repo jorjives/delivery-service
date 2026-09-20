@@ -405,8 +405,11 @@ ways a script provokes it:
 Another role reads the same, with its own name first: `triage session did not
 complete: ...`.
 
-What the surface does next: each incomplete attempt uses one slot of the
-`terminus` budget and the attempt is run again. When the budget is used up the
+What the surface does next: each incomplete attempt above uses one slot of the
+`terminus` budget and the attempt is run again. (The one incomplete a script
+cannot provoke is a session the runtime would not start at all; there is no
+session to script. That one is not retried: it escalates after a single attempt,
+because nothing about a second could differ.) When the budget is used up the
 surface ends `ESCALATED`, and `result.outcome.reason` reads
 `terminus budget exhausted (<used>/<max>): ` followed by the last rationale. To
 see every attempt's rationale, read the terminus entries of `load(dir)`'s
