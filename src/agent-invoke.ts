@@ -6,6 +6,7 @@ import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
 import type { AgentContext, AgentPort, RoleHandle, Incomplete } from "./ports.js";
 import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
+import { messageOf } from "./gate-support.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
 
 /**
@@ -169,7 +170,7 @@ export async function invoke<E>(
   try {
     result = await lastResult(prompt, options);
   } catch (err) {
-    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.notRun, String(err));
+    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.notRun, messageOf(err));
     return authorityRefusal(roleCfg, authority.refusals, []) ?? incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   }
 
