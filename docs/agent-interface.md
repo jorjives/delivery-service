@@ -247,7 +247,8 @@ is the adopter's guide to testing a pipeline with it.
 
 - **`ctx` shape** — resolved. `AgentContext.dir` is the case-file reference: the primitive
   calls `load(ctx.dir)` itself, `ctx.worktreePath` becomes the session's `cwd`, and
-  `ctx.sessionKey` is a journal key only, deliberately kept out of prompt content so a retry
+  `ctx.sessionKey` keys the journal and the failure ref a session that produced nothing
+  usable leaves behind, and is deliberately kept out of prompt content so a retry
   re-sends a byte-identical request.
 - **Worker completion payload** — resolved. `completed` carries `rationale` and nothing else;
   the gate stays the sole judge of the work.

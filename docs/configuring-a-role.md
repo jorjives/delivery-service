@@ -134,7 +134,10 @@ Always exactly one of three results:
 | `escalate` | The agent says it cannot go on, with a `category` of `exhaustion` or `authority`. | Stops retrying that step and escalates. |
 | `incomplete` | The session produced nothing usable. `rationale` says which of these it was, in plain English: it crashed, it ended without a reply, it replied in the wrong shape, it could not be started, or it tried something it is not allowed to do. | Retries, within the run's budget. |
 
-You will never get a stack trace or raw error text in `rationale`.
+You will never get a stack trace or raw error text in `rationale`. When a session
+errored or could not be started, the underlying error is kept verbatim in
+`refs/session-error-<session key>.json` beside the case file, so a harness problem
+can still be diagnosed without it reaching the person reading the run.
 
 ## What a role cannot do
 
