@@ -334,6 +334,25 @@ describe("advance", () => {
     expect(dispatches.map((e) => e.attempt)).toEqual([1, 1]);
   });
 
+  it("escalates a repair session that never started instead of redispatching it", async () => {
+    const agent = scriptedAgent([
+      {
+        status: "incomplete",
+        notRun: true,
+        rationale: `gate-maintenance session did not complete: ${DID_NOT_COMPLETE.notRun}`,
+      },
+    ]);
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "seed.txt": "hello\n" }, ports);
+
+    await advance(dir, location, ports); // PRE_GATING -> dispatch 1 -> incomplete
+    const result = await advance(dir, location, ports);
+
+    expect(result).toEqual({ state: "ESCALATED", done: true });
+    expect(agent.calls).toEqual(["gate-maintenance:gate-maintenance-1-0"]);
+    expect((await load(dir)).outcome?.reason).toContain(DID_NOT_COMPLETE.notRun);
+  });
+
   it("treats a dangling repair dispatch on resume as an incomplete terminus", async () => {
     const agent = scriptedAgent([{ status: "completed", rationale: "unused" }]);
     const ports = portsWith(agent);
@@ -631,6 +650,34 @@ describe("the INCOMPLETE_TERMINUS edge", () => {
     expect(reloaded.outcome?.reason).toContain("terminus budget exhausted (2/2)");
     // Exactly the cap: two sessions dispatched, no third.
     expect(agent.calls).toEqual(["worker:worker-1-0", "worker:worker-1-1"]);
+  });
+
+  // Retrying is right for a terminus the agent produced. It is wrong for one it
+  // never got to produce: nothing between attempts can change, so every further
+  // spawn is pure cost and pure delay on a failure decided before the first token.
+  it("escalates a session that never started after one attempt, without spending the retries", async () => {
+    const agent = scriptedAgent([
+      {
+        status: "incomplete",
+        notRun: true,
+        rationale: `worker session did not complete: ${DID_NOT_COMPLETE.notRun}`,
+      },
+    ]);
+    const ports = portsWith(agent);
+    const location = await readyForWorker(ports);
+
+    let result = await advance(dir, location, ports); // AGENT_ACTIVE -> INCOMPLETE_TERMINUS
+    for (let step = 0; step < 10 && !result.done; step++) {
+      result = await advance(dir, location, ports);
+    }
+
+    expect(result).toEqual({ state: "ESCALATED", done: true });
+    // One spawn, not the whole terminus budget.
+    expect(agent.calls).toEqual(["worker:worker-1-0"]);
+    const reloaded = await load(dir);
+    expect(reloaded.outcome?.source).toBe("worker");
+    expect(reloaded.outcome?.reason).toContain(DID_NOT_COMPLETE.notRun);
+    expect(reloaded.outcome?.reason).not.toContain("budget exhausted");
   });
 
   it("records the missing terminus for a dispatch that never recorded one", async () => {
@@ -1398,6 +1445,27 @@ describe("escalation packets", () => {
     const packet = await storedPacket();
     expect(packet.decision).toContain("No session retry budget remains (2/2 used).");
     expect(packet.evidence).toBe("worker session did not complete: hit the turn cap");
+  });
+
+  it("builds a packet naming the runtime, not a budget, when no session ever started", async () => {
+    const agent = scriptedAgent([
+      {
+        status: "incomplete",
+        notRun: true,
+        rationale: `worker session did not complete: ${DID_NOT_COMPLETE.notRun}`,
+      },
+    ]);
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("ESCALATED");
+
+    const packet = await storedPacket();
+    expect(packet.decision).toContain("could not be started");
+    expect(packet.decision).not.toContain("budget");
+    expect(packet.why_now).toContain("never started");
+    expect(packet.evidence).toBe(`worker session did not complete: ${DID_NOT_COMPLETE.notRun}`);
+    expect(packet.references).toEqual(["worker-1-0"]);
   });
 
   it("builds a packet saying no gate repair budget remains when the gate never runs", async () => {

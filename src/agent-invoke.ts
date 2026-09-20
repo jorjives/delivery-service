@@ -14,11 +14,15 @@ import type { TriageEnvelope } from "./triage-role-config.js";
  * sentence each is reported with.
  *
  * They collapse to a single terminus on purpose — the control flow treats "the
- * agent never cleanly signalled" as one edge with one budget, whatever the
- * cause — but the reason distinguishes them, because a project owner reading
- * the case file has to be able to tell a crash from a bad reply without an
- * engineer. Fixed strings, never an exception message: a stack trace in the log
- * tells that reader nothing and leaks harness internals.
+ * agent never cleanly signalled" as one edge, whatever the cause — but the
+ * reason distinguishes them, because a project owner reading the case file has
+ * to be able to tell a crash from a bad reply without an engineer. Fixed
+ * strings, never an exception message: a stack trace in the log tells that
+ * reader nothing and leaks harness internals.
+ *
+ * `notRun` is the one the edge itself has to act on rather than merely report:
+ * it alone means no session happened, so it alone cannot be retried into a
+ * different answer. It carries the `notRun` mark on the terminus for that.
  */
 export const DID_NOT_COMPLETE = {
   errored: "the session ended in an error before it reported a result",
@@ -27,8 +31,19 @@ export const DID_NOT_COMPLETE = {
   notRun: "the session could not be started or run to completion",
 } as const;
 
+/**
+ * The one place an incomplete terminus is built, so the `notRun` mark is
+ * derived from the reason rather than remembered at each of the four call
+ * sites. `notRun` is the only reason of the four that says no session happened
+ * — nothing ran, so nothing between attempts can differ — and the routing layer
+ * needs that as a fact it can act on, not only as a sentence it cannot read.
+ */
 function incomplete(roleCfg: RoleConfig<unknown>, reason: string): Incomplete {
-  return { status: "incomplete", rationale: `${roleCfg.role} session did not complete: ${reason}` };
+  return {
+    status: "incomplete",
+    rationale: `${roleCfg.role} session did not complete: ${reason}`,
+    ...(reason === DID_NOT_COMPLETE.notRun ? { notRun: true as const } : {}),
+  };
 }
 
 /**

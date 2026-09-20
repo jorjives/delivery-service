@@ -65,6 +65,8 @@ function decisionFor(cause: EscalationCause): string {
       return `The ${ROLE_LABELS[cause.role]} stopped because it judged it lacked authority. Decide whether to grant that authority or take the action yourself.`;
     case "repair_gave_up":
       return "The gate repair session gave up. Decide whether to repair the check yourself, amend the task, or abandon it.";
+    case "session_not_run":
+      return `The ${ROLE_LABELS[cause.role]} could not be started, so no session ran. Put the agent runtime right and run again, or take the task on yourself.`;
     case "budget":
       if (cause.population === "close") {
         // The work was already accepted: the question is how to land it, never
@@ -87,6 +89,8 @@ function reasonFor(cause: EscalationCause): string {
       return `The ${ROLE_LABELS[cause.role]} reported that it lacks the authority to go on; an authority limit goes straight to a person and is never retried.`;
     case "repair_gave_up":
       return "The gate repair session escalated: it judged it could not get the check running again.";
+    case "session_not_run":
+      return `The ${ROLE_LABELS[cause.role]} never started, so nothing about another attempt could differ; a session that never ran is escalated after one attempt rather than retried.`;
     case "budget":
       return `The ${POPULATION_LABELS[cause.population]} budget is spent (${cause.budget.used}/${cause.budget.max} used), so the harness cannot try again.`;
     case "triage_failure":

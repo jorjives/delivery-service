@@ -175,6 +175,11 @@ export const TerminusEntry = z.object({
   category: z.enum(["exhaustion", "authority"]).optional(),
   rationale: z.string(),
   role: z.enum(["worker", "gate-maintenance"]).optional(),
+  // Incomplete only: no session happened at all. Persisted because the routing
+  // decision it drives must be the same whether it is taken live or re-derived
+  // from the log on resume. Optional, so every case file written before it
+  // existed stays valid and keeps the retry it was recorded expecting.
+  notRun: z.literal(true).optional(),
 });
 export type TerminusEntry = z.infer<typeof TerminusEntry>;
 

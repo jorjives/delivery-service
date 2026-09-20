@@ -96,6 +96,17 @@ describe("invoke against a scripted agent session", () => {
     expect(terminus.rationale).toContain(DID_NOT_COMPLETE.wrongShape);
   });
 
+  // A session that ran and answered badly may answer well next time, so it
+  // carries no mark: the caller's retry is right for it, and only for it.
+  it("leaves a session that ran and answered badly unmarked", async () => {
+    await script([{ json: { status: "finished", note: "all good" } }]);
+    const terminus = await invoke(workerRoleConfig, ctx, useMock());
+    expect(terminus).toEqual({
+      status: "incomplete",
+      rationale: `worker session did not complete: ${DID_NOT_COMPLETE.wrongShape}`,
+    });
+  });
+
   it("never leaks the underlying error text into the rationale", async () => {
     await script([{ fail: { message: "TypeError: Cannot read properties of undefined\n    at foo (/x/y.js:42:9)" } }]);
     const terminus = await invoke(workerRoleConfig, ctx, useMock());
@@ -153,6 +164,18 @@ describe("invoke without a runnable session", () => {
     // the binary it could not start (and never says "ENOENT"), so asserting on
     // the whole rationale is what actually pins "no raw error text leaks here".
     expect(terminus.rationale).toBe(`worker session did not complete: ${DID_NOT_COMPLETE.notRun}`);
+  });
+
+  // The reason is prose for a person; `notRun` is the same fact for the caller.
+  // Nothing between attempts can change for a session that never started, so a
+  // router that cannot see this fact can only guess, and guesses by retrying.
+  it("marks a session that never started, so the caller can tell it from a bad answer", async () => {
+    await script([{ reply: "unreachable" }]);
+    const terminus = await invoke(workerRoleConfig, ctx, {
+      pathToClaudeCodeExecutable: join(dir, "no-such-binary"),
+      env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath },
+    });
+    expect(terminus).toMatchObject({ status: "incomplete", notRun: true });
   });
 
   it("keeps the error that stopped the session starting beside the case file", async () => {

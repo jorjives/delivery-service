@@ -24,7 +24,22 @@ export interface AgentContext {
 export type Terminus =
   | { status: "completed"; rationale: string }
   | { status: "escalate"; category: "exhaustion" | "authority"; rationale: string }
-  | { status: "incomplete"; rationale: string };
+  | {
+      status: "incomplete";
+      rationale: string;
+      /**
+       * Set when no session happened at all — the runtime refused to start one.
+       * The rationale already says so in prose, for the person reading the case
+       * file; this says the same thing to the routing layer, which cannot read
+       * prose and would otherwise treat every incomplete terminus alike.
+       *
+       * The distinction is the fact, not the policy: a session that ran and
+       * answered badly may answer well next time, while nothing between
+       * attempts can change for one that never started. What to do about that
+       * is the surface's decision, not this flag's.
+       */
+      notRun?: true;
+    };
 
 /** The harness's own verdict on a session that produced nothing usable, for any role. */
 export type Incomplete = Extract<Terminus, { status: "incomplete" }>;
@@ -47,6 +62,7 @@ export interface AgentPort {
 export type EscalationCause =
   | { kind: "authority"; role: "worker" | "gate-maintenance" }
   | { kind: "repair_gave_up" }
+  | { kind: "session_not_run"; role: "worker" | "gate-maintenance" }
   | { kind: "budget"; population: BudgetPopulation; budget: Budget; detail: string }
   | { kind: "triage_failure"; rationale: string };
 

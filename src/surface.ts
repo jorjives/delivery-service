@@ -243,6 +243,35 @@ async function escalateFromTail(
 }
 
 /**
+ * Escalate a terminus from a session that never started, or undefined when
+ * there is one to retry.
+ *
+ * Every retry population exists because a further attempt might land
+ * differently. For a session the runtime refused to start, nothing between
+ * attempts can differ: the failure was decided before the first token, so each
+ * further spawn is pure cost and pure delay, and the budget it spends buys
+ * nothing. This is the same judgement the router makes for an authority limit,
+ * and it is made the same way — ahead of the budget, never inside it.
+ *
+ * Both edges that retry an incomplete terminus route through here, so the rule
+ * holds for a repair session as well as a worker, and holds identically whether
+ * the terminus was just returned or is being re-read from the log on resume.
+ */
+function escalateIfNotRun(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+  role: "worker" | "gate-maintenance",
+  tail: Extract<HistoryEntry, { t: "terminus" }>,
+): Promise<AdvanceResult> | undefined {
+  if (!tail.notRun) return undefined;
+  return packetFor(dir, { kind: "session_not_run", role }).then((packet) =>
+    escalate(dir, caseFile, location, ports, role, tail.rationale, packet),
+  );
+}
+
+/**
  * A dangling dispatch (no terminus recorded) is not a session to resurrect —
  * sessions are reconstructed, never resumed — so the missing terminus is
  * recorded first and the ordinary bounded retry handles it from there.
@@ -331,6 +360,7 @@ async function dispatchSession(
     sessionKey,
     status: terminus.status,
     ...(terminus.status === "escalate" ? { category: terminus.category } : {}),
+    ...(terminus.status === "incomplete" && terminus.notRun ? { notRun: true as const } : {}),
     rationale: terminus.rationale,
   };
   await appendEntry(dir, entry);
@@ -451,12 +481,15 @@ async function gateMaintenance(
     case "escalate":
       return escalateFromTail(dir, caseFile, location, ports, "gate-maintenance");
     case "incomplete":
-      return dispatchGateMaintenance(
-        dir,
-        caseFile,
-        location,
-        ports,
-        "the repair session ended without a result",
+      return (
+        escalateIfNotRun(dir, caseFile, location, ports, "gate-maintenance", tail) ??
+        dispatchGateMaintenance(
+          dir,
+          caseFile,
+          location,
+          ports,
+          "the repair session ended without a result",
+        )
       );
   }
 }
@@ -539,6 +572,9 @@ async function incompleteTerminus(
   if (tail?.t !== "terminus") {
     throw new IllegalStateTransition(dir, "INCOMPLETE_TERMINUS", "retry-worker");
   }
+
+  const notRun = escalateIfNotRun(dir, caseFile, location, ports, "worker", tail);
+  if (notRun) return notRun;
 
   // The terminus entry that triggered this edge is already in the log, so the
   // count is correct with zero additional writes — including at cap, where no
