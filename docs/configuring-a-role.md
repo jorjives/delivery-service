@@ -135,9 +135,12 @@ Always exactly one of three results:
 | `incomplete` | The session produced nothing usable. `rationale` says which of these it was, in plain English: it crashed, it ended without a reply, it replied in the wrong shape, it could not be started, or it tried something it is not allowed to do. | Retries, within the run's budget. |
 
 You will never get a stack trace or raw error text in `rationale`. When a session
-errored or could not be started, the underlying error is kept verbatim in
+errored or could not be started, the underlying error is kept verbatim as `cause` in
 `refs/session-error-<session key>.json` beside the case file, so a harness problem
-can still be diagnosed without it reaching the person reading the run.
+can still be diagnosed without it reaching the person reading the run. When a session
+ended without a reply or replied in the wrong shape, the same file keeps what it said
+as `agentReply` (the agent's own words, cut to the first 4,000 characters), and, for
+the wrong shape, why the role's `envelopeSchema` refused it as `cause`.
 
 ## What a role cannot do
 
