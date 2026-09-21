@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { mkdtemp, writeFile, readFile, appendFile, access } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
@@ -202,7 +202,7 @@ describe("invoke over a case file it cannot read", () => {
     const missing = await mkdtemp(join(tmpdir(), "invoke-missing-"));
 
     await expect(invoke(workerRoleConfig, { ...ctx, dir: missing }, useMock())).rejects.toThrow(FileNotFound);
-    await expect(access(journalPath)).rejects.toThrow();
+    expect(await readJournal(journalPath)).toEqual([]);
   });
 
   it("throws the case-file error, before any session is spawned, when the log is corrupt", async () => {
@@ -210,7 +210,7 @@ describe("invoke over a case file it cannot read", () => {
     await appendFile(join(dir, "log.jsonl"), "not json\n{}\n", "utf-8");
 
     await expect(invoke(workerRoleConfig, ctx, useMock())).rejects.toThrow(CorruptCaseFile);
-    await expect(access(journalPath)).rejects.toThrow();
+    expect(await readJournal(journalPath)).toEqual([]);
   });
 });
 
