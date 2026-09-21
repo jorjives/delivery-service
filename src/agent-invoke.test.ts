@@ -131,6 +131,42 @@ describe("invoke against a scripted agent session", () => {
     });
   });
 
+  // An unusable reply is the agent's own words, not the harness's, so it is kept
+  // under its own label, apart from any cause the harness itself found.
+  it("keeps the reply of a session that emitted no envelope, labelled as the agent's", async () => {
+    await script([{ reply: "I had a look around but never reported back." }]);
+    await invoke(workerRoleConfig, ctx, useMock());
+
+    expect(await readRef(dir, sessionErrorRef(ctx.sessionKey))).toEqual({
+      sessionKey: "worker-1-0",
+      role: "worker",
+      reason: DID_NOT_COMPLETE.noEnvelope,
+      agentReply: "I had a look around but never reported back.",
+    });
+  });
+
+  it("keeps a wrong-shaped reply and why the role's schema refused it", async () => {
+    await script([{ json: { status: "finished", note: "all good" } }]);
+    await invoke(workerRoleConfig, ctx, useMock());
+
+    const record = (await readRef(dir, sessionErrorRef(ctx.sessionKey))) as { agentReply: string; cause: string };
+    expect(record).toMatchObject({ sessionKey: "worker-1-0", role: "worker", reason: DID_NOT_COMPLETE.wrongShape });
+    expect(JSON.parse(record.agentReply)).toEqual({ status: "finished", note: "all good" });
+    expect(record.cause).toContain("status");
+  });
+
+  // Model output is unbounded and untrusted: a runaway reply must not become a
+  // runaway file beside the case file.
+  it("truncates a long unusable reply and says how much was dropped", async () => {
+    await script([{ reply: "x".repeat(10_000) }]);
+    await invoke(workerRoleConfig, ctx, useMock());
+
+    const { agentReply } = (await readRef(dir, sessionErrorRef(ctx.sessionKey))) as { agentReply: string };
+    expect(agentReply.startsWith("x".repeat(4_000))).toBe(true);
+    expect(agentReply).toContain("[truncated: 6000 more characters]");
+    expect(agentReply.length).toBeLessThan(4_100);
+  });
+
   it("writes no failure record for a session that completed cleanly", async () => {
     await script([{ json: { status: "completed", rationale: "nothing went wrong" } }]);
     await invoke(workerRoleConfig, ctx, useMock());

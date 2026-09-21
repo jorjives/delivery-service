@@ -61,15 +61,36 @@ function errorTextOf(result: SDKResultMessage): string {
   return result.subtype === "success" ? result.result : result.errors.join("\n");
 }
 
+/** How much of an unusable reply is kept: enough to diagnose, never a runaway file. */
+const REPLY_LIMIT = 4_000;
+
+/** Cut untrusted model output to size, saying how much was dropped. */
+function truncateReply(reply: string): string {
+  if (reply.length <= REPLY_LIMIT) return reply;
+  return `${reply.slice(0, REPLY_LIMIT)}… [truncated: ${reply.length - REPLY_LIMIT} more characters]`;
+}
+
+/**
+ * What is kept about a session that produced nothing usable. `cause` is the
+ * runtime's or the harness's own account; `agentReply` is the agent's words,
+ * kept apart and truncated because they are untrusted model output, not a
+ * harness diagnosis.
+ */
+interface FailureEvidence {
+  cause?: string;
+  agentReply?: string;
+}
+
 /**
  * Keep the cause of a session that produced nothing usable where a person can
  * find it.
  *
  * Keeping it out of the rationale is not licence to destroy it. The fixed
  * sentences above are right for the *reader* of a case file, but the runtime's
- * own words are the only evidence of why a session would not start, and
- * discarding them leaves no diagnosis path short of patching the built harness
- * by hand.
+ * own words are the only evidence of why a session would not start, and the
+ * agent's own unusable reply is the only evidence of how it failed its role —
+ * discarding either leaves no diagnosis path short of patching the built
+ * harness by hand.
  *
  * Best effort on purpose: this is evidence, not an outcome. A failed write is a
  * disk problem with nowhere left to report it, and must never turn a session
@@ -79,15 +100,16 @@ async function recordFailureCause(
   roleCfg: RoleConfig<unknown>,
   ctx: AgentContext,
   reason: string,
-  cause: string,
+  { cause, agentReply }: FailureEvidence,
 ): Promise<void> {
-  if (cause === "") return;
+  if (!cause && !agentReply) return;
   try {
     await writeRef(ctx.dir, sessionErrorRef(ctx.sessionKey), {
       sessionKey: ctx.sessionKey,
       role: roleCfg.role,
       reason,
-      cause,
+      ...(cause ? { cause } : {}),
+      ...(agentReply ? { agentReply: truncateReply(agentReply) } : {}),
     });
   } catch {
     // The evidence is already lost with the disk that would hold it.
@@ -193,7 +215,7 @@ export async function invoke<E>(
   try {
     result = await lastResult(prompt, options);
   } catch (err) {
-    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.notRun, messageOf(err));
+    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.notRun, { cause: messageOf(err) });
     return authorityRefusal(roleCfg, authority.refusals, []) ?? incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   }
 
@@ -202,15 +224,22 @@ export async function invoke<E>(
 
   if (!result) return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   if (result.subtype !== "success" || result.is_error) {
-    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.errored, errorTextOf(result));
+    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.errored, { cause: errorTextOf(result) });
     return incomplete(roleCfg, DID_NOT_COMPLETE.errored);
   }
   if (result.structured_output === undefined) {
+    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.noEnvelope, { agentReply: result.result });
     return incomplete(roleCfg, DID_NOT_COMPLETE.noEnvelope);
   }
 
   const envelope = roleCfg.envelopeSchema.safeParse(result.structured_output);
-  if (!envelope.success) return incomplete(roleCfg, DID_NOT_COMPLETE.wrongShape);
+  if (!envelope.success) {
+    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.wrongShape, {
+      cause: z.prettifyError(envelope.error),
+      agentReply: JSON.stringify(result.structured_output),
+    });
+    return incomplete(roleCfg, DID_NOT_COMPLETE.wrongShape);
+  }
 
   // A valid envelope IS the terminus — see `Envelope` in role-config.ts.
   return envelope.data;
