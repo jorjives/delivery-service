@@ -159,10 +159,18 @@ export function buildSessionOptions(
  * "completed" that quietly swallowed a refusal would be the harness hiding its
  * own security boundary from the person relying on it.
  *
- * Throws `InvalidRoleConfig` — and only that — for a malformed config, before any
- * session is spawned. An extender's typo is a programming error, not a run
- * outcome: reporting it as `incomplete` would hide it behind a retry budget.
- * Every *agent* outcome, success or failure, returns as the role's envelope or an incomplete terminus.
+ * Throws, before any session is spawned, for exactly two kinds of problem that
+ * are the run's rather than the agent's:
+ * - `InvalidRoleConfig` for a malformed config. An extender's typo is a
+ *   programming error, not a run outcome: reporting it as `incomplete` would
+ *   hide it behind a retry budget.
+ * - The case-file errors (`FileNotFound`, `CorruptCaseFile`, or the raw I/O
+ *   error) when the case file or a ref it points at cannot be read. A terminus
+ *   is reported into that same case file, so an unreadable one has nowhere to
+ *   receive it.
+ *
+ * Every *agent* outcome, success or failure, returns as the role's envelope or
+ * an incomplete terminus.
  */
 export async function invoke<E>(
   roleCfg: RoleConfig<E>,
