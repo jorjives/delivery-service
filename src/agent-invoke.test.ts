@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { mkdtemp, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, writeFile, readFile, appendFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
@@ -10,7 +10,7 @@ import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import { createToolAuthority } from "./tool-authority.js";
 import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
-import { InvalidRoleConfig } from "./errors.js";
+import { CorruptCaseFile, FileNotFound, InvalidRoleConfig } from "./errors.js";
 import type { AgentContext } from "./ports.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 
@@ -190,6 +190,27 @@ describe("invoke without a runnable session", () => {
     // The runtime names the binary it could not start — the fact the fixed
     // rationale cannot carry, and the one a diagnosis turns on.
     expect((record as { cause: string }).cause).toContain("no-such-binary");
+  });
+});
+
+// A case file that cannot be read cannot have its failure reported into it, so
+// this is a run-level error for the caller, not an agent outcome, and no
+// session is spent on it.
+describe("invoke over a case file it cannot read", () => {
+  it("throws the case-file error, before any session is spawned, when the case file is missing", async () => {
+    await script([{ json: { status: "completed", rationale: "unreachable" } }]);
+    const missing = await mkdtemp(join(tmpdir(), "invoke-missing-"));
+
+    await expect(invoke(workerRoleConfig, { ...ctx, dir: missing }, useMock())).rejects.toThrow(FileNotFound);
+    await expect(access(journalPath)).rejects.toThrow();
+  });
+
+  it("throws the case-file error, before any session is spawned, when the log is corrupt", async () => {
+    await script([{ json: { status: "completed", rationale: "unreachable" } }]);
+    await appendFile(join(dir, "log.jsonl"), "not json\n{}\n", "utf-8");
+
+    await expect(invoke(workerRoleConfig, ctx, useMock())).rejects.toThrow(CorruptCaseFile);
+    await expect(access(journalPath)).rejects.toThrow();
   });
 });
 
