@@ -16,7 +16,7 @@
 - **Buy-vs-build (this slice's Build note, verbatim):** "Compose checks the estate already has: the configuration loader, the existing role-configuration validator, and the existing "load but do not run" check for custom gate and closer modules. Failures go through the existing plain-language problem describer, extended; do not add a generic validation-error library." So: `loadConfig`'s own discovery and parsing (split, not duplicated), `DeliveryConfig` for every config refusal, `resolveProject` for the check and closing action, `checkCustomModules` for modules, `describeProblem` extended in place, `renderFailure` for output. No new error class, no error-formatting or validation library, no second schema.
 - **Role-configuration validator: deliberately deferred to slice 5.** This slice's file carries no role settings, so the only role configurations that exist are the shipped constants, which `createAgentPort` already validates and which no owner can change. Running `validateRoleConfig` over them here would be a check that can never fail and that no test can drive red. Slice 5 adds the `roles` key, the merge, and `validateRoleConfig` over the merged result inside `validate`, per the spec's "role merge plus `validateRoleConfig`". Recorded here so the reviewer sees the Build note was read, not missed.
 - **Operability (this slice's Operational note, verbatim):** "This command needs no Claude Code executable, no sign-in and no network, and it never sets anything up or changes anything on disk. It is safe to run in CI on every push, and safe to run while a run is in progress." Honoured in Task 4: `validate` never reaches `agentSession` (pinned by a test that makes any call to it throw), never calls `prepareRunDir`, `create` or `startRun`, and a test snapshots the repository, its run records and the state folder before and after.
-- **Command surface (spec, verbatim):** "`delivery validate [--config <file>] [--repo <path>] [--json]` *(new)* Never provisions, never calls an agent, needs no credential. Exit `0` clean, `2` on a named problem. `--json` is SHOULD." `--json` is slice 9's; this slice adds only `--config` and `--repo`, meaning exactly what they mean on `delivery run`.
+- **Command surface (spec, verbatim):** "`delivery validate [--config <file>] [--repo <path>] [--json]` *(new)* Never provisions, never calls an agent, needs no credential. Exit `0` clean, `2` on a named problem. `--json` is SHOULD." `--json` is slice 9's; this slice adds only `--config` and `--repo`, meaning exactly what they mean on `delivery run`. (The program-level `--json` option is global, so `delivery validate --json` is accepted and prints the plain form until slice 9 gives it meaning; no refusal is added for that interim.)
 - **Key flow (spec, verbatim):**
   ```
   $ delivery validate
@@ -44,7 +44,7 @@
 
 ---
 
-### Task 1: Let a command learn which config file it found
+### Task 1: Let a command learn which config file it found ✅ DONE (deliver-slice)
 
 Tidy-first structural change: no behaviour of `delivery run` or `delivery status` changes. `validate` must print the file's name and must tell "no file" apart from "a file with nothing in it", and `loadConfig` answers both as `{}`. Split it rather than re-implement discovery.
 
@@ -185,7 +185,7 @@ the same parsing run uses, rather than a copy that could drift."
 
 ---
 
-### Task 2: Say what a setting takes instead of zod's complaint
+### Task 2: Say what a setting takes instead of zod's complaint ✅ DONE (deliver-slice)
 
 `describeProblem`'s last-resort sentence ends with zod's own message, e.g. `(Invalid option: expected one of "tap"|"junit"|"exitcode")`: schema vocabulary, and no fix. `validate`'s acceptance criterion is "naming the field and the fix in everyday words with no schema vocabulary", and its Build note says to extend this describer. Replace that tail with a per-setting "what it takes" sentence, keyed on the schema's own keys so a seventh setting does not compile without one.
 
@@ -196,7 +196,7 @@ the same parsing run uses, rather than a copy that could drift."
 **Interfaces:**
 - Consumes: `CONFIG_KEYS`, `DeliveryConfig` (existing).
 - Produces: no new export. `describeProblem(file, error, raw): string` keeps its signature; its fallback sentences become:
-  - a setting: ``I can't use <file>: the setting `<path>` is `<json value>`. <WHAT_IT_TAKES[top-level key]>``
+  - a setting: ``I can't use <file>: the setting `<path>` is `<json value>`. <WHAT_IT_TAKES[top-level key]>``, or ``… the setting `<path>` is missing. …`` when the file left a required value out (e.g. `closer.modulePath` on a `custom` closer)
   - the file itself: ``I can't use <file>: it should hold one object of settings, using `task`, `tasks`, `domain`, `gate`, `closer` and `budgets`. A `.js` or `.mjs` file exports that object as its default.``
 
 - [ ] **Step 1: Write the failing tests**
@@ -256,7 +256,14 @@ In `src/cli/config.test.ts`, replace the three tests "names a malformed value an
     [["add a page"]],
     [undefined],
   ])("never repeats the schema's own wording back (%j)", (raw) => {
-    expect(problemFor(raw)).not.toMatch(/Invalid|expected|received/);
+    expect(problemFor(raw)).not.toMatch(/Invalid|expected|received|undefined/);
+  });
+
+  it("says a required value is missing, rather than quoting it as undefined", () => {
+    expect(problemFor({ closer: { type: "custom" } })).toBe(
+      "I can't use delivery.config.json: the setting `closer.modulePath` is missing. " +
+        "It says what happens to work that passes: see docs/writing-a-closer.md for the choices and what each one takes.",
+    );
   });
 ```
 
@@ -321,7 +328,10 @@ with:
   // Every other path starts at one of the schema's keys: `.strict()` names any
   // other key through the unrecognised-key branch above.
   const setting = issue.path[0] as keyof DeliveryConfig;
-  return `I can't use ${file}: the setting \`${where}\` is \`${JSON.stringify(valueAt(raw, issue.path))}\`. ${WHAT_IT_TAKES[setting]}`;
+  const value = valueAt(raw, issue.path);
+  // A required value left out says so, rather than quoting JavaScript's word for nothing.
+  const is = value === undefined ? "is missing" : `is \`${JSON.stringify(value)}\``;
+  return `I can't use ${file}: the setting \`${where}\` ${is}. ${WHAT_IT_TAKES[setting]}`;
 ```
 
 (Verified while planning: zod reports these first-issue paths — `gate.parseMode`, `gate.command`, `task`, `domain`, `closer.deleteBranch`, `closer.modulePath`, `budgets`, and `[]` for both `["add a page"]` and `undefined` — so the expected sentences above are exact.)
@@ -346,7 +356,7 @@ setting cannot ship without one."
 
 ---
 
-### Task 3: Say in plain words what a project is set up to do
+### Task 3: Say in plain words what a project is set up to do ✅ DONE (deliver-slice)
 
 The lines `validate` prints on success, as a pure function of the loaded file and the project settings `run` would use. Kept separate from the command so every phrasing (each gate type, each closer type, each task shape) is tested without a repository.
 
@@ -503,7 +513,7 @@ without a repository, and a new type cannot compile without one."
 
 ---
 
-### Task 4: `delivery validate`
+### Task 4: `delivery validate` ✅ DONE (deliver-slice)
 
 The command itself: find the file (or say there is none), name it, read it, resolve the check and closing action as `run` would, load any custom module without running it, then print the lines and "Ready to run.". Every refusal is thrown and rendered by `program.ts`'s existing `renderFailure`, exactly as `run`'s are. Folded in: the `--help` entry, the README section and the changeset, because this task is what makes them true.
 
