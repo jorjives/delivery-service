@@ -72,8 +72,12 @@ function framed(stdout: string): string {
 }
 
 const DOMAIN = "A small internal tool that greets people by name. All user-facing messages are written in French.";
-const FIRST = "add a function that says hello to a name, with a test";
-const SECOND = "add a function that says goodbye to a name, with a test";
+// Distinct in their first five words: runIdFor slugs a run directory from
+// that many leading words plus a second-granularity timestamp, and this
+// two-task run can land in the same clock second, so a shared prefix here
+// would collide on one run directory.
+const FIRST = "add a hello function that greets a name, with a test";
+const SECOND = "add a goodbye function that farewells a name, with a test";
 
 describe("what delivery preview prints is what a real run sends", () => {
   it(
