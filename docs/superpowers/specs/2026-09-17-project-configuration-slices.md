@@ -192,6 +192,7 @@ is not sliced.
 
 ## Slice 5: Tune a Role's Instructions and Tools From the Configuration File
 
+**Status:** ✅ Complete — 2026-09-22 — `5bd1868`
 **Delivers:** An extender changes what the worker or gate-maintenance agent is told, and which tools it may use, by editing the configuration file rather than writing and importing code, and can check and preview the result before a run.
 
 **Operational note:** A misspelled tool name is not caught by `validate`; it shows up during a run as that tool being refused. The role guide must say so plainly so extenders know where to look.
