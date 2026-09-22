@@ -4,7 +4,7 @@ import { assemblePrompt, type PromptEvidence } from "../prompt-assembly.js";
 import type { TaskDef } from "../schema.js";
 import type { DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
-import { RUN_ROLES } from "./drive.js";
+import { rolesFor } from "./roles.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { EVERY_TASK_DONE, nextQueueTask, queueTasks, taskHeading } from "./queue.js";
 import { allRuns } from "./runs.js";
@@ -99,10 +99,11 @@ async function chooseTask(
  * would be told about this project and one of its tasks.
  *
  * Nothing here renders a prompt. The record a run of the task would start
- * with comes from `initialCaseFile`, the role from `RUN_ROLES`, and the text
- * from the library's own `assemblePrompt`: the same function, on the same
- * inputs, a run's first dispatch uses. Everything else is a read, so it needs
- * no agent, no sign-in and no network, and is safe beside a run in progress.
+ * with comes from `initialCaseFile`, the roles from `rolesFor` on that record,
+ * as a run's driver takes them, and the text from the library's own `assemblePrompt`:
+ * the same function, on the same inputs, a run's first dispatch uses. Everything
+ * else is a read, so it needs no agent, no sign-in and no network, and is safe
+ * beside a run in progress.
  */
 export async function previewCommand(options: PreviewOptions, ctx: CommandContext): Promise<ExitCode> {
   const { repoPath, file } = await locateConfig(options, ctx);
@@ -113,12 +114,16 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
     return EXIT.ok;
   }
 
-  const roleCfg = RUN_ROLES[options.role];
-  const { gateRef, closerRef, domainPrompt, budgets } = project;
+  const { gateRef, closerRef, domainPrompt, budgets, roleOverrides } = project;
   // The id is fixed rather than made from the clock, as a real run's is: it
   // is not part of what an agent is told, and a fixed one keeps two previews
   // of the same project identical.
-  const standIn = initialCaseFile({ surfaceId: "preview", taskDef: chosen.taskDef, gateRef, closerRef, domainPrompt }, budgets);
+  const standIn = initialCaseFile(
+    { surfaceId: "preview", taskDef: chosen.taskDef, gateRef, closerRef, domainPrompt, roleOverrides },
+    budgets,
+  );
+  // The roles from the record, as a run takes them, not from the file.
+  const roleCfg = rolesFor(standIn.header.roleOverrides)[options.role];
   const { systemPrompt, prompt } = assemblePrompt(standIn, roleCfg, FIRST_DISPATCH);
 
   ctx.writeLine(chosen.heading);

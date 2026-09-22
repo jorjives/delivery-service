@@ -139,6 +139,28 @@ describe("delivery preview", () => {
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain(DOMAIN);
   });
+
+  it("shows the worker's instructions and tools as the file changes them", async () => {
+    const OPS_RULE = "Never modify anything under the ops folder.";
+    const tools = ["Read", "Glob", "Grep", "Edit", "Write"];
+    const repo = repoWith({ ...PROJECT, roles: { worker: { systemPromptFragment: OPS_RULE, allowedTools: tools } } });
+    const { stdout, exitCode } = await delivery(["preview"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.split("\n")[4]).toBe(OPS_RULE);
+    expect(stdout).toContain(`${OPS_RULE}\n\n${DOMAIN}\n\n## Task`);
+    expect(stdout).not.toContain(workerRoleConfig.systemPromptFragment);
+    expect(stdout.endsWith(`${RULE}\n${toolsLine(tools)}\n`)).toBe(true);
+    expect(stdout).not.toContain("run commands");
+  });
+
+  it("shows gate maintenance as the file changes it, and leaves the worker as built", async () => {
+    const repo = repoWith({ ...PROJECT, roles: { gateMaintenance: { allowedTools: ["Read"] } } });
+    const repair = await delivery(["preview", "--role", "gate-maintenance"], { cwd: repo });
+    expect(repair.stdout).toContain(`${gateMaintenanceRoleConfig.systemPromptFragment}\n\n${DOMAIN}`);
+    expect(repair.stdout.endsWith(`${RULE}\nTools it can use: read files.\n`)).toBe(true);
+    const worker = await delivery(["preview"], { cwd: repo });
+    expect(worker.stdout.endsWith(`${RULE}\n${toolsLine(workerRoleConfig.allowedTools)}\n`)).toBe(true);
+  });
 });
 
 describe("delivery preview on a configuration with a problem", () => {
@@ -158,6 +180,15 @@ describe("delivery preview on a configuration with a problem", () => {
     expect(preview.stderr).toBe(validate.stderr);
     expect(preview.stdout).toBe("");
     expect(preview.exitCode).toBe(EXIT.configuration);
+  });
+
+  it("refuses empty worker instructions in the words validate uses", async () => {
+    const repo = repoWith({ ...PROJECT, roles: { worker: { systemPromptFragment: " " } } });
+    const preview = await delivery(["preview"], { cwd: repo });
+    const validate = await delivery(["validate"], { cwd: repo });
+    expect(preview.exitCode).toBe(EXIT.configuration);
+    expect(preview.stderr).toContain("`roles.worker.systemPromptFragment`, the instructions for the worker, is empty.");
+    expect(preview.stderr).toBe(validate.stderr);
   });
 });
 
