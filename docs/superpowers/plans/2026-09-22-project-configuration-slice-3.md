@@ -1,5 +1,6 @@
 # Project Configuration — Slice 3: Check Your Setup for Free Before Spending Anything
 
+> **Status:** ✅ Complete — 2026-09-22 — `727b5d5`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 3 of `docs/superpowers/specs/2026-09-17-project-configuration-slices.md`
