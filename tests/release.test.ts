@@ -3,7 +3,7 @@
 // must stay off until a human chooses a licence, so the gate is asserted rather
 // than trusted to a comment.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { REPO_ROOT } from "./helpers.js";
@@ -45,5 +45,18 @@ describe("releasing the harness", () => {
 
   it("tells contributors how to describe their change", () => {
     expect(read("CONTRIBUTING.md")).toContain("npx changeset");
+  });
+
+  it("records project configuration's commands and settings as an additive release", () => {
+    // Pending entries become the changelog on `changeset version`, so read both:
+    // this holds before the release and after it.
+    const pending = readdirSync(join(REPO_ROOT, ".changeset"))
+      .filter((name) => name.endsWith(".md") && name !== "README.md")
+      .map((name) => read(`.changeset/${name}`));
+    const recorded = [read("CHANGELOG.md"), ...pending].join("\n");
+    for (const surface of ["delivery validate", "delivery preview", "`domain`", "`tasks`", "`roles`", "docs/project-configuration.md"]) {
+      expect(recorded).toContain(surface);
+    }
+    for (const entry of pending) expect(entry).not.toMatch(/^"delivery-service": major$/m);
   });
 });
