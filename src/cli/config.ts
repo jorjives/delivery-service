@@ -231,38 +231,48 @@ async function readJson(file: string): Promise<unknown> {
   }
 }
 
-/**
- * The settings a run starts from: the file the user named, or the nearest one
- * at or above the folder they ran in, or nothing at all, which is not an error
- * because every setting has a default.
- */
-export async function loadConfig({
-  startDir,
-  repoPath,
-  flag,
-  env,
-}: {
+/** Where to look for a config file: the folder the command was run from, the repository it stops at, and whatever the person named. */
+export interface ConfigLookup {
   startDir: string;
   repoPath: string;
   flag: string | undefined;
   env: NodeJS.ProcessEnv;
-}): Promise<DeliveryConfig> {
+}
+
+/**
+ * The config file this invocation means: the one `--config` or
+ * `DELIVERY_CONFIG` names, or the nearest one at or above the folder the
+ * command was run from. Nothing when nothing was named and there is none,
+ * which a run treats as "use the defaults" and `validate` as the thing to say.
+ * A named file that isn't there is refused rather than quietly replaced by
+ * discovery.
+ */
+export function findConfig({ startDir, repoPath, flag, env }: ConfigLookup): string | undefined {
   // An empty DELIVERY_CONFIG is CI writing an input nobody filled in: not a
   // file called "", and not a reason to refuse before discovery has run.
   const named = flag ?? (env.DELIVERY_CONFIG || undefined);
-  let file: string | undefined;
-  if (named !== undefined) {
-    file = resolve(startDir, named);
-    if (!existsSync(file)) throw new Refusal(NO_SUCH_CONFIG(named), EXIT.configuration);
-  } else {
-    file = configCandidates(startDir, repoPath).find((candidate) => existsSync(candidate));
-    if (file === undefined) return {};
-  }
+  if (named === undefined) return configCandidates(startDir, repoPath).find((candidate) => existsSync(candidate));
+  const file = resolve(startDir, named);
+  if (!existsSync(file)) throw new Refusal(NO_SUCH_CONFIG(named), EXIT.configuration);
+  return file;
+}
 
+/** One config file's settings, or a refusal naming the first thing wrong with it. */
+export async function readConfig(file: string): Promise<DeliveryConfig> {
   const raw = file.endsWith(".json")
     ? await readJson(file)
     : ((await import(pathToFileURL(file).href)) as { default?: unknown }).default;
   const parsed = DeliveryConfig.safeParse(raw);
   if (!parsed.success) throw new Refusal(describeProblem(file, parsed.error, raw), EXIT.configuration);
   return parsed.data;
+}
+
+/**
+ * The settings a run starts from: the file the user named, or the nearest one
+ * at or above the folder they ran in, or nothing at all, which is not an error
+ * because every setting has a default.
+ */
+export async function loadConfig(lookup: ConfigLookup): Promise<DeliveryConfig> {
+  const file = findConfig(lookup);
+  return file === undefined ? {} : readConfig(file);
 }

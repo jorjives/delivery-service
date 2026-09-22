@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configCandidates, DeliveryConfig, describeProblem, loadConfig, NO_SUCH_CONFIG, structureTask, unknownCloser } from "./config.js";
+import { configCandidates, DeliveryConfig, describeProblem, findConfig, loadConfig, NO_SUCH_CONFIG, structureTask, unknownCloser } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 
 const FILE = "delivery.config.json";
@@ -158,9 +158,6 @@ describe("what it says about a file it can't use", () => {
       "I can't use delivery.config.json: there's no setting called `corection`. `budgets` doesn't take it.",
     );
   });
-
-  // Updated as part of adding tasks: previously mentioned only five keys
-  // Now we have six: task, tasks, domain, gate, closer, budgets
 
   it.each([["five"], [0], [-1], [2.5]])("names a limit that is not a whole number of attempts (%p)", (value) => {
     expect(problemFor({ budgets: { correction: value } })).toBe(
@@ -373,5 +370,29 @@ describe("naming a config file yourself", () => {
     const refusal = await refusalOf(loadConfig({ startDir: repo, repoPath: repo, flag: "missing.json", env: {} }));
     expect(refusal.message).toBe(NO_SUCH_CONFIG("missing.json"));
     expect(refusal.exitCode).toBe(EXIT.configuration);
+  });
+});
+
+describe("which config file a command means", () => {
+  it("names the nearest file at or above the folder the command was run from", () => {
+    const { repo, deep } = tree();
+    const file = write(repo, "delivery.config.json", "{}");
+    expect(findConfig({ startDir: deep, repoPath: repo, flag: undefined, env: {} })).toBe(realpathSync(file));
+  });
+
+  it("names nothing when there is no file, rather than inventing an empty one", () => {
+    const { repo, deep } = tree();
+    expect(findConfig({ startDir: deep, repoPath: repo, flag: undefined, env: {} })).toBeUndefined();
+  });
+
+  it("names the file --config points at, resolved against the folder the command was run from", () => {
+    const { repo, deep } = tree();
+    write(deep, "elsewhere.json", "{}");
+    expect(findConfig({ startDir: deep, repoPath: repo, flag: "elsewhere.json", env: {} })).toBe(join(deep, "elsewhere.json"));
+  });
+
+  it("refuses a named file that isn't there", () => {
+    const { repo } = tree();
+    expect(() => findConfig({ startDir: repo, repoPath: repo, flag: "missing.json", env: {} })).toThrow(NO_SUCH_CONFIG("missing.json"));
   });
 });
