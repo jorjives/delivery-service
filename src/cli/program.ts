@@ -6,7 +6,7 @@ import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { inquirerAsk } from "./prompts.js";
 import { jsonReporter, plainReporter, type RunReporter } from "./report.js";
-import { PREVIEW_ROLES, previewCommand, type PreviewOptions } from "./preview-command.js";
+import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
 import { resumeCommand, type ResumeOptions } from "./resume-command.js";
 import { runCommand, type RunOptions } from "./run-command.js";
 import { statusCommand, type StatusOptions } from "./status-command.js";
@@ -128,6 +128,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .description(
       "show exactly what the agent will be told for the next task on your list, before anything runs: no agent, no sign-in, and nothing on disk changes",
     )
+    .option("--queue-index <n>", 'show this task on your list instead, counted from 1 as in "Task 1 of 3"', taskNumber)
     .addOption(
       new Option("--role <role>", "whose instructions to show: the worker doing the task, or gate-maintenance, the agent that repairs your check when it can't run")
         .choices(PREVIEW_ROLES)

@@ -1,3 +1,4 @@
+import { InvalidArgumentError } from "commander";
 import { initialCaseFile } from "../case-file.js";
 import { assemblePrompt, type PromptEvidence } from "../prompt-assembly.js";
 import type { TaskDef } from "../schema.js";
@@ -19,6 +20,20 @@ export interface PreviewOptions extends ValidateOptions {
   /** Which task on the list, counted from 1 as "Task N of M" counts. */
   queueIndex?: number;
   role: PreviewRole;
+}
+
+export const noSuchTask = (n: number, of: number): string => `There's no task ${n}; your queue has ${of}.`;
+
+export const SINGLE_TASK =
+  "This project has a single `task`, not a list, so there's no task number to choose. Leave out `--queue-index` to see it.";
+
+export const TASK_NUMBER = 'A task number is a whole number from 1, as in "Task 1 of 3".';
+
+/** `--queue-index`'s value as a task number, or commander's own refusal naming the option. */
+export function taskNumber(value: string): number {
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 1) throw new InvalidArgumentError(TASK_NUMBER);
+  return n;
 }
 
 /** The line above and below the instructions, so where they start and stop is never in doubt. */
@@ -52,17 +67,31 @@ export function toolsLine(tools: readonly string[]): string {
  */
 const FIRST_DISPATCH: PromptEvidence = { brief: null, newFailures: [], setback: null };
 
-/** The task to preview, and the line that names it. Undefined when every task on the list is done. */
-async function chooseTask(config: DeliveryConfig, repoPath: string): Promise<{ heading: string; taskDef: TaskDef } | undefined> {
+/**
+ * The task to preview, and the line that names it: the one asked for by
+ * number, or the one `delivery run` would act on next. Undefined when nothing
+ * was asked for by number and every task on the list is done.
+ */
+async function chooseTask(
+  config: DeliveryConfig,
+  repoPath: string,
+  queueIndex: number | undefined,
+): Promise<{ heading: string; taskDef: TaskDef } | undefined> {
   if (config.tasks) {
     const tasks = queueTasks(config);
+    if (queueIndex !== undefined) {
+      const taskDef = tasks[queueIndex - 1];
+      if (taskDef === undefined) throw new Refusal(noSuchTask(queueIndex, tasks.length), EXIT.configuration);
+      return { heading: taskHeading({ task: queueIndex, of: tasks.length }, taskIntent(taskDef)), taskDef };
+    }
     const next = nextQueueTask(await allRuns(repoPath), tasks);
     if (next === undefined) return undefined;
     const taskDef = tasks[next.task - 1] as TaskDef;
     return { heading: `Next up is ${taskHeading(next, taskIntent(taskDef))}`, taskDef };
   }
-  if (config.task) return { heading: `Your task: ${taskIntent(config.task)}`, taskDef: config.task };
-  throw new Refusal(NO_TASK, EXIT.configuration);
+  if (!config.task) throw new Refusal(NO_TASK, EXIT.configuration);
+  if (queueIndex !== undefined) throw new Refusal(SINGLE_TASK, EXIT.configuration);
+  return { heading: `Your task: ${taskIntent(config.task)}`, taskDef: config.task };
 }
 
 /**
@@ -78,7 +107,7 @@ async function chooseTask(config: DeliveryConfig, repoPath: string): Promise<{ h
 export async function previewCommand(options: PreviewOptions, ctx: CommandContext): Promise<ExitCode> {
   const { repoPath, file } = await locateConfig(options, ctx);
   const { config, project } = await readProject(file, repoPath, ctx.env);
-  const chosen = await chooseTask(config, repoPath);
+  const chosen = await chooseTask(config, repoPath, options.queueIndex);
   if (chosen === undefined) {
     ctx.writeLine(EVERY_TASK_DONE);
     return EXIT.ok;

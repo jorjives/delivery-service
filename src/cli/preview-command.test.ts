@@ -8,7 +8,7 @@ import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { RULE, toolsLine } from "./preview-command.js";
+import { noSuchTask, RULE, SINGLE_TASK, TASK_NUMBER, toolsLine } from "./preview-command.js";
 import { EVERY_TASK_DONE } from "./queue.js";
 import { NO_TASK } from "./settings.js";
 
@@ -171,5 +171,53 @@ describe("delivery preview changes nothing", () => {
     expect((await delivery(["preview"], { cwd: repo })).exitCode).toBe(EXIT.ok);
 
     expect({ status: status(), runs: readdirSync(runsRoot(repo), { recursive: true }) }).toEqual(before);
+  });
+});
+
+describe("delivery preview --queue-index", () => {
+  it("shows the task with that number, counted as Task N of M counts", async () => {
+    const repo = repoWith(PROJECT);
+    const { stdout, exitCode } = await delivery(["preview", "--queue-index", "3"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.split("\n")[0]).toBe(`Task 3 of 3: ${THIRD}`);
+    expect(stdout).toContain(`"intent": "${THIRD}"`);
+    expect(stdout).toContain(DOMAIN);
+  });
+
+  it("shows a task that is already done, when asked for it by number", async () => {
+    const repo = repoWith(PROJECT);
+    await writeRunRecord(repo, { runId: "add-a-page-20260917T090000Z", task: FIRST, outcome: CLOSED });
+    const { stdout } = await delivery(["preview", "--queue-index", "1"], { cwd: repo });
+    expect(stdout.split("\n")[0]).toBe(`Task 1 of 3: ${FIRST}`);
+  });
+
+  it("refuses a number past the end of the list, saying how many there are", async () => {
+    const repo = repoWith(PROJECT);
+    const { stdout, stderr, exitCode } = await delivery(["preview", "--queue-index", "9"], { cwd: repo });
+    expect(stderr).toBe(`${noSuchTask(9, 3)}\n`);
+    expect(noSuchTask(9, 3)).toBe("There's no task 9; your queue has 3.");
+    expect(stdout).toBe("");
+    expect(exitCode).toBe(EXIT.configuration);
+  });
+
+  it.each(["0", "-1", "two", "1.5"])("refuses %s, which is not a task number", async (value) => {
+    const repo = repoWith(PROJECT);
+    const { stderr, exitCode } = await delivery(["preview", `--queue-index=${value}`], { cwd: repo });
+    expect(stderr).toContain(TASK_NUMBER);
+    expect(exitCode).toBe(EXIT.configuration);
+  });
+
+  it("refuses a number for a project with a single `task`, which has no list to count in", async () => {
+    const repo = repoWith({ task: { intent: FIRST } });
+    const { stderr, exitCode } = await delivery(["preview", "--queue-index", "1"], { cwd: repo });
+    expect(stderr).toBe(`${SINGLE_TASK}\n`);
+    expect(exitCode).toBe(EXIT.configuration);
+  });
+
+  it("says what delivery run says when there is no task at all, number or not", async () => {
+    const repo = repoWith({ domain: DOMAIN });
+    const { stderr, exitCode } = await delivery(["preview", "--queue-index", "1"], { cwd: repo });
+    expect(stderr).toBe(`${NO_TASK}\n`);
+    expect(exitCode).toBe(EXIT.configuration);
   });
 });

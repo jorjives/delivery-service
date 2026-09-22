@@ -240,7 +240,7 @@ same object works too, for a project that needs to compute a value.
 |---|---|
 | `task` | One thing you want done, when it is the same every run. Use this or `tasks`, not both. |
 | `tasks` | A list of things you want done, in the order you want them, each a sentence in your own words. `delivery run` with no `--task` works down the list, one run at a time. Editing the list between runs is expected: a new entry runs in its place, a reworded entry is a new task, and an entry you delete leaves its run in the history. |
-| `domain` | What your project is, in your own words: every agent on every run of it is told this before its own instructions. A run keeps the description it started with, so editing it changes the next run, not one already going. A long one is easiest in a `delivery.config.js` with a template literal. |
+| `domain` | What your project is, in your own words: every agent on every run of it is told this before its own instructions. A run keeps the description it started with, so editing it changes the next run, not one already going. A long one is easiest in a `delivery.config.js` with a template literal. `delivery preview` shows it in place. |
 | `gate` | What decides whether a change is good: see [Writing a gate](docs/writing-a-gate.md) |
 | `closer` | What happens to accepted work: see [Writing a closer](docs/writing-a-closer.md) |
 | `budgets` | How many attempts each kind of setback gets before the run asks a person: `correction`, `gateError`, `gateMaintenance`, `terminus` and `close`, each a whole number. Anything you leave out keeps its default (3, 3, 2, 5 and 3). |
@@ -283,6 +283,36 @@ If something is wrong it prints the one thing to fix instead, such as an empty t
 tasks that say the same thing, and exits 2. It never starts an agent, needs no sign-in and no
 network, and changes nothing on disk, so it is safe in CI on every push and safe while a run
 is going. `--config <path>` and `--repo <path>` mean what they mean on `delivery run`.
+
+## See what the agent will be told
+
+```bash
+delivery preview
+```
+
+It prints, before anything runs, the instructions the next task on your list would be given,
+word for word, with your project description in place, and then what the agent may do:
+
+```
+Next up is Task 1 of 3: add a page that shows who's on call today
+
+What the worker will be told (before any run starts):
+─────────────────────────────────────────────────────
+You are the worker on a gated delivery harness.
+…
+A small internal tool that tracks who's on call this week. Node.js, Express, a SQLite file for storage.
+
+## Task
+…
+─────────────────────────────────────────────────────
+Tools it can use: read files, look through the project, edit files, run commands.
+```
+
+`--queue-index 3` shows the third task on your list instead, numbered as "Task 3 of 3" numbers
+it. `--role gate-maintenance` shows what the agent that repairs your check is told when the
+check can't run. A project with a single `task` shows that one. Like `delivery validate`, it
+needs no agent, no sign-in and no network, changes nothing on disk, reports a problem with your
+configuration in the same words, and takes `--config` and `--repo`.
 
 ## Documentation
 
