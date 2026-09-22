@@ -69,6 +69,18 @@ describe("what validate says a project is set up to do", () => {
   ])("says what the closing action %j does", (closerRef, line) => {
     expect(checkedLines({}, project({ closerRef }))[3]).toBe(line);
   });
+
+  it("says which role the file changes and what it changes, after what it already said", () => {
+    const config: DeliveryConfig = {
+      roles: { worker: { systemPromptFragment: "Never modify anything under the ops folder.", allowedTools: ["Read", "Edit"] }, gateMaintenance: { allowedTools: ["Read"] } },
+    };
+    expect(checkedLines(config, project()).slice(4)).toEqual(["✓ worker: your own instructions and tool list", "✓ gate maintenance: your own tool list"]);
+  });
+
+  it("says nothing about a role the file leaves as it is", () => {
+    expect(checkedLines({ roles: { worker: {} } }, project())).toHaveLength(4);
+    expect(checkedLines({}, project())).toHaveLength(4);
+  });
 });
 
 const COMPLETE = {
@@ -146,6 +158,22 @@ describe("delivery validate on a configuration that is ready", () => {
     expect(stdout).toContain(READY);
     expect(exitCode).toBe(EXIT.ok);
   });
+
+  it("passes a file that changes the worker's instructions and tools, and says so", async () => {
+    const repo = repoWith({ ...COMPLETE, roles: { worker: { systemPromptFragment: "Never modify anything under the ops folder.", allowedTools: ["Read", "Glob", "Grep", "Edit", "Write"] } } });
+    const { stdout, stderr, exitCode } = await delivery(["validate"], { cwd: repo });
+    expect(stderr).toBe("");
+    expect(stdout).toContain("✓ worker: your own instructions and tool list\n");
+    expect(stdout.endsWith(`${READY}\n`)).toBe(true);
+    expect(exitCode).toBe(EXIT.ok);
+  });
+
+  it("does not check tool names against a list, so a misspelt one passes and is refused only when a run tries it", async () => {
+    const repo = repoWith({ ...COMPLETE, roles: { worker: { allowedTools: ["Raed"] } } });
+    const { stdout, exitCode } = await delivery(["validate"], { cwd: repo });
+    expect(stdout).toContain(READY);
+    expect(exitCode).toBe(EXIT.ok);
+  });
 });
 
 describe("delivery validate on a configuration with a problem", () => {
@@ -163,6 +191,26 @@ describe("delivery validate on a configuration with a problem", () => {
       sameTask(1, 3),
     ],
     ["both a single task and a list", { ...COMPLETE, task: { intent: "add a page" } }, BOTH_TASK_AND_TASKS],
+    [
+      "a role that can't be changed from the file",
+      { ...COMPLETE, roles: { triage: { allowedTools: ["Read"] } } },
+      "`roles` has no role called `triage`. Only `worker` and `gateMaintenance` can be changed here, so remove it to keep the built-in one.",
+    ],
+    [
+      "a role setting that doesn't exist",
+      { ...COMPLETE, roles: { worker: { instructions: "Be careful." } } },
+      "`roles.worker` has no setting called `instructions`. It takes `systemPromptFragment` and `allowedTools`, so remove it to keep the built-in one.",
+    ],
+    [
+      "empty instructions for the worker",
+      { ...COMPLETE, roles: { worker: { systemPromptFragment: "" } } },
+      "`roles.worker.systemPromptFragment`, the instructions for the worker, is empty. Write a sentence, or remove it to keep the built-in one.",
+    ],
+    [
+      "an empty tools list",
+      { ...COMPLETE, roles: { gateMaintenance: { allowedTools: [] } } },
+      "`roles.gateMaintenance.allowedTools`, the tools the agent that repairs your check may use, is empty. Name at least one, or remove it to keep the built-in one.",
+    ],
   ])("names %s in one plain line, with the configuration exit code", async (_, config, message) => {
     const repo = repoWith(config);
     const { stdout, stderr, exitCode } = await delivery(["validate"], { cwd: repo });

@@ -126,6 +126,37 @@ export const DeltaOptions = z.object({
 });
 export type DeltaOptions = z.infer<typeof DeltaOptions>;
 
+/**
+ * Something written that says something. Whitespace alone is nothing written,
+ * so it is refused rather than sent to an agent as a blank instruction.
+ */
+const Written = z.string().refine((text) => text.trim() !== "");
+
+/**
+ * What a project may change about one role, and nothing else: its
+ * instructions and its permitted tools. The reply shape stays the harness's
+ * own. Each field is optional, and an omitted one keeps the built-in value.
+ * No list of valid tool names exists or is checked here: nothing could keep
+ * one in step with the installed agent runtime, and what a role can reach is
+ * bounded by the tool guard whatever is listed.
+ */
+export const RoleOverride = z
+  .object({
+    systemPromptFragment: Written.optional(),
+    allowedTools: z.array(Written).min(1).optional(),
+  })
+  .strict();
+export type RoleOverride = z.infer<typeof RoleOverride>;
+
+/** The roles a project may change. Triage is absent on purpose: it stays a library-level choice. */
+export const RoleOverrides = z
+  .object({
+    worker: RoleOverride.optional(),
+    gateMaintenance: RoleOverride.optional(),
+  })
+  .strict();
+export type RoleOverrides = z.infer<typeof RoleOverrides>;
+
 export const CaseFileHeader = z.object({
   surfaceId: z.string(),
   taskDef: TaskDef,

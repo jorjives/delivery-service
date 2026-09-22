@@ -5,15 +5,15 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
-import { CloserRef, GateRef, TaskDef } from "../schema.js";
+import { CloserRef, GateRef, RoleOverrides, TaskDef } from "../schema.js";
 import { EXIT, Refusal } from "./failures.js";
 
 /** The one filename family a project uses, and the forms it may take. A `.js` or `.mjs` file exports the same object, for a project that computes a value. */
 export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
-/** The six keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `gate`, `closer` and `budgets`";
+/** The seven keys a config file takes, as the sentence a refusal ends with. */
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `roles`, `gate`, `closer` and `budgets`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -100,6 +100,10 @@ export const DeliveryConfig = z
     // every run of it. One string at both altitudes: a long one is written in
     // the `.js` form with a template literal, not in a file of its own.
     domain: Prose.optional(),
+    // What this project changes about the worker and gate maintenance: their
+    // instructions and the tools they may use, each field laid over the
+    // built-in role. Triage is not here: it is the harness's own.
+    roles: RoleOverrides.optional(),
     gate: GateRef.optional(),
     closer: CloserRef.optional(),
     budgets: Budgets.optional(),
@@ -142,10 +146,51 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     "For a list of sentences, use `tasks`.",
   tasks: "It is a list of the things you want done, one sentence each, in the order you want them.",
   domain: "It is a sentence or two describing your project.",
+  roles:
+    'It changes what the worker, or the agent that repairs your check, is told and which tools it may use, for example `{ "worker": { "allowedTools": ["Read", "Edit"] } }`: see docs/configuring-a-role.md.',
   gate: 'It says how the work is checked, for example `{ "type": "command", "command": "npm test", "parseMode": "exitcode" }`: see docs/writing-a-gate.md.',
   closer: "It says what happens to work that passes: see docs/writing-a-closer.md for the choices and what each one takes.",
   budgets: 'It is a set of limits, each a whole number of attempts, for example `{ "correction": 5 }`.',
 };
+
+type Issue = z.ZodError["issues"][number];
+
+/** Who each changeable role is, as the person reading a refusal knows it. */
+const WHO_FOR: Record<keyof RoleOverrides, string> = {
+  worker: "the worker",
+  gateMaintenance: "the agent that repairs your check",
+};
+
+const KEEP_BUILT_IN = "remove it to keep the built-in one";
+
+/**
+ * The mistakes worth their own sentence under `roles`, each naming the field
+ * and the way back to the built-in role. Anything else there is a value of the
+ * wrong kind, left to the general sentence.
+ */
+function roleProblem(file: string, issue: Issue, raw: unknown): string | undefined {
+  const [, role, field, item] = issue.path;
+  if (issue.code === "unrecognized_keys") {
+    return role === undefined
+      ? `I can't use ${file}: \`roles\` has no role called \`${issue.keys[0]}\`. ` +
+          `Only \`worker\` and \`gateMaintenance\` can be changed here, so ${KEEP_BUILT_IN}.`
+      : `I can't use ${file}: \`roles.${String(role)}\` has no setting called \`${issue.keys[0]}\`. ` +
+          `It takes \`systemPromptFragment\` and \`allowedTools\`, so ${KEEP_BUILT_IN}.`;
+  }
+  const where = issue.path.join(".");
+  const whose = WHO_FOR[role as keyof RoleOverrides];
+  const value = valueAt(raw, issue.path);
+  if (field === "systemPromptFragment" && typeof value === "string") {
+    return `I can't use ${file}: \`${where}\`, the instructions for ${whose}, is empty. Write a sentence, or ${KEEP_BUILT_IN}.`;
+  }
+  if (field === "allowedTools" && item === undefined && issue.code === "too_small") {
+    return `I can't use ${file}: \`${where}\`, the tools ${whose} may use, is empty. Name at least one, or ${KEEP_BUILT_IN}.`;
+  }
+  if (field === "allowedTools" && typeof item === "number" && typeof value === "string") {
+    return `I can't use ${file}: \`roles.${String(role)}.allowedTools\` item ${item + 1} is empty. Name a tool, or remove it.`;
+  }
+  return undefined;
+}
 
 /**
  * One plain-language sentence about the first thing wrong with a config file,
@@ -157,6 +202,11 @@ export function describeProblem(file: string, error: z.ZodError, raw: unknown): 
   const issue = error.issues[0];
   if (!issue) return `I can't use ${file}.`;
   const where = issue.path.join(".");
+
+  if (issue.path[0] === "roles") {
+    const said = roleProblem(file, issue, raw);
+    if (said !== undefined) return said;
+  }
 
   if (issue.code === "unrecognized_keys") {
     const takes = where === "" ? `A config file takes only ${CONFIG_KEYS}.` : `\`${where}\` doesn't take it.`;
