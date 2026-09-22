@@ -89,3 +89,16 @@ export function runDelivery(
   const { stdout, stderr, status } = spawnSync(process.execPath, [DELIVERY_BIN, ...args], { cwd, env, encoding: "utf-8" });
   return { stdout, stderr, status };
 }
+
+/** A guide section's first ```text block: what the guide says you will see, blank lines dropped. */
+export function outputBlock(section: string): string[] {
+  const match = /```text\n([\s\S]*?)```/.exec(section);
+  if (!match?.[1]) throw new Error(`no \`\`\`text block in:\n${section}`);
+  return match[1].split("\n").filter(Boolean);
+}
+
+/** One line a guide shows, as a pattern: `<run-id>` and `<when>` stand for the parts that differ every run. */
+export function documented(line: string): RegExp {
+  const escaped = line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped.replaceAll("<run-id>", "\\S+").replaceAll("<when>", ".+")}$`, "m");
+}

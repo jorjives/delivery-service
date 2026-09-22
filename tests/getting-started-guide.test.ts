@@ -16,26 +16,13 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { writeMockScript, type MockScript } from "../src/testing.js";
 import { TEST_MOCK_SCRIPT } from "../src/cli/agent-session.js";
 import { EXIT } from "../src/cli/failures.js";
-import { git, REPO_ROOT, runDelivery, sectionOf, useScratch } from "./helpers.js";
+import { documented, git, outputBlock, REPO_ROOT, runDelivery, sectionOf, useScratch } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/getting-started.md"), "utf-8");
 const RUN_TIMEOUT = 120_000;
 
 // A whole sample project.
 const scratch = useScratch();
-
-/** A ```text block: what the guide says you will see. */
-function outputBlock(section: string): string[] {
-  const match = /```text\n([\s\S]*?)```/.exec(section);
-  if (!match?.[1]) throw new Error(`no \`\`\`text block in:\n${section}`);
-  return match[1].split("\n").filter(Boolean);
-}
-
-/** One documented line as a pattern: the run id and the timestamp differ every run. */
-function documented(line: string): RegExp {
-  const escaped = line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^${escaped.replaceAll("<run-id>", "\\S+").replaceAll("<when>", ".+")}$`, "m");
-}
 
 /** The guide's own task text, so the test asks for exactly what the guide tells a reader to ask for. */
 function taskInGuide(): string {
