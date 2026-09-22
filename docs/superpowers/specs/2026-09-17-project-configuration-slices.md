@@ -233,6 +233,7 @@ is not sliced.
 ## Slice 6: Set Up a Whole Project by Following One Guide
 
 **Status:** ✅ Complete — 2026-09-22 — `db78ca75fa2f0ca78b1ca2a5f43632fda20ec22b`
+**Tests:** ✅ Recorded — 2026-09-22 — `db78ca75fa2f0ca78b1ca2a5f43632fda20ec22b` — cli — 1 UAT + 4 AC, 0 skipped
 **Delivers:** A new adopter follows a single project-configuration guide, working in a complete example project that ships with the harness, from an empty configuration to a checked, previewed and completed queue, with the gate, closer and role guides linked as chapters.
 
 **Operational note:** The guide is executed by a regression test that runs its own commands against the built command and the example project with the scripted agent, so the documentation cannot drift from the tool. The existing sample project is left exactly as it is, because the getting-started guide and its test depend on it as the no-configuration first run. This phase ships as a minor version with a changelog entry: it only adds surface.
