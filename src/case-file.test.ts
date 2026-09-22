@@ -2,9 +2,9 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setBaseBranch, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog, setbackOf } from "./case-file.js";
+import { create, initialCaseFile, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setBaseBranch, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog, setbackOf } from "./case-file.js";
 import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
-import type { BudgetSet, HistoryEntry, GateReport } from "./schema.js";
+import type { BudgetSet, CreateHeader, HistoryEntry, GateReport } from "./schema.js";
 
 const budgetDefaults: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -49,6 +49,24 @@ describe("create", () => {
 
     const logRaw = await readFile(join(dir, "log.jsonl"), "utf-8");
     expect(logRaw).toBe("");
+  });
+});
+
+describe("initialCaseFile", () => {
+  it("is exactly the record create() writes and returns, worked out without touching disk", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "case-file-initial-"));
+    const header: CreateHeader = {
+      surfaceId: "surface-1",
+      taskDef: { intent: "fix bug" },
+      gateRef,
+      closerRef: { type: "commit-to-branch" },
+      domainPrompt: "A small tool.",
+    };
+
+    const pure = initialCaseFile(header, budgetDefaults);
+
+    expect(await create(dir, header, budgetDefaults)).toEqual(pure);
+    expect(await load(dir)).toEqual(pure);
   });
 });
 

@@ -1,6 +1,6 @@
 import { open, rename, readFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
-import { CaseJson, CaseFile, CaseFileHeader, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateReport, CaseFileOutcome } from "./schema.js";
+import { CaseJson, CaseFile, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateReport, CaseFileOutcome } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
 import type { TriageInput } from "./ports.js";
 
@@ -54,19 +54,27 @@ async function writeCaseJson(dir: string, caseJson: CaseJson): Promise<void> {
   }
 }
 
+/**
+ * The record a run starts with: nothing measured, nothing tried, every budget
+ * at its default. Pure, so something that needs a new run's record without
+ * writing one (what `delivery preview` shows an agent would be told) gets
+ * exactly the record `create()` writes, not a copy of its shape.
+ */
+export function initialCaseFile(header: CreateHeader, budgetDefaults: BudgetSet): CaseFile {
+  return {
+    header: { ...header, baseline: null, baseBranch: null },
+    cursor: { state: "PROVISIONING", budgets: budgetDefaults, worktreeRef: "" },
+    history: [],
+  };
+}
+
 export async function create(
   dir: string,
   header: CreateHeader,
   budgetDefaults: BudgetSet,
 ): Promise<CaseFile> {
-  const fullHeader: CaseFileHeader = { ...header, baseline: null, baseBranch: null };
-  const cursor = {
-    state: "PROVISIONING" as const,
-    budgets: budgetDefaults,
-    worktreeRef: "",
-  };
-
-  const caseJson: CaseJson = CaseJson.parse({ header: fullHeader, cursor });
+  const caseFile = initialCaseFile(header, budgetDefaults);
+  const caseJson: CaseJson = CaseJson.parse({ header: caseFile.header, cursor: caseFile.cursor });
 
   try {
     await Promise.all([
@@ -77,7 +85,7 @@ export async function create(
     throw new WriteFailure(dir, String(err));
   }
 
-  return { header: fullHeader, cursor, history: [] };
+  return caseFile;
 }
 
 export async function appendEntry(
