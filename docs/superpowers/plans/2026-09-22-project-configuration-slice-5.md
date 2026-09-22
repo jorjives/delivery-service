@@ -1,5 +1,6 @@
 # Project Configuration — Slice 5: Tune a Role's Instructions and Tools From the Configuration File
 
+> **Status:** ✅ Complete — 2026-09-22 — `5bd1868`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 5 of `docs/superpowers/specs/2026-09-17-project-configuration-slices.md`
