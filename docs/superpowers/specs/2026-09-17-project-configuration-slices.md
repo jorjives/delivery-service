@@ -151,6 +151,7 @@ is not sliced.
 ## Slice 4: See Exactly What the Agent Will Be Told
 
 **Status:** ✅ Complete — 2026-09-22 — `997d56d`
+**Tests:** ✅ Recorded — 2026-09-22 — `8fc8d82` — cli — 1 UAT + 6 AC, 0 skipped
 
 **Delivers:** A project owner types `delivery preview` and reads the exact instructions the agent would receive for a queued task, with their project description in place, before any run starts.
 
