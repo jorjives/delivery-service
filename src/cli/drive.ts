@@ -5,7 +5,7 @@ import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
 import { deterministicRouter } from "../router.js";
 import { advance, type AdvanceResult } from "../surface.js";
 import { triageRoleConfig } from "../triage-role-config.js";
-import type { SessionEnvironment } from "../agent-invoke.js";
+import type { RoleConfigs, SessionEnvironment } from "../agent-invoke.js";
 import type { SurfacePorts } from "../ports.js";
 import type { TaskDef } from "../schema.js";
 import { agentSession } from "./agent-session.js";
@@ -22,6 +22,16 @@ export interface RunStart extends ProjectSettings {
   repoPath: string;
   taskDef: TaskDef;
 }
+
+/**
+ * The roles every run from the command line is given. One object, so what
+ * `delivery preview` shows an agent will be told is what a run tells it.
+ */
+export const RUN_ROLES: RoleConfigs = {
+  worker: workerRoleConfig,
+  "gate-maintenance": gateMaintenanceRoleConfig,
+  triage: triageRoleConfig,
+};
 
 /**
  * Start one run and drive it to its end: give it an id from its own words and
@@ -64,10 +74,7 @@ export async function driveToOutcome(
   const { dir, repoPath, runId } = record;
   const { header } = record.caseFile;
   const { location } = runPlace(repoPath, runId, ctx.env);
-  const agent = createAgentPort(
-    { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig },
-    session,
-  );
+  const agent = createAgentPort(RUN_ROLES, session);
   const ports: SurfacePorts = {
     agent,
     triage: deterministicRouter,
