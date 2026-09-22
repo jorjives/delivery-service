@@ -110,6 +110,7 @@ is not sliced.
 ## Slice 3: Check Your Setup for Free Before Spending Anything
 
 **Status:** ✅ Complete — 2026-09-22 — `727b5d5`
+**Tests:** ✅ Recorded — 2026-09-22 — `a8d05b5` — cli — 1 UAT + 7 AC, 0 skipped
 **Delivers:** A project owner types `delivery validate` and learns, offline and with no agent involved, either that their configuration is ready to run or the one thing to fix.
 
 **Operational note:** This command needs no Claude Code executable, no sign-in and no network, and it never sets anything up or changes anything on disk. It is safe to run in CI on every push, and safe to run while a run is in progress.
