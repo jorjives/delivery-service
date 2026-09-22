@@ -1,6 +1,6 @@
 // Slice 5: Tune a Role's Instructions and Tools From the Configuration File
 // Source: docs/superpowers/specs/2026-09-17-project-configuration-slices.md
-// Recorded: 2026-09-22 against commit 3db4bb7
+// Recorded: 2026-09-22 against commit 5bd1868
 //
 // Drives the compiled `delivery` command as a person would: a real subprocess
 // (over the compiled dist/cli/main.js) against a throwaway git repository. The
