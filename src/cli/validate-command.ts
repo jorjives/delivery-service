@@ -68,27 +68,49 @@ export function checkedLines(config: DeliveryConfig, project: ProjectSettings): 
 }
 
 /**
- * `delivery validate`: check the project's configuration the way `delivery
- * run` would before it set anything up, and stop there. Everything it does is a
- * read: find the file, parse it, work out the check and closing action a run
- * would use, and load (never run) any module of the project's own. So it needs
- * no agent, no sign-in and no network, and is safe beside a run in progress.
- * The first problem is thrown and rendered as every command's are: one plain
- * sentence, the configuration exit code.
+ * Where this invocation's config file is, and the repository it belongs to.
+ * No file is refused: a command asked about a project's setup has no setup to
+ * read, and answering from the defaults would be a guess. (`run` treats no
+ * file as "use the defaults"; it is not asked about the setup.)
  */
-export async function validateCommand(options: ValidateOptions, ctx: CommandContext): Promise<ExitCode> {
+export async function locateConfig(options: ValidateOptions, ctx: CommandContext): Promise<{ repoPath: string; file: string }> {
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
   const file = findConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
-  // `run` treats no file as "use the defaults"; asked to check a setup, there is
-  // no setup to check, and saying "ready" would be a guess.
   if (file === undefined) throw new Refusal(NO_CONFIG, EXIT.configuration);
+  return { repoPath, file };
+}
+
+/**
+ * Everything `delivery run` would read before setting anything up, and
+ * nothing more: the file's settings, the check and closing action a run would
+ * use (no flags, the environment a run here would also see), and any module
+ * of the project's own, loaded but never run. The first problem is thrown and
+ * rendered as every command's are: one plain sentence, the configuration exit
+ * code. Shared by `validate` and `preview`, so both refuse in the same words.
+ */
+export async function readProject(
+  file: string,
+  repoPath: string,
+  env: NodeJS.ProcessEnv,
+): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
+  const config = await readConfig(file);
+  const project = await resolveProject({}, { env, repoPath, config });
+  await checkCustomModules(project.gateRef, project.closerRef, repoPath);
+  return { config, project };
+}
+
+/**
+ * `delivery validate`: check the project's configuration the way `delivery
+ * run` would before it set anything up, and stop there. Everything it does is
+ * a read, so it needs no agent, no sign-in and no network, and is safe beside
+ * a run in progress.
+ */
+export async function validateCommand(options: ValidateOptions, ctx: CommandContext): Promise<ExitCode> {
+  const { repoPath, file } = await locateConfig(options, ctx);
   // Both sides real: discovery answers with real paths and a named file may not be one.
   ctx.writeLine(`Checking ${relative(realpathSync(ctx.cwd), realpathSync(file))}…`);
-  const config = await readConfig(file);
-  // No flags: validate checks what the project says, with the environment a run here would also see.
-  const project = await resolveProject({}, { env: ctx.env, repoPath, config });
-  await checkCustomModules(project.gateRef, project.closerRef, repoPath);
+  const { config, project } = await readProject(file, repoPath, ctx.env);
   for (const line of checkedLines(config, project)) ctx.writeLine(line);
   ctx.writeLine(READY);
   return EXIT.ok;
