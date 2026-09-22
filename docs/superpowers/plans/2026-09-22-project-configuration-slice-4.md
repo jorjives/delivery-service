@@ -47,8 +47,10 @@
 - **An unknown `--role`** is refused by commander's own `choices` (exit 2), which lists the two allowed values.
 - **Heading lines:** queue default `Next up is Task 2 of 3: <task>`; chosen index `Task 3 of 3: <task>`; single `task` `Your task: <task>`. Role line: `What the worker will be told (before any run starts):` or `What the agent that repairs your check will be told (before any run starts):`.
 - **Everyday tool phrases:** `Read` read files; `Glob` and `Grep` look through the project; `Edit` and `Write` edit files; `Bash` run commands. Duplicate phrases collapse, first-seen order kept; anything else printed as written.
-- **Wire capture in Task 6:** claude-mock's journal records only the task turn, and the system prompt travels in the SDK's opening `initialize` control request (verified while planning: `{"type":"control_request","request":{"subtype":"initialize","systemPrompt":["…"]}}`). `vendor/README.md` forbids editing the vendored journal here, so the test wraps the vendored mock in a two-line shell script that `tee`s stdin to a file. Marked with a `ponytail:` comment naming the upgrade (have claude-mock journal the initialize request upstream, then re-vendor).
+- **Wire capture in Task 6:** this deliberately deviates from the spec's Testing line ("asserts the mock's journal recorded the same system prompt"), because the journal cannot: claude-mock's journal records only the task turn, and the system prompt travels in the SDK's opening `initialize` control request (verified while planning: `{"type":"control_request","request":{"subtype":"initialize","systemPrompt":["…"]}}`). `vendor/README.md` forbids editing the vendored journal here, so the test wraps the vendored mock in a two-line shell script that `tee`s stdin to a file. Marked with a `ponytail:` comment naming the upgrade (have claude-mock journal the initialize request upstream, then re-vendor).
 - **`preview --json`:** the global `--json` flag is accepted and ignored, as `validate` does before slice 9. No machine-readable preview is designed.
+- **`DELIVERY_TASK` is ignored by `preview`.** `run` treats that variable as a free-text task that bypasses the list; the spec says preview "takes no free-text task of its own", so it always previews the file's list or single `task`. No test or code is needed for this: `previewCommand` never calls `explicitIntent`.
+- **A "next" task that already has an unfinished or stopped run** is previewed as a fresh first dispatch from the file as it is now (the spec's "synthetic pre-run `CaseFile`"). A resumed run keeps the description it was started with, so the preview can differ from that run's pinned text; this is the same "a run keeps the description it started with" rule the README already states, and it is not an AC gap because the AC compares against a run's *first* dispatch.
 
 ## Scaffolding Impact
 
@@ -60,7 +62,7 @@
 
 ---
 
-### Task 1: A pure "record a new run starts with", shared by `create()`
+### Task 1: A pure "record a new run starts with", shared by `create()` ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/case-file.ts` (the `create` function, currently lines 60-82)
@@ -169,7 +171,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 2: One rule for "the next task on the list", shared by `runQueue`
+### Task 2: One rule for "the next task on the list", shared by `runQueue` ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/queue.ts`
@@ -285,7 +287,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Split validate's reading of a project so preview refuses in the same words
+### Task 3: Split validate's reading of a project so preview refuses in the same words ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/validate-command.ts`
@@ -380,7 +382,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 4: `delivery preview` shows the next task's instructions, for either role
+### Task 4: `delivery preview` shows the next task's instructions, for either role ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/preview-command.ts`
@@ -786,7 +788,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 5: Choose a task by its number; document the command
+### Task 5: Choose a task by its number; document the command ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/preview-command.ts` (`chooseTask`, `previewCommand`)
@@ -1029,7 +1031,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 ---
 
-### Task 6: Prove the preview is what a real run sends
+### Task 6: Prove the preview is what a real run sends ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/preview-matches-run.test.ts`
@@ -1105,7 +1107,8 @@ function sessionsSent(capture: string): Sent[] {
   const prompts = frames.flatMap((f) => {
     const content = f.type === "user" ? f.message?.content : undefined;
     if (content === undefined) return [];
-    return [typeof content === "string" ? content : content.map((block) => block.text ?? "").join("\n")];
+    // Text blocks only, joined as claude-mock's own promptOf joins them.
+    return [typeof content === "string" ? content : content.flatMap((block) => (block.type === "text" ? [block.text ?? ""] : [])).join("\n")];
   });
   return systemPrompts.map((systemPrompt, i) => ({ systemPrompt, prompt: prompts[i] ?? "" }));
 }
@@ -1194,3 +1197,10 @@ what preview printed, so a later change that makes the two drift fails here.
 
 Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 ```
+
+---
+
+## Completion
+
+Completed at: 2026-09-22
+HEAD SHA: 997d56d935f9cd7d25035fd5450638f581662c06
