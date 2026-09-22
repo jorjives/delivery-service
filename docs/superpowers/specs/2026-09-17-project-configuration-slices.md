@@ -150,6 +150,8 @@ is not sliced.
 
 ## Slice 4: See Exactly What the Agent Will Be Told
 
+**Status:** ✅ Complete — 2026-09-22 — `997d56d`
+
 **Delivers:** A project owner types `delivery preview` and reads the exact instructions the agent would receive for a queued task, with their project description in place, before any run starts.
 
 **Operational note:** Like `validate`, this command needs no agent runtime or sign-in, writes nothing, and is safe alongside an active run. Its truthfulness is protected by a regression test that compares what it prints with what a real run actually sends to the scripted agent.
