@@ -66,6 +66,12 @@ malformed reply on purpose, put it in the expectation's `json` directly.
 `tests/testing-your-pipeline-guide.test.ts` runs its worked tests: change the guide with the
 testing API.
 
+`docs/getting-started.md` and `docs/project-configuration.md` are run the same way, by
+`tests/getting-started-guide.test.ts` and `tests/project-configuration-guide.test.ts`, against
+the example projects in `examples/`: a change to what a command prints changes those guides in
+the same commit. Leave `examples/sample-project/` without a configuration file; it is the
+no-configuration first run.
+
 To stand in for an agent in a test or demo, build the double with `fakeAgentPort` from
 `src/testing.ts`, supplying a reply only for the roles the test exercises. Each reply is
 type-checked against its role, and a role with no reply fails the test by name. Do not cast
