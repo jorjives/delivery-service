@@ -4,6 +4,7 @@
 
 **Slice:** 6 of `docs/superpowers/specs/2026-09-17-project-configuration-slices.md`
 **Spec:** `docs/superpowers/specs/2026-09-17-project-configuration-design.md`
+**Status:** ✅ Complete — 2026-09-22
 
 **Goal:** Ship a second example project, `examples/project-configuration-example/`, with a checked-in `delivery.config.json` using `domain`, a two-entry `tasks` list and a `roles.worker` override, and a guide, `docs/project-configuration.md`, that takes a reader from copying it to a checked, previewed and completed list and then adding to it, proven by a test that runs the guide's own commands.
 
@@ -49,7 +50,7 @@
 
 ---
 
-### Task 1: Share the guide-output helpers between guide tests (tidy first)
+### Task 1: Share the guide-output helpers between guide tests (tidy first) ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `tests/helpers.ts` (add `outputBlock`, `documented`)
@@ -109,7 +110,7 @@ rather than two copies that can drift."
 
 ---
 
-### Task 2: Ship the project-configuration example
+### Task 2: Ship the project-configuration example ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `examples/project-configuration-example/package.json`
@@ -261,7 +262,7 @@ because the getting-started guide depends on it."
 
 ---
 
-### Task 3: Write the project-configuration guide, proven by its own commands
+### Task 3: Write the project-configuration guide, proven by its own commands ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `docs/project-configuration.md`
@@ -758,7 +759,7 @@ from what the command prints."
 
 ---
 
-### Task 4: Point newcomers from getting started to the new guide
+### Task 4: Point newcomers from getting started to the new guide ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `docs/getting-started.md` ("## Where to go next", its first bullet)
@@ -839,7 +840,7 @@ first in the getting-started guide's next steps and in the readme."
 
 ---
 
-### Task 5: Record the phase as an additive release
+### Task 5: Record the phase as an additive release ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `.changeset/set-up-a-whole-project-from-one-guide.md`
