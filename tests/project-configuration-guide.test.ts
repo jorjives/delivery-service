@@ -9,12 +9,12 @@
 import { cpSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { writeMockScript, type MockExpectation } from "../src/testing.js";
+import { writeMockScript } from "../src/testing.js";
 import { TEST_MOCK_SCRIPT } from "../src/cli/agent-session.js";
 import { readConfig, type DeliveryConfig } from "../src/cli/config.js";
 import { EXIT } from "../src/cli/failures.js";
 import { allRuns } from "../src/cli/runs.js";
-import { documented, git, outputBlock, REPO_ROOT, runDelivery, sectionOf, useScratch } from "./helpers.js";
+import { adds, documented, git, outputBlock, REPO_ROOT, runDelivery, sectionOf, useScratch } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/project-configuration.md"), "utf-8");
 const EXAMPLE = join(REPO_ROOT, "examples", "project-configuration-example");
@@ -56,23 +56,6 @@ function missingFrom(stdout: string, lines: string[]): string | undefined {
     rest = rest.slice(match.index + match[0].length);
   }
   return undefined;
-}
-
-/** A scripted turn that answers one task by adding a module and its passing test, so the example's `npm test` passes. */
-function adds(intent: string, name: string, body: string, check: string): MockExpectation {
-  return {
-    when: { promptContains: intent },
-    effects: [
-      { write: { path: `${name}.js`, content: `export const ${name} = ${body};\n` } },
-      {
-        write: {
-          path: `${name}.test.js`,
-          content: `import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { ${name} } from "./${name}.js";\n\ntest("${name}", () => ${check});\n`,
-        },
-      },
-    ],
-    json: { status: "completed", rationale: `added ${name}.js and its test` },
-  };
 }
 
 type Result = ReturnType<typeof runDelivery>;

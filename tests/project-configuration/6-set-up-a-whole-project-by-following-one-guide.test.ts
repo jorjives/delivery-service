@@ -19,33 +19,16 @@ import { describe, expect, it } from "vitest";
 import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeMockScript, type MockExpectation } from "../../src/testing.js";
+import { writeMockScript } from "../../src/testing.js";
 import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { EXIT } from "../../src/cli/failures.js";
-import { git, REPO_ROOT, runDelivery, useScratch } from "../helpers.js";
+import { adds, git, REPO_ROOT, runDelivery, useScratch } from "../helpers.js";
 
 const EXAMPLE = join(REPO_ROOT, "examples", "project-configuration-example");
 const EXAMPLE_CONFIG = JSON.parse(readFileSync(join(EXAMPLE, "delivery.config.json"), "utf-8"));
 const RUN_TIMEOUT = 120_000;
 
 const scratch = useScratch();
-
-/** A scripted turn that answers one task by adding a module and its passing test, so `npm test` passes. */
-function adds(intent: string, name: string, body: string, check: string): MockExpectation {
-  return {
-    when: { promptContains: intent },
-    effects: [
-      { write: { path: `${name}.js`, content: `export const ${name} = ${body};\n` } },
-      {
-        write: {
-          path: `${name}.test.js`,
-          content: `import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { ${name} } from "./${name}.js";\n\ntest("${name}", () => ${check});\n`,
-        },
-      },
-    ],
-    json: { status: "completed", rationale: `added ${name}.js and its test` },
-  };
-}
 
 describe("UAT: set up a whole project by following the project-configuration guide", () => {
   it("checks, previews and runs the example's queue in order, then adds a task and runs again", async () => {

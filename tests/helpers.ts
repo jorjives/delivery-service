@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll } from "vitest";
 import { cleanGitEnv } from "../src/git-env.js";
+import type { MockExpectation } from "../src/testing.js";
 
 export const REPO_ROOT = join(import.meta.dirname, "..");
 
@@ -101,4 +102,21 @@ export function outputBlock(section: string): string[] {
 export function documented(line: string): RegExp {
   const escaped = line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`^${escaped.replaceAll("<run-id>", "\\S+").replaceAll("<when>", ".+")}$`, "m");
+}
+
+/** A scripted turn that answers one task by adding a module and its passing test, so `npm test` passes. */
+export function adds(intent: string, name: string, body: string, check: string): MockExpectation {
+  return {
+    when: { promptContains: intent },
+    effects: [
+      { write: { path: `${name}.js`, content: `export const ${name} = ${body};\n` } },
+      {
+        write: {
+          path: `${name}.test.js`,
+          content: `import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { ${name} } from "./${name}.js";\n\ntest("${name}", () => ${check});\n`,
+        },
+      },
+    ],
+    json: { status: "completed", rationale: `added ${name}.js and its test` },
+  };
 }
