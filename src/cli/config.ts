@@ -131,6 +131,23 @@ function valueAt(raw: unknown, path: readonly PropertyKey[]): unknown {
 }
 
 /**
+ * What each setting takes, said as the fix for a value of the wrong kind.
+ * Keyed on the schema's own keys, so a new setting does not compile until it
+ * can say what it wants. Plain words, never the schema's own complaint: the
+ * reader is fixing a file, not debugging a parser.
+ */
+const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
+  task:
+    'It is one thing you want done, written as an object with an `intent` sentence in it: `{ "intent": "add a page" }`. ' +
+    "For a list of sentences, use `tasks`.",
+  tasks: "It is a list of the things you want done, one sentence each, in the order you want them.",
+  domain: "It is a sentence or two describing your project.",
+  gate: 'It says how the work is checked, for example `{ "type": "command", "command": "npm test", "parseMode": "exitcode" }`: see docs/writing-a-gate.md.',
+  closer: "It says what happens to work that passes: see docs/writing-a-closer.md for the choices and what each one takes.",
+  budgets: 'It is a set of limits, each a whole number of attempts, for example `{ "correction": 5 }`.',
+};
+
+/**
  * One plain-language sentence about the first thing wrong with a config file,
  * naming the key or the value. The first issue is enough: a person fixes one
  * thing and runs again, and a list of schema complaints is the stack trace this
@@ -172,10 +189,7 @@ export function describeProblem(file: string, error: z.ZodError, raw: unknown): 
         "or remove `tasks` and use `--task` for a single run."
       );
     }
-    return (
-      `I can't use ${file}: \`tasks\` is \`${JSON.stringify(valueAt(raw, issue.path))}\`. ` +
-      "It is a list of the things you want done, one sentence each, in the order you want them."
-    );
+    return `I can't use ${file}: \`tasks\` is \`${JSON.stringify(valueAt(raw, issue.path))}\`. ${WHAT_IT_TAKES.tasks}`;
   }
   // A string that is there but says nothing is the one mistake worth its own
   // sentence; anything else at this key is a value of the wrong kind, and the
@@ -189,7 +203,19 @@ export function describeProblem(file: string, error: z.ZodError, raw: unknown): 
       `A limit is a whole number of attempts, 1 or more.`
     );
   }
-  return `I can't use ${file}: the setting \`${where || "(the file itself)"}\` is \`${JSON.stringify(valueAt(raw, issue.path))}\` (${issue.message}).`;
+  if (where === "") {
+    return (
+      `I can't use ${file}: it should hold one object of settings, using ${CONFIG_KEYS}. ` +
+      "A `.js` or `.mjs` file exports that object as its default."
+    );
+  }
+  // Every other path starts at one of the schema's keys: `.strict()` names any
+  // other key through the unrecognised-key branch above.
+  const setting = issue.path[0] as keyof DeliveryConfig;
+  const value = valueAt(raw, issue.path);
+  // A required value left out says so, rather than quoting JavaScript's word for nothing.
+  const is = value === undefined ? "is missing" : `is \`${JSON.stringify(value)}\``;
+  return `I can't use ${file}: the setting \`${where}\` ${is}. ${WHAT_IT_TAKES[setting]}`;
 }
 
 export const NO_SUCH_CONFIG = (file: string): string =>

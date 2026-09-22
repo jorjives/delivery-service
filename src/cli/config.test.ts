@@ -165,15 +165,24 @@ describe("what it says about a file it can't use", () => {
     );
   });
 
-  it("names a malformed value and the setting it belongs to", () => {
-    expect(problemFor({ gate: { type: "command", command: "npm test", parseMode: "toml" } })).toContain(
-      'I can\'t use delivery.config.json: the setting `gate.parseMode` is `"toml"`',
+  it("names a malformed check and what a check looks like", () => {
+    expect(problemFor({ gate: { type: "command", command: "npm test", parseMode: "toml" } })).toBe(
+      'I can\'t use delivery.config.json: the setting `gate.parseMode` is `"toml"`. ' +
+        'It says how the work is checked, for example `{ "type": "command", "command": "npm test", "parseMode": "exitcode" }`: see docs/writing-a-gate.md.',
     );
   });
 
-  it("names a setting given the wrong kind of value altogether", () => {
-    expect(problemFor({ task: "add a goodbye function" })).toContain(
-      'I can\'t use delivery.config.json: the setting `task` is `"add a goodbye function"`',
+  it("names a task given as a bare sentence and what a task looks like", () => {
+    expect(problemFor({ task: "add a goodbye function" })).toBe(
+      'I can\'t use delivery.config.json: the setting `task` is `"add a goodbye function"`. ' +
+        'It is one thing you want done, written as an object with an `intent` sentence in it: `{ "intent": "add a page" }`. ' +
+        "For a list of sentences, use `tasks`.",
+    );
+  });
+
+  it("still names a description given the wrong kind of value altogether, rather than calling it empty", () => {
+    expect(problemFor({ domain: 42 })).toBe(
+      "I can't use delivery.config.json: the setting `domain` is `42`. It is a sentence or two describing your project.",
     );
   });
 
@@ -187,8 +196,45 @@ describe("what it says about a file it can't use", () => {
     );
   });
 
-  it("still names a description given the wrong kind of value altogether, rather than calling it empty", () => {
-    expect(problemFor({ domain: 42 })).toContain("I can't use delivery.config.json: the setting `domain` is `42`");
+  it("names a closing action's setting of the wrong kind and where the choices are described", () => {
+    expect(problemFor({ closer: { type: "merge-back", deleteBranch: "yes" } })).toBe(
+      'I can\'t use delivery.config.json: the setting `closer.deleteBranch` is `"yes"`. ' +
+        "It says what happens to work that passes: see docs/writing-a-closer.md for the choices and what each one takes.",
+    );
+  });
+
+  it("names limits given as something other than a set of limits", () => {
+    expect(problemFor({ budgets: "lots" })).toBe(
+      'I can\'t use delivery.config.json: the setting `budgets` is `"lots"`. ' +
+        'It is a set of limits, each a whole number of attempts, for example `{ "correction": 5 }`.',
+    );
+  });
+
+  it("names a file that holds something other than one object of settings", () => {
+    expect(problemFor(["add a page"])).toBe(
+      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `gate`, `closer` and `budgets`. " +
+        "A `.js` or `.mjs` file exports that object as its default.",
+    );
+  });
+
+  it.each([
+    [{ gate: { type: "command", command: "npm test", parseMode: "toml" } }],
+    [{ gate: { type: "command", parseMode: "exitcode" } }],
+    [{ task: "add a goodbye function" }],
+    [{ domain: 42 }],
+    [{ closer: { type: "custom" } }],
+    [{ budgets: "lots" }],
+    [["add a page"]],
+    [undefined],
+  ])("never repeats the schema's own wording back (%j)", (raw) => {
+    expect(problemFor(raw)).not.toMatch(/Invalid|expected|received|undefined/);
+  });
+
+  it("says a required value is missing, rather than quoting it as undefined", () => {
+    expect(problemFor({ closer: { type: "custom" } })).toBe(
+      "I can't use delivery.config.json: the setting `closer.modulePath` is missing. " +
+        "It says what happens to work that passes: see docs/writing-a-closer.md for the choices and what each one takes.",
+    );
   });
 });
 
