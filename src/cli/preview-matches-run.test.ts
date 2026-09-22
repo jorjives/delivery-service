@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import { mockSessionEnvironment, resolveMockExecutable } from "../mock-session.js";
+import { workerRoleConfig } from "../role-config.js";
 import { initTempRepo } from "../temp-repo.js";
-import { completes, delivery, PACKAGE, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
+import { completes, delivery, interruptedRun, PACKAGE, RUN_TIMEOUT, scriptFile, writesHello } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { RULE } from "./preview-command.js";
 
@@ -105,5 +106,89 @@ describe("what delivery preview prints is what a real run sends", () => {
       expect(framed(second.stdout)).toBe(`${toSecond.systemPrompt}\n\n${toSecond.prompt}\n`);
     },
     RUN_TIMEOUT * 2,
+  );
+});
+
+const OPS_RULE = "Never modify anything under the ops folder.";
+const NARROW_TOOLS = ["Read", "Glob", "Grep", "Edit", "Write"];
+
+describe("a run is told what the project's roles say", () => {
+  it(
+    "sends each queued task's worker the file's instructions, exactly as preview shows them",
+    async () => {
+      const repo = initTempRepo("roles-queue-", {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({
+          domain: DOMAIN,
+          tasks: [FIRST, SECOND],
+          roles: { worker: { systemPromptFragment: OPS_RULE, allowedTools: NARROW_TOOLS } },
+        }),
+      });
+      const next = await delivery(["preview"], { cwd: repo });
+      expect(next.stdout).not.toContain("run commands");
+
+      const capture = join(mkdtempSync(join(tmpdir(), "roles-capture-")), "wire.jsonl");
+      wiring.session = recordingSession(await scriptFile(completes), capture);
+      const run = await delivery(["run"], { cwd: repo });
+      expect(run.exitCode).toBe(EXIT.ok);
+
+      const sent = sessionsSent(capture);
+      expect(sent).toHaveLength(2);
+      for (const session of sent) expect(session.systemPrompt).toBe(`${OPS_RULE}\n\n${DOMAIN}`);
+      const [toFirst] = sent as [Sent];
+      expect(framed(next.stdout)).toBe(`${toFirst.systemPrompt}\n\n${toFirst.prompt}\n`);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "sends a single task's worker the file's instructions",
+    async () => {
+      const repo = initTempRepo("roles-single-", {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({ roles: { worker: { systemPromptFragment: OPS_RULE } } }),
+      });
+      const capture = join(mkdtempSync(join(tmpdir(), "roles-capture-")), "wire.jsonl");
+      wiring.session = recordingSession(await scriptFile(completes), capture);
+      const run = await delivery(["run", "--task", FIRST], { cwd: repo });
+      expect(run.exitCode).toBe(EXIT.ok);
+      expect(sessionsSent(capture).map((session) => session.systemPrompt)).toEqual([OPS_RULE]);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "keeps a resumed run on the roles it started with, whatever the file says now",
+    async () => {
+      const repo = initTempRepo("roles-resume-", {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({ roles: { worker: { systemPromptFragment: "Rewritten since the run began." } } }),
+      });
+      const state = mkdtempSync(join(tmpdir(), "roles-state-"));
+      // steps: 0 leaves the run before its first dispatch, so the worker the
+      // resume sends goes through the recorded session rather than the
+      // fixture's in-process fake (resume-command.test.ts uses 3, past it).
+      await interruptedRun(repo, state, { task: FIRST, steps: 0, worker: writesHello, roleOverrides: { worker: { systemPromptFragment: OPS_RULE } } });
+
+      const capture = join(mkdtempSync(join(tmpdir(), "roles-capture-")), "wire.jsonl");
+      wiring.session = recordingSession(await scriptFile(completes), capture);
+      const resumed = await delivery(["resume"], { cwd: repo, env: { XDG_STATE_HOME: state } });
+      expect(resumed.exitCode).toBe(EXIT.ok);
+      expect(sessionsSent(capture).map((session) => session.systemPrompt)).toEqual([OPS_RULE]);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "sends the built-in instructions when the file changes no role, as before",
+    async () => {
+      const repo = initTempRepo("roles-none-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({}) });
+      const capture = join(mkdtempSync(join(tmpdir(), "roles-capture-")), "wire.jsonl");
+      wiring.session = recordingSession(await scriptFile(completes), capture);
+      const run = await delivery(["run", "--task", FIRST], { cwd: repo });
+      expect(run.exitCode).toBe(EXIT.ok);
+      expect(sessionsSent(capture).map((session) => session.systemPrompt)).toEqual([workerRoleConfig.systemPromptFragment]);
+    },
+    RUN_TIMEOUT,
   );
 });

@@ -11,7 +11,7 @@ import { deterministicRouter } from "../router.js";
 import { advance } from "../surface.js";
 import { fakeAgentPort } from "../agent-port-double.js";
 import type { AgentContext, Terminus } from "../ports.js";
-import type { CaseFileOutcome, GateRef } from "../schema.js";
+import type { CaseFileOutcome, GateRef, RoleOverrides } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import { runCli } from "./program.js";
 import { prepareRunDir, runIdFor, runPlace, runsRoot } from "./run-location.js";
@@ -92,12 +92,22 @@ export const writesHello = async (ctx: AgentContext): Promise<Terminus> => {
 export async function interruptedRun(
   repo: string,
   state: string,
-  { task, steps, worker, domain }: { task: string; steps: number; worker: (ctx: AgentContext) => Promise<Terminus>; domain?: string },
+  {
+    task,
+    steps,
+    worker,
+    domain,
+    roleOverrides,
+  }: { task: string; steps: number; worker: (ctx: AgentContext) => Promise<Terminus>; domain?: string; roleOverrides?: RoleOverrides },
 ): Promise<string> {
   const runId = runIdFor(task, new Date());
   const { dir, location } = runPlace(repo, runId, { XDG_STATE_HOME: state });
   await prepareRunDir(repo, dir);
-  await create(dir, { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER, domainPrompt: domain }, DEFAULT_BUDGETS);
+  await create(
+    dir,
+    { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER, domainPrompt: domain, roleOverrides },
+    DEFAULT_BUDGETS,
+  );
   const ports = { agent: fakeAgentPort({ worker }), triage: deterministicRouter, closer: resolveCloser(DEFAULT_CLOSER, repo) };
   for (let step = 0; step < steps; step++) {
     // The interruption is the last advance, so a rejecting worker throws here.

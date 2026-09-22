@@ -241,6 +241,7 @@ same object works too, for a project that needs to compute a value.
 | `task` | One thing you want done, when it is the same every run. Use this or `tasks`, not both. |
 | `tasks` | A list of things you want done, in the order you want them, each a sentence in your own words. `delivery run` with no `--task` works down the list, one run at a time. Editing the list between runs is expected: a new entry runs in its place, a reworded entry is a new task, and an entry you delete leaves its run in the history. |
 | `domain` | What your project is, in your own words: every agent on every run of it is told this before its own instructions. A run keeps the description it started with, so editing it changes the next run, not one already going. A long one is easiest in a `delivery.config.js` with a template literal. `delivery preview` shows it in place. |
+| `roles` | Changes what the worker, or the agent that repairs your check, is told and which tools it may use: `{ "worker": { "systemPromptFragment": "...", "allowedTools": ["Read", "Edit"] } }`, and `gateMaintenance` the same way. Anything you leave out keeps its built-in value. A run keeps the roles it started with. `delivery preview` shows the result. See [Configuring a role](docs/configuring-a-role.md#from-the-configuration-file). |
 | `gate` | What decides whether a change is good: see [Writing a gate](docs/writing-a-gate.md) |
 | `closer` | What happens to accepted work: see [Writing a closer](docs/writing-a-closer.md) |
 | `budgets` | How many attempts each kind of setback gets before the run asks a person: `correction`, `gateError`, `gateMaintenance`, `terminus` and `close`, each a whole number. Anything you leave out keeps its default (3, 3, 2, 5 and 3). |
@@ -258,8 +259,9 @@ environment variable, which beats the file, which beats the built-in default.
 | `--closer commit-to-branch` | `DELIVERY_CLOSER` | What happens to accepted work: `commit-to-branch`, `merge-back` or `open-pr` |
 | `--config <path>` | `DELIVERY_CONFIG` | A config file somewhere else |
 
-An unknown setting, a limit that is not a whole number, a closer type the harness doesn't know
-or a custom module it can't load all stop the command before it starts, naming what to fix.
+An unknown setting, a limit that is not a whole number, a closer type the harness doesn't know,
+a role override that is empty or names a role that can't be changed, or a custom module it can't
+load all stop the command before it starts, naming what to fix.
 `delivery validate` finds the same mistakes without starting anything.
 
 ## Check your setup before a run

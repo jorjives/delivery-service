@@ -1,13 +1,12 @@
 import { createAgentPort } from "../agent-invoke.js";
 import { create, load } from "../case-file.js";
 import { resolveCloser } from "../resolve-closer.js";
-import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
 import { deterministicRouter } from "../router.js";
 import { advance, type AdvanceResult } from "../surface.js";
-import { triageRoleConfig } from "../triage-role-config.js";
-import type { RoleConfigs, SessionEnvironment } from "../agent-invoke.js";
+import type { SessionEnvironment } from "../agent-invoke.js";
 import type { SurfacePorts } from "../ports.js";
 import type { TaskDef } from "../schema.js";
+import { rolesFor } from "./roles.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
 import { type ExitCode } from "./failures.js";
@@ -24,16 +23,6 @@ export interface RunStart extends ProjectSettings {
 }
 
 /**
- * The roles every run from the command line is given. One object, so what
- * `delivery preview` shows an agent will be told is what a run tells it.
- */
-export const RUN_ROLES: RoleConfigs = {
-  worker: workerRoleConfig,
-  "gate-maintenance": gateMaintenanceRoleConfig,
-  triage: triageRoleConfig,
-};
-
-/**
  * Start one run and drive it to its end: give it an id from its own words and
  * the second it began, write its record, and say so before the first step,
  * because setting up is the slowest part and a person watching should not wait
@@ -42,7 +31,7 @@ export const RUN_ROLES: RoleConfigs = {
  * so from here on there is a record on disk for whatever happens next.
  */
 export async function startRun(
-  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt }: RunStart,
+  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, roleOverrides }: RunStart,
   session: SessionEnvironment,
   ctx: CommandContext,
 ): Promise<ExitCode> {
@@ -50,7 +39,7 @@ export async function startRun(
   const runId = runIdFor(intent, new Date());
   const { dir } = runPlace(repoPath, runId, ctx.env);
   await prepareRunDir(repoPath, dir);
-  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt }, budgets);
+  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt, roleOverrides }, budgets);
   ctx.report.note(`Starting run ${runId}: ${intent}`);
   ctx.report.step({ state: "PROVISIONING", done: false });
   return driveToOutcome({ runId, repoPath, dir, caseFile }, session, ctx);
@@ -74,7 +63,10 @@ export async function driveToOutcome(
   const { dir, repoPath, runId } = record;
   const { header } = record.caseFile;
   const { location } = runPlace(repoPath, runId, ctx.env);
-  const agent = createAgentPort(RUN_ROLES, session);
+  // The roles come from the run's own record, as its check and closing action
+  // do, so a resumed run is told what it was told before, whatever the file
+  // says now, and never regains a tool its project took away.
+  const agent = createAgentPort(rolesFor(header.roleOverrides), session);
   const ports: SurfacePorts = {
     agent,
     triage: deterministicRouter,
