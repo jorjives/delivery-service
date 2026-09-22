@@ -9,6 +9,7 @@ import { jsonReporter, plainReporter, type RunReporter } from "./report.js";
 import { resumeCommand, type ResumeOptions } from "./resume-command.js";
 import { runCommand, type RunOptions } from "./run-command.js";
 import { statusCommand, type StatusOptions } from "./status-command.js";
+import { validateCommand, type ValidateOptions } from "./validate-command.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
 export interface CliIo {
@@ -108,6 +109,17 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
     .action(async (runId: string | undefined, options: StatusOptions, command: Command) => {
       exitCode = await statusCommand(runId, options, contextFor(io, command));
+    });
+
+  program
+    .command("validate")
+    .description(
+      "check your config file is ready to run, without starting anything: no agent, no sign-in and no network, and nothing on disk changes",
+    )
+    .option("--config <path>", "check this config file instead of looking for a delivery.config.json")
+    .option("--repo <path>", "the git repository to check (default: the current folder)")
+    .action(async (options: ValidateOptions, command: Command) => {
+      exitCode = await validateCommand(options, contextFor(io, command));
     });
 
   program

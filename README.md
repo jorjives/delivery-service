@@ -260,6 +260,29 @@ environment variable, which beats the file, which beats the built-in default.
 
 An unknown setting, a limit that is not a whole number, a closer type the harness doesn't know
 or a custom module it can't load all stop the command before it starts, naming what to fix.
+`delivery validate` finds the same mistakes without starting anything.
+
+## Check your setup before a run
+
+```bash
+delivery validate
+```
+
+It reads your `delivery.config.json` the way `delivery run` would, says what it found, and stops:
+
+```
+Checking delivery.config.json…
+✓ domain description: present
+✓ 3 tasks queued
+✓ gate: runs `npm test`
+✓ closer: commits to a new branch
+Ready to run.
+```
+
+If something is wrong it prints the one thing to fix instead, such as an empty task or two
+tasks that say the same thing, and exits 2. It never starts an agent, needs no sign-in and no
+network, and changes nothing on disk, so it is safe in CI on every push and safe while a run
+is going. `--config <path>` and `--repo <path>` mean what they mean on `delivery run`.
 
 ## Documentation
 
