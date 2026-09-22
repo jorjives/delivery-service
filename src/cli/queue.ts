@@ -37,6 +37,20 @@ export function findQueueRun(records: RunRecord[], taskDef: TaskDef): RunRecord 
   return answering;
 }
 
+/** Whether a task is done with: only a delivered run is. One that escalated or was stopped still needs the owner, so the list waits on it. */
+const isClosed = (record: RunRecord | undefined): boolean => record?.caseFile.outcome?.kind === "closed";
+
+/**
+ * The task `delivery run` would act on next: the first one on the list whose
+ * run has not been delivered, counted as "Task N of M" counts. Nothing when
+ * every task is done. The same rule `runQueue` walks the list by, so what
+ * `delivery preview` calls next is what a run does next.
+ */
+export function nextQueueTask(records: RunRecord[], tasks: TaskDef[]): QueuePosition | undefined {
+  const index = tasks.findIndex((taskDef) => !isClosed(findQueueRun(records, taskDef)));
+  return index === -1 ? undefined : { task: index + 1, of: tasks.length };
+}
+
 /** Where a task sits in the list as it is written now, or nothing when the list no longer asks for it. */
 export function queuePositionOf(tasks: TaskDef[], taskDef: TaskDef): QueuePosition | undefined {
   const index = tasks.findIndex((task) => isDeepStrictEqual(task, taskDef));
@@ -96,7 +110,7 @@ export async function runQueue(
 
   for (const [index, taskDef] of tasks.entries()) {
     const existing = findQueueRun(records, taskDef);
-    if (existing?.caseFile.outcome?.kind === "closed") continue;
+    if (isClosed(existing)) continue;
 
     const position: QueuePosition = { task: index + 1, of: tasks.length };
     ctx.report.note(taskHeading(position, taskIntent(taskDef)));

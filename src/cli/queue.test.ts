@@ -5,9 +5,10 @@ import { join } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { create, setOutcome } from "../case-file.js";
 import type { GateRef, TaskDef } from "../schema.js";
+import { writeRunRecord } from "./command-fixtures.js";
 import { allRuns } from "./runs.js";
 import { runsRoot } from "./run-location.js";
-import { findQueueRun, queuePositionOf, queueTasks } from "./queue.js";
+import { findQueueRun, nextQueueTask, queuePositionOf, queueTasks } from "./queue.js";
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
 const PAGE = "add a page that shows who's on call today";
@@ -84,5 +85,41 @@ describe("where a task sits in the list as it is written now", () => {
 
   it("says nothing about a task the list no longer asks for", () => {
     expect(queuePositionOf(queueTasks({ tasks: [SWAP] }), { intent: PAGE })).toBeUndefined();
+  });
+});
+
+describe("the next task on the list, as `delivery run` would pick it", () => {
+  const WAVE = "add a function that waves at a name";
+  const tasks = queueTasks({ tasks: [PAGE, SWAP, WAVE] });
+  const at = "2026-09-17T09:00:00.000Z";
+
+  it("is the first task when nothing has run yet", async () => {
+    expect(nextQueueTask(await allRuns(await scratchRepo()), tasks)).toEqual({ task: 1, of: 3 });
+  });
+
+  it("passes over a task whose run was delivered", async () => {
+    const repo = await scratchRepo();
+    await writeRunRecord(repo, { runId: "add-a-page-20260917T090000Z", task: PAGE, outcome: { kind: "closed", source: "close", reason: "committed", at } });
+    expect(nextQueueTask(await allRuns(repo), tasks)).toEqual({ task: 2, of: 3 });
+  });
+
+  it("stops at a task whose run needs a decision, rather than skipping it", async () => {
+    const repo = await scratchRepo();
+    await writeRunRecord(repo, { runId: "add-a-page-20260917T090000Z", task: PAGE, outcome: { kind: "escalated", source: "worker", reason: "authority", at } });
+    expect(nextQueueTask(await allRuns(repo), tasks)).toEqual({ task: 1, of: 3 });
+  });
+
+  it("stops at a task whose run was interrupted", async () => {
+    const repo = await scratchRepo();
+    await writeRunRecord(repo, { runId: "add-a-page-20260917T090000Z", task: PAGE });
+    expect(nextQueueTask(await allRuns(repo), tasks)).toEqual({ task: 1, of: 3 });
+  });
+
+  it("is nothing when every task was delivered", async () => {
+    const repo = await scratchRepo();
+    for (const [i, task] of [PAGE, SWAP, WAVE].entries()) {
+      await writeRunRecord(repo, { runId: `task-${i}-20260917T09000${i}Z`, task, outcome: { kind: "closed", source: "close", reason: "committed", at } });
+    }
+    expect(nextQueueTask(await allRuns(repo), tasks)).toBeUndefined();
   });
 });
