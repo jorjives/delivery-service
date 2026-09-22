@@ -122,10 +122,11 @@ it prints, with the evidence behind it underneath.
 
 ## Where to go next
 
-- Settings that belong to a project, such as the check, the closing action and the
-  attempt limits, live in a `delivery.config.json` beside your code: see the
-  [readme](../README.md). `delivery init` writes one for you by asking what checks
-  the work, what happens to work that passes, and what you would like done.
+- [Setting up a project](project-configuration.md): the next step. Describe your project
+  once, list what you want done, check and preview the setup, and run the whole list, in a
+  complete example project. For a project of your own, `delivery init` writes a
+  `delivery.config.json` by asking what checks the work, what happens to work that passes,
+  and what you would like done; the [readme](../README.md) lists every setting.
 - [Writing a gate](writing-a-gate.md): use a check other than `npm test`, or write
   your own.
 - [Writing a closer](writing-a-closer.md): merge the work back, open a pull

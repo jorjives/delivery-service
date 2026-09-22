@@ -129,6 +129,9 @@ describe("the getting-started guide", () => {
     expect(needs).toMatch(/git/);
     expect(needs).toContain("claude auth login");
     const next = sectionOf(guide, "## Where to go next");
+    // The next step after one task is a whole project: it comes first.
+    const firstNext = next.split("\n").find((line) => line.startsWith("- "));
+    expect(firstNext).toContain("(project-configuration.md)");
     for (const doc of ["writing-a-gate.md", "writing-a-closer.md", "testing-your-pipeline.md"]) {
       expect(next).toContain(doc);
     }

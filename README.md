@@ -5,7 +5,8 @@ A deterministically gated agent delivery harness.
 ## Quick start
 
 New here? [Getting started](docs/getting-started.md) takes you from installing the command to a
-finished run against the sample project.
+finished run against the sample project. Then [Setting up a project](docs/project-configuration.md)
+sets up a whole project, with a description and a list of tasks, in a complete example.
 
 Working on the harness itself:
 
@@ -319,6 +320,7 @@ configuration in the same words, and takes `--config` and `--repo`.
 ## Documentation
 
 - [Getting started](docs/getting-started.md): install the command and finish your first run
+- [Setting up a project](docs/project-configuration.md): describe a project, list its tasks, check, preview and run them
 - [Design docs](docs/)
 - [Configuring a role](docs/configuring-a-role.md): set up a worker or gate-maintenance agent
 - [Writing a gate](docs/writing-a-gate.md): configure the command gate or write your own
