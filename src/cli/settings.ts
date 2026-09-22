@@ -2,12 +2,13 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { CloserRef } from "../schema.js";
-import type { BudgetSet, CaseFileHeader, GateRef, TaskDef } from "../schema.js";
+import type { BudgetSet, CaseFileHeader, GateRef, RoleOverrides, TaskDef } from "../schema.js";
 import { loadCustomCloser } from "../custom-closer.js";
 import { loadCustomGate } from "../custom-gate.js";
 import { unknownCloser, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 import { inferGate } from "./project.js";
+import { rolesFor } from "./roles.js";
 
 export const NO_TASK = 'Tell me what to do: add `--task "describe the change you want"`.';
 
@@ -37,6 +38,8 @@ export interface ProjectSettings {
   budgets: BudgetSet;
   /** What this project is, from the config file, pinned into the run when it starts. Absent when the project didn't say. */
   domainPrompt?: string;
+  /** What the config file changes about the worker and gate maintenance, pinned into the run when it starts. Absent when it changes nothing. */
+  roleOverrides?: RoleOverrides;
 }
 
 /** Everything a run needs to be created: what this one is being asked to do, and everything the project asks of all of them. */
@@ -149,6 +152,9 @@ export async function resolveProject(
   flags: RunFlags,
   { env, repoPath, config }: { env: NodeJS.ProcessEnv; repoPath: string; config: DeliveryConfig },
 ): Promise<ProjectSettings> {
+  // Merged over the built-in roles and checked now, so a role the harness
+  // would refuse stops the command before any run's record exists.
+  rolesFor(config.roles);
   return {
     gateRef: await gateFrom(flags, env, config, repoPath),
     closerRef: closerFrom(flags, env, config),
@@ -157,6 +163,8 @@ export async function resolveProject(
     // repository, not something a person retypes per run, so there is no flag
     // and no environment variable to lay over it.
     domainPrompt: config.domain,
+    // Likewise for the roles: they are part of the project, reviewed with it.
+    roleOverrides: config.roles,
   };
 }
 

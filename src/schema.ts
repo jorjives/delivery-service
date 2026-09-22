@@ -167,6 +167,12 @@ export const CaseFileHeader = z.object({
   // stay valid, and they carry a caller-supplied closer instead.
   closerRef: CloserRef.optional(),
   domainPrompt: z.string().optional(),
+  // What the project changed about the worker and gate maintenance, pinned at
+  // CREATE like domainPrompt so a resumed run is told what it was told before
+  // and can never regain a tool its project had taken away. Only the plain
+  // fields are kept: the full roles are rebuilt from the shipped ones.
+  // Optional: records written before overrides existed stay valid.
+  roleOverrides: RoleOverrides.optional(),
   baseline: GateReport.nullable(),
   // The local branch this surface was provisioned from, pinned once at
   // PROVISIONING so a later default-branch change cannot redirect the close.

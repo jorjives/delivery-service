@@ -104,6 +104,15 @@ describe("what the run is told about the project", () => {
   it("leaves it unset when the project didn't describe itself, so the run is exactly what it was before", async () => {
     expect((await settings({ task: TASK })).domainPrompt).toBeUndefined();
   });
+
+  it("carries the file's role overrides through to the run's settings, unchanged", async () => {
+    const roles = { worker: { systemPromptFragment: "Never modify anything under the ops folder." }, gateMaintenance: { allowedTools: ["Read"] } };
+    expect((await settings({ task: TASK }, { config: { roles } })).roleOverrides).toEqual(roles);
+  });
+
+  it("leaves them unset when the file changes no role, so the run is exactly what it was before", async () => {
+    expect((await settings({ task: TASK })).roleOverrides).toBeUndefined();
+  });
 });
 
 describe("what checks the work", () => {
