@@ -128,9 +128,11 @@ export type DeltaOptions = z.infer<typeof DeltaOptions>;
 
 /**
  * Something written that says something. Whitespace alone is nothing written,
- * so it is refused rather than sent to an agent as a blank instruction.
+ * so it is refused rather than sent to an agent as a blank instruction. The
+ * one non-empty-string check in the codebase: `cli/config.ts`'s `Prose` is
+ * this schema too, kept under its own name there for what it reads as prose.
  */
-const Written = z.string().refine((text) => text.trim() !== "");
+export const Written = z.string().refine((text) => text.trim() !== "");
 
 /**
  * What a project may change about one role, and nothing else: its

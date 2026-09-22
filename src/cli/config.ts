@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
-import { CloserRef, GateRef, RoleOverrides, TaskDef } from "../schema.js";
+import { CloserRef, GateRef, RoleOverrides, TaskDef, Written } from "../schema.js";
 import { EXIT, Refusal } from "./failures.js";
 
 /** The one filename family a project uses, and the forms it may take. A `.js` or `.mjs` file exports the same object, for a project that computes a value. */
@@ -49,12 +49,11 @@ export const Budgets = z
 export type Budgets = z.infer<typeof Budgets>;
 
 /**
- * Something a person wrote, in their own words. Whitespace alone is nothing
- * written, so it is refused here rather than pinned into a run and sent to an
- * agent as a blank line. The text is kept exactly as typed: it is prose, and
- * trimming it would edit the owner's words.
+ * Something a person wrote, in their own words: the schema's own `Written`,
+ * named for what it holds here. The text is kept exactly as typed: it is
+ * prose, and trimming it would edit the owner's words.
  */
-const Prose = z.string().refine((text) => text.trim() !== "");
+const Prose = Written;
 
 /**
  * One thing a project wants done, as its owner wrote it: a sentence, or an
