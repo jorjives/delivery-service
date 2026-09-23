@@ -84,3 +84,21 @@ export async function presetGate(preset: GatePreset, repoPath: string): Promise<
       return byExitCode(`${SHAPE_CHECKER} -s ${quoted(preset.schema)} -d ${quoted(preset.file)}`);
   }
 }
+
+/**
+ * What a ready-made check does, as `validate` says it. `command` is the gate it
+ * resolved to, which names the test command `test-runner` found for itself.
+ * Total over the presets, so a new one does not compile until it can be described.
+ */
+export function presetPhrase(preset: GatePreset, command: string): string {
+  switch (preset.type) {
+    case "test-runner":
+      return `runs your tests with \`${command}\``;
+    case "file-exists":
+      return `checks that ${preset.path} exists`;
+    case "command-succeeds":
+      return `checks that \`${preset.command}\` succeeds`;
+    case "schema-validates":
+      return `checks that ${preset.file} matches the shape in ${preset.schema}`;
+  }
+}

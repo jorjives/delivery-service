@@ -4,6 +4,7 @@ import type { CloserRef, GateRef, RoleOverrides } from "../schema.js";
 import { CONFIG_BASENAME, findConfig, readConfig, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
+import { presetPhrase } from "./gate-presets.js";
 import { findRepository } from "./project.js";
 import { checkCustomModules, resolveProject, type ProjectSettings } from "./settings.js";
 
@@ -25,6 +26,11 @@ function gatePhrase(gateRef: GateRef): string {
     case "custom":
       return `your own check, in \`${gateRef.modulePath}\``;
   }
+}
+
+/** The check a run would use, by name when the file chose a ready-made one and nothing on the command line replaced it. */
+function gateLine({ gateRef, gatePreset }: ProjectSettings): string {
+  return gatePreset !== undefined && gateRef.type === "command" ? presetPhrase(gatePreset, gateRef.command) : gatePhrase(gateRef);
 }
 
 /** What happens to work that passes, as a person reads it. Total over the closer types, as `outcome.ts`'s `landing` is. */
@@ -77,7 +83,7 @@ export function checkedLines(config: DeliveryConfig, project: ProjectSettings): 
   return [
     `domain description: ${project.domainPrompt === undefined ? "none (it's optional)" : "present"}`,
     tasksPhrase(config),
-    `gate: ${gatePhrase(project.gateRef)}`,
+    `gate: ${gateLine(project)}`,
     `closer: ${closerPhrase(project.closerRef)}`,
     ...roleLines(config),
   ].map((line) => `✓ ${line}`);

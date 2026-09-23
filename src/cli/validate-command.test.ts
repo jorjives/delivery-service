@@ -10,6 +10,7 @@ import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
 import { BOTH_TASK_AND_TASKS, sameTask, type DeliveryConfig } from "./config.js";
 import { EXIT } from "./failures.js";
+import type { GatePreset } from "./gate-presets.js";
 import type { ProjectSettings } from "./settings.js";
 import { checkedLines, NO_CONFIG, READY } from "./validate-command.js";
 
@@ -68,6 +69,20 @@ describe("what validate says a project is set up to do", () => {
     [{ type: "custom", modulePath: "./closers/mine.mjs" }, "✓ closer: your own closing action, in `./closers/mine.mjs`"],
   ])("says what the closing action %j does", (closerRef, line) => {
     expect(checkedLines({}, project({ closerRef }))[3]).toBe(line);
+  });
+
+  it.each<[GatePreset, string, string]>([
+    [{ type: "test-runner" }, "npm test", "✓ gate: runs your tests with `npm test`"],
+    [{ type: "file-exists", path: "CHANGES.md" }, "test -f 'CHANGES.md'", "✓ gate: checks that CHANGES.md exists"],
+    [{ type: "command-succeeds", command: "npm run lint" }, "npm run lint", "✓ gate: checks that `npm run lint` succeeds"],
+    [
+      { type: "schema-validates", file: "data.json", schema: "data.schema.json" },
+      "npx --yes ajv-cli@5.0.0 validate -s 'data.schema.json' -d 'data.json'",
+      "✓ gate: checks that data.json matches the shape in data.schema.json",
+    ],
+  ])("describes the ready-made check %j by what it checks", (gatePreset, command, line) => {
+    const gateRef: GateRef = { type: "command", command, parseMode: "exitcode" };
+    expect(checkedLines({}, project({ gateRef, gatePreset }))[2]).toBe(line);
   });
 
   it("says which role the file changes and what it changes, after what it already said", () => {
@@ -133,6 +148,14 @@ describe("delivery validate on a configuration that is ready", () => {
     expect(stdout).toContain("✓ 1 task, set in `task`");
     expect(stdout).toContain("✓ closer: merges into your base branch");
     expect(stdout).toContain(READY);
+    expect(exitCode).toBe(EXIT.ok);
+  });
+
+  it("describes a ready-made check in the file by what it checks", async () => {
+    const repo = repoWith({ ...COMPLETE, gate: { type: "file-exists", path: "CHANGES.md" } });
+    const { stdout, stderr, exitCode } = await delivery(["validate"], { cwd: repo });
+    expect(stderr).toBe("");
+    expect(stdout).toContain("✓ gate: checks that CHANGES.md exists\n");
     expect(exitCode).toBe(EXIT.ok);
   });
 
@@ -210,6 +233,16 @@ describe("delivery validate on a configuration with a problem", () => {
       "an empty tools list",
       { ...COMPLETE, roles: { gateMaintenance: { allowedTools: [] } } },
       "`roles.gateMaintenance.allowedTools`, the tools the agent that repairs your check may use, is empty. Name at least one, or remove it to keep the built-in one.",
+    ],
+    [
+      "a misspelt ready-made check",
+      { ...COMPLETE, gate: { type: "file-exist", path: "CHANGES.md" } },
+      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds` and `schema-validates`. To write one out in full, see docs/writing-a-gate.md.",
+    ],
+    [
+      "a ready-made check missing its detail",
+      { ...COMPLETE, gate: { type: "file-exists" } },
+      "the ready-made check `file-exists` needs `path`, the file that should exist.",
     ],
   ])("names %s in one plain line, with the configuration exit code", async (_, config, message) => {
     const repo = repoWith(config);

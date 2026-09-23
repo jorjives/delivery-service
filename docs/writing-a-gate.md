@@ -76,6 +76,11 @@ was wrong.
 
 ## The built-in command gate
 
+For the common checks you need not write this out at all: `delivery.config.json` takes a
+ready-made check by name, such as `{ "type": "file-exists", "path": "CHANGES.md" }`, and turns it
+into exactly the command gate described here, judged by exit code. The four names are listed in
+[Setting up a project](project-configuration.md#4-choose-how-the-work-is-checked-and-what-happens-to-it).
+
 Most projects need nothing more. The command runs with `/bin/sh -c` inside the
 worktree, and its output is parsed according to `parseMode`:
 
