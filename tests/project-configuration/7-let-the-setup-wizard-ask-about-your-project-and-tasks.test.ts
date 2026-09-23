@@ -20,7 +20,7 @@ import { writeMockScript, type MockScript } from "../../src/mock-script.js";
 import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { EXIT } from "../../src/cli/failures.js";
 import { context, scriptedAsk } from "../../src/cli/init-fixtures.js";
-import { CONFIG_FILE, DESCRIPTION_QUESTION, LEFT_ALONE, NOTHING_TO_DO, WRITTEN, initCommand } from "../../src/cli/init.js";
+import { ALREADY_LISTED, CONFIG_FILE, DESCRIPTION_QUESTION, LEFT_ALONE, NOTHING_TO_DO, WRITTEN, initCommand, taskQuestion } from "../../src/cli/init.js";
 import { READY } from "../../src/cli/validate-command.js";
 import { REPO_ROOT, git, runDelivery } from "../helpers.js";
 
@@ -125,21 +125,17 @@ describe("acceptance criteria", () => {
     const { ctx } = context(repo);
     expect(await initCommand({}, ctx, ask)).toBe(EXIT.ok);
 
-    expect(refused).toEqual([NOTHING_TO_DO, "You've already said that one. Say something different."]);
+    expect(refused).toEqual([NOTHING_TO_DO, ALREADY_LISTED]);
     const config = JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"));
     expect(config.tasks).toEqual([TASK_1, TASK_2]);
     // One task, entered alone, is still written as a one-entry list, not the
     // singular `task` field.
-    expect(asked.some((q) => "message" in q && q.message.includes("first thing"))).toBe(true);
+    expect(asked).toContainEqual(expect.objectContaining({ message: taskQuestion([]).message }));
   });
 
   it("uses everyday words in every question, with none of the harness's internal vocabulary", () => {
     const forbidden = ["domain", "queue", "intent", "gate", "closer", "worktree", "envelope", "surface", "case file", "role config", "schema"];
-    const questionText = [
-      DESCRIPTION_QUESTION.message,
-      "What's the first thing you'd like done? Say it the way you'd say it to a colleague.",
-      "What else would you like done? Press Enter when that's everything.",
-    ].join(" ");
+    const questionText = [DESCRIPTION_QUESTION.message, taskQuestion([]).message, taskQuestion([TASK_1]).message].join(" ");
     for (const word of forbidden) expect(questionText.toLowerCase()).not.toContain(word);
   });
 
