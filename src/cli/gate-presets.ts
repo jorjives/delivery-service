@@ -73,7 +73,7 @@ export async function presetGate(preset: GatePreset, repoPath: string): Promise<
   switch (preset.type) {
     case "test-runner": {
       const command = preset.command ?? (await inferredCheck(repoPath));
-      if (command === undefined) throw new Refusal(NO_TEST_COMMAND, EXIT.configuration);
+      if (command === undefined) throw new Refusal(NO_TEST_COMMAND, EXIT.configuration, "gate");
       return byExitCode(command);
     }
     case "file-exists":

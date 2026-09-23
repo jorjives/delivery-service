@@ -8,9 +8,10 @@ import { cleanGitEnv } from "../git-env.js";
 import type { CloserRef, GateRef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
-import { BOTH_TASK_AND_TASKS, sameTask, type DeliveryConfig } from "./config.js";
+import { BOTH_TASK_AND_TASKS, sameTask, unknownCloser, type DeliveryConfig } from "./config.js";
 import { EXIT } from "./failures.js";
-import type { GatePreset } from "./gate-presets.js";
+import { NO_TEST_COMMAND, type GatePreset } from "./gate-presets.js";
+import { NO_CHECK } from "./project.js";
 import type { ProjectSettings } from "./settings.js";
 import { checkedLines, NO_CONFIG, READY } from "./validate-command.js";
 
@@ -354,6 +355,19 @@ describe("delivery validate --json", () => {
     const { json, plain } = await bothForms(repo);
     expect(json.result).toEqual({ ready: false, problems: [{ field: null, message: expect.stringContaining(message) }] });
     expect(json.stderr).toBe("");
+    expect(json.exitCode).toBe(EXIT.configuration);
+    expect(plain.exitCode).toBe(EXIT.configuration);
+  });
+
+  it.each<[string, Record<string, unknown>, Record<string, string>, Record<string, string>, string, string]>([
+    ["a custom check that can't be loaded", { ...COMPLETE, gate: { type: "custom", modulePath: "./gates/nope.mjs" } }, {}, {}, "gate", "Couldn't load the custom gate at `./gates/nope.mjs`"],
+    ["a custom closing action that can't be loaded", { ...COMPLETE, closer: { type: "custom", modulePath: "./closers/nope.mjs" } }, {}, {}, "closer", "Couldn't load the custom closer at `./closers/nope.mjs`"],
+    ["a test-runner check with no tests to run", { ...COMPLETE, gate: { type: "test-runner" } }, { "package.json": "{}" }, {}, "gate", NO_TEST_COMMAND],
+    ["no check and no tests to run", { domain: COMPLETE.domain, tasks: COMPLETE.tasks }, { "package.json": "{}" }, {}, "gate", NO_CHECK],
+    ["a closing action the environment names that doesn't exist", COMPLETE, {}, { DELIVERY_CLOSER: "teleport" }, "closer", unknownCloser("teleport")],
+  ])("names the setting for %s", async (_, config, files, env, field, message) => {
+    const { json, plain } = await bothForms(repoWith(config, files), env);
+    expect(json.result).toEqual({ ready: false, problems: [{ field, message: expect.stringContaining(message) }] });
     expect(json.exitCode).toBe(EXIT.configuration);
     expect(plain.exitCode).toBe(EXIT.configuration);
   });

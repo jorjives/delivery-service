@@ -51,7 +51,7 @@ export async function inferredCheck(repoPath: string): Promise<string | undefine
  */
 export async function inferGate(repoPath: string): Promise<GateRef> {
   const command = await inferredCheck(repoPath);
-  if (command === undefined) throw new Refusal(NO_CHECK, EXIT.configuration);
+  if (command === undefined) throw new Refusal(NO_CHECK, EXIT.configuration, "gate");
   return { type: "command", command, parseMode: "exitcode" };
 }
 

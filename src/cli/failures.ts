@@ -36,12 +36,14 @@ export type ExitCode = (typeof EXIT)[keyof typeof EXIT];
 /**
  * The command declining to go on: something about the user's setup, never a
  * bug. The message is the whole of what they see, so it names the one missing
- * thing and how to fix it.
+ * thing and how to fix it. `field` is the config setting it is about, when it
+ * is about one, so `validate --json` can name it.
  */
 export class Refusal extends Error {
   constructor(
     message: string,
     readonly exitCode: ExitCode,
+    readonly field?: string,
   ) {
     super(message);
     this.name = "Refusal";

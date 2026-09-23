@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import type { CloserRef, GateRef, RoleOverrides } from "../schema.js";
+import { CloserModuleLoadFailure, GateModuleLoadFailure, InvalidCloserExport, InvalidGateExport } from "../errors.js";
 import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, renderFailure, type ExitCode } from "./failures.js";
@@ -125,6 +126,14 @@ export interface Validation {
   problems: ConfigProblem[];
 }
 
+/** The setting a problem found after the file's shape is right concerns: the one a refusal names, or the kind of module that would not load. */
+function settingOf(err: unknown): string | null {
+  if (err instanceof Refusal) return err.field ?? null;
+  if (err instanceof GateModuleLoadFailure || err instanceof InvalidGateExport) return "gate";
+  if (err instanceof CloserModuleLoadFailure || err instanceof InvalidCloserExport) return "closer";
+  return null;
+}
+
 /**
  * Every problem `validate` finds, for a script: every problem with the file's
  * shape together, then what resolving it the way a run would turns up. Whatever
@@ -145,7 +154,7 @@ export async function findProblems(options: ValidateOptions, ctx: CommandContext
   } catch (err) {
     const { message, exitCode } = renderFailure(err);
     if (exitCode !== EXIT.configuration) throw err;
-    return [{ field: null, message }];
+    return [{ field: settingOf(err), message }];
   }
 }
 

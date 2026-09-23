@@ -114,7 +114,7 @@ function closerFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryCon
   // A type with no required fields parses on its own; `custom` does not, because it
   // needs a module path, which is what the config file is for.
   const parsed = CloserRef.safeParse({ type: named });
-  if (!parsed.success) throw new Refusal(unknownCloser(named), EXIT.configuration);
+  if (!parsed.success) throw new Refusal(unknownCloser(named), EXIT.configuration, "closer");
   return parsed.data;
 }
 
