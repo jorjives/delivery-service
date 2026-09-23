@@ -45,7 +45,7 @@
 
 ---
 
-### Task 1: Let a typed answer be refused and asked again
+### Task 1: Let a typed answer be refused and asked again ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/init.ts` (the `TextQuestion` interface only)
@@ -179,7 +179,7 @@ the Ask seam passes that through rather than the wizard re-asking by hand."
 
 ---
 
-### Task 2: Ask for a short, skippable project description
+### Task 2: Ask for a short, skippable project description ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/init.ts` (`DESCRIPTION_QUESTION`, `configFrom`, `initCommand`)
@@ -324,7 +324,7 @@ the description is optional and an empty one would be refused."
 
 ---
 
-### Task 3: Ask for tasks one at a time and write them as a list
+### Task 3: Ask for tasks one at a time and write them as a list ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/init.ts` (`taskQuestion`, `NOTHING_TO_DO`, `ALREADY_LISTED`; remove `TASK_QUESTION`; `configFrom` takes `tasks`; `initCommand` loops)
@@ -587,11 +587,12 @@ flags at all. If there is already a config file there, it asks before replacing 
 it as it was if you say no.
 ```
 
-`docs/getting-started.md`, in "Where to go next", replace "`delivery init` writes a `delivery.config.json` by asking what checks the work, what happens to work that passes, and what you would like done;" with:
+`docs/getting-started.md`, in "Where to go next", the sentence "`delivery init` writes a `delivery.config.json` by asking what checks the work, what happens to work that passes, and what you would like done;" is wrapped across lines 127-129 inside a list item (continuation lines indented two spaces). Replace those three lines with the following, keeping the two-space continuation indent so the bullet does not break:
 
 ```markdown
-`delivery init` writes a `delivery.config.json` by asking what the project is, what checks the
-work, what happens to work that passes, and what you would like done;
+  complete example project. For a project of your own, `delivery init` writes a
+  `delivery.config.json` by asking what the project is, what checks the work, what happens
+  to work that passes, and what you would like done; the [readme](../README.md) lists every setting.
 ```
 
 `docs/project-configuration.md`, replace the final paragraph of "Going further" with:
