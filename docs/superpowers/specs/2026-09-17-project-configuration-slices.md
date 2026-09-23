@@ -310,6 +310,7 @@ is not sliced.
 ## Slice 8: Pick a Ready-Made Check by Name
 
 **Status:** ✅ Complete — 2026-09-23 — `4025477`
+**Tests:** ✅ Recorded — 2026-09-23 — `e090bae` — cli — 1 UAT + 5 AC, 0 skipped
 **Delivers:** A project owner chooses how their work is checked by naming a ready-made check (run the tests, a file exists, a command succeeds, a file matches a schema) instead of writing out a gate definition.
 
 **Build note:** Presets are names that resolve to the existing gate definitions; they add no new gate machinery and no change to what a run record stores.
