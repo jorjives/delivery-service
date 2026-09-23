@@ -15,15 +15,26 @@ export function context(cwd: string, { interactive = true }: { interactive?: boo
 /**
  * A person answering the wizard's questions in the order they are asked,
  * recording each question so a test can assert on what was actually offered.
- * An answer left out is Enter: the question's own default.
+ * An answer left out is Enter: the question's own default. An answer the
+ * question refuses is recorded in `refused` and the next scripted answer is
+ * tried, as a person would type again; a refused answer with nothing scripted
+ * after it fails the test rather than asking forever.
  */
 export function scriptedAsk({ texts = [], choice, confirm }: { texts?: (string | undefined)[]; choice?: string; confirm?: boolean } = {}) {
   const asked: (TextQuestion | ChoiceQuestion | ConfirmQuestion)[] = [];
+  const refused: string[] = [];
   const queue = [...texts];
   const ask: Ask = {
     text(question) {
       asked.push(question);
-      return Promise.resolve(queue.shift() ?? question.default ?? "");
+      for (;;) {
+        const scripted = queue.length > 0;
+        const answer = queue.shift() ?? question.default ?? "";
+        const verdict = question.validate?.(answer) ?? true;
+        if (verdict === true) return Promise.resolve(answer);
+        refused.push(verdict);
+        if (!scripted) return Promise.reject(new Error(`"${answer}" was refused (${verdict}) and no answer is scripted after it`));
+      }
     },
     choose(question) {
       asked.push(question);
@@ -34,5 +45,5 @@ export function scriptedAsk({ texts = [], choice, confirm }: { texts?: (string |
       return Promise.resolve(confirm ?? question.default);
     },
   };
-  return { ask, asked };
+  return { ask, asked, refused };
 }

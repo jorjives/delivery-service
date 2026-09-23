@@ -38,7 +38,10 @@ export function inquirerAsk(colour: boolean, streams: PromptStreams = {}): Ask {
   const theme = colour ? {} : PLAIN_THEME;
   return {
     text: (question) =>
-      input({ message: question.message, default: question.default, required: question.required ?? false, theme }, streams),
+      input(
+        { message: question.message, default: question.default, required: question.required ?? false, validate: question.validate, theme },
+        streams,
+      ),
     choose: (question) => select({ message: question.message, choices: question.choices, default: question.default, theme }, streams),
     confirm: (question) => confirm({ message: question.message, default: question.default, theme }, streams),
   };

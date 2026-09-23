@@ -7,11 +7,17 @@ import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository, inferredCheck } from "./project.js";
 import { DEFAULT_CLOSER } from "./settings.js";
 
-/** A question answered by typing. `default` is what pressing Enter means; `required` refuses an empty answer rather than writing one. */
+/**
+ * A question answered by typing. `default` is what pressing Enter means;
+ * `required` refuses an empty answer rather than writing one; `validate`
+ * refuses any other answer it returns a sentence for, and that sentence is
+ * shown while the question is asked again.
+ */
 export interface TextQuestion {
   message: string;
   default?: string;
   required?: boolean;
+  validate?: (answer: string) => true | string;
 }
 
 /** One thing a person can pick: what gets written, what it is called, and the one line saying what it does. */

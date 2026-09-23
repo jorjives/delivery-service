@@ -27,4 +27,23 @@ describe("asking with @inquirer/prompts", () => {
 
     expect(await answer).toBe("npm test");
   });
+
+  it("says why an answer was refused and asks again, keeping the one it accepts", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let shown = "";
+    output.on("data", (chunk: Buffer) => (shown += chunk.toString()));
+
+    const answer = inquirerAsk(false, { input, output }).text({
+      message: "What else would you like done?",
+      validate: (typed) => (typed === "the same again" ? "You've already listed that one." : true),
+    });
+    await untilShown(() => shown, "What else would you like done?");
+    input.write("the same again\n");
+    await untilShown(() => shown, "You've already listed that one.");
+    // The library keeps a refused answer on the line to be edited; clear it first.
+    input.write("\u0015something new\n");
+
+    expect(await answer).toBe("something new");
+  });
 });
