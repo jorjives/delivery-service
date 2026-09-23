@@ -6,6 +6,7 @@ import type { BudgetSet, CaseFileHeader, GateRef, RoleOverrides, TaskDef } from 
 import { loadCustomCloser } from "../custom-closer.js";
 import { loadCustomGate } from "../custom-gate.js";
 import { unknownCloser, type DeliveryConfig } from "./config.js";
+import { isPreset, presetGate, type GatePreset } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
 import { inferGate } from "./project.js";
 import { rolesFor } from "./roles.js";
@@ -40,6 +41,8 @@ export interface ProjectSettings {
   domainPrompt?: string;
   /** What the config file changes about the worker and gate maintenance, pinned into the run when it starts. Absent when it changes nothing. */
   roleOverrides?: RoleOverrides;
+  /** The ready-made check the file named, when that is where `gateRef` came from: kept only to describe it by name. A run pins `gateRef` alone. */
+  gatePreset?: GatePreset;
 }
 
 /** Everything a run needs to be created: what this one is being asked to do, and everything the project asks of all of them. */
@@ -87,12 +90,22 @@ function taskFrom(intent: string | undefined, config: DeliveryConfig): TaskDef {
  */
 const fromEnv = (value: string | undefined): string | undefined => value || undefined;
 
-async function gateFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryConfig, repoPath: string): Promise<GateRef> {
+async function gateFrom(
+  flags: RunFlags,
+  env: NodeJS.ProcessEnv,
+  config: DeliveryConfig,
+  repoPath: string,
+): Promise<Pick<ProjectSettings, "gateRef" | "gatePreset">> {
   const command = flags.gateCommand ?? fromEnv(env.DELIVERY_GATE_COMMAND);
   // `exitcode` is the only parse mode that assumes nothing about the command's output,
   // so it is the one a flag can safely stand for; the rest are named in the file.
-  if (command !== undefined) return { type: "command", command, parseMode: "exitcode" };
-  return config.gate ?? (await inferGate(repoPath));
+  if (command !== undefined) return { gateRef: { type: "command", command, parseMode: "exitcode" } };
+  const gate = config.gate;
+  if (gate === undefined) return { gateRef: await inferGate(repoPath) };
+  // A name is resolved here, before anything is pinned, so a run's record holds
+  // the gate itself and never a name that could later mean something else.
+  if (isPreset(gate)) return { gateRef: await presetGate(gate, repoPath), gatePreset: gate };
+  return { gateRef: gate };
 }
 
 function closerFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryConfig): CloserRef {
@@ -156,7 +169,7 @@ export async function resolveProject(
   // would refuse stops the command before any run's record exists.
   rolesFor(config.roles);
   return {
-    gateRef: await gateFrom(flags, env, config, repoPath),
+    ...(await gateFrom(flags, env, config, repoPath)),
     closerRef: closerFrom(flags, env, config),
     budgets: budgetsFrom(config),
     // Only the file can say what the project is: it is prose about the

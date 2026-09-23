@@ -5,7 +5,8 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
-import { CloserRef, GateRef, RoleOverrides, TaskDef, Written } from "../schema.js";
+import { CloserRef, RoleOverrides, TaskDef, Written } from "../schema.js";
+import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
 
 /** The one filename family a project uses, and the forms it may take. A `.js` or `.mjs` file exports the same object, for a project that computes a value. */
@@ -20,15 +21,25 @@ export const BUILT_IN_CLOSERS: string[] = CloserRef.options
   .map((option) => option.shape.type.value)
   .filter((type) => type !== "custom");
 
+/** Names as a sentence lists them, each in code: `a`, `b` and `c`. */
+function andList(names: readonly string[]): string {
+  const quoted = names.map((name) => `\`${name}\``);
+  return quoted.length < 2 ? (quoted[0] ?? "") : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1) ?? ""}`;
+}
+
 /** A closer type the harness does not know, answered with the choices rather than with a schema complaint. */
 export function unknownCloser(type: unknown): string {
   const named = typeof type === "string" && type !== "" ? `the closer type \`${type}\`` : "that closer type";
-  const quoted = BUILT_IN_CLOSERS.map((choice) => `\`${choice}\``);
-  const choices = `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1) ?? ""}`;
   return (
-    `I don't know ${named}. The built-in choices are ${choices}. ` +
+    `I don't know ${named}. The built-in choices are ${andList(BUILT_IN_CLOSERS)}. ` +
     `To use your own, put \`{ "type": "custom", "modulePath": "./closers/mine.js" }\` in ${CONFIG_BASENAME}.json.`
   );
+}
+
+/** A check the harness does not know, answered in one line with the ready-made names rather than with a schema complaint. */
+export function unknownGate(type: unknown): string {
+  const named = typeof type === "string" && type !== "" ? `the check \`${type}\`` : "that check";
+  return `I don't know ${named}. The ready-made checks are ${andList(PRESET_NAMES)}. To write one out in full, see docs/writing-a-gate.md.`;
 }
 
 /**
@@ -103,7 +114,10 @@ export const DeliveryConfig = z
     // instructions and the tools they may use, each field laid over the
     // built-in role. Triage is not here: it is the harness's own.
     roles: RoleOverrides.optional(),
-    gate: GateRef.optional(),
+    // How the work is checked: a ready-made check by name, or one written out
+    // as the library takes it. Resolved to the written-out form before any run
+    // starts, so a run's record never holds a name.
+    gate: GateChoice.optional(),
     closer: CloserRef.optional(),
     budgets: Budgets.optional(),
   })
@@ -147,7 +161,9 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
   domain: "It is a sentence or two describing your project.",
   roles:
     'It changes what the worker, or the agent that repairs your check, is told and which tools it may use, for example `{ "worker": { "allowedTools": ["Read", "Edit"] } }`: see docs/configuring-a-role.md.',
-  gate: 'It says how the work is checked, for example `{ "type": "command", "command": "npm test", "parseMode": "exitcode" }`: see docs/writing-a-gate.md.',
+  gate:
+    'It says how the work is checked: a ready-made check such as `{ "type": "test-runner" }`, or one written out such as ' +
+    '`{ "type": "command", "command": "npm test", "parseMode": "exitcode" }`: see docs/writing-a-gate.md.',
   closer: "It says what happens to work that passes: see docs/writing-a-closer.md for the choices and what each one takes.",
   budgets: 'It is a set of limits, each a whole number of attempts, for example `{ "correction": 5 }`.',
 };
@@ -192,6 +208,20 @@ function roleProblem(file: string, issue: Issue, raw: unknown): string | undefin
 }
 
 /**
+ * A ready-made check with a detail missing, empty, of the wrong kind or not
+ * its own, said as the one detail to fix. The first issue is enough, as
+ * everywhere else: zod reports a missing detail before an extra one.
+ */
+function presetProblem(file: string, issue: Issue, name: PresetName): string {
+  const details = PRESET_DETAILS[name];
+  if (issue.code === "unrecognized_keys") {
+    return `I can't use ${file}: the ready-made check \`${name}\` takes only ${andList(Object.keys(details))}, so remove \`${issue.keys[0]}\`.`;
+  }
+  const detail = String(issue.path[1]);
+  return `I can't use ${file}: the ready-made check \`${name}\` needs \`${detail}\`, ${details[detail]}.`;
+}
+
+/**
  * One plain-language sentence about the first thing wrong with a config file,
  * naming the key or the value. The first issue is enough: a person fixes one
  * thing and runs again, and a list of schema complaints is the stack trace this
@@ -206,6 +236,10 @@ export function describeProblem(file: string, error: z.ZodError, raw: unknown): 
     const said = roleProblem(file, issue, raw);
     if (said !== undefined) return said;
   }
+
+  if (where === "gate.type") return unknownGate(valueAt(raw, issue.path));
+  const gateType = valueAt(raw, ["gate", "type"]);
+  if (issue.path[0] === "gate" && isPresetName(gateType)) return presetProblem(file, issue, gateType);
 
   if (issue.code === "unrecognized_keys") {
     const takes = where === "" ? `A config file takes only ${CONFIG_KEYS}.` : `\`${where}\` doesn't take it.`;

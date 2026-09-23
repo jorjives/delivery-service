@@ -154,6 +154,24 @@ describe("what checks the work", () => {
     expect(NO_CHECK).toContain("--gate-command");
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });
+
+  it("turns a ready-made check in the file into the gate it stands for, and remembers which it was", async () => {
+    const gate = { type: "file-exists", path: "CHANGES.md" } as const;
+    const resolved = await settings({ task: TASK }, { config: { gate } });
+    expect(resolved.gateRef).toEqual({ type: "command", command: "test -f 'CHANGES.md'", parseMode: "exitcode" });
+    expect(resolved.gatePreset).toEqual(gate);
+  });
+
+  it("lets --gate-command beat a ready-made check in the file, and then remembers no preset", async () => {
+    const resolved = await settings({ task: TASK, gateCommand: "make check" }, { config: { gate: { type: "test-runner" } } });
+    expect(resolved.gateRef).toEqual({ type: "command", command: "make check", parseMode: "exitcode" });
+    expect(resolved.gatePreset).toBeUndefined();
+  });
+
+  it("remembers no preset for a written-out gate or the inferred default", async () => {
+    expect((await settings({ task: TASK }, { config: { gate: NPM_TEST } })).gatePreset).toBeUndefined();
+    expect((await settings({ task: TASK })).gatePreset).toBeUndefined();
+  });
 });
 
 describe("what happens to accepted work", () => {

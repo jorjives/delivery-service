@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { configCandidates, DeliveryConfig, describeProblem, findConfig, loadConfig, NO_SUCH_CONFIG, structureTask, unknownCloser } from "./config.js";
+import { configCandidates, DeliveryConfig, describeProblem, findConfig, loadConfig, NO_SUCH_CONFIG, structureTask, unknownCloser, unknownGate } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 
 const FILE = "delivery.config.json";
@@ -82,6 +82,16 @@ describe("what a config file may contain", () => {
   it("accepts a task written as an object, keeping the fields the harness has no use for", () => {
     const config = { tasks: [{ intent: "add a page that shows who's on call today", area: "billing", priority: 2 }] };
     expect(DeliveryConfig.parse(config)).toEqual(config);
+  });
+
+  it.each([
+    [{ type: "test-runner" }],
+    [{ type: "test-runner", command: "npx vitest run" }],
+    [{ type: "file-exists", path: "CHANGES.md" }],
+    [{ type: "command-succeeds", command: "npm run lint" }],
+    [{ type: "schema-validates", file: "data.json", schema: "data.schema.json" }],
+  ])("accepts the ready-made check %j with only the detail it needs", (gate) => {
+    expect(DeliveryConfig.parse({ gate })).toEqual({ gate });
   });
 });
 
@@ -226,7 +236,8 @@ describe("what it says about a file it can't use", () => {
   it("names a malformed check and what a check looks like", () => {
     expect(problemFor({ gate: { type: "command", command: "npm test", parseMode: "toml" } })).toBe(
       'I can\'t use delivery.config.json: the setting `gate.parseMode` is `"toml"`. ' +
-        'It says how the work is checked, for example `{ "type": "command", "command": "npm test", "parseMode": "exitcode" }`: see docs/writing-a-gate.md.',
+        'It says how the work is checked: a ready-made check such as `{ "type": "test-runner" }`, or one written out such as ' +
+        '`{ "type": "command", "command": "npm test", "parseMode": "exitcode" }`: see docs/writing-a-gate.md.',
     );
   });
 
@@ -286,6 +297,10 @@ describe("what it says about a file it can't use", () => {
     [undefined],
     [{ roles: "strict" }],
     [{ roles: { worker: { allowedTools: "Read" } } }],
+    [{ gate: { type: "file-exist", path: "CHANGES.md" } }],
+    [{ gate: { type: "file-exists" } }],
+    [{ gate: { type: "file-exists", path: "CHANGES.md", command: "ls" } }],
+    [{ gate: "file-exists" }],
   ])("never repeats the schema's own wording back (%j)", (raw) => {
     expect(problemFor(raw)).not.toMatch(/Invalid|expected|received|undefined/);
   });
@@ -295,6 +310,30 @@ describe("what it says about a file it can't use", () => {
       "I can't use delivery.config.json: the setting `closer.modulePath` is missing. " +
         "It says what happens to work that passes: see docs/writing-a-closer.md for the choices and what each one takes.",
     );
+  });
+
+  it("answers a misspelt ready-made check with the four names, in one line", () => {
+    const said = problemFor({ gate: { type: "file-exist", path: "CHANGES.md" } });
+    expect(said).toBe(unknownGate("file-exist"));
+    expect(said.split("\n")).toHaveLength(1);
+  });
+
+  it.each<[unknown, string]>([
+    [{ type: "file-exists" }, "the ready-made check `file-exists` needs `path`, the file that should exist."],
+    [{ type: "file-exists", path: "  " }, "the ready-made check `file-exists` needs `path`, the file that should exist."],
+    [{ type: "file-exists", file: "CHANGES.md" }, "the ready-made check `file-exists` needs `path`, the file that should exist."],
+    [{ type: "command-succeeds" }, "the ready-made check `command-succeeds` needs `command`, the command that should succeed."],
+    [{ type: "schema-validates", file: "data.json" }, "the ready-made check `schema-validates` needs `schema`, the file describing the shape it should have."],
+    [{ type: "test-runner", command: 7 }, "the ready-made check `test-runner` needs `command`, the command that runs your tests."],
+  ])("names the detail the ready-made check %j is missing", (gate, message) => {
+    expect(problemFor({ gate })).toBe(`I can't use delivery.config.json: ${message}`);
+  });
+
+  it.each<[unknown, string]>([
+    [{ type: "test-runner", path: "CHANGES.md" }, "the ready-made check `test-runner` takes only `command`, so remove `path`."],
+    [{ type: "file-exists", path: "CHANGES.md", command: "ls" }, "the ready-made check `file-exists` takes only `path`, so remove `command`."],
+  ])("names a detail the ready-made check %j doesn't take", (gate, message) => {
+    expect(problemFor({ gate })).toBe(`I can't use delivery.config.json: ${message}`);
   });
 });
 
@@ -308,6 +347,20 @@ describe("unknownCloser", () => {
 
   it("copes with a closer type that is not a string at all", () => {
     expect(unknownCloser(undefined)).toContain("I don't know that closer type.");
+  });
+});
+
+describe("unknownGate", () => {
+  it("lists the four ready-made checks and where to write one out in full", () => {
+    expect(unknownGate("file-exist")).toBe(
+      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds` and `schema-validates`. " +
+        "To write one out in full, see docs/writing-a-gate.md.",
+    );
+  });
+
+  it("copes with a check type that is missing or not a string at all", () => {
+    expect(unknownGate(undefined)).toMatch(/^I don't know that check\. The ready-made checks are /);
+    expect(unknownGate(42)).toMatch(/^I don't know that check\. /);
   });
 });
 
