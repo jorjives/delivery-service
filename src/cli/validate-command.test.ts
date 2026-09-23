@@ -8,7 +8,7 @@ import { cleanGitEnv } from "../git-env.js";
 import type { CloserRef, GateRef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
-import { BOTH_TASK_AND_TASKS, sameTask, unknownCloser, type DeliveryConfig } from "./config.js";
+import { BOTH_TASK_AND_TASKS, sameTask, type DeliveryConfig } from "./config.js";
 import { EXIT } from "./failures.js";
 import { NO_TEST_COMMAND, type GatePreset } from "./gate-presets.js";
 import { NO_CHECK } from "./project.js";
@@ -373,9 +373,10 @@ describe("delivery validate --json", () => {
 
   it("names the closer setting for a closing action the environment names that doesn't exist", async () => {
     const { json } = await bothForms(repoWith(COMPLETE), { DELIVERY_CLOSER: "teleport" });
-    expect(json.result.ready).toBe(false);
-    expect(json.result.problems).toHaveLength(1);
-    const problem = json.result.problems[0];
+    const result = json.result as { ready: boolean; problems: Array<{ field?: string; message: string }> };
+    expect(result.ready).toBe(false);
+    expect(result.problems).toHaveLength(1);
+    const problem = result.problems[0];
     expect(problem?.field).toBe("closer");
     expect(problem?.message).toMatch(/teleport/);
     expect(problem?.message).toMatch(/built-in choices/);
