@@ -143,7 +143,7 @@ export async function runCli(io: CliIo): Promise<number> {
   program
     .command("init")
     .description(
-      "set this project up by answering a few questions: what command checks the agent's work, what happens to work that passes, and the first thing you'd like done",
+      "set this project up by answering a few questions: what the project is, what command checks the agent's work, what happens to work that passes, and what you'd like done",
     )
     .option("--repo <path>", "the git repository to set up (default: the current folder)")
     .action(async (options: InitOptions, command: Command) => {

@@ -129,10 +129,37 @@ export const DESCRIPTION_QUESTION: TextQuestion = {
     "The agent reads this before every task. Press Enter to skip.",
 };
 
-export const TASK_QUESTION: TextQuestion = {
-  message: "What's the first thing you'd like done? Say it the way you'd say it to a colleague.",
-  required: true,
-};
+export const NOTHING_TO_DO = "Say what you'd like done, in a sentence.";
+
+export const ALREADY_LISTED = "You've already said that one. Say something different.";
+
+/**
+ * The next thing to do, given the ones already said. The first cannot be
+ * blank: a file with nothing to do has nothing to run. After that, a blank
+ * answer means that's everything. A task already said is refused, trimmed
+ * as the loader compares them, because the loader refuses two the same.
+ */
+export const taskQuestion = (listed: string[]): TextQuestion => ({
+  message:
+    listed.length === 0
+      ? "What's the first thing you'd like done? Say it the way you'd say it to a colleague."
+      : "What else would you like done? Press Enter when that's everything.",
+  validate: (answer) => {
+    const said = answer.trim();
+    if (said === "") return listed.length === 0 ? NOTHING_TO_DO : true;
+    return listed.some((task) => task.trim() === said) ? ALREADY_LISTED : true;
+  },
+});
+
+/** Everything the owner would like done, asked one at a time until a blank answer. */
+async function askTasks(ask: Ask): Promise<string[]> {
+  const tasks: string[] = [];
+  for (;;) {
+    const answer = await ask.text(taskQuestion(tasks));
+    if (answer.trim() === "") return tasks;
+    tasks.push(answer);
+  }
+}
 
 export const overwriteQuestion = (file: string): ConfirmQuestion => ({
   message: file.endsWith(".json")
@@ -142,36 +169,37 @@ export const overwriteQuestion = (file: string): ConfirmQuestion => ({
 });
 
 /**
- * The answers as the file a run reads. Parsed by the very schema `delivery
- * run` will parse it with, so this command can never write a file its own
- * loader would refuse. A blank description is left out rather than written
- * empty, which the loader would refuse. Limits are deliberately absent: the
- * defaults are better left implicit than frozen into a file nobody asked to set.
+ * The answers as the file a run reads: always a list of tasks, even of one,
+ * because `task` is the hand-written one-off form. Parsed by the very schema
+ * `delivery run` will parse it with, so this command can never write a file
+ * its own loader would refuse. A blank description is left out rather than
+ * written empty, which the loader would refuse. Limits are deliberately absent:
+ * the defaults are better left implicit than frozen into a file nobody asked to set.
  */
 export function configFrom({
   description,
   check,
   closer,
-  task,
+  tasks,
 }: {
   description: string;
   check: string;
   closer: string;
-  task: string;
+  tasks: string[];
 }): DeliveryConfig {
   return DeliveryConfig.parse({
     ...(description.trim() === "" ? {} : { domain: description }),
-    task: { intent: task },
+    tasks,
     gate: { type: "command", command: check, parseMode: "exitcode" },
     closer: { type: closer },
   });
 }
 
 /**
- * `delivery init`: set a project up by answering a few questions instead of
- * writing the file by hand. It asks what the project is, what checks the
- * agent's work, what happens to work that passes, and what you'd like done
- * first, and writes those answers where the next `delivery run` will find them
+ * `delivery init`: set a project up by answering questions instead of writing
+ * the file by hand. It asks what the project is, what checks the agent's work,
+ * what happens to work that passes, and what you'd like done, one thing at a
+ * time, and writes the answers where the next `delivery run` will find them
  * with no flags at all.
  */
 export async function initCommand(options: InitOptions, ctx: CommandContext, ask: Ask): Promise<ExitCode> {
@@ -194,9 +222,9 @@ export async function initCommand(options: InitOptions, ctx: CommandContext, ask
   const description = await ask.text(DESCRIPTION_QUESTION);
   const check = await ask.text(checkQuestion(await inferredCheck(repoPath)));
   const closer = await ask.choose(CLOSER_QUESTION);
-  const task = await ask.text(TASK_QUESTION);
+  const tasks = await askTasks(ask);
 
-  await writeFile(file, `${JSON.stringify(configFrom({ description, check, closer, task }), null, 2)}\n`);
+  await writeFile(file, `${JSON.stringify(configFrom({ description, check, closer, tasks }), null, 2)}\n`);
   ctx.writeLine(WRITTEN(file));
   return EXIT.ok;
 }

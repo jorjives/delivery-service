@@ -8,8 +8,10 @@ import { BUILT_IN_CLOSERS, loadConfig } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import { NOT_A_REPOSITORY } from "./project.js";
-import { DEFAULT_CLOSER, resolveSettings } from "./settings.js";
-import { CONFIG_FILE, DESCRIPTION_QUESTION, initCommand, LEFT_ALONE, NEEDS_A_TERMINAL, WRITTEN, type ChoiceQuestion, type TextQuestion } from "./init.js";
+import { DEFAULT_CLOSER, resolveProject } from "./settings.js";
+import { queueTasks } from "./queue.js";
+import { READY, validateCommand } from "./validate-command.js";
+import { ALREADY_LISTED, CLOSER_QUESTION, CONFIG_FILE, DESCRIPTION_QUESTION, NOTHING_TO_DO, checkQuestion, initCommand, LEFT_ALONE, NEEDS_A_TERMINAL, WRITTEN, overwriteQuestion, taskQuestion, type ChoiceQuestion, type TextQuestion } from "./init.js";
 
 const TASK = "add a function that says hello to a name, with a test";
 
@@ -67,17 +69,18 @@ describe("what `delivery init` asks", () => {
     expect(JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"))).toMatchObject({ closer: DEFAULT_CLOSER });
   });
 
-  it("asks four questions and writes exactly those answers", async () => {
+  it("asks each question once, and writes exactly the answers given", async () => {
     const repo = sample();
-    const { ask, asked } = scriptedAsk({ texts: [undefined, "npm test", TASK], choice: "merge-back" });
+    const { ask, asked } = scriptedAsk({ texts: ["A greeting library.", "npm test", TASK], choice: "merge-back" });
     const { ctx, lines } = context(repo);
 
     expect(await initCommand({}, ctx, ask)).toBe(EXIT.ok);
 
-    expect(asked).toHaveLength(4);
+    expect(asked).toHaveLength(5);
     const written = readFileSync(CONFIG_FILE(repo), "utf-8");
     expect(JSON.parse(written)).toEqual({
-      task: { intent: TASK },
+      domain: "A greeting library.",
+      tasks: [TASK],
       gate: { type: "command", command: "npm test", parseMode: "exitcode" },
       closer: { type: "merge-back" },
     });
@@ -138,8 +141,8 @@ describe("a config file that is already there", () => {
 
     await initCommand({}, context(repo).ctx, ask);
 
-    expect(asked).toHaveLength(5);
-    expect(JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"))).toMatchObject({ closer: DEFAULT_CLOSER, task: { intent: TASK } });
+    expect(asked).toHaveLength(6);
+    expect(JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"))).toMatchObject({ closer: DEFAULT_CLOSER, tasks: [TASK] });
   });
 
   it("asks about a computed config file too, because the file it writes would be used instead of it", async () => {
@@ -193,17 +196,99 @@ describe("a folder that isn't a repository", () => {
   });
 });
 
-describe("the run that follows", () => {
-  it("reads back as the check, closing action and task that were answered, with no flags at all", async () => {
+describe("the things you'd like done", () => {
+  it("asks one at a time until an empty answer, and writes every one as a list in the order given", async () => {
     const repo = sample();
-    const { ask } = scriptedAsk({ texts: [undefined, "npm test", TASK], choice: "merge-back" });
+    const { ask, asked } = scriptedAsk({ texts: [undefined, undefined, "add a hello", "add a goodbye", ""] });
+
     await initCommand({}, context(repo).ctx, ask);
 
-    const config = await loadConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {} });
-    const settings = await resolveSettings({}, { env: {}, intent: undefined, repoPath: repo, config });
+    expect(asked.slice(3)).toEqual([taskQuestion([]), taskQuestion(["add a hello"]), taskQuestion(["add a hello", "add a goodbye"])].map(
+      (question) => ({ ...question, validate: expect.any(Function) }),
+    ));
+    expect(JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"))).toMatchObject({ tasks: ["add a hello", "add a goodbye"] });
+  });
 
-    expect(settings.taskDef).toEqual({ intent: TASK });
-    expect(settings.gateRef).toEqual({ type: "command", command: "npm test", parseMode: "exitcode" });
-    expect(settings.closerRef).toEqual({ type: "merge-back" });
+  it("writes a single task as a list of one, never as a one-off", async () => {
+    const repo = sample();
+    const { ask } = scriptedAsk({ texts: [undefined, undefined, TASK] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    const written = JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"));
+    expect(written.tasks).toEqual([TASK]);
+    expect(written).not.toHaveProperty("task");
+  });
+
+  it("won't take a blank first answer, because a file with nothing to do has nothing to run", async () => {
+    const repo = sample();
+    const { ask, refused } = scriptedAsk({ texts: [undefined, undefined, "", "   ", TASK] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(refused).toEqual([NOTHING_TO_DO, NOTHING_TO_DO]);
+    expect(JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"))).toMatchObject({ tasks: [TASK] });
+  });
+
+  it("won't take the same task twice, even with different spacing, because the two could not be told apart", async () => {
+    const repo = sample();
+    const { ask, refused } = scriptedAsk({ texts: [undefined, undefined, "add a hello", "  add a hello ", "add a goodbye"] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(refused).toEqual([ALREADY_LISTED]);
+    expect(JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"))).toMatchObject({ tasks: ["add a hello", "add a goodbye"] });
+  });
+
+  it("keeps each task exactly as typed", async () => {
+    const repo = sample();
+    const { ask } = scriptedAsk({ texts: [undefined, undefined, "add a hello, with a test "] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"))).toMatchObject({ tasks: ["add a hello, with a test "] });
+  });
+});
+
+describe("the words it uses", () => {
+  it("says everything in everyday words, with none of the harness's own vocabulary", () => {
+    const shown = [
+      DESCRIPTION_QUESTION.message,
+      checkQuestion("npm test").message,
+      CLOSER_QUESTION.message,
+      ...CLOSER_QUESTION.choices.flatMap((choice) => [choice.name, choice.description]),
+      taskQuestion([]).message,
+      taskQuestion(["add a hello"]).message,
+      NOTHING_TO_DO,
+      ALREADY_LISTED,
+      overwriteQuestion("delivery.config.json").message,
+      overwriteQuestion("delivery.config.js").message,
+    ];
+
+    for (const text of shown) {
+      expect(text).not.toMatch(/domain|queue|intent|gate|closer|worktree|envelope|surface|case file|role config|schema/i);
+    }
+  });
+});
+
+describe("the run that follows", () => {
+  it("passes `delivery validate` and reads back as the answers given, with no flags at all", async () => {
+    const repo = sample();
+    const description = "A tiny greeting library.";
+    const { ask } = scriptedAsk({ texts: [description, "npm test", "add a hello", "add a goodbye"], choice: "merge-back" });
+    await initCommand({}, context(repo).ctx, ask);
+
+    const { ctx, lines } = context(repo);
+    expect(await validateCommand({}, ctx)).toBe(EXIT.ok);
+    expect(lines).toContain("✓ domain description: present");
+    expect(lines).toContain("✓ 2 tasks queued");
+    expect(lines.at(-1)).toBe(READY);
+
+    const config = await loadConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {} });
+    const project = await resolveProject({}, { env: {}, repoPath: repo, config });
+    expect(queueTasks(config)).toEqual([{ intent: "add a hello" }, { intent: "add a goodbye" }]);
+    expect(project.domainPrompt).toBe(description);
+    expect(project.gateRef).toEqual({ type: "command", command: "npm test", parseMode: "exitcode" });
+    expect(project.closerRef).toEqual({ type: "merge-back" });
   });
 });

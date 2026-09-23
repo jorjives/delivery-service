@@ -234,6 +234,7 @@ guide of its own:
 - [Configuring a role](configuring-a-role.md#from-the-configuration-file): changing an agent's instructions as well as its tools, and why a misspelled tool name only shows up during a run.
 - [Testing your delivery pipeline](testing-your-pipeline.md): proving your own check, closing action and roles together against a scripted agent.
 
-To start a configuration for a project of your own, run `delivery init` in it: it asks what
-checks the work, what happens to work that passes, and what you would like done, and writes
-the file for you. The [readme](../README.md#configure-it-once) lists every setting.
+To start a configuration for a project of your own, run `delivery init` in it: it asks what the
+project is, what checks the work, what happens to work that passes, and what you would like
+done, one thing at a time, and writes the file for you. The [readme](../README.md#configure-it-once)
+lists every setting.

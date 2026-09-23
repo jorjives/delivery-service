@@ -1,6 +1,8 @@
 // Slice 7: Set Up a Project by Answering a Few Questions
 // Source: docs/superpowers/specs/2026-09-14-cli-and-configuration-slices.md
 // Recorded: 2026-09-17 against commit b9d748f
+// Updated: Project Configuration slice 7 added the description question first
+// and writes tasks as a list; the answers still reach the next run unflagged.
 //
 // `delivery init`'s questions cannot be driven through a real terminal here (no
 // pty, and the command reads the process's own stdin/stdout regardless of what a
@@ -34,7 +36,8 @@ import {
   type ChoiceQuestion,
   type TextQuestion,
 } from "../../src/cli/init.js";
-import { DEFAULT_CLOSER, resolveSettings } from "../../src/cli/settings.js";
+import { DEFAULT_CLOSER, resolveProject } from "../../src/cli/settings.js";
+import { queueTasks } from "../../src/cli/queue.js";
 import { REPO_ROOT, runDelivery, git } from "../helpers.js";
 
 const RUN_TIMEOUT = 60_000;
@@ -82,7 +85,7 @@ describe("UAT: set up a project for the harness by answering questions instead o
       // (offering the project's own `npm test`), the three closing actions with
       // their one-line descriptions, defaulting to committing to a branch, then
       // the first task and "anything else", answered with Enter.
-      expect(asked).toHaveLength(4);
+      expect(asked).toHaveLength(5);
       const [, checkAsked, closerAsked, taskAsked] = asked as [TextQuestion, TextQuestion, ChoiceQuestion, TextQuestion];
       expect(checkAsked.default).toBe("npm test");
       expect(closerAsked).toEqual(CLOSER_QUESTION);
@@ -97,7 +100,7 @@ describe("UAT: set up a project for the harness by answering questions instead o
       const file = CONFIG_FILE(repo);
       expect(lines).toEqual([WRITTEN(file)]);
       expect(JSON.parse(readFileSync(file, "utf-8"))).toMatchObject({
-        task: { intent: TASK },
+        tasks: [TASK],
         gate: { type: "command", command: "npm test", parseMode: "exitcode" },
         closer: { type: "commit-to-branch" },
       });
@@ -160,9 +163,9 @@ describe("AC: it asks for a first task in plain language and writes a config fil
     expect(checkAsked.default).toBeUndefined();
 
     const config = await loadConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {} });
-    const settings = await resolveSettings({}, { env: {}, intent: undefined, repoPath: repo, config });
-    expect(settings.gateRef).toEqual({ type: "command", command: "npm run check", parseMode: "exitcode" });
-    expect(settings.closerRef).toEqual({ type: "merge-back" });
-    expect(settings.taskDef).toEqual({ intent: TASK });
+    const project = await resolveProject({}, { env: {}, repoPath: repo, config });
+    expect(project.gateRef).toEqual({ type: "command", command: "npm run check", parseMode: "exitcode" });
+    expect(project.closerRef).toEqual({ type: "merge-back" });
+    expect(queueTasks(config)).toEqual([{ intent: TASK }]);
   });
 });

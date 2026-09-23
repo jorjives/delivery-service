@@ -212,11 +212,13 @@ If you would rather not write the config file yourself:
 delivery init
 ```
 
-It asks three things: what command checks the agent's work (offering your project's own
-`npm test` when it has one), what should happen to work that passes, and the first thing you
-would like done. It writes the answers to a `delivery.config.json` at the top of the
-repository, which the next `delivery run` picks up with no flags at all. If there is already a
-config file there, it asks before replacing it and leaves it as it was if you say no.
+It asks a few things: a sentence or two about your project (press Enter to skip), what command
+checks the agent's work (offering your project's own `npm test` when it has one), what should
+happen to work that passes, and what you would like done, one thing at a time until you press
+Enter on an empty answer. It writes the answers to a `delivery.config.json` at the top of the
+repository, which `delivery validate` checks and the next `delivery run` works through with no
+flags at all. If there is already a config file there, it asks before replacing it and leaves
+it as it was if you say no.
 
 It asks questions, so it needs a terminal. Run in a pipe or in CI it says so and stops, rather
 than guessing an answer on your behalf.
