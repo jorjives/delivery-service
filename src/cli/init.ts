@@ -118,6 +118,17 @@ export const CLOSER_QUESTION: ChoiceQuestion = {
   default: DEFAULT_CLOSER.type,
 };
 
+/**
+ * What the project is, in the owner's words, told to the agent before every
+ * task. Skippable: pressing Enter leaves it out of the file, which a project
+ * can live without.
+ */
+export const DESCRIPTION_QUESTION: TextQuestion = {
+  message:
+    "Describe your project in a sentence or two: what it is and what it's built with. " +
+    "The agent reads this before every task. Press Enter to skip.",
+};
+
 export const TASK_QUESTION: TextQuestion = {
   message: "What's the first thing you'd like done? Say it the way you'd say it to a colleague.",
   required: true,
@@ -131,13 +142,25 @@ export const overwriteQuestion = (file: string): ConfirmQuestion => ({
 });
 
 /**
- * The three answers as the file a run reads. Parsed by the very schema
- * `delivery run` will parse it with, so this command can never write a file its
- * own loader would refuse. Limits are deliberately absent: the defaults are
- * better left implicit than frozen into a file nobody asked to set.
+ * The answers as the file a run reads. Parsed by the very schema `delivery
+ * run` will parse it with, so this command can never write a file its own
+ * loader would refuse. A blank description is left out rather than written
+ * empty, which the loader would refuse. Limits are deliberately absent: the
+ * defaults are better left implicit than frozen into a file nobody asked to set.
  */
-export function configFrom({ check, closer, task }: { check: string; closer: string; task: string }): DeliveryConfig {
+export function configFrom({
+  description,
+  check,
+  closer,
+  task,
+}: {
+  description: string;
+  check: string;
+  closer: string;
+  task: string;
+}): DeliveryConfig {
   return DeliveryConfig.parse({
+    ...(description.trim() === "" ? {} : { domain: description }),
     task: { intent: task },
     gate: { type: "command", command: check, parseMode: "exitcode" },
     closer: { type: closer },
@@ -146,9 +169,10 @@ export function configFrom({ check, closer, task }: { check: string; closer: str
 
 /**
  * `delivery init`: set a project up by answering a few questions instead of
- * writing the file by hand. It asks what checks the agent's work, what happens
- * to work that passes, and what you'd like done first, and writes those three
- * answers where the next `delivery run` will find them with no flags at all.
+ * writing the file by hand. It asks what the project is, what checks the
+ * agent's work, what happens to work that passes, and what you'd like done
+ * first, and writes those answers where the next `delivery run` will find them
+ * with no flags at all.
  */
 export async function initCommand(options: InitOptions, ctx: CommandContext, ask: Ask): Promise<ExitCode> {
   // Before the repository is even looked for: needing somebody to answer is
@@ -160,18 +184,19 @@ export async function initCommand(options: InitOptions, ctx: CommandContext, ask
   const file = CONFIG_FILE(repoPath);
 
   // Asked first, not last: someone who is keeping the file they have should not
-  // have to answer three questions to find that out.
+  // have to answer every question to find that out.
   const existing = existingConfig(repoPath);
   if (existing !== undefined && !(await ask.confirm(overwriteQuestion(existing)))) {
     ctx.writeLine(LEFT_ALONE(existing));
     return EXIT.ok;
   }
 
+  const description = await ask.text(DESCRIPTION_QUESTION);
   const check = await ask.text(checkQuestion(await inferredCheck(repoPath)));
   const closer = await ask.choose(CLOSER_QUESTION);
   const task = await ask.text(TASK_QUESTION);
 
-  await writeFile(file, `${JSON.stringify(configFrom({ check, closer, task }), null, 2)}\n`);
+  await writeFile(file, `${JSON.stringify(configFrom({ description, check, closer, task }), null, 2)}\n`);
   ctx.writeLine(WRITTEN(file));
   return EXIT.ok;
 }

@@ -74,16 +74,16 @@ describe("UAT: set up a project for the harness by answering questions instead o
 
       // Step 1 & 2: type `delivery init`, accept the suggested check, choose
       // "commit to a branch" and type a first task.
-      const { ask, asked } = scriptedAsk({ texts: [undefined, TASK] });
+      const { ask, asked } = scriptedAsk({ texts: [undefined, undefined, TASK] });
       const { ctx, lines } = context(repo);
       expect(await initCommand({}, ctx, ask)).toBe(EXIT.ok);
 
-      // Three short questions in plain English: the check (offering the
-      // project's own `npm test`), the three closing actions with their
-      // one-line descriptions, defaulting to committing to a branch, and the
-      // first task.
-      expect(asked).toHaveLength(3);
-      const [checkAsked, closerAsked, taskAsked] = asked as [TextQuestion, ChoiceQuestion, TextQuestion];
+      // Plain-English questions: what the project is (skipped here), the check
+      // (offering the project's own `npm test`), the three closing actions with
+      // their one-line descriptions, defaulting to committing to a branch, then
+      // the first task and "anything else", answered with Enter.
+      expect(asked).toHaveLength(4);
+      const [, checkAsked, closerAsked, taskAsked] = asked as [TextQuestion, TextQuestion, ChoiceQuestion, TextQuestion];
       expect(checkAsked.default).toBe("npm test");
       expect(closerAsked).toEqual(CLOSER_QUESTION);
       expect(closerAsked.choices.map((c) => c.value).sort()).toEqual([...BUILT_IN_CLOSERS].sort());
@@ -151,12 +151,12 @@ describe("AC: it asks for a first task in plain language and writes a config fil
     git(repo, ["init", "-q", "-b", "main"]);
     writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "scratch", private: true }));
 
-    const { ask, asked } = scriptedAsk({ texts: ["npm run check", TASK], choice: "merge-back" });
+    const { ask, asked } = scriptedAsk({ texts: [undefined, "npm run check", TASK], choice: "merge-back" });
     const { ctx } = context(repo);
     expect(await initCommand({}, ctx, ask)).toBe(EXIT.ok);
 
     // No test script to infer, so the check question offers no default.
-    const [checkAsked] = asked as [TextQuestion];
+    const [, checkAsked] = asked as [TextQuestion, TextQuestion];
     expect(checkAsked.default).toBeUndefined();
 
     const config = await loadConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {} });
