@@ -6,6 +6,7 @@ roadmap_item: 9
 
 # Project Configuration — Design
 
+> **Status:** ✅ Complete — 2026-09-23 — all 9 slices delivered
 > Roadmap: `docs/superpowers/specs/2026-09-04-delivery-harness-roadmap.md`, Item 9.
 > Extends: `2026-09-14-cli-and-configuration-design.md` (Item 8: the `delivery` CLI, `delivery.config.json`, run lifecycle, error model, `describeProblem`).
 > Builds on: `2026-09-09-agent-invocation-primitive-design.md` (Item 4: `RoleConfig`, `assemblePrompt`, `CaseFileHeader.domainPrompt`, tool authority), `2026-09-04-gate-interface-design.md` (`GateRef`), `2026-09-11-close-interface-design.md` (`CloserRef`), `2026-09-13-agent-mock-design.md` (`src/testing.ts`, vendored `claude-mock`, guide-as-test).
