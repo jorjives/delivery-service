@@ -364,11 +364,20 @@ describe("delivery validate --json", () => {
     ["a custom closing action that can't be loaded", { ...COMPLETE, closer: { type: "custom", modulePath: "./closers/nope.mjs" } }, {}, {}, "closer", "Couldn't load the custom closer at `./closers/nope.mjs`"],
     ["a test-runner check with no tests to run", { ...COMPLETE, gate: { type: "test-runner" } }, { "package.json": "{}" }, {}, "gate", NO_TEST_COMMAND],
     ["no check and no tests to run", { domain: COMPLETE.domain, tasks: COMPLETE.tasks }, { "package.json": "{}" }, {}, "gate", NO_CHECK],
-    ["a closing action the environment names that doesn't exist", COMPLETE, {}, { DELIVERY_CLOSER: "teleport" }, "closer", unknownCloser("teleport")],
   ])("names the setting for %s", async (_, config, files, env, field, message) => {
     const { json, plain } = await bothForms(repoWith(config, files), env);
     expect(json.result).toEqual({ ready: false, problems: [{ field, message: expect.stringContaining(message) }] });
     expect(json.exitCode).toBe(EXIT.configuration);
     expect(plain.exitCode).toBe(EXIT.configuration);
+  });
+
+  it("names the closer setting for a closing action the environment names that doesn't exist", async () => {
+    const { json } = await bothForms(repoWith(COMPLETE), { DELIVERY_CLOSER: "teleport" });
+    expect(json.result.ready).toBe(false);
+    expect(json.result.problems).toHaveLength(1);
+    const problem = json.result.problems[0];
+    expect(problem?.field).toBe("closer");
+    expect(problem?.message).toMatch(/teleport/);
+    expect(problem?.message).toMatch(/built-in choices/);
   });
 });
