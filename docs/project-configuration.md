@@ -77,10 +77,29 @@ that say exactly the same thing, are refused before anything runs.
 ## 4. Choose how the work is checked, and what happens to it
 
 `gate` is the check that decides whether the agent's work is good: the agent's own word
-is never taken as proof. The example uses the project's own tests. `"command": "npm test"`
-runs them, and `"parseMode": "exitcode"` means the check passes when the command
-succeeds. Any command that succeeds when the work is good and fails when it is not will
-do.
+is never taken as proof. The simplest way to choose one is by name:
+
+```json
+{ "gate": { "type": "test-runner" } }
+```
+
+That runs your project's own tests with `npm test` and passes when they succeed. There are
+four ready-made checks, and each takes only the detail it needs:
+
+- `test-runner` runs your tests. Add `"command"` if they are not run with `npm test`.
+- `file-exists` checks that a file is there: `{ "type": "file-exists", "path": "CHANGES.md" }`.
+- `command-succeeds` checks that a command succeeds: `{ "type": "command-succeeds", "command": "npm run lint" }`.
+- `schema-validates` checks that a JSON file has the shape another file describes:
+  `{ "type": "schema-validates", "file": "data.json", "schema": "data.schema.json" }`. It
+  fetches its checker the first time it runs, so that run needs the network.
+
+`delivery validate` says in plain words what the check you chose does, and if you misspell a
+name it lists the four.
+
+The example writes its check out in full instead, which does exactly the same as
+`test-runner`: `"command": "npm test"` runs the tests, and `"parseMode": "exitcode"` means the
+check passes when the command succeeds. Any command that succeeds when the work is good and
+fails when it is not will do.
 
 `closer` is what happens to work that passes the check. The example's `commit-to-branch`
 commits it to a new branch and leaves `main` alone, so you look at it before you merge

@@ -14,6 +14,7 @@ import { TEST_MOCK_SCRIPT } from "../src/cli/agent-session.js";
 import { readConfig, type DeliveryConfig } from "../src/cli/config.js";
 import { EXIT } from "../src/cli/failures.js";
 import { allRuns } from "../src/cli/runs.js";
+import { GatePreset, PRESET_NAMES, presetGate } from "../src/cli/gate-presets.js";
 import { adds, documented, git, outputBlock, REPO_ROOT, runDelivery, sectionOf, useScratch } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/project-configuration.md"), "utf-8");
@@ -128,6 +129,19 @@ describe("the project-configuration guide", () => {
     expect(sectionOf(guide, STEP.tools, STEP.validate)).toContain("`roles`");
   });
 
+  it("shows a ready-made check as the simplest way to choose one, naming all four", () => {
+    const check = sectionOf(guide, STEP.check, STEP.tools);
+    const shown = jsonBlock(check).gate;
+    expect(GatePreset.safeParse(shown).success).toBe(true);
+    expect(check.indexOf("```json")).toBeLessThan(check.indexOf("parseMode"));
+    for (const name of PRESET_NAMES) expect(check).toContain(`\`${name}\``);
+  });
+
+  it("says truly that its ready-made check does exactly what the example's written-out one does", async () => {
+    const shown = GatePreset.parse(jsonBlock(sectionOf(guide, STEP.check, STEP.tools)).gate);
+    expect(await presetGate(shown, EXAMPLE)).toEqual(config.gate);
+  });
+
   it("shows what `delivery validate` prints, exactly", () => {
     expect(validate.stderr).toBe("");
     expect(validate.status).toBe(EXIT.ok);
@@ -166,8 +180,8 @@ describe("the project-configuration guide", () => {
   });
 
   it("walks through the setup in plain words, and sends extenders to the gate, closer and role guides", () => {
-    // Fenced blocks are the command's own output and the file's own keys; the prose is the guide's.
-    const prose = sectionOf(guide, "# Setting up a project", STEP.further).replace(/```[\s\S]*?```/g, "").toLowerCase();
+    // Fenced blocks and inline code are the command's own output and the file's own keys and names; the prose is the guide's.
+    const prose = sectionOf(guide, "# Setting up a project", STEP.further).replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "").toLowerCase();
     for (const word of ["worktree", "envelope", "surface", "case file", "role config", "schema"]) expect(prose).not.toContain(word);
     const further = sectionOf(guide, STEP.further);
     for (const doc of ["writing-a-gate.md", "writing-a-closer.md", "configuring-a-role.md"]) expect(further).toContain(doc);
