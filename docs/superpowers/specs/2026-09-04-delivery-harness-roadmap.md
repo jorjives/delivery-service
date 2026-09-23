@@ -358,6 +358,8 @@ does not know what a "worktree" or "structured output envelope" is.
 
 ## Item 9: Project Configuration
 
+**Status:** ✅ Complete — 2026-09-23 — spec: `docs/superpowers/specs/2026-09-17-project-configuration-design.md`
+
 **Delivers:** The management surface through which a project owner onboards
 their project to the harness: defining what the gate checks, how close actions
 work, what tasks look like, and what context each agent role receives.
