@@ -1,9 +1,9 @@
 import { realpathSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import type { CloserRef, GateRef, RoleOverrides } from "../schema.js";
-import { CONFIG_BASENAME, findConfig, readConfig, type DeliveryConfig } from "./config.js";
+import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
-import { EXIT, Refusal, type ExitCode } from "./failures.js";
+import { EXIT, Refusal, renderFailure, type ExitCode } from "./failures.js";
 import { presetPhrase } from "./gate-presets.js";
 import { findRepository } from "./project.js";
 import { checkCustomModules, resolveProject, type ProjectSettings } from "./settings.js";
@@ -103,32 +103,67 @@ export async function locateConfig(options: ValidateOptions, ctx: CommandContext
   return { repoPath, file };
 }
 
-/**
- * Everything `delivery run` would read before setting anything up, and
- * nothing more: the file's settings, the check and closing action a run would
- * use (no flags, the environment a run here would also see), and any module
- * of the project's own, loaded but never run. The first problem is thrown and
- * rendered as every command's are: one plain sentence, the configuration exit
- * code. Shared by `validate` and `preview`, so both refuse in the same words.
- */
 export async function readProject(
   file: string,
   repoPath: string,
   env: NodeJS.ProcessEnv,
 ): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
   const config = await readConfig(file);
+  return { config, project: await settleProject(config, repoPath, env) };
+}
+
+/** The check and closing action a run would use (no flags, this environment), with any module of the project's own loaded but never run. */
+async function settleProject(config: DeliveryConfig, repoPath: string, env: NodeJS.ProcessEnv): Promise<ProjectSettings> {
   const project = await resolveProject({}, { env, repoPath, config });
   await checkCustomModules(project.gateRef, project.closerRef, repoPath);
-  return { config, project };
+  return project;
+}
+
+/** What `validate --json` prints: whether a run could start, and everything in the way. */
+export interface Validation {
+  ready: boolean;
+  problems: ConfigProblem[];
+}
+
+/**
+ * Every problem `validate` finds, for a script: every problem with the file's
+ * shape together, then what resolving it the way a run would turns up. Whatever
+ * the plain form would refuse with the configuration exit code is a problem
+ * here, in the same words; anything else is not a problem with the
+ * configuration, so it is thrown and rendered as every command's failures are,
+ * which keeps the exit codes of the two forms the same.
+ */
+export async function findProblems(options: ValidateOptions, ctx: CommandContext): Promise<ConfigProblem[]> {
+  try {
+    const { repoPath, file } = await locateConfig(options, ctx);
+    const checked = await checkConfig(file);
+    if (!checked.ok) return checked.problems;
+    // ponytail: past the shape, only the first failure (the check or closing action a run would use, or a module
+    // of the project's own) is listed; check the gate and closer modules separately if CI needs both at once.
+    await settleProject(checked.config, repoPath, ctx.env);
+    return [];
+  } catch (err) {
+    const { message, exitCode } = renderFailure(err);
+    if (exitCode !== EXIT.configuration) throw err;
+    return [{ field: null, message }];
+  }
 }
 
 /**
  * `delivery validate`: check the project's configuration the way `delivery
  * run` would before it set anything up, and stop there. Everything it does is
  * a read, so it needs no agent, no sign-in and no network, and is safe beside
- * a run in progress.
+ * a run in progress. With `--json` it prints one document instead, listing every
+ * problem it finds rather than the first, with the same exit code.
  */
 export async function validateCommand(options: ValidateOptions, ctx: CommandContext): Promise<ExitCode> {
+  if (ctx.json) {
+    const problems = await findProblems(options, ctx);
+    const validation: Validation = { ready: problems.length === 0, problems };
+    ctx.writeLine(JSON.stringify(validation, null, 2));
+    return validation.ready ? EXIT.ok : EXIT.configuration;
+  }
+
   const { repoPath, file } = await locateConfig(options, ctx);
   // Both sides real: discovery answers with real paths and a named file may not be one.
   ctx.writeLine(`Checking ${relative(realpathSync(ctx.cwd), realpathSync(file))}…`);

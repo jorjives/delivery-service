@@ -133,7 +133,7 @@ Ready to run.
 
 Each tick is one thing it read. If something is wrong it prints the one thing to fix
 instead, and nothing starts. It needs no sign-in and no network and changes nothing, so
-run it as often as you like, and in CI on every push.
+run it as often as you like, and in CI on every push. In CI, `delivery validate --json` lists every problem at once, each with the setting it concerns, as one JSON document a script can read.
 
 ## 7. See what the agent will be told
 

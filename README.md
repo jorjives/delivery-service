@@ -66,7 +66,7 @@ The exit codes are the same ones in the table above, so a script reads the outco
 code and the detail from `delivery status --json`. Everything that is not a step, such as which
 run started, any warning and the closing sentence, goes to standard error, so standard output is
 only ever JSON.
-`--json` works on `delivery resume` and `delivery status` too. Without it the output is
+`--json` works on `delivery resume`, `delivery status` and `delivery validate` too. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
 
 `delivery --help` and `delivery run --help` list the options; `--no-color`, or setting
@@ -288,6 +288,26 @@ If something is wrong it prints the one thing to fix instead, such as an empty t
 tasks that say the same thing, and exits 2. It never starts an agent, needs no sign-in and no
 network, and changes nothing on disk, so it is safe in CI on every push and safe while a run
 is going. `--config <path>` and `--repo <path>` mean what they mean on `delivery run`.
+
+For CI, add `--json` to get every problem at once instead of the first, as one JSON document:
+
+```bash
+delivery validate --json
+```
+
+```json
+{
+  "ready": false,
+  "problems": [
+    { "field": "tasks.1", "message": "I can't use …/delivery.config.json: `tasks` item 2 is empty. Add a sentence describing what you want done, or remove it." },
+    { "field": "domain", "message": "I can't use …/delivery.config.json: `domain` is empty. Describe your project in a sentence or two, or remove it." }
+  ]
+}
+```
+
+Each problem names the setting it concerns (list positions count from 0, and `null` means the
+file as a whole) and says it in the same words as the plain form. A clean file gives
+`{ "ready": true, "problems": [] }`. The exit codes are the same as without `--json`.
 
 ## See what the agent will be told
 

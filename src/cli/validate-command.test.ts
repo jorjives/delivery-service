@@ -303,3 +303,58 @@ describe("delivery validate changes nothing", () => {
     expect(before.state).toEqual([]);
   });
 });
+
+/** What `delivery validate --json` printed, parsed, beside what the plain form printed for the same project. */
+async function bothForms(repo: string, env: Record<string, string> = {}) {
+  const json = await delivery(["validate", "--json"], { cwd: repo, env });
+  const plain = await delivery(["validate"], { cwd: repo, env });
+  return { json: { ...json, result: JSON.parse(json.stdout) as unknown }, plain };
+}
+
+describe("delivery validate --json", () => {
+  it("says a clean configuration is ready with no problems, as the only thing on standard output", async () => {
+    const { json, plain } = await bothForms(repoWith(COMPLETE));
+    expect(json.result).toEqual({ ready: true, problems: [] });
+    expect(json.stderr).toBe("");
+    expect(json.exitCode).toBe(EXIT.ok);
+    expect(plain.exitCode).toBe(EXIT.ok);
+  });
+
+  it("lists every problem at once, each naming its field, the first in exactly the plain form's words", async () => {
+    const repo = repoWith({ ...COMPLETE, domain: "", tasks: ["add a function that says hello", ""] });
+    const { json, plain } = await bothForms(repo);
+    expect(json.result).toEqual({
+      ready: false,
+      problems: [
+        { field: "tasks.1", message: expect.stringContaining("`tasks` item 2 is empty. Add a sentence describing what you want done, or remove it.") },
+        { field: "domain", message: expect.stringContaining("`domain` is empty. Describe your project in a sentence or two, or remove it.") },
+      ],
+    });
+    const { problems } = json.result as { problems: { message: string }[] };
+    expect(plain.stderr).toBe(`${problems[0]?.message}\n`);
+    expect(json.stderr).toBe("");
+    expect(json.exitCode).toBe(EXIT.configuration);
+    expect(plain.exitCode).toBe(EXIT.configuration);
+  });
+
+  it("uses the plain form's words for a problem found after the shape is right", async () => {
+    const repo = repoWith({ ...COMPLETE, gate: { type: "custom", modulePath: "./gates/nope.mjs" } });
+    const { json, plain } = await bothForms(repo);
+    const { problems } = json.result as { problems: { message: string }[] };
+    expect(problems).toHaveLength(1);
+    expect(plain.stderr).toBe(`${problems[0]?.message}\n`);
+    expect(json.exitCode).toBe(plain.exitCode);
+  });
+
+  it.each<[string, string, string]>([
+    ["no config file at all", "", NO_CONFIG],
+    ["a config file that is not valid JSON", "{ nope", "isn't valid JSON"],
+  ])("lists %s as a problem with no field, with the configuration exit code", async (_, text, message) => {
+    const repo = repoWith(undefined, text === "" ? {} : { "delivery.config.json": text });
+    const { json, plain } = await bothForms(repo);
+    expect(json.result).toEqual({ ready: false, problems: [{ field: null, message: expect.stringContaining(message) }] });
+    expect(json.stderr).toBe("");
+    expect(json.exitCode).toBe(EXIT.configuration);
+    expect(plain.exitCode).toBe(EXIT.configuration);
+  });
+});
