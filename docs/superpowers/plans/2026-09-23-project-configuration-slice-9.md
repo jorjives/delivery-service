@@ -20,7 +20,7 @@
 - **Spec, DX:** `validate` needs no agent, no credential and no network, with or without `--json`. The existing `vi.mock("./agent-session.js")` guard in `src/cli/validate-command.test.ts` covers the new tests too.
 - **Unchanged behaviour (AC):** without `--json`, `delivery validate` prints exactly what it prints today: the first problem, one line, standard error, exit 2; or the ticked lines and "Ready to run.", exit 0. Every existing test in `src/cli/validate-command.test.ts` and `src/cli/config.test.ts` must still pass unmodified in its assertions.
 - **JSON shape (decided here):** `{ "ready": boolean, "problems": Array<{ "field": string | null, "message": string }> }`.
-  - `field` is the setting's path as written in the file, dot-joined, array positions counted from 0 as a script indexes them (`"domain"`, `"tasks.1"`, `"roles.worker.systemPromptFragment"`, `"gate.type"`). An unknown key's field is the key itself at its place (`"foo"`, `"roles.triage"`, `"gate.extra"`). `null` means the problem is with the file as a whole or with no single setting (no file found, not valid JSON, not an object, not a git repository).
+  - `field` is the setting's path as written in the file, dot-joined, array positions counted from 0 as a script indexes them (`"domain"`, `"tasks.1"`, `"roles.worker.systemPromptFragment"`, `"gate.type"`). An unknown key's field is the key itself at its place (`"foo"`, `"roles.triage"`, `"gate.extra"`). `null` means the problem is with the file as a whole or with no single setting (no file found, not valid JSON, not an object, not a git repository). A problem found after the shape is right names the setting it concerns (`"gate"`, `"closer"`) even when the value came from a default or the environment rather than the file (no `gate` and no test script; `DELIVERY_CLOSER=teleport`), because that is the setting that would fix it.
   - `message` is byte-for-byte what the plain form prints for that problem when it is the first one.
   - Problems are listed in the order zod reports them (schema key order), so the list is deterministic.
 - **Exit codes (AC):** `ready: true` → `EXIT.ok` (0); `ready: false` → `EXIT.configuration` (2). Only errors that `renderFailure` renders with `EXIT.configuration` become problems; any other error is re-thrown and rendered by `runCli` on standard error exactly as without `--json`.
@@ -41,7 +41,7 @@
 
 ---
 
-### Task 1: Describe every problem with a config file's shape, each with the setting it concerns
+### Task 1: Describe every problem with a config file's shape, each with the setting it concerns ✅ DONE (deliver-slice)
 
 Refactor-plus-behaviour inside `src/cli/config.ts`. `describeProblem` (first issue only) becomes `configProblems` (every issue), and `readConfig` is rebuilt on a new non-throwing `checkConfig`. The plain form's behaviour is unchanged because `readConfig` throws the first problem's message, which is exactly what `describeProblem` returned.
 
@@ -191,12 +191,14 @@ function describeIssue(file: string, issue: Issue, raw: unknown): string {
  */
 export function configProblems(file: string, error: z.ZodError, raw: unknown): ConfigProblem[] {
   return error.issues
-    .flatMap((issue) => (issue.code === "unrecognized_keys" ? issue.keys.map((key) => ({ ...issue, keys: [key] })) : [issue]))
+    .flatMap((issue): Issue[] => (issue.code === "unrecognized_keys" ? issue.keys.map((key) => ({ ...issue, keys: [key] })) : [issue]))
     .map((issue) => ({ field: fieldOf(issue), message: describeIssue(file, issue, raw) }));
 }
 ```
 
-Delete the old `describeProblem` export entirely (the `const issue = error.issues[0]; if (!issue) return ...` lines go with it). `describeIssue` names `issue.keys[0]` exactly as `describeProblem` did, and zod's first unknown key stays first, so the plain form's first message is unchanged.
+(The `: Issue[]` return annotation on the `flatMap` callback is needed: without it TypeScript cannot unify the two array types the ternary returns.)
+
+Delete the old `describeProblem` export entirely (the `const issue = error.issues[0]; if (!issue) return ...` lines go with it). Also reword `presetProblem`'s doc comment, which says "The first issue is enough, as everywhere else": it now describes one issue of possibly several, e.g. "…said as the one detail to fix. zod reports a missing detail before an extra one." `describeIssue` names `issue.keys[0]` exactly as `describeProblem` did, and zod's first unknown key stays first, so the plain form's first message is unchanged.
 
 (b) Replace `readConfig` with `checkConfig` plus a `readConfig` built on it:
 
@@ -248,7 +250,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: `delivery validate --json` prints one result listing every problem
+### Task 2: `delivery validate --json` prints one result listing every problem ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/validate-command.ts` (`readProject`, `validateCommand`; new `settleProject`, `findProblems`)
@@ -405,6 +407,8 @@ Update `validateCommand`'s doc comment to add: "With `--json` it prints one docu
 
 Run: `npx vitest run src/cli/validate-command.test.ts src/cli/preview-command.test.ts`
 Expected: PASS (preview still uses `readProject`).
+Run: `npx tsc --noEmit && npx eslint src/cli/validate-command.ts src/cli/validate-command.test.ts`
+Expected: no output.
 
 - [ ] **Step 5: Update the help text and the docs this changes**
 
@@ -475,7 +479,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Name the setting a problem found after the shape is right concerns
+### Task 3: Name the setting a problem found after the shape is right concerns ✅ DONE (deliver-slice)
 
 After Task 2 a problem from resolving the check or closing action, or loading a module, is listed with `field: null`. This task makes it name `gate` or `closer`.
 
