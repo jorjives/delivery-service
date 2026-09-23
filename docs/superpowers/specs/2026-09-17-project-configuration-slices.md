@@ -274,6 +274,7 @@ is not sliced.
 ## Slice 7: Let the Setup Wizard Ask About Your Project and Tasks
 
 **Status:** ✅ Complete — 2026-09-23 — `d583e21`
+**Tests:** ✅ Recorded — 2026-09-23 — `f6ccf21` — cli — 1 UAT + 4 AC, 0 skipped
 **Delivers:** A project owner running `delivery init` is also asked to describe their project and to list their first few tasks, and gets a configuration file with those filled in.
 
 **Build note:** Extend the existing wizard and its existing prompt library; do not add another.
