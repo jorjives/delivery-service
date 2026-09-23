@@ -348,6 +348,7 @@ is not sliced.
 ## Slice 9: Get Every Configuration Problem at Once, in a Form Scripts Can Read
 
 **Status:** ✅ Complete — 2026-09-23 — `2c51dac`
+**Tests:** ✅ Recorded — 2026-09-23 — `98e6efa` — cli — 1 UAT + 3 AC, 0 skipped
 **Delivers:** Someone wiring the harness into CI runs `delivery validate --json` and receives every problem in the configuration in one machine-readable result, rather than one problem per attempt.
 
 **Build note:** Follow the existing `--json` convention on `run` and `status`. If an editor schema for the configuration file is offered alongside, generate it with the schema library's built-in JSON Schema output, which the estate already uses; add no dependency.
