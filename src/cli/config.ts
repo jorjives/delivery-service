@@ -221,15 +221,26 @@ function presetProblem(file: string, issue: Issue, name: PresetName): string {
   return `I can't use ${file}: the ready-made check \`${name}\` needs \`${detail}\`, ${details[detail]}.`;
 }
 
+/** One problem with a config file, as a script reads it: the setting it concerns, and the sentence a person is shown. */
+export interface ConfigProblem {
+  /** The setting's path as written in the file, dot-joined, array positions from 0; null when the problem is with the file as a whole. */
+  field: string | null;
+  message: string;
+}
+
+/** Where an issue sits in the file: an unknown key is named at its own place, not at the object that holds it. */
+function fieldOf(issue: Issue): string | null {
+  const path = issue.code === "unrecognized_keys" ? [...issue.path, issue.keys[0] ?? ""] : issue.path;
+  return path.length === 0 ? null : path.join(".");
+}
+
 /**
- * One plain-language sentence about the first thing wrong with a config file,
- * naming the key or the value. The first issue is enough: a person fixes one
- * thing and runs again, and a list of schema complaints is the stack trace this
- * command exists to avoid.
+ * One plain-language sentence about one thing wrong with a config file,
+ * naming the key or the value. The plain form shows the first of these and
+ * stops, because a list of schema complaints is the stack trace that command
+ * exists to avoid; `validate --json` lists them all, each in the same words.
  */
-export function describeProblem(file: string, error: z.ZodError, raw: unknown): string {
-  const issue = error.issues[0];
-  if (!issue) return `I can't use ${file}.`;
+function describeIssue(file: string, issue: Issue, raw: unknown): string {
   const where = issue.path.join(".");
 
   if (issue.path[0] === "roles") {
@@ -301,6 +312,17 @@ export function describeProblem(file: string, error: z.ZodError, raw: unknown): 
   return `I can't use ${file}: the setting \`${where}\` ${is}. ${WHAT_IT_TAKES[setting]}`;
 }
 
+/**
+ * Every problem with a config file's shape, in the order they were found, each
+ * said exactly as it would be said alone. zod reports several unknown keys in
+ * one issue; each is its own problem here, so each is named.
+ */
+export function configProblems(file: string, error: z.ZodError, raw: unknown): ConfigProblem[] {
+  return error.issues
+    .flatMap((issue): Issue[] => (issue.code === "unrecognized_keys" ? issue.keys.map((key) => ({ ...issue, keys: [key] })) : [issue]))
+    .map((issue) => ({ field: fieldOf(issue), message: describeIssue(file, issue, raw) }));
+}
+
 export const NO_SUCH_CONFIG = (file: string): string =>
   `I couldn't find the config file \`${file}\`. Check the path, or leave it out and I'll look for a ${CONFIG_BASENAME}.json next to your code.`;
 
@@ -366,14 +388,22 @@ export function findConfig({ startDir, repoPath, flag, env }: ConfigLookup): str
   return file;
 }
 
-/** One config file's settings, or a refusal naming the first thing wrong with it. */
-export async function readConfig(file: string): Promise<DeliveryConfig> {
+/** What a config file holds: its settings, or every problem with its shape. A file that is not valid JSON is still refused outright. */
+export type ConfigCheck = { ok: true; config: DeliveryConfig } | { ok: false; problems: ConfigProblem[] };
+
+export async function checkConfig(file: string): Promise<ConfigCheck> {
   const raw = file.endsWith(".json")
     ? await readJson(file)
     : ((await import(pathToFileURL(file).href)) as { default?: unknown }).default;
   const parsed = DeliveryConfig.safeParse(raw);
-  if (!parsed.success) throw new Refusal(describeProblem(file, parsed.error, raw), EXIT.configuration);
-  return parsed.data;
+  return parsed.success ? { ok: true, config: parsed.data } : { ok: false, problems: configProblems(file, parsed.error, raw) };
+}
+
+/** One config file's settings, or a refusal naming the first thing wrong with it. */
+export async function readConfig(file: string): Promise<DeliveryConfig> {
+  const checked = await checkConfig(file);
+  if (checked.ok) return checked.config;
+  throw new Refusal(checked.problems[0]?.message ?? `I can't use ${file}.`, EXIT.configuration);
 }
 
 /**

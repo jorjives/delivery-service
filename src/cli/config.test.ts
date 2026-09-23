@@ -1,17 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { configCandidates, DeliveryConfig, describeProblem, findConfig, loadConfig, NO_SUCH_CONFIG, structureTask, unknownCloser, unknownGate } from "./config.js";
+import { dirname, join } from "node:path";
+import { checkConfig, configCandidates, configProblems, DeliveryConfig, findConfig, loadConfig, NO_SUCH_CONFIG, structureTask, unknownCloser, unknownGate } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 
 const FILE = "delivery.config.json";
 
-/** The message the command would print for a config file it refuses. */
-function problemFor(raw: unknown): string {
+/** Every problem the command would report for a config file it refuses, in order. */
+function problemsFor(raw: unknown) {
   const parsed = DeliveryConfig.safeParse(raw);
   if (parsed.success) throw new Error(`expected ${JSON.stringify(raw)} to be refused`);
-  return describeProblem(FILE, parsed.error, raw);
+  return configProblems(FILE, parsed.error, raw);
+}
+
+/** The message the command would print for a config file it refuses: the first problem, as the plain form shows it. */
+function problemFor(raw: unknown): string {
+  const [first] = problemsFor(raw);
+  if (first === undefined) throw new Error(`expected a problem for ${JSON.stringify(raw)}`);
+  return first.message;
 }
 
 describe("what a config file may contain", () => {
@@ -553,5 +560,63 @@ describe("which config file a command means", () => {
   it("refuses a named file that isn't there", () => {
     const { repo } = tree();
     expect(() => findConfig({ startDir: repo, repoPath: repo, flag: "missing.json", env: {} })).toThrow(NO_SUCH_CONFIG("missing.json"));
+  });
+});
+
+describe("every problem with a config file's shape, at once", () => {
+  it("lists each problem with the setting it concerns, in the words the plain form uses for it alone", () => {
+    expect(problemsFor({ domain: " ", tasks: ["add a page", ""] })).toEqual([
+      { field: "tasks.1", message: `I can't use ${FILE}: \`tasks\` item 2 is empty. Add a sentence describing what you want done, or remove it.` },
+      { field: "domain", message: `I can't use ${FILE}: \`domain\` is empty. Describe your project in a sentence or two, or remove it.` },
+    ]);
+  });
+
+  it("gives each unknown key its own problem, named at its place", () => {
+    expect(problemsFor({ foo: 1, roles: { triage: {} } })).toEqual([
+      {
+        field: "roles.triage",
+        message: `I can't use ${FILE}: \`roles\` has no role called \`triage\`. Only \`worker\` and \`gateMaintenance\` can be changed here, so remove it to keep the built-in one.`,
+      },
+      {
+        field: "foo",
+        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`roles\`, \`gate\`, \`closer\` and \`budgets\`.`,
+      },
+    ]);
+    expect(problemsFor({ foo: 1, bar: 2 }).map((problem) => problem.field)).toEqual(["foo", "bar"]);
+  });
+
+  it("names no field for a file that is not an object of settings at all", () => {
+    expect(problemsFor("add a page")).toEqual([
+      {
+        field: null,
+        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`roles\`, \`gate\`, \`closer\` and \`budgets\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
+      },
+    ]);
+  });
+
+  it("keeps every problem of a written-out gate at its own path", () => {
+    expect(problemsFor({ gate: { type: "command" } }).map((problem) => problem.field)).toEqual(["gate.command", "gate.parseMode"]);
+  });
+});
+
+describe("checking a config file without refusing it", () => {
+  function fileHolding(config: unknown): string {
+    const file = join(mkdtempSync(join(tmpdir(), "check-config-")), "delivery.config.json");
+    writeFileSync(file, JSON.stringify(config));
+    return file;
+  }
+
+  it("returns the settings of a file with nothing wrong", async () => {
+    expect(await checkConfig(fileHolding({ domain: "A tool." }))).toEqual({ ok: true, config: { domain: "A tool." } });
+  });
+
+  it("returns every problem of a file with several, the first being the one readConfig refuses with", async () => {
+    const file = fileHolding({ domain: "", tasks: ["add a page", ""] });
+    const checked = await checkConfig(file);
+    expect(checked.ok).toBe(false);
+    if (checked.ok) return;
+    expect(checked.problems.map((problem) => problem.field)).toEqual(["tasks.1", "domain"]);
+    const refusal = await refusalOf(loadConfig({ startDir: dirname(file), repoPath: dirname(file), flag: file, env: {} }));
+    expect(refusal.message).toBe(checked.problems[0]?.message);
   });
 });
