@@ -154,7 +154,6 @@ describe("a run is told what the project's roles say", () => {
       expect(run.exitCode).toBe(EXIT.ok);
       expect(sessionsSent(capture).map((session) => session.systemPrompt)).toEqual([OPS_RULE]);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -176,7 +175,6 @@ describe("a run is told what the project's roles say", () => {
       expect(resumed.exitCode).toBe(EXIT.ok);
       expect(sessionsSent(capture).map((session) => session.systemPrompt)).toEqual([OPS_RULE]);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -189,6 +187,5 @@ describe("a run is told what the project's roles say", () => {
       expect(run.exitCode).toBe(EXIT.ok);
       expect(sessionsSent(capture).map((session) => session.systemPrompt)).toEqual([workerRoleConfig.systemPromptFragment]);
     },
-    RUN_TIMEOUT,
   );
 });

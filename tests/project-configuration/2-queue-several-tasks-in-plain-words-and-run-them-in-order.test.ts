@@ -197,7 +197,7 @@ describe("AC: an explicit task flag still runs exactly one ad-hoc task and ignor
     expect(run.status).toBe(EXIT.ok);
     expect(run.stdout).not.toMatch(/Task \d+ of \d+/);
     expect(run.stdout).toMatch(/^Starting run \S+: add a function that counts to ten/m);
-  }, RUN_TIMEOUT);
+  });
 });
 
 describe("AC: an escalated task stops the list, names the task, and running again stops at the same task", () => {
@@ -242,7 +242,7 @@ describe("AC: a configuration with both a single task and a task list is refused
     expect(run.stderr).toContain(
       "this project has both `task` and `tasks` set. Use `tasks` for a list of things to do, or `task` for a single one-off, not both.",
     );
-  }, RUN_TIMEOUT);
+  });
 
   // SKIPPED AC: the empty-list, empty-entry and duplicate-entry refusals share the same
   // load-time refinement as the both-task-and-tasks case above, and their exact wording is
@@ -281,7 +281,7 @@ describe("AC: `delivery status` for a run answering a queue entry says which tas
     const status = runDelivery(["status", runId1], { cwd: repo });
     expect(status.status).toBe(EXIT.ok);
     expect(status.stdout).toContain("It is task 1 of 2 on your list.");
-  }, RUN_TIMEOUT);
+  });
 });
 
 // SKIPPED AC: "Inserting a new entry anywhere runs it in its place and does not disturb the

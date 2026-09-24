@@ -20,8 +20,6 @@ import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { EXIT } from "../../src/cli/failures.js";
 import { REPO_ROOT, runDelivery, git } from "../helpers.js";
 
-const RUN_TIMEOUT = 60_000;
-
 async function scriptFile(script: MockScript): Promise<string> {
   const path = join(mkdtempSync(join(tmpdir(), "uat-slice-4-script-")), "mock.json");
   await writeMockScript(path, script);
@@ -100,7 +98,6 @@ describe("UAT: see what happened to an escalated run after the fact", () => {
       expect(whereToLook).toBeGreaterThan(-1);
       expect(stdout).toContain(`The branch surface/${runId} was kept.`);
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -120,7 +117,7 @@ describe("AC: delivery status <run-id> reads a run without changing it", () => {
 
     expect(readFileSync(caseFile, "utf-8")).toBe(before);
     expect(first.stdout).toBe(second.stdout);
-  }, RUN_TIMEOUT);
+  });
 });
 
 describe("AC: a closed run's status names the outcome sentence, when it finished and the branch", () => {
@@ -177,7 +174,6 @@ describe("AC: an unfinished run's status says in plain language what resuming it
       expect(stdout).toContain("This run hasn't finished. Picking it up will carry on with");
       expect(stdout).toContain(`To finish it: delivery resume ${runId}`);
     },
-    RUN_TIMEOUT,
   );
 });
 

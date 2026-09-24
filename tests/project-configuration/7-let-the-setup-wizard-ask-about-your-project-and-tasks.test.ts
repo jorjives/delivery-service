@@ -24,7 +24,6 @@ import { CONFIG_FILE, DESCRIPTION_QUESTION, LEFT_ALONE, NOTHING_TO_DO, WRITTEN, 
 import { READY } from "../../src/cli/validate-command.js";
 import { REPO_ROOT, git, runDelivery } from "../helpers.js";
 
-const RUN_TIMEOUT = 60_000;
 const DESCRIPTION = "A small tool that greets people by name, in French.";
 const TASK_1 = "Add a function that greets a person by name, with a test.";
 const TASK_2 = "Write a README section explaining how to run the tests.";
@@ -100,7 +99,6 @@ describe("UAT: set up a whole small project by answering questions", () => {
       expect(run.stdout).toContain("Task 1 of 2");
       expect(run.stdout).toMatch(/branch surface\/\S+/);
     },
-    RUN_TIMEOUT,
   );
 });
 

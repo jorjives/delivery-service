@@ -21,7 +21,6 @@ import { REPO_ROOT, runDelivery, git } from "../helpers.js";
 
 const TASK = "add a function that says hello to a name, with a test";
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
-const RUN_TIMEOUT = 60_000;
 
 async function scriptFile(script: MockScript): Promise<string> {
   const path = join(mkdtempSync(join(tmpdir(), "uat-slice-1-script-")), "mock.json");
@@ -88,7 +87,6 @@ describe("UAT: run a task from the command line with nothing configured", () => 
       expect(git(repo, ["show", `${branch}:hello.js`])).toContain("hello");
       expect(git(repo, ["rev-parse", "main"])).toBe(mainBefore);
     },
-    RUN_TIMEOUT,
   );
 
   it("from a folder that is not a git repository, explains what's missing with no stack trace", () => {
@@ -121,7 +119,6 @@ describe("AC: while running, the command prints one plain-language line per step
       ]);
       expect(stdout).not.toMatch(/\bPROVISIONING\b|\bGATING\b|\bCLOSED\b|\bAGENT_ACTIVE\b/);
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -141,7 +138,6 @@ describe("AC: an escalated run leads with the plain-language decision, exiting e
       expect(decision).toBeGreaterThan(stdout.indexOf("- stopped: this needs a person"));
       expect(stdout.indexOf("the task asks me to delete files I was not given")).toBeGreaterThan(decision);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -159,7 +155,6 @@ describe("AC: an escalated run leads with the plain-language decision, exiting e
       expect(status).toBe(EXIT.aborted);
       expect(stdout).toContain("The run stopped: I couldn't set up a working copy of the repository. Check it has at least one commit");
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -221,7 +216,6 @@ describe("AC: uncommitted changes produce a plain-language note, and the run pro
       expect(status).toBe(EXIT.ok);
       expect(git(repo, ["status", "--porcelain"])).toBe(statusBefore);
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -242,7 +236,6 @@ describe("AC: starting a run changes nothing the user's git status reports", () 
       // Only the sample project's own files plus .delivery and .git sit at the repository root.
       expect(readdirSync(repo).sort()).toEqual([".delivery", ".git", "README.md", "add.js", "add.test.js", "package.json"]);
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -263,7 +256,6 @@ describe("AC: every known harness error reaches the terminal as its plain-langua
       expect(stderr).toContain(UNEXPECTED_FOOTER);
       expect(stderr).not.toContain("    at ");
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -277,7 +269,7 @@ describe("AC: colour is never the only carrier of meaning, and is off when NO_CO
     expect(status).toBe(EXIT.ok);
     expect(stdout).not.toContain("[");
     expect(stdout).toContain("Done: the change for");
-  }, RUN_TIMEOUT);
+  });
 });
 
 describe("AC: delivery --help and delivery run --help describe the command; delivery --version prints the package version", () => {

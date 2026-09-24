@@ -40,7 +40,6 @@ import { DEFAULT_CLOSER, resolveProject } from "../../src/cli/settings.js";
 import { queueTasks } from "../../src/cli/queue.js";
 import { REPO_ROOT, runDelivery, git } from "../helpers.js";
 
-const RUN_TIMEOUT = 60_000;
 const TASK = "add a function that says hello to a name, with a test";
 
 async function scriptFile(script: MockScript): Promise<string> {
@@ -116,7 +115,6 @@ describe("UAT: set up a project for the harness by answering questions instead o
       expect(run.status).toBe(EXIT.ok);
       expect(run.stdout).toMatch(/branch surface\/\S+/);
     },
-    RUN_TIMEOUT,
   );
 });
 

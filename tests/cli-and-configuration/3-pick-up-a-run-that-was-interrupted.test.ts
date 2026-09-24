@@ -163,7 +163,6 @@ describe("AC: delivery resume finishes the interrupted run without ever starting
       expect(resumed.stdout).toMatch(/^Resuming run \S+: add a function$/m);
       expect(resumed.stdout).not.toContain("Starting run");
     },
-    RUN_TIMEOUT,
   );
 
   it("--last picks the most recently touched of several unfinished runs, without asking", async () => {
@@ -188,7 +187,7 @@ describe("AC: delivery resume finishes the interrupted run without ever starting
     });
     expect(resumed.status).toBe(EXIT.ok);
     expect(resumed.stdout).toMatch(/^Resuming run \S+: add a newer function$/m);
-  }, RUN_TIMEOUT);
+  });
 });
 
 describe("AC: a resumed run keeps the settings it started with", () => {
@@ -209,7 +208,7 @@ describe("AC: a resumed run keeps the settings it started with", () => {
     expect(resumed.status).toBe(EXIT.ok);
     expect(resumed.stdout).toContain("Note: a run keeps the settings it started with, so --closer was ignored.");
     expect(resumed.stdout).toContain("is committed on branch surface/"); // pinned to commit-to-branch, not merge-back's "merged into main"
-  }, RUN_TIMEOUT);
+  });
 });
 
 describe("AC: re-running a task whose earlier run already finished starts a new run", () => {
@@ -254,5 +253,5 @@ describe("AC: a run record that cannot be read back names the folder and how to 
     expect(stderr).toContain(runDir);
     expect(stderr).toContain("Remove that folder to start afresh.");
     expect(stderr).not.toContain("at Object.");
-  }, RUN_TIMEOUT);
+  });
 });

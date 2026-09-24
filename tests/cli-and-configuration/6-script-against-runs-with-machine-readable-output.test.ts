@@ -18,8 +18,6 @@ import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { EXIT } from "../../src/cli/failures.js";
 import { REPO_ROOT, runDelivery, git } from "../helpers.js";
 
-const RUN_TIMEOUT = 60_000;
-
 async function scriptFile(script: MockScript): Promise<string> {
   const path = join(mkdtempSync(join(tmpdir(), "uat-slice-6-script-")), "mock.json");
   await writeMockScript(path, script);
@@ -125,7 +123,6 @@ describe("UAT: see every run at a glance, then script against the latest and a n
       expect(third.stdout).not.toContain("Starting run");
       expect(third.stderr).toContain("Starting run");
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -145,7 +142,7 @@ describe("AC: delivery run --json prints one record per step with the same exit 
     expect(json.status).toBe(plain.status);
     const records = stepRecords(json.stdout) as Array<{ state: string; done: boolean }>;
     expect(records.at(-1)).toMatchObject({ state: "ESCALATED", done: true });
-  }, RUN_TIMEOUT);
+  });
 
   it("keeps the aborted exit code under --json, with no valid `git worktree add` step", async () => {
     const repo = mkdtempSync(join(tmpdir(), "uat-slice-6-noref-"));
@@ -230,5 +227,5 @@ describe("AC: without --json, output stays plain-language even when piped, as a 
     for (const line of status.stdout.split("\n").filter(Boolean)) {
       expect(() => JSON.parse(line)).toThrow();
     }
-  }, RUN_TIMEOUT);
+  });
 });

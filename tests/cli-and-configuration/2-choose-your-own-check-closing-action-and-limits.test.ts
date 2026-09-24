@@ -123,7 +123,6 @@ describe("AC: an unnamed delivery.config.json is found at or above the working f
       expect(status).toBe(EXIT.ok);
       expect(stdout).toMatch(/is merged into main\.$/m);
     },
-    RUN_TIMEOUT,
   );
 
   it("--config points at a differently-named file instead", async () => {
@@ -140,7 +139,7 @@ describe("AC: an unnamed delivery.config.json is found at or above the working f
     });
     expect(status).toBe(EXIT.ok);
     expect(stdout).toMatch(/is merged into main\.$/m);
-  }, RUN_TIMEOUT);
+  });
 
   it("DELIVERY_CONFIG names a different file too", async () => {
     const repo = sampleProjectCopy();
@@ -157,7 +156,7 @@ describe("AC: an unnamed delivery.config.json is found at or above the working f
     });
     expect(status).toBe(EXIT.ok);
     expect(stdout).toMatch(/is merged into main\.$/m);
-  }, RUN_TIMEOUT);
+  });
 });
 
 describe("AC: the config file accepts exactly task, gate, closer and budgets", () => {
@@ -197,7 +196,6 @@ describe("AC: budgets accepts a whole-number cap per attempt category; unset cat
       expect(caseFile.cursor.budgets.correction?.max).toBe(7);
       expect(caseFile.cursor.budgets.gateError?.max).toBe(3); // untouched default
     },
-    RUN_TIMEOUT,
   );
 
   it("refuses a malformed limit, naming it in plain language", () => {
@@ -228,7 +226,6 @@ describe("AC: --gate-command, --closer and --task-file are honoured for a single
       expect(status).toBe(EXIT.ok);
       expect(stdout).toContain('Done: the change for "add a function that says hi, with a test" passed `npm test`');
     },
-    RUN_TIMEOUT,
   );
 
   // SKIPPED AC: --closer open-pr as one of the three built-in choices. Driving it live needs a
@@ -258,7 +255,6 @@ describe("AC: a flag beats its environment variable, which beats the config file
       expect(status).toBe(EXIT.ok);
       expect(stdout).toMatch(/is committed on branch surface\//m);
     },
-    RUN_TIMEOUT,
   );
 });
 

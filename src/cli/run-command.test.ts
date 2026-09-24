@@ -44,7 +44,6 @@ describe("delivery run", () => {
       expect(git(repo, ["rev-parse", "main"])).toBe(mainBefore);
       expect(git(repo, ["status", "--porcelain"])).toBe("");
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -64,7 +63,6 @@ describe("delivery run", () => {
       ]);
       for (const state of SurfaceState.options) expect(stdout).not.toContain(state);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -78,7 +76,6 @@ describe("delivery run", () => {
       expect(git(repo, ["check-ignore", ".delivery/runs"])).toBe(".delivery/runs");
       expect(readdirSync(repo).sort()).toEqual([".delivery", ".git", "package.json"]);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -95,7 +92,6 @@ describe("delivery run", () => {
       expect(decision).toBeGreaterThan(stdout.indexOf("- stopped: this needs a person"));
       expect(stdout.indexOf("the task asks me to delete files I was not given")).toBeGreaterThan(decision);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -113,7 +109,6 @@ describe("delivery run", () => {
       expect(exitCode).toBe(EXIT.aborted);
       expect(stdout).toContain("The run stopped: I couldn't set up a working copy of the repository. Check it has at least one commit");
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -132,7 +127,6 @@ describe("delivery run", () => {
       expect(exitCode).toBe(EXIT.ok);
       expect(git(repo, ["status", "--porcelain"])).toBe(statusBefore);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -249,7 +243,6 @@ describe("delivery run", () => {
       };
       expect(caseJson.header.domainPrompt).toBe(domain);
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -283,7 +276,6 @@ describe("delivery run with a config file", () => {
       expect(caseJson.cursor.budgets.correction).toEqual({ used: 0, max: 5 });
       expect(caseJson.cursor.budgets.terminus).toEqual({ used: 0, max: 5 });
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -303,7 +295,6 @@ describe("delivery run with a config file", () => {
       expect(stdout).toContain(`is committed on branch ${branch}.`);
       expect(git(repo, ["rev-parse", "main"])).toBe(mainBefore);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -321,7 +312,6 @@ describe("delivery run with a config file", () => {
       expect(exitCode).toBe(EXIT.ok);
       expect(stdout).toContain(`Starting run ${branchIn(stdout).replace("surface/", "")}: ${TASK}`);
     },
-    RUN_TIMEOUT,
   );
 
   it("stops at once on a closer type it doesn't know, listing the choices and leaving nothing behind", async () => {
@@ -371,7 +361,7 @@ describe("delivery run with a config file", () => {
 
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain(`Starting run ${branchIn(stdout).replace("surface/", "")}: ${TASK}`);
-  }, RUN_TIMEOUT);
+  });
 
   it("refuses --task and --task-file together", async () => {
     const repo = initTempRepo("run-command-both-tasks-", { "package.json": PACKAGE });
@@ -393,7 +383,7 @@ describe("delivery run with a config file", () => {
 
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain(`is committed on branch ${branchIn(stdout)}.`);
-  }, RUN_TIMEOUT);
+  });
 
   it("takes the environment's settings over the file's", async () => {
     const repo = initTempRepo("run-command-env-", { "package.json": PACKAGE });
@@ -467,7 +457,6 @@ describe("delivery run with a list of tasks", () => {
       expect(stdout).not.toContain("Task 1 of");
       expect(readdirSync(runsRoot(repo))).toHaveLength(1);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -628,7 +617,6 @@ describe("picking up a run that didn't finish", () => {
       expect(branchIn(stdout)).toBe(`surface/${runId}`);
       expect(readdirSync(runsRoot(repo))).toEqual([runId]);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -647,7 +635,6 @@ describe("picking up a run that didn't finish", () => {
       expect(stdout).toContain(`Resuming run ${runId}`);
       expect(exitCode).toBe(EXIT.ok);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -670,7 +657,6 @@ describe("picking up a run that didn't finish", () => {
       expect(stdout).toContain("Had to put something right: recorded a missing terminus for worker attempt 1");
       expect(exitCode).toBe(EXIT.ok);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -746,7 +732,6 @@ describe("picking up a run that didn't finish", () => {
       expect(readdirSync(runsRoot(repo))).toContain(interrupted);
       expect(readdirSync(runsRoot(repo))).toHaveLength(2);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -766,7 +751,6 @@ describe("picking up a run that didn't finish", () => {
       expect(stdout).toContain("is committed on branch");
       expect(exitCode).toBe(EXIT.ok);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -795,7 +779,6 @@ describe("picking up a run that didn't finish", () => {
       };
       expect(caseJson.header.domainPrompt).toBe(started);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -818,7 +801,6 @@ describe("picking up a run that didn't finish", () => {
       expect(stdout).toContain(`Resuming run ${older}`);
       expect(exitCode).toBe(EXIT.ok);
     },
-    RUN_TIMEOUT,
   );
 
   it("prints the list and stops when more than one didn't finish and nobody can answer", async () => {

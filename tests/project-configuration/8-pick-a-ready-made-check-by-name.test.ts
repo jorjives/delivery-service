@@ -16,7 +16,6 @@ import { EXIT } from "../../src/cli/failures.js";
 import { READY } from "../../src/cli/validate-command.js";
 import { git, REPO_ROOT, runDelivery, useScratch } from "../helpers.js";
 
-const RUN_TIMEOUT = 60_000;
 const TASK = "create a CHANGES.md file with a one-line summary of this project";
 
 const scratch = useScratch();
@@ -87,7 +86,6 @@ describe("UAT: pick a ready-made check by name", () => {
       );
       expect(misspelled.status).toBe(EXIT.configuration);
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -128,7 +126,6 @@ describe("acceptance criteria", () => {
       expect(stripRunId(presetRun.stdout)).toBe(stripRunId(writtenOutRun.stdout));
       expect(presetRun.status).toBe(writtenOutRun.status);
     },
-    RUN_TIMEOUT,
   );
 
   it("refuses an unknown preset name, and separately a preset missing the one detail it needs", () => {

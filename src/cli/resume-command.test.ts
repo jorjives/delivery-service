@@ -10,7 +10,6 @@ import {
   delivery,
   interruptedRun,
   PACKAGE,
-  RUN_TIMEOUT,
   scriptFile,
   TASK,
   writesHello,
@@ -36,7 +35,6 @@ describe("delivery resume", () => {
       expect(branchIn(stdout)).toBe(`surface/${runId}`);
       expect(exitCode).toBe(EXIT.ok);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -55,7 +53,6 @@ describe("delivery resume", () => {
       expect(stdout).toContain(`Resuming run ${wanted}`);
       expect(exitCode).toBe(EXIT.ok);
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -74,7 +71,6 @@ describe("delivery resume", () => {
       expect(stdout).toContain(`Resuming run ${newest}`);
       expect(exitCode).toBe(EXIT.ok);
     },
-    RUN_TIMEOUT,
   );
 
   it("says plainly when there is nothing to pick up, and never starts a run", async () => {
@@ -100,7 +96,6 @@ describe("delivery resume", () => {
       expect(stderr).toContain("has already finished");
       expect(exitCode).toBe(EXIT.configuration);
     },
-    RUN_TIMEOUT,
   );
 
   it("says it cannot find a run id that names nothing", async () => {

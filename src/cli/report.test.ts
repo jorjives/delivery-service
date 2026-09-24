@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { SurfaceState } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
-import { completes, delivery, PACKAGE, RUN_TIMEOUT, scriptFile, TASK } from "./command-fixtures.js";
+import { completes, delivery, PACKAGE, scriptFile, TASK } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import type { MockScript } from "../mock-script.js";
 import type { OutcomeSummary } from "./outcome.js";
@@ -146,7 +146,6 @@ describe("delivery run --json", () => {
       // The words a person watching still needs, on the stream a parser ignores.
       expect(stderr).toContain("Done: the change");
     },
-    RUN_TIMEOUT,
   );
 
   it(
@@ -163,7 +162,6 @@ describe("delivery run --json", () => {
       const records = stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line) as StepRecord);
       expect(records.at(-1)).toMatchObject({ state: "ESCALATED", done: true });
     },
-    RUN_TIMEOUT,
   );
 
   it("offers --json on the command itself, so --help says it exists", async () => {
@@ -193,6 +191,5 @@ describe("plain language in every environment", () => {
       expect(stdout).toContain("Done: the change");
       for (const state of SurfaceState.options) expect(stdout).not.toContain(state);
     },
-    RUN_TIMEOUT,
   );
 });

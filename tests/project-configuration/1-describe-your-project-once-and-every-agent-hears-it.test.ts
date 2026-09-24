@@ -139,7 +139,6 @@ describe("UAT: describe the project once, and have every agent hear it", () => {
           ": `domain` is empty. Describe your project in a sentence or two, or remove it.\n",
       );
     },
-    RUN_TIMEOUT,
   );
 });
 
@@ -200,7 +199,7 @@ describe("AC: a configuration file with no project description behaves exactly a
     expect(run.status).toBe(EXIT.ok);
     const runId = runIdIn(run.stdout);
     expect(caseJsonFor(repo, runId).header.domainPrompt).toBeUndefined();
-  }, RUN_TIMEOUT);
+  });
 });
 
 describe("AC: a long description can be supplied through the .js/.mjs form of the config file", () => {
@@ -220,7 +219,7 @@ describe("AC: a long description can be supplied through the .js/.mjs form of th
     expect(run.status).toBe(EXIT.ok);
     const runId = runIdIn(run.stdout);
     expect(caseJsonFor(repo, runId).header.domainPrompt).toBe(domain);
-  }, RUN_TIMEOUT);
+  });
 });
 
 // SKIPPED AC: "the agent's instructions for that run include it, for the worker and for
