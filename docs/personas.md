@@ -40,6 +40,18 @@ surface loops or misbehaves — read the case file's `triage` log entries (verdi
 rationale, per surface state's `Entry` schema) and understand *why* triage made
 each call without asking a colleague or reading `src/triage*.ts`.
 
+**Goal extension (added by `multi-surface-supervisor-design`, autonomous run
+`20260926T192253Z`, for Item 10 — Multi-Surface Supervisor; ASSUMED, not
+human-confirmed):** Priya's existing goal covers wiring a working `role_cfg` for
+one surface at a time. Item 10 asks more: her gate, closer and role configuration
+must also behave correctly when several surfaces run at once against her
+repository (shared git contention, a serialised merge, a run-level maintenance
+budget). She should be able to prove this with the same scripted-agent testing
+story she already has (`docs/testing-your-pipeline.md`), extended to script
+several surfaces with a controlled interleaving, rather than having to run a real
+concurrent session against real infrastructure to find out. Her existing goal (a
+working triage `role_cfg`, proven without reading source) is unchanged.
+
 ---
 
 ## 2. Marcus Webb — On-call Engineer (technical triage reader)
@@ -61,6 +73,17 @@ and why (`dead_ends`, carried into the packet the same way it feeds a `Sharpened
 per `docs/single-surface-control-flow.md` §Triage), and where to go for more
 (`session_key` references) if the packet genuinely isn't enough. This is the MUST-tier
 reader: the packet must be legible to him without a plain-language rewrite.
+
+**Goal extension (added by `multi-surface-supervisor-design`, autonomous run
+`20260926T192253Z`, for Item 10 — Multi-Surface Supervisor; ASSUMED, not
+human-confirmed):** Item 10 adds one escalation shape Marcus hasn't seen before:
+the whole run escalating because a shared-environment repair was exhausted, rather
+than one surface's task failing on its own. His existing goal (decide what to do
+from the packet alone, without reading transcripts) now also requires that packet
+to say plainly this is a run-wide environment problem affecting every paused
+surface, not a defect in any one task, so he doesn't spend time diagnosing a task
+that was never the cause. His existing goal and its success bar are otherwise
+unchanged.
 
 ---
 
@@ -114,3 +137,17 @@ tells her the one thing to fix in her own words, not the harness's. See
 `docs/prd/2026-09-17-project-configuration/product-design.md` for the journeys
 this drives. Her goals above (first run, reading escalation output) are
 unchanged.
+
+**Goal extension (added by `multi-surface-supervisor-design`, autonomous run
+`20260926T192253Z`, for Item 10 — Multi-Surface Supervisor; ASSUMED, not
+human-confirmed):** Item 9 got Dana a project she describes once and a task
+list the harness works through for her, one at a time. Item 10 lets several of
+her listed tasks run at once against the same project. Her goal is extended
+once more: when several tasks are running together she should still be able to
+tell, from the terminal or `delivery status` and without learning new
+vocabulary, roughly what is happening to each one — and, if something goes
+wrong with the project itself rather than with any one task (the harness's
+shared-environment "breaker"), that the whole run has paused itself to fix it,
+said in the same plain-language spirit as her existing goals, not "the breaker
+tripped to DEGRADED". Her goals above (first run, running a project, reading
+escalation output) are unchanged.
