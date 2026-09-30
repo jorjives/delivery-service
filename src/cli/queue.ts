@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import type { RunHeader, SlotOutcome, TaskDef } from "../schema.js";
-import { createRunBreaker, repairsUsed, openTrip, tripsOf, type RunBreaker } from "../breaker.js";
+import { createRunBreaker, repairsUsed, tripsOf, type RunBreaker } from "../breaker.js";
 import { RunHalted } from "../errors.js";
 import { supervise, type Settled } from "../supervisor.js";
 import { createRunFile, loadRunFile, setRunOutcome } from "../run-file.js";
