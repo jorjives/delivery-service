@@ -110,7 +110,11 @@ export async function runSupervisorAgainstMock({
   });
 
   // supervise drives every claim or throws, so each task has a result.
-  return claims.flatMap(({ surfaceId }) => results.get(surfaceId) ?? []);
+  return claims.map(({ surfaceId }) => {
+    const ran = results.get(surfaceId);
+    if (ran === undefined) throw new Error(`${surfaceId} has no result: supervise should have driven it or thrown.`);
+    return ran;
+  });
 }
 
 function slotOutcome(surfaceId: string, { result }: ScriptedSurfaceResult): SlotOutcome {

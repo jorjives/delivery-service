@@ -67,8 +67,7 @@ function stageSeveralTasks(swapDelays: boolean): string {
 
 /** Run a staged worked test with `npx tsx --test`, as the guide tells a reader to. */
 function runSeveralTasks(swapDelays: boolean): { stdout: string; status: number } {
-  const { stdout, status } = runTsx(["--test", stageSeveralTasks(swapDelays)], env);
-  return { stdout, status: status };
+  return runTsx(["--test", stageSeveralTasks(swapDelays)], env);
 }
 
 const RUN_TIMEOUT = 20_000;
