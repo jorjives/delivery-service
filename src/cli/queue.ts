@@ -1,7 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { RunHeader, SlotOutcome, TaskDef } from "../schema.js";
+import type { SlotOutcome, TaskDef } from "../schema.js";
 import { supervise } from "../supervisor.js";
+import { createRunFile } from "../run-file.js";
 import { agentSession } from "./agent-session.js";
 import { structureTask, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
@@ -188,11 +189,12 @@ export async function runQueue(
     return slotOutcome(exitCode);
   };
 
-  let record: { dir: string; header: RunHeader } | undefined;
+  let record: { dir: string } | undefined;
   if (runId !== undefined) {
     const dir = supervisedPlace(repoPath, runId);
     await prepareRunDir(repoPath, dir);
-    record = { dir, header: { runId, repoPath, concurrency: project.concurrency, tasks: tasks.length } };
+    await createRunFile(dir, { runId, repoPath, concurrency: project.concurrency, tasks: tasks.length });
+    record = { dir };
     ctx.report.note(runShape(runId, tasks.length, project.concurrency));
     ctx.report.run({ runId, state: "STARTED" });
   }

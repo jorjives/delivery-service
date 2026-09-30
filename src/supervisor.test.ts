@@ -2,8 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadRunFile } from "./run-file.js";
-import type { RunHeader, SlotOutcome } from "./schema.js";
+import { appendRunEntry, createRunFile, loadRunFile } from "./run-file.js";
+import type { RunHeader, RunEntry, SlotOutcome } from "./schema.js";
 import { supervise, type Claim } from "./supervisor.js";
 
 /** Let every promise callback already queued run, so a test sees what the pool has started so far. */
@@ -120,8 +120,9 @@ describe("running several tasks from a list at once", () => {
   it("records which task took which slot and how each ended, then that the run drained", async () => {
     const dir = mkdtempSync(join(tmpdir(), "supervise-"));
     const header: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 2, tasks: 3 };
+    await createRunFile(dir, header);
     const p = pool(3);
-    const done = supervise({ slots: 2, next: p.next, drive: p.drive, waitOnSetback: false, record: { dir, header } });
+    const done = supervise({ slots: 2, next: p.next, drive: p.drive, waitOnSetback: false, record: { dir } });
     await vi.waitFor(() => expect(p.started).toEqual(["task-1", "task-2"]));
     await p.end("task-1");
     await vi.waitFor(() => expect(p.started).toContain("task-3"));
@@ -145,6 +146,32 @@ describe("running several tasks from a list at once", () => {
         { t: "slot_free", slot: 1, surfaceId: "task-3", outcome: "closed" },
       ]),
     );
+    expect(runFile.outcome?.kind).toBe("drained");
+  });
+
+  it("carries on a record it is handed: what it already holds is kept, and this run's slots are written after it", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "supervise-resume-"));
+    const header: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 2, tasks: 1 };
+    await createRunFile(dir, header);
+    const before: RunEntry[] = [
+      { t: "slot_fill", slot: 1, surfaceId: "earlier", taskDef: { intent: "an earlier task" } },
+      { t: "slot_free", slot: 1, surfaceId: "earlier", outcome: "closed" },
+    ];
+    for (const entry of before) await appendRunEntry(dir, entry);
+
+    const p = pool(1);
+    const done = supervise({ slots: 2, next: p.next, drive: p.drive, waitOnSetback: false, record: { dir } });
+    await vi.waitFor(() => expect(p.started).toEqual(["task-1"]));
+    await p.end("task-1");
+    await done;
+
+    const runFile = await loadRunFile(dir);
+    expect(runFile.header).toEqual(header);
+    expect(runFile.history).toEqual([
+      ...before,
+      { t: "slot_fill", slot: 1, surfaceId: "task-1", taskDef: { intent: "task 1" } },
+      { t: "slot_free", slot: 1, surfaceId: "task-1", outcome: "closed" },
+    ]);
     expect(runFile.outcome?.kind).toBe("drained");
   });
 });

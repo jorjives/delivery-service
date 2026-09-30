@@ -1,5 +1,5 @@
-import { appendRunEntry, createRunFile, setRunOutcome } from "./run-file.js";
-import type { RunEntry, RunHeader, SlotOutcome, TaskDef } from "./schema.js";
+import { appendRunEntry, setRunOutcome } from "./run-file.js";
+import type { RunEntry, SlotOutcome, TaskDef } from "./schema.js";
 
 /** A task a slot has taken: what it says, and the id its run has, or will have once started. */
 export interface Claim {
@@ -26,8 +26,12 @@ export interface Supervision<C extends Claim> {
   drive(claim: C): Promise<SlotOutcome>;
   /** Start nothing more once a task ends without closing: the list worked down one at a time waits on it. */
   waitOnSetback: boolean;
-  /** Where to keep the run's own record, in a folder that already exists; none for a list worked down one at a time. */
-  record?: { dir: string; header: RunHeader };
+  /**
+   * The run's own record, already made: a new one, or the one a stopped run
+   * left, which this run carries on by writing after what it holds. None for a
+   * list worked down one at a time.
+   */
+  record?: { dir: string };
 }
 
 /**
@@ -42,7 +46,6 @@ export interface Supervision<C extends Claim> {
  * which is what an interrupted run leaves behind.
  */
 export async function supervise<C extends Claim>({ slots, next, drive, waitOnSetback, record }: Supervision<C>): Promise<Settled<C>[]> {
-  if (record) await createRunFile(record.dir, record.header);
   const note = async (entry: RunEntry): Promise<void> => {
     if (record) await appendRunEntry(record.dir, entry);
   };
