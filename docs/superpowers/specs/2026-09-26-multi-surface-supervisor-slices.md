@@ -23,6 +23,8 @@ ordering, finer-grained hold) is not sliced.
 
 ## Slice 1: Run Several Tasks From Your List at Once
 
+**Status:** ✅ Complete — 2026-09-30 — `8d4143c`
+
 **Delivers:** A project owner sets how many tasks may run at once, and one `delivery run` works through the list with that many going at the same time, each on its own copy, with every line of output saying which task it is about.
 
 **Operational note:** With the setting at 1 (the default) nothing a user sees or finds on disk changes: no run record of its own, no lock, no tagged lines, and the existing queue tests pass unchanged against the one scheduler. A run with more than one task at once gets its own identifier and a run record kept beside, not inside, the per-task records.
