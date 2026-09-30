@@ -302,6 +302,15 @@ export type CaseFile = z.infer<typeof CaseFile>;
 export const SlotOutcome = CaseFileOutcome.shape.kind;
 export type SlotOutcome = z.infer<typeof SlotOutcome>;
 
+/**
+ * Whether the environment every task of a run shares is fit to use. Only
+ * healthy so far: the run file records no breaker until repairs are run once
+ * for the whole run, which adds the other states here.
+ * ponytail: always healthy until the run file records a breaker (slice 5), which derives it from the history here.
+ */
+export const BreakerState = z.enum(["HEALTHY"]);
+export type BreakerState = z.infer<typeof BreakerState>;
+
 export const RunHeader = z.object({
   runId: z.string().min(1),
   repoPath: z.string().min(1),

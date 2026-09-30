@@ -45,6 +45,15 @@ export function findQueueRun(records: RunRecord[], taskDef: TaskDef): RunRecord 
 const isClosed = (record: RunRecord | undefined): boolean => record?.caseFile.outcome?.kind === "closed";
 
 /**
+ * Whether a list task is still for a run to take: its run has not been
+ * delivered, and no slot has already taken it in this run. The one rule
+ * `delivery run` fills each slot by, and `delivery status` counts queued tasks by.
+ */
+export function stillToTake(records: RunRecord[], taskDef: TaskDef, claimed: readonly TaskDef[] = []): boolean {
+  return !isClosed(findQueueRun(records, taskDef)) && !claimed.some((taken) => isDeepStrictEqual(taken, taskDef));
+}
+
+/**
  * The task `delivery run` would act on next: the first one on the list whose
  * run has not been delivered and that no slot has already taken in this run,
  * counted as "Task N of M" counts. Nothing when no task is left. The same rule
@@ -52,9 +61,7 @@ const isClosed = (record: RunRecord | undefined): boolean => record?.caseFile.ou
  * does next.
  */
 export function nextQueueTask(records: RunRecord[], tasks: TaskDef[], claimed: readonly TaskDef[] = []): QueuePosition | undefined {
-  const index = tasks.findIndex(
-    (taskDef) => !isClosed(findQueueRun(records, taskDef)) && !claimed.some((taken) => isDeepStrictEqual(taken, taskDef)),
-  );
+  const index = tasks.findIndex((taskDef) => stillToTake(records, taskDef, claimed));
   return index === -1 ? undefined : { task: index + 1, of: tasks.length };
 }
 
@@ -101,7 +108,7 @@ export function listExitCode(outcomes: readonly SlotOutcome[]): ExitCode {
 }
 
 /** How big a run of several at once is: how many tasks, and how many at a time. */
-const shapeOf = (tasks: number, concurrency: number): string =>
+export const shapeOf = (tasks: number, concurrency: number): string =>
   `${tasks} ${tasks === 1 ? "task" : "tasks"}, up to ${concurrency} at once`;
 
 /** The line a run of several tasks at once opens with. */
