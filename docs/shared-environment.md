@@ -78,7 +78,6 @@ delivery run
 ```
 
 ```text
-Note: you have uncommitted changes. The agent works from your last commit, so it won't see them.
 Starting run <run-id>: 4 tasks, up to 2 at once
 …
 Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.

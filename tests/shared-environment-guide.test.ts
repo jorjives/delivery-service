@@ -64,11 +64,20 @@ describe("docs/shared-environment.md", () => {
     const script: MockScript = { expectations: [{ effects: [{ write: { path: "note.txt", content: "done\n" } }], json: { status: "completed", rationale: "done" } }] };
     const scriptPath = join(scratch("shared-environment-script-"), "mock.json");
     await writeMockScript(scriptPath, script);
-    env = { [TEST_MOCK_SCRIPT]: scriptPath, XDG_STATE_HOME: scratch("shared-environment-state-") };
+    env = { ...process.env, [TEST_MOCK_SCRIPT]: scriptPath, XDG_STATE_HOME: scratch("shared-environment-state-") };
   });
+
+  // Two tasks run at once and either may reach its check first, so "It was
+  // first noticed by …" names whichever task won that race, not always the
+  // one the guide happens to show.
+  const noticedByEither = /^It was first noticed by \[\d+\/4\] add a function that (?:turns a title into a URL slug|shortens long text to a given length), with a test: the shared helper \S+ is missing, so the check cannot run\.$/m;
 
   const expectShown = (stdout: string, section: string) => {
     for (const line of outputBlock(sectionOf(guide, section)).filter((shown) => shown !== "…")) {
+      if (line.startsWith("It was first noticed by ")) {
+        expect(stdout, `the guide shows "${line}"`).toMatch(noticedByEither);
+        continue;
+      }
       expect(stdout, `the guide shows "${line}"`).toMatch(documented(line));
     }
   };
