@@ -1,7 +1,7 @@
 // Slice 5: packs the package the way `npm publish` would, installs the tarball
 // into an empty folder, and runs the installed command, so the boundary that
 // reaches a user is exercised rather than described. This resolves the
-// package's three runtime dependencies from the registry or the npm cache,
+// package's runtime dependencies from the registry or the npm cache,
 // which is why the whole suite is gated on `DELIVERY_PACK_TESTS`: skipped under a
 // plain local `npm test`/`make verify`, and run as part of the same `npm test` in
 // CI, whose workflow step sets `DELIVERY_PACK_TESTS=1`. This project's own variable,

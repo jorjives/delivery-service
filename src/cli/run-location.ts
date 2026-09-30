@@ -39,9 +39,25 @@ export function supervisedRunId(now: Date): string {
   return `run-${stampOf(now)}`;
 }
 
-/** Where a run of several tasks at once keeps its own record: beside the tasks' records, so reading them never meets it. */
+/** Where the runs of several tasks at once keep their records: beside the tasks' records, so reading them never meets these. */
+export function supervisedRoot(repoPath: string): string {
+  return join(repoPath, ".delivery", "supervised");
+}
+
+/** Where a run of several tasks at once keeps its own record. */
 export function supervisedPlace(repoPath: string, runId: string): string {
-  return join(repoPath, ".delivery", "supervised", runId);
+  return join(supervisedRoot(repoPath), runId);
+}
+
+/** The lock a run of several tasks at once holds on its repository for as long as it runs. Repository-wide, because it guards the repository, not one run. */
+export function supervisorLockPath(repoPath: string): string {
+  return join(repoPath, ".delivery", "supervisor.lock");
+}
+
+/** Make `.delivery/`, and make it ignore itself, so nothing the harness keeps there ever shows in `git status`. The repository's own `.gitignore` is never touched. */
+export async function prepareDeliveryDir(repoPath: string): Promise<void> {
+  await mkdir(join(repoPath, ".delivery"), { recursive: true });
+  await writeFile(join(repoPath, ".delivery", ".gitignore"), "*\n");
 }
 
 /**
@@ -87,13 +103,12 @@ export function runPlace(repoPath: string, runId: string, env: NodeJS.ProcessEnv
 }
 
 /**
- * Create the run's empty record folder, and make `.delivery/` ignore itself so
- * starting a run leaves `git status` exactly as it was. The repository's own
- * `.gitignore` is never touched. Fails if the folder already exists, rather
- * than write over another run's record.
+ * Create the run's empty record folder inside the self-ignoring `.delivery/`,
+ * so starting a run leaves `git status` exactly as it was. Fails if the folder
+ * already exists, rather than write over another run's record.
  */
 export async function prepareRunDir(repoPath: string, dir: string): Promise<void> {
+  await prepareDeliveryDir(repoPath);
   await mkdir(dirname(dir), { recursive: true });
-  await writeFile(join(repoPath, ".delivery", ".gitignore"), "*\n");
   await mkdir(dir);
 }
