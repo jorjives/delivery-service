@@ -1,17 +1,48 @@
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
+import { resolve } from "node:path";
 import { cleanGitEnv } from "./git-env.js";
 
 const execFile = promisify(execFileCb);
+
+/** The last piece of work queued in each folder, settled either way: what the next piece waits for. */
+const turns = new Map<string, Promise<void>>();
+
+/**
+ * Run `work` once everything queued before it in the same folder has settled.
+ * This is the in-process lock around the shared checkout: it is keyed on where
+ * a git call runs, not on which subcommand it is, so every call against the
+ * checkout several tasks share (setting up and removing working copies,
+ * deleting branches, merging) takes its turn, and a call added later cannot
+ * slip past a list. Each task's own working copy is its own folder, so work
+ * there never waits on another task. A plain promise chain is the whole of a
+ * non-reentrant mutex, and this one lives only as long as the process.
+ */
+export function takeTurn<T>(cwd: string, work: () => Promise<T>): Promise<T> {
+  const key = resolve(cwd);
+  const mine = (turns.get(key) ?? Promise.resolve()).then(work, work);
+  const settled = mine.then(
+    () => undefined,
+    () => undefined,
+  );
+  turns.set(key, settled);
+  void settled.then(() => {
+    if (turns.get(key) === settled) turns.delete(key);
+  });
+  return mine;
+}
 
 /**
  * Every git call the harness makes goes through here: arguments as a list so
  * nothing derived from task content can be read as shell syntax, and
  * `cleanGitEnv()` so an inherited `GIT_DIR`/`GIT_WORK_TREE` (git sets these for
- * hooks) cannot redirect the call away from `cwd`.
+ * hooks) cannot redirect the call away from `cwd`. Also takes its turn in
+ * `cwd` (`takeTurn`), so two tasks never run git in the shared checkout at once.
+ *
+ * ponytail: no retry on an index.lock left by a person running git in the checkout at the same moment; add a bounded retry here if that is seen in practice (design §4).
  */
 export async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFile("git", args, { cwd, env: cleanGitEnv() });
+  const { stdout } = await takeTurn(cwd, () => execFile("git", args, { cwd, env: cleanGitEnv() }));
   return stdout.trim();
 }
 
