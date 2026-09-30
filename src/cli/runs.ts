@@ -108,11 +108,8 @@ export async function unfinishedSupervisedRun(repoPath: string): Promise<Supervi
         }
       }),
   );
-  const startedOf = (record: SupervisedRecord): string => startedInstant(record.runFile.header.runId) ?? "";
-  return read
-    .filter((record): record is SupervisedRecord => record !== undefined && record.runFile.outcome === undefined)
-    .toSorted((a, b) => startedOf(b).localeCompare(startedOf(a)))
-    .at(0);
+  const unfinished = read.filter((record): record is SupervisedRecord => record !== undefined && record.runFile.outcome === undefined);
+  return newestFirstBy(unfinished, (record) => record.runFile.header.runId).at(0);
 }
 
 /**
@@ -133,15 +130,20 @@ export function startedAt(runId: string): string {
 }
 
 /**
- * Newest first, by the second each run id carries rather than by when its
- * record was last written: a list is a history, so resuming an old run today
- * does not make it the newest. A run id with no stamp sorts last, and the sort
- * is stable, so runs that started in the same second keep the order they came
- * in.
+ * Newest first, by the second each item's run id carries rather than by when
+ * its record was last written: a list is a history, so resuming an old run
+ * today does not make it the newest. A run id with no stamp sorts last, and
+ * the sort is stable, so runs that started in the same second keep the order
+ * they came in.
  */
+function newestFirstBy<T>(items: T[], runIdOf: (item: T) => string): T[] {
+  const startedOf = (item: T): string => startedInstant(runIdOf(item)) ?? "";
+  return [...items].sort((a, b) => (startedOf(a) < startedOf(b) ? 1 : startedOf(a) > startedOf(b) ? -1 : 0));
+}
+
+/** Newest first, by the second each run id carries. See `newestFirstBy`. */
 export function newestFirst(records: RunRecord[]): RunRecord[] {
-  const startedOf = (record: RunRecord): string => startedInstant(record.runId) ?? "";
-  return [...records].sort((a, b) => (startedOf(a) < startedOf(b) ? 1 : startedOf(a) > startedOf(b) ? -1 : 0));
+  return newestFirstBy(records, (record) => record.runId);
 }
 
 /** An ISO 8601 timestamp as a person reads it: the date, the minute, and the zone it is in. */
