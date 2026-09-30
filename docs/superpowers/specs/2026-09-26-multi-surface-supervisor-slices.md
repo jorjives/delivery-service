@@ -187,6 +187,8 @@ ordering, finer-grained hold) is not sliced.
 
 ## Slice 5: Have a Broken Shared Environment Repaired Once, Not by Every Task
 
+**Status:** ✅ Complete — 2026-09-30 — `ae4b22b`
+
 **Delivers:** When the project's shared environment breaks under a run with several tasks, the harness holds the tasks about to check or hand off their work, repairs the environment once, carries on, and, if repair fails, stops the run with a plain statement that the environment, not any task, is the cause.
 
 **Operational note:** The limit on repair attempts becomes one limit for the whole run rather than per task, for runs with more than one task at once; a single-task run keeps today's per-task behaviour. The breaker's state and every repair attempt are recorded in the run record, so a trip can be diagnosed after the fact from `delivery status`. Demonstrating a trip needs an example whose check depends on something shared outside the tasks' own copies; this slice adds that as a variant of the existing example project, following the "one fixture, one guide, one test" convention, and slice 6 reuses it.
