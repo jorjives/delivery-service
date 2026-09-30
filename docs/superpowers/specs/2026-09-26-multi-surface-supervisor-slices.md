@@ -146,6 +146,7 @@ ordering, finer-grained hold) is not sliced.
 ## Slice 4: See Where a Running-at-Once Run Has Got To
 
 **Status:** ✅ Complete — 2026-09-30 — `cb732b6`
+**Tests:** ✅ Recorded — 2026-09-30 — `8012e1a` — cli — 1 UAT + 2 AC, 2 skipped (already covered)
 **Delivers:** A project owner asks `delivery status` about a run with several tasks and gets a plain summary of the whole run followed by one line per task, and can read any one task in full by its own name.
 
 **Operational note:** This is the post-mortem surface the roadmap asks for: the whole run record is readable through `delivery status <run> --json`, nesting each task's existing report rather than inventing a second shape.
