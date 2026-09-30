@@ -97,3 +97,16 @@ export function pickingUp(caseFile: CaseFile): string {
 export function putRight(recovery: string): string {
   return `Had to put something right: ${recovery}.`;
 }
+
+/** The first letter of a phrase made a capital, for a phrase that opens a sentence. */
+const opening = (phrase: string): string => phrase.charAt(0).toUpperCase() + phrase.slice(1);
+
+/** What a run of several at once says when a task finds the shared environment broken. */
+export const ENVIRONMENT_BROKE =
+  `! ${opening(BREAKER_PHRASES.DEGRADED)}. Holding any task about to check or hand off its work while it is repaired; work already under way carries on.`;
+
+/** One line per repair attempt. */
+export const repairingLine = (repair?: { attempt: number; of: number }): string =>
+  `  - repairing${repair === undefined ? "" : ` (attempt ${repair.attempt} of ${repair.of})`}`;
+
+export const FIXED_RESUMING = "✓ Fixed. Resuming.";

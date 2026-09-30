@@ -1,7 +1,7 @@
-import type { SurfaceState } from "../schema.js";
+import type { BreakerState, SurfaceState } from "../schema.js";
 import type { AdvanceResult } from "../surface.js";
 import type { OutcomeSummary } from "./outcome.js";
-import { paint, putRight, STEP_PHRASES } from "./output.js";
+import { ENVIRONMENT_BROKE, FIXED_RESUMING, paint, putRight, repairingLine, STEP_PHRASES } from "./output.js";
 
 /**
  * One step of a run as a script reads it: the harness's own state name, whether
@@ -24,11 +24,19 @@ export interface TaskTag {
   id: string;
 }
 
-/** What a run of several tasks at once says of itself: that it has started, or been picked up after a stop, and that every task it could take has ended. */
-export type RunState = "STARTED" | "RESUMED" | "DRAINED";
+/**
+ * What a run of several tasks at once says of itself: that it has started, been
+ * picked up, finished every task it could take or given up on its shared
+ * environment, and each change in that environment's state.
+ */
+export type RunState = "STARTED" | "RESUMED" | "DRAINED" | "ESCALATED" | BreakerState;
 export interface RunEvent {
   runId: string;
   state: RunState;
+  /** The task run ids a change in the shared environment affects. */
+  affected?: readonly string[];
+  /** Which repair attempt of how many, for a repair starting. */
+  repair?: { attempt: number; of: number };
 }
 
 /** One task's step in a run of several at once, as a script reads it. Every key is present, `null` where it does not apply. */
@@ -48,6 +56,7 @@ export interface RunEventRecord {
   runId: string;
   state: RunState;
   done: boolean;
+  affected: string[] | null;
   at: string;
 }
 
@@ -99,8 +108,12 @@ export function plainReporter(writeLine: (line: string) => void, colour: boolean
     },
     // Each task gets its own reporter, so its run of steps is its own and two tasks at the same step both say so.
     forTask: (other) => plainReporter(writeLine, colour, other),
-    // A person reads the run's shape in the line that opens it and the sentence that ends it, both notes.
-    run: () => undefined,
+    // The run's shape and its end are notes; only the shared environment's changes are said here, untagged, as they are the run's own.
+    run(event) {
+      if (event.state === "DEGRADED") writeLine(paint(colour, "attention", ENVIRONMENT_BROKE));
+      else if (event.state === "REPAIRING") writeLine(paint(colour, "quiet", repairingLine(event.repair)));
+      else if (event.state === "HEALTHY") writeLine(paint(colour, "done", FIXED_RESUMING));
+    },
   };
 }
 
@@ -147,7 +160,14 @@ export function jsonReporter(
     },
     forTask: (other) => jsonReporter(writeRecord, writeNote, now, other),
     run(event) {
-      write({ scope: "run", runId: event.runId, state: event.state, done: event.state === "DRAINED", at: now().toISOString() });
+      write({
+        scope: "run",
+        runId: event.runId,
+        state: event.state,
+        done: event.state === "DRAINED" || event.state === "ESCALATED",
+        affected: event.affected === undefined ? null : [...event.affected],
+        at: now().toISOString(),
+      });
     },
   };
 }

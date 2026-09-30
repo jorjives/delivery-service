@@ -259,8 +259,8 @@ describe("telling a script about several tasks at once", () => {
     reporter.run({ runId: TASK_2.runId, state: "STARTED" });
     reporter.run({ runId: TASK_2.runId, state: "DRAINED" });
     expect(records.map((line) => JSON.parse(line) as RunEventRecord)).toEqual([
-      { scope: "run", runId: TASK_2.runId, state: "STARTED", done: false, at: AT },
-      { scope: "run", runId: TASK_2.runId, state: "DRAINED", done: true, at: AT },
+      { scope: "run", runId: TASK_2.runId, state: "STARTED", done: false, affected: null, at: AT },
+      { scope: "run", runId: TASK_2.runId, state: "DRAINED", done: true, affected: null, at: AT },
     ]);
   });
 
@@ -274,6 +274,45 @@ describe("telling a script about several tasks at once", () => {
       "[2/10] Starting run let-someone-swap-20260916T120000Z: let someone swap",
       `[2/10] ${SUMMARY.headline}`,
       ...SUMMARY.details.map((line) => `[2/10] ${line}`),
+    ]);
+  });
+});
+
+describe("the shared environment, as a run of several at once tells it", () => {
+  const runId = "run-20260930T090000Z";
+
+  it("says in plain words that it broke, one repairing line per attempt, and that it is fixed", () => {
+    const lines: string[] = [];
+    const report = plainReporter((line) => lines.push(line), false);
+    report.run({ runId, state: "DEGRADED", affected: ["a"] });
+    report.run({ runId, state: "REPAIRING", affected: ["a", "b"], repair: { attempt: 1, of: 2 } });
+    report.run({ runId, state: "HEALTHY", affected: ["a", "b"] });
+    expect(lines).toEqual([
+      "! Something in the shared environment looks broken. Holding any task about to check or hand off its work while it is repaired; work already under way carries on.",
+      "  - repairing (attempt 1 of 2)",
+      "✓ Fixed. Resuming.",
+    ]);
+    expect(lines.join("\n")).not.toMatch(/DEGRADED|REPAIRING|HEALTHY/);
+  });
+
+  it("says nothing of its own for the run starting, finishing or giving up: those are notes", () => {
+    const lines: string[] = [];
+    const report = plainReporter((line) => lines.push(line), false);
+    for (const state of ["STARTED", "RESUMED", "DRAINED", "ESCALATED"] as const) report.run({ runId, state });
+    expect(lines).toEqual([]);
+  });
+
+  it("writes one run-scope record per change under --json, naming the tasks affected, null where none", () => {
+    const records: string[] = [];
+    const now = () => new Date("2026-09-30T09:00:00.000Z");
+    const report = jsonReporter((line) => records.push(line), () => undefined, now);
+    report.run({ runId, state: "STARTED" });
+    report.run({ runId, state: "DEGRADED", affected: ["a"] });
+    report.run({ runId, state: "ESCALATED", affected: ["a", "b"] });
+    expect(records.map((line) => JSON.parse(line))).toEqual([
+      { scope: "run", runId, state: "STARTED", done: false, affected: null, at: "2026-09-30T09:00:00.000Z" },
+      { scope: "run", runId, state: "DEGRADED", done: false, affected: ["a"], at: "2026-09-30T09:00:00.000Z" },
+      { scope: "run", runId, state: "ESCALATED", done: true, affected: ["a", "b"], at: "2026-09-30T09:00:00.000Z" },
     ]);
   });
 });
