@@ -1010,7 +1010,7 @@ describe("delivery run with several tasks at once", () => {
         { t: "slot_free", slot: 1, surfaceId: pageId, outcome: "closed" },
         { t: "slot_fill", slot: 1, surfaceId: waveId, taskDef: { intent: WAVE } },
       ];
-      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 4 }, before);
+      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 4, runBudgetMax: { gateMaintenance: 2 } }, before);
 
       const { exitCode, stdout } = await delivery(["run"], {
         cwd: repo,
@@ -1051,7 +1051,7 @@ describe("delivery run with several tasks at once", () => {
     "under --json says the run was picked up, not started",
     async () => {
       const repo = listRepo("run-command-several-resume-json-", { tasks: [PAGE] });
-      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1 });
+      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } });
 
       const { exitCode, stdout } = await delivery(["run", "--json"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
 
@@ -1066,7 +1066,7 @@ describe("delivery run with several tasks at once", () => {
   it("ends a stopped run whose tasks have all since been delivered, starting nothing", async () => {
     const repo = listRepo("run-command-several-resume-done-", { tasks: [PAGE], concurrency: 2 });
     await writeRunRecord(repo, { runId: "add-a-hello-function-that-20260930T090000Z", task: PAGE, outcome: closed });
-    const dir = await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1 });
+    const dir = await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } });
 
     const { exitCode, stdout } = await delivery(["run"], { cwd: repo });
 
@@ -1079,7 +1079,7 @@ describe("delivery run with several tasks at once", () => {
     "starts a new run, with its own id, when the last run of several at once finished",
     async () => {
       const repo = listRepo("run-command-several-after-finished-", { tasks: [PAGE], concurrency: 2 });
-      const dir = await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1 });
+      const dir = await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } });
       await setRunOutcome(dir, { kind: "drained", at: "2026-09-30T10:00:00.000Z" });
 
       const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
@@ -1099,7 +1099,7 @@ describe("delivery run with several tasks at once", () => {
     ["picking up a run", ["resume"], {}],
   ])("refuses %s while a run of several at once is going here, naming it, before anything starts", async (_, args, config) => {
     const repo = listRepo("run-command-live-", config);
-    const header = { runId: RUN, repoPath: repo, concurrency: 2, tasks: 4 };
+    const header = { runId: RUN, repoPath: repo, concurrency: 2, tasks: 4, runBudgetMax: { gateMaintenance: 2 } };
     const dir = await writeSupervisedRun(repo, header);
     const release = await takeRepoLock(repo);
     try {
@@ -1132,7 +1132,7 @@ describe("delivery run with several tasks at once", () => {
     "takes over the lock a killed run left behind and carries that run on, with nothing to unlock by hand",
     async () => {
       const repo = listRepo("run-command-lock-stale-", { tasks: [PAGE], concurrency: 2 });
-      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1 });
+      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } });
       // A run killed outright leaves its lock behind, no longer kept fresh by anyone.
       mkdirSync(supervisorLockPath(repo));
       const aMinuteAgo = new Date(Date.now() - 60_000);

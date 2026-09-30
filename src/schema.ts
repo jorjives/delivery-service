@@ -303,12 +303,11 @@ export const SlotOutcome = CaseFileOutcome.shape.kind;
 export type SlotOutcome = z.infer<typeof SlotOutcome>;
 
 /**
- * Whether the environment every task of a run shares is fit to use. Only
- * healthy so far: the run file records no breaker until repairs are run once
- * for the whole run, which adds the other states here.
- * ponytail: always healthy until the run file records a breaker (slice 5), which derives it from the history here.
+ * Whether the environment every task of a run shares is fit to use. Never
+ * stored: it is what the run file's history says, folded through the
+ * transition table in `src/breaker.ts`, as a task's position is its log's.
  */
-export const BreakerState = z.enum(["HEALTHY"]);
+export const BreakerState = z.enum(["HEALTHY", "DEGRADED", "REPAIRING"]);
 export type BreakerState = z.infer<typeof BreakerState>;
 
 export const RunHeader = z.object({
@@ -317,22 +316,46 @@ export const RunHeader = z.object({
   concurrency: z.number().int().positive(),
   // How many tasks the list held when the run started: the M in "[n/M]".
   tasks: z.number().int().nonnegative(),
+  // One repair limit for the whole run, pinned when it starts, as a task pins its budgets.
+  runBudgetMax: z.object({ gateMaintenance: z.number().int().positive() }),
 });
 export type RunHeader = z.infer<typeof RunHeader>;
 
 const Slot = z.number().int().positive();
+const SurfaceId = z.string().min(1);
+
+export const RepairStatus = z.enum(["completed", "escalate", "incomplete"]);
+export type RepairStatus = z.infer<typeof RepairStatus>;
+
+/** What tripped the breaker. One kind so far; repeated check errors across tasks are the next. */
+export const BreakerCause = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("gate_maintenance"), surfaceId: SurfaceId, reason: z.string() }),
+]);
+export type BreakerCause = z.infer<typeof BreakerCause>;
 
 export const RunEntry = z.discriminatedUnion("t", [
-  z.object({ t: z.literal("slot_fill"), slot: Slot, surfaceId: z.string().min(1), taskDef: TaskDef }),
-  z.object({ t: z.literal("slot_free"), slot: Slot, surfaceId: z.string().min(1), outcome: SlotOutcome }),
+  z.object({ t: z.literal("slot_fill"), slot: Slot, surfaceId: SurfaceId, taskDef: TaskDef }),
+  z.object({ t: z.literal("slot_free"), slot: Slot, surfaceId: SurfaceId, outcome: SlotOutcome }),
+  // A task found the shared environment broken while it was healthy.
+  z.object({ t: z.literal("breaker_degraded"), cause: BreakerCause }),
+  // A task asked for the shared environment to be repaired; `key` names the setback it asked about, when it has one.
+  z.object({ t: z.literal("repair_request"), surfaceId: SurfaceId, key: z.string().nullable() }),
+  // A task was held before checking or handing off its work.
+  z.object({ t: z.literal("held"), surfaceId: SurfaceId }),
+  // The dispatch entry is the burn on the run's repair limit.
+  z.object({ t: z.literal("repair_dispatch"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), surfaceId: SurfaceId }),
+  z.object({ t: z.literal("repair_terminus"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), status: RepairStatus, rationale: z.string() }),
+  z.object({ t: z.literal("breaker_healthy") }),
+  z.object({ t: z.literal("run_escalated"), reason: z.string().min(1) }),
 ]);
 export type RunEntry = z.infer<typeof RunEntry>;
 
-export const RunOutcome = z.object({
+export const RunOutcome = z.discriminatedUnion("kind", [
   // Every task the run could take was taken and has ended.
-  kind: z.literal("drained"),
-  at: z.string(), // ISO 8601
-});
+  z.object({ kind: z.literal("drained"), at: z.string() }),
+  // The shared environment could not be repaired, so the run stopped; no task caused it.
+  z.object({ kind: z.literal("escalated"), cause: z.literal("shared_environment"), reason: z.string().min(1), at: z.string() }),
+]);
 export type RunOutcome = z.infer<typeof RunOutcome>;
 
 // What lives in run.json on disk

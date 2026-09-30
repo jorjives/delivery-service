@@ -253,7 +253,7 @@ export async function runQueue(
     } else if (runId !== undefined) {
       const dir = supervisedPlace(repoPath, runId);
       await prepareRunDir(repoPath, dir);
-      await createRunFile(dir, { runId, repoPath, concurrency, tasks: tasks.length });
+      await createRunFile(dir, { runId, repoPath, concurrency, tasks: tasks.length, runBudgetMax: { gateMaintenance: project.budgets.gateMaintenance.max } });
       record = { dir };
       ctx.report.note(runShape(runId, tasks.length, concurrency));
       ctx.report.run({ runId, state: "STARTED" });

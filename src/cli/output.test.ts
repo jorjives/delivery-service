@@ -3,7 +3,7 @@ import { DEFAULT_BUDGETS } from "../budgets.js";
 import type { ResumeAction } from "../case-file.js";
 import type { CaseFile, GateRef, HistoryEntry } from "../schema.js";
 import { SurfaceState } from "../schema.js";
-import { paint, pickingUp, putRight, RESUME_PHRASES, STEP_PHRASES, useColour } from "./output.js";
+import { paint, pickingUp, putRight, RESUME_PHRASES, STEP_PHRASES, useColour, BREAKER_PHRASES } from "./output.js";
 
 const ESC = "[";
 
@@ -103,5 +103,13 @@ describe("what a resumed run says it is picking up", () => {
 describe("what a resumed run says it put right", () => {
   it("leads with plain language, then the harness's own account of what it fixed", () => {
     expect(putRight("re-created the working copy")).toBe("Had to put something right: re-created the working copy.");
+  });
+});
+
+describe("the shared environment, in words", () => {
+  it("has words for every state and never the state's own name", () => {
+    expect(Object.keys(BREAKER_PHRASES).sort()).toEqual(["DEGRADED", "HEALTHY", "REPAIRING"]);
+    for (const phrase of Object.values(BREAKER_PHRASES)) expect(phrase).not.toMatch(/HEALTHY|DEGRADED|REPAIRING/);
+    expect(BREAKER_PHRASES.HEALTHY).toBe("healthy");
   });
 });

@@ -1,7 +1,7 @@
 import { styleText } from "node:util";
 import { logTail, resumeAction } from "../case-file.js";
 import type { ResumeAction } from "../case-file.js";
-import type { CaseFile, SurfaceState } from "../schema.js";
+import type { BreakerState, CaseFile, SurfaceState } from "../schema.js";
 
 /**
  * Whether to print colour at all. Off when `--no-color` was passed, when
@@ -47,6 +47,18 @@ export const STEP_PHRASES: Record<SurfaceState, string> = {
   CLOSED: "done",
   ESCALATED: "stopped: this needs a person",
   ABORTED: "stopped",
+};
+
+/**
+ * The environment every task of a run shares, as a person reads it. The state
+ * set is closed, so the table is total: a new state does not compile until it
+ * has words. `status` says "Environment: <phrase>"; the live line when it
+ * breaks is built from the DEGRADED phrase.
+ */
+export const BREAKER_PHRASES: Record<BreakerState, string> = {
+  HEALTHY: "healthy",
+  DEGRADED: "something in the shared environment looks broken",
+  REPAIRING: "the shared environment is being repaired",
 };
 
 /**

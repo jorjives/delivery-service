@@ -29,7 +29,7 @@ async function viewOf(
 ): Promise<SupervisedView> {
   const repo = await mkdtemp(join(tmpdir(), "supervised-view-"));
   for (const run of runs) await writeRunRecord(repo, { ...run, packet: run.outcome?.kind === "escalated" ? ESCALATION : undefined });
-  const dir = await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: list.length }, history);
+  const dir = await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: list.length, runBudgetMax: { gateMaintenance: 2 } }, history);
   if (drained) await setRunOutcome(dir, { kind: "drained", at: AT });
   return supervisedView((await readSupervisedRun(repo, RUN)).runFile, await allRuns(repo), queueTasks({ tasks: list }), live);
 }

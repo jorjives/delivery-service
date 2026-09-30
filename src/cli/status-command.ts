@@ -10,7 +10,7 @@ import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { RunFileNotFound } from "../errors.js";
 import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
-import { nextStepPhrase, paint } from "./output.js";
+import { BREAKER_PHRASES, nextStepPhrase, paint } from "./output.js";
 import { queuePositionOf, queueTasks, shapeOf, STOPPED_PART_WAY, type QueuePosition } from "./queue.js";
 import { repoLocked } from "./repo-lock.js";
 import { runPlace } from "./run-location.js";
@@ -243,11 +243,6 @@ const STANDING_WORDS: Record<TaskStanding, string> = {
   queued: "queued",
 };
 
-/** The environment every task of a run shares, as a person reads it. Total over the breaker's states. */
-const ENVIRONMENT_WORDS: Record<BreakerState, string> = {
-  HEALTHY: "healthy",
-};
-
 /** A task that would be running if a slot were free. Said only while the run is going: a stopped run's queued tasks are waiting for it to be picked up. */
 export const WAITING_FOR_A_SLOT = "queued, waiting for a free slot";
 
@@ -427,7 +422,7 @@ export async function supervisedReport(view: SupervisedView, ctx: CommandContext
   const counts = countsLine(view.tasks);
   const lines = [
     `Run ${header.runId}, started ${startedAt(header.runId)}: ${shapeOf(header.tasks, header.concurrency)}`,
-    `Environment: ${ENVIRONMENT_WORDS[view.breaker]}`,
+    `Environment: ${BREAKER_PHRASES[view.breaker]}`,
     ...(counts === "" ? [] : [counts]),
     ...(outcome === undefined && !view.live ? [STOPPED_PART_WAY] : []),
     "",

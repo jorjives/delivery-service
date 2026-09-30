@@ -119,7 +119,7 @@ describe("running several tasks from a list at once", () => {
 
   it("records which task took which slot and how each ended, then that the run drained", async () => {
     const dir = mkdtempSync(join(tmpdir(), "supervise-"));
-    const header: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 2, tasks: 3 };
+    const header: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 2 } };
     await createRunFile(dir, header);
     const p = pool(3);
     const done = supervise({ slots: 2, next: p.next, drive: p.drive, waitOnSetback: false, record: { dir } });
@@ -151,7 +151,7 @@ describe("running several tasks from a list at once", () => {
 
   it("carries on a record it is handed: what it already holds is kept, and this run's slots are written after it", async () => {
     const dir = mkdtempSync(join(tmpdir(), "supervise-resume-"));
-    const header: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 2, tasks: 1 };
+    const header: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } };
     await createRunFile(dir, header);
     const before: RunEntry[] = [
       { t: "slot_fill", slot: 1, surfaceId: "earlier", taskDef: { intent: "an earlier task" } },

@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CorruptRunFile, ImmutabilityViolation, RunFileNotFound } from "./errors.js";
 import { appendRunEntry, createRunFile, loadRunFile, setRunOutcome } from "./run-file.js";
-import type { RunHeader } from "./schema.js";
+import type { RunEntry, RunHeader } from "./schema.js";
 
-const HEADER: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 3, tasks: 10 };
+const HEADER: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 3, tasks: 10, runBudgetMax: { gateMaintenance: 2 } };
 const runDir = () => mkdtempSync(join(tmpdir(), "run-file-"));
 
 describe("a supervised run's record", () => {
@@ -72,5 +72,39 @@ describe("a supervised run's record", () => {
     const err = await loadRunFile(dir).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(CorruptRunFile);
     expect((err as Error).message).not.toMatch(/case file/i);
+  });
+});
+
+describe("the breaker and its repairs, in the run file", () => {
+  const header: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 2 } };
+
+  it("reads back every breaker entry exactly as it was appended", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run-file-breaker-"));
+    await createRunFile(dir, header);
+    const entries: RunEntry[] = [
+      { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: "a", reason: "the shared helper is missing" } },
+      { t: "repair_request", surfaceId: "a", key: null },
+      { t: "held", surfaceId: "b" },
+      { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: "a" },
+      { t: "repair_terminus", attempt: 1, sessionKey: "run-repair-1", status: "completed", rationale: "restored it" },
+      { t: "breaker_healthy" },
+      { t: "run_escalated", reason: "the shared environment could not be repaired after 2 attempts" },
+    ];
+    for (const entry of entries) await appendRunEntry(dir, entry);
+    expect((await loadRunFile(dir)).history).toEqual(entries);
+  });
+
+  it("keeps a run that gave up on the shared environment as its outcome, naming the cause", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run-file-escalated-"));
+    await createRunFile(dir, header);
+    const outcome = { kind: "escalated", cause: "shared_environment", reason: "could not be repaired", at: "2026-09-30T10:00:00.000Z" } as const;
+    await setRunOutcome(dir, outcome);
+    expect((await loadRunFile(dir)).outcome).toEqual(outcome);
+  });
+
+  it("refuses a header that does not pin the run's repair limit", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "run-file-no-limit-"));
+    const { runBudgetMax: _dropped, ...withoutLimit } = header;
+    await expect(createRunFile(dir, withoutLimit as RunHeader)).rejects.toThrow();
   });
 });

@@ -219,7 +219,7 @@ describe("a time a person can read", () => {
 });
 
 describe("the run of several tasks at once that didn't finish", () => {
-  const header = (repoPath: string, runId: string) => ({ runId, repoPath, concurrency: 2, tasks: 3 });
+  const header = (repoPath: string, runId: string) => ({ runId, repoPath, concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 2 } });
 
   it("is none in a repository that has never run several at once", async () => {
     expect(await unfinishedSupervisedRun(await scratchRepo())).toBeUndefined();
@@ -254,7 +254,7 @@ describe("the run of several tasks at once that didn't finish", () => {
 });
 
 describe("every run of several tasks at once a repository holds", () => {
-  const header = (repoPath: string, runId: string) => ({ runId, repoPath, concurrency: 2, tasks: 3 });
+  const header = (repoPath: string, runId: string) => ({ runId, repoPath, concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 2 } });
   const backdateRun = async (dir: string): Promise<void> => {
     const longAgo = new Date("2026-09-01T00:00:00.000Z");
     for (const name of ["run.json", "log.jsonl"]) await utimes(join(dir, name), longAgo, longAgo);

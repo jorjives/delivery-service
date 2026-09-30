@@ -573,7 +573,7 @@ async function finishedSupervisedRun(prefix: string): Promise<string> {
   await writeRunRecord(repo, { runId: IDS.greeting, task: GREETING, outcome: ESCALATED, packet: ESCALATION });
   await writeRunRecord(repo, { runId: IDS.goodbye, task: GOODBYE, outcome: CLOSED });
   await writeRunRecord(repo, { runId: IDS.shout, task: SHOUT, outcome: CLOSED });
-  const dir = await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 4 }, [
+  const dir = await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 4, runBudgetMax: { gateMaintenance: 2 } }, [
     fill(1, IDS.hello, HELLO),
     fill(2, IDS.greeting, GREETING),
     free(1, IDS.hello, "closed"),
@@ -595,7 +595,7 @@ async function busySupervisedRun(prefix: string): Promise<string> {
   });
   await writeRunRecord(repo, { runId: IDS.hello, task: HELLO });
   await writeRunRecord(repo, { runId: IDS.greeting, task: GREETING });
-  await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 3 }, [
+  await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 2 } }, [
     fill(1, IDS.hello, HELLO),
     fill(2, IDS.greeting, GREETING),
   ]);
