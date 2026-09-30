@@ -79,7 +79,8 @@ describe("git calls in one folder take turns", () => {
 
   it("does not start a git call in a folder until the call before it there has finished", async () => {
     const repo = initTempRepo("git-exec-turns-", { "seed.txt": "hello\n" });
-    const hold = Promise.withResolvers<undefined>();
+    // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- resolve() takes no argument
+    const hold = Promise.withResolvers<void>();
     const holding = takeTurn(repo, () => hold.promise);
     let finished = false;
     const call = git(repo, ["status", "--porcelain"]).then(() => (finished = true));
@@ -95,7 +96,8 @@ describe("git calls in one folder take turns", () => {
 
   it("treats two spellings of the same folder as one", async () => {
     const repo = initTempRepo("git-exec-turns-spelling-", { "seed.txt": "hello\n" });
-    const hold = Promise.withResolvers<undefined>();
+    // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- resolve() takes no argument
+    const hold = Promise.withResolvers<void>();
     const holding = takeTurn(`${repo}/.`, () => hold.promise);
     let finished = false;
     const call = git(repo, ["status", "--porcelain"]).then(() => (finished = true));
@@ -109,7 +111,8 @@ describe("git calls in one folder take turns", () => {
   it("never makes a call in one folder wait on a call in another", async () => {
     const shared = initTempRepo("git-exec-turns-shared-", { "seed.txt": "hello\n" });
     const other = initTempRepo("git-exec-turns-other-", { "seed.txt": "hello\n" });
-    const hold = Promise.withResolvers<undefined>();
+    // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- resolve() takes no argument
+    const hold = Promise.withResolvers<void>();
     const holding = takeTurn(shared, () => hold.promise);
 
     expect(await git(other, ["symbolic-ref", "--short", "HEAD"])).toBe("main");
