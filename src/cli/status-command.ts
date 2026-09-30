@@ -326,12 +326,13 @@ export function runListing(entries: (RunRecord | SupervisedView)[]): string[] {
  * a lookup of a run that is not there, which is a failure to answer.
  */
 async function listRuns(repoPath: string, startDir: string, ctx: CommandContext): Promise<ExitCode> {
-  const records = await allRuns(repoPath);
-  const list = await listTasks(startDir, repoPath, ctx);
-  const locked = await repoLocked(repoPath);
-  const views = (await allSupervisedRuns(repoPath)).map((record) =>
-    supervisedView(record.runFile, records, list, record.runFile.outcome === undefined && locked),
-  );
+  const [records, list, locked, supervised] = await Promise.all([
+    allRuns(repoPath),
+    listTasks(startDir, repoPath, ctx),
+    repoLocked(repoPath),
+    allSupervisedRuns(repoPath),
+  ]);
+  const views = supervised.map((record) => supervisedView(record.runFile, records, list, record.runFile.outcome === undefined && locked));
   const members = new Set(views.flatMap((view) => claimedBy(view.runFile).map((claim) => claim.surfaceId)));
   const entries = newestFirstBy<RunRecord | SupervisedView>([...records.filter((record) => !members.has(record.runId)), ...views], listedId);
   if (ctx.json) ctx.writeLine(JSON.stringify(entries.map(listedRun), null, 2));
@@ -360,14 +361,16 @@ export interface StatusOptions {
  * tasks moved last; once that run has finished, its tasks are their own again.
  */
 async function mostRecent(repoPath: string): Promise<RunRecord | SupervisedRecord> {
-  const [task] = await allRuns(repoPath);
-  const supervised = await allSupervisedRuns(repoPath);
+  const [[task], supervised] = await Promise.all([allRuns(repoPath), allSupervisedRuns(repoPath)]);
   const [run] = supervised;
   if (task === undefined) {
     if (run === undefined) throw new Refusal(NOTHING_HERE, EXIT.configuration);
     return run;
   }
-  if (run !== undefined && (await touchedAt(run.dir)) >= (await touchedAt(task.dir))) return run;
+  if (run !== undefined) {
+    const [runTouched, taskTouched] = await Promise.all([touchedAt(run.dir), touchedAt(task.dir)]);
+    if (runTouched >= taskTouched) return run;
+  }
   const owner = supervised.find(
     (record) => record.runFile.outcome === undefined && claimedBy(record.runFile).some((claim) => claim.surfaceId === task.runId),
   );
@@ -407,8 +410,9 @@ async function lookUp(repoPath: string, runId: string): Promise<RunRecord | Supe
 
 /** A run of several at once, read back with every task's record and the list as written now. Live while it holds the repository. */
 async function viewOf(record: SupervisedRecord, repoPath: string, startDir: string, ctx: CommandContext): Promise<SupervisedView> {
-  const live = record.runFile.outcome === undefined && (await repoLocked(repoPath));
-  return supervisedView(record.runFile, await allRuns(repoPath), await listTasks(startDir, repoPath, ctx), live);
+  const [locked, records, list] = await Promise.all([repoLocked(repoPath), allRuns(repoPath), listTasks(startDir, repoPath, ctx)]);
+  const live = record.runFile.outcome === undefined && locked;
+  return supervisedView(record.runFile, records, list, live);
 }
 
 /**
