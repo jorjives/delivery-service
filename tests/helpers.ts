@@ -101,7 +101,7 @@ export function outputBlock(section: string): string[] {
 /** One line a guide shows, as a pattern: `<run-id>`, `<when>`, `<path>` and `[<task-pos>/...]` stand for the parts that differ every run. */
 export function documented(line: string): RegExp {
   // Replace placeholders with temp markers to avoid escaping regex metacharacters
-  let pattern = line
+  const pattern = line
     .replaceAll("<task-pos>", "<<<TASKPOS>>>")
     .replaceAll("<run-id>", "<<<RUNID>>>")
     .replaceAll("<when>", "<<<WHEN>>>")
