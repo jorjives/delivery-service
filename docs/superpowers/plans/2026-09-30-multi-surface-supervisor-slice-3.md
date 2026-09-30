@@ -500,7 +500,7 @@ passed over, as it already is for a single run's record."
 
 ---
 
-### Task 4: `delivery run` carries a stopped run of several at once on
+### Task 4: `delivery run` carries a stopped run of several at once on ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/queue.ts` (`runQueue` resumes; `runPickedUp`; shared shape phrase)
@@ -762,7 +762,7 @@ each task's own record decides where it resumes and nothing is done twice."
 
 ---
 
-### Task 5: Refuse a second run while one of several at once is live
+### Task 5: Refuse a second run while one of several at once is live ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/queue.ts` (`liveRunFound`, `refuseIfRunGoing`; `runQueue` takes and releases the lock)
@@ -1006,7 +1006,7 @@ it is held, naming the live run and how to look at it."
 
 ---
 
-### Task 6: Ctrl-C stops a run of several at once with the "stopped before it could finish" code
+### Task 6: Ctrl-C stops a run of several at once with the "stopped before it could finish" code ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/context.ts` (`CommandContext.exitOnInterrupt?`)
