@@ -15,8 +15,8 @@ and the [supervisor's](multi-surface-control-flow.md) slot-fill that invokes it.
 Two things, and no more:
 
 1. **Create the worktree.** One worktree per surface, branch-per-task, descended from
-   the run's one repo. This is a ref-mutating op (`worktree add`), so it runs inside
-   the supervisor's repo-level lock alongside `worktree remove` and the close/merge.
+   the run's one repo. This is a ref-mutating op (`worktree add`), so it takes its turn
+   with every other git call against the shared checkout.
 2. **Write the case file header.** The immutable identity block: `surface_id`,
    `task_def`, `gate_ref`, `worktree_ref`, and `base_branch` — the local branch the
    worktree was started from, pinned here so a later default-branch change cannot
@@ -116,20 +116,23 @@ a per-surface one.
 Provisioning is where a supervisor slot becomes a live surface. When a slot frees (its
 surface reached a terminal state), the supervisor:
 
-1. Pulls the next task from the queue at `queue_cursor`.
-2. Takes the repo lock, `worktree add`, writes the case file header, releases the lock.
-3. Assigns the slot to the new `surface_id` in the `slots` cursor and advances
-   `queue_cursor`.
+1. Works out the next task afresh: the first task on the list whose run has not been
+   delivered and that no slot has taken in this run, found by what the task says
+   (`findQueueRun`), never by a stored list position.
+2. Records the slot fill in the run file (`slot_fill`: slot, surface id, task), then
+   drives the surface, whose first step is provisioning.
+3. Records `slot_free` with the surface's outcome when it ends.
+
+Every git call against the shared checkout, `worktree add` and `remove`, `prune`,
+`branch -D` and the close's merge, takes its turn by the folder it runs in
+(`takeTurn` in `src/git-exec.ts`), so no two surfaces change the checkout's git
+metadata at once; calls inside a surface's own worktree run in parallel.
 
 The slot assignment and the provisioning transition are the supervisor's commit point,
 recorded in the run log exactly as the surface records its own: a crash mid-fill is
 recovered from the run file's tail, and an orphan worktree from a half-fill is collected
 as above. Backpressure needs nothing special here: if the pool is full there is no free
 slot, so provisioning simply is not invoked and the task waits in the queue.
-
-The critical section is brief, `worktree add` plus one header write, consistent with
-the multi-surface assumption that ref-mutating ops are short and throughput is
-dominated by parallel in-worktree work.
 
 ## Open items
 

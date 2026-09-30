@@ -37,7 +37,6 @@ RunFile = {
   # ── cursor: mutable, the resume marker ──
   breaker                     # environment health: HEALTHY | DEGRADED | REPAIRING
   slots                       # slot -> surface_id assignment (the live pool)
-  queue_cursor                # position in the task queue
 
   # ── history: append-only ordered log of typed entries ──
   history: [ RunEntry ]       # surface lifecycle, breaker trips, maintenance runs
@@ -56,6 +55,9 @@ The same invariants carry up:
   file's log tail does.
 - **The `breaker` and `slots` cursor are denormalisations for fast reads.** If they
   ever disagree with the log, the log wins.
+- **No queue position is stored.** The next task is recomputed at every fill from the
+  task list and the runs on disk (content identity, `findQueueRun`), skipping any task a
+  slot has already taken in this run, because a checked-in list is edited between runs.
 
 Surfaces are unchanged. The supervisor owns the queue, the pool, the caps, and the
 shared-fate state above the surfaces; each surface still owns its own case file and

@@ -66,6 +66,12 @@ The exit codes are the same ones in the table above, so a script reads the outco
 code and the detail from `delivery status --json`. Everything that is not a step, such as which
 run started, any warning and the closing sentence, goes to standard error, so standard output is
 only ever JSON.
+
+When several tasks run at once, each object also says what it is about: `"scope": "run"` for the
+run starting and finishing, and `"scope": "surface"` for a task's step, with the run's id and a
+`surface` object giving the task's place in the list, how many there are, and the task's own run
+id. Every key is present, `null` where it does not apply.
+
 `--json` works on `delivery resume`, `delivery status` and `delivery validate` too. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
 
@@ -94,7 +100,7 @@ Then:
 delivery run
 ```
 
-It works down the list one task at a time, each as an ordinary run with its own branch and its
+By default it works down the list one task at a time, each as an ordinary run with its own branch and its
 own record, and says which task it is on:
 
 ```text
@@ -115,6 +121,33 @@ Run it again whenever you like: it works out where it got to from the runs alrea
 repository, so an interrupted list picks up the task it was on and carries on from there. A task
 that needs a decision from you stops the list there rather than skipping past it, and running the
 command again stops in the same place until you deal with it.
+
+To have several tasks worked on at the same time, add `"concurrency": 2` (or more) to the file,
+or pass `--concurrency 2` for one run. Each task still gets its own copy, branch and record,
+and as soon as one finishes the next task on the list starts in its place. Every line says
+which task it is about:
+
+```text
+Starting run run-20260926T090000Z: 3 tasks, up to 2 at once
+[1/3] Starting run add-a-page-that-shows-20260926T090000Z: add a page that shows who's on call today
+[1/3] - setting up
+[2/3] Starting run let-someone-swap-their-on-20260926T090000Z: let someone swap their on-call day with a teammate
+[2/3] - setting up
+…
+[1/3] Done: the change for "add a page that shows who's on call today" passed `npm test` and is committed on branch surface/add-a-page-that-shows-20260926T090000Z.
+[3/3] Starting run send-a-reminder-the-morning-20260926T090412Z: send a reminder the morning before someone's on-call day starts
+…
+Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.
+```
+
+With several at once, a task that needs a decision from you does not hold up the others: its
+place goes to the next task, and the run ends by naming each task that needs you. The exit code
+is 0 only if every task was delivered, and 4 if any needs a decision. Setting up and removing
+working copies, and merging finished work back, take turns in your checkout, so two tasks
+finishing together both close properly; with the `merge-back` closer, the second one's merge is
+refused because the first moved the base branch on, and it is handed back to you in the usual
+way. Each run of several at once also keeps a small record of its own under
+`.delivery/supervised/`.
 
 The list is yours to edit between runs. A new entry anywhere runs in its place; reordering
 changes only the order they are visited in; deleting an entry leaves its run in the history; and

@@ -326,6 +326,20 @@ const ctx = { worktreePath, dir, repoPath, branch: branchName("surface-1"), base
 console.log(await closer.close(ctx, { kind: "accepted" }));
 ```
 
+## When several tasks close at once
+
+With `concurrency` above 1, several tasks can reach their close at nearly the same time
+against one checkout. Every git call the harness itself makes there takes its turn,
+including every call the built-in closers make, so their merges never overlap. The
+merge-back closer's `--ff-only` merge also checks the base afresh when it runs: if another
+task moved the base on first, it reports `"FAIL"`, and triage and the `close` budget handle
+it as for any close that failed.
+
+A closer of your own that runs git in the shared checkout through its own child process is
+outside that turn-taking. Write it so another task's git call landing between two of yours
+cannot do harm: check the state you depend on in the same command that changes it, as
+`merge --ff-only` does, rather than in an earlier one.
+
 ## When your closer goes wrong
 
 The harness wraps every custom closer, so a mistake in yours is reported, never

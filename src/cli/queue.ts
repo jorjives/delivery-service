@@ -1,13 +1,15 @@
 import { isDeepStrictEqual } from "node:util";
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { SlotOutcome, TaskDef } from "../schema.js";
+import type { RunHeader, SlotOutcome, TaskDef } from "../schema.js";
+import { supervise } from "../supervisor.js";
 import { agentSession } from "./agent-session.js";
 import { structureTask, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { resumeRun, startRun } from "./drive.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
-import { allRuns, newestFirst, type RunRecord } from "./runs.js";
+import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "./run-location.js";
+import { allRuns, describeRun, newestFirst, type RunRecord } from "./runs.js";
 import { taskIntent, type ProjectSettings } from "./settings.js";
 
 /** Where a task sits in the list as it is written now, counted from one, which is how "Task N of M" reads. */
@@ -44,7 +46,7 @@ const isClosed = (record: RunRecord | undefined): boolean => record?.caseFile.ou
  * The task `delivery run` would act on next: the first one on the list whose
  * run has not been delivered and that no slot has already taken in this run,
  * counted as "Task N of M" counts. Nothing when no task is left. The same rule
- * the list is worked by, so what `delivery preview` calls next is what a run
+ * `runQueue` fills each slot by, so what `delivery preview` calls next is what a run
  * does next.
  */
 export function nextQueueTask(records: RunRecord[], tasks: TaskDef[], claimed: readonly TaskDef[] = []): QueuePosition | undefined {
@@ -103,18 +105,32 @@ export function taskEnded(position: QueuePosition, outcome: SlotOutcome): string
     : `${which} stopped before it finished; the rest of the list carried on without it.`;
 }
 
+/** A task a slot has taken from the list: where it sits, the run that already answers for it if any, and the id its run has or will have. */
+interface QueueClaim {
+  taskDef: TaskDef;
+  surfaceId: string;
+  position: QueuePosition;
+  existing: RunRecord | undefined;
+}
+
+/** How a task's run ended, from the exit code its end was reported with. */
+const slotOutcome = (exitCode: ExitCode): SlotOutcome =>
+  exitCode === EXIT.ok ? "closed" : exitCode === EXIT.escalated ? "escalated" : "aborted";
+
 /**
- * Work down the list, one ordinary run at a time. Progress is read from the
- * runs already on disk rather than remembered, so an interruption anywhere
- * leaves nothing stale and the next invocation works out afresh what is left:
- * a task with a finished run is passed over, one with a run that stopped part
- * way is picked up, and one with no run at all is started.
+ * Work through the list, `project.concurrency` tasks at a time, each an
+ * ordinary run with its own copy, branch and record. Progress is read from the
+ * runs already on disk, afresh at every start, rather than remembered, so an
+ * interruption anywhere leaves nothing stale and the next invocation works out
+ * afresh what is left: a task with a finished run is passed over, one with a run
+ * that stopped part way is picked up, and one with no run at all is started.
  *
- * A task whose run ended without being delivered stops the list where it is,
- * rather than being skipped, and stops it again next time for the same reason.
- * Only the runs that existed when this invocation began are considered: the
- * list holds no two entries that mean the same task, so a run started for one
- * entry can never answer for another.
+ * One at a time (the default), the list waits on a task whose run ended without
+ * being delivered, rather than skipping it, and stops there again next time for
+ * the same reason; it keeps no record of its own and prints what it always did.
+ * Several at once, a task that needs a decision frees its slot for the next one
+ * and the rest carry on; the run gets its own id and record, every line says
+ * which task it is about, and the end names each task that was not delivered.
  *
  * The agent runtime is checked when the first task actually needs it, and once
  * for the whole list: a list with nothing left to do, or one stopped on a task
@@ -127,33 +143,68 @@ export async function runQueue(
   { repoPath }: { repoPath: string },
   ctx: CommandContext,
 ): Promise<ExitCode> {
-  const records = await allRuns(repoPath);
-  let session: SessionEnvironment | undefined;
-  const agent = async (): Promise<SessionEnvironment> => {
-    session ??= await agentSession(ctx.env);
-    return session;
+  // One promise, not one session: slots that start together share one check rather than racing to make two.
+  let session: Promise<SessionEnvironment> | undefined;
+  const agent = (): Promise<SessionEnvironment> => (session ??= agentSession(ctx.env));
+
+  const next = async (claimed: readonly QueueClaim[]): Promise<QueueClaim | undefined> => {
+    const records = await allRuns(repoPath);
+    const position = nextQueueTask(records, tasks, claimed.map((claim) => claim.taskDef));
+    const taskDef = position === undefined ? undefined : tasks[position.task - 1];
+    if (position === undefined || taskDef === undefined) return undefined;
+    const existing = findQueueRun(records, taskDef);
+    // A run started a moment ago by another slot may not be on disk yet, so its id counts as taken too.
+    const taken = new Set([...records.map((record) => record.runId), ...claimed.map((claim) => claim.surfaceId)]);
+    return { taskDef, position, existing, surfaceId: existing?.runId ?? runIdFor(taskIntent(taskDef), new Date(), taken) };
   };
 
-  for (const [index, taskDef] of tasks.entries()) {
-    const existing = findQueueRun(records, taskDef);
-    if (isClosed(existing)) continue;
-
-    const position: QueuePosition = { task: index + 1, of: tasks.length };
-    ctx.report.note(taskHeading(position, taskIntent(taskDef)));
-    const exitCode =
-      existing === undefined
-        ? await startRun({ repoPath, taskDef, ...project }, await agent(), ctx)
-        : existing.caseFile.outcome
-          ? // What a run that already ended did, said again for whoever is looking at the list today rather than watching that run.
-            await reportOutcome(existing.dir, existing.caseFile, ctx)
-          : await resumeRun(existing, ctx, await agent());
-
-    if (exitCode !== EXIT.ok) {
-      ctx.report.note(listStopped(position, exitCode));
-      return exitCode;
-    }
+  if ((await next([])) === undefined) {
+    ctx.report.note(EVERY_TASK_DONE);
+    return EXIT.ok;
   }
 
-  ctx.report.note(EVERY_TASK_DONE);
-  return EXIT.ok;
+  const runId = project.concurrency > 1 ? supervisedRunId(new Date()) : undefined;
+
+  const drive = async ({ taskDef, surfaceId, position, existing }: QueueClaim): Promise<SlotOutcome> => {
+    const report =
+      runId === undefined ? ctx.report : ctx.report.forTask({ runId, ordinal: position.task, of: position.of, id: surfaceId });
+    const taskCtx: CommandContext = { ...ctx, report };
+    // One at a time, a heading frames each task. Several at once, the tag says where it sits and the run's own
+    // first line names the task, except for one that already ended, which is named here before it is retold.
+    if (runId === undefined) report.note(taskHeading(position, taskIntent(taskDef)));
+    else if (existing?.caseFile.outcome) report.note(describeRun(existing));
+
+    const exitCode =
+      existing === undefined
+        ? await startRun({ repoPath, taskDef, runId: surfaceId, ...project }, await agent(), taskCtx)
+        : existing.caseFile.outcome
+          ? // What a run that already ended did, said again for whoever is looking at the list today rather than watching that run.
+            await reportOutcome(existing.dir, existing.caseFile, taskCtx)
+          : await resumeRun(existing, taskCtx, await agent());
+
+    if (runId === undefined && exitCode !== EXIT.ok) report.note(listStopped(position, exitCode));
+    return slotOutcome(exitCode);
+  };
+
+  let record: { dir: string; header: RunHeader } | undefined;
+  if (runId !== undefined) {
+    const dir = supervisedPlace(repoPath, runId);
+    await prepareRunDir(repoPath, dir);
+    record = { dir, header: { runId, repoPath, concurrency: project.concurrency, tasks: tasks.length } };
+    ctx.report.note(runShape(runId, tasks.length, project.concurrency));
+    ctx.report.run({ runId, state: "STARTED" });
+  }
+
+  const settled = await supervise({ slots: project.concurrency, next, drive, waitOnSetback: runId === undefined, record });
+
+  if (runId !== undefined) ctx.report.run({ runId, state: "DRAINED" });
+  const exitCode = listExitCode(settled.map(({ outcome }) => outcome));
+  if (exitCode === EXIT.ok) {
+    ctx.report.note(EVERY_TASK_DONE);
+  } else if (runId !== undefined) {
+    for (const { claim, outcome } of settled.toSorted((a, b) => a.claim.position.task - b.claim.position.task)) {
+      if (outcome !== "closed") ctx.report.note(taskEnded(claim.position, outcome));
+    }
+  }
+  return exitCode;
 }

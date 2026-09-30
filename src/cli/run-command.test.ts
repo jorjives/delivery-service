@@ -4,16 +4,19 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
 import type { MockScript } from "../mock-script.js";
-import { SurfaceState } from "../schema.js";
+import { SurfaceState, type RunEntry } from "../schema.js";
+import { loadRunFile } from "../run-file.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot } from "./command-fixtures.js";
 import { unknownCloser } from "./config.js";
 import { EXIT, UNEXPECTED_FOOTER } from "./failures.js";
 import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
+import { allRuns } from "./runs.js";
 import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
-import { EVERY_TASK_DONE } from "./queue.js";
+import { EVERY_TASK_DONE, taskEnded } from "./queue.js";
+import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
 
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 const ESC = "[";
@@ -822,4 +825,167 @@ describe("picking up a run that didn't finish", () => {
     expect(stderr).toContain("delivery resume --last");
     expect(exitCode).toBe(EXIT.configuration);
   });
+});
+
+describe("delivery run with several tasks at once", () => {
+  // Distinct in their first five words, as in the list tests above.
+  const PAGE = "add a hello function that greets a name, with a test";
+  const SWAP = "write a goodbye function that farewells a name, with a test";
+  const WAVE = "create a waving function that waves at a name, with a test";
+  const closed = { kind: "closed", source: "close", reason: "the work was committed", at: "2026-09-17T09:00:00.000Z" } as const;
+
+  const listRepo = (prefix: string, config: object) =>
+    initTempRepo(prefix, { "package.json": PACKAGE, "delivery.config.json": JSON.stringify(config) });
+  const supervisedRoot = (repo: string) => join(repo, ".delivery", "supervised");
+
+  /** The one run of several at once this repository holds. */
+  async function theRunFile(repo: string) {
+    const [only, ...others] = readdirSync(supervisedRoot(repo));
+    expect(others).toEqual([]);
+    if (only === undefined) throw new Error("no run of several tasks was recorded");
+    return loadRunFile(join(supervisedRoot(repo), only));
+  }
+  const fillsOf = (history: RunEntry[]) =>
+    history.filter((entry): entry is Extract<RunEntry, { t: "slot_fill" }> => entry.t === "slot_fill");
+
+  it(
+    "runs up to that many at once, fills a freed slot with the next task, and starts every line with its task",
+    async () => {
+      const repo = listRepo("run-command-several-", { tasks: [PAGE, SWAP, WAVE], concurrency: 2 });
+
+      const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+      expect(exitCode).toBe(EXIT.ok);
+      const lines = stdout.trimEnd().split("\n");
+      expect(lines[0]).toMatch(/^Starting run run-\d{8}T\d{6}Z: 3 tasks, up to 2 at once$/);
+      expect(lines.at(-1)).toBe(EVERY_TASK_DONE);
+      for (const line of lines.slice(1, -1)) expect(line).toMatch(/^\[[123]\/3\] /);
+      for (const [index, task] of [PAGE, SWAP, WAVE].entries()) {
+        expect(stdout).toContain(`[${index + 1}/3] Done: the change for "${task}" passed \`npm test\``);
+      }
+
+      const runFile = await theRunFile(repo);
+      expect(runFile.header).toMatchObject({ repoPath: repo, concurrency: 2, tasks: 3 });
+      // Both slots are taken before either is freed: the two tasks ran at the same time.
+      expect(runFile.history.slice(0, 2).map((entry) => entry.t)).toEqual(["slot_fill", "slot_fill"]);
+      expect(fillsOf(runFile.history).map((fill) => fill.taskDef)).toEqual([{ intent: PAGE }, { intent: SWAP }, { intent: WAVE }]);
+      expect(runFile.outcome?.kind).toBe("drained");
+      // Each task's own record is where it always was, one per task.
+      expect(readdirSync(runsRoot(repo))).toHaveLength(3);
+      expect(git(repo, ["branch", "--list", "surface/*"]).split("\n")).toHaveLength(3);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "under --json prints only JSON, each line saying whether it is about the run or a task, and which task",
+    async () => {
+      const repo = listRepo("run-command-several-json-", { tasks: [PAGE, SWAP] });
+
+      const { exitCode, stdout, stderr } = await delivery(["run", "--json", "--concurrency", "2"], {
+        cwd: repo,
+        env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(exitCode).toBe(EXIT.ok);
+      const records = stdout.trimEnd().split("\n").map((line) => JSON.parse(line) as SurfaceStepRecord | RunEventRecord);
+      expect(records[0]).toMatchObject({ scope: "run", state: "STARTED", done: false });
+      expect(records.at(-1)).toMatchObject({ scope: "run", state: "DRAINED", done: true });
+      const runId = records[0]?.runId;
+      expect(runId).toMatch(/^run-\d{8}T\d{6}Z$/);
+
+      const steps = records.filter((record): record is SurfaceStepRecord => record.scope === "surface");
+      const taskIds = (await allRuns(repo)).map((record) => record.runId);
+      for (const ordinal of [1, 2]) {
+        const own = steps.filter((step) => step.surface.ordinal === ordinal);
+        expect(own.length).toBeGreaterThan(0);
+        for (const step of own) expect(step).toMatchObject({ runId, surface: { of: 2 } });
+        const ids = new Set(own.map((step) => step.surface.id));
+        expect(ids.size).toBe(1);
+        expect(taskIds).toContain([...ids][0]);
+        expect(own.at(-1)).toMatchObject({ state: "CLOSED", done: true });
+      }
+      expect(stderr).toMatch(/^Starting run run-\d{8}T\d{6}Z: 2 tasks, up to 2 at once$/m);
+      expect(stderr).toMatch(/^\[1\/2\] Starting run /m);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "carries on past a task that needs a decision, filling its slot, and exits needing a decision",
+    async () => {
+      const repo = listRepo("run-command-several-escalated-", { tasks: [PAGE, SWAP, WAVE], concurrency: 2 });
+      const swapEscalates: MockScript = {
+        expectations: [
+          { when: { promptContains: SWAP }, json: { status: "escalate", category: "authority", rationale: "the task asks me to delete files I was not given" } },
+          ...completes.expectations,
+        ],
+      };
+
+      const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(swapEscalates) } });
+
+      expect(exitCode).toBe(EXIT.escalated);
+      expect(stdout).toContain(`[1/3] Done: the change for "${PAGE}"`);
+      expect(stdout).toContain(`[3/3] Done: the change for "${WAVE}"`);
+      expect(stdout).toContain("[2/3] This needs your decision:");
+      expect(stdout.trimEnd().split("\n").at(-1)).toBe(taskEnded({ task: 2, of: 3 }, "escalated"));
+      expect(stdout).not.toContain(EVERY_TASK_DONE);
+      expect(fillsOf((await theRunFile(repo)).history)).toHaveLength(3);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "passes over a task an earlier run delivered, and starts every other task exactly once",
+    async () => {
+      const repo = listRepo("run-command-several-skip-", { tasks: [PAGE, SWAP, WAVE], concurrency: 2 });
+      await writeRunRecord(repo, { runId: "add-a-hello-20260917T090000Z", task: PAGE, outcome: closed });
+
+      const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).not.toContain("[1/3]");
+      expect(fillsOf((await theRunFile(repo)).history).map((fill) => fill.taskDef)).toEqual([{ intent: SWAP }, { intent: WAVE }]);
+      expect(readdirSync(runsRoot(repo))).toHaveLength(3);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "merges one of two tasks that finish together and hands the other back through the close path, leaving the checkout sound",
+    async () => {
+      const repo = listRepo("run-command-several-merge-", { tasks: [PAGE, SWAP], concurrency: 2, closer: { type: "merge-back" } });
+      // Slow agents: both tasks have their working copies before either merges, so the base moves under the second.
+      const slow: MockScript = { ...completes, delayMs: 1000 };
+
+      const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(slow) } });
+
+      expect(exitCode).toBe(EXIT.escalated);
+      const runs = await allRuns(repo);
+      expect(runs.map((record) => record.caseFile.outcome?.kind).sort()).toEqual(["closed", "escalated"]);
+      const refused = runs.find((record) => record.caseFile.outcome?.kind === "escalated");
+      expect(refused?.caseFile.history.some((entry) => entry.t === "close" && entry.status === "FAIL")).toBe(true);
+      expect(stdout).toContain("is merged into main");
+      // The shared checkout is as a person would want it: on main, clean, and holding only its own working copy.
+      expect(git(repo, ["symbolic-ref", "--short", "HEAD"])).toBe("main");
+      expect(git(repo, ["status", "--porcelain"])).toBe("");
+      expect(git(repo, ["worktree", "list", "--porcelain"]).match(/^worktree /gm)).toHaveLength(1);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "at concurrency 1, the default, keeps no record of its own and starts no line with a task tag",
+    async () => {
+      const repo = listRepo("run-command-several-default-", { tasks: [PAGE, SWAP] });
+
+      const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(existsSync(supervisedRoot(repo))).toBe(false);
+      expect(stdout).not.toMatch(/^\[/m);
+      expect(stdout).toContain(`Task 1 of 2: ${PAGE}`);
+    },
+    RUN_TIMEOUT * 2,
+  );
 });
