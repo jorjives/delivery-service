@@ -188,6 +188,7 @@ ordering, finer-grained hold) is not sliced.
 ## Slice 5: Have a Broken Shared Environment Repaired Once, Not by Every Task
 
 **Status:** ✅ Complete — 2026-09-30 — `ae4b22b`
+**Tests:** ✅ Recorded — 2026-10-01 — `ad67e95` — cli — 1 UAT + 6 AC, 0 skipped
 
 **Delivers:** When the project's shared environment breaks under a run with several tasks, the harness holds the tasks about to check or hand off their work, repairs the environment once, carries on, and, if repair fails, stops the run with a plain statement that the environment, not any task, is the cause.
 
