@@ -106,6 +106,7 @@ ordering, finer-grained hold) is not sliced.
 
 ## Slice 3: Pick Up a Running-at-Once Run After a Crash, and Refuse a Second One
 
+**Status:** ✅ Complete — 2026-09-30 — `46d0895`
 **Delivers:** If the machine or the command dies mid-run, running `delivery run` again carries on from where every task was, and a second `delivery run` against the same project while one is live is refused with a plain explanation.
 
 **Operational note:** A supervised run holds a lock on the repository for its lifetime. After a hard kill, running the command again reclaims its own stale lock automatically; there is never a manual unlock step. The sequential path takes no lock but respects a live one.
