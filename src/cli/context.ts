@@ -1,3 +1,4 @@
+import type { RepairCoordinator } from "../ports.js";
 import type { RunReporter } from "./report.js";
 
 /** The command's standard input: a person typing, or a pipe with nobody behind it. */
@@ -24,4 +25,6 @@ export interface CommandContext {
   report: RunReporter;
   /** How a stop ends this command, when the process it runs in lets it choose. Absent: a stop ends it as the platform does. */
   exitOnInterrupt?: ExitOnInterrupt;
+  /** The run's one coordinator of its shared environment. Set only for a task of a run of several at once. */
+  repairCoordinator?: RepairCoordinator;
 }

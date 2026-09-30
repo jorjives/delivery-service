@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
 import type { MockScript } from "../mock-script.js";
-import { SurfaceState, type RunEntry } from "../schema.js";
+import { SurfaceState, type RunEntry, type GateRef } from "../schema.js";
+import { RECOVERED_REPAIR } from "../breaker.js";
 import { loadRunFile, setRunOutcome } from "../run-file.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
@@ -15,9 +16,9 @@ import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
 import { allRuns, readRun } from "./runs.js";
 import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
-import { EVERY_TASK_DONE, liveRunFound, taskEnded, runPickedUp, STOPPED_PART_WAY } from "./queue.js";
+import { EVERY_TASK_DONE, environmentGaveUp, listStandings, liveRunFound, taskEnded, runPickedUp, STOPPED_PART_WAY } from "./queue.js";
 import { repoLocked, takeRepoLock } from "./repo-lock.js";
-import { supervisorLockPath } from "./run-location.js";
+import { supervisedPlace, supervisorLockPath } from "./run-location.js";
 import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
 
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
@@ -1146,6 +1147,162 @@ describe("delivery run with several tasks at once", () => {
     },
     RUN_TIMEOUT,
   );
+
+  describe("when the shared environment breaks", () => {
+    /**
+     * A check whose shared helper is missing until some task's repair leaves a
+     * `.restored` marker in its copy; once any gate run sees one it stays
+     * restored for the rest of the process, as a helper put back would. Custom
+     * gates load from the repository root, outside every task's copy.
+     */
+    const RESTORABLE_GATE = [
+      'import { existsSync, readdirSync } from "node:fs";',
+      'import { dirname, join } from "node:path";',
+      "let restored = false;",
+      "const restoredIn = (copy) => readdirSync(dirname(copy)).some((other) => existsSync(join(dirname(copy), other, \".restored\")));",
+      "const measure = async ({ worktreePath }) => {",
+      "  restored ||= restoredIn(worktreePath);",
+      '  return restored ? { status: "PASS", assertions: [{ id: "shared-helper", outcome: "PASS", detail: "answered" }] } : { status: "ERROR", assertions: [], detail: "the shared helper is missing" };',
+      "};",
+      "export default { baseline: measure, check: measure };",
+    ].join("\n");
+    const BROKEN_GATE = 'const measure = async () => ({ status: "ERROR", assertions: [], detail: "the shared helper is missing" });\nexport default { baseline: measure, check: measure };\n';
+    const gateRef: GateRef = { type: "custom", modulePath: "./gates/shared.mjs" };
+
+    const brokenRepo = (prefix: string, gate: string, tasks: string[]) => {
+      const repo = initTempRepo(prefix, {
+        "package.json": PACKAGE,
+        "delivery.config.json": JSON.stringify({ tasks, concurrency: 2, gate: gateRef }),
+      });
+      mkdirSync(join(repo, "gates"), { recursive: true });
+      writeFileSync(join(repo, "gates/shared.mjs"), gate);
+      return repo;
+    };
+    /** Every session, worker or repair, writes the task's file; a repair's `.restored` is what puts the helper back. */
+    const restores: MockScript = {
+      expectations: [{
+        effects: [
+          { write: { path: "hello.js", content: "export const hello = (name) => `hello ${name}`;\n" } },
+          { write: { path: ".restored", content: "yes\n" } },
+        ],
+        json: { status: "completed", rationale: "did it" },
+      }],
+    };
+    const ofType = <T extends RunEntry["t"]>(history: RunEntry[], t: T) => history.filter((entry): entry is Extract<RunEntry, { t: T }> => entry.t === t);
+
+    it(
+      "holds the tasks, repairs once, says it is fixed, and finishes every task",
+      async () => {
+        const repo = brokenRepo("run-command-breaker-fixed-", RESTORABLE_GATE, [PAGE, SWAP, WAVE]);
+
+        const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(restores) } });
+
+        expect(exitCode).toBe(EXIT.ok);
+        const lines = stdout.split("\n");
+        expect(lines.filter((line) => line.startsWith("! Something in the shared environment looks broken"))).toHaveLength(1);
+        expect(lines.filter((line) => line === "  - repairing (attempt 1 of 2)")).toHaveLength(1);
+        expect(lines.filter((line) => line === "✓ Fixed. Resuming.")).toHaveLength(1);
+        expect(lines.at(-2)).toBe(EVERY_TASK_DONE);
+        expect(stdout).not.toMatch(/DEGRADED|REPAIRING|HEALTHY|GATE_MAINTENANCE/);
+
+        const { history } = await theRunFile(repo);
+        expect(ofType(history, "breaker_degraded")).toHaveLength(1);
+        expect(ofType(history, "repair_dispatch")).toHaveLength(1);
+        expect(ofType(history, "breaker_healthy")).toHaveLength(1);
+        for (const record of await allRuns(repo)) {
+          expect(record.caseFile.history.filter((entry) => entry.t === "dispatch" && entry.role === "gate-maintenance")).toEqual([]);
+        }
+      },
+      RUN_TIMEOUT * 2,
+    );
+
+    it(
+      "stops the run when it cannot repair it, naming the environment as the cause, and exits needing a decision",
+      async () => {
+        const repo = brokenRepo("run-command-breaker-gave-up-", BROKEN_GATE, [PAGE, SWAP, WAVE]);
+
+        const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+        expect(exitCode).toBe(EXIT.escalated);
+        expect(stdout.trimEnd().split("\n").at(-1)).toBe(environmentGaveUp(2, { waiting: 2, finished: 0, queued: 1 }, 3));
+        expect(stdout).not.toMatch(/DEGRADED|REPAIRING|HEALTHY|ESCALATED|GATE_MAINTENANCE/);
+
+        const runFile = await theRunFile(repo);
+        expect(runFile.outcome).toMatchObject({ kind: "escalated", cause: "shared_environment" });
+        expect(ofType(runFile.history, "repair_dispatch")).toHaveLength(2);
+        expect(fillsOf(runFile.history)).toHaveLength(2);
+        // The held tasks stop where they are, with no outcome of their own: nothing they did caused this.
+        for (const record of await allRuns(repo)) expect(record.caseFile.outcome).toBeUndefined();
+      },
+      RUN_TIMEOUT * 2,
+    );
+
+    it(
+      "under --json writes a run-scope record for each change in the environment, with the tasks affected",
+      async () => {
+        const repo = brokenRepo("run-command-breaker-json-", BROKEN_GATE, [PAGE, SWAP]);
+
+        const { exitCode, stdout } = await delivery(["run", "--json"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+        expect(exitCode).toBe(EXIT.escalated);
+        const runRecords = stdout.trimEnd().split("\n").map((line) => JSON.parse(line) as RunEventRecord | SurfaceStepRecord).filter((record): record is RunEventRecord => record.scope === "run");
+        expect(runRecords.map((record) => record.state)).toEqual([
+          "STARTED", "DEGRADED", "REPAIRING", "HEALTHY", "DEGRADED", "REPAIRING", "HEALTHY", "DEGRADED", "ESCALATED",
+        ]);
+        const taskIds = (await allRuns(repo)).map((record) => record.runId);
+        expect(runRecords[1]?.affected).toHaveLength(1);
+        expect(taskIds).toContain(runRecords[1]?.affected?.[0]);
+        expect(runRecords.at(-1)).toMatchObject({ done: true });
+        expect(runRecords[0]?.affected).toBeNull();
+      },
+      RUN_TIMEOUT * 2,
+    );
+
+    it(
+      "picks a run stopped in the middle of a repair back up into that repair, in the same trip",
+      async () => {
+        const repo = brokenRepo("run-command-breaker-resume-", RESTORABLE_GATE, [PAGE]);
+        const state = mkdtempSync(join(tmpdir(), "command-state-"));
+        const taskId = "add-a-hello-function-20260930T090000Z";
+        await writeRunRecord(repo, { runId: taskId, task: PAGE, gate: gateRef });
+        await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } }, [
+          { t: "slot_fill", slot: 1, surfaceId: taskId, taskDef: { intent: PAGE } },
+          { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: taskId, reason: "the shared helper is missing" } },
+          { t: "repair_request", surfaceId: taskId, key: null },
+          { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: taskId },
+        ]);
+
+        const { exitCode } = await delivery(["run"], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(restores) } });
+
+        expect(exitCode).toBe(EXIT.ok);
+        const { history } = await loadRunFile(supervisedPlace(repo, RUN));
+        expect(ofType(history, "breaker_degraded")).toHaveLength(1);
+        expect(ofType(history, "repair_terminus")).toMatchObject([
+          { attempt: 1, status: "incomplete", rationale: RECOVERED_REPAIR },
+          { attempt: 2, status: "completed" },
+        ]);
+        expect(ofType(history, "breaker_healthy")).toHaveLength(1);
+      },
+      RUN_TIMEOUT * 2,
+    );
+
+    it("finishes a run picked up after it gave up but before it could say so, without starting anything", async () => {
+      const repo = brokenRepo("run-command-breaker-resume-gave-up-", BROKEN_GATE, [PAGE]);
+      const taskId = "add-a-hello-function-20260930T090000Z";
+      await writeRunRecord(repo, { runId: taskId, task: PAGE, gate: gateRef });
+      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } }, [
+        { t: "slot_fill", slot: 1, surfaceId: taskId, taskDef: { intent: PAGE } },
+        { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: taskId, reason: "the shared helper is missing" } },
+        { t: "run_escalated", reason: "the shared environment could not be repaired after 2 attempts; no task caused this" },
+      ]);
+
+      const { exitCode, stdout } = await delivery(["run"], { cwd: repo });
+
+      expect(exitCode).toBe(EXIT.escalated);
+      expect(stdout).toContain("Stopping the run.");
+      expect((await loadRunFile(supervisedPlace(repo, RUN))).outcome).toMatchObject({ kind: "escalated", cause: "shared_environment" });
+    });
+  });
 
   /** Records what the command arranged a stop to do, and whether it took that back by the end. */
   function stopRecorder() {

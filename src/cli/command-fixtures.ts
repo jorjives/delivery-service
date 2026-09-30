@@ -138,11 +138,11 @@ export const ESCALATION: EscalationPacket = {
  */
 export async function writeRunRecord(
   repoPath: string,
-  { runId, task = TASK, outcome, packet }: { runId: string; task?: string; outcome?: CaseFileOutcome; packet?: EscalationPacket },
+  { runId, task = TASK, outcome, packet, gate = GATE }: { runId: string; task?: string; outcome?: CaseFileOutcome; packet?: EscalationPacket; gate?: GateRef },
 ): Promise<string> {
   const dir = join(runsRoot(repoPath), runId);
   await mkdir(dir, { recursive: true });
-  await create(dir, { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER }, DEFAULT_BUDGETS);
+  await create(dir, { surfaceId: runId, taskDef: { intent: task }, gateRef: gate, closerRef: DEFAULT_CLOSER }, DEFAULT_BUDGETS);
   await setBaseBranch(dir, "main");
   if (outcome) {
     const packetRef = packet === undefined ? undefined : await writeRef(dir, "escalation", packet);

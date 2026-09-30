@@ -22,7 +22,7 @@ export interface Supervision<C extends Claim> {
    * running or ended, so a task is never started twice.
    */
   next(claimed: readonly C[]): Promise<C | undefined>;
-  /** Take one task to its end. A throw is a broken harness or setup, never a task's own setback. */
+  /** Take one task to its end. A throw is a broken harness or setup, or the run giving up on its shared environment (`RunHalted`), never a task's own setback. */
   drive(claim: C): Promise<SlotOutcome>;
   /** Start nothing more once a task ends without closing: the list worked down one at a time waits on it. */
   waitOnSetback: boolean;

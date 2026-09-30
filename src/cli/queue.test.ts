@@ -8,7 +8,7 @@ import type { GateRef, TaskDef } from "../schema.js";
 import { writeRunRecord } from "./command-fixtures.js";
 import { allRuns } from "./runs.js";
 import { runsRoot } from "./run-location.js";
-import { findQueueRun, listExitCode, liveRunFound, nextQueueTask, queuePositionOf, queueTasks, runPickedUp, runShape, taskEnded } from "./queue.js";
+import { environmentGaveUp, findQueueRun, listExitCode, listStandings, liveRunFound, nextQueueTask, queuePositionOf, queueTasks, runPickedUp, runShape, taskEnded } from "./queue.js";
 import { EXIT } from "./failures.js";
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
@@ -183,5 +183,24 @@ describe("why a second run cannot start on top of a live one", () => {
     expect(liveRunFound(undefined)).toBe(
       "Another run is already going here. Run `delivery status` to see how it is getting on, or wait for it to finish before starting another.",
     );
+  });
+});
+
+describe("what a run of several at once says when it gives up on its shared environment", () => {
+  it("says how many attempts it made, and how many tasks were waiting, had finished and are still queued", () => {
+    expect(environmentGaveUp(2, { waiting: 2, finished: 5, queued: 3 }, 10)).toBe(
+      "Couldn't fix it after 2 attempts. Stopping the run. 2 of 10 tasks were waiting on this and need your attention; 5 had already finished, 3 are still queued.",
+    );
+    expect(environmentGaveUp(1, { waiting: 1, finished: 0, queued: 1 }, 2)).toBe(
+      "Couldn't fix it after 1 attempt. Stopping the run. 1 of 2 tasks was waiting on this and needs your attention; 0 had already finished, 1 is still queued.",
+    );
+  });
+
+  it("counts a list task with an unfinished run as waiting, one with an ended run as finished, and one with none as queued", async () => {
+    const repo = await scratchRepo();
+    await writeRunRecord(repo, { runId: "add-a-hello-20260930T090000Z", task: "add a hello" });
+    await writeRunRecord(repo, { runId: "add-a-goodbye-20260930T090000Z", task: "add a goodbye", outcome: { kind: "closed", source: "closer", reason: "done", at: "2026-09-30T09:10:00.000Z" } });
+    const tasks = [{ intent: "add a hello" }, { intent: "add a goodbye" }, { intent: "add a shout" }];
+    expect(listStandings(await allRuns(repo), tasks)).toEqual({ waiting: 1, finished: 1, queued: 1 });
   });
 });

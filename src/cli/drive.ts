@@ -4,7 +4,7 @@ import { resolveCloser } from "../resolve-closer.js";
 import { deterministicRouter } from "../router.js";
 import { advance, type AdvanceResult } from "../surface.js";
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { SurfacePorts } from "../ports.js";
+import type { SurfacePorts, Terminus } from "../ports.js";
 import type { TaskDef } from "../schema.js";
 import { rolesFor } from "./roles.js";
 import { agentSession } from "./agent-session.js";
@@ -73,6 +73,7 @@ export async function driveToOutcome(
     agent,
     triage: deterministicRouter,
     closer: resolveCloser(header.closerRef ?? DEFAULT_CLOSER, repoPath),
+    ...(ctx.repairCoordinator === undefined ? {} : { repairCoordinator: ctx.repairCoordinator }),
   };
 
   let result: AdvanceResult;
@@ -82,6 +83,21 @@ export async function driveToOutcome(
   } while (!result.done);
 
   return reportOutcome(dir, await load(dir), ctx);
+}
+
+/**
+ * One repair of the environment every task of a run shares: the existing
+ * gate-maintenance role, its instructions and its tools, run in the copy and
+ * against the record of the task that found it broken, with that task's own
+ * roles. Nothing about what the repair may touch changes because the run asked.
+ */
+export function dispatchRepair(record: RunRecord, sessionKey: string, session: SessionEnvironment, env: NodeJS.ProcessEnv): Promise<Terminus> {
+  const { location } = runPlace(record.repoPath, record.runId, env);
+  const agent = createAgentPort(rolesFor(record.caseFile.header.roleOverrides), session);
+  return agent.invoke(
+    { role: "gate-maintenance" },
+    { worktreePath: record.caseFile.cursor.worktreeRef || location.worktreePath, dir: record.dir, sessionKey },
+  );
 }
 
 export async function resumeRun(record: RunRecord, ctx: CommandContext, session?: SessionEnvironment): Promise<ExitCode> {
