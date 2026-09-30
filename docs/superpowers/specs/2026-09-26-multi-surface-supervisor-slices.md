@@ -24,6 +24,7 @@ ordering, finer-grained hold) is not sliced.
 ## Slice 1: Run Several Tasks From Your List at Once
 
 **Status:** ✅ Complete — 2026-09-30 — `8d4143c`
+**Tests:** ✅ Recorded — 2026-09-30 — `9eee97b` — cli — 1 UAT + 4 AC, 4 skipped (already covered)
 
 **Delivers:** A project owner sets how many tasks may run at once, and one `delivery run` works through the list with that many going at the same time, each on its own copy, with every line of output saying which task it is about.
 
