@@ -6,7 +6,7 @@ import { completes, delivery, PACKAGE, scriptFile, TASK } from "./command-fixtur
 import { EXIT } from "./failures.js";
 import type { MockScript } from "../mock-script.js";
 import type { OutcomeSummary } from "./outcome.js";
-import { jsonReporter, plainReporter, type StepRecord } from "./report.js";
+import { jsonReporter, plainReporter, type StepRecord, type TaskTag, type SurfaceStepRecord, type RunEventRecord } from "./report.js";
 
 const ESC = "[";
 const AT = "2026-09-16T12:00:00.000Z";
@@ -192,4 +192,88 @@ describe("plain language in every environment", () => {
       for (const state of SurfaceState.options) expect(stdout).not.toContain(state);
     },
   );
+});
+
+const TASK_2: TaskTag = { runId: "run-20260916T120000Z", ordinal: 2, of: 10, id: "let-someone-swap-20260916T120000Z" };
+const TASK_3: TaskTag = { runId: "run-20260916T120000Z", ordinal: 3, of: 10, id: "send-a-reminder-20260916T120001Z" };
+
+describe("telling a person about several tasks at once", () => {
+  it("starts every line about a task with its place in the list", () => {
+    const lines: string[] = [];
+    const task = plainReporter((line) => lines.push(line), false).forTask(TASK_2);
+    task.note("Starting run let-someone-swap-20260916T120000Z: let someone swap");
+    task.step({ state: "PROVISIONING", done: false });
+    task.step({ state: "GATING", done: false, recovery: "re-created the working copy" });
+    task.outcome(SUMMARY);
+    expect(lines).toEqual([
+      "[2/10] Starting run let-someone-swap-20260916T120000Z: let someone swap",
+      "[2/10] - setting up",
+      "[2/10] - checking the agent's work",
+      "[2/10] Had to put something right: re-created the working copy.",
+      `[2/10] ${SUMMARY.headline}`,
+      ...SUMMARY.details.map((line) => `[2/10] ${line}`),
+    ]);
+  });
+
+  it("keeps each task's own run of steps, so two tasks at the same step both say so", () => {
+    const lines: string[] = [];
+    const plain = plainReporter((line) => lines.push(line), false);
+    plain.forTask(TASK_2).step({ state: "AGENT_ACTIVE", done: false });
+    plain.forTask(TASK_3).step({ state: "AGENT_ACTIVE", done: false });
+    expect(lines).toEqual(["[2/10] - the agent is working", "[3/10] - the agent is working"]);
+  });
+
+  it("keeps the tag as text outside any colour", () => {
+    const lines: string[] = [];
+    plainReporter((line) => lines.push(line), true).forTask(TASK_2).step({ state: "CLOSING", done: false });
+    expect(lines[0]?.startsWith("[2/10] ")).toBe(true);
+  });
+
+  it("prints nothing for a run event: the run's opening line already said it", () => {
+    const lines: string[] = [];
+    plainReporter((line) => lines.push(line), false).run({ runId: TASK_2.runId, state: "STARTED" });
+    expect(lines).toEqual([]);
+  });
+});
+
+describe("telling a script about several tasks at once", () => {
+  function scripted() {
+    const records: string[] = [];
+    const notes: string[] = [];
+    return { records, notes, reporter: jsonReporter((line) => records.push(line), (line) => notes.push(line), clock) };
+  }
+
+  it("writes each task's step with its scope, the run it belongs to, and its place and id, every key present", () => {
+    const { records, reporter } = scripted();
+    const task = reporter.forTask(TASK_2);
+    task.step({ state: "PROVISIONING", done: false });
+    task.step({ state: "GATING", done: false, recovery: "re-created the working copy" });
+    expect(records.map((line) => JSON.parse(line) as SurfaceStepRecord)).toEqual([
+      { scope: "surface", runId: TASK_2.runId, surface: { ordinal: 2, of: 10, id: TASK_2.id }, state: "PROVISIONING", done: false, recovery: null, at: AT },
+      { scope: "surface", runId: TASK_2.runId, surface: { ordinal: 2, of: 10, id: TASK_2.id }, state: "GATING", done: false, recovery: "re-created the working copy", at: AT },
+    ]);
+  });
+
+  it("writes the run's own events with the run scope", () => {
+    const { records, reporter } = scripted();
+    reporter.run({ runId: TASK_2.runId, state: "STARTED" });
+    reporter.run({ runId: TASK_2.runId, state: "DRAINED" });
+    expect(records.map((line) => JSON.parse(line) as RunEventRecord)).toEqual([
+      { scope: "run", runId: TASK_2.runId, state: "STARTED", done: false, at: AT },
+      { scope: "run", runId: TASK_2.runId, state: "DRAINED", done: true, at: AT },
+    ]);
+  });
+
+  it("keeps a task's words off the machine-readable stream, tagged on the note stream", () => {
+    const { records, notes, reporter } = scripted();
+    const task = reporter.forTask(TASK_2);
+    task.note("Starting run let-someone-swap-20260916T120000Z: let someone swap");
+    task.outcome(SUMMARY);
+    expect(records).toEqual([]);
+    expect(notes).toEqual([
+      "[2/10] Starting run let-someone-swap-20260916T120000Z: let someone swap",
+      `[2/10] ${SUMMARY.headline}`,
+      ...SUMMARY.details.map((line) => `[2/10] ${line}`),
+    ]);
+  });
 });
