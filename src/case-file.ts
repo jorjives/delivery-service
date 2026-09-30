@@ -1,28 +1,9 @@
-import { open, rename, readFile, mkdir } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { CaseJson, CaseFile, BudgetSet, BudgetPopulation, HistoryEntry, CreateHeader, CaseFileCursor, SurfaceState, GateReport, CaseFileOutcome } from "./schema.js";
 import { FileNotFound, CorruptCaseFile, WriteFailure, ImmutabilityViolation } from "./errors.js";
+import { appendLine, atomicWriteJson, isEnoent, MalformedLine, parseLines, writeAndSync } from "./journal.js";
 import type { TriageInput } from "./ports.js";
-
-async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
-  const fd = await open(filePath, flag);
-  try {
-    await fd.write(data);
-    await fd.datasync();
-  } finally {
-    await fd.close();
-  }
-}
-
-async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
-  const tmp = filePath + ".tmp";
-  await writeAndSync(tmp, "w", JSON.stringify(data, null, 2));
-  await rename(tmp, filePath);
-}
-
-function isEnoent(err: unknown): boolean {
-  return err instanceof Error && "code" in err && err.code === "ENOENT";
-}
 
 async function readFileOrNotFound(dir: string, filePath: string): Promise<string> {
   try {
@@ -95,9 +76,8 @@ export async function appendEntry(
   // Validate the entry against the schema
   HistoryEntry.parse(entry);
 
-  const logPath = join(dir, "log.jsonl");
   try {
-    await writeAndSync(logPath, "a", JSON.stringify(entry) + "\n");
+    await appendLine(join(dir, "log.jsonl"), entry);
   } catch (err) {
     throw new WriteFailure(dir, String(err));
   }
@@ -122,27 +102,13 @@ export async function load(dir: string): Promise<CaseFile> {
   // Parse and validate case.json
   const caseJson = parseCaseJson(dir, caseJsonRaw);
 
-  // Parse history entries
-  const history: HistoryEntry[] = [];
-  if (logRaw.trim().length > 0) {
-    const lines = logRaw.trimEnd().split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      if (line === undefined) continue;
-      try {
-        const parsed = JSON.parse(line);
-        history.push(HistoryEntry.parse(parsed));
-      } catch (err) {
-        // Truncated final line from a crash — ignore it
-        if (i === lines.length - 1) {
-          break;
-        }
-        throw new CorruptCaseFile(
-          dir,
-          `Malformed log entry at line ${i + 1}: ${String(err)}`,
-        );
-      }
-    }
+  // Parse history entries: a torn final line is dropped by the journal itself.
+  let history: HistoryEntry[];
+  try {
+    history = parseLines(logRaw, (value) => HistoryEntry.parse(value));
+  } catch (err) {
+    if (err instanceof MalformedLine) throw new CorruptCaseFile(dir, err.message);
+    throw err;
   }
 
   return {

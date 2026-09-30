@@ -1,0 +1,65 @@
+import { open, rename } from "node:fs/promises";
+
+/**
+ * The crash-safe write-and-append discipline every record the harness keeps
+ * shares: a JSON file is only ever replaced whole, through a temporary file and
+ * a rename, and a journal is only ever appended to, one JSON value per line,
+ * synced before the call returns. The case file and the supervised run file
+ * both build on this, so the two can never drift apart.
+ */
+export async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
+  const fd = await open(filePath, flag);
+  try {
+    await fd.write(data);
+    await fd.datasync();
+  } finally {
+    await fd.close();
+  }
+}
+
+/** Replace a JSON file whole: a reader sees the old contents or the new, never half of either. */
+export async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
+  const tmp = filePath + ".tmp";
+  await writeAndSync(tmp, "w", JSON.stringify(data, null, 2));
+  await rename(tmp, filePath);
+}
+
+/** Append one value to a journal as its own line. */
+export async function appendLine(filePath: string, value: unknown): Promise<void> {
+  await writeAndSync(filePath, "a", JSON.stringify(value) + "\n");
+}
+
+export function isEnoent(err: unknown): boolean {
+  return err instanceof Error && "code" in err && err.code === "ENOENT";
+}
+
+/** A journal line that cannot be read and is not the last one, so it is not a torn append: the journal itself is damaged. */
+export class MalformedLine extends Error {
+  constructor(
+    readonly line: number,
+    cause: unknown,
+  ) {
+    super(`Malformed log entry at line ${line}: ${String(cause)}`);
+    this.name = "MalformedLine";
+  }
+}
+
+/**
+ * A journal's entries, oldest first. The final line alone may be cut short by
+ * a crash mid-append, so one that will not parse is dropped; a bad line
+ * anywhere else throws `MalformedLine`, for the owner to name in its own error.
+ */
+export function parseLines<T>(raw: string, parse: (value: unknown) => T): T[] {
+  if (raw.trim().length === 0) return [];
+  const lines = raw.trimEnd().split("\n");
+  const entries: T[] = [];
+  for (const [index, line] of lines.entries()) {
+    try {
+      entries.push(parse(JSON.parse(line)));
+    } catch (err) {
+      if (index === lines.length - 1) break;
+      throw new MalformedLine(index + 1, err);
+    }
+  }
+  return entries;
+}
