@@ -252,10 +252,11 @@ export async function runQueue(
       ctx.report.run({ runId, state: "STARTED" });
     }
 
-    // Several at once, a stop ends the command at once with the stopped code. At once, because Ctrl-C reaches the
-    // agents and checks too, and what they said on the way down would be written into the tasks' records as though
-    // it had happened; a record left as a crash leaves it is one the next run already knows how to pick up. The
-    // lock goes with the process. One at a time, a stop ends the command as it always has.
+    // With several at once, a stop ends the command immediately with the stopped code. Immediately, because Ctrl-C
+    // reaches the agents and checks too, and whatever they reported while shutting down would otherwise be written
+    // into the tasks' records as though it had really happened. Leaving each record exactly as a crash would is
+    // safe: the next run already knows how to pick that up. The lock is released with the process. With one at a
+    // time, a stop ends the command as it always has.
     const disarm = runId === undefined ? undefined : ctx.exitOnInterrupt?.(EXIT.aborted, STOPPED_PART_WAY);
     let settled: Settled<QueueClaim>[];
     try {
