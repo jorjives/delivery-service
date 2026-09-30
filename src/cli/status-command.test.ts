@@ -4,16 +4,20 @@ import { mkdtemp, mkdir, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import type { CaseFileOutcome } from "../schema.js";
+import type { CaseFileOutcome, RunEntry, SlotOutcome } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
-import { ESCALATION, delivery, PACKAGE, writeRunRecord } from "./command-fixtures.js";
+import { ESCALATION, delivery, PACKAGE, writeRunRecord, writeSupervisedRun } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { runPlace, runsRoot } from "./run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
 import { ALL_AND_ONE, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
+import { setRunOutcome } from "../run-file.js";
+import { STOPPED_PART_WAY } from "./queue.js";
+import { takeRepoLock } from "./repo-lock.js";
+import { WAITING_FOR_A_SLOT } from "./status-command.js";
 
 const AT = "2026-09-14T21:05:09.123Z";
 const RUN_ID = "add-a-hello-function-20260914T210309Z";
@@ -535,5 +539,146 @@ describe("delivery status --all", () => {
     const { stdout } = await delivery(["status", "--help"], { cwd: repo });
 
     expect(stdout).toContain("--all");
+  });
+});
+
+const SUPERVISED = "run-20260930T090000Z";
+const ESCALATED = { kind: "escalated", source: "worker", reason: "authority limit", at: AT } as const;
+const HELLO = "add a hello";
+const GREETING = "delete the greeting";
+const GOODBYE = "add a goodbye";
+const SHOUT = "add a shout";
+const IDS = {
+  hello: "add-a-hello-20260930T090000Z",
+  greeting: "delete-the-greeting-20260930T090000Z",
+  goodbye: "add-a-goodbye-20260930T090100Z",
+  shout: "add-a-shout-20260930T090200Z",
+};
+const fill = (slot: number, surfaceId: string, intent: string): RunEntry => ({ t: "slot_fill", slot, surfaceId, taskDef: { intent } });
+const free = (slot: number, surfaceId: string, outcome: SlotOutcome): RunEntry => ({ t: "slot_free", slot, surfaceId, outcome });
+
+/** A project listing four tasks, and a run of two at once that took them all: three delivered, one waiting on a decision. */
+async function finishedSupervisedRun(prefix: string): Promise<string> {
+  const repo = initTempRepo(prefix, {
+    "package.json": PACKAGE,
+    "delivery.config.json": JSON.stringify({ concurrency: 2, tasks: [HELLO, GREETING, GOODBYE, SHOUT] }),
+  });
+  await writeRunRecord(repo, { runId: IDS.hello, task: HELLO, outcome: CLOSED });
+  await writeRunRecord(repo, { runId: IDS.greeting, task: GREETING, outcome: ESCALATED, packet: ESCALATION });
+  await writeRunRecord(repo, { runId: IDS.goodbye, task: GOODBYE, outcome: CLOSED });
+  await writeRunRecord(repo, { runId: IDS.shout, task: SHOUT, outcome: CLOSED });
+  const dir = await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 4 }, [
+    fill(1, IDS.hello, HELLO),
+    fill(2, IDS.greeting, GREETING),
+    free(1, IDS.hello, "closed"),
+    fill(1, IDS.goodbye, GOODBYE),
+    free(2, IDS.greeting, "escalated"),
+    fill(2, IDS.shout, SHOUT),
+    free(1, IDS.goodbye, "closed"),
+    free(2, IDS.shout, "closed"),
+  ]);
+  await setRunOutcome(dir, { kind: "drained", at: "2026-09-30T09:30:00.000Z" });
+  return repo;
+}
+
+/** A project listing three tasks, and a run of two at once with both slots taken and the third task still to start. */
+async function busySupervisedRun(prefix: string): Promise<string> {
+  const repo = initTempRepo(prefix, {
+    "package.json": PACKAGE,
+    "delivery.config.json": JSON.stringify({ concurrency: 2, tasks: [HELLO, GREETING, GOODBYE] }),
+  });
+  await writeRunRecord(repo, { runId: IDS.hello, task: HELLO });
+  await writeRunRecord(repo, { runId: IDS.greeting, task: GREETING });
+  await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 3 }, [
+    fill(1, IDS.hello, HELLO),
+    fill(2, IDS.greeting, GREETING),
+  ]);
+  return repo;
+}
+
+const taskLines = (stdout: string): string[] => stdout.split("\n").filter((line) => /^ {2}\[\d+\/\d+\] /.test(line));
+
+describe("delivery status for a run of several tasks at once", () => {
+  it("says the run, the environment and the counts, then one line per task", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-");
+
+    const { stdout, exitCode } = await delivery(["status", SUPERVISED], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.split("\n").slice(0, 3)).toEqual([
+      `Run ${SUPERVISED}, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once`,
+      "Environment: healthy",
+      "3 done, 1 needs your decision",
+    ]);
+    // Every task with a record names its own run id, so any one can be read in full from this list.
+    expect(taskLines(stdout)).toEqual([
+      `  [1/4] ${HELLO} (${IDS.hello}): done`,
+      `  [2/4] ${GREETING} (${IDS.greeting}): needs your decision (see below)`,
+      `  [3/4] ${GOODBYE} (${IDS.goodbye}): done`,
+      `  [4/4] ${SHOUT} (${IDS.shout}): done`,
+    ]);
+    expect(stdout.trimEnd().split("\n").at(-1)).toBe(`To read one task in full: delivery status ${IDS.greeting}`);
+    expect(stdout).not.toMatch(/HEALTHY|ESCALATED|CLOSED|DRAINED|escalated|closed/);
+  });
+
+  it("follows a task that needs a decision with the account status gives of it on its own, unchanged", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-decision-");
+
+    const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
+
+    const lines = stdout.split("\n");
+    const own = (await statusReport(await readRun(repo, IDS.greeting), await context())).slice(1);
+    const at = lines.indexOf(`  [2/4] ${GREETING} (${IDS.greeting}): needs your decision (see below)`);
+    expect(at).toBeGreaterThan(-1);
+    expect(own[0]).toBe(`This needs your decision: ${ESCALATION.decision}`);
+    expect(lines.slice(at + 1, at + 1 + own.length)).toEqual(own);
+  });
+
+  it("shows a task waiting only because every slot is busy as queued, waiting for a free slot", async () => {
+    const repo = await busySupervisedRun("status-supervised-busy-");
+    const release = await takeRepoLock(repo);
+    let stdout: string;
+    try {
+      ({ stdout } = await delivery(["status", SUPERVISED], { cwd: repo }));
+    } finally {
+      await release?.();
+    }
+
+    expect(stdout).toContain("2 not finished yet, 1 queued");
+    expect(taskLines(stdout)).toEqual([
+      `  [1/3] ${HELLO} (${IDS.hello}): not finished yet`,
+      `  [2/3] ${GREETING} (${IDS.greeting}): not finished yet`,
+      `  [3/3] ${GOODBYE}: ${WAITING_FOR_A_SLOT}`,
+    ]);
+    expect(stdout).not.toContain(STOPPED_PART_WAY);
+  });
+
+  it("says how to carry on a run that stopped part way, without claiming its queued tasks wait for a slot", async () => {
+    const repo = await busySupervisedRun("status-supervised-stopped-");
+
+    const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
+
+    expect(stdout).toContain(STOPPED_PART_WAY);
+    expect(taskLines(stdout)).toContain(`  [3/3] ${GOODBYE}: queued`);
+    expect(stdout).not.toContain(WAITING_FOR_A_SLOT);
+  });
+
+  it("reads one task of the run by its own id exactly as it reads any run", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-task-");
+
+    const { stdout } = await delivery(["status", IDS.hello], { cwd: repo });
+
+    const own = await statusReport(await readRun(repo, IDS.hello), await context(), { task: 1, of: 4 });
+    expect(stdout.trimEnd().split("\n")).toEqual(own);
+  });
+
+  it("gives the usual message when a run-style id names nothing", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-unknown-");
+
+    const { stderr, exitCode } = await delivery(["status", "run-20200101T000000Z"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("I couldn't find that run's record");
+    expect(stderr).not.toContain("    at ");
   });
 });

@@ -227,6 +227,35 @@ escalation packet. Every key is always present: a `null` means "not that kind of
 a script never has to check whether a key is there. A run that could not be found is still a
 plain-language message on standard error and exit 2, not JSON.
 
+### A run of several tasks at once
+
+A run of several tasks at once has an id of its own, the one it opened with (`run-…`).
+`delivery status run-20260930T090000Z` reads the whole run: when it started and its shape,
+whether the environment the tasks share is healthy, how many tasks are done, need your
+decision, stopped or are still queued, then one line per task in list order, naming the task's
+own run id once it has one. A task that needs
+your decision is followed by the same account `delivery status` gives of it on its own. A task
+waiting only because every slot is busy shows as "queued, waiting for a free slot"; if the run
+was stopped part way, it says how to carry it on.
+
+```text
+Run run-20260930T090000Z, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once
+Environment: healthy
+3 done, 1 needs your decision
+
+  [1/4] add a hello (add-a-hello-20260930T090000Z): done
+  [2/4] delete the greeting (delete-the-greeting-20260930T090000Z): needs your decision (see below)
+This needs your decision: …
+…
+  [3/4] add a goodbye (add-a-goodbye-20260930T090100Z): done
+  [4/4] add a shout (add-a-shout-20260930T090200Z): done
+
+To read one task in full: delivery status delete-the-greeting-20260930T090000Z
+```
+
+Every task keeps its own run id, and `delivery status <task-run-id>` reads it exactly as it
+reads any other run.
+
 ### See every run
 
 To see the whole history of runs in a repository:

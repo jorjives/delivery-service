@@ -2,17 +2,20 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { logTail, resumeAction, type ResumeAction } from "../case-file.js";
 import { branchName } from "../provision.js";
-import type { SurfaceState } from "../schema.js";
+import type { BreakerState, SurfaceState, TaskDef } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { loadConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
+import { RunFileNotFound } from "../errors.js";
 import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
 import { nextStepPhrase, paint } from "./output.js";
-import { queuePositionOf, queueTasks, type QueuePosition } from "./queue.js";
+import { queuePositionOf, queueTasks, shapeOf, STOPPED_PART_WAY, type QueuePosition } from "./queue.js";
+import { repoLocked } from "./repo-lock.js";
 import { runPlace } from "./run-location.js";
-import { allRuns, describeRun, newestFirst, NOTHING_HERE, readableUtc, readRun, startedAt, startedInstant, type RunRecord } from "./runs.js";
+import { allRuns, describeRun, newestFirst, NOTHING_HERE, readableUtc, readRun, readSupervisedRun, startedAt, startedInstant, type RunRecord, type SupervisedRecord } from "./runs.js";
+import { STANDINGS, standingCounts, supervisedView, type SupervisedView, type TaskStanding, type ViewTask } from "./supervised-view.js";
 import { taskIntent } from "./settings.js";
 
 /**
@@ -66,38 +69,33 @@ function whereToLook(record: RunRecord, ctx: CommandContext): string[] {
  * never advances anything.
  */
 export async function statusReport(record: RunRecord, ctx: CommandContext, position?: QueuePosition): Promise<string[]> {
-  const { caseFile, dir, runId } = record;
-  const opening = [
-    `Run ${runId}, started ${startedAt(runId)}: ${taskIntent(caseFile.header.taskDef)}`,
+  return [
+    `Run ${record.runId}, started ${startedAt(record.runId)}: ${taskIntent(record.caseFile.header.taskDef)}`,
     ...(position ? [`It is task ${position.task} of ${position.of} on your list.`] : []),
+    ...(await statusBody(record, ctx)),
   ];
+}
+
+/** What happened to one run, after the line naming it: the part a run of several at once repeats under a task that needs a decision. */
+export async function statusBody(record: RunRecord, ctx: CommandContext): Promise<string[]> {
+  const { caseFile, dir, runId } = record;
   const { outcome } = caseFile;
 
   if (!outcome) {
     return [
-      ...opening,
       paint(ctx.colour, "quiet", `This run hasn't finished. Picking it up will carry on with ${nextStepPhrase(caseFile)}.`),
       `To finish it: delivery resume ${runId}`,
     ];
   }
 
   const summary = await summariseOutcome(dir, caseFile);
-  const finished = [
-    ...opening,
-    paint(ctx.colour, summary.tone, summary.headline),
-    `${outcome.kind === "closed" ? "It finished" : "It stopped"} ${readableUtc(outcome.at)}.`,
-  ];
+  const finished = [paint(ctx.colour, summary.tone, summary.headline), `${outcome.kind === "closed" ? "It finished" : "It stopped"} ${readableUtc(outcome.at)}.`];
   if (outcome.kind === "closed") return [...finished, ...summary.details];
 
   // Not summary.details: that is the live run's short form, which quotes the
   // evidence alone. Whoever reads this later gets the whole packet instead.
   const packet = outcome.kind === "escalated" ? await packetOf(dir, outcome.packetRef) : undefined;
-  return [
-    ...finished,
-    ...(packet ? packetLines(packet) : []),
-    ...(outcome.kind === "aborted" ? summary.details : []),
-    ...whereToLook(record, ctx),
-  ];
+  return [...finished, ...(packet ? packetLines(packet) : []), ...(outcome.kind === "aborted" ? summary.details : []), ...whereToLook(record, ctx)];
 }
 
 /** How a run ended, as one word a script can switch on. "unfinished" is the fourth: a run that is still resumable has not ended at all. */
@@ -194,6 +192,48 @@ const OUTCOME_WORDS: Record<RunOutcomeName, string> = {
   unfinished: "hasn't finished yet",
 };
 
+/** Where a task of a run of several at once stands, as a person reads it, in a count or on its own line. Total, so a new standing does not compile until it has words. */
+const STANDING_WORDS: Record<TaskStanding, string> = {
+  closed: "done",
+  escalated: "needs your decision",
+  aborted: "stopped before it finished",
+  unfinished: "not finished yet",
+  queued: "queued",
+};
+
+/** The environment every task of a run shares, as a person reads it. Total over the breaker's states. */
+const ENVIRONMENT_WORDS: Record<BreakerState, string> = {
+  HEALTHY: "healthy",
+};
+
+/** A task that would be running if a slot were free. Said only while the run is going: a stopped run's queued tasks are waiting for it to be picked up. */
+export const WAITING_FOR_A_SLOT = "queued, waiting for a free slot";
+
+/** How many tasks stand each way, in words, leaving out any standing no task has: "3 done, 1 needs your decision". */
+export function countsLine(tasks: readonly ViewTask[]): string {
+  const counts = standingCounts(tasks);
+  return STANDINGS.filter((standing) => counts[standing] > 0)
+    .map((standing) => `${counts[standing]} ${STANDING_WORDS[standing]}`)
+    .join(", ");
+}
+
+/**
+ * One task's line: its place in the list, what it was asked to do, its own run
+ * id once it has one (so any task can be read in full with `delivery status <id>`),
+ * and where it stands.
+ */
+function taskLine(task: ViewTask, live: boolean): string {
+  const tag = task.position ? `[${task.position.task}/${task.position.of}] ` : "";
+  const id = task.record ? ` (${task.record.runId})` : "";
+  const standing =
+    task.standing === "escalated"
+      ? `${STANDING_WORDS.escalated} (see below)`
+      : task.standing === "queued" && live
+        ? WAITING_FOR_A_SLOT
+        : STANDING_WORDS[task.standing];
+  return `  ${tag}${taskIntent(task.taskDef)}${id}: ${standing}`;
+}
+
 export const ALL_AND_ONE =
   "Use either `--all` or a run id, not both: `--all` lists every run, and a run id reads one of them in full.";
 
@@ -239,6 +279,16 @@ async function mostRecent(repoPath: string): Promise<RunRecord> {
   return latest;
 }
 
+/** The project's list as written now, or none when there is no list or the file fails to load: status reads it only to annotate, never to gate. */
+async function listTasks(startDir: string, repoPath: string, ctx: CommandContext): Promise<TaskDef[]> {
+  try {
+    return queueTasks(await loadConfig({ startDir, repoPath, flag: undefined, env: ctx.env }));
+  } catch (err) {
+    if (err instanceof Refusal) return [];
+    throw err;
+  }
+}
+
 /**
  * Where this run's task sits in the project's list as it is written now.
  * Nothing for a run the list doesn't ask for, for a project with no list, and
@@ -247,14 +297,53 @@ async function mostRecent(repoPath: string): Promise<RunRecord> {
  * file just means no queue line rather than a refusal.
  */
 async function positionOf(record: RunRecord, startDir: string, ctx: CommandContext): Promise<QueuePosition | undefined> {
-  let config;
+  return queuePositionOf(await listTasks(startDir, record.repoPath, ctx), record.caseFile.header.taskDef);
+}
+
+/** A run by its id: a run of several at once if one has that id, otherwise a single run, whose absence says the usual "couldn't find" message. */
+async function lookUp(repoPath: string, runId: string): Promise<RunRecord | SupervisedRecord> {
   try {
-    config = await loadConfig({ startDir, repoPath: record.repoPath, flag: undefined, env: ctx.env });
+    return await readSupervisedRun(repoPath, runId);
   } catch (err) {
-    if (err instanceof Refusal) return undefined;
-    throw err;
+    if (!(err instanceof RunFileNotFound)) throw err;
   }
-  return queuePositionOf(queueTasks(config), record.caseFile.header.taskDef);
+  return readRun(repoPath, runId);
+}
+
+/** A run of several at once, read back with every task's record and the list as written now. Live while it holds the repository. */
+async function viewOf(record: SupervisedRecord, repoPath: string, startDir: string, ctx: CommandContext): Promise<SupervisedView> {
+  const live = record.runFile.outcome === undefined && (await repoLocked(repoPath));
+  return supervisedView(record.runFile, await allRuns(repoPath), await listTasks(startDir, repoPath, ctx), live);
+}
+
+/**
+ * A run of several tasks at once, as a person reads it: which run and its
+ * shape, the shared environment, the counts, then one line per task in list
+ * order. A task that needs a decision is followed by exactly what `status`
+ * says of it on its own, so the decision reads the same wherever it is met.
+ * A run that stopped part way says how to carry it on.
+ */
+export async function supervisedReport(view: SupervisedView, ctx: CommandContext): Promise<string[]> {
+  const { header, outcome } = view.runFile;
+  const counts = countsLine(view.tasks);
+  const lines = [
+    `Run ${header.runId}, started ${startedAt(header.runId)}: ${shapeOf(header.tasks, header.concurrency)}`,
+    `Environment: ${ENVIRONMENT_WORDS[view.breaker]}`,
+    ...(counts === "" ? [] : [counts]),
+    ...(outcome === undefined && !view.live ? [STOPPED_PART_WAY] : []),
+    "",
+  ];
+  for (const task of view.tasks) {
+    lines.push(taskLine(task, view.live));
+    if (task.standing === "escalated" && task.record) lines.push(...(await statusBody(task.record, ctx)), "");
+  }
+  const readable = view.tasks.find((task) => task.standing === "escalated") ?? view.tasks.find((task) => task.record);
+  if (readable?.record) {
+    // Exactly one blank line before the footer, whether or not the last task carried a decision's account.
+    if (lines.at(-1) !== "") lines.push("");
+    lines.push(`To read one task in full: delivery status ${readable.record.runId}`);
+  }
+  return lines;
 }
 
 /**
@@ -272,7 +361,11 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
   if (options.all) return listRuns(repoPath, ctx);
-  const record = runId === undefined ? await mostRecent(repoPath) : await readRun(repoPath, runId);
+  const record = runId === undefined ? await mostRecent(repoPath) : await lookUp(repoPath, runId);
+  if ("runFile" in record) {
+    for (const line of await supervisedReport(await viewOf(record, repoPath, startDir, ctx), ctx)) ctx.writeLine(line);
+    return EXIT.ok;
+  }
   const position = await positionOf(record, startDir, ctx);
   // Indented rather than one line: a person reads this output too, and a parser does not mind.
   if (ctx.json) ctx.writeLine(JSON.stringify(await statusDocument(record, ctx, position), null, 2));
