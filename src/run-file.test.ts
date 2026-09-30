@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { appendFileSync, mkdtempSync } from "node:fs";
+import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { FileNotFound, ImmutabilityViolation } from "./errors.js";
+import { CorruptRunFile, ImmutabilityViolation, RunFileNotFound } from "./errors.js";
 import { appendRunEntry, createRunFile, loadRunFile, setRunOutcome } from "./run-file.js";
 import type { RunHeader } from "./schema.js";
 
@@ -51,6 +51,26 @@ describe("a supervised run's record", () => {
   });
 
   it("says plainly when there is no record in the folder", async () => {
-    await expect(loadRunFile(runDir())).rejects.toThrow(FileNotFound);
+    const dir = runDir();
+    await expect(loadRunFile(dir)).rejects.toThrow(RunFileNotFound);
+    await expect(loadRunFile(dir)).rejects.toThrow(/run record not found/i);
+  });
+
+  it("names a corrupt run.json as a damaged run record, never as a case file", async () => {
+    const dir = runDir();
+    writeFileSync(join(dir, "run.json"), "{ not json");
+    const err = await loadRunFile(dir).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CorruptRunFile);
+    expect((err as Error).message).toMatch(/corrupt run record/i);
+    expect((err as Error).message).not.toMatch(/case file/i);
+  });
+
+  it("names a corrupt history as a damaged run record, never as a case file", async () => {
+    const dir = runDir();
+    await createRunFile(dir, HEADER);
+    appendFileSync(join(dir, "log.jsonl"), "garbage\n{\"t\":\"slot_free\"}\n");
+    const err = await loadRunFile(dir).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CorruptRunFile);
+    expect((err as Error).message).not.toMatch(/case file/i);
   });
 });

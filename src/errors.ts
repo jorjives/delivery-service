@@ -17,6 +17,27 @@ export class CorruptCaseFile extends Error {
   }
 }
 
+/** The record a run of several tasks keeps of itself (`run.json`), missing: never a per-task case file. */
+export class RunFileNotFound extends Error {
+  readonly code = "RUN_FILE_NOT_FOUND" as const;
+  constructor(readonly runDir: string, readonly filePath: string) {
+    super(`Run record not found: ${filePath} in ${runDir}`);
+    this.name = "RunFileNotFound";
+  }
+}
+
+/** The record a run of several tasks keeps of itself, unreadable: never a per-task case file. */
+export class CorruptRunFile extends Error {
+  readonly code = "CORRUPT_RUN_FILE" as const;
+  constructor(
+    readonly runDir: string,
+    readonly detail: string,
+  ) {
+    super(`Corrupt run record in ${runDir}: ${detail}`);
+    this.name = "CorruptRunFile";
+  }
+}
+
 export class ImmutabilityViolation extends Error {
   readonly code = "IMMUTABILITY_VIOLATION" as const;
   constructor(

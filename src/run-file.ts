@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { CorruptCaseFile, FileNotFound, ImmutabilityViolation, WriteFailure } from "./errors.js";
+import { CorruptRunFile, ImmutabilityViolation, RunFileNotFound, WriteFailure } from "./errors.js";
 import { appendLine, atomicWriteJson, isEnoent, MalformedLine, parseLines, writeAndSync } from "./journal.js";
 import { RunEntry, RunJson, type RunFile, type RunHeader, type RunOutcome } from "./schema.js";
 
@@ -36,13 +36,13 @@ async function readRunJson(dir: string): Promise<RunJson> {
   try {
     raw = await readFile(runJsonPath(dir), "utf-8");
   } catch (err) {
-    if (isEnoent(err)) throw new FileNotFound(dir, runJsonPath(dir));
+    if (isEnoent(err)) throw new RunFileNotFound(dir, runJsonPath(dir));
     throw err;
   }
   try {
     return RunJson.parse(JSON.parse(raw));
   } catch (err) {
-    throw new CorruptCaseFile(dir, String(err));
+    throw new CorruptRunFile(dir, String(err));
   }
 }
 
@@ -55,7 +55,7 @@ export async function loadRunFile(dir: string): Promise<RunFile> {
   try {
     return { header: runJson.header, history: parseLines(raw, (value) => RunEntry.parse(value)), outcome: runJson.outcome };
   } catch (err) {
-    if (err instanceof MalformedLine) throw new CorruptCaseFile(dir, err.message);
+    if (err instanceof MalformedLine) throw new CorruptRunFile(dir, err.message);
     throw err;
   }
 }

@@ -1,6 +1,8 @@
 import {
   FileNotFound,
   CorruptCaseFile,
+  RunFileNotFound,
+  CorruptRunFile,
   ImmutabilityViolation,
   WriteFailure,
   ParseError,
@@ -61,6 +63,8 @@ export const UNEXPECTED_FOOTER = "This is unexpected, please file an issue.";
 const KNOWN_ERRORS = [
   FileNotFound,
   CorruptCaseFile,
+  RunFileNotFound,
+  CorruptRunFile,
   ImmutabilityViolation,
   WriteFailure,
   ParseError,
@@ -105,6 +109,16 @@ function renderKnown(err: KnownError): RenderedFailure {
     case "CORRUPT_CASE_FILE":
       return {
         message: `The saved run in ${err.surfaceDir} can't be read back, usually because the harness was stopped while writing it. Remove that folder to start afresh.`,
+        exitCode: EXIT.unexpected,
+      };
+    case "RUN_FILE_NOT_FOUND":
+      return {
+        message: `I couldn't find the record of that run of several tasks (${err.filePath}).`,
+        exitCode: EXIT.configuration,
+      };
+    case "CORRUPT_RUN_FILE":
+      return {
+        message: `The record of the run of several tasks in ${err.runDir} can't be read back, usually because the harness was stopped while writing it. Remove that folder to start afresh.`,
         exitCode: EXIT.unexpected,
       };
     case "WRITE_FAILURE":

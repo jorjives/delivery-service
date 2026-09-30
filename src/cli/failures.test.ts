@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   FileNotFound,
   CorruptCaseFile,
+  RunFileNotFound,
+  CorruptRunFile,
   ImmutabilityViolation,
   WriteFailure,
   ParseError,
@@ -38,6 +40,8 @@ describe("renderFailure", () => {
   it.each([
     [new FileNotFound("/r/.delivery/runs/x", "/r/.delivery/runs/x/case.json"), EXIT.configuration, "/r/.delivery/runs/x/case.json"],
     [new CorruptCaseFile("/r/.delivery/runs/x", "bad json"), EXIT.unexpected, "Remove that folder to start afresh"],
+    [new RunFileNotFound("/r/.delivery/supervised/x", "/r/.delivery/supervised/x/run.json"), EXIT.configuration, "/r/.delivery/supervised/x/run.json"],
+    [new CorruptRunFile("/r/.delivery/supervised/x", "bad json"), EXIT.unexpected, "record of the run of several tasks"],
     [new WriteFailure("/r/.delivery/runs/x", "ENOSPC"), EXIT.unexpected, "free disk space"],
     [new DuplicateIdError("adds numbers"), EXIT.configuration, '"adds numbers"'],
     [new GateModuleLoadFailure("./gates/g.js", "not found"), EXIT.configuration, "docs/writing-a-gate.md"],
@@ -62,6 +66,7 @@ describe("renderFailure", () => {
   it("keeps harness vocabulary out of every rendering a user can act on", () => {
     const actionable = [
       new FileNotFound("/r/runs/x", "/r/runs/x/case.json"),
+      new RunFileNotFound("/r/supervised/x", "/r/supervised/x/run.json"),
       new WriteFailure("/r/runs/x", "ENOSPC"),
       new DuplicateIdError("adds numbers"),
       new ProvisioningFailure("/r/runs/x", "fatal: invalid reference: main"),

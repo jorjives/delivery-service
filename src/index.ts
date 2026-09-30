@@ -67,6 +67,8 @@ export type { Gate, GateContext } from "./command-gate.js";
 export {
   FileNotFound,
   CorruptCaseFile,
+  RunFileNotFound,
+  CorruptRunFile,
   ImmutabilityViolation,
   WriteFailure,
   ParseError,
