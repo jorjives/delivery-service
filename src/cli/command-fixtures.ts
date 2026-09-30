@@ -11,10 +11,11 @@ import { deterministicRouter } from "../router.js";
 import { advance } from "../surface.js";
 import { fakeAgentPort } from "../agent-port-double.js";
 import type { AgentContext, Terminus } from "../ports.js";
-import type { CaseFileOutcome, GateRef, RoleOverrides } from "../schema.js";
+import { appendRunEntry, createRunFile } from "../run-file.js";
+import type { CaseFileOutcome, GateRef, RoleOverrides, RunEntry, RunHeader } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import { runCli } from "./program.js";
-import { prepareRunDir, runIdFor, runPlace, runsRoot } from "./run-location.js";
+import { prepareRunDir, runIdFor, runPlace, runsRoot, supervisedPlace } from "./run-location.js";
 import { DEFAULT_CLOSER } from "./settings.js";
 
 export { runsRoot };
@@ -143,5 +144,18 @@ export async function writeRunRecord(
     const packetRef = packet === undefined ? undefined : await writeRef(dir, "escalation", packet);
     await setOutcome(dir, { ...outcome, ...(packetRef === undefined ? {} : { packetRef }) });
   }
+  return dir;
+}
+
+/**
+ * Test support: a run of several tasks at once, as its record is on disk: the
+ * header it started with and the slots it has recorded so far. No outcome, so
+ * unfinished, which is what a stopped or killed run leaves behind.
+ */
+export async function writeSupervisedRun(repoPath: string, header: RunHeader, history: RunEntry[] = []): Promise<string> {
+  const dir = supervisedPlace(repoPath, header.runId);
+  await prepareRunDir(repoPath, dir);
+  await createRunFile(dir, header);
+  for (const entry of history) await appendRunEntry(dir, entry);
   return dir;
 }

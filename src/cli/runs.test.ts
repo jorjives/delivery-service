@@ -6,9 +6,11 @@ import { Readable } from "node:stream";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { create, setOutcome } from "../case-file.js";
 import { CorruptCaseFile } from "../errors.js";
+import { setRunOutcome } from "../run-file.js";
 import type { GateRef } from "../schema.js";
-import { runsRoot } from "./run-location.js";
-import { allRuns, chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_HERE, NOTHING_TO_RESUME, readRun, readableUtc, startedAt, startedInstant, unfinishedRuns } from "./runs.js";
+import { runsRoot, supervisedRoot } from "./run-location.js";
+import { allRuns, chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_HERE, NOTHING_TO_RESUME, readRun, readableUtc, startedAt, startedInstant, unfinishedRuns, unfinishedSupervisedRun } from "./runs.js";
+import { writeSupervisedRun } from "./command-fixtures.js";
 import { Refusal } from "./failures.js";
 import { plainReporter } from "./report.js";
 
@@ -213,5 +215,40 @@ describe("a time a person can read", () => {
 
   it("says when there is nothing in this repository to report on, and how to start something", () => {
     expect(NOTHING_HERE).toContain("delivery run --task");
+  });
+});
+
+describe("the run of several tasks at once that didn't finish", () => {
+  const header = (repoPath: string, runId: string) => ({ runId, repoPath, concurrency: 2, tasks: 3 });
+
+  it("is none in a repository that has never run several at once", async () => {
+    expect(await unfinishedSupervisedRun(await scratchRepo())).toBeUndefined();
+  });
+
+  it("passes over one that finished", async () => {
+    const repo = await scratchRepo();
+    const dir = await writeSupervisedRun(repo, header(repo, "run-20260930T090000Z"));
+    await setRunOutcome(dir, { kind: "drained", at: "2026-09-30T10:00:00.000Z" });
+    expect(await unfinishedSupervisedRun(repo)).toBeUndefined();
+  });
+
+  it("is the one most recently started when more than one didn't finish, with its folder and record", async () => {
+    const repo = await scratchRepo();
+    await writeSupervisedRun(repo, header(repo, "run-20260930T090000Z"));
+    const newer = await writeSupervisedRun(repo, header(repo, "run-20260930T110000Z"), [
+      { t: "slot_fill", slot: 1, surfaceId: "add-a-page-20260930T110000Z", taskDef: { intent: "add a page" } },
+    ]);
+    await writeSupervisedRun(repo, header(repo, "run-20260930T100000Z"));
+
+    const found = await unfinishedSupervisedRun(repo);
+    expect(found?.dir).toBe(newer);
+    expect(found?.runFile.header.runId).toBe("run-20260930T110000Z");
+    expect(found?.runFile.history).toHaveLength(1);
+  });
+
+  it("passes over a folder with no record in it, which the process died before writing", async () => {
+    const repo = await scratchRepo();
+    await mkdir(join(supervisedRoot(repo), "run-20260930T090000Z"), { recursive: true });
+    expect(await unfinishedSupervisedRun(repo)).toBeUndefined();
   });
 });
