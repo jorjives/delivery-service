@@ -279,9 +279,14 @@ To read one task in full: delivery status delete-the-greeting-20260930T090000Z
 Every task keeps its own run id, and `delivery status <task-run-id>` reads it exactly as it
 reads any other run.
 
+If the environment the tasks share broke, the report opens with that before anything else:
+whether it is being repaired or could not be fixed, which task found it and why, and which tasks
+it held. Those tasks count as "paused until the shared environment is fixed". A run that
+repaired its environment and carried on says only "Environment: healthy".
+
 `delivery status run-… --json` gives the whole run as one document, for a script or for looking
 back after the fact: the run id, when it started, how many tasks and how many at once, whether it
-is going now, the environment, how it ended and when, then `surfaces`, one entry per task it took,
+is going now, the environment, how it ended and when, why it stopped and whether the shared environment was the cause (`reason`, `cause`), how many repairs it used of its limit (`runBudgets`), every time its environment broke with the task that found it, the tasks it held and each repair attempt (`trips`), then `surfaces`, one entry per task it took,
 each exactly the document `delivery status <task-run-id> --json` gives, and `queued`, the tasks
 it has yet to start with their place on your list. Every key is always present, `null` where it
 does not apply yet.

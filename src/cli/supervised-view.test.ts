@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setRunOutcome } from "../run-file.js";
-import type { CaseFileOutcome, RunEntry, SlotOutcome } from "../schema.js";
+import type { CaseFileOutcome, RunEntry, RunFile, SlotOutcome } from "../schema.js";
 import { ESCALATION, writeRunRecord, writeSupervisedRun } from "./command-fixtures.js";
 import { queueTasks } from "./queue.js";
 import { allRuns, readSupervisedRun } from "./runs.js";
@@ -18,9 +18,21 @@ const HELLO = "add a hello";
 const GREETING = "delete the greeting";
 const GOODBYE = "add a goodbye";
 const ID = { hello: "add-a-hello-20260930T090000Z", greeting: "delete-the-greeting-20260930T090000Z", goodbye: "add-a-goodbye-20260930T090100Z" };
+const A = { runId: ID.hello, task: HELLO };
+const B = { runId: ID.greeting, task: GREETING };
+const LIST = [HELLO, GREETING, GOODBYE];
 
 const fill = (slot: number, surfaceId: string, intent: string): RunEntry => ({ t: "slot_fill", slot, surfaceId, taskDef: { intent } });
 const free = (slot: number, surfaceId: string, outcome: SlotOutcome): RunEntry => ({ t: "slot_free", slot, surfaceId, outcome });
+
+const runFileWith = (history: RunEntry[], outcome?: any): RunFile => ({
+  header: { runId: RUN, repoPath: "/repo", concurrency: 2, tasks: LIST.length, runBudgetMax: { gateMaintenance: 2 } },
+  history,
+  outcome,
+});
+
+const standingOf = (view: SupervisedView, record: { runId: string }): any =>
+  view.tasks.find(t => t.record?.runId === record.runId)?.standing;
 
 /** The view of one supervised run in a scratch repository, against a list as it is written now. */
 async function viewOf(
@@ -125,7 +137,7 @@ describe("a run of several at once, summed up", () => {
       runs: [{ runId: ID.hello, task: HELLO, outcome: CLOSED }, { runId: ID.greeting, task: GREETING, outcome: ESCALATED }],
       history: [fill(1, ID.hello, HELLO), fill(2, ID.greeting, GREETING)],
     });
-    expect(standingCounts(view.tasks)).toEqual({ closed: 1, escalated: 1, aborted: 0, unfinished: 0, queued: 1 });
+    expect(standingCounts(view.tasks)).toEqual({ closed: 1, escalated: 1, aborted: 0, paused: 0, unfinished: 0, queued: 1 });
   });
 
   it("has not finished until its record says so", async () => {
@@ -144,5 +156,53 @@ describe("a run of several at once, summed up", () => {
     expect(overallOutcome(await ended([ABORTED, ESCALATED]))).toBe("escalated");
     expect(overallOutcome(await ended([CLOSED, ABORTED]))).toBe("aborted");
     expect(overallOutcome(await ended([CLOSED, CLOSED]))).toBe("closed");
+  });
+});
+
+describe("the shared environment, in a run's view", () => {
+  const trip = (surfaceId: string): RunEntry[] => [
+    { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId, reason: "the shared helper is missing" } },
+    { t: "repair_request", surfaceId, key: null },
+  ];
+
+  it("follows the run's history, and shows a held task that has not finished as paused", async () => {
+    // records: A unfinished (held), B closed; list [A, B, C]
+    const view = supervisedView(
+      runFileWith([fill(1, A.runId, A.task), fill(2, B.runId, B.task), ...trip(A.runId)]),
+      [],
+      queueTasks({ tasks: LIST }),
+      true,
+    );
+    expect(view.breaker).toBe("DEGRADED");
+    expect(view.trip?.cause.surfaceId).toBe(A.runId);
+    expect(view.tasks.find(t => t.taskDef.intent === A.task)?.standing).toBe("paused");
+  });
+
+  it("forgets a trip once the environment is repaired", async () => {
+    const history = [...trip(A.runId), { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: A.runId }, { t: "repair_terminus", attempt: 1, sessionKey: "run-repair-1", status: "completed", rationale: "fixed" }, { t: "breaker_healthy" }] as RunEntry[];
+    const view = supervisedView(
+      runFileWith([fill(1, A.runId, A.task), ...history]),
+      [],
+      queueTasks({ tasks: LIST }),
+      true,
+    );
+    expect(view.breaker).toBe("HEALTHY");
+    expect(view.trip).toBeUndefined();
+    expect(view.tasks.find(t => t.taskDef.intent === A.task)?.standing).toBe("queued");
+  });
+
+  it("keeps the trip a run gave up on, and says the run needs a decision", async () => {
+    const view = supervisedView(
+      runFileWith(
+        [fill(1, A.runId, A.task), ...trip(A.runId), { t: "run_escalated", reason: "could not be repaired" }],
+        { kind: "escalated", cause: "shared_environment", reason: "could not be repaired", at: "2026-09-30T10:00:00.000Z" },
+      ),
+      [],
+      queueTasks({ tasks: LIST }),
+      false,
+    );
+    expect(view.trip?.ended).toBe("gave_up");
+    expect(view.tasks.find(t => t.taskDef.intent === A.task)?.standing).toBe("paused");
+    expect(overallOutcome(view)).toBe("escalated");
   });
 });

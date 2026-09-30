@@ -696,7 +696,7 @@ describe("delivery status for a run of several tasks at once", () => {
     expect(exitCode).toBe(EXIT.ok);
     const document = JSON.parse(stdout);
     expect(Object.keys(document).sort()).toEqual(
-      ["breaker", "concurrency", "finishedAt", "live", "outcome", "queued", "runId", "startedAt", "surfaces", "tasks"],
+      ["breaker", "cause", "concurrency", "finishedAt", "live", "outcome", "queued", "reason", "runBudgets", "runId", "startedAt", "surfaces", "tasks", "trips"],
     );
     expect(document).toMatchObject({
       runId: SUPERVISED,
@@ -708,6 +708,9 @@ describe("delivery status for a run of several tasks at once", () => {
       outcome: "drained",
       finishedAt: "2026-09-30T09:30:00.000Z",
       queued: [],
+      cause: null,
+      reason: null,
+      trips: [],
     });
     const ctx = await context();
     const own = await Promise.all(
@@ -805,5 +808,100 @@ describe("delivery status for a run of several tasks at once", () => {
         ],
       },
     ]);
+  });
+
+  describe("when the shared environment broke", () => {
+    // HELLO and GOODBYE are this file's task words; these are the runs made for them.
+    const HELLO_RUN = "add-a-hello-20260930T090000Z";
+    const GOODBYE_RUN = "add-a-goodbye-20260930T090100Z";
+    const gaveUp = async (prefix: string) => {
+      const repo = initTempRepo(prefix, { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [HELLO, GOODBYE, "add a shout"], concurrency: 2 }) });
+      await writeRunRecord(repo, { runId: HELLO_RUN, task: HELLO });
+      await writeRunRecord(repo, { runId: GOODBYE_RUN, task: GOODBYE });
+      const dir = await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 2 } }, [
+        { t: "slot_fill", slot: 1, surfaceId: HELLO_RUN, taskDef: { intent: HELLO } },
+        { t: "slot_fill", slot: 2, surfaceId: GOODBYE_RUN, taskDef: { intent: GOODBYE } },
+        { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: GOODBYE_RUN, reason: "the shared helper is missing" } },
+        { t: "repair_request", surfaceId: GOODBYE_RUN, key: null },
+        { t: "held", surfaceId: HELLO_RUN },
+        { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: GOODBYE_RUN },
+        { t: "repair_terminus", attempt: 1, sessionKey: "run-repair-1", status: "escalate", rationale: "the helper is outside my copy" },
+        { t: "run_escalated", reason: "the repair could not fix the shared environment: the helper is outside my copy; no task caused this" },
+      ]);
+      await setRunOutcome(dir, { kind: "escalated", cause: "shared_environment", reason: "the repair could not fix the shared environment: the helper is outside my copy; no task caused this", at: "2026-09-30T10:00:00.000Z" });
+      return repo;
+    };
+
+    it("leads with what broke, which task found it and which tasks it held, before the run line", async () => {
+      const repo = await gaveUp("status-breaker-gave-up-");
+
+      const { stdout, exitCode } = await delivery(["status", SUPERVISED], { cwd: repo });
+
+      expect(exitCode).toBe(EXIT.ok);
+      const lines = stdout.split("\n");
+      expect(lines.slice(0, 4)).toEqual([
+        "The shared environment could not be fixed after 1 attempt, so the run stopped; no task caused this.",
+        "It was first noticed by [2/3] add a goodbye: the shared helper is missing.",
+        "Held: [2/3] add a goodbye, [1/3] add a hello.",
+        "Once it is fixed, `delivery run` carries the held tasks on.",
+      ]);
+      expect(stdout).toContain("Environment: something in the shared environment looks broken");
+      expect(stdout).toContain("2 paused until the shared environment is fixed, 1 queued");
+      expect(stdout).not.toMatch(/DEGRADED|REPAIRING|HEALTHY|ESCALATED|GATE_MAINTENANCE/);
+    });
+
+    it("leads with the repair under way while the run is going", async () => {
+      const repo = initTempRepo("status-breaker-live-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [HELLO], concurrency: 2 }) });
+      await writeRunRecord(repo, { runId: HELLO_RUN, task: HELLO });
+      await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } }, [
+        { t: "slot_fill", slot: 1, surfaceId: HELLO_RUN, taskDef: { intent: HELLO } },
+        { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: HELLO_RUN, reason: "the shared helper is missing" } },
+        { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: HELLO_RUN },
+      ]);
+      const release = await takeRepoLock(repo);
+      try {
+        const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
+        expect(stdout.split("\n")[0]).toBe("The shared environment is being repaired: any task about to check or hand off its work is held until it is fixed.");
+      } finally {
+        await release?.();
+      }
+    });
+
+    it("says nothing of a trip the run repaired", async () => {
+      const repo = initTempRepo("status-breaker-repaired-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [HELLO], concurrency: 2 }) });
+      await writeRunRecord(repo, { runId: HELLO_RUN, task: HELLO, outcome: CLOSED });
+      await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } }, [
+        { t: "slot_fill", slot: 1, surfaceId: HELLO_RUN, taskDef: { intent: HELLO } },
+        { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: HELLO_RUN, reason: "the shared helper is missing" } },
+        { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: HELLO_RUN },
+        { t: "repair_terminus", attempt: 1, sessionKey: "run-repair-1", status: "completed", rationale: "restored it" },
+        { t: "breaker_healthy" },
+        { t: "slot_free", slot: 1, surfaceId: HELLO_RUN, outcome: "closed" },
+      ]);
+      const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
+      expect(stdout.split("\n")[0]).toMatch(/^Run run-/);
+      expect(stdout).toContain("Environment: healthy");
+    });
+
+    it("gives the trip, the run's repair limit and why it stopped in --json, for looking back", async () => {
+      const repo = await gaveUp("status-breaker-json-");
+
+      const document = JSON.parse((await delivery(["status", SUPERVISED, "--json"], { cwd: repo })).stdout);
+
+      expect(document).toMatchObject({
+        breaker: "DEGRADED",
+        outcome: "escalated",
+        cause: "shared_environment",
+        runBudgets: { gateMaintenance: { used: 1, max: 2 } },
+      });
+      expect(document.reason).toContain("no task caused this");
+      expect(document.trips).toEqual([{
+        cause: { kind: "gate_maintenance", surfaceId: GOODBYE_RUN, reason: "the shared helper is missing" },
+        held: [GOODBYE_RUN, HELLO_RUN],
+        repairs: [{ attempt: 1, sessionKey: "run-repair-1", surfaceId: GOODBYE_RUN, status: "escalate", rationale: "the helper is outside my copy" }],
+        ended: "gave_up",
+        reason: "the repair could not fix the shared environment: the helper is outside my copy; no task caused this",
+      }]);
+    });
   });
 });

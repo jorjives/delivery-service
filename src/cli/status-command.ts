@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { logTail, resumeAction, type ResumeAction } from "../case-file.js";
 import { branchName } from "../provision.js";
 import type { BreakerState, RunOutcome, SurfaceState, TaskDef } from "../schema.js";
+import { repairsUsed, tripsOf, type Trip } from "../breaker.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { loadConfig } from "./config.js";
@@ -204,6 +205,10 @@ export interface SupervisedStatusDocument {
   finishedAt: string | null;
   surfaces: RunStatusDocument[];
   queued: { task: string; queue: QueuePosition | null }[];
+  reason: string | null;
+  cause: "shared_environment" | null;
+  runBudgets: { gateMaintenance: { used: number; max: number } };
+  trips: Trip[];
 }
 
 export async function supervisedDocument(view: SupervisedView, ctx: CommandContext): Promise<SupervisedStatusDocument> {
@@ -223,6 +228,10 @@ export async function supervisedDocument(view: SupervisedView, ctx: CommandConte
     queued: view.tasks
       .filter((task) => task.record === undefined)
       .map((task) => ({ task: taskIntent(task.taskDef), queue: task.position ?? null })),
+    reason: outcome?.kind === "escalated" ? outcome.reason : null,
+    cause: outcome?.kind === "escalated" ? outcome.cause : null,
+    runBudgets: { gateMaintenance: { used: repairsUsed(view.runFile.history), max: header.runBudgetMax.gateMaintenance } },
+    trips: tripsOf(view.runFile.history),
   };
 }
 
@@ -239,12 +248,42 @@ const STANDING_WORDS: Record<TaskStanding, string> = {
   closed: "done",
   escalated: "needs your decision",
   aborted: "stopped before it finished",
+  paused: "paused until the shared environment is fixed",
   unfinished: "not finished yet",
   queued: "queued",
 };
 
 /** A task that would be running if a slot were free. Said only while the run is going: a stopped run's queued tasks are waiting for it to be picked up. */
 export const WAITING_FOR_A_SLOT = "queued, waiting for a free slot";
+
+/** A task as the narration names it: its place and words, or its id when the list no longer has it. */
+function taskLabel(view: SupervisedView, surfaceId: string): string {
+  const task = view.tasks.find((candidate) => candidate.record?.runId === surfaceId);
+  if (task === undefined) return surfaceId;
+  const tag = task.position ? `[${task.position.task}/${task.position.of}] ` : "";
+  return `${tag}${taskIntent(task.taskDef)}`;
+}
+
+/**
+ * What a person reads first when the shared environment is not healthy: that
+ * it broke and what is happening about it, which task found it and why, and
+ * which tasks it held. Nothing for a run whose environment is healthy.
+ */
+export function environmentNarration(view: SupervisedView): string[] {
+  const { trip } = view;
+  if (trip === undefined) return [];
+  const opening =
+    trip.ended === "gave_up"
+      ? `The shared environment could not be fixed after ${trip.repairs.length} ${trip.repairs.length === 1 ? "attempt" : "attempts"}, so the run stopped; no task caused this.`
+      : `${view.breaker === "REPAIRING" ? "The shared environment is being repaired" : "Something in the shared environment looks broken"}: any task about to check or hand off its work is held until it is fixed.`;
+  return [
+    opening,
+    `It was first noticed by ${taskLabel(view, trip.cause.surfaceId)}: ${trip.cause.reason}.`,
+    `Held: ${trip.held.map((surfaceId) => taskLabel(view, surfaceId)).join(", ")}.`,
+    ...(trip.ended === "gave_up" ? ["Once it is fixed, `delivery run` carries the held tasks on."] : []),
+    "",
+  ];
+}
 
 /** How many tasks stand each way, in words, leaving out any standing no task has: "3 done, 1 needs your decision". */
 export function countsLine(tasks: readonly ViewTask[]): string {
@@ -421,6 +460,7 @@ export async function supervisedReport(view: SupervisedView, ctx: CommandContext
   const { header, outcome } = view.runFile;
   const counts = countsLine(view.tasks);
   const lines = [
+    ...environmentNarration(view),
     `Run ${header.runId}, started ${startedAt(header.runId)}: ${shapeOf(header.tasks, header.concurrency)}`,
     `Environment: ${BREAKER_PHRASES[view.breaker]}`,
     ...(counts === "" ? [] : [counts]),

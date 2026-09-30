@@ -11,3 +11,5 @@ it, the run stops with exit code 4, says how many tasks were waiting, had finish
 queued, and records the shared environment as the cause; the held tasks carry on with the next
 `delivery run`. Under `--json`, each change in the environment's state is a `scope: "run"` record
 naming the tasks it affects. A run of one task at a time is unchanged.
+
+`delivery status` for such a run leads with what broke, which task found it and which tasks it held; a held task counts as paused. `--json` adds `reason`, `cause`, `runBudgets` and `trips`, so a trip can be diagnosed after the fact.
