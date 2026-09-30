@@ -248,6 +248,7 @@ same object works too, for a project that needs to compute a value.
 | `gate` | What decides whether a change is good. The simplest is a ready-made check chosen by name: `{ "type": "test-runner" }` runs your tests (add `"command"` if they are not run with `npm test`), `{ "type": "file-exists", "path": "CHANGES.md" }`, `{ "type": "command-succeeds", "command": "npm run lint" }`, or `{ "type": "schema-validates", "file": "data.json", "schema": "data.schema.json" }`. `delivery validate` says what the chosen check does. To write one out in full, or write your own, see [Writing a gate](docs/writing-a-gate.md). |
 | `closer` | What happens to accepted work: see [Writing a closer](docs/writing-a-closer.md) |
 | `budgets` | How many attempts each kind of setback gets before the run asks a person: `correction`, `gateError`, `gateMaintenance`, `terminus` and `close`, each a whole number. Anything you leave out keeps its default (3, 3, 2, 5 and 3). |
+| `concurrency` | How many tasks from your list may run at once, a whole number. The default, 1, works down the list one task at a time. 2 or more starts that many, each on its own copy with its own branch and record, and starts the next task on the list as soon as one finishes. |
 
 A gate or closer of your own is named here rather than on the command line, because it needs a
 module path: `{ "type": "custom", "modulePath": "./gates/mine.mjs" }`.
@@ -260,9 +261,10 @@ environment variable, which beats the file, which beats the built-in default.
 | `--task "..."` or `--task-file <path>` | `DELIVERY_TASK` | What you want done |
 | `--gate-command "npm test"` | `DELIVERY_GATE_COMMAND` | A check that passes when the command exits 0 |
 | `--closer commit-to-branch` | `DELIVERY_CLOSER` | What happens to accepted work: `commit-to-branch`, `merge-back` or `open-pr` |
+| `--concurrency 3` | `DELIVERY_CONCURRENCY` | How many tasks from your list may run at once |
 | `--config <path>` | `DELIVERY_CONFIG` | A config file somewhere else |
 
-An unknown setting, a limit that is not a whole number, a closer type the harness doesn't know,
+An unknown setting, a limit or a concurrency that is not a whole number, a closer type the harness doesn't know,
 a role override that is empty or names a role that can't be changed, or a custom module it can't
 load all stop the command before it starts, naming what to fix.
 `delivery validate` finds the same mistakes without starting anything.

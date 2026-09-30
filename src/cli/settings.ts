@@ -21,12 +21,19 @@ export const NO_TASK_FILE = (path: string): string =>
 /** The one closer a run uses when nothing else is configured: it needs only git, and leaves a branch to inspect before trusting it. */
 export const DEFAULT_CLOSER: CloserRef = { type: "commit-to-branch" };
 
+/** How many tasks from the list run at once when nothing says otherwise: one, worked down in order, as every project did before. */
+export const DEFAULT_CONCURRENCY = 1;
+
+export const NOT_A_CONCURRENCY = (source: string, value: string): string =>
+  `I can't use ${source} \`${value}\`: it says how many tasks from your list may run at once, so it is a whole number, 1 or more, such as 3.`;
+
 /** What `delivery run` was given on the command line. */
 export interface RunFlags {
   task?: string;
   taskFile?: string;
   gateCommand?: string;
   closer?: string;
+  concurrency?: string;
   config?: string;
   repo?: string;
   fresh?: boolean;
@@ -37,6 +44,8 @@ export interface ProjectSettings {
   gateRef: GateRef;
   closerRef: CloserRef;
   budgets: BudgetSet;
+  /** How many tasks from the list may run at once. Never pinned into a run: it shapes the list, not any one task. */
+  concurrency: number;
   /** What this project is, from the config file, pinned into the run when it starts. Absent when the project didn't say. */
   domainPrompt?: string;
   /** What the config file changes about the worker and gate maintenance, pinned into the run when it starts. Absent when it changes nothing. */
@@ -154,6 +163,16 @@ function budgetsFrom(config: DeliveryConfig): BudgetSet {
   return set;
 }
 
+function concurrencyFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryConfig): number {
+  const named = flags.concurrency ?? fromEnv(env.DELIVERY_CONCURRENCY);
+  if (named === undefined) return config.concurrency ?? DEFAULT_CONCURRENCY;
+  if (!/^[1-9]\d*$/.test(named.trim())) {
+    const source = flags.concurrency !== undefined ? "--concurrency" : "DELIVERY_CONCURRENCY";
+    throw new Refusal(NOT_A_CONCURRENCY(source, named), EXIT.configuration, "concurrency");
+  }
+  return Number(named.trim());
+}
+
 /**
  * What every run of this project uses, from every source that has a say: a flag
  * beats an environment variable, which beats the config file, which beats the
@@ -172,6 +191,7 @@ export async function resolveProject(
     ...(await gateFrom(flags, env, config, repoPath)),
     closerRef: closerFrom(flags, env, config),
     budgets: budgetsFrom(config),
+    concurrency: concurrencyFrom(flags, env, config),
     // Only the file can say what the project is: it is prose about the
     // repository, not something a person retypes per run, so there is no flag
     // and no environment variable to lay over it.

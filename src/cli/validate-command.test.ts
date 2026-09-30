@@ -28,7 +28,7 @@ vi.mock("./agent-session.js", async (importOriginal) => ({
 const NPM_TEST: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
 
 function project(overrides: Partial<ProjectSettings> = {}): ProjectSettings {
-  return { gateRef: NPM_TEST, closerRef: { type: "commit-to-branch" }, budgets: DEFAULT_BUDGETS, ...overrides };
+  return { gateRef: NPM_TEST, closerRef: { type: "commit-to-branch" }, budgets: DEFAULT_BUDGETS, concurrency: 1, ...overrides };
 }
 
 describe("what validate says a project is set up to do", () => {
@@ -97,6 +97,15 @@ describe("what validate says a project is set up to do", () => {
     expect(checkedLines({ roles: { worker: {} } }, project())).toHaveLength(4);
     expect(checkedLines({}, project())).toHaveLength(4);
   });
+
+  it("says how many tasks run at once, with how many are queued, when more than one may", () => {
+    const tasks = Array.from({ length: 10 }, (_, i) => `task ${i + 1}`);
+    expect(checkedLines({ tasks }, project({ concurrency: 3 }))[1]).toBe("✓ concurrency: up to 3 tasks at once (10 queued)");
+  });
+
+  it("says only how many are queued at one at a time, exactly as before", () => {
+    expect(checkedLines({ tasks: ["a", "b"] }, project({ concurrency: 1 }))[1]).toBe("✓ 2 tasks queued");
+  });
 });
 
 const COMPLETE = {
@@ -135,6 +144,13 @@ describe("delivery validate on a configuration that is ready", () => {
       ].join("\n"),
     );
     expect(exitCode).toBe(EXIT.ok);
+  });
+
+  it("reports the concurrency the file sets", async () => {
+    const { exitCode, stdout } = await delivery(["validate"], { cwd: repoWith({ ...COMPLETE, concurrency: 2 }) });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain("✓ concurrency: up to 2 tasks at once (3 queued)");
+    expect(stdout).not.toContain("✓ 3 tasks queued");
   });
 
   it("passes an existing four-setting file from before descriptions and lists", async () => {
@@ -276,6 +292,12 @@ describe("delivery validate on a configuration with a problem", () => {
     expect(stdout).toBe("");
     expect(exitCode).toBe(EXIT.configuration);
   });
+
+  it.each([0, -1, 1.5])("refuses a concurrency of %j with the configuration code and one thing to fix", async (value) => {
+    const { exitCode, stderr } = await delivery(["validate"], { cwd: repoWith({ ...COMPLETE, concurrency: value }) });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(`the setting \`concurrency\` is \`${JSON.stringify(value)}\`. It says how many tasks from your list may run at once`);
+  });
 });
 
 describe("delivery validate changes nothing", () => {
@@ -380,5 +402,11 @@ describe("delivery validate --json", () => {
     expect(problem?.field).toBe("closer");
     expect(problem?.message).toMatch(/teleport/);
     expect(problem?.message).toMatch(/built-in choices/);
+  });
+
+  it("names the concurrency setting for a DELIVERY_CONCURRENCY that is not a whole number", async () => {
+    const { json } = await bothForms(repoWith(COMPLETE), { DELIVERY_CONCURRENCY: "0" });
+    expect(json.exitCode).toBe(EXIT.configuration);
+    expect(json.result).toMatchObject({ ready: false, problems: [{ field: "concurrency" }] });
   });
 });

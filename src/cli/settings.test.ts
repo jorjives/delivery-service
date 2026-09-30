@@ -13,6 +13,7 @@ import {
   explicitIntent,
   ignoredNote,
   ignoredSettings,
+  NOT_A_CONCURRENCY,
   NO_TASK,
   NO_TASK_FILE,
   resolveSettings,
@@ -349,5 +350,35 @@ describe("what a resumed run cannot take from this invocation", () => {
     expect(ignoredNote(["--gate-command", "--closer"])).toBe(
       "Note: a run keeps the settings it started with, so --gate-command and --closer were ignored.",
     );
+  });
+});
+
+describe("how many tasks from the list may run at once", () => {
+  it("is one when nothing says otherwise", async () => {
+    expect((await settings({ task: TASK })).concurrency).toBe(1);
+  });
+
+  it("takes the file's value", async () => {
+    expect((await settings({ task: TASK }, { config: { concurrency: 3 } })).concurrency).toBe(3);
+  });
+
+  it("lets --concurrency beat DELIVERY_CONCURRENCY, which beats the file", async () => {
+    const config: DeliveryConfig = { concurrency: 3 };
+    expect((await settings({ task: TASK, concurrency: "4" }, { env: { DELIVERY_CONCURRENCY: "2" }, config })).concurrency).toBe(4);
+    expect((await settings({ task: TASK }, { env: { DELIVERY_CONCURRENCY: "2" }, config })).concurrency).toBe(2);
+  });
+
+  it("treats DELIVERY_CONCURRENCY set to nothing as not set", async () => {
+    expect((await settings({ task: TASK }, { env: { DELIVERY_CONCURRENCY: "" }, config: { concurrency: 3 } })).concurrency).toBe(3);
+  });
+
+  it.each(["0", "-2", "1.5", "three"])("refuses --concurrency %s, naming the flag, with the configuration code", async (value) => {
+    const err = await settings({ task: TASK, concurrency: value }).catch((caught: unknown) => caught);
+    expect(err).toBeInstanceOf(Refusal);
+    expect(err).toMatchObject({ message: NOT_A_CONCURRENCY("--concurrency", value), exitCode: EXIT.configuration, field: "concurrency" });
+  });
+
+  it("refuses a DELIVERY_CONCURRENCY that is not a whole number, naming the variable", async () => {
+    await expect(settings({ task: TASK }, { env: { DELIVERY_CONCURRENCY: "0" } })).rejects.toThrow(NOT_A_CONCURRENCY("DELIVERY_CONCURRENCY", "0"));
   });
 });

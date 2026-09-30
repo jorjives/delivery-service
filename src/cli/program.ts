@@ -83,6 +83,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--task-file <path>", "read what you want done from a file")
     .option("--gate-command <command>", "the command that checks the agent's work: it passes when the command exits 0")
     .option("--closer <type>", "what happens to accepted work: commit-to-branch, merge-back or open-pr")
+    .option("--concurrency <n>", "how many tasks from your list may run at once (default 1: one after another)")
     .option("--config <path>", "use this config file instead of looking for a delivery.config.json")
     .option("--repo <path>", "the git repository to work on (default: the current folder)")
     .option("--fresh", "start a new run even though one didn't finish, leaving that one to pick up later")

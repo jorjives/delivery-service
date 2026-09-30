@@ -13,8 +13,8 @@ import { EXIT, Refusal } from "./failures.js";
 export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
-/** The seven keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `roles`, `gate`, `closer` and `budgets`";
+/** The eight keys a config file takes, as the sentence a refusal ends with. */
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `roles`, `gate`, `closer`, `budgets` and `concurrency`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -120,6 +120,9 @@ export const DeliveryConfig = z
     gate: GateChoice.optional(),
     closer: CloserRef.optional(),
     budgets: Budgets.optional(),
+    // How many tasks from `tasks` may run at once. One, the default, is the
+    // list worked down in order; more starts that many side by side.
+    concurrency: z.number().int().positive().optional(),
   })
   .strict()
   .superRefine((config, ctx) => {
@@ -166,6 +169,7 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     '`{ "type": "command", "command": "npm test", "parseMode": "exitcode" }`: see docs/writing-a-gate.md.',
   closer: "It says what happens to work that passes: see docs/writing-a-closer.md for the choices and what each one takes.",
   budgets: 'It is a set of limits, each a whole number of attempts, for example `{ "correction": 5 }`.',
+  concurrency: "It says how many tasks from your list may run at once: a whole number, 1 or more, such as `3`.",
 };
 
 type Issue = z.ZodError["issues"][number];

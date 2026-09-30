@@ -405,6 +405,11 @@ describe("delivery run with a config file", () => {
     for (const option of ["--task-file", "--gate-command", "--closer", "--config"]) expect(stdout).toContain(option);
     expect(stdout).not.toContain(TEST_MOCK_SCRIPT);
   });
+
+  it("lists --concurrency in `delivery run --help`", async () => {
+    const repo = initTempRepo("run-command-help-concurrency-", { "package.json": PACKAGE });
+    expect((await delivery(["run", "--help"], { cwd: repo })).stdout).toContain("--concurrency <n>");
+  });
 });
 
 describe("delivery run with a list of tasks", () => {

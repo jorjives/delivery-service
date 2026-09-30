@@ -53,8 +53,12 @@ function closerPhrase(closerRef: CloserRef): string {
  * run --task "..."` names one each time, which is how the harness is used before
  * a project has a list.
  */
-function tasksPhrase(config: DeliveryConfig): string {
-  if (config.tasks) return `${config.tasks.length} ${config.tasks.length === 1 ? "task" : "tasks"} queued`;
+function tasksPhrase(config: DeliveryConfig, concurrency: number): string {
+  if (config.tasks) {
+    const queued = config.tasks.length;
+    if (concurrency > 1) return `concurrency: up to ${concurrency} tasks at once (${queued} queued)`;
+    return `${queued} ${queued === 1 ? "task" : "tasks"} queued`;
+  }
   if (config.task) return "1 task, set in `task`";
   return 'no tasks listed: name one when you run, with `delivery run --task "..."`';
 }
@@ -78,12 +82,12 @@ function roleLines(config: DeliveryConfig): string[] {
  * the tasks, what the check runs, what the closing action does, and which roles
  * the file changes. The check and closing action are the ones a run would use,
  * inferred and defaulted values included, so what is reported is what would
- * happen.
+ * happen. When more than one task may run at once, the line says so, with how many are queued.
  */
 export function checkedLines(config: DeliveryConfig, project: ProjectSettings): string[] {
   return [
     `domain description: ${project.domainPrompt === undefined ? "none (it's optional)" : "present"}`,
-    tasksPhrase(config),
+    tasksPhrase(config, project.concurrency),
     `gate: ${gateLine(project)}`,
     `closer: ${closerPhrase(project.closerRef)}`,
     ...roleLines(config),
