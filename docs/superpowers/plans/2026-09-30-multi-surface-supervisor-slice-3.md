@@ -1,5 +1,6 @@
 # Multi-Surface Supervisor — Slice 3: Pick Up a Running-at-Once Run After a Crash, and Refuse a Second One
 
+> **Status:** ✅ Complete — 2026-09-30 — `46d0895`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 3 of `docs/superpowers/specs/2026-09-26-multi-surface-supervisor-slices.md`
