@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setRunOutcome } from "../run-file.js";
-import type { CaseFileOutcome, RunEntry, RunFile, SlotOutcome } from "../schema.js";
+import type { CaseFileOutcome, RunEntry, RunFile, RunOutcome, SlotOutcome } from "../schema.js";
 import { ESCALATION, writeRunRecord, writeSupervisedRun } from "./command-fixtures.js";
 import { queueTasks } from "./queue.js";
 import { allRuns, readSupervisedRun } from "./runs.js";
@@ -25,14 +25,11 @@ const LIST = [HELLO, GREETING, GOODBYE];
 const fill = (slot: number, surfaceId: string, intent: string): RunEntry => ({ t: "slot_fill", slot, surfaceId, taskDef: { intent } });
 const free = (slot: number, surfaceId: string, outcome: SlotOutcome): RunEntry => ({ t: "slot_free", slot, surfaceId, outcome });
 
-const runFileWith = (history: RunEntry[], outcome?: any): RunFile => ({
+const runFileWith = (history: RunEntry[], outcome?: RunOutcome): RunFile => ({
   header: { runId: RUN, repoPath: "/repo", concurrency: 2, tasks: LIST.length, runBudgetMax: { gateMaintenance: 2 } },
   history,
   outcome,
 });
-
-const standingOf = (view: SupervisedView, record: { runId: string }): any =>
-  view.tasks.find(t => t.record?.runId === record.runId)?.standing;
 
 /** The view of one supervised run in a scratch repository, against a list as it is written now. */
 async function viewOf(
