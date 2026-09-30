@@ -145,19 +145,16 @@ REPAIRING   stop-the-world: no worker may mutate the shared box; one repair agen
 Mechanics:
 
 - A surface hitting `GATE_MAINTENANCE` does **not** dispatch its own repair agent.
-  It trips the breaker to `DEGRADED` and blocks. Its case file records "blocked on
-  run maintenance".
-- The supervisor runs **one exclusive repair**, governed by the run-level
-  `gate_maintenance` budget. **Full stop-the-world**: the whole run quiesces (no
-  worker edits, no gating, no closing) so the repair agent has the shared box to
-  itself and cannot be fought by a concurrent worker. Repair is expected to be
-  rare, so the coarse window is the right default.
-  `ponytail: stop-the-world window; make it finer-grained (gate/close-only pause)
-  only if repair frequency measurably hurts throughput.`
-- Repair succeeds → `HEALTHY`, blocked surfaces resume from where they parked.
-  Repair exhausts the run-level cap → **the run escalates**: a permanently broken
-  shared box dooms every surface, so escalating one surface at a time is
-  meaningless.
+  It asks the run, which trips the breaker to `DEGRADED` and records the trip,
+  the request and every task it holds in the run file (not the case file).
+- **Checks and hand-offs are held, nothing else.** While the breaker is not
+  `HEALTHY`, a surface about to take its baseline, check its work or hand it off
+  waits; an agent session or triage call already under way carries on, since
+  neither touches the shared environment. The one repair starts once no surface
+  is mid-check or mid-hand-off, runs the existing gate-maintenance role in the
+  copy of the surface that tripped it, and every request meanwhile shares it.
+  (Settled in the multi-surface supervisor design, replacing the earlier
+  full stop-the-world window.)
 - `gate_error` keeps its cheap per-surface re-run, but repeated errors across
   *distinct* surfaces feed the breaker. M independent surfaces erroring on one box
   is evidence of shared breakage, not M coincidences: counter is per-surface, the

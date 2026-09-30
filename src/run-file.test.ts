@@ -104,6 +104,7 @@ describe("the breaker and its repairs, in the run file", () => {
 
   it("refuses a header that does not pin the run's repair limit", async () => {
     const dir = mkdtempSync(join(tmpdir(), "run-file-no-limit-"));
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { runBudgetMax: _dropped, ...withoutLimit } = header;
     await expect(createRunFile(dir, withoutLimit as RunHeader)).rejects.toThrow();
   });

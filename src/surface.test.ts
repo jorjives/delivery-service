@@ -16,9 +16,9 @@ import { NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { fakeAgentPort, mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
-import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext } from "./ports.js";
+import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext, RepairCoordinator, RepairRequest } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
-import { IllegalStateTransition } from "./errors.js";
+import { IllegalStateTransition, RunHalted } from "./errors.js";
 import type { BudgetPopulation, BudgetSet, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
 import { cleanGitEnv } from "./git-env.js";
 
@@ -2006,5 +2006,108 @@ describe("the close context", () => {
       branch: "surface/surface-1",
       baseBranch: "main",
     });
+  });
+});
+
+/** A coordinator that clears at once and records what it was asked, with `repair` standing in for the run's one repair. */
+function fakeCoordinator(repair: () => void = () => undefined) {
+  const events: string[] = [];
+  const requests: RepairRequest[] = [];
+  const coordinator: RepairCoordinator = {
+    awaitClearance: (surfaceId) => {
+      events.push(`enter ${surfaceId}`);
+      return Promise.resolve(() => {
+        events.push(`leave ${surfaceId}`);
+      });
+    },
+    requestRepair: (request) => {
+      requests.push(request);
+      events.push(`repair ${request.surfaceId}`);
+      repair();
+      return Promise.resolve();
+    },
+  };
+  return { coordinator, events, requests };
+}
+
+describe("a task of a run of several at once", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-supervised-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  it("takes its baseline only once cleared, and lets go before anything else", async () => {
+    const { coordinator, events } = fakeCoordinator();
+    const location = {
+      repoPath: initTempRepo("surface-repo-", { "report.tap": PASSING_TAP }),
+      worktreePath: join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt"),
+    };
+    const ports = { agent: unusedAgent(), triage: unusedTriage(), closer: noopCloser, repairCoordinator: coordinator };
+    await advance(dir, location, ports);
+
+    expect(await advance(dir, location, ports)).toEqual({ state: "AGENT_ACTIVE", done: false });
+    expect(events).toEqual(["enter surface-1", "leave surface-1"]);
+  });
+
+  it("asks the run to repair a gate that cannot run, instead of dispatching its own repair, then re-takes the baseline", async () => {
+    let location: SurfaceLocation = { repoPath: "", worktreePath: "" };
+    const { coordinator, events, requests } = fakeCoordinator(() => writeFileSync(join(location.worktreePath, "report.tap"), PASSING_TAP));
+    location = {
+      repoPath: initTempRepo("surface-repo-", { "seed.txt": "hello\n" }),
+      worktreePath: join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt"),
+    };
+    const ports = { agent: unusedAgent(), triage: unusedTriage(), closer: noopCloser, repairCoordinator: coordinator };
+    await advance(dir, location, ports);
+
+    expect(await advance(dir, location, ports)).toEqual({ state: "AGENT_ACTIVE", done: false });
+    expect(requests).toEqual([{ surfaceId: "surface-1", key: null, reason: expect.any(String) }]);
+    // The hold was let go before the request: the task must not wait on itself.
+    expect(events).toEqual(["enter surface-1", "leave surface-1", "repair surface-1", "enter surface-1", "leave surface-1"]);
+    const { history } = await load(dir);
+    expect(history.some((entry) => entry.t === "dispatch")).toBe(false);
+    expect(deriveBudgetsFromLog(history, budgets).gateMaintenance.used).toBe(0);
+  });
+
+  it("hands off its accepted work only once cleared", async () => {
+    const { coordinator, events } = fakeCoordinator();
+    const location = {
+      repoPath: initTempRepo("surface-repo-", { "report.tap": PASSING_TAP }),
+      worktreePath: join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt"),
+    };
+    const closer = { close: () => { events.push("close"); return Promise.resolve({ status: "DONE" as const, detail: "closed" }); } };
+    const agent = sessionAgent(() => Promise.resolve({ status: "completed", rationale: "done" }));
+    const triage = createAgentTriage(agent);
+    const ports = { agent, triage, closer, repairCoordinator: coordinator };
+    await advance(dir, location, ports);
+
+    let result = await advance(dir, location, ports);
+    while (!result.done) {
+      result = await advance(dir, location, ports);
+    }
+
+    // baseline, check, close: each inside its own hold.
+    expect(events).toEqual([
+      "enter surface-1", "leave surface-1",
+      "enter surface-1", "leave surface-1",
+      "enter surface-1", "close", "leave surface-1",
+    ]);
+  });
+
+  it("stops where it is, with no outcome of its own, when the run has given up", async () => {
+    const coordinator: RepairCoordinator = {
+      awaitClearance: () => Promise.reject(new RunHalted("the shared environment could not be repaired")),
+      requestRepair: () => Promise.reject(new RunHalted("the shared environment could not be repaired")),
+    };
+    const location = {
+      repoPath: initTempRepo("surface-repo-", { "report.tap": PASSING_TAP }),
+      worktreePath: join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt"),
+    };
+    const ports = { agent: unusedAgent(), triage: unusedTriage(), closer: noopCloser, repairCoordinator: coordinator };
+    await advance(dir, location, ports);
+
+    await expect(advance(dir, location, ports)).rejects.toBeInstanceOf(RunHalted);
+    expect((await load(dir)).outcome).toBeUndefined();
   });
 });

@@ -50,6 +50,22 @@ function locationOf(caseFile: CaseFile, location: SurfaceLocation): SurfaceLocat
 }
 
 /**
+ * Run `work`, a step that touches what every task of a run shares (taking
+ * the baseline, checking the work, handing it off), once the run clears it.
+ * Only the shared operation is held, so a task has let go before it asks for
+ * a repair and never waits on itself. A task on its own has no coordinator
+ * and runs `work` at once.
+ */
+async function onSharedGround<T>(ports: SurfacePorts, caseFile: CaseFile, work: () => Promise<T>): Promise<T> {
+  const leave = await ports.repairCoordinator?.awaitClearance(caseFile.header.surfaceId);
+  try {
+    return await work();
+  } finally {
+    leave?.();
+  }
+}
+
+/**
  * Where the surface actually is, derived rather than trusted.
  *
  * Every state-advancing event, baseline capture included, appends a
@@ -381,6 +397,8 @@ async function dispatchSession(
  * spent. The dispatch entry IS the budget burn: the count is derived from the
  * log first, and the entry appended only if under cap, so "burned live" and
  * "derived from the log on rebuild" are the same computation by construction.
+ * A task of a run of several at once asks the run instead, and spends none of
+ * its own budget.
  */
 async function dispatchGateMaintenance(
   dir: string,
@@ -389,6 +407,19 @@ async function dispatchGateMaintenance(
   ports: SurfacePorts,
   reason: string,
 ): Promise<AdvanceResult> {
+  // In a run of several at once the environment is shared, so the run repairs it, once, on its own limit.
+  const coordinator = ports.repairCoordinator;
+  if (coordinator) {
+    const tail = logTail(caseFile);
+    await coordinator.requestRepair({
+      surfaceId: caseFile.header.surfaceId,
+      // A post-task request names the triage round that ordered it, so a crash after the repair is not repaired twice.
+      key: tail?.t === "triage" ? tail.artifactRef : null,
+      reason,
+    });
+    return caseFile.header.baseline === null ? preGating(dir, caseFile, location, ports) : gating(dir, caseFile, location, ports);
+  }
+
   const budgets = deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets);
   const { used, max } = budgets.gateMaintenance;
   if (used >= max) {
@@ -416,7 +447,7 @@ async function preGating(
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
-  const report = await recordBaseline(dir, locationOf(caseFile, location));
+  const report = await onSharedGround(ports, caseFile, () => recordBaseline(dir, locationOf(caseFile, location)));
   if (report.status !== "ERROR") {
     await updateCursor(dir, { state: "AGENT_ACTIVE" });
     return { state: "AGENT_ACTIVE", done: false };
@@ -477,7 +508,7 @@ async function gateMaintenance(
     case "completed":
       return caseFile.header.baseline === null
         ? preGating(dir, caseFile, location, ports)
-        : gating(dir, caseFile, location);
+        : gating(dir, caseFile, location, ports);
     case "escalate":
       return escalateFromTail(dir, caseFile, location, ports, "gate-maintenance");
     case "incomplete":
@@ -607,11 +638,14 @@ async function gating(
   dir: string,
   caseFile: CaseFile,
   location: SurfaceLocation,
+  ports: SurfacePorts,
 ): Promise<AdvanceResult> {
-  const { delta } = await runCheck(
-    dir,
-    locationOf(caseFile, location),
-    workerAttempt(caseFile.history),
+  const { delta } = await onSharedGround(ports, caseFile, () =>
+    runCheck(
+      dir,
+      locationOf(caseFile, location),
+      workerAttempt(caseFile.history),
+    ),
   );
   const state: SurfaceState = delta.pass ? "CLOSING" : "TRIAGE";
   await updateCursor(dir, { state });
@@ -637,7 +671,7 @@ async function closing(
   // is the round that ordered this retry.
   const repairBrief = (await briefStartedBy(dir, caseFile.history, "retry_close"))?.brief;
   const ctx: CloseContext = { ...closeContextOf(dir, caseFile, location), ...(repairBrief ? { repairBrief } : {}) };
-  const report = await ports.closer.close(ctx, { kind: "accepted" });
+  const report = await onSharedGround(ports, caseFile, () => ports.closer.close(ctx, { kind: "accepted" }));
 
   const priorCloses = caseFile.history.filter((e) => e.t === "close").length;
   const detailRef = await writeRef(dir, `close-${priorCloses}`, report);
@@ -783,7 +817,7 @@ export async function advance(
     case "INCOMPLETE_TERMINUS":
       return incompleteTerminus(dir, caseFile, location, ports);
     case "GATING":
-      return gating(dir, caseFile, location);
+      return gating(dir, caseFile, location, ports);
     case "TRIAGE":
       return triage(dir, caseFile, location, ports);
     case "CLOSING":
