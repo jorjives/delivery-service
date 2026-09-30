@@ -8,7 +8,8 @@ import type { GateRef, TaskDef } from "../schema.js";
 import { writeRunRecord } from "./command-fixtures.js";
 import { allRuns } from "./runs.js";
 import { runsRoot } from "./run-location.js";
-import { findQueueRun, nextQueueTask, queuePositionOf, queueTasks } from "./queue.js";
+import { findQueueRun, listExitCode, nextQueueTask, queuePositionOf, queueTasks, runShape, taskEnded } from "./queue.js";
+import { EXIT } from "./failures.js";
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
 const PAGE = "add a page that shows who's on call today";
@@ -121,5 +122,46 @@ describe("the next task on the list, as `delivery run` would pick it", () => {
       await writeRunRecord(repo, { runId: `task-${i}-20260917T09000${i}Z`, task, outcome: { kind: "closed", source: "close", reason: "committed", at } });
     }
     expect(nextQueueTask(await allRuns(repo), tasks)).toBeUndefined();
+  });
+
+  it("passes over a task a slot has already taken in this run", async () => {
+    expect(nextQueueTask(await allRuns(await scratchRepo()), tasks, [{ intent: PAGE }])).toEqual({ task: 2, of: 3 });
+  });
+
+  it("passes over a task whose run needs a decision once a slot has taken it, so it is not started twice", async () => {
+    const repo = await scratchRepo();
+    await writeRunRecord(repo, { runId: "add-a-page-20260917T090000Z", task: PAGE, outcome: { kind: "escalated", source: "worker", reason: "authority", at } });
+    expect(nextQueueTask(await allRuns(repo), tasks, [{ intent: PAGE }])).toEqual({ task: 2, of: 3 });
+  });
+
+  it("is nothing when every task not yet delivered has been taken", async () => {
+    expect(nextQueueTask(await allRuns(await scratchRepo()), tasks, [{ intent: PAGE }, { intent: SWAP }, { intent: WAVE }])).toBeUndefined();
+  });
+});
+
+describe("the exit code a whole list ends with", () => {
+  it("is 0 only when every task was delivered", () => {
+    expect(listExitCode(["closed", "closed"])).toBe(EXIT.ok);
+    expect(listExitCode([])).toBe(EXIT.ok);
+  });
+
+  it("needs a decision when any task does, whatever else stopped", () => {
+    expect(listExitCode(["closed", "aborted", "escalated"])).toBe(EXIT.escalated);
+  });
+
+  it("says a task stopped when one did and none needs a decision", () => {
+    expect(listExitCode(["closed", "aborted"])).toBe(EXIT.aborted);
+  });
+});
+
+describe("what a list of several at once says", () => {
+  it("opens by naming the run and its shape", () => {
+    expect(runShape("run-20260926T090000Z", 10, 3)).toBe("Starting run run-20260926T090000Z: 10 tasks, up to 3 at once");
+    expect(runShape("run-20260926T090000Z", 1, 2)).toBe("Starting run run-20260926T090000Z: 1 task, up to 2 at once");
+  });
+
+  it("ends by naming each task that was not delivered, and that the rest carried on", () => {
+    expect(taskEnded({ task: 3, of: 10 }, "escalated")).toBe("Task 3 of 10 needs your decision; the rest of the list carried on without it.");
+    expect(taskEnded({ task: 5, of: 10 }, "aborted")).toBe("Task 5 of 10 stopped before it finished; the rest of the list carried on without it.");
   });
 });

@@ -5,7 +5,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { cleanGitEnv } from "../git-env.js";
 import { initTempRepo } from "../temp-repo.js";
-import { prepareRunDir, repoKey, runIdFor, runPlace, runsRoot, stateHome } from "./run-location.js";
+import { prepareRunDir, repoKey, runIdFor, runPlace, runsRoot, stateHome, supervisedPlace, supervisedRunId } from "./run-location.js";
+import { startedInstant } from "./runs.js";
 
 const AT = new Date("2026-09-14T21:03:09.123Z");
 
@@ -26,6 +27,17 @@ describe("runIdFor", () => {
 
   it("gives the same task a new id a second later", () => {
     expect(runIdFor("add a thing", AT)).not.toBe(runIdFor("add a thing", new Date("2026-09-14T21:03:10.000Z")));
+  });
+
+  it("gives a task the next free id when its first choice is taken, keeping the stamp last", () => {
+    const first = runIdFor("add a thing", AT);
+    expect(runIdFor("add a thing", AT, new Set([first]))).toBe("add-a-thing-2-20260914T210309Z");
+    expect(runIdFor("add a thing", AT, new Set([first, "add-a-thing-2-20260914T210309Z"]))).toBe("add-a-thing-3-20260914T210309Z");
+    expect(startedInstant("add-a-thing-2-20260914T210309Z")).toBe("2026-09-14T21:03:09Z");
+  });
+
+  it("keeps its first choice when nothing has taken it", () => {
+    expect(runIdFor("add a thing", AT, new Set(["something-else-20260914T210309Z"]))).toBe(runIdFor("add a thing", AT));
   });
 });
 
@@ -93,5 +105,16 @@ describe("prepareRunDir", () => {
     writeFileSync(join(dir, "case.json"), "{}");
     await expect(prepareRunDir(repo, dir)).rejects.toThrow(/EEXIST/);
     expect(readFileSync(join(dir, "case.json"), "utf-8")).toBe("{}");
+  });
+});
+
+describe("a run of several tasks at once", () => {
+  it("is named by the UTC second it started", () => {
+    expect(supervisedRunId(AT)).toBe("run-20260914T210309Z");
+  });
+
+  it("keeps its record beside the tasks' records, not among them", () => {
+    expect(supervisedPlace("/repo", "run-20260914T210309Z")).toBe(join("/repo", ".delivery", "supervised", "run-20260914T210309Z"));
+    expect(supervisedPlace("/repo", "run-x").startsWith(runsRoot("/repo"))).toBe(false);
   });
 });

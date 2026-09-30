@@ -6,13 +6,20 @@ import type { SurfaceLocation } from "../ports.js";
 /** How many words of the task name a run. Enough to tell runs apart at a glance. */
 const SLUG_WORDS = 5;
 
+/** A UTC second as the ids carry it: 2026-09-14T21:03:09Z becomes 20260914T210309Z. */
+function stampOf(now: Date): string {
+  return now.toISOString().replace(/\.\d{3}Z$/, "Z").replace(/[-:]/g, "");
+}
+
 /**
  * A run's id, which is also its surface id and so its branch name: the first
  * words of the task, so a person can tell runs apart, then the UTC second it
  * started, so re-running a finished task starts a new run instead of reopening
- * the old one.
+ * the old one. Two tasks sharing their first words can start in the same second
+ * when several run at once, so an id in `taken` is passed over for the next
+ * numbered one, with the stamp kept last where every reader expects it.
  */
-export function runIdFor(intent: string, now: Date): string {
+export function runIdFor(intent: string, now: Date, taken: ReadonlySet<string> = new Set()): string {
   const slug =
     intent
       .toLowerCase()
@@ -20,8 +27,21 @@ export function runIdFor(intent: string, now: Date): string {
       .filter(Boolean)
       .slice(0, SLUG_WORDS)
       .join("-") || "run";
-  const stamp = now.toISOString().replace(/\.\d{3}Z$/, "Z").replace(/[-:]/g, "");
-  return `${slug}-${stamp}`;
+  const stamp = stampOf(now);
+  for (let n = 1; ; n++) {
+    const id = n === 1 ? `${slug}-${stamp}` : `${slug}-${n}-${stamp}`;
+    if (!taken.has(id)) return id;
+  }
+}
+
+/** A run of several tasks at once: its own id, told apart from every task's id by what it is and when it started. */
+export function supervisedRunId(now: Date): string {
+  return `run-${stampOf(now)}`;
+}
+
+/** Where a run of several tasks at once keeps its own record: beside the tasks' records, so reading them never meets it. */
+export function supervisedPlace(repoPath: string, runId: string): string {
+  return join(repoPath, ".delivery", "supervised", runId);
 }
 
 /**

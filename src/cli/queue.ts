@@ -1,6 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { TaskDef } from "../schema.js";
+import type { SlotOutcome, TaskDef } from "../schema.js";
 import { agentSession } from "./agent-session.js";
 import { structureTask, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
@@ -42,12 +42,15 @@ const isClosed = (record: RunRecord | undefined): boolean => record?.caseFile.ou
 
 /**
  * The task `delivery run` would act on next: the first one on the list whose
- * run has not been delivered, counted as "Task N of M" counts. Nothing when
- * every task is done. The same rule `runQueue` walks the list by, so what
- * `delivery preview` calls next is what a run does next.
+ * run has not been delivered and that no slot has already taken in this run,
+ * counted as "Task N of M" counts. Nothing when no task is left. The same rule
+ * the list is worked by, so what `delivery preview` calls next is what a run
+ * does next.
  */
-export function nextQueueTask(records: RunRecord[], tasks: TaskDef[]): QueuePosition | undefined {
-  const index = tasks.findIndex((taskDef) => !isClosed(findQueueRun(records, taskDef)));
+export function nextQueueTask(records: RunRecord[], tasks: TaskDef[], claimed: readonly TaskDef[] = []): QueuePosition | undefined {
+  const index = tasks.findIndex(
+    (taskDef) => !isClosed(findQueueRun(records, taskDef)) && !claimed.some((taken) => isDeepStrictEqual(taken, taskDef)),
+  );
   return index === -1 ? undefined : { task: index + 1, of: tasks.length };
 }
 
@@ -75,6 +78,29 @@ export function listStopped(position: QueuePosition, exitCode: ExitCode): string
   return exitCode === EXIT.escalated
     ? `${which} needs your decision before I can go on, so I've left the rest of the list alone.`
     : `${which} stopped before it finished, so I've left the rest of the list alone.`;
+}
+
+/**
+ * The exit code a whole list ends with, from how each task it took ended: a
+ * decision wanted anywhere comes first, then a task that stopped, and only a
+ * list delivered in full is 0.
+ */
+export function listExitCode(outcomes: readonly SlotOutcome[]): ExitCode {
+  if (outcomes.includes("escalated")) return EXIT.escalated;
+  if (outcomes.includes("aborted")) return EXIT.aborted;
+  return EXIT.ok;
+}
+
+/** The line a run of several tasks at once opens with. */
+export const runShape = (runId: string, tasks: number, concurrency: number): string =>
+  `Starting run ${runId}: ${tasks} ${tasks === 1 ? "task" : "tasks"}, up to ${concurrency} at once`;
+
+/** How a task that was not delivered ended, said once a run of several at once is over. */
+export function taskEnded(position: QueuePosition, outcome: SlotOutcome): string {
+  const which = `Task ${position.task} of ${position.of}`;
+  return outcome === "escalated"
+    ? `${which} needs your decision; the rest of the list carried on without it.`
+    : `${which} stopped before it finished; the rest of the list carried on without it.`;
 }
 
 /**

@@ -20,6 +20,8 @@ import { checkCustomModules, DEFAULT_CLOSER, taskIntent, type ProjectSettings } 
 export interface RunStart extends ProjectSettings {
   repoPath: string;
   taskDef: TaskDef;
+  /** The id to give the run, when whoever starts it has already chosen one; otherwise one is made from the task and the second it started. */
+  runId?: string;
 }
 
 /**
@@ -31,12 +33,12 @@ export interface RunStart extends ProjectSettings {
  * so from here on there is a record on disk for whatever happens next.
  */
 export async function startRun(
-  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, roleOverrides }: RunStart,
+  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, roleOverrides, runId: chosenId }: RunStart,
   session: SessionEnvironment,
   ctx: CommandContext,
 ): Promise<ExitCode> {
   const intent = taskIntent(taskDef);
-  const runId = runIdFor(intent, new Date());
+  const runId = chosenId ?? runIdFor(intent, new Date());
   const { dir } = runPlace(repoPath, runId, ctx.env);
   await prepareRunDir(repoPath, dir);
   const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt, roleOverrides }, budgets);
