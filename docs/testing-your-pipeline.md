@@ -389,6 +389,166 @@ What they show:
 With your own gate, the evidence line is whatever your gate names its failing
 check; read it from `promptsSent(journal)` in a first failing run.
 
+## Testing several tasks at once
+
+When `delivery run` has several tasks going at once, they share one
+repository: each task's working copy is made from it, and each task's finished
+work is merged back into it. `runSupervisorAgainstMock` runs several scripted
+tasks through the harness's own supervisor, the one `delivery run` uses when
+`concurrency` is above 1, against one scratch repository, so you can prove your
+gate and closer behave when tasks finish together.
+
+Each task brings its own `header` and its own `script`, so each task's agent
+does only what its own script says. `slots` is how many tasks may run at once,
+as `concurrency` is for `delivery run`. The budgets, role configurations and
+triage are shared by every task, as they are across one project's list.
+
+**Choosing which task gets there first.** A script's `delayMs` is how long its
+agent waits before each reply. Tasks that start together have their working
+copies made before any agent answers, so the task whose agent answers first
+reaches the merge first. Give the task you want second a delay a couple of
+seconds longer than the first: each agent session takes a moment to start, and
+the gap has to outlast that. Nothing else decides the order, so the same test
+gives the same result every time. With `slots: 1` the delays decide nothing:
+the tasks run one after another, in the order you listed them.
+
+This test scripts two tasks that reach the merge together:
+
+```ts
+// several-tasks.test.ts
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  deterministicRouter, gateMaintenanceRoleConfig, load, readRef, triageRoleConfig, workerRoleConfig,
+  type BudgetSet, type CloseReport, type CloserRef, type GateRef,
+} from "delivery-service";
+import { assertFullyConsumed, expectEnvelope, promptsSent, runSupervisorAgainstMock, type ScriptedTask } from "delivery-service/testing";
+
+const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode: "tap" };
+const closerRef: CloserRef = { type: "merge-back" };
+const roleConfigs = { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig };
+const budgets: BudgetSet = {
+  correction: { used: 0, max: 1 },
+  gateError: { used: 0, max: 1 },
+  gateMaintenance: { used: 0, max: 1 },
+  terminus: { used: 0, max: 1 },
+  close: { used: 0, max: 1 },
+};
+const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
+
+// How long each task's agent waits before it answers. Swap the two numbers to swap which task is merged.
+const HELLO_DELAY_MS = 0;
+const GOODBYE_DELAY_MS = 2000;
+
+/** A throwaway git repository on main, holding `files` in one commit. */
+function scratchRepo(files: Record<string, string>): string {
+  const repoPath = mkdtempSync(join(tmpdir(), "pipeline-repo-"));
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repoPath, env });
+  git("init", "-b", "main");
+  git("config", "user.email", "pipeline-test@example.invalid");
+  git("config", "user.name", "Pipeline test");
+  for (const [name, content] of Object.entries(files)) writeFileSync(join(repoPath, name), content);
+  git("add", "-A");
+  git("commit", "-m", "seed");
+  return repoPath;
+}
+
+/** A task whose agent waits `delayMs`, writes `<name>.txt` and reports completion. */
+function task(name: string, delayMs: number): ScriptedTask {
+  return {
+    header: { surfaceId: name, taskDef: { intent: `add a ${name} file` }, gateRef, closerRef },
+    script: {
+      delayMs,
+      expectations: [
+        {
+          effects: [{ write: { path: `${name}.txt`, content: `${name}\n` } }],
+          json: expectEnvelope(workerRoleConfig, { status: "completed", rationale: `wrote ${name}.txt` }),
+        },
+      ],
+    },
+  };
+}
+
+test("two tasks reach the merge together: the first to answer is merged, the other is refused because the base moved on", async () => {
+  const repoPath = scratchRepo({ "report.tap": "1..1\nok 1 - greets\n" });
+  const hello = task("hello", HELLO_DELAY_MS);
+  const goodbye = task("goodbye", GOODBYE_DELAY_MS);
+
+  const [helloRun, goodbyeRun] = await runSupervisorAgainstMock({
+    repoPath,
+    slots: 2,
+    tasks: [hello, goodbye],
+    budgets,
+    roleConfigs,
+    triage: () => deterministicRouter,
+  });
+  assert.ok(helloRun && goodbyeRun);
+
+  // Each task has its own journal, checked as for one task.
+  assertFullyConsumed(helloRun.journal, hello.script);
+  assertFullyConsumed(goodbyeRun.journal, goodbye.script);
+  const [goodbyePrompt, ...others] = promptsSent(goodbyeRun.journal);
+  assert.equal(others.length, 0);
+  assert.match(goodbyePrompt ?? "", /add a goodbye file/);
+
+  const [merged, refused] = HELLO_DELAY_MS < GOODBYE_DELAY_MS ? [helloRun, goodbyeRun] : [goodbyeRun, helloRun];
+  assert.equal(merged.result.state, "CLOSED");
+  assert.equal(refused.result.state, "ESCALATED");
+
+  const [firstClose] = (await load(refused.dir)).history.flatMap((entry) => (entry.t === "close" ? [entry] : []));
+  assert.ok(firstClose);
+  assert.equal(firstClose.status, "FAIL");
+  const report = (await readRef(refused.dir, firstClose.detailRef)) as CloseReport;
+  assert.match(report.detail, /main has moved on/);
+
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repoPath, env, encoding: "utf-8" });
+  assert.equal(git("show", `main:${merged.surfaceId}.txt`), `${merged.surfaceId}\n`);
+  assert.equal(git("show", `surface/${refused.surfaceId}:${refused.surfaceId}.txt`), `${refused.surfaceId}\n`);
+});
+```
+
+Save it beside the others as `several-tasks.test.ts` and run it the same way:
+
+```bash
+npx tsx --test several-tasks.test.ts
+```
+
+It passes in a few seconds. The output ends like this:
+
+```text
+✔ two tasks reach the merge together: the first to answer is merged, the other is refused because the base moved on
+ℹ tests 1
+ℹ pass 1
+ℹ fail 0
+```
+
+What it shows:
+
+- **The first task to answer is merged.** Its merge-back closer fast-forwards
+  `main` onto its work.
+- **The other is refused because the base moved on.** Its working copy was made
+  from `main` as it was before the first merge, so `main` can no longer be
+  fast-forwarded onto it. Its close ends `FAIL`, and the closer's report says
+  `main has moved on`. That goes through triage like any close that fails: it
+  is retried while the `close` budget allows, then the task ends `ESCALATED`,
+  with its work kept on its own branch, `surface/<surfaceId>`, for a person to
+  bring up to date.
+- **Each task has its own `journal`.** `runSupervisorAgainstMock` returns one
+  result per task, in the order you listed them, whichever finished first: the
+  task's `surfaceId`, its case file's `dir` (read it with `load(dir)`), its
+  `result`, and its own `journal`, which `promptsSent` and
+  `assertFullyConsumed` read exactly as for one task.
+
+Swap the two delays and run it again: `goodbye` is merged, and `hello` is the
+one refused because the base moved on, every time you run it.
+
+To test your own pipeline, replace `gateRef`, `closerRef`, `roleConfigs` and
+`budgets` with yours, and script what each task's worker should do.
+
 ## When a reply ends as incomplete
 
 An agent session that produces nothing usable ends with status `incomplete` and
@@ -454,6 +614,8 @@ npm run demo:agent-slice-2
 | A scripted envelope is malformed by mistake | `expectEnvelope` throws `The scripted envelope is not a valid worker result:`, then one line per problem, naming the field |
 | An expectation was never used | `assertFullyConsumed` throws, as above |
 | A `fakeAgentPort` is asked for a role it has no reply for | the call rejects with `fakeAgentPort was given no reply for the triage role: the test must supply a "triage" handler` |
+| `slots` is not a whole number of 1 or more | `runSupervisorAgainstMock` throws `slots must be a whole number of 1 or more, but was 0.` before anything runs |
+| Two tasks share a `surfaceId` | `runSupervisorAgainstMock` throws `Each scripted task needs its own surfaceId, but "hello" is used more than once: a task's branch and working copy are named after it.` before anything runs |
 
 ## Watch it run
 

@@ -11,8 +11,23 @@ import { afterAll, describe, expect, it } from "vitest";
 import { REPO_ROOT, runTsx, sectionOf, snippetFrom } from "./helpers.js";
 import { cleanGitEnv } from "../src/git-env.js";
 import { MockNotInstalled } from "../src/errors.js";
-import { DID_NOT_COMPLETE, workerRoleConfig } from "../src/index.js";
-import { assertFullyConsumed, expectEnvelope, fakeAgentPort, type JournalEvent, type MockScript } from "../src/testing.js";
+import {
+  DEFAULT_BUDGETS,
+  DID_NOT_COMPLETE,
+  deterministicRouter,
+  gateMaintenanceRoleConfig,
+  triageRoleConfig,
+  workerRoleConfig,
+} from "../src/index.js";
+import {
+  assertFullyConsumed,
+  expectEnvelope,
+  fakeAgentPort,
+  runSupervisorAgainstMock,
+  type JournalEvent,
+  type MockScript,
+  type ScriptedTask,
+} from "../src/testing.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "utf-8");
 
@@ -126,10 +141,35 @@ describe("the 'testing your delivery pipeline' guide", () => {
     const [heading = ""] = malformed.split("\n");
     expect(heading).toMatch(/worker/);
     expect(wrong).toContain(heading);
+
+    const wrongSetup = (slots: number, tasks: ScriptedTask[]): Promise<string> =>
+      runSupervisorAgainstMock({
+        repoPath: "/nowhere",
+        slots,
+        tasks,
+        budgets: DEFAULT_BUDGETS,
+        roleConfigs: { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig },
+        triage: () => deterministicRouter,
+      }).then(() => "", (err: unknown) => (err as Error).message);
+    const hello: ScriptedTask = {
+      header: {
+        surfaceId: "hello",
+        taskDef: { intent: "add a hello file" },
+        gateRef: { type: "command", command: "true", parseMode: "exitcode" },
+        closerRef: { type: "merge-back" },
+      },
+      script: { expectations: [] },
+    };
+    const noSlots = await wrongSetup(0, [hello]);
+    expect(noSlots).toMatch(/slots/);
+    expect(wrong).toContain(noSlots);
+    const sharedId = await wrongSetup(2, [hello, hello]);
+    expect(sharedId).toMatch(/surfaceId/);
+    expect(wrong).toContain(sharedId);
   });
 
   it("type-checks every snippet it tells a reader to save", () => {
-    for (const name of ["fake-agent.ts", "happy-path.test.ts", "misbehaviour.test.ts"]) stage(name);
+    for (const name of ["fake-agent.ts", "happy-path.test.ts", "misbehaviour.test.ts", "several-tasks.test.ts"]) stage(name);
     let errors = "";
     try {
       execFileSync("npx", ["tsc", "-p", join(scratch, "tsconfig.json")], { cwd: REPO_ROOT, encoding: "utf-8", stdio: "pipe" });
@@ -145,6 +185,30 @@ describe("the 'testing your delivery pipeline' guide", () => {
     expect(stdout).toContain("✔ a change the gate rejects goes back to the worker, and only the passing attempt lands");
     expect(stdout).toContain("ℹ pass 2");
     expect(guide).toContain("ℹ pass 2");
+  }, 60_000);
+
+  it("explains how to choose which of several tasks reaches a step first", () => {
+    const several = sectionOf(guide, "## Testing several tasks at once", "## When a reply ends as incomplete");
+    for (const term of [
+      "`runSupervisorAgainstMock`",
+      "`slots`",
+      "`delayMs`",
+      "`concurrency`",
+      "own `journal`",
+      "`surface/<surfaceId>`",
+      "`main has moved on`",
+      "Swap the two delays",
+    ]) {
+      expect(several).toContain(term);
+    }
+  });
+
+  it("runs its worked several-tasks test as written, and it passes", () => {
+    const stdout = runWorkedTest("several-tasks.test.ts");
+    expect(stdout).toContain(
+      "✔ two tasks reach the merge together: the first to answer is merged, the other is refused because the base moved on",
+    );
+    expect(stdout).toContain("ℹ pass 1");
   }, 60_000);
 
   it("lists each way a reply ends as incomplete, with the rationale the harness records", () => {
