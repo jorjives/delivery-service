@@ -62,9 +62,11 @@ export function queuePositionOf(tasks: TaskDef[], taskDef: TaskDef): QueuePositi
   return index === -1 ? undefined : { task: index + 1, of: tasks.length };
 }
 
+/** "Task N of M", as every line naming a task's place in the list starts. */
+const positionPhrase = (position: QueuePosition): string => `Task ${position.task} of ${position.of}`;
+
 /** Which task of how many this is, in the owner's own words, around the step lines a single run already prints. */
-export const taskHeading = (position: QueuePosition, intent: string): string =>
-  `Task ${position.task} of ${position.of}: ${intent}`;
+export const taskHeading = (position: QueuePosition, intent: string): string => `${positionPhrase(position)}: ${intent}`;
 
 export const EVERY_TASK_DONE =
   "Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.";
@@ -76,7 +78,7 @@ export const EVERY_TASK_DONE =
  * with it, or to reword the entry.
  */
 export function listStopped(position: QueuePosition, exitCode: ExitCode): string {
-  const which = `Task ${position.task} of ${position.of}`;
+  const which = positionPhrase(position);
   return exitCode === EXIT.escalated
     ? `${which} needs your decision before I can go on, so I've left the rest of the list alone.`
     : `${which} stopped before it finished, so I've left the rest of the list alone.`;
@@ -99,7 +101,7 @@ export const runShape = (runId: string, tasks: number, concurrency: number): str
 
 /** How a task that was not delivered ended, said once a run of several at once is over. */
 export function taskEnded(position: QueuePosition, outcome: SlotOutcome): string {
-  const which = `Task ${position.task} of ${position.of}`;
+  const which = positionPhrase(position);
   return outcome === "escalated"
     ? `${which} needs your decision; the rest of the list carried on without it.`
     : `${which} stopped before it finished; the rest of the list carried on without it.`;
