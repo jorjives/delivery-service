@@ -295,3 +295,41 @@ export const CaseFile = z.object({
   outcome: CaseFileOutcome.optional(),
 });
 export type CaseFile = z.infer<typeof CaseFile>;
+
+// --- Supervised run file: one run of several tasks at once ---
+
+/** How a task's run ended, as its slot records it: the case file's own outcome kinds. */
+export const SlotOutcome = CaseFileOutcome.shape.kind;
+export type SlotOutcome = z.infer<typeof SlotOutcome>;
+
+export const RunHeader = z.object({
+  runId: z.string().min(1),
+  repoPath: z.string().min(1),
+  concurrency: z.number().int().positive(),
+  // How many tasks the list held when the run started: the M in "[n/M]".
+  tasks: z.number().int().nonnegative(),
+});
+export type RunHeader = z.infer<typeof RunHeader>;
+
+const Slot = z.number().int().positive();
+
+export const RunEntry = z.discriminatedUnion("t", [
+  z.object({ t: z.literal("slot_fill"), slot: Slot, surfaceId: z.string().min(1), taskDef: TaskDef }),
+  z.object({ t: z.literal("slot_free"), slot: Slot, surfaceId: z.string().min(1), outcome: SlotOutcome }),
+]);
+export type RunEntry = z.infer<typeof RunEntry>;
+
+export const RunOutcome = z.object({
+  // Every task the run could take was taken and has ended.
+  kind: z.literal("drained"),
+  at: z.string(), // ISO 8601
+});
+export type RunOutcome = z.infer<typeof RunOutcome>;
+
+// What lives in run.json on disk
+export const RunJson = z.object({ header: RunHeader, outcome: RunOutcome.optional() });
+export type RunJson = z.infer<typeof RunJson>;
+
+// The full in-memory run file (run.json + log.jsonl)
+export const RunFile = z.object({ header: RunHeader, history: z.array(RunEntry), outcome: RunOutcome.optional() });
+export type RunFile = z.infer<typeof RunFile>;
