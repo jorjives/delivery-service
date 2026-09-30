@@ -51,9 +51,9 @@ describe("a supervised run's record", () => {
   });
 
   it("says plainly when there is no record in the folder", async () => {
-    const dir = runDir();
-    await expect(loadRunFile(dir)).rejects.toThrow(RunFileNotFound);
-    await expect(loadRunFile(dir)).rejects.toThrow(/run record not found/i);
+    const err = await loadRunFile(runDir()).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RunFileNotFound);
+    expect((err as Error).message).toMatch(/run record not found/i);
   });
 
   it("names a corrupt run.json as a damaged run record, never as a case file", async () => {
