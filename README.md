@@ -275,17 +275,21 @@ delivery status --all
 
 ```text
 3 runs in this repository, newest first:
-  add-a-goodbye-20260916T113000Z, started 2026-09-16 11:30 UTC: add a goodbye (hasn't finished yet)
-  delete-the-greeting-20260915T090000Z, started 2026-09-15 09:00 UTC: delete the greeting (needs a decision from you)
+  add-a-goodbye-20261001T113000Z, started 2026-10-01 11:30 UTC: add a goodbye (hasn't finished yet)
+  run-20260930T090000Z, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once (3 done, 1 needs your decision)
   add-a-hello-20260914T210309Z, started 2026-09-14 21:03 UTC: add a hello (finished)
 To read one in full: delivery status <run-id>
 ```
 
+A run of several tasks at once is one line: its shape and how its tasks stand. Its tasks are read
+with `delivery status run-…`, and each of those by its own run id.
+
 `--all --json` gives the same list as an array, each entry with the run id, the task, the
-instant it started and how it ended, so a script can filter it. The list is ordered by when
-each run started, so it is a history; `delivery status` with no run id reports the run you were
-last working on, which is not always the newest one. A repository with no runs yet lists nothing
-and exits 0.
+instant it started, how it ended and `tasks`: `null` for a single run; for a run of several at
+once, whose own `task` is `null`, the same four fields for each task it took. The list is ordered
+by when each run started, so it is a history; `delivery status` with no run id reports the run you
+were last working on, which is not always the newest one. A repository with no runs yet lists
+nothing and exits 0.
 
 ## Set it up by answering a few questions
 

@@ -493,9 +493,9 @@ describe("delivery status --all", () => {
 
     expect(exitCode).toBe(EXIT.ok);
     expect(JSON.parse(stdout)).toEqual([
-      { run: "add-a-goodbye-20260916T113000Z", task: "add a goodbye", startedAt: "2026-09-16T11:30:00Z", outcome: "unfinished" },
-      { run: "delete-the-greeting-20260915T090000Z", task: "delete the greeting", startedAt: "2026-09-15T09:00:00Z", outcome: "escalated" },
-      { run: "add-a-hello-20260914T210309Z", task: "add a hello", startedAt: "2026-09-14T21:03:09Z", outcome: "closed" },
+      { run: "add-a-goodbye-20260916T113000Z", task: "add a goodbye", startedAt: "2026-09-16T11:30:00Z", outcome: "unfinished", tasks: null },
+      { run: "delete-the-greeting-20260915T090000Z", task: "delete the greeting", startedAt: "2026-09-15T09:00:00Z", outcome: "escalated", tasks: null },
+      { run: "add-a-hello-20260914T210309Z", task: "add a hello", startedAt: "2026-09-14T21:03:09Z", outcome: "closed", tasks: null },
     ]);
   });
 
@@ -768,5 +768,42 @@ describe("delivery status for a run of several tasks at once", () => {
     const { stdout } = await delivery(["status"], { cwd: repo });
 
     expect(stdout.split("\n")[0]).toBe("Run add-a-wave-20261001T100000Z, started 2026-10-01 10:00 UTC: add a wave");
+  });
+
+  it("lists a run of several at once as one summarising line among the single runs, with its tasks folded in", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-all-");
+    await writeRunRecord(repo, { runId: "add-a-wave-20261001T100000Z", task: "add a wave", outcome: CLOSED });
+
+    const { stdout, exitCode } = await delivery(["status", "--all"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.trimEnd().split("\n")).toEqual([
+      "2 runs in this repository, newest first:",
+      "  add-a-wave-20261001T100000Z, started 2026-10-01 10:00 UTC: add a wave (finished)",
+      `  ${SUPERVISED}, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once (3 done, 1 needs your decision)`,
+      "To read one in full: delivery status <run-id>",
+    ]);
+  });
+
+  it("lists a run of several at once as JSON with its tasks under it, and a null task of its own", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-all-json-");
+
+    const { stdout } = await delivery(["status", "--all", "--json"], { cwd: repo });
+
+    const summary = (run: string, task: string, outcome: string) => ({ run, task, startedAt: expect.any(String), outcome });
+    expect(JSON.parse(stdout)).toEqual([
+      {
+        run: SUPERVISED,
+        task: null,
+        startedAt: "2026-09-30T09:00:00Z",
+        outcome: "escalated",
+        tasks: [
+          summary(IDS.hello, HELLO, "closed"),
+          summary(IDS.greeting, GREETING, "escalated"),
+          summary(IDS.goodbye, GOODBYE, "closed"),
+          summary(IDS.shout, SHOUT, "closed"),
+        ],
+      },
+    ]);
   });
 });

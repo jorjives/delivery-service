@@ -14,8 +14,8 @@ import { nextStepPhrase, paint } from "./output.js";
 import { queuePositionOf, queueTasks, shapeOf, STOPPED_PART_WAY, type QueuePosition } from "./queue.js";
 import { repoLocked } from "./repo-lock.js";
 import { runPlace } from "./run-location.js";
-import { allRuns, allSupervisedRuns, describeRun, newestFirst, NOTHING_HERE, readableUtc, readRun, readSupervisedRun, startedAt, startedInstant, touchedAt, type RunRecord, type SupervisedRecord } from "./runs.js";
-import { claimedBy, STANDINGS, standingCounts, supervisedView, type SupervisedView, type TaskStanding, type ViewTask } from "./supervised-view.js";
+import { allRuns, allSupervisedRuns, describeRun, newestFirstBy, NOTHING_HERE, readableUtc, readRun, readSupervisedRun, startedAt, startedInstant, touchedAt, type RunRecord, type SupervisedRecord } from "./runs.js";
+import { claimedBy, overallOutcome, STANDINGS, standingCounts, supervisedView, type SupervisedView, type TaskStanding, type ViewTask } from "./supervised-view.js";
 import { taskIntent } from "./settings.js";
 
 /**
@@ -279,25 +279,63 @@ function taskLine(task: ViewTask, live: boolean): string {
 export const ALL_AND_ONE =
   "Use either `--all` or a run id, not both: `--all` lists every run, and a run id reads one of them in full.";
 
-/** Every run this repository holds, one to a line: which run, when it started, what it was asked to do, and how it ended. */
-export function runListing(records: RunRecord[]): string[] {
-  if (records.length === 0) return [NOTHING_HERE];
+/** One entry of `status --all --json`: a single run, or a run of several at once with its tasks under it. Every key in both, null where it does not apply. */
+export interface ListedRun {
+  run: string;
+  /** A single run's task; null for a run of several at once, whose tasks are under `tasks`. */
+  task: string | null;
+  startedAt: string | null;
+  outcome: RunOutcomeName;
+  tasks: RunSummary[] | null;
+}
+
+const isSupervised = (entry: RunRecord | SupervisedView): entry is SupervisedView => "runFile" in entry;
+const listedId = (entry: RunRecord | SupervisedView): string => (isSupervised(entry) ? entry.runFile.header.runId : entry.runId);
+
+function listedRun(entry: RunRecord | SupervisedView): ListedRun {
+  if (!isSupervised(entry)) return { ...runSummary(entry), tasks: null };
+  return {
+    run: listedId(entry),
+    task: null,
+    startedAt: startedInstant(listedId(entry)),
+    outcome: overallOutcome(entry),
+    tasks: entry.tasks.flatMap((task) => (task.record ? [runSummary(task.record)] : [])),
+  };
+}
+
+/** Every run this repository holds, one to a line; a run of several at once is one line saying its shape and how its tasks stand. */
+export function runListing(entries: (RunRecord | SupervisedView)[]): string[] {
+  if (entries.length === 0) return [NOTHING_HERE];
+  const line = (entry: RunRecord | SupervisedView): string => {
+    if (!isSupervised(entry)) return `${describeRun(entry)} (${OUTCOME_WORDS[runSummary(entry).outcome]})`;
+    const { runId, tasks, concurrency } = entry.runFile.header;
+    const counts = countsLine(entry.tasks);
+    return `${runId}, started ${startedAt(runId)}: ${shapeOf(tasks, concurrency)}${counts === "" ? "" : ` (${counts})`}`;
+  };
   return [
-    `${records.length} run${records.length === 1 ? "" : "s"} in this repository, newest first:`,
-    ...records.map((record) => `  ${describeRun(record)} (${OUTCOME_WORDS[runSummary(record).outcome]})`),
+    `${entries.length} run${entries.length === 1 ? "" : "s"} in this repository, newest first:`,
+    ...entries.map((entry) => `  ${line(entry)}`),
     "To read one in full: delivery status <run-id>",
   ];
 }
 
 /**
  * `delivery status --all`: every run this repository holds, rather than one.
- * Listing nothing is a complete answer, so an empty repository exits ok here,
- * unlike a lookup of a run that is not there, which is a failure to answer.
+ * A run of several at once is one entry, its tasks folded into it. Listing
+ * nothing is a complete answer, so an empty repository exits ok here, unlike
+ * a lookup of a run that is not there, which is a failure to answer.
  */
-async function listRuns(repoPath: string, ctx: CommandContext): Promise<ExitCode> {
-  const records = newestFirst(await allRuns(repoPath));
-  if (ctx.json) ctx.writeLine(JSON.stringify(records.map(runSummary), null, 2));
-  else for (const line of runListing(records)) ctx.writeLine(line);
+async function listRuns(repoPath: string, startDir: string, ctx: CommandContext): Promise<ExitCode> {
+  const records = await allRuns(repoPath);
+  const list = await listTasks(startDir, repoPath, ctx);
+  const locked = await repoLocked(repoPath);
+  const views = (await allSupervisedRuns(repoPath)).map((record) =>
+    supervisedView(record.runFile, records, list, record.runFile.outcome === undefined && locked),
+  );
+  const members = new Set(views.flatMap((view) => claimedBy(view.runFile).map((claim) => claim.surfaceId)));
+  const entries = newestFirstBy<RunRecord | SupervisedView>([...records.filter((record) => !members.has(record.runId)), ...views], listedId);
+  if (ctx.json) ctx.writeLine(JSON.stringify(entries.map(listedRun), null, 2));
+  else for (const line of runListing(entries)) ctx.writeLine(line);
   return EXIT.ok;
 }
 
@@ -417,7 +455,7 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   if (options.all && runId !== undefined) throw new Refusal(ALL_AND_ONE, EXIT.configuration);
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
-  if (options.all) return listRuns(repoPath, ctx);
+  if (options.all) return listRuns(repoPath, startDir, ctx);
   const record = runId === undefined ? await mostRecent(repoPath) : await lookUp(repoPath, runId);
   if ("runFile" in record) {
     const view = await viewOf(record, repoPath, startDir, ctx);
