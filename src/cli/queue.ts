@@ -236,7 +236,7 @@ export async function runQueue(
   // A run of several at once that was stopped is carried on, in its own record and at the shape its record
   // says it started with, whatever the setting says now. Each slot is then filled exactly as for a new run:
   // a delivered task is passed over, one that was under way is picked up from its own record, the rest start.
-  const unfinished = await unfinishedSupervisedRun(repoPath);
+  let unfinished = await unfinishedSupervisedRun(repoPath);
   const concurrency = unfinished?.runFile.header.concurrency ?? project.concurrency;
 
   // A run of several at once holds the repository for as long as it runs, so a second cannot start on top of it.
@@ -247,9 +247,10 @@ export async function runQueue(
     if (release === undefined) throw new Refusal(liveRunFound(unfinished?.runFile.header), EXIT.configuration);
   }
   try {
-    // A run that gave up on its environment but was stopped before it could say so ends now, starting nothing.
+    // A run that gave up on its environment but was stopped before it could say so ends now, then a new run picks up the held tasks.
     if (unfinished?.runFile.history.some((entry) => entry.t === "run_escalated")) {
-      return await stopForEnvironment(repoPath, unfinished.dir, unfinished.runFile.header.runId, tasks, ctx);
+      await stopForEnvironment(repoPath, unfinished.dir, unfinished.runFile.header.runId, tasks, ctx);
+      unfinished = undefined; // Clear so a new run can start
     }
 
     let breaker: RunBreaker | undefined;
