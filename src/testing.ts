@@ -11,3 +11,5 @@ export { assertFullyConsumed, expectEnvelope, promptsSent, readJournal, writeMoc
 export type { JournalEvent, MockExpectation, MockScript } from "./mock-script.js";
 export { runSurfaceAgainstMock } from "./scripted-surface-run.js";
 export type { ScriptedSurfaceResult, ScriptedSurfaceRun } from "./scripted-surface-run.js";
+export { runSupervisorAgainstMock } from "./scripted-supervisor-run.js";
+export type { ScriptedSupervisorRun, ScriptedTask, ScriptedTaskResult } from "./scripted-supervisor-run.js";
