@@ -403,6 +403,10 @@ does only what its own script says. `slots` is how many tasks may run at once,
 as `concurrency` is for `delivery run`. The budgets, role configurations and
 triage are shared by every task, as they are across one project's list.
 
+One difference from `delivery run`: here a task whose check cannot run is
+repaired on its own, as a single task is; the single repair for the whole run
+that `delivery run` makes is not part of this runner yet.
+
 **Choosing which task gets there first.** A script's `delayMs` is how long its
 agent waits before each reply. Tasks that start together have their working
 copies made before any agent answers, so the task whose agent answers first

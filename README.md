@@ -70,7 +70,10 @@ only ever JSON.
 When several tasks run at once, each object also says what it is about: `"scope": "run"` for the
 run starting and finishing, and `"scope": "surface"` for a task's step, with the run's id and a
 `surface` object giving the task's place in the list, how many there are, and the task's own run
-id. Every key is present, `null` where it does not apply.
+id. Every key is present, `null` where it does not apply. A run of several at once also writes a
+`scope: "run"` object each time its shared environment changes state (`DEGRADED`, `REPAIRING`,
+`HEALTHY`, and `ESCALATED` when it gives up), with `affected` listing the task run ids it
+concerns (`null` on the run starting and finishing).
 
 `--json` works on `delivery resume`, `delivery status` and `delivery validate` too. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
@@ -148,6 +151,24 @@ finishing together both close properly; with the `merge-back` closer, the second
 refused because the first moved the base branch on, and it is handed back to you in the usual
 way. Each run of several at once also keeps a small record of its own under
 `.delivery/supervised/`.
+
+If the environment your tasks share breaks during a run of several at once (the check cannot
+run at all, for a task that has not started or one whose work is being checked), the run does
+not let every task discover it, retry and fight over it. It holds any task about to check or
+hand off its work, leaves work already under way alone, and repairs the environment once, with
+the same agent that repairs a check for a single task:
+
+```text
+! Something in the shared environment looks broken. Holding any task about to check or hand off its work while it is repaired; work already under way carries on.
+  - repairing (attempt 1 of 2)
+✓ Fixed. Resuming.
+```
+
+The number of repair attempts is one limit for the whole run, `budgets.gateMaintenance`
+(2 unless you set it). If the repair cannot fix it within that limit, the run stops, says how
+many tasks were waiting on it, had finished and are still queued, and exits 4; its record says
+the shared environment, not any task, was the cause. The tasks it held keep where they got to:
+once you have fixed the environment, `delivery run` carries them on.
 
 The list is yours to edit between runs. A new entry anywhere runs in its place; reordering
 changes only the order they are visited in; deleting an entry leaves its run in the history; and
@@ -334,7 +355,7 @@ same object works too, for a project that needs to compute a value.
 | `roles` | Changes what the worker, or the agent that repairs your check, is told and which tools it may use: `{ "worker": { "systemPromptFragment": "...", "allowedTools": ["Read", "Edit"] } }`, and `gateMaintenance` the same way. Anything you leave out keeps its built-in value. A run keeps the roles it started with. `delivery preview` shows the result. See [Configuring a role](docs/configuring-a-role.md#from-the-configuration-file). |
 | `gate` | What decides whether a change is good. The simplest is a ready-made check chosen by name: `{ "type": "test-runner" }` runs your tests (add `"command"` if they are not run with `npm test`), `{ "type": "file-exists", "path": "CHANGES.md" }`, `{ "type": "command-succeeds", "command": "npm run lint" }`, or `{ "type": "schema-validates", "file": "data.json", "schema": "data.schema.json" }`. `delivery validate` says what the chosen check does. To write one out in full, or write your own, see [Writing a gate](docs/writing-a-gate.md). |
 | `closer` | What happens to accepted work: see [Writing a closer](docs/writing-a-closer.md) |
-| `budgets` | How many attempts each kind of setback gets before the run asks a person: `correction`, `gateError`, `gateMaintenance`, `terminus` and `close`, each a whole number. Anything you leave out keeps its default (3, 3, 2, 5 and 3). |
+| `budgets` | How many attempts each kind of setback gets before the run asks a person: `correction`, `gateError`, `gateMaintenance`, `terminus` and `close`, each a whole number. Anything you leave out keeps its default (3, 3, 2, 5 and 3). With several tasks at once, `gateMaintenance` is one limit for the whole run: how many times it may repair the environment the tasks share. |
 | `concurrency` | How many tasks from your list may run at once, a whole number. The default, 1, works down the list one task at a time. 2 or more starts that many, each on its own copy with its own branch and record, and starts the next task on the list as soon as one finishes. |
 
 A gate or closer of your own is named here rather than on the command line, because it needs a
