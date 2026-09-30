@@ -1,5 +1,6 @@
 # Multi-Surface Supervisor — Slice 2: Test Your Setup With Several Tasks Running Together
 
+> **Status:** ✅ Complete — 2026-09-30 — `ff58e12`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 2 of `docs/superpowers/specs/2026-09-26-multi-surface-supervisor-slices.md`

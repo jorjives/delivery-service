@@ -68,6 +68,7 @@ ordering, finer-grained hold) is not sliced.
 
 ## Slice 2: Test Your Setup With Several Tasks Running Together
 
+**Status:** ✅ Complete — 2026-09-30 — `ff58e12`
 **Delivers:** A harness extender writes a test that drives several scripted tasks through the real supervisor with an order of events she chooses, and checks the resulting repository, with no real agent and no network.
 
 **Operational note:** The testing guide gains a section on testing several tasks at once; like the existing guide, its example is run as a test, so the guide cannot drift from the product.
