@@ -13,3 +13,6 @@ run id, exactly as before.
 With `--json` it prints the whole run as one document, nesting each task's usual status document
 under `surfaces` and listing the tasks still to start under `queued`; every key is always
 present, `null` where it does not apply.
+
+With no run id, `delivery status` reports the run touched most recently of either kind, and a run
+of several at once that is still going is reported as the whole run.

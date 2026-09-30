@@ -194,7 +194,9 @@ To find out how a run ended, in a new terminal or days later:
 delivery status
 ```
 
-It reads the run touched most recently and says what happened to it. `delivery status <run-id>`
+It reads the run touched most recently, a single task's or a run of several at once, and says what
+happened to it; while a run of several at once is going, that is the whole run rather than
+whichever of its tasks moved last. `delivery status <run-id>`
 names a run instead, and `delivery status --last` is the explicit form of the default. It only
 ever reads: it never moves a run on, so it is safe to run while one is still going.
 

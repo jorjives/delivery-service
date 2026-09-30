@@ -14,8 +14,8 @@ import { nextStepPhrase, paint } from "./output.js";
 import { queuePositionOf, queueTasks, shapeOf, STOPPED_PART_WAY, type QueuePosition } from "./queue.js";
 import { repoLocked } from "./repo-lock.js";
 import { runPlace } from "./run-location.js";
-import { allRuns, describeRun, newestFirst, NOTHING_HERE, readableUtc, readRun, readSupervisedRun, startedAt, startedInstant, type RunRecord, type SupervisedRecord } from "./runs.js";
-import { STANDINGS, standingCounts, supervisedView, type SupervisedView, type TaskStanding, type ViewTask } from "./supervised-view.js";
+import { allRuns, allSupervisedRuns, describeRun, newestFirst, NOTHING_HERE, readableUtc, readRun, readSupervisedRun, startedAt, startedInstant, touchedAt, type RunRecord, type SupervisedRecord } from "./runs.js";
+import { claimedBy, STANDINGS, standingCounts, supervisedView, type SupervisedView, type TaskStanding, type ViewTask } from "./supervised-view.js";
 import { taskIntent } from "./settings.js";
 
 /**
@@ -314,11 +314,26 @@ export interface StatusOptions {
   all?: boolean;
 }
 
-/** The run this command means when no id was given: the one whose record was written most recently, finished or not. */
-async function mostRecent(repoPath: string): Promise<RunRecord> {
-  const [latest] = await allRuns(repoPath);
-  if (latest === undefined) throw new Refusal(NOTHING_HERE, EXIT.configuration);
-  return latest;
+/**
+ * The run this command means when no id was given: the one whose record was
+ * written most recently, of either kind, finished or not. A task that an
+ * unfinished run of several at once took counts as that run being touched, so
+ * checking on a run that is going reports the run rather than whichever of its
+ * tasks moved last; once that run has finished, its tasks are their own again.
+ */
+async function mostRecent(repoPath: string): Promise<RunRecord | SupervisedRecord> {
+  const [task] = await allRuns(repoPath);
+  const supervised = await allSupervisedRuns(repoPath);
+  const [run] = supervised;
+  if (task === undefined) {
+    if (run === undefined) throw new Refusal(NOTHING_HERE, EXIT.configuration);
+    return run;
+  }
+  if (run !== undefined && (await touchedAt(run.dir)) >= (await touchedAt(task.dir))) return run;
+  const owner = supervised.find(
+    (record) => record.runFile.outcome === undefined && claimedBy(record.runFile).some((claim) => claim.surfaceId === task.runId),
+  );
+  return owner ?? task;
 }
 
 /** The project's list as written now, or none when there is no list or the file fails to load: status reads it only to annotate, never to gate. */

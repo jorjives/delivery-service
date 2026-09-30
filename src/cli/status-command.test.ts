@@ -557,6 +557,12 @@ const IDS = {
 const fill = (slot: number, surfaceId: string, intent: string): RunEntry => ({ t: "slot_fill", slot, surfaceId, taskDef: { intent } });
 const free = (slot: number, surfaceId: string, outcome: SlotOutcome): RunEntry => ({ t: "slot_free", slot, surfaceId, outcome });
 
+/** Make a run of several at once's record look as though it was last written long ago. */
+async function backdateRun(repo: string, runId: string): Promise<void> {
+  const longAgo = new Date("2026-09-14T21:04:00.000Z");
+  for (const name of ["run.json", "log.jsonl"]) await utimes(join(repo, ".delivery", "supervised", runId, name), longAgo, longAgo);
+}
+
 /** A project listing four tasks, and a run of two at once that took them all: three delivered, one waiting on a decision. */
 async function finishedSupervisedRun(prefix: string): Promise<string> {
   const repo = initTempRepo(prefix, {
@@ -721,5 +727,46 @@ describe("delivery status for a run of several tasks at once", () => {
     expect(document).toMatchObject({ outcome: null, finishedAt: null, live: false });
     expect(document.surfaces).toHaveLength(2);
     expect(document.queued).toEqual([{ task: GOODBYE, queue: { task: 3, of: 3 } }]);
+  });
+
+  it("reports a run of several at once when it is the one touched most recently", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-last-");
+    for (const id of Object.values(IDS)) await backdate(join(runsRoot(repo), id));
+
+    const plain = await delivery(["status"], { cwd: repo });
+    const json = await delivery(["status", "--json"], { cwd: repo });
+
+    expect(plain.stdout.split("\n")[0]).toBe(`Run ${SUPERVISED}, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once`);
+    expect(JSON.parse(json.stdout).runId).toBe(SUPERVISED);
+  });
+
+  it("reports the run, not the task, when a task of it was the last thing touched", async () => {
+    const repo = await busySupervisedRun("status-supervised-last-task-");
+    await backdateRun(repo, SUPERVISED);
+
+    const { stdout } = await delivery(["status"], { cwd: repo });
+
+    expect(stdout.split("\n")[0]).toBe(`Run ${SUPERVISED}, started 2026-09-30 09:00 UTC: 3 tasks, up to 2 at once`);
+  });
+
+  it("reports a task of a finished run of several at once as that task, when it was touched after the run", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-last-finished-task-");
+    await backdateRun(repo, SUPERVISED);
+    for (const id of [IDS.greeting, IDS.goodbye, IDS.shout]) await backdate(join(runsRoot(repo), id));
+
+    const { stdout } = await delivery(["status"], { cwd: repo });
+
+    expect(stdout.split("\n")[0]).toBe(`Run ${IDS.hello}, started 2026-09-30 09:00 UTC: ${HELLO}`);
+  });
+
+  it("reports a single run touched after the run of several at once", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-last-single-");
+    await backdateRun(repo, SUPERVISED);
+    for (const id of Object.values(IDS)) await backdate(join(runsRoot(repo), id));
+    await writeRunRecord(repo, { runId: "add-a-wave-20261001T100000Z", task: "add a wave", outcome: CLOSED });
+
+    const { stdout } = await delivery(["status"], { cwd: repo });
+
+    expect(stdout.split("\n")[0]).toBe("Run add-a-wave-20261001T100000Z, started 2026-10-01 10:00 UTC: add a wave");
   });
 });
