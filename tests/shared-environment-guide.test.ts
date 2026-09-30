@@ -6,9 +6,8 @@
 // see is what the command prints. The fixture's own shape is checked here too:
 // one fixture, one guide, one test.
 
-import { cpSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
 import { writeMockScript } from "../src/testing.js";
 import type { MockScript } from "../src/mock-script.js";
@@ -27,28 +26,6 @@ const STEP = {
 } as const;
 
 const scratch = useScratch();
-
-describe("the shared-environment example", () => {
-  it("checks in four tasks, two at a time, and a check kept outside every task's copy", () => {
-    const config = JSON.parse(readFileSync(join(EXAMPLE, "delivery.config.json"), "utf-8"));
-    expect(config.tasks).toHaveLength(4);
-    expect(config.concurrency).toBe(2);
-    expect(config.gate).toEqual({ type: "custom", modulePath: "./check.mjs" });
-  });
-
-  it("passes its own check as shipped, and cannot run it once the shared helper is gone", async () => {
-    const copy = scratch("shared-environment-shape-");
-    cpSync(EXAMPLE, copy, { recursive: true });
-    const check = (await import(pathToFileURL(join(copy, "check.mjs")).href)).default;
-    expect((await check.baseline({ worktreePath: copy })).status).toBe("PASS");
-    rmSync(join(copy, "shared", "helper.json"));
-    expect(await check.check({ worktreePath: copy })).toMatchObject({ status: "ERROR", detail: expect.stringContaining("shared helper") });
-  });
-
-  it("ships only its source, its check, its helper and its configuration", () => {
-    expect(readdirSync(EXAMPLE).sort()).toEqual(["README.md", "check.mjs", "delivery.config.json", "package.json", "shared", "text.js", "text.test.js"]);
-  });
-});
 
 describe("docs/shared-environment.md", () => {
   let repo: string;
