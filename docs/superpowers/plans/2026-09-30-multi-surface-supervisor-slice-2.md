@@ -34,7 +34,7 @@
 
 ---
 
-### Task 1: Run several scripted tasks through the supervisor from the testing entry point
+### Task 1: Run several scripted tasks through the supervisor from the testing entry point ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/scripted-supervisor-run.ts`
@@ -223,7 +223,7 @@ In `src/testing.test.ts`, add `"runSupervisorAgainstMock"` to the sorted export 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/scripted-supervisor-run.test.ts src/testing.test.ts`
-Expected: FAIL. `src/scripted-supervisor-run.test.ts` fails to import `runSupervisorAgainstMock` (not exported by `./testing.js`); `src/testing.test.ts` fails on the export list missing `runSupervisorAgainstMock`.
+Expected: FAIL. In `src/scripted-supervisor-run.test.ts`, `runSupervisorAgainstMock` is not yet exported by `./testing.js`, so vitest binds it as `undefined` and every case fails with a `TypeError` (`runSupervisorAgainstMock is not a function`), including the refusal cases, whose `rejects.toThrow(...)` sees a synchronous throw rather than the expected message; `src/testing.test.ts` fails on the export list missing `runSupervisorAgainstMock`.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -391,7 +391,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: Teach testing several tasks at once in the guide, run as a test
+### Task 2: Teach testing several tasks at once in the guide, run as a test ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `docs/testing-your-pipeline.md` (new section before `## When a reply ends as incomplete`; two rows in `## When the test itself is wrong`)
@@ -597,7 +597,9 @@ test("two tasks reach the merge together: the first to answer is merged, the oth
   // Each task has its own journal, checked as for one task.
   assertFullyConsumed(helloRun.journal, hello.script);
   assertFullyConsumed(goodbyeRun.journal, goodbye.script);
-  assert.ok(promptsSent(goodbyeRun.journal).every((prompt) => prompt.includes("add a goodbye file")));
+  const [goodbyePrompt, ...others] = promptsSent(goodbyeRun.journal);
+  assert.equal(others.length, 0);
+  assert.match(goodbyePrompt ?? "", /add a goodbye file/);
 
   const [merged, refused] = HELLO_DELAY_MS < GOODBYE_DELAY_MS ? [helloRun, goodbyeRun] : [goodbyeRun, helloRun];
   assert.equal(merged.result.state, "CLOSED");
