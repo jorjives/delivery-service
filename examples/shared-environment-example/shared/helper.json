@@ -1,0 +1,1 @@
+{ "command": "npm", "args": ["test"] }

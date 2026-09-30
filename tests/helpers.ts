@@ -98,10 +98,20 @@ export function outputBlock(section: string): string[] {
   return match[1].split("\n").filter(Boolean);
 }
 
-/** One line a guide shows, as a pattern: `<run-id>` and `<when>` stand for the parts that differ every run. */
+/** One line a guide shows, as a pattern: `<run-id>`, `<when>`, `<path>` and `[<task-pos>/...]` stand for the parts that differ every run. */
 export function documented(line: string): RegExp {
-  const escaped = line.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^${escaped.replaceAll("<run-id>", "\\S+").replaceAll("<when>", ".+")}$`, "m");
+  // Replace placeholders with temp markers to avoid escaping regex metacharacters
+  let pattern = line
+    .replaceAll("<task-pos>", "<<<TASKPOS>>>")
+    .replaceAll("<run-id>", "<<<RUNID>>>")
+    .replaceAll("<when>", "<<<WHEN>>>")
+    .replaceAll("<path>", "<<<PATH>>>");
+
+  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(
+    `^${escaped.replaceAll("<<<TASKPOS>>>", "\\d+").replaceAll("<<<RUNID>>>", "\\S+").replaceAll("<<<WHEN>>>", ".+").replaceAll("<<<PATH>>>", "[\\S]+")}$`,
+    "m",
+  );
 }
 
 /** A scripted turn that answers one task by adding a module and its passing test, so `npm test` passes. */

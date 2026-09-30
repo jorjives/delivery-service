@@ -1,0 +1,15 @@
+{
+  "domain": "A small library of text helpers that our team's Node.js scripts share. Plain JavaScript modules with no dependencies, each function tested with node:test.",
+  "tasks": [
+    "add a function that turns a title into a URL slug, with a test",
+    "add a function that shortens long text to a given length, with a test",
+    "add a function that capitalises the first letter of each word, with a test",
+    "add a function that counts the words in a piece of text, with a test"
+  ],
+  "concurrency": 2,
+  "gate": { "type": "custom", "modulePath": "./check.mjs" },
+  "closer": { "type": "commit-to-branch" },
+  "roles": {
+    "worker": { "allowedTools": ["Read", "Glob", "Grep", "Edit", "Write"] }
+  }
+}

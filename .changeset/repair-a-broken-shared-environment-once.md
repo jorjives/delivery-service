@@ -13,3 +13,5 @@ queued, and records the shared environment as the cause; the held tasks carry on
 naming the tasks it affects. A run of one task at a time is unchanged.
 
 `delivery status` for such a run leads with what broke, which task found it and which tasks it held; a held task counts as paused. `--json` adds `reason`, `cause`, `runBudgets` and `trips`, so a trip can be diagnosed after the fact.
+
+A new example, `examples/shared-environment-example`, and guide, `docs/shared-environment.md`, show a shared environment breaking under a run of several tasks at once.
