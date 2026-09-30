@@ -681,4 +681,45 @@ describe("delivery status for a run of several tasks at once", () => {
     expect(stderr).toContain("I couldn't find that run's record");
     expect(stderr).not.toContain("    at ");
   });
+
+  it("gives one JSON document: the run's own fields, and each task's usual document nested as it is", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-json-");
+
+    const { stdout, exitCode } = await delivery(["status", SUPERVISED, "--json"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const document = JSON.parse(stdout);
+    expect(Object.keys(document).sort()).toEqual(
+      ["breaker", "concurrency", "finishedAt", "live", "outcome", "queued", "runId", "startedAt", "surfaces", "tasks"],
+    );
+    expect(document).toMatchObject({
+      runId: SUPERVISED,
+      startedAt: "2026-09-30T09:00:00Z",
+      tasks: 4,
+      concurrency: 2,
+      live: false,
+      breaker: "HEALTHY",
+      outcome: "drained",
+      finishedAt: "2026-09-30T09:30:00.000Z",
+      queued: [],
+    });
+    const ctx = await context();
+    const own = await Promise.all(
+      [IDS.hello, IDS.greeting, IDS.goodbye, IDS.shout].map(async (id, index) =>
+        statusDocument(await readRun(repo, id), ctx, { task: index + 1, of: 4 }),
+      ),
+    );
+    expect(document.surfaces).toEqual(JSON.parse(JSON.stringify(own)));
+  });
+
+  it("says null for what a run still going has not got yet, and lists the tasks it has yet to start", async () => {
+    const repo = await busySupervisedRun("status-supervised-json-busy-");
+
+    const { stdout } = await delivery(["status", SUPERVISED, "--json"], { cwd: repo });
+
+    const document = JSON.parse(stdout);
+    expect(document).toMatchObject({ outcome: null, finishedAt: null, live: false });
+    expect(document.surfaces).toHaveLength(2);
+    expect(document.queued).toEqual([{ task: GOODBYE, queue: { task: 3, of: 3 } }]);
+  });
 });

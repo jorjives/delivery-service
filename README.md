@@ -256,6 +256,13 @@ To read one task in full: delivery status delete-the-greeting-20260930T090000Z
 Every task keeps its own run id, and `delivery status <task-run-id>` reads it exactly as it
 reads any other run.
 
+`delivery status run-… --json` gives the whole run as one document, for a script or for looking
+back after the fact: the run id, when it started, how many tasks and how many at once, whether it
+is going now, the environment, how it ended and when, then `surfaces`, one entry per task it took,
+each exactly the document `delivery status <task-run-id> --json` gives, and `queued`, the tasks
+it has yet to start with their place on your list. Every key is always present, `null` where it
+does not apply yet.
+
 ### See every run
 
 To see the whole history of runs in a repository:

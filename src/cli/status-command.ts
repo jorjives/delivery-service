@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { logTail, resumeAction, type ResumeAction } from "../case-file.js";
 import { branchName } from "../provision.js";
-import type { BreakerState, SurfaceState, TaskDef } from "../schema.js";
+import type { BreakerState, RunOutcome, SurfaceState, TaskDef } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { loadConfig } from "./config.js";
@@ -181,6 +181,48 @@ export async function statusDocument(record: RunRecord, ctx: CommandContext, pos
     worktree: existsSync(location.worktreePath) ? location.worktreePath : null,
     escalation: packet ?? null,
     queue: position ?? null,
+  };
+}
+
+/**
+ * A run of several tasks at once as one document: the run's own fields, then
+ * each task it took with a record, as exactly the document `status --json`
+ * gives for that task on its own, and the tasks still to start. Every key is
+ * always there; null where it does not apply yet.
+ */
+export interface SupervisedStatusDocument {
+  runId: string;
+  /** ISO 8601, from the run id. */
+  startedAt: string | null;
+  /** How many tasks the list held when the run started. */
+  tasks: number;
+  concurrency: number;
+  /** Whether the run is going right now. */
+  live: boolean;
+  breaker: BreakerState;
+  outcome: RunOutcome["kind"] | null;
+  finishedAt: string | null;
+  surfaces: RunStatusDocument[];
+  queued: { task: string; queue: QueuePosition | null }[];
+}
+
+export async function supervisedDocument(view: SupervisedView, ctx: CommandContext): Promise<SupervisedStatusDocument> {
+  const { header, outcome } = view.runFile;
+  return {
+    runId: header.runId,
+    startedAt: startedInstant(header.runId),
+    tasks: header.tasks,
+    concurrency: header.concurrency,
+    live: view.live,
+    breaker: view.breaker,
+    outcome: outcome?.kind ?? null,
+    finishedAt: outcome?.at ?? null,
+    surfaces: await Promise.all(
+      view.tasks.flatMap((task) => (task.record ? [statusDocument(task.record, ctx, task.position)] : [])),
+    ),
+    queued: view.tasks
+      .filter((task) => task.record === undefined)
+      .map((task) => ({ task: taskIntent(task.taskDef), queue: task.position ?? null })),
   };
 }
 
@@ -363,7 +405,9 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   if (options.all) return listRuns(repoPath, ctx);
   const record = runId === undefined ? await mostRecent(repoPath) : await lookUp(repoPath, runId);
   if ("runFile" in record) {
-    for (const line of await supervisedReport(await viewOf(record, repoPath, startDir, ctx), ctx)) ctx.writeLine(line);
+    const view = await viewOf(record, repoPath, startDir, ctx);
+    if (ctx.json) ctx.writeLine(JSON.stringify(await supervisedDocument(view, ctx), null, 2));
+    else for (const line of await supervisedReport(view, ctx)) ctx.writeLine(line);
     return EXIT.ok;
   }
   const position = await positionOf(record, startDir, ctx);

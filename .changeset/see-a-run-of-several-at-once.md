@@ -9,3 +9,7 @@ own run id, with the
 decision a stuck task needs set out in full beneath it. A task waiting only because every slot is
 busy shows as "queued, waiting for a free slot". Each task is still read on its own by its own
 run id, exactly as before.
+
+With `--json` it prints the whole run as one document, nesting each task's usual status document
+under `surfaces` and listing the tasks still to start under `queued`; every key is always
+present, `null` where it does not apply.
