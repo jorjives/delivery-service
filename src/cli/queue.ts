@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import type { SlotOutcome, TaskDef } from "../schema.js";
 import { supervise } from "../supervisor.js";
-import { createRunFile } from "../run-file.js";
+import { createRunFile, setRunOutcome } from "../run-file.js";
 import { agentSession } from "./agent-session.js";
 import { structureTask, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
@@ -10,7 +10,7 @@ import { resumeRun, startRun } from "./drive.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
 import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "./run-location.js";
-import { allRuns, describeRun, newestFirst, type RunRecord } from "./runs.js";
+import { allRuns, describeRun, newestFirst, type RunRecord, unfinishedSupervisedRun } from "./runs.js";
 import { taskIntent, type ProjectSettings } from "./settings.js";
 
 /** Where a task sits in the list as it is written now, counted from one, which is how "Task N of M" reads. */
@@ -96,9 +96,16 @@ export function listExitCode(outcomes: readonly SlotOutcome[]): ExitCode {
   return EXIT.ok;
 }
 
+/** How big a run of several at once is: how many tasks, and how many at a time. */
+const shapeOf = (tasks: number, concurrency: number): string =>
+  `${tasks} ${tasks === 1 ? "task" : "tasks"}, up to ${concurrency} at once`;
+
 /** The line a run of several tasks at once opens with. */
-export const runShape = (runId: string, tasks: number, concurrency: number): string =>
-  `Starting run ${runId}: ${tasks} ${tasks === 1 ? "task" : "tasks"}, up to ${concurrency} at once`;
+export const runShape = (runId: string, tasks: number, concurrency: number): string => `Starting run ${runId}: ${shapeOf(tasks, concurrency)}`;
+
+/** The line a run of several at once that was stopped opens with when it is picked up again. */
+export const runPickedUp = (runId: string, tasks: number, concurrency: number): string =>
+  `Picking up run ${runId}: ${shapeOf(tasks, concurrency)}`;
 
 /** How a task that was not delivered ended, said once a run of several at once is over. */
 export function taskEnded(position: QueuePosition, outcome: SlotOutcome): string {
@@ -135,6 +142,10 @@ const slotOutcome = (exitCode: ExitCode): SlotOutcome =>
  * and the rest carry on; the run gets its own id and record, every line says
  * which task it is about, and the end names each task that was not delivered.
  *
+ * A run of several at once that was stopped, by Ctrl-C, a kill or the machine going down, is carried on by
+ * the next invocation: the same run id and record, at the shape it started with, and each task it had under way
+ * picked up from its own record.
+ *
  * The agent runtime is checked when the first task actually needs it, and once
  * for the whole list: a list with nothing left to do, or one stopped on a task
  * that is waiting for a person, is a complete answer on a machine that has
@@ -161,12 +172,20 @@ export async function runQueue(
     return { taskDef, position, existing, surfaceId: existing?.runId ?? runIdFor(taskIntent(taskDef), new Date(), taken) };
   };
 
+  // A run of several at once that was stopped is carried on, in its own record and at the shape its record
+  // says it started with, whatever the setting says now. Each slot is then filled exactly as for a new run:
+  // a delivered task is passed over, one that was under way is picked up from its own record, the rest start.
+  const unfinished = await unfinishedSupervisedRun(repoPath);
+  const concurrency = unfinished?.runFile.header.concurrency ?? project.concurrency;
+
   if ((await next([])) === undefined) {
+    // Every task a stopped run was still to take has been delivered since, so that run is over too.
+    if (unfinished) await setRunOutcome(unfinished.dir, { kind: "drained", at: new Date().toISOString() });
     ctx.report.note(EVERY_TASK_DONE);
     return EXIT.ok;
   }
 
-  const runId = project.concurrency > 1 ? supervisedRunId(new Date()) : undefined;
+  const runId = unfinished?.runFile.header.runId ?? (concurrency > 1 ? supervisedRunId(new Date()) : undefined);
 
   const drive = async ({ taskDef, surfaceId, position, existing }: QueueClaim): Promise<SlotOutcome> => {
     const report =
@@ -190,16 +209,20 @@ export async function runQueue(
   };
 
   let record: { dir: string } | undefined;
-  if (runId !== undefined) {
+  if (unfinished) {
+    record = { dir: unfinished.dir };
+    ctx.report.note(runPickedUp(unfinished.runFile.header.runId, tasks.length, concurrency));
+    ctx.report.run({ runId: unfinished.runFile.header.runId, state: "RESUMED" });
+  } else if (runId !== undefined) {
     const dir = supervisedPlace(repoPath, runId);
     await prepareRunDir(repoPath, dir);
-    await createRunFile(dir, { runId, repoPath, concurrency: project.concurrency, tasks: tasks.length });
+    await createRunFile(dir, { runId, repoPath, concurrency, tasks: tasks.length });
     record = { dir };
-    ctx.report.note(runShape(runId, tasks.length, project.concurrency));
+    ctx.report.note(runShape(runId, tasks.length, concurrency));
     ctx.report.run({ runId, state: "STARTED" });
   }
 
-  const settled = await supervise({ slots: project.concurrency, next, drive, waitOnSetback: runId === undefined, record });
+  const settled = await supervise({ slots: concurrency, next, drive, waitOnSetback: runId === undefined, record });
 
   if (runId !== undefined) ctx.report.run({ runId, state: "DRAINED" });
   const exitCode = listExitCode(settled.map(({ outcome }) => outcome));

@@ -8,7 +8,7 @@ import type { GateRef, TaskDef } from "../schema.js";
 import { writeRunRecord } from "./command-fixtures.js";
 import { allRuns } from "./runs.js";
 import { runsRoot } from "./run-location.js";
-import { findQueueRun, listExitCode, nextQueueTask, queuePositionOf, queueTasks, runShape, taskEnded } from "./queue.js";
+import { findQueueRun, listExitCode, nextQueueTask, queuePositionOf, queueTasks, runPickedUp, runShape, taskEnded } from "./queue.js";
 import { EXIT } from "./failures.js";
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
@@ -158,6 +158,11 @@ describe("what a list of several at once says", () => {
   it("opens by naming the run and its shape", () => {
     expect(runShape("run-20260926T090000Z", 10, 3)).toBe("Starting run run-20260926T090000Z: 10 tasks, up to 3 at once");
     expect(runShape("run-20260926T090000Z", 1, 2)).toBe("Starting run run-20260926T090000Z: 1 task, up to 2 at once");
+  });
+
+  it("opens a run it picked up by saying so, with the run's id and shape", () => {
+    expect(runPickedUp("run-20260930T090000Z", 4, 2)).toBe("Picking up run run-20260930T090000Z: 4 tasks, up to 2 at once");
+    expect(runPickedUp("run-20260930T090000Z", 1, 2)).toBe("Picking up run run-20260930T090000Z: 1 task, up to 2 at once");
   });
 
   it("ends by naming each task that was not delivered, and that the rest carried on", () => {

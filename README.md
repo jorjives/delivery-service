@@ -169,6 +169,12 @@ a run id, or `--last` for the run touched most recently. If more than one run di
 lists them and asks which one; in a script or a CI step, where nobody can answer, it prints the
 list and stops.
 
+A run of several tasks at once is picked up the same way, with `delivery run`. It says which run
+it is carrying on (`Picking up run run-20260926T090000Z: 4 tasks, up to 2 at once`), every task
+that was under way carries on from its own last step, tasks already delivered are left alone,
+and the rest of the list starts as slots free up. It keeps the number of tasks at once it started
+with, whatever the setting says now.
+
 A run keeps the task, the check and the closing action it started with, so a flag asking for
 something else is ignored with a note saying so. Asking for a different task while a run is
 unfinished stops the command: finish that run with `delivery resume`, or add `--fresh` to start

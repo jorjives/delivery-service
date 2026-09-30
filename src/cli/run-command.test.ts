@@ -1,21 +1,23 @@
-import { describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, utimesSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
+import { repoLocked, takeRepoLock } from "./repo-lock.js";
+import { supervisorLockPath } from "./run-location.js";
 import type { MockScript } from "../mock-script.js";
 import { SurfaceState, type RunEntry } from "../schema.js";
-import { loadRunFile } from "../run-file.js";
+import { loadRunFile, setRunOutcome } from "../run-file.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
-import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot } from "./command-fixtures.js";
+import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot, interruptedRun, writesHello, writeSupervisedRun } from "./command-fixtures.js";
 import { unknownCloser } from "./config.js";
 import { EXIT, UNEXPECTED_FOOTER } from "./failures.js";
 import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
-import { allRuns } from "./runs.js";
+import { allRuns, readRun } from "./runs.js";
 import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
-import { EVERY_TASK_DONE, taskEnded } from "./queue.js";
+import { EVERY_TASK_DONE, taskEnded, runPickedUp } from "./queue.js";
 import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
 
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
@@ -987,5 +989,106 @@ describe("delivery run with several tasks at once", () => {
       expect(stdout).toContain(`Task 1 of 2: ${PAGE}`);
     },
     RUN_TIMEOUT * 2,
+  );
+
+  const SHOUT = "make a shouting function that shouts a name, with a test";
+  const RUN = "run-20260930T090000Z";
+
+  it(
+    "picks a stopped run up at the shape it started with: each task carries on from its own last step, a delivered one is left alone, and the rest start once",
+    async () => {
+      // No concurrency in the file: the run carries on as it was started, two at once.
+      const repo = listRepo("run-command-several-resume-", { tasks: [PAGE, SWAP, WAVE, SHOUT] });
+      const state = mkdtempSync(join(tmpdir(), "run-command-state-"));
+      const pageId = "add-a-hello-function-that-20260930T090000Z";
+      await writeRunRecord(repo, { runId: pageId, task: PAGE, outcome: closed });
+      const swapId = await interruptedRun(repo, state, { task: SWAP, steps: 3, worker: writesHello });
+      const waveId = await interruptedRun(repo, state, { task: WAVE, steps: 1, worker: writesHello });
+      const before: RunEntry[] = [
+        { t: "slot_fill", slot: 1, surfaceId: pageId, taskDef: { intent: PAGE } },
+        { t: "slot_fill", slot: 2, surfaceId: swapId, taskDef: { intent: SWAP } },
+        { t: "slot_free", slot: 1, surfaceId: pageId, outcome: "closed" },
+        { t: "slot_fill", slot: 1, surfaceId: waveId, taskDef: { intent: WAVE } },
+      ];
+      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 4 }, before);
+
+      const { exitCode, stdout } = await delivery(["run"], {
+        cwd: repo,
+        env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) },
+      });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout.split("\n")[0]).toBe(runPickedUp(RUN, 4, 2));
+      expect(stdout).toContain(`[2/4] Resuming run ${swapId}: ${SWAP}`);
+      expect(stdout).toContain(`[3/4] Resuming run ${waveId}: ${WAVE}`);
+      expect(stdout).toMatch(/^\[4\/4\] Starting run /m);
+      expect(stdout).not.toContain("[1/4]");
+      expect(stdout.trimEnd().split("\n").at(-1)).toBe(EVERY_TASK_DONE);
+
+      // One record per task: nothing was started a second time.
+      const ids = readdirSync(runsRoot(repo));
+      expect(ids).toHaveLength(4);
+      expect(ids).toEqual(expect.arrayContaining([pageId, swapId, waveId]));
+      // The delivered task was not touched, and neither resumed task was begun again from its starting point.
+      expect((await readRun(repo, pageId)).caseFile.outcome).toEqual(closed);
+      for (const id of [swapId, waveId]) {
+        const { caseFile } = await readRun(repo, id);
+        expect(caseFile.outcome?.kind).toBe("closed");
+        expect(caseFile.history.filter((entry) => entry.t === "baseline")).toHaveLength(1);
+      }
+      // The same run's record, carried on: what it held, then this invocation's slots, then its end.
+      const runFile = await theRunFile(repo);
+      expect(runFile.header.runId).toBe(RUN);
+      expect(runFile.history.slice(0, 4)).toEqual(before);
+      expect(fillsOf(runFile.history.slice(4)).map((fill) => fill.taskDef)).toEqual([{ intent: SWAP }, { intent: WAVE }, { intent: SHOUT }]);
+      expect(runFile.outcome?.kind).toBe("drained");
+      expect(git(repo, ["branch", "--list", "surface/*"]).split("\n")).toHaveLength(3);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "under --json says the run was picked up, not started",
+    async () => {
+      const repo = listRepo("run-command-several-resume-json-", { tasks: [PAGE] });
+      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1 });
+
+      const { exitCode, stdout } = await delivery(["run", "--json"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+      expect(exitCode).toBe(EXIT.ok);
+      const records = stdout.trimEnd().split("\n").map((line) => JSON.parse(line) as SurfaceStepRecord | RunEventRecord);
+      expect(records[0]).toMatchObject({ scope: "run", runId: RUN, state: "RESUMED", done: false });
+      expect(records.at(-1)).toMatchObject({ scope: "run", runId: RUN, state: "DRAINED", done: true });
+    },
+    RUN_TIMEOUT,
+  );
+
+  it("ends a stopped run whose tasks have all since been delivered, starting nothing", async () => {
+    const repo = listRepo("run-command-several-resume-done-", { tasks: [PAGE], concurrency: 2 });
+    await writeRunRecord(repo, { runId: "add-a-hello-function-that-20260930T090000Z", task: PAGE, outcome: closed });
+    const dir = await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1 });
+
+    const { exitCode, stdout } = await delivery(["run"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.trimEnd()).toBe(EVERY_TASK_DONE);
+    expect((await loadRunFile(dir)).outcome?.kind).toBe("drained");
+  });
+
+  it(
+    "starts a new run, with its own id, when the last run of several at once finished",
+    async () => {
+      const repo = listRepo("run-command-several-after-finished-", { tasks: [PAGE], concurrency: 2 });
+      const dir = await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1 });
+      await setRunOutcome(dir, { kind: "drained", at: "2026-09-30T10:00:00.000Z" });
+
+      const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout.split("\n")[0]).toMatch(/^Starting run run-\d{8}T\d{6}Z: 1 task, up to 2 at once$/);
+      expect(stdout).not.toContain(RUN);
+      expect(readdirSync(supervisedRoot(repo))).toHaveLength(2);
+    },
+    RUN_TIMEOUT,
   );
 });

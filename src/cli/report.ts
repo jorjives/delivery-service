@@ -24,8 +24,8 @@ export interface TaskTag {
   id: string;
 }
 
-/** What a run of several tasks at once says of itself: that it has started, and that every task it could take has ended. */
-export type RunState = "STARTED" | "DRAINED";
+/** What a run of several tasks at once says of itself: that it has started, or been picked up after a stop, and that every task it could take has ended. */
+export type RunState = "STARTED" | "RESUMED" | "DRAINED";
 export interface RunEvent {
   runId: string;
   state: RunState;
