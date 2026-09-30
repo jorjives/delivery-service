@@ -5,7 +5,7 @@ import { agentSession } from "./agent-session.js";
 import { loadConfig, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
-import { queueTasks, runQueue } from "./queue.js";
+import { queueTasks, refuseIfRunGoing, runQueue } from "./queue.js";
 import { chooseRun, unfinishedRuns, unfinishedRunFound } from "./runs.js";
 import {
   checkCustomModules,
@@ -35,6 +35,10 @@ export type RunOptions = RunFlags;
 export async function runCommand(options: RunOptions, ctx: CommandContext): Promise<ExitCode> {
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
+
+  // Whatever this run would be, it would drive git in the checkout a live run of several at once is using.
+  await refuseIfRunGoing(repoPath);
+
   const intent = await explicitIntent(options, ctx.env, ctx.cwd);
   const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
   if (intent === undefined && config.tasks) return startQueue(options, { repoPath, config }, ctx);

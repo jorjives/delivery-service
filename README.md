@@ -175,6 +175,12 @@ that was under way carries on from its own last step, tasks already delivered ar
 and the rest of the list starts as slots free up. It keeps the number of tasks at once it started
 with, whatever the setting says now.
 
+While a run of several tasks at once is going, a second `delivery run` or `delivery resume` in the
+same repository is refused straight away with exit code 2, naming the run that is going and
+suggesting `delivery status` to see how it is getting on. The run holds a lock on the repository
+for as long as it runs; if the command is killed or the machine goes down, the next `delivery run`
+takes the lock over by itself, so there is never anything to unlock by hand.
+
 A run keeps the task, the check and the closing action it started with, so a flag asking for
 something else is ignored with a note saying so. Asking for a different task while a run is
 unfinished stops the command: finish that run with `delivery resume`, or add `--fresh` to start

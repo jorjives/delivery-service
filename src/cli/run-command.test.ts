@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
@@ -15,7 +15,9 @@ import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
 import { allRuns, readRun } from "./runs.js";
 import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
-import { EVERY_TASK_DONE, taskEnded, runPickedUp } from "./queue.js";
+import { EVERY_TASK_DONE, liveRunFound, taskEnded, runPickedUp } from "./queue.js";
+import { repoLocked, takeRepoLock } from "./repo-lock.js";
+import { supervisorLockPath } from "./run-location.js";
 import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
 
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
@@ -1086,6 +1088,61 @@ describe("delivery run with several tasks at once", () => {
       expect(stdout.split("\n")[0]).toMatch(/^Starting run run-\d{8}T\d{6}Z: 1 task, up to 2 at once$/);
       expect(stdout).not.toContain(RUN);
       expect(readdirSync(supervisedRoot(repo))).toHaveLength(2);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it.each([
+    ["a list of several at once", ["run"], { tasks: [PAGE, SWAP], concurrency: 2 }],
+    ["a list one at a time", ["run"], { tasks: [PAGE, SWAP] }],
+    ["a single task", ["run", "--task", TASK], {}],
+    ["picking up a run", ["resume"], {}],
+  ])("refuses %s while a run of several at once is going here, naming it, before anything starts", async (_, args, config) => {
+    const repo = listRepo("run-command-live-", config);
+    const header = { runId: RUN, repoPath: repo, concurrency: 2, tasks: 4 };
+    const dir = await writeSupervisedRun(repo, header);
+    const release = await takeRepoLock(repo);
+    try {
+      const { exitCode, stdout, stderr } = await delivery(args, { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+      expect(exitCode).toBe(EXIT.configuration);
+      expect(stderr.trimEnd()).toBe(liveRunFound(header));
+      expect(stdout).toBe("");
+      expect(existsSync(runsRoot(repo))).toBe(false);
+      expect((await loadRunFile(dir)).history).toEqual([]);
+    } finally {
+      await release?.();
+    }
+  });
+
+  it(
+    "holds the repository's lock for as long as it runs, and lets it go at the end",
+    async () => {
+      const repo = listRepo("run-command-lock-held-", { tasks: [PAGE, SWAP], concurrency: 2 });
+      const running = delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile({ ...completes, delayMs: 1000 }) } });
+
+      await vi.waitFor(async () => expect(await repoLocked(repo)).toBe(true), { timeout: 30_000, interval: 50 });
+      expect((await running).exitCode).toBe(EXIT.ok);
+      expect(await repoLocked(repo)).toBe(false);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "takes over the lock a killed run left behind and carries that run on, with nothing to unlock by hand",
+    async () => {
+      const repo = listRepo("run-command-lock-stale-", { tasks: [PAGE], concurrency: 2 });
+      await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1 });
+      // A run killed outright leaves its lock behind, no longer kept fresh by anyone.
+      mkdirSync(supervisorLockPath(repo));
+      const aMinuteAgo = new Date(Date.now() - 60_000);
+      utimesSync(supervisorLockPath(repo), aMinuteAgo, aMinuteAgo);
+
+      const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout.split("\n")[0]).toBe(runPickedUp(RUN, 1, 2));
+      expect(await repoLocked(repo)).toBe(false);
     },
     RUN_TIMEOUT,
   );

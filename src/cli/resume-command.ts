@@ -3,6 +3,7 @@ import type { CommandContext } from "./context.js";
 import { resumeRun } from "./drive.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
+import { refuseIfRunGoing } from "./queue.js";
 import { alreadyFinished, chooseRun, readRun, unfinishedRuns, type RunRecord } from "./runs.js";
 
 /** What `delivery resume` was given on the command line, besides the run id. */
@@ -27,6 +28,10 @@ async function discover(repoPath: string, options: ResumeOptions, ctx: CommandCo
  */
 export async function resumeCommand(runId: string | undefined, options: ResumeOptions, ctx: CommandContext): Promise<ExitCode> {
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+
+  // The run to pick up may be one a live run of several at once is driving right now.
+  await refuseIfRunGoing(repoPath);
+
   const record = runId === undefined ? await discover(repoPath, options, ctx) : await readRun(repoPath, runId);
   if (record.caseFile.outcome) throw new Refusal(alreadyFinished(record.runId), EXIT.configuration);
   return resumeRun(record, ctx);

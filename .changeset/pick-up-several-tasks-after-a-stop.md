@@ -8,3 +8,9 @@ tasks at once, says which run it is picking up, and carries each task that was u
 its own last step: a task already delivered is not redone, no working copy is set up twice and
 no finished work is merged twice. Under `--json` the run's first record says `RESUMED` rather
 than `STARTED`.
+
+While a run of several at once is going, starting another `delivery run` or `delivery resume` in
+the same repository, at any concurrency, is refused before anything starts, with exit code 2 and
+a message naming the live run, when it started, its shape and how to look at it. The run holds a
+lock on the repository under `.delivery/`; a lock left by a killed run is taken over by the next
+run, with no unlock step.

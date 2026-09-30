@@ -1,16 +1,17 @@
 import { isDeepStrictEqual } from "node:util";
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { SlotOutcome, TaskDef } from "../schema.js";
+import type { RunHeader, SlotOutcome, TaskDef } from "../schema.js";
 import { supervise } from "../supervisor.js";
 import { createRunFile, setRunOutcome } from "../run-file.js";
 import { agentSession } from "./agent-session.js";
 import { structureTask, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { resumeRun, startRun } from "./drive.js";
-import { EXIT, type ExitCode } from "./failures.js";
+import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
 import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "./run-location.js";
-import { allRuns, describeRun, newestFirst, type RunRecord, unfinishedSupervisedRun } from "./runs.js";
+import { allRuns, describeRun, newestFirst, startedAt, type RunRecord, unfinishedSupervisedRun } from "./runs.js";
+import { repoLocked, takeRepoLock } from "./repo-lock.js";
 import { taskIntent, type ProjectSettings } from "./settings.js";
 
 /** Where a task sits in the list as it is written now, counted from one, which is how "Task N of M" reads. */
@@ -107,6 +108,24 @@ export const runShape = (runId: string, tasks: number, concurrency: number): str
 export const runPickedUp = (runId: string, tasks: number, concurrency: number): string =>
   `Picking up run ${runId}: ${shapeOf(tasks, concurrency)}`;
 
+/**
+ * Why a run cannot start: a run of several at once is already going in this
+ * repository, and which one, so the owner can look at it rather than start a
+ * second that would fight it over the same checkout. `live` is that run's
+ * header, when its record can be found.
+ */
+export function liveRunFound(live: RunHeader | undefined): string {
+  const which = live === undefined ? "" : ` (started \`${startedAt(live.runId)}\`, ${shapeOf(live.tasks, live.concurrency)}: \`${live.runId}\`)`;
+  return `Another run is already going here${which}. Run \`delivery status\` to see how it is getting on, or wait for it to finish before starting another.`;
+}
+
+/** Refuse to go on while a run of several at once holds this repository. Every command that drives a run asks this first. */
+export async function refuseIfRunGoing(repoPath: string): Promise<void> {
+  if (await repoLocked(repoPath)) {
+    throw new Refusal(liveRunFound((await unfinishedSupervisedRun(repoPath))?.runFile.header), EXIT.configuration);
+  }
+}
+
 /** How a task that was not delivered ended, said once a run of several at once is over. */
 export function taskEnded(position: QueuePosition, outcome: SlotOutcome): string {
   const which = positionPhrase(position);
@@ -178,60 +197,71 @@ export async function runQueue(
   const unfinished = await unfinishedSupervisedRun(repoPath);
   const concurrency = unfinished?.runFile.header.concurrency ?? project.concurrency;
 
-  if ((await next([])) === undefined) {
-    // Every task a stopped run was still to take has been delivered since, so that run is over too.
-    if (unfinished) await setRunOutcome(unfinished.dir, { kind: "drained", at: new Date().toISOString() });
-    ctx.report.note(EVERY_TASK_DONE);
-    return EXIT.ok;
+  // A run of several at once holds the repository for as long as it runs, so a second cannot start on top of it.
+  // One at a time takes no lock: every command has already refused to start while one is held.
+  let release: (() => Promise<void>) | undefined;
+  if (concurrency > 1) {
+    release = await takeRepoLock(repoPath);
+    if (release === undefined) throw new Refusal(liveRunFound(unfinished?.runFile.header), EXIT.configuration);
   }
-
-  const runId = unfinished?.runFile.header.runId ?? (concurrency > 1 ? supervisedRunId(new Date()) : undefined);
-
-  const drive = async ({ taskDef, surfaceId, position, existing }: QueueClaim): Promise<SlotOutcome> => {
-    const report =
-      runId === undefined ? ctx.report : ctx.report.forTask({ runId, ordinal: position.task, of: position.of, id: surfaceId });
-    const taskCtx: CommandContext = { ...ctx, report };
-    // One at a time, a heading frames each task. Several at once, the tag says where it sits and the run's own
-    // first line names the task, except for one that already ended, which is named here before it is retold.
-    if (runId === undefined) report.note(taskHeading(position, taskIntent(taskDef)));
-    else if (existing?.caseFile.outcome) report.note(describeRun(existing));
-
-    const exitCode =
-      existing === undefined
-        ? await startRun({ repoPath, taskDef, runId: surfaceId, ...project }, await agent(), taskCtx)
-        : existing.caseFile.outcome
-          ? // What a run that already ended did, said again for whoever is looking at the list today rather than watching that run.
-            await reportOutcome(existing.dir, existing.caseFile, taskCtx)
-          : await resumeRun(existing, taskCtx, await agent());
-
-    if (runId === undefined && exitCode !== EXIT.ok) report.note(listStopped(position, exitCode));
-    return slotOutcome(exitCode);
-  };
-
-  let record: { dir: string } | undefined;
-  if (unfinished) {
-    record = { dir: unfinished.dir };
-    ctx.report.note(runPickedUp(unfinished.runFile.header.runId, tasks.length, concurrency));
-    ctx.report.run({ runId: unfinished.runFile.header.runId, state: "RESUMED" });
-  } else if (runId !== undefined) {
-    const dir = supervisedPlace(repoPath, runId);
-    await prepareRunDir(repoPath, dir);
-    await createRunFile(dir, { runId, repoPath, concurrency, tasks: tasks.length });
-    record = { dir };
-    ctx.report.note(runShape(runId, tasks.length, concurrency));
-    ctx.report.run({ runId, state: "STARTED" });
-  }
-
-  const settled = await supervise({ slots: concurrency, next, drive, waitOnSetback: runId === undefined, record });
-
-  if (runId !== undefined) ctx.report.run({ runId, state: "DRAINED" });
-  const exitCode = listExitCode(settled.map(({ outcome }) => outcome));
-  if (exitCode === EXIT.ok) {
-    ctx.report.note(EVERY_TASK_DONE);
-  } else if (runId !== undefined) {
-    for (const { claim, outcome } of settled.toSorted((a, b) => a.claim.position.task - b.claim.position.task)) {
-      if (outcome !== "closed") ctx.report.note(taskEnded(claim.position, outcome));
+  try {
+    if ((await next([])) === undefined) {
+      // Every task a stopped run was still to take has been delivered since, so that run is over too.
+      if (unfinished) await setRunOutcome(unfinished.dir, { kind: "drained", at: new Date().toISOString() });
+      ctx.report.note(EVERY_TASK_DONE);
+      return EXIT.ok;
     }
+
+    const runId = unfinished?.runFile.header.runId ?? (concurrency > 1 ? supervisedRunId(new Date()) : undefined);
+
+    const drive = async ({ taskDef, surfaceId, position, existing }: QueueClaim): Promise<SlotOutcome> => {
+      const report =
+        runId === undefined ? ctx.report : ctx.report.forTask({ runId, ordinal: position.task, of: position.of, id: surfaceId });
+      const taskCtx: CommandContext = { ...ctx, report };
+      // One at a time, a heading frames each task. Several at once, the tag says where it sits and the run's own
+      // first line names the task, except for one that already ended, which is named here before it is retold.
+      if (runId === undefined) report.note(taskHeading(position, taskIntent(taskDef)));
+      else if (existing?.caseFile.outcome) report.note(describeRun(existing));
+
+      const exitCode =
+        existing === undefined
+          ? await startRun({ repoPath, taskDef, runId: surfaceId, ...project }, await agent(), taskCtx)
+          : existing.caseFile.outcome
+            ? // What a run that already ended did, said again for whoever is looking at the list today rather than watching that run.
+              await reportOutcome(existing.dir, existing.caseFile, taskCtx)
+            : await resumeRun(existing, taskCtx, await agent());
+
+      if (runId === undefined && exitCode !== EXIT.ok) report.note(listStopped(position, exitCode));
+      return slotOutcome(exitCode);
+    };
+
+    let record: { dir: string } | undefined;
+    if (unfinished) {
+      record = { dir: unfinished.dir };
+      ctx.report.note(runPickedUp(unfinished.runFile.header.runId, tasks.length, concurrency));
+      ctx.report.run({ runId: unfinished.runFile.header.runId, state: "RESUMED" });
+    } else if (runId !== undefined) {
+      const dir = supervisedPlace(repoPath, runId);
+      await prepareRunDir(repoPath, dir);
+      await createRunFile(dir, { runId, repoPath, concurrency, tasks: tasks.length });
+      record = { dir };
+      ctx.report.note(runShape(runId, tasks.length, concurrency));
+      ctx.report.run({ runId, state: "STARTED" });
+    }
+
+    const settled = await supervise({ slots: concurrency, next, drive, waitOnSetback: runId === undefined, record });
+
+    if (runId !== undefined) ctx.report.run({ runId, state: "DRAINED" });
+    const exitCode = listExitCode(settled.map(({ outcome }) => outcome));
+    if (exitCode === EXIT.ok) {
+      ctx.report.note(EVERY_TASK_DONE);
+    } else if (runId !== undefined) {
+      for (const { claim, outcome } of settled.toSorted((a, b) => a.claim.position.task - b.claim.position.task)) {
+        if (outcome !== "closed") ctx.report.note(taskEnded(claim.position, outcome));
+      }
+    }
+    return exitCode;
+  } finally {
+    await release?.();
   }
-  return exitCode;
 }
