@@ -178,3 +178,16 @@ export class MockNotInstalled extends Error {
     this.name = "MockNotInstalled";
   }
 }
+
+/**
+ * The run of several tasks at once has given up on the environment its tasks
+ * share. Thrown at a task's next check or hand-off, so the task stops where it
+ * is without an outcome of its own: nothing it did caused this, and a later
+ * run picks it up from there.
+ */
+export class RunHalted extends Error {
+  constructor(readonly reason: string) {
+    super(`The run stopped: ${reason}`);
+    this.name = "RunHalted";
+  }
+}

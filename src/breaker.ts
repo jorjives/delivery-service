@@ -1,4 +1,7 @@
 import type { BreakerCause, BreakerState, RepairStatus, RunEntry } from "./schema.js";
+import { appendRunEntry } from "./run-file.js";
+import { RunHalted } from "./errors.js";
+import type { RepairCoordinator, Terminus } from "./ports.js";
 
 /**
  * How each run-file entry moves the shared environment's breaker. Total over
@@ -120,4 +123,160 @@ export function requestedInOpenTrip(history: readonly RunEntry[], surfaceId: str
   const opened = history.findLastIndex((entry) => entry.t === "breaker_degraded");
   if (opened === -1 || openTrip(history) === undefined) return false;
   return history.slice(opened).some((entry) => entry.t === "repair_request" && entry.surfaceId === surfaceId && entry.key === key);
+}
+
+export const RECOVERED_REPAIR = "the repair session ended without recording a result (recovered on resume)";
+
+export const couldNotRepair = (attempts: number): string =>
+  `the shared environment could not be repaired after ${attempts} ${attempts === 1 ? "attempt" : "attempts"}; no task caused this`;
+
+/** A change in the shared environment's state, and every task it affects. */
+export interface BreakerChange {
+  state: BreakerState;
+  affected: string[];
+  repair?: { attempt: number; of: number };
+}
+
+export interface RunBreakerOptions {
+  /** The run's own record. */
+  dir: string;
+  /** What that record already holds: empty for a new run, the stopped run's history when picked up. */
+  history: readonly RunEntry[];
+  /** Repair attempts the whole run may spend. */
+  limit: number;
+  /** One gate-maintenance session, in the copy and record of the task named. */
+  dispatch(surfaceId: string, sessionKey: string): Promise<Terminus>;
+  onChange(change: BreakerChange): void;
+}
+
+export interface RunBreaker extends RepairCoordinator {
+  /** Why the run gave up on the shared environment, once it has: start nothing more. */
+  readonly gaveUp: string | undefined;
+}
+
+/**
+ * The one coordinator of a run's shared environment. Everything it decides is
+ * written to the run file first, in the order it was decided, so a crash
+ * leaves a history the next process folds back into the same state.
+ *
+ * A trip holds every check and hand-off; the repair starts only once no task
+ * is mid-check or mid-hand-off, and every request while it is pending shares
+ * it. A task picked up while its run was repairing finds the repair started
+ * again here at its first hold, since nobody else would start it.
+ */
+export function createRunBreaker({ dir, history, limit, dispatch, onChange }: RunBreakerOptions): RunBreaker {
+  const log: RunEntry[] = [...history];
+  let state = breakerOf(log);
+  let gaveUp = log.findLast((entry) => entry.t === "run_escalated")?.reason;
+  let writing: Promise<void> = Promise.resolve();
+  const inFlight = new Set<string>();
+  let idleWaiters: (() => void)[] = [];
+  let repairing: Promise<void> | undefined;
+
+  // In memory at once, so two tasks asking in the same instant see one trip; on disk in the same order.
+  function record(entry: RunEntry): Promise<void> {
+    log.push(entry);
+    state = nextBreaker(state, entry);
+    writing = writing.then(() => appendRunEntry(dir, entry));
+    return writing;
+  }
+
+  const affected = (): string[] => [...(openTrip(log)?.held ?? [])];
+
+  function whenIdle(): Promise<void> {
+    if (inFlight.size === 0) return Promise.resolve();
+    return new Promise((resolve) => idleWaiters.push(resolve));
+  }
+
+  function leave(surfaceId: string): void {
+    inFlight.delete(surfaceId);
+    if (inFlight.size > 0) return;
+    const waiting = idleWaiters;
+    idleWaiters = [];
+    for (const resolve of waiting) resolve();
+  }
+
+  async function giveUp(reason: string): Promise<never> {
+    // Set before the write, so a request or hold arriving while it is written is refused, not queued on a dead repair.
+    gaveUp = reason;
+    await record({ t: "run_escalated", reason });
+    throw new RunHalted(reason);
+  }
+
+  async function repair(): Promise<void> {
+    await whenIdle();
+    const trip = openTrip(log);
+    if (trip === undefined) return;
+    for (;;) {
+      const dangling = openDispatch(log);
+      if (dangling !== undefined) {
+        await record({ t: "repair_terminus", attempt: dangling.attempt, sessionKey: dangling.sessionKey, status: "incomplete", rationale: RECOVERED_REPAIR });
+      }
+      const used = repairsUsed(log);
+      if (used >= limit) return giveUp(couldNotRepair(used));
+      const attempt = used + 1;
+      const sessionKey = `run-repair-${attempt}`;
+      await record({ t: "repair_dispatch", attempt, sessionKey, surfaceId: trip.cause.surfaceId });
+      onChange({ state: "REPAIRING", affected: affected(), repair: { attempt, of: limit } });
+      const terminus = await dispatch(trip.cause.surfaceId, sessionKey);
+      await record({ t: "repair_terminus", attempt, sessionKey, status: terminus.status, rationale: terminus.rationale });
+      if (terminus.status === "completed") {
+        const released = affected();
+        // `record` makes the state HEALTHY at once, before the write lands. Let go of this repair and say so
+        // in the same tick, so a task that trips the breaker again during the write opens a new repair (and
+        // its "broken" line follows "Fixed. Resuming."), rather than joining this finished one and skipping its repair.
+        const written = record({ t: "breaker_healthy" });
+        repairing = undefined;
+        onChange({ state: "HEALTHY", affected: released });
+        await written;
+        return;
+      }
+      // As for a task's own repair: an escalate, or a session that never started, will not go better next time.
+      if (terminus.status === "escalate" || terminus.notRun) {
+        return giveUp(`the repair could not fix the shared environment: ${terminus.rationale}; no task caused this`);
+      }
+    }
+  }
+
+  // Only this repair's own settling clears the slot: a later repair may already hold it.
+  const ensureRepair = (): Promise<void> => {
+    if (repairing === undefined) {
+      const current: Promise<void> = repair().finally(() => {
+        if (repairing === current) repairing = undefined;
+      });
+      repairing = current;
+    }
+    return repairing;
+  };
+
+  return {
+    get gaveUp() {
+      return gaveUp;
+    },
+
+    async awaitClearance(surfaceId) {
+      for (;;) {
+        if (gaveUp !== undefined) throw new RunHalted(gaveUp);
+        if (state === "HEALTHY") {
+          inFlight.add(surfaceId);
+          return () => leave(surfaceId);
+        }
+        if (!affected().includes(surfaceId)) await record({ t: "held", surfaceId });
+        await ensureRepair();
+      }
+    },
+
+    async requestRepair({ surfaceId, key, reason }) {
+      if (gaveUp !== undefined) throw new RunHalted(gaveUp);
+      if (key !== null && servedAlready(log, surfaceId, key)) return;
+      // No await between the trip and its request: both land in the log before any other task's request or hold,
+      // so the trip's own request is recorded first (the order the first test asserts). `record` chains the writes.
+      if (state === "HEALTHY") {
+        void record({ t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId, reason } });
+        onChange({ state: "DEGRADED", affected: [surfaceId] });
+      }
+      if (!requestedInOpenTrip(log, surfaceId, key)) await record({ t: "repair_request", surfaceId, key });
+      await ensureRepair();
+    },
+  };
 }

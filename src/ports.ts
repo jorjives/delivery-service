@@ -137,12 +137,36 @@ export const noopCloser: CloserPort = {
   close: () => Promise.resolve({ status: "DONE", detail: "no-op closer" }),
 };
 
+// --- RepairCoordinator (createRunBreaker in breaker.ts; absent for a task run on its own) ---
+
+/** A task asking for the environment every task shares to be repaired. `key` names the setback it is asking about, when it has one. */
+export interface RepairRequest {
+  surfaceId: string;
+  key: string | null;
+  reason: string;
+}
+
+/**
+ * How a task in a run of several at once shares one environment with the
+ * others. A task checks and hands off its work only once cleared, and asks the
+ * run to repair a broken environment rather than repairing it itself. Absent,
+ * a task behaves exactly as it does on its own.
+ */
+export interface RepairCoordinator {
+  /** Wait until the shared environment may be used, then return the function that says this task is done with it. */
+  awaitClearance(surfaceId: string): Promise<() => void>;
+  /** Resolve once the run's one repair has fixed it; rejects with `RunHalted` if the run gave up. */
+  requestRepair(request: RepairRequest): Promise<void>;
+}
+
 // --- What the driver is called with ---
 
 export interface SurfacePorts {
   agent: AgentPort;
   triage: TriagePort;
   closer: CloserPort;
+  /** Set only for a task of a run of several at once. */
+  repairCoordinator?: RepairCoordinator;
 }
 
 /**

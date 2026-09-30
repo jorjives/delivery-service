@@ -34,6 +34,8 @@ export type {
   CloseOutcome,
   CloseReport,
   CloserPort,
+  RepairRequest,
+  RepairCoordinator,
   SurfacePorts,
   SurfaceLocation,
 } from "./ports.js";
@@ -81,6 +83,7 @@ export {
   ProvisioningFailure,
   IllegalStateTransition,
   InvalidRoleConfig,
+  RunHalted,
 } from "./errors.js";
 export { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig, READ_ONLY_TOOLS } from "./role-config.js";
 export type { Envelope, RoleConfig } from "./role-config.js";
