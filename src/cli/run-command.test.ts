@@ -1224,7 +1224,9 @@ describe("delivery run with several tasks at once", () => {
         const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
 
         expect(exitCode).toBe(EXIT.escalated);
-        expect(stdout.trimEnd().split("\n").at(-1)).toBe(environmentGaveUp(2, { waiting: 2, finished: 0, queued: 1 }, 3));
+        expect(stdout.trimEnd().split("\n").at(-1)).toBe(
+          "Couldn't fix it after 2 attempts. Stopping the run. 2 of 3 tasks were waiting on this and need your attention; 0 had already finished, 1 is still queued."
+        );
         expect(stdout).not.toMatch(/DEGRADED|REPAIRING|HEALTHY|ESCALATED|GATE_MAINTENANCE/);
 
         const runFile = await theRunFile(repo);
