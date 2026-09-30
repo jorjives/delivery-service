@@ -36,7 +36,7 @@
 
 ---
 
-### Task 1: Extract the journal primitive from the case file
+### Task 1: Extract the journal primitive from the case file ✅ DONE (deliver-slice)
 
 Behaviour-preserving refactor (tidy first): the run file in Task 2 must reuse the case file's crash-safe writes and truncated-tail-tolerant read, so they move into one shared module.
 
@@ -248,7 +248,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 2: A run file for a run of several tasks at once
+### Task 2: A run file for a run of several tasks at once ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/schema.ts` (append after `CaseFile`)
@@ -466,9 +466,15 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Git calls in one folder take turns
+### Task 3: Git calls in one folder take turns ✅ DONE (deliver-slice)
 
 The inner lock the design asks for, keyed on where a call runs. Every harness git call already goes through `git()` in `src/git-exec.ts` (provisioning, the merge-back closer, `removeWorktree`, `ensureCommitted`, `tryGit`), so serialising there by `cwd` covers every call against the shared checkout by construction, with no port, no list of subcommands, and no change to `surface.ts`, `provision.ts` or any closer. Calls in different folders (each task's own worktree) never wait on each other. At concurrency 1 there is never a second caller, so nothing observable changes.
+
+**Deviation from the design, deliberately:** the design (§1) routes the inner lock through an optional `ports.repoLock`. Putting it inside `git()` instead reaches the same "keyed on where the call runs" rule with no port plumbing through `provision.ts`, the closers and `surface.ts`, and applies to every in-process caller (library users driving several `run()`s included), which is only ever safer. Slice 3's cross-process lock is a separate mechanism and is unaffected.
+
+**Granularity:** turns are per git call, not per whole set-up or close. That is enough for the slice's "never overlap" criterion because what must not overlap is git's own metadata writes in the shared checkout (each is one call), and every multi-call sequence here is already safe to interleave with another task's calls: provisioning and teardown touch only their own branch and worktree (`worktree prune` only drops entries whose folder is gone), and the merge-back closer's `merge --ff-only` revalidates the base at the moment it runs, so a probe made stale by another task's merge only ever produces the existing `FAIL` ("the base moved on"). If a later closer needs a multi-call critical section, it cannot simply wrap its `git()` calls in `takeTurn(repoPath, …)`: the chain is non-reentrant, so a `git(repoPath, …)` inside a turn on the same folder deadlocks. Such a section would need raw `execFile` inside the turn, and is out of scope here.
+
+**Design open question (open-pr closer's push):** `open-pr-closer.ts` runs `push` and `remote get-url` with `cwd = repoPath`, so under the where-it-runs rule they take the shared checkout's turn. That is correct, not incidental: `push --set-upstream` writes the remote-tracking ref and branch config in the shared `.git`. The cost is that a slow push delays other tasks' set-up for its duration; acceptable for this slice. `gh` is not git and is untouched.
 
 **Files:**
 - Modify: `src/git-exec.ts`
@@ -614,7 +620,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 4: The `concurrency` setting, and `delivery validate` reporting it
+### Task 4: The `concurrency` setting, and `delivery validate` reporting it ✅ DONE
 
 **Files:**
 - Modify: `src/cli/config.ts` (`CONFIG_KEYS`, `DeliveryConfig`, `WHAT_IT_TAKES`)
@@ -1139,6 +1145,8 @@ export function supervise<C extends Claim>(supervision: Supervision<C>): Promise
 ```
 
 `settled` is in the order tasks ended. The pool never starts a task twice because `next` is always handed every claim made so far.
+
+Known limit, left for slice 3: `slot_fill` is written before `drive` runs, so a throw early in `drive` (for example the agent runtime refusing on a machine that is not signed in, surfaced as exit 3) leaves a run record with fills whose task never got a case file, and no outcome. Nothing in this slice reads a run record back to act on it, so this is harmless now; slice 3's resume must treat a `slot_fill` with no matching case file as "not started" rather than "live".
 
 - [ ] **Step 1: Write the failing test** — `src/supervisor.test.ts`:
 
@@ -2081,6 +2089,11 @@ a value that is not a whole number of 1 or more.
 
 Run: `npx vitest run tests/writing-a-closer-guide.test.ts tests/release.test.ts`
 Expected: PASS (prose added outside any extracted code block; the changeset parses).
+
+- [ ] **Step 6b: Run the whole suite once**
+
+Run: `npm test` (lint, typecheck, build, then every test, including the UAT tests under `tests/` and any help-text or README assertions this slice's new flag and settings row could touch).
+Expected: PASS. Any failure in a test this plan did not name is investigated as a behaviour change at concurrency 1, not patched over.
 
 - [ ] **Step 7: Commit**
 
