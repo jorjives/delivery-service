@@ -1,10 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, utimesSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
-import { repoLocked, takeRepoLock } from "./repo-lock.js";
-import { supervisorLockPath } from "./run-location.js";
 import type { MockScript } from "../mock-script.js";
 import { SurfaceState, type RunEntry } from "../schema.js";
 import { loadRunFile, setRunOutcome } from "../run-file.js";
