@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Command, CommanderError, Option } from "commander";
-import type { CommandContext, CliStdin } from "./context.js";
+import type { CommandContext, CliStdin, ExitOnInterrupt } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
@@ -21,6 +21,8 @@ export interface CliIo {
   stdin: CliStdin;
   stdout: { write(text: string): unknown; isTTY?: boolean };
   stderr: { write(text: string): unknown };
+  /** How a stop may end a command; `main.ts` passes the real process's. Absent: nothing listens, and a stop ends the process as the platform does. */
+  exitOnInterrupt?: ExitOnInterrupt;
 }
 
 /** This package's own version: `package.json` sits two folders above both `src/cli/` and `dist/cli/`. */
@@ -53,6 +55,7 @@ function contextFor(io: CliIo, command: Command): CommandContext {
     stdin: io.stdin,
     writeLine: (line) => io.stdout.write(`${line}\n`),
     report: reporterFor(io, { json, colour }),
+    exitOnInterrupt: io.exitOnInterrupt,
   };
 }
 

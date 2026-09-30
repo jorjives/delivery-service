@@ -15,7 +15,7 @@ import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
 import { allRuns, readRun } from "./runs.js";
 import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
-import { EVERY_TASK_DONE, liveRunFound, taskEnded, runPickedUp } from "./queue.js";
+import { EVERY_TASK_DONE, liveRunFound, taskEnded, runPickedUp, STOPPED_PART_WAY } from "./queue.js";
 import { repoLocked, takeRepoLock } from "./repo-lock.js";
 import { supervisorLockPath } from "./run-location.js";
 import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
@@ -1143,6 +1143,46 @@ describe("delivery run with several tasks at once", () => {
       expect(exitCode).toBe(EXIT.ok);
       expect(stdout.split("\n")[0]).toBe(runPickedUp(RUN, 1, 2));
       expect(await repoLocked(repo)).toBe(false);
+    },
+    RUN_TIMEOUT,
+  );
+
+  /** Records what the command arranged a stop to do, and whether it took that back by the end. */
+  function stopRecorder() {
+    const armed: { exitCode: number; farewell: string; disarmed: boolean }[] = [];
+    const exitOnInterrupt = (exitCode: number, farewell: string) => {
+      const arm = { exitCode, farewell, disarmed: false };
+      armed.push(arm);
+      return () => {
+        arm.disarmed = true;
+      };
+    };
+    return { armed, exitOnInterrupt };
+  }
+
+  it(
+    "while it runs, has a stop end it at once with the stopped code and a line on how to carry on",
+    async () => {
+      const repo = listRepo("run-command-several-stop-", { tasks: [PAGE, SWAP], concurrency: 2 });
+      const { armed, exitOnInterrupt } = stopRecorder();
+
+      const { exitCode } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) }, exitOnInterrupt });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(armed).toEqual([{ exitCode: EXIT.aborted, farewell: STOPPED_PART_WAY, disarmed: true }]);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "one at a time, leaves a stop to end the command as it always has",
+    async () => {
+      const repo = listRepo("run-command-single-stop-", { tasks: [PAGE] });
+      const { armed, exitOnInterrupt } = stopRecorder();
+
+      await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) }, exitOnInterrupt });
+
+      expect(armed).toEqual([]);
     },
     RUN_TIMEOUT,
   );

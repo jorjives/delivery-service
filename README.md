@@ -173,7 +173,7 @@ A run of several tasks at once is picked up the same way, with `delivery run`. I
 it is carrying on (`Picking up run run-20260926T090000Z: 4 tasks, up to 2 at once`), every task
 that was under way carries on from its own last step, tasks already delivered are left alone,
 and the rest of the list starts as slots free up. It keeps the number of tasks at once it started
-with, whatever the setting says now.
+with, whatever the setting says now. Pressing Ctrl-C stops a run of several tasks at once straight away with exit code 5, saying how to carry on.
 
 While a run of several tasks at once is going, a second `delivery run` or `delivery resume` in the
 same repository is refused straight away with exit code 2, naming the run that is going and

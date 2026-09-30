@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import type { RunHeader, SlotOutcome, TaskDef } from "../schema.js";
-import { supervise } from "../supervisor.js";
+import { supervise, type Settled } from "../supervisor.js";
 import { createRunFile, setRunOutcome } from "../run-file.js";
 import { agentSession } from "./agent-session.js";
 import { structureTask, type DeliveryConfig } from "./config.js";
@@ -72,6 +72,9 @@ export const taskHeading = (position: QueuePosition, intent: string): string => 
 
 export const EVERY_TASK_DONE =
   "Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.";
+
+export const STOPPED_PART_WAY =
+  "Stopped before every task finished. Type `delivery run` again in this folder to carry on from where each task got to.";
 
 /**
  * Why the rest of the list was left alone. The harness never decides on the
@@ -249,7 +252,17 @@ export async function runQueue(
       ctx.report.run({ runId, state: "STARTED" });
     }
 
-    const settled = await supervise({ slots: concurrency, next, drive, waitOnSetback: runId === undefined, record });
+    // Several at once, a stop ends the command at once with the stopped code. At once, because Ctrl-C reaches the
+    // agents and checks too, and what they said on the way down would be written into the tasks' records as though
+    // it had happened; a record left as a crash leaves it is one the next run already knows how to pick up. The
+    // lock goes with the process. One at a time, a stop ends the command as it always has.
+    const disarm = runId === undefined ? undefined : ctx.exitOnInterrupt?.(EXIT.aborted, STOPPED_PART_WAY);
+    let settled: Settled<QueueClaim>[];
+    try {
+      settled = await supervise({ slots: concurrency, next, drive, waitOnSetback: runId === undefined, record });
+    } finally {
+      disarm?.();
+    }
 
     if (runId !== undefined) ctx.report.run({ runId, state: "DRAINED" });
     const exitCode = listExitCode(settled.map(({ outcome }) => outcome));

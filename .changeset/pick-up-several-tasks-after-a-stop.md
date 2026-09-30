@@ -14,3 +14,7 @@ the same repository, at any concurrency, is refused before anything starts, with
 a message naming the live run, when it started, its shape and how to look at it. The run holds a
 lock on the repository under `.delivery/`; a lock left by a killed run is taken over by the next
 run, with no unlock step.
+
+Pressing Ctrl-C, or sending the process SIGTERM, stops a run of several tasks at once straight away
+with exit code 5 ("stopped before it could finish"), saying how to carry on, and lets the
+repository's lock go. A run of one task at a time stops on Ctrl-C as it always has.

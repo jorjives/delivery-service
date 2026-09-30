@@ -1,9 +1,14 @@
-import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, statSync } from "node:fs";
+import { describe, expect, it, vi } from "vitest";
+import { mkdtempSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TEST_MOCK_SCRIPT } from "../src/cli/agent-session.js";
 import { EXIT } from "../src/cli/failures.js";
+import { loadRunFile } from "../src/run-file.js";
+import { repoLocked } from "../src/cli/repo-lock.js";
+import { supervisedRoot } from "../src/cli/run-location.js";
+import { STOPPED_PART_WAY } from "../src/cli/queue.js";
 import { writeMockScript } from "../src/mock-script.js";
 import { initTempRepo } from "../src/temp-repo.js";
 import { DELIVERY_BIN, REPO_ROOT, runDelivery } from "./helpers.js";
@@ -61,4 +66,40 @@ describe("the compiled delivery command", () => {
     expect(status, `${stdout}\n${stderr}`).toBe(EXIT.ok);
     expect(stdout).toMatch(/committed on branch surface\/add-a-hello-function-\d{8}T\d{6}Z\./);
   }, 60_000);
+
+  it("stops a run of several at once on Ctrl-C with the stopped code, saying how to carry on, and lets the repository's lock go", async () => {
+    const repo = initTempRepo("delivery-command-interrupt-", {
+      "package.json": JSON.stringify({ name: "scratch", private: true, scripts: { test: "exit 0" } }),
+      "delivery.config.json": JSON.stringify({ tasks: ["add a hello function", "add a goodbye function"], concurrency: 2 }),
+    });
+    const script = join(mkdtempSync(join(tmpdir(), "delivery-command-script-")), "mock.json");
+    // Agents slow enough that both tasks are still going when the stop comes.
+    await writeMockScript(script, { expectations: [{ json: { status: "completed", rationale: "done" } }], delayMs: 30_000 });
+
+    // Its own process group, so the stop reaches the command and everything it started, as Ctrl-C in a terminal does.
+    const child = spawn(process.execPath, [DELIVERY_BIN, "run"], {
+      cwd: repo,
+      env: { ...process.env, [TEST_MOCK_SCRIPT]: script, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "delivery-command-state-")) },
+      detached: true,
+    });
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+    const exited = new Promise<number | null>((resolve) => child.on("exit", (code) => resolve(code)));
+
+    await vi.waitFor(
+      async () => {
+        const [runId] = readdirSync(supervisedRoot(repo));
+        if (runId === undefined) throw new Error("no run of several tasks yet");
+        const { history } = await loadRunFile(join(supervisedRoot(repo), runId));
+        expect(history.filter((entry) => entry.t === "slot_fill")).toHaveLength(2);
+      },
+      { timeout: 30_000, interval: 100 },
+    );
+    if (child.pid === undefined) throw new Error("the command did not start");
+    process.kill(-child.pid, "SIGINT");
+
+    expect(await exited).toBe(EXIT.aborted);
+    expect(stderr).toContain(STOPPED_PART_WAY);
+    expect(await repoLocked(repo)).toBe(false);
+  });
 });

@@ -14,6 +14,7 @@ import type { AgentContext, Terminus } from "../ports.js";
 import { appendRunEntry, createRunFile } from "../run-file.js";
 import type { CaseFileOutcome, GateRef, RoleOverrides, RunEntry, RunHeader } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
+import type { ExitOnInterrupt } from "./context.js";
 import { runCli } from "./program.js";
 import { prepareRunDir, runIdFor, runPlace, runsRoot, supervisedPlace } from "./run-location.js";
 import { DEFAULT_CLOSER } from "./settings.js";
@@ -51,10 +52,12 @@ export interface DeliveryIo {
   isTTY?: boolean;
   /** What a person types at the command's questions. Given any, standard input reports itself as a terminal. */
   answers?: string[];
+  /** What a stop (Ctrl-C) does, as `main.ts` wires it for the real process. Absent: nothing listens, as in every test that does not ask. */
+  exitOnInterrupt?: ExitOnInterrupt;
 }
 
 /** Test support: run `delivery <args>` in process, capturing what it prints. Working copies go under a scratch state folder unless the caller names one. */
-export async function delivery(args: string[], { cwd, env = {}, isTTY = false, answers = [] }: DeliveryIo) {
+export async function delivery(args: string[], { cwd, env = {}, isTTY = false, answers = [], exitOnInterrupt }: DeliveryIo) {
   let stdout = "";
   let stderr = "";
   const exitCode = await runCli({
@@ -64,6 +67,7 @@ export async function delivery(args: string[], { cwd, env = {}, isTTY = false, a
     stdin: Object.assign(Readable.from(answers.map((answer) => `${answer}\n`)), { isTTY: answers.length > 0 || undefined }),
     stdout: { write: (text: string) => (stdout += text), isTTY },
     stderr: { write: (text: string) => (stderr += text) },
+    exitOnInterrupt,
   });
   return { exitCode, stdout, stderr };
 }
