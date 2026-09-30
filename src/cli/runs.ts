@@ -5,7 +5,7 @@ import { load } from "../case-file.js";
 import { FileNotFound, RunFileNotFound } from "../errors.js";
 import { loadRunFile } from "../run-file.js";
 import type { CaseFile, RunFile } from "../schema.js";
-import { runsRoot, supervisedRoot } from "./run-location.js";
+import { runsRoot, supervisedRoot, supervisedPlace } from "./run-location.js";
 import { taskIntent } from "./settings.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal } from "./failures.js";
@@ -24,10 +24,15 @@ export async function readRun(repoPath: string, runId: string): Promise<RunRecor
   return { runId, repoPath, dir, caseFile: await load(dir) };
 }
 
-/** When a run's record was last written, for "the most recently touched": the cursor and the log are each rewritten as the run moves. */
-async function touchedAt(dir: string): Promise<number> {
+/**
+ * When a record was last written, for "the most recently touched": whichever of
+ * its files was rewritten or appended to last. A run of one task keeps
+ * `case.json`, a run of several at once `run.json`, and both keep `log.jsonl`;
+ * a file a record does not keep counts as never written.
+ */
+export async function touchedAt(dir: string): Promise<number> {
   const times = await Promise.all(
-    ["case.json", "log.jsonl"].map((name) =>
+    ["case.json", "run.json", "log.jsonl"].map((name) =>
       stat(join(dir, name)).then(
         (stats) => stats.mtimeMs,
         () => 0,
@@ -81,6 +86,43 @@ export interface SupervisedRecord {
   runFile: RunFile;
 }
 
+/** A run of several tasks at once by its id, finished or not. An id that names no such run raises `RunFileNotFound`. */
+export async function readSupervisedRun(repoPath: string, runId: string): Promise<SupervisedRecord> {
+  const dir = supervisedPlace(repoPath, runId);
+  return { dir, runFile: await loadRunFile(dir) };
+}
+
+/**
+ * Every run of several tasks at once this repository holds, finished or not,
+ * most recently touched first. A folder with no record in it was never a run
+ * and is passed over; a record that cannot be read back stops the command with
+ * the message naming its folder.
+ */
+export async function allSupervisedRuns(repoPath: string): Promise<SupervisedRecord[]> {
+  let entries;
+  try {
+    entries = await readdir(supervisedRoot(repoPath), { withFileTypes: true });
+  } catch {
+    return []; // nothing has run several at once here
+  }
+  const read = await Promise.all(
+    entries
+      .filter((entry) => entry.isDirectory())
+      .map((entry) =>
+        readSupervisedRun(repoPath, entry.name).catch((err: unknown) => {
+          if (err instanceof RunFileNotFound) return undefined;
+          throw err;
+        }),
+      ),
+  );
+  const found = await Promise.all(
+    read
+      .filter((record): record is SupervisedRecord => record !== undefined)
+      .map(async (record) => ({ record, touchedAt: await touchedAt(record.dir) })),
+  );
+  return found.sort((a, b) => b.touchedAt - a.touchedAt).map(({ record }) => record);
+}
+
 /**
  * The run of several tasks at once that didn't finish, if there is one: a
  * record with no outcome, which is what a stopped or killed run leaves. The one
@@ -89,26 +131,7 @@ export interface SupervisedRecord {
  * read back stops the command with the message naming its folder.
  */
 export async function unfinishedSupervisedRun(repoPath: string): Promise<SupervisedRecord | undefined> {
-  let entries;
-  try {
-    entries = await readdir(supervisedRoot(repoPath), { withFileTypes: true });
-  } catch {
-    return undefined; // nothing has run several at once here
-  }
-  const read = await Promise.all(
-    entries
-      .filter((entry) => entry.isDirectory())
-      .map(async (entry): Promise<SupervisedRecord | undefined> => {
-        const dir = join(supervisedRoot(repoPath), entry.name);
-        try {
-          return { dir, runFile: await loadRunFile(dir) };
-        } catch (err) {
-          if (err instanceof RunFileNotFound) return undefined;
-          throw err;
-        }
-      }),
-  );
-  const unfinished = read.filter((record): record is SupervisedRecord => record !== undefined && record.runFile.outcome === undefined);
+  const unfinished = (await allSupervisedRuns(repoPath)).filter((record) => record.runFile.outcome === undefined);
   return newestFirstBy(unfinished, (record) => record.runFile.header.runId).at(0);
 }
 
@@ -136,7 +159,7 @@ export function startedAt(runId: string): string {
  * the sort is stable, so runs that started in the same second keep the order
  * they came in.
  */
-function newestFirstBy<T>(items: T[], runIdOf: (item: T) => string): T[] {
+export function newestFirstBy<T>(items: T[], runIdOf: (item: T) => string): T[] {
   const startedOf = (item: T): string => startedInstant(runIdOf(item)) ?? "";
   return [...items].sort((a, b) => (startedOf(a) < startedOf(b) ? 1 : startedOf(a) > startedOf(b) ? -1 : 0));
 }

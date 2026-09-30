@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { create, setOutcome } from "../case-file.js";
-import { CorruptCaseFile } from "../errors.js";
+import { CorruptCaseFile, RunFileNotFound } from "../errors.js";
 import { setRunOutcome } from "../run-file.js";
 import type { GateRef } from "../schema.js";
 import { runsRoot, supervisedRoot } from "./run-location.js";
-import { allRuns, chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_HERE, NOTHING_TO_RESUME, readRun, readableUtc, startedAt, startedInstant, unfinishedRuns, unfinishedSupervisedRun } from "./runs.js";
+import { allRuns, allSupervisedRuns, chooseRun, describeRun, NOTHING_CHOSEN, NOTHING_HERE, NOTHING_TO_RESUME, readRun, readableUtc, readSupervisedRun, startedAt, startedInstant, touchedAt, unfinishedRuns, unfinishedSupervisedRun } from "./runs.js";
 import { writeSupervisedRun } from "./command-fixtures.js";
 import { Refusal } from "./failures.js";
 import { plainReporter } from "./report.js";
@@ -250,5 +250,52 @@ describe("the run of several tasks at once that didn't finish", () => {
     const repo = await scratchRepo();
     await mkdir(join(supervisedRoot(repo), "run-20260930T090000Z"), { recursive: true });
     expect(await unfinishedSupervisedRun(repo)).toBeUndefined();
+  });
+});
+
+describe("every run of several tasks at once a repository holds", () => {
+  const header = (repoPath: string, runId: string) => ({ runId, repoPath, concurrency: 2, tasks: 3 });
+  const backdateRun = async (dir: string): Promise<void> => {
+    const longAgo = new Date("2026-09-01T00:00:00.000Z");
+    for (const name of ["run.json", "log.jsonl"]) await utimes(join(dir, name), longAgo, longAgo);
+  };
+
+  it("finds none in a repository that has never run several at once", async () => {
+    expect(await allSupervisedRuns(await scratchRepo())).toEqual([]);
+  });
+
+  it("includes finished runs as well as unfinished ones, most recently touched first", async () => {
+    const repo = await scratchRepo();
+    const older = await writeSupervisedRun(repo, header(repo, "run-20260930T110000Z"));
+    const finished = await writeSupervisedRun(repo, header(repo, "run-20260930T090000Z"));
+    await setRunOutcome(finished, { kind: "drained", at: "2026-09-30T10:00:00.000Z" });
+    await backdateRun(older);
+
+    const found = await allSupervisedRuns(repo);
+    expect(found.map((record) => record.runFile.header.runId)).toEqual(["run-20260930T090000Z", "run-20260930T110000Z"]);
+    expect(found[0]?.dir).toBe(finished);
+  });
+
+  it("passes over a folder with no record in it", async () => {
+    const repo = await scratchRepo();
+    await mkdir(join(supervisedRoot(repo), "run-20260930T090000Z"), { recursive: true });
+    expect(await allSupervisedRuns(repo)).toEqual([]);
+  });
+
+  it("reads one by its id, and says plainly when the id names no such run", async () => {
+    const repo = await scratchRepo();
+    const dir = await writeSupervisedRun(repo, header(repo, "run-20260930T090000Z"));
+
+    const record = await readSupervisedRun(repo, "run-20260930T090000Z");
+    expect(record.dir).toBe(dir);
+    expect(record.runFile.header.tasks).toBe(3);
+    await expect(readSupervisedRun(repo, "run-20200101T000000Z")).rejects.toBeInstanceOf(RunFileNotFound);
+  });
+
+  it("counts a run's record as touched when its log was last written", async () => {
+    const repo = await scratchRepo();
+    const dir = await writeSupervisedRun(repo, header(repo, "run-20260930T090000Z"));
+    await backdateRun(dir);
+    expect(await touchedAt(dir)).toBe(new Date("2026-09-01T00:00:00.000Z").getTime());
   });
 });
