@@ -29,8 +29,9 @@
   - **"Queued, waiting for a free slot" only while the run is live** (`!outcome && repoLocked(repo)`). A stopped run's queued tasks say "queued", and the report adds the existing `STOPPED_PART_WAY` sentence saying how to carry on, rather than claiming they wait for a slot nothing is filling.
   - **A task the run took but whose record does not exist yet** (killed between `slot_fill` and the case file) is shown as queued: resuming starts it from scratch, which is what queued means.
   - **A finished (drained) run lists nothing queued**, even if the list has grown since: it will take nothing more.
+  - **Each task line names the task's own run id** once it has a record (`[1/4] add a hello (add-a-hello-…): done`), so the UAT's "copy the name of one finished task from the list" is possible: `--all` folds the tasks away and the footer names only one.
   - **Task position** is the task's place in the project's list as written now (`queuePositionOf`), as single-run status already does; a task no longer on the list has no `[n/M]` tag and sorts after those that do. The run line's task count is the header's (`tasks`), what the run started with.
-  - **Most recently touched, of either kind:** the newest-touched task record and the newest-touched supervised record are compared by file mtime (`touchedAt`, generalised to `case.json`/`run.json`/`log.jsonl`). A task record that wins but was taken by a supervised run is reported as that run, so checking on a live run with no id shows the run, not whichever of its tasks moved last.
+  - **Most recently touched, of either kind:** the newest-touched task record and the newest-touched supervised record are compared by file mtime (`touchedAt`, generalised to `case.json`/`run.json`/`log.jsonl`). A task record that wins but was taken by an *unfinished* supervised run is reported as that run, so checking on a live (or stopped) run with no id shows the run, not whichever of its tasks moved last. Once a supervised run has finished, a task of it that is touched again (for example by `delivery resume <task-id>`) is reported as that task, as today.
   - **`--all` folds a supervised run's tasks into its one line**; they are read in full with `delivery status run-…` then by their own ids. Its JSON entries all gain a `tasks` key: `null` for a single run, the member tasks' `RunSummary` list for a supervised one (whose `task` is `null` and whose `outcome` is `unfinished` until drained, then `escalated` > `aborted` > `closed`, the `listExitCode` precedence).
   - **An id is looked up as a supervised run first, then as a task run.** A missing supervised record (`RunFileNotFound`) falls through to `readRun`, whose `FileNotFound` renders the existing "I couldn't find that run's record" message. `ponytail:` a task whose text has no letters or digits gets the slug `run`, so its id could equal a supervised id started in the same second; the supervised run wins. Accepted; not worth a namespace change.
   - The supervised JSON document's `runBudgets` (spec) is left to slice 5, which introduces run budgets; adding a key later is additive.
@@ -44,7 +45,7 @@
 
 ---
 
-### Task 1: Read supervised run records by id, and list them all
+### Task 1: Read supervised run records by id, and list them all ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/runs.ts`
@@ -207,7 +208,7 @@ touched; the only reader so far found the unfinished one for resume."
 
 ---
 
-### Task 2: Work out what each task of a supervised run is doing
+### Task 2: Work out what each task of a supervised run is doing ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/schema.ts` (add `BreakerState`)
@@ -533,7 +534,7 @@ out by the same rule the run fills its slots by."
 
 ---
 
-### Task 3: `delivery status run-…` tells a run of several at once in plain language
+### Task 3: `delivery status run-…` tells a run of several at once in plain language ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/status-command.ts`
@@ -623,11 +624,12 @@ describe("delivery status for a run of several tasks at once", () => {
       "Environment: healthy",
       "3 done, 1 needs your decision",
     ]);
+    // Every task with a record names its own run id, so any one can be read in full from this list.
     expect(taskLines(stdout)).toEqual([
-      `  [1/4] ${HELLO}: done`,
-      `  [2/4] ${GREETING}: needs your decision (see below)`,
-      `  [3/4] ${GOODBYE}: done`,
-      `  [4/4] ${SHOUT}: done`,
+      `  [1/4] ${HELLO} (${IDS.hello}): done`,
+      `  [2/4] ${GREETING} (${IDS.greeting}): needs your decision (see below)`,
+      `  [3/4] ${GOODBYE} (${IDS.goodbye}): done`,
+      `  [4/4] ${SHOUT} (${IDS.shout}): done`,
     ]);
     expect(stdout.trimEnd().split("\n").at(-1)).toBe(`To read one task in full: delivery status ${IDS.greeting}`);
     expect(stdout).not.toMatch(/HEALTHY|ESCALATED|CLOSED|DRAINED|escalated|closed/);
@@ -640,7 +642,8 @@ describe("delivery status for a run of several tasks at once", () => {
 
     const lines = stdout.split("\n");
     const own = (await statusReport(await readRun(repo, IDS.greeting), await context())).slice(1);
-    const at = lines.indexOf(`  [2/4] ${GREETING}: needs your decision (see below)`);
+    const at = lines.indexOf(`  [2/4] ${GREETING} (${IDS.greeting}): needs your decision (see below)`);
+    expect(at).toBeGreaterThan(-1);
     expect(own[0]).toBe(`This needs your decision: ${ESCALATION.decision}`);
     expect(lines.slice(at + 1, at + 1 + own.length)).toEqual(own);
   });
@@ -657,8 +660,8 @@ describe("delivery status for a run of several tasks at once", () => {
 
     expect(stdout).toContain("2 not finished yet, 1 queued");
     expect(taskLines(stdout)).toEqual([
-      `  [1/3] ${HELLO}: not finished yet`,
-      `  [2/3] ${GREETING}: not finished yet`,
+      `  [1/3] ${HELLO} (${IDS.hello}): not finished yet`,
+      `  [2/3] ${GREETING} (${IDS.greeting}): not finished yet`,
       `  [3/3] ${GOODBYE}: ${WAITING_FOR_A_SLOT}`,
     ]);
     expect(stdout).not.toContain(STOPPED_PART_WAY);
@@ -767,16 +770,21 @@ export function countsLine(tasks: readonly ViewTask[]): string {
     .join(", ");
 }
 
-/** One task's line: its place in the list, what it was asked to do, and where it stands. */
+/**
+ * One task's line: its place in the list, what it was asked to do, its own run
+ * id once it has one (so any task can be read in full with `delivery status <id>`),
+ * and where it stands.
+ */
 function taskLine(task: ViewTask, live: boolean): string {
   const tag = task.position ? `[${task.position.task}/${task.position.of}] ` : "";
+  const id = task.record ? ` (${task.record.runId})` : "";
   const standing =
     task.standing === "escalated"
       ? `${STANDING_WORDS.escalated} (see below)`
       : task.standing === "queued" && live
         ? WAITING_FOR_A_SLOT
         : STANDING_WORDS[task.standing];
-  return `  ${tag}${taskIntent(task.taskDef)}: ${standing}`;
+  return `  ${tag}${taskIntent(task.taskDef)}${id}: ${standing}`;
 }
 ```
 
@@ -871,7 +879,8 @@ async function viewOf(record: SupervisedRecord, repoPath: string, startDir: stri
 A run of several tasks at once has an id of its own, the one it opened with (`run-…`).
 `delivery status run-20260930T090000Z` reads the whole run: when it started and its shape,
 whether the environment the tasks share is healthy, how many tasks are done, need your
-decision, stopped or are still queued, then one line per task in list order. A task that needs
+decision, stopped or are still queued, then one line per task in list order, naming the task's
+own run id once it has one. A task that needs
 your decision is followed by the same account `delivery status` gives of it on its own. A task
 waiting only because every slot is busy shows as "queued, waiting for a free slot"; if the run
 was stopped part way, it says how to carry it on.
@@ -881,12 +890,12 @@ Run run-20260930T090000Z, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once
 Environment: healthy
 3 done, 1 needs your decision
 
-  [1/4] add a hello: done
-  [2/4] delete the greeting: needs your decision (see below)
+  [1/4] add a hello (add-a-hello-20260930T090000Z): done
+  [2/4] delete the greeting (delete-the-greeting-20260930T090000Z): needs your decision (see below)
 This needs your decision: …
 …
-  [3/4] add a goodbye: done
-  [4/4] add a shout: done
+  [3/4] add a goodbye (add-a-goodbye-20260930T090100Z): done
+  [4/4] add a shout (add-a-shout-20260930T090200Z): done
 
 To read one task in full: delivery status delete-the-greeting-20260930T090000Z
 ```
@@ -904,7 +913,8 @@ reads any other run.
 
 `delivery status` reads a run of several tasks at once by the id it opened with (`run-…`): when
 it started and its shape, whether the environment the tasks share is healthy, how many tasks are
-done, need your decision, stopped or are queued, then one line per task in list order, with the
+done, need your decision, stopped or are queued, then one line per task in list order naming its
+own run id, with the
 decision a stuck task needs set out in full beneath it. A task waiting only because every slot is
 busy shows as "queued, waiting for a free slot". Each task is still read on its own by its own
 run id, exactly as before.
@@ -928,7 +938,7 @@ for a task that needs a decision rather than inventing a second one."
 
 ---
 
-### Task 4: `delivery status run-… --json` nests each task's existing document
+### Task 4: `delivery status run-… --json` nests each task's existing document ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/status-command.ts`
@@ -1091,7 +1101,7 @@ existing status document rather than a second shape of it."
 
 ---
 
-### Task 5: `delivery status` with no id reports the most recently touched run of either kind
+### Task 5: `delivery status` with no id reports the most recently touched run of either kind ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/status-command.ts` (`mostRecent`)
@@ -1136,6 +1146,16 @@ async function backdateRun(repo: string, runId: string): Promise<void> {
     expect(stdout.split("\n")[0]).toBe(`Run ${SUPERVISED}, started 2026-09-30 09:00 UTC: 3 tasks, up to 2 at once`);
   });
 
+  it("reports a task of a finished run of several at once as that task, when it was touched after the run", async () => {
+    const repo = await finishedSupervisedRun("status-supervised-last-finished-task-");
+    await backdateRun(repo, SUPERVISED);
+    for (const id of [IDS.greeting, IDS.goodbye, IDS.shout]) await backdate(join(runsRoot(repo), id));
+
+    const { stdout } = await delivery(["status"], { cwd: repo });
+
+    expect(stdout.split("\n")[0]).toBe(`Run ${IDS.hello}, started 2026-09-30 09:00 UTC: ${HELLO}`);
+  });
+
   it("reports a single run touched after the run of several at once", async () => {
     const repo = await finishedSupervisedRun("status-supervised-last-single-");
     await backdateRun(repo, SUPERVISED);
@@ -1148,12 +1168,12 @@ async function backdateRun(repo: string, runId: string): Promise<void> {
   });
 ```
 
-(`backdate` sets only `case.json`/`log.jsonl`, which is every file a task record keeps. In the "task was last touched" test, `busySupervisedRun`'s task records are written before nothing else, so after `backdateRun` they are the newest.)
+(`backdate` sets only `case.json`/`log.jsonl`, which is every file a task record keeps. In the "task was last touched" test, `busySupervisedRun`'s run record is backdated, so its (not backdated) task records are the newest-touched records in the repository. In the "finished run" test, only `IDS.hello` is left un-backdated, so it is the newest task record; its run has an outcome, so it is reported as itself.)
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `npx vitest run src/cli/status-command.test.ts -t "touched most recently|last thing touched|touched after"`
-Expected: FAIL: the first two report a task run (`Run add-a-…`) instead of `Run run-…`.
+Expected: FAIL: the first two report a task run (`Run add-a-…`) instead of `Run run-…`. (The finished-run and single-run tests already pass against today's `mostRecent`; they pin behaviour the new code must keep.)
 
 - [ ] **Step 3: Implement**
 
@@ -1162,9 +1182,10 @@ Add `allSupervisedRuns, touchedAt` to the `./runs.js` import and `claimedBy` to 
 ```ts
 /**
  * The run this command means when no id was given: the one whose record was
- * written most recently, of either kind, finished or not. A task that a run of
- * several at once took counts as that run being touched, so checking on a run
- * that is going reports the run rather than whichever of its tasks moved last.
+ * written most recently, of either kind, finished or not. A task that an
+ * unfinished run of several at once took counts as that run being touched, so
+ * checking on a run that is going reports the run rather than whichever of its
+ * tasks moved last; once that run has finished, its tasks are their own again.
  */
 async function mostRecent(repoPath: string): Promise<RunRecord | SupervisedRecord> {
   const [task] = await allRuns(repoPath);
@@ -1175,7 +1196,10 @@ async function mostRecent(repoPath: string): Promise<RunRecord | SupervisedRecor
     return run;
   }
   if (run !== undefined && (await touchedAt(run.dir)) >= (await touchedAt(task.dir))) return run;
-  return supervised.find((record) => claimedBy(record.runFile).some((claim) => claim.surfaceId === task.runId)) ?? task;
+  const owner = supervised.find(
+    (record) => record.runFile.outcome === undefined && claimedBy(record.runFile).some((claim) => claim.surfaceId === task.runId),
+  );
+  return owner ?? task;
 }
 ```
 
@@ -1213,7 +1237,7 @@ because only single runs were looked at."
 
 ---
 
-### Task 6: `delivery status --all` shows a run of several at once as one line
+### Task 6: `delivery status --all` shows a run of several at once as one line ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/status-command.ts` (`runListing`, `listRuns`, new `ListedRun`)
