@@ -1,5 +1,6 @@
 # Multi-Surface Supervisor — Slice 6: Treat the Same Check Error in Two Tasks as a Shared Problem
 
+> **Status:** ✅ Complete — 2026-10-01 — `32778a5`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 6 of `docs/superpowers/specs/2026-09-26-multi-surface-supervisor-slices.md`
@@ -447,7 +448,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 3: Have a task ask whether its check errors are shared, and deal with them itself when they are not
+### Task 3: Have a task ask whether its check errors are shared, and deal with them itself when they are not ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/ports.ts` (`RepairRequest`, `RepairCoordinator`)
@@ -903,7 +904,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 4: Show a repair in the run's history when looking back
+### Task 4: Show a repair in the run's history when looking back ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/status-command.ts` (`supervisedReport`)
@@ -975,7 +976,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 5: Describe a session stopped by a usage limit as that
+### Task 5: Describe a session stopped by a usage limit as that ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/schema.ts` (new `UsageLimit`)
@@ -1266,7 +1267,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 6: Stop the run naming the limit when a usage limit stops the shared repair
+### Task 6: Stop the run naming the limit when a usage limit stops the shared repair ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/schema.ts` (`run_escalated`, `RunOutcome`)
@@ -1515,7 +1516,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ---
 
-### Task 7: Show a helper that comes and goes in the example, its guide and its test
+### Task 7: Show a helper that comes and goes in the example, its guide and its test ✅ DONE (deliver-slice)
 
 This is the fixture's own drift test ("one fixture, one guide, one test"), not the slice's UAT: it checks that what the guide shows is what the command prints.
 
