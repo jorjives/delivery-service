@@ -324,12 +324,12 @@ describe("one repair of the shared environment for the whole run", () => {
     await answer({ status: "incomplete", rationale: "gate-maintenance session did not complete: the AI service is limiting requests", limit: "rate" });
 
     await expect(asked).rejects.toThrow("the AI service is limiting requests");
-    expect(breaker.gaveUp).toBe(stoppedByLimit("rate"));
+    expect(breaker.gaveUp).toBe("the repair could not run because the AI service is limiting requests; no task caused this");
     expect(breaker.gaveUp).not.toContain("could not be repaired");
     // The next attempt would meet the same limit: the run's repair limit (2 here) is not spent finding that out.
     expect(dispatched).toHaveLength(1);
     const history = await entries();
-    expect(history.at(-1)).toEqual({ t: "run_escalated", reason: stoppedByLimit("rate"), limit: "rate" });
+    expect(history.at(-1)).toEqual({ t: "run_escalated", reason: "the repair could not run because the AI service is limiting requests; no task caused this", limit: "rate" });
     expect(tripsOf(history).at(-1)).toMatchObject({ ended: "gave_up", limit: "rate" });
   });
 });
