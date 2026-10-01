@@ -1,13 +1,15 @@
-import { query, type CanUseTool, type Options, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type CanUseTool, type Options, type SDKAssistantMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { load, writeRef } from "./case-file.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
 import type { AgentContext, AgentPort, RoleHandle, Incomplete } from "./ports.js";
+import { USAGE_LIMIT_WORDS } from "./ports.js";
 import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
 import { messageOf } from "./gate-support.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
+import type { UsageLimit } from "./schema.js";
 
 /**
  * The four ways a session fails to produce a usable answer, and the one
@@ -23,6 +25,11 @@ import type { TriageEnvelope } from "./triage-role-config.js";
  * `notRun` is the one the edge itself has to act on rather than merely report:
  * it alone means no session happened, so it alone cannot be retried into a
  * different answer. It carries the `notRun` mark on the terminus for that.
+ *
+ * A session that ended in an error because a usage limit stopped it is not
+ * reported with `errored` but with the limit's own fixed words
+ * (`USAGE_LIMIT_WORDS`), and carries the `limit` mark: it is the service
+ * declining, not the session failing.
  */
 export const DID_NOT_COMPLETE = {
   errored: "the session ended in an error before it reported a result",
@@ -38,11 +45,12 @@ export const DID_NOT_COMPLETE = {
  * — nothing ran, so nothing between attempts can differ — and the routing layer
  * needs that as a fact it can act on, not only as a sentence it cannot read.
  */
-function incomplete(roleCfg: RoleConfig<unknown>, reason: string): Incomplete {
+function incomplete(roleCfg: RoleConfig<unknown>, reason: string, limit?: UsageLimit): Incomplete {
   return {
     status: "incomplete",
     rationale: `${roleCfg.role} session did not complete: ${reason}`,
     ...(reason === DID_NOT_COMPLETE.notRun ? { notRun: true as const } : {}),
+    ...(limit ? { limit } : {}),
   };
 }
 
@@ -59,6 +67,22 @@ export function sessionErrorRef(sessionKey: string): string {
 /** The runtime's own words about a session that ended badly, from either result shape. */
 function errorTextOf(result: SDKResultMessage): string {
   return result.subtype === "success" ? result.result : result.errors.join("\n");
+}
+
+/**
+ * Whether a usage limit is what stopped the session, and which. Read from what
+ * the runtime types (the assistant message's `error`, the result's API status)
+ * and then from the API's own machine identifiers in the error text, which is
+ * all a scripted session can produce. Never from prose: a session that merely
+ * talks about limits is not stopped by one. A spend cap is also a 429, so it is
+ * looked for first; an overloaded or failing service is not a usage limit.
+ */
+// ponytail: classification only. A limited session is retried like any incomplete one, with no backoff; add
+// retry-after backoff with the host resource governor the design defers (spec section 9).
+export function usageLimitOf({ apiError, status, text }: { apiError: string | undefined; status: number | null | undefined; text: string }): UsageLimit | undefined {
+  if (apiError === "billing_error" || /enforced_spend_limit_reached|billing_error/.test(text)) return "spend";
+  if (apiError === "rate_limit" || status === 429 || text.includes("rate_limit_error")) return "rate";
+  return undefined;
 }
 
 /** How much of an unusable reply is kept: enough to diagnose, never a runaway file. */
@@ -212,8 +236,9 @@ export async function invoke<E>(
   const options = buildSessionOptions(roleCfg, ctx, session, authority.canUseTool, systemPrompt);
 
   let result: SDKResultMessage | undefined;
+  let apiError: SDKAssistantMessage["error"];
   try {
-    result = await lastResult(prompt, options);
+    ({ result, apiError } = await sessionEnd(prompt, options));
   } catch (err) {
     await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.notRun, { cause: messageOf(err) });
     return authorityRefusal(roleCfg, authority.refusals, []) ?? incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
@@ -224,8 +249,11 @@ export async function invoke<E>(
 
   if (!result) return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   if (result.subtype !== "success" || result.is_error) {
-    await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.errored, { cause: errorTextOf(result) });
-    return incomplete(roleCfg, DID_NOT_COMPLETE.errored);
+    const cause = errorTextOf(result);
+    const limit = usageLimitOf({ apiError, status: result.subtype === "success" ? result.api_error_status : undefined, text: cause });
+    const reason = limit ? USAGE_LIMIT_WORDS[limit] : DID_NOT_COMPLETE.errored;
+    await recordFailureCause(roleCfg, ctx, reason, { cause });
+    return incomplete(roleCfg, reason, limit);
   }
   if (result.structured_output === undefined) {
     await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.noEnvelope, { agentReply: result.result });
@@ -246,15 +274,18 @@ export async function invoke<E>(
 }
 
 /**
- * Drive the session to its end and keep the result message. The stream is
- * drained rather than broken out of, so the child process is never left behind.
+ * Drive the session to its end and keep the result message, and the last
+ * error the runtime typed on an assistant message. The stream is drained
+ * rather than broken out of, so the child process is never left behind.
  */
-async function lastResult(prompt: string, options: Options): Promise<SDKResultMessage | undefined> {
+async function sessionEnd(prompt: string, options: Options): Promise<{ result: SDKResultMessage | undefined; apiError: SDKAssistantMessage["error"] }> {
   let result: SDKResultMessage | undefined;
+  let apiError: SDKAssistantMessage["error"];
   for await (const message of query({ prompt, options })) {
+    if (message.type === "assistant" && message.error !== undefined) apiError = message.error;
     if (message.type === "result") result = message;
   }
-  return result;
+  return { result, apiError };
 }
 
 /** The pinned configuration for every role a surface dispatches. */

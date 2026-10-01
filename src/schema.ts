@@ -327,6 +327,10 @@ const SurfaceId = z.string().min(1);
 export const RepairStatus = z.enum(["completed", "escalate", "incomplete"]);
 export type RepairStatus = z.infer<typeof RepairStatus>;
 
+/** A usage limit that can stop an agent session: the API's request rate, or the account's spending cap. */
+export const UsageLimit = z.enum(["rate", "spend"]);
+export type UsageLimit = z.infer<typeof UsageLimit>;
+
 /** What tripped the breaker. Both kinds name `surfaceId`: the task whose report tripped it, in whose copy the repair runs. */
 export const BreakerCause = z.discriminatedUnion("kind", [
   // A task found the check could not run before it had started.

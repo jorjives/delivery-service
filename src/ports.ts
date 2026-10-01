@@ -1,4 +1,4 @@
-import type { Budget, BudgetPopulation, BudgetSet, CaseFile, CloseReport } from "./schema.js";
+import type { Budget, BudgetPopulation, BudgetSet, CaseFile, CloseReport, UsageLimit } from "./schema.js";
 import type { CloseRepairBrief, EscalationPacket, SharpenedBrief, TriageEnvelope } from "./triage-role-config.js";
 
 // --- AgentPort (createAgentPort in agent-invoke.ts is the SDK-backed implementation) ---
@@ -39,10 +39,22 @@ export type Terminus =
        * is the surface's decision, not this flag's.
        */
       notRun?: true;
+      /**
+       * Set when a usage limit stopped the session. Like `notRun`, the fact for
+       * a caller that cannot read prose: a limit says nothing about the task,
+       * its check or the environment, and must never be reported as any of them.
+       */
+      limit?: UsageLimit;
     };
 
 /** The harness's own verdict on a session that produced nothing usable, for any role. */
 export type Incomplete = Extract<Terminus, { status: "incomplete" }>;
+
+/** The plain words a usage limit is always described with. One table, so every place that names a limit names it the same way. */
+export const USAGE_LIMIT_WORDS: Record<UsageLimit, string> = {
+  rate: "the AI service is limiting requests",
+  spend: "the spending limit has been reached",
+};
 
 export type TriageTerminus = TriageEnvelope | Incomplete;
 

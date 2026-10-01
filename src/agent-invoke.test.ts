@@ -5,12 +5,13 @@ import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
 import { create, readRef } from "./case-file.js";
-import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef } from "./agent-invoke.js";
+import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef, usageLimitOf } from "./agent-invoke.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import { createToolAuthority } from "./tool-authority.js";
 import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
 import { CorruptCaseFile, FileNotFound, InvalidRoleConfig } from "./errors.js";
+import { USAGE_LIMIT_WORDS } from "./ports.js";
 import type { AgentContext } from "./ports.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 
@@ -395,5 +396,66 @@ describe("createAgentPort against a scripted session", () => {
 
     const worked = await port.invoke({ role: "worker" }, ctx);
     expect(worked).toEqual({ status: "completed", rationale: "done" });
+  });
+});
+
+/** What the runtime reports when the API refuses a request for its rate, and for a spend cap: the API's own error bodies. */
+const RATE_LIMITED = 'API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed the rate limit for your organization"}}';
+const SPEND_CAPPED = 'API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"Usage limit","details":{"error_code":"enforced_spend_limit_reached"}}}';
+
+describe("a session stopped by a usage limit", () => {
+  it("says the AI service is limiting requests, and marks the terminus so a caller can tell", async () => {
+    await script([{ fail: { message: RATE_LIMITED } }]);
+    expect(await invoke(workerRoleConfig, ctx, useMock())).toEqual({
+      status: "incomplete",
+      rationale: "worker session did not complete: the AI service is limiting requests",
+      limit: "rate",
+    });
+  });
+
+  it("says the spending limit has been reached when that is what stopped it", async () => {
+    await script([{ fail: { message: SPEND_CAPPED } }]);
+    expect(await invoke(workerRoleConfig, ctx, useMock())).toEqual({
+      status: "incomplete",
+      rationale: "worker session did not complete: the spending limit has been reached",
+      limit: "spend",
+    });
+  });
+
+  it("leaves any other error as an error, unmarked", async () => {
+    await script([{ fail: { message: "TypeError: the session blew up while talking about a rate limit" } }]);
+    expect(await invoke(workerRoleConfig, ctx, useMock())).toEqual({
+      status: "incomplete",
+      rationale: `worker session did not complete: ${DID_NOT_COMPLETE.errored}`,
+    });
+  });
+
+  it("keeps the service's own words beside the case file", async () => {
+    await script([{ fail: { message: RATE_LIMITED } }]);
+    await invoke(workerRoleConfig, ctx, useMock());
+    expect(await readRef(dir, sessionErrorRef(ctx.sessionKey))).toEqual({
+      sessionKey: "worker-1-0",
+      role: "worker",
+      reason: USAGE_LIMIT_WORDS.rate,
+      cause: RATE_LIMITED,
+    });
+  });
+});
+
+describe("telling a usage limit from any other error", () => {
+  it("reads what the runtime types before any text", () => {
+    expect(usageLimitOf({ apiError: "rate_limit", status: null, text: "" })).toBe("rate");
+    expect(usageLimitOf({ apiError: undefined, status: 429, text: "" })).toBe("rate");
+    expect(usageLimitOf({ apiError: "billing_error", status: null, text: "" })).toBe("spend");
+  });
+
+  it("treats a spend cap, which is also a 429, as the spending limit", () => {
+    expect(usageLimitOf({ apiError: "rate_limit", status: 429, text: SPEND_CAPPED })).toBe("spend");
+  });
+
+  it("is not a limit for an overloaded or failing service, nor for prose that mentions one", () => {
+    expect(usageLimitOf({ apiError: "overloaded", status: 529, text: "Overloaded" })).toBeUndefined();
+    expect(usageLimitOf({ apiError: "server_error", status: 500, text: "we hit the rate limit of our patience" })).toBeUndefined();
+    expect(usageLimitOf({ apiError: undefined, status: undefined, text: "" })).toBeUndefined();
   });
 });

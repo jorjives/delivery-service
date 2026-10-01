@@ -39,6 +39,13 @@ export const completes: MockScript = {
   ],
 };
 
+/** A scripted agent whose every session is stopped by the API's rate limit, in the API's own words. */
+export const rateLimited: MockScript = {
+  expectations: [
+    { fail: { message: 'API Error: 429 {"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed the rate limit for your organization"}}' } },
+  ],
+};
+
 /** A claude-mock script file, for the contributor test seam. */
 export async function scriptFile(script: MockScript): Promise<string> {
   const path = join(mkdtempSync(join(tmpdir(), "command-script-")), "mock.json");

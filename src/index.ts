@@ -57,6 +57,7 @@ export type {
   BudgetSet,
   Budget,
   BudgetPopulation,
+  UsageLimit,
   TaskDef,
   GateRef,
   CloserRef,

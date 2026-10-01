@@ -565,6 +565,8 @@ ways a script provokes it:
 | a `reply` with no `json` | `worker session did not complete: the session ended without reporting a result` | |
 | `json` that is not a valid result for the role, such as a triage verdict for the worker | `worker session did not complete: the session replied with something that is not a valid result for this role` | `expectEnvelope` would have refused it as you wrote it, so write it into `json` directly |
 | `fail: { message }` | `worker session did not complete: the session ended in an error before it reported a result` | no `"unmatched"` event; your message is not repeated in the rationale |
+| `fail: { message }` whose message carries the API's rate-limit identifier, `rate_limit_error` | `worker session did not complete: the AI service is limiting requests` | the terminus is marked `limit: "rate"`; a usage limit is never counted as a broken check or environment |
+| `fail: { message }` whose message carries the API's spend-cap identifier, `enforced_spend_limit_reached` | `worker session did not complete: the spending limit has been reached` | the terminus is marked `limit: "spend"` |
 
 Another role reads the same, with its own name first: `triage session did not
 complete: ...`.

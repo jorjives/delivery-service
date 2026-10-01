@@ -179,6 +179,15 @@ attempt instead of spending the retry budget. The mark is the fact — no sessio
 ran — and the edge owns the policy; the rationale a person reads is the same
 fixed sentence either way.
 
+A session stopped by a usage limit is the other end that is not uniform. The
+primitive recognises it from the runtime's typed error (`rate_limit`,
+`billing_error`), the API status (429) or the API's own identifiers in the error
+text, never from prose, and reports it in fixed words of its own: "the AI
+service is limiting requests" or "the spending limit has been reached". The
+terminus carries `limit` (`"rate"` or `"spend"`). A task retries it as any
+incomplete session; a run of several at once never counts it as evidence that
+the shared environment is broken.
+
 ## Tool authority
 
 Each role's blast radius is a security boundary, not a convention, so it is enforced
@@ -235,7 +244,7 @@ correspondence is exact:
   scripted `fail` each exercise the `INCOMPLETE_TERMINUS` path
   (`src/scripted-surface-run.test.ts` proves each through a whole surface). An unmatched
   prompt and a scripted `fail` both read as a session that ended in an error; only the
-  journal's `unmatched` event tells them apart.
+  journal's `unmatched` event tells them apart. A scripted `fail` whose message carries `rate_limit_error` or `enforced_spend_limit_reached` reads as a usage limit instead.
 - **Verification** ↔ the journal, which records what prompt the harness actually
   sent and which expectations it consumed.
 

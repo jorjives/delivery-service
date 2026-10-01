@@ -9,7 +9,7 @@ import { RECOVERED_REPAIR } from "../breaker.js";
 import { loadRunFile, setRunOutcome } from "../run-file.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
-import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot, interruptedRun, writesHello, writeSupervisedRun } from "./command-fixtures.js";
+import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot, interruptedRun, writesHello, writeSupervisedRun, rateLimited } from "./command-fixtures.js";
 import { unknownCloser } from "./config.js";
 import { EXIT, UNEXPECTED_FOOTER } from "./failures.js";
 import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
@@ -876,6 +876,23 @@ describe("delivery run with several tasks at once", () => {
       // Each task's own record is where it always was, one per task.
       expect(readdirSync(runsRoot(repo))).toHaveLength(3);
       expect(git(repo, ["branch", "--list", "surface/*"]).split("\n")).toHaveLength(3);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "describes tasks stopped by a usage limit as that, never as a broken shared environment, and counts none of it as evidence",
+    async () => {
+      // One try each: the point is the wording and the run file, not the retries.
+      const repo = listRepo("run-command-rate-limited-", { tasks: [PAGE, SWAP], concurrency: 2, budgets: { terminus: 1 } });
+
+      const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(rateLimited) } });
+
+      expect(exitCode).toBe(EXIT.escalated);
+      expect(stdout).toContain("the AI service is limiting requests");
+      expect(stdout).not.toContain("shared environment");
+      const { history } = await theRunFile(repo);
+      expect(history.filter((entry) => entry.t === "gate_error_signal" || entry.t === "breaker_degraded")).toEqual([]);
     },
     RUN_TIMEOUT * 2,
   );
