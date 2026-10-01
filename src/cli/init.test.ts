@@ -11,7 +11,7 @@ import { NOT_A_REPOSITORY } from "./project.js";
 import { DEFAULT_CLOSER, resolveProject } from "./settings.js";
 import { queueTasks } from "./queue.js";
 import { READY, validateCommand } from "./validate-command.js";
-import { ALREADY_LISTED, atOnceQuestion, CLOSER_QUESTION, CONFIG_FILE, DESCRIPTION_QUESTION, NOTHING_TO_DO, checkQuestion, initCommand, LEFT_ALONE, NEEDS_A_TERMINAL, SUGGESTED_AT_ONCE, WRITTEN, overwriteQuestion, taskQuestion, type ChoiceQuestion, type ConfirmQuestion, type TextQuestion } from "./init.js";
+import { ALREADY_LISTED, atOnceQuestion, CLOSER_QUESTION, CONFIG_FILE, DESCRIPTION_QUESTION, HOW_MANY_AT_ONCE_QUESTION, NOTHING_TO_DO, NOT_A_NUMBER_AT_ONCE, checkQuestion, initCommand, LEFT_ALONE, NEEDS_A_TERMINAL, SUGGESTED_AT_ONCE, WRITTEN, overwriteQuestion, taskQuestion, type ChoiceQuestion, type ConfirmQuestion, type TextQuestion } from "./init.js";
 
 const TASK = "add a function that says hello to a name, with a test";
 
@@ -327,6 +327,63 @@ describe("running some at the same time", () => {
     expect(written(repo)).toMatchObject({ tasks: ["add a hello", "add a goodbye", "add a welcome"] });
     expect(written(repo)).not.toHaveProperty("concurrency");
   });
+
+  it("asks how many once told yes, offering the suggestion as what Enter means", async () => {
+    const repo = sample();
+    const { ask, asked } = scriptedAsk({ texts: THREE, confirms: [true] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(asked.at(-2)).toEqual(atOnceQuestion(3));
+    expect(asked.at(-1)).toBe(HOW_MANY_AT_ONCE_QUESTION);
+    expect(HOW_MANY_AT_ONCE_QUESTION.default).toBe(String(SUGGESTED_AT_ONCE));
+    expect(written(repo)).toMatchObject({ concurrency: SUGGESTED_AT_ONCE });
+  });
+
+  it("does not ask how many when told no", async () => {
+    const repo = sample();
+    const { ask, asked } = scriptedAsk({ texts: THREE, confirms: [false] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(asked).not.toContain(HOW_MANY_AT_ONCE_QUESTION);
+  });
+
+  it("writes a number typed in place of the suggestion", async () => {
+    const repo = sample();
+    const { ask, refused } = scriptedAsk({ texts: [...THREE, "", "3"], confirms: [true] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(refused).toEqual([]);
+    expect(written(repo)).toMatchObject({ concurrency: 3 });
+  });
+
+  it.each(["0", "-1", "1.5", "two", "99999999999999999999"])("asks again when %j is typed, saying what is wanted", async (typed) => {
+    const repo = sample();
+    const { ask, refused } = scriptedAsk({ texts: [...THREE, "", typed, "4"], confirms: [true] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(refused).toEqual([NOT_A_NUMBER_AT_ONCE]);
+    expect(written(repo)).toMatchObject({ concurrency: 4 });
+  });
+
+  it.each(["1", "2", "7", "0", "-1", "1.5", "99999999999999999999"])(
+    "takes %j exactly when `delivery validate` would take a file saying it",
+    async (typed) => {
+      const repo = sample();
+      writeFileSync(CONFIG_FILE(repo), `${JSON.stringify({ tasks: ["a", "b"], concurrency: Number(typed) })}\n`);
+
+      const taken = HOW_MANY_AT_ONCE_QUESTION.validate?.(typed) === true;
+      const validated = await validateCommand({}, context(repo).ctx).then(
+        (exitCode) => exitCode === EXIT.ok,
+        () => false,
+      );
+
+      expect(taken).toBe(validated);
+    },
+  );
 });
 
 describe("the words it uses", () => {
@@ -343,6 +400,8 @@ describe("the words it uses", () => {
       overwriteQuestion("delivery.config.json").message,
       overwriteQuestion("delivery.config.js").message,
       atOnceQuestion(3).message,
+      HOW_MANY_AT_ONCE_QUESTION.message,
+      NOT_A_NUMBER_AT_ONCE,
     ];
 
     for (const text of shown) {

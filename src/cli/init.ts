@@ -5,7 +5,7 @@ import { CONFIG_BASENAME, CONFIG_EXTENSIONS, DeliveryConfig } from "./config.js"
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository, inferredCheck } from "./project.js";
-import { DEFAULT_CLOSER } from "./settings.js";
+import { concurrencyNamed, DEFAULT_CLOSER } from "./settings.js";
 
 /**
  * A question answered by typing. `default` is what pressing Enter means;
@@ -184,10 +184,24 @@ export const atOnceQuestion = (listed: number): ConfirmQuestion => ({
   default: false,
 });
 
+export const NOT_A_NUMBER_AT_ONCE = "That needs to be a whole number, 1 or more, such as 3.";
+
+/**
+ * How many at the same time, asked only after a yes. Enter takes the
+ * suggestion; anything typed in its place is held to the rule the file's own
+ * setting is held to, so this question cannot take a number that `delivery
+ * validate` would then refuse.
+ */
+export const HOW_MANY_AT_ONCE_QUESTION: TextQuestion = {
+  message: "How many at the same time?",
+  default: String(SUGGESTED_AT_ONCE),
+  validate: (answer) => (concurrencyNamed(answer) === undefined ? NOT_A_NUMBER_AT_ONCE : true),
+};
+
 /** How many to run at the same time, or nothing when there is only one thing to do or the owner said no. */
 async function askAtOnce(ask: Ask, listed: number): Promise<number | undefined> {
   if (listed < 2 || !(await ask.confirm(atOnceQuestion(listed)))) return undefined;
-  return SUGGESTED_AT_ONCE;
+  return concurrencyNamed(await ask.text(HOW_MANY_AT_ONCE_QUESTION));
 }
 
 export const overwriteQuestion = (file: string): ConfirmQuestion => ({
