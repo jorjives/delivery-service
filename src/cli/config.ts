@@ -93,6 +93,13 @@ export const sameTask = (first: number, second: number): string =>
   `tasks ${first} and ${second} are the same task, so I couldn't tell their runs apart. Reword one, or remove it.`;
 
 /**
+ * How many tasks may run at once: a whole number, 1 or more. Named so that a
+ * number arriving as text (a flag, an environment variable, an answer typed
+ * into `delivery init`) is held to this rule itself, not to a second copy of it.
+ */
+export const Concurrency = z.number().int().positive();
+
+/**
  * The whole of a `delivery.config.json`. `task`, `gate` and `closer` are the
  * library's own schemas, composed rather than restated, so the file can never
  * drift from what the harness accepts. `.strict()` on both objects means a typo
@@ -122,7 +129,7 @@ export const DeliveryConfig = z
     budgets: Budgets.optional(),
     // How many tasks from `tasks` may run at once. One, the default, is the
     // list worked down in order; more starts that many side by side.
-    concurrency: z.number().int().positive().optional(),
+    concurrency: Concurrency.optional(),
   })
   .strict()
   .superRefine((config, ctx) => {

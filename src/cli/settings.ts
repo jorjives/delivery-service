@@ -5,7 +5,7 @@ import { CloserRef } from "../schema.js";
 import type { BudgetSet, CaseFileHeader, GateRef, RoleOverrides, TaskDef } from "../schema.js";
 import { loadCustomCloser } from "../custom-closer.js";
 import { loadCustomGate } from "../custom-gate.js";
-import { unknownCloser, type DeliveryConfig } from "./config.js";
+import { Concurrency, unknownCloser, type DeliveryConfig } from "./config.js";
 import { isPreset, presetGate, type GatePreset } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
 import { inferGate } from "./project.js";
@@ -163,14 +163,29 @@ function budgetsFrom(config: DeliveryConfig): BudgetSet {
   return set;
 }
 
+/**
+ * The number of tasks at once that a piece of text names, or nothing when it
+ * names none. The text must be digits not starting with 0; the number is then
+ * held to the config file's own rule, so text and file can never disagree
+ * about what counts (a run of digits too long to be an exact whole number is
+ * refused by both).
+ */
+export function concurrencyNamed(typed: string): number | undefined {
+  const text = typed.trim();
+  if (!/^[1-9]\d*$/.test(text)) return undefined;
+  const count = Number(text);
+  return Concurrency.safeParse(count).success ? count : undefined;
+}
+
 function concurrencyFrom(flags: RunFlags, env: NodeJS.ProcessEnv, config: DeliveryConfig): number {
   const named = flags.concurrency ?? fromEnv(env.DELIVERY_CONCURRENCY);
   if (named === undefined) return config.concurrency ?? DEFAULT_CONCURRENCY;
-  if (!/^[1-9]\d*$/.test(named.trim())) {
+  const count = concurrencyNamed(named);
+  if (count === undefined) {
     const source = flags.concurrency !== undefined ? "--concurrency" : "DELIVERY_CONCURRENCY";
     throw new Refusal(NOT_A_CONCURRENCY(source, named), EXIT.configuration, "concurrency");
   }
-  return Number(named.trim());
+  return count;
 }
 
 /**

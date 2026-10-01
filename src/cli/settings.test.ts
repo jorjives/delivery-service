@@ -4,12 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { CaseFileHeader } from "../schema.js";
 import { DEFAULT_BUDGETS } from "../budgets.js";
-import { unknownCloser, type DeliveryConfig } from "./config.js";
+import { DeliveryConfig, unknownCloser } from "./config.js";
 import { EXIT, Refusal, renderFailure } from "./failures.js";
 import { NO_CHECK } from "./project.js";
 import {
   BOTH_TASKS,
   checkCustomModules,
+  concurrencyNamed,
   explicitIntent,
   ignoredNote,
   ignoredSettings,
@@ -380,5 +381,25 @@ describe("how many tasks from the list may run at once", () => {
 
   it("refuses a DELIVERY_CONCURRENCY that is not a whole number, naming the variable", async () => {
     await expect(settings({ task: TASK }, { env: { DELIVERY_CONCURRENCY: "0" } })).rejects.toThrow(NOT_A_CONCURRENCY("DELIVERY_CONCURRENCY", "0"));
+  });
+
+  it("refuses a --concurrency too large to be an exact whole number, as the config file's own setting is refused", async () => {
+    const tooLarge = "99999999999999999999";
+    expect(DeliveryConfig.safeParse({ concurrency: Number(tooLarge) }).success).toBe(false);
+    await expect(settings({ task: TASK, concurrency: tooLarge })).rejects.toThrow(NOT_A_CONCURRENCY("--concurrency", tooLarge));
+  });
+});
+
+describe("a number of tasks at once that arrives as text", () => {
+  it.each([
+    { typed: "1", count: 1 },
+    { typed: "3", count: 3 },
+    { typed: " 12 ", count: 12 },
+  ])("reads $typed as a number", ({ typed, count }) => {
+    expect(concurrencyNamed(typed)).toBe(count);
+  });
+
+  it.each(["", "   ", "0", "-2", "1.5", "three", "1e2", "0x10", "99999999999999999999"])("finds no number in %j", (typed) => {
+    expect(concurrencyNamed(typed)).toBeUndefined();
   });
 });
