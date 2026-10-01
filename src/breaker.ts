@@ -1,7 +1,7 @@
 import type { BreakerCause, BreakerState, RepairStatus, RunEntry, UsageLimit } from "./schema.js";
 import { appendRunEntry } from "./run-file.js";
 import { RunHalted } from "./errors.js";
-import type { CheckErrorAnswer, CheckErrorReport, RepairCoordinator, Terminus } from "./ports.js";
+import type { RepairCoordinator, Terminus } from "./ports.js";
 import { USAGE_LIMIT_WORDS } from "./ports.js";
 
 /**
