@@ -1,4 +1,3 @@
-import { styleText } from "node:util";
 import { logTail, resumeAction } from "../case-file.js";
 import type { ResumeAction } from "../case-file.js";
 import type { BreakerState, CaseFile, SurfaceState } from "../schema.js";
@@ -9,24 +8,6 @@ import type { BreakerState, CaseFile, SurfaceState } from "../schema.js";
  */
 export function useColour({ flag, env, isTTY }: { flag: boolean; env: NodeJS.ProcessEnv; isTTY: boolean | undefined }): boolean {
   return flag && !env.NO_COLOR && isTTY === true;
-}
-
-/** What a line means. Always also said in words: colour only decorates it. */
-export type Tone = "done" | "attention" | "stopped" | "quiet";
-
-const STYLE: Record<Tone, "green" | "yellow" | "red" | "dim"> = {
-  done: "green",
-  attention: "yellow",
-  stopped: "red",
-  quiet: "dim",
-};
-
-/**
- * `text` in its tone's colour, or unchanged when colour is off. The stream
- * check is ours (`useColour`), so styleText is told not to make its own.
- */
-export function paint(colour: boolean, tone: Tone, text: string): string {
-  return colour ? styleText(STYLE[tone], text, { validateStream: false }) : text;
 }
 
 /**

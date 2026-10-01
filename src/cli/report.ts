@@ -1,7 +1,8 @@
 import type { BreakerState, SurfaceState } from "../schema.js";
 import type { AdvanceResult } from "../surface.js";
 import type { OutcomeSummary } from "./outcome.js";
-import { ENVIRONMENT_BROKE, FIXED_RESUMING, paint, putRight, repairingLine, STEP_PHRASES } from "./output.js";
+import { paint } from "../paint.js";
+import { ENVIRONMENT_BROKE, FIXED_RESUMING, putRight, repairingLine, STEP_PHRASES } from "./output.js";
 
 /**
  * One step of a run as a script reads it: the harness's own state name, whether

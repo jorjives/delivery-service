@@ -3,7 +3,8 @@ import { DEFAULT_BUDGETS } from "../budgets.js";
 import type { ResumeAction } from "../case-file.js";
 import type { CaseFile, GateRef, HistoryEntry } from "../schema.js";
 import { SurfaceState } from "../schema.js";
-import { paint, pickingUp, putRight, RESUME_PHRASES, STEP_PHRASES, useColour, BREAKER_PHRASES } from "./output.js";
+import { paint } from "../paint.js";
+import { pickingUp, putRight, RESUME_PHRASES, STEP_PHRASES, useColour, BREAKER_PHRASES } from "./output.js";
 
 const ESC = "[";
 

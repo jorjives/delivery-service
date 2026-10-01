@@ -5,7 +5,7 @@ import type { CaseFile, CloserRef } from "../schema.js";
 import { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
-import type { Tone } from "./output.js";
+import type { Tone } from "../paint.js";
 
 /** How a finished run is reported: a headline in plain language, the lines under it, and the exit code. */
 export interface OutcomeSummary {
