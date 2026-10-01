@@ -229,6 +229,8 @@ ordering, finer-grained hold) is not sliced.
 
 ## Slice 6: Treat the Same Check Error in Two Tasks as a Shared Problem
 
+**Status:** ✅ Complete — 2026-10-01 — `32778a5`
+
 **Delivers:** When two different tasks in one run each keep hitting errors running the check (not failing tests, but the check itself erroring), the run treats it as a broken shared environment and repairs it once, while a single task's one-off error stays that task's own business; and an API rate or spend limit is described as that, not as a broken project.
 
 **Operational note:** The threshold is fixed at two distinct tasks since the environment was last healthy, with no time window, so behaviour is reproducible under the scripted mock; it is marked for retuning once real flake rates are known.
