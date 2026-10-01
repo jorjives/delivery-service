@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { RunHeader, SlotOutcome, TaskDef } from "../schema.js";
+import type { RunHeader, SlotOutcome, TaskDef, UsageLimit } from "../schema.js";
+import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { createRunBreaker, repairsUsed, tripsOf, type RunBreaker } from "../breaker.js";
 import { RunHalted } from "../errors.js";
 import { supervise, type Settled } from "../supervisor.js";
@@ -128,11 +129,13 @@ export function listStandings(records: RunRecord[], tasks: TaskDef[]): ListStand
 }
 
 /** What a run of several at once says when it gives up on the environment its tasks share. */
-export function environmentGaveUp(attempts: number, { waiting, finished, queued }: ListStandings, of: number): string {
+/** What a run of several at once says when it gives up on the environment its tasks share, or when a usage limit stops its repair. */
+export function environmentGaveUp(attempts: number, { waiting, finished, queued }: ListStandings, of: number, limit: UsageLimit | null = null): string {
   const tries = `${attempts} ${attempts === 1 ? "attempt" : "attempts"}`;
+  const opening = limit === null ? `Couldn't fix it after ${tries}.` : `The repair could not run because ${USAGE_LIMIT_WORDS[limit]}.`;
   const were = waiting === 1 ? "was waiting on this and needs" : "were waiting on this and need";
   const is = queued === 1 ? "is" : "are";
-  return `Couldn't fix it after ${tries}. Stopping the run. ${waiting} of ${of} tasks ${were} your attention; ${finished} had already finished, ${queued} ${is} still queued.`;
+  return `${opening} Stopping the run. ${waiting} of ${of} tasks ${were} your attention; ${finished} had already finished, ${queued} ${is} still queued.`;
 }
 
 /** How big a run of several at once is: how many tasks, and how many at a time. */
@@ -185,17 +188,17 @@ const slotOutcome = (exitCode: ExitCode): SlotOutcome =>
   exitCode === EXIT.ok ? "closed" : exitCode === EXIT.escalated ? "escalated" : "aborted";
 
 /**
- * End a run that gave up on its shared environment: write its outcome, naming
- * the environment as the cause, say how the list stands, and exit needing a
- * decision. The held tasks keep no outcome of their own, so the next
+ * End a run that gave up on its shared environment, or whose repair a usage limit stopped: write its outcome, naming which was the cause,
+ * say how the list stands, and exit needing a decision. The held tasks keep no outcome of their own, so the next
  * `delivery run` picks them up.
  */
 async function stopForEnvironment(repoPath: string, dir: string, runId: string, tasks: TaskDef[], ctx: CommandContext): Promise<ExitCode> {
   const { history } = await loadRunFile(dir);
   const trip = tripsOf(history).at(-1);
   const reason = trip?.reason ?? "the shared environment could not be repaired; no task caused this";
-  await setRunOutcome(dir, { kind: "escalated", cause: "shared_environment", reason, at: new Date().toISOString() });
-  ctx.report.note(environmentGaveUp(repairsUsed(history), listStandings(await allRuns(repoPath), tasks), tasks.length));
+  const limit = trip?.limit ?? null;
+  await setRunOutcome(dir, { kind: "escalated", cause: limit === null ? "shared_environment" : "usage_limit", reason, at: new Date().toISOString() });
+  ctx.report.note(environmentGaveUp(repairsUsed(history), listStandings(await allRuns(repoPath), tasks), tasks.length, limit));
   ctx.report.run({ runId, state: "ESCALATED", affected: trip?.held ?? [] });
   return EXIT.escalated;
 }

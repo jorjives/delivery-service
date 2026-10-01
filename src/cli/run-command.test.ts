@@ -1258,6 +1258,26 @@ describe("delivery run with several tasks at once", () => {
     );
 
     it(
+      "stops the run naming the usage limit, not the environment, when a limit stops the repair",
+      async () => {
+        const repo = brokenRepo("run-command-breaker-limited-", BROKEN_GATE, [PAGE, SWAP, WAVE]);
+
+        const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(rateLimited) } });
+
+        expect(exitCode).toBe(EXIT.escalated);
+        expect(stdout.trimEnd().split("\n").at(-1)).toBe(
+          "The repair could not run because the AI service is limiting requests. Stopping the run. 2 of 3 tasks were waiting on this and need your attention; 0 had already finished, 1 is still queued.",
+        );
+        expect(stdout).not.toContain("Couldn't fix it");
+
+        const runFile = await theRunFile(repo);
+        expect(runFile.outcome).toMatchObject({ kind: "escalated", cause: "usage_limit", reason: expect.stringContaining("the AI service is limiting requests") });
+        expect(ofType(runFile.history, "repair_dispatch")).toHaveLength(1);
+      },
+      RUN_TIMEOUT * 2,
+    );
+
+    it(
       "under --json writes a run-scope record for each change in the environment, with the tasks affected",
       async () => {
         const repo = brokenRepo("run-command-breaker-json-", BROKEN_GATE, [PAGE, SWAP]);

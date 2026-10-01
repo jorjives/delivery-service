@@ -1,7 +1,8 @@
-import type { BreakerCause, BreakerState, RepairStatus, RunEntry } from "./schema.js";
+import type { BreakerCause, BreakerState, RepairStatus, RunEntry, UsageLimit } from "./schema.js";
 import { appendRunEntry } from "./run-file.js";
 import { RunHalted } from "./errors.js";
 import type { CheckErrorAnswer, CheckErrorReport, RepairCoordinator, Terminus } from "./ports.js";
+import { USAGE_LIMIT_WORDS } from "./ports.js";
 
 /**
  * How each run-file entry moves the shared environment's breaker. Total over
@@ -80,6 +81,8 @@ export interface Trip {
   ended: "repaired" | "gave_up" | null;
   /** Why the run gave up, when it did. */
   reason: string | null;
+  /** The usage limit that stopped the repair, when that, not the environment, is why the run gave up. */
+  limit: UsageLimit | null;
 }
 
 export function tripsOf(history: readonly RunEntry[]): Trip[] {
@@ -89,7 +92,7 @@ export function tripsOf(history: readonly RunEntry[]): Trip[] {
     const open = last !== undefined && last.ended === null ? last : undefined;
     switch (entry.t) {
       case "breaker_degraded":
-        if (open === undefined) trips.push({ cause: entry.cause, held: [entry.cause.surfaceId], repairs: [], ended: null, reason: null });
+        if (open === undefined) trips.push({ cause: entry.cause, held: [entry.cause.surfaceId], repairs: [], ended: null, reason: null, limit: null });
         break;
       case "repair_request":
       case "held":
@@ -113,6 +116,7 @@ export function tripsOf(history: readonly RunEntry[]): Trip[] {
         if (open !== undefined) {
           open.ended = "gave_up";
           open.reason = entry.reason;
+          open.limit = entry.limit ?? null;
         }
         break;
       default:
@@ -145,6 +149,9 @@ export const RECOVERED_REPAIR = "the repair session ended without recording a re
 
 export const couldNotRepair = (attempts: number): string =>
   `the shared environment could not be repaired after ${attempts} ${attempts === 1 ? "attempt" : "attempts"}; no task caused this`;
+
+export const stoppedByLimit = (limit: UsageLimit): string =>
+  `the repair could not run because ${USAGE_LIMIT_WORDS[limit]}; no task caused this`;
 
 /** A change in the shared environment's state, and every task it affects. */
 export interface BreakerChange {
@@ -217,10 +224,10 @@ export function createRunBreaker({ dir, history, limit, dispatch, onChange }: Ru
     for (const resolve of waiting) resolve();
   }
 
-  async function giveUp(reason: string): Promise<never> {
+  async function giveUp(reason: string, limit?: UsageLimit): Promise<never> {
     // Set before the write, so a request or hold arriving while it is written is refused, not queued on a dead repair.
     gaveUp = reason;
-    await record({ t: "run_escalated", reason });
+    await record({ t: "run_escalated", reason, ...(limit ? { limit } : {}) });
     throw new RunHalted(reason);
   }
 
@@ -252,6 +259,9 @@ export function createRunBreaker({ dir, history, limit, dispatch, onChange }: Ru
         await written;
         return;
       }
+      // A usage limit says nothing about the environment, and the next attempt would meet the same limit:
+      // stop now, and say that, rather than spend the run's repair limit and report the environment unfixable.
+      if (terminus.status === "incomplete" && terminus.limit) return giveUp(stoppedByLimit(terminus.limit), terminus.limit);
       // As for a task's own repair: an escalate, or a session that never started, will not go better next time.
       if (terminus.status === "escalate" || terminus.notRun) {
         return giveUp(`the repair could not fix the shared environment: ${terminus.rationale}; no task caused this`);

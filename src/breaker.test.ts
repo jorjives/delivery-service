@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RunEntry } from "./schema.js";
-import { breakerOf, nextBreaker, openDispatch, openTrip, repairsUsed, requestedInOpenTrip, servedAlready, tripsOf, createRunBreaker, couldNotRepair, RECOVERED_REPAIR, signalsSinceHealthy, SHARED_ERROR_THRESHOLD, type BreakerChange } from "./breaker.js";
+import { breakerOf, nextBreaker, openDispatch, openTrip, repairsUsed, requestedInOpenTrip, servedAlready, tripsOf, createRunBreaker, couldNotRepair, RECOVERED_REPAIR, signalsSinceHealthy, SHARED_ERROR_THRESHOLD, stoppedByLimit, type BreakerChange } from "./breaker.js";
 import { createRunFile, loadRunFile } from "./run-file.js";
 import { RunHalted } from "./errors.js";
 import type { Terminus } from "./ports.js";
@@ -110,6 +110,7 @@ describe("every trip, as status tells it", () => {
       ],
       ended: "repaired",
       reason: null,
+      limit: null,
     });
   });
 
@@ -314,6 +315,22 @@ describe("one repair of the shared environment for the whole run", () => {
     ]);
     expect(breaker.gaveUp).toBe("gave up");
     await expect(breaker.awaitClearance("a")).rejects.toBeInstanceOf(RunHalted);
+  });
+
+  it("gives up at once, naming the limit and not the environment, when a usage limit stops the repair", async () => {
+    const { breaker, answer, dispatched, entries } = await breakerOver();
+    const asked = breaker.requestRepair({ surfaceId: "a", reason: "broken" });
+    await settle();
+    await answer({ status: "incomplete", rationale: "gate-maintenance session did not complete: the AI service is limiting requests", limit: "rate" });
+
+    await expect(asked).rejects.toThrow("the AI service is limiting requests");
+    expect(breaker.gaveUp).toBe(stoppedByLimit("rate"));
+    expect(breaker.gaveUp).not.toContain("could not be repaired");
+    // The next attempt would meet the same limit: the run's repair limit (2 here) is not spent finding that out.
+    expect(dispatched).toHaveLength(1);
+    const history = await entries();
+    expect(history.at(-1)).toEqual({ t: "run_escalated", reason: stoppedByLimit("rate"), limit: "rate" });
+    expect(tripsOf(history).at(-1)).toMatchObject({ ended: "gave_up", limit: "rate" });
   });
 });
 

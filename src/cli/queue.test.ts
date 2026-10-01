@@ -203,4 +203,13 @@ describe("what a run of several at once says when it gives up on its shared envi
     const tasks = [{ intent: "add a hello" }, { intent: "add a goodbye" }, { intent: "add a shout" }];
     expect(listStandings(await allRuns(repo), tasks)).toEqual({ waiting: 1, finished: 1, queued: 1 });
   });
+
+  it("names a usage limit, and no number of attempts, when that is what stopped the repair", () => {
+    expect(environmentGaveUp(1, { waiting: 2, finished: 0, queued: 1 }, 3, "rate")).toBe(
+      "The repair could not run because the AI service is limiting requests. Stopping the run. 2 of 3 tasks were waiting on this and need your attention; 0 had already finished, 1 is still queued.",
+    );
+    expect(environmentGaveUp(1, { waiting: 1, finished: 0, queued: 1 }, 2, "spend")).toBe(
+      "The repair could not run because the spending limit has been reached. Stopping the run. 1 of 2 tasks was waiting on this and needs your attention; 0 had already finished, 1 is still queued.",
+    );
+  });
 });

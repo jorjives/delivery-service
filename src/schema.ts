@@ -355,15 +355,16 @@ export const RunEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("repair_dispatch"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), surfaceId: SurfaceId }),
   z.object({ t: z.literal("repair_terminus"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), status: RepairStatus, rationale: z.string() }),
   z.object({ t: z.literal("breaker_healthy") }),
-  z.object({ t: z.literal("run_escalated"), reason: z.string().min(1) }),
+  // `limit` is set when a usage limit, not the environment, is why the run stopped.
+  z.object({ t: z.literal("run_escalated"), reason: z.string().min(1), limit: UsageLimit.optional() }),
 ]);
 export type RunEntry = z.infer<typeof RunEntry>;
 
 export const RunOutcome = z.discriminatedUnion("kind", [
   // Every task the run could take was taken and has ended.
   z.object({ kind: z.literal("drained"), at: z.string() }),
-  // The shared environment could not be repaired, so the run stopped; no task caused it.
-  z.object({ kind: z.literal("escalated"), cause: z.literal("shared_environment"), reason: z.string().min(1), at: z.string() }),
+  // The run stopped and no task caused it: its shared environment could not be repaired, or a usage limit stopped the repair.
+  z.object({ kind: z.literal("escalated"), cause: z.enum(["shared_environment", "usage_limit"]), reason: z.string().min(1), at: z.string() }),
 ]);
 export type RunOutcome = z.infer<typeof RunOutcome>;
 

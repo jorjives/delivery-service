@@ -4,6 +4,7 @@ import { logTail, resumeAction, type ResumeAction } from "../case-file.js";
 import { branchName } from "../provision.js";
 import type { BreakerState, BreakerCause, RunOutcome, SurfaceState, TaskDef } from "../schema.js";
 import { repairsUsed, tripsOf, type Trip } from "../breaker.js";
+import { USAGE_LIMIT_WORDS } from "../ports.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { loadConfig } from "./config.js";
@@ -206,7 +207,7 @@ export interface SupervisedStatusDocument {
   surfaces: RunStatusDocument[];
   queued: { task: string; queue: QueuePosition | null }[];
   reason: string | null;
-  cause: "shared_environment" | null;
+  cause: Extract<RunOutcome, { kind: "escalated" }>["cause"] | null;
   runBudgets: { gateMaintenance: { used: number; max: number } };
   trips: Trip[];
 }
@@ -282,15 +283,19 @@ function whatBroke(view: SupervisedView, cause: BreakerCause): string {
 export function environmentNarration(view: SupervisedView): string[] {
   const { trip } = view;
   if (trip === undefined) return [];
+  const limit = trip.ended === "gave_up" ? trip.limit : null;
+  const limitWords = limit === null ? "" : USAGE_LIMIT_WORDS[limit];
   const opening =
-    trip.ended === "gave_up"
-      ? `The shared environment could not be fixed after ${trip.repairs.length} ${trip.repairs.length === 1 ? "attempt" : "attempts"}, so the run stopped; no task caused this.`
-      : `${view.breaker === "REPAIRING" ? "The shared environment is being repaired" : "Something in the shared environment looks broken"}: any task about to check or hand off its work is held until it is fixed.`;
+    limit !== null
+      ? `${limitWords.charAt(0).toUpperCase()}${limitWords.slice(1)}, so the run stopped before it could repair the shared environment; no task caused this.`
+      : trip.ended === "gave_up"
+        ? `The shared environment could not be fixed after ${trip.repairs.length} ${trip.repairs.length === 1 ? "attempt" : "attempts"}, so the run stopped; no task caused this.`
+        : `${view.breaker === "REPAIRING" ? "The shared environment is being repaired" : "Something in the shared environment looks broken"}: any task about to check or hand off its work is held until it is fixed.`;
   return [
     opening,
     whatBroke(view, trip.cause),
     `Held: ${trip.held.map((surfaceId) => taskLabel(view, surfaceId)).join(", ")}.`,
-    ...(trip.ended === "gave_up" ? ["Once it is fixed, `delivery run` carries the held tasks on."] : []),
+    ...(trip.ended === "gave_up" ? [`Once ${limit === null ? "it is fixed" : "the limit no longer applies"}, \`delivery run\` carries the held tasks on.`] : []),
     "",
   ];
 }
