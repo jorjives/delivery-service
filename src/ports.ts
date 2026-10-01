@@ -146,6 +146,15 @@ export interface RepairRequest {
   reason: string;
 }
 
+/** A task saying its check kept erroring until its own re-checks ran out. `key` names the setback, so a report answered before a crash is not answered twice. */
+export interface CheckErrorReport {
+  surfaceId: string;
+  key: string;
+}
+
+/** "shared": the run repaired the environment every task shares, so check again. "alone": no other task has hit it, so deal with it as a task on its own would. */
+export type CheckErrorAnswer = "shared" | "alone";
+
 /**
  * How a task in a run of several at once shares one environment with the
  * others. A task checks and hands off its work only once cleared, and asks the

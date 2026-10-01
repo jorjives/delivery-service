@@ -330,3 +330,94 @@ describe("one repair of the shared environment for the whole run", () => {
     await expect(breaker.awaitClearance("a")).rejects.toBeInstanceOf(RunHalted);
   });
 });
+
+describe("a check that keeps erroring", () => {
+  it("is the task's own business while no other task has reported it: nothing trips, nobody is held", async () => {
+    const { breaker, dispatched, changes, entries } = await breakerOver();
+
+    expect(await breaker.reportCheckErrors({ surfaceId: "a", key: "triage-3" })).toBe("alone");
+
+    expect(await entries()).toEqual([signal("a")]);
+    expect(dispatched).toEqual([]);
+    expect(changes).toEqual([]);
+    (await breaker.awaitClearance("b"))();
+    expect(await entries()).toEqual([signal("a")]);
+  });
+
+  it("counts the same task once however often it reports", async () => {
+    const { breaker, dispatched, entries } = await breakerOver();
+
+    expect(await breaker.reportCheckErrors({ surfaceId: "a", key: "triage-3" })).toBe("alone");
+    expect(await breaker.reportCheckErrors({ surfaceId: "a", key: "triage-5" })).toBe("alone");
+
+    expect(await entries()).toEqual([signal("a")]);
+    expect(dispatched).toEqual([]);
+  });
+
+  it("is shared once a second, different task reports it: one repair, in that task's copy", async () => {
+    const { breaker, dispatched, changes, answer, entries } = await breakerOver();
+
+    expect(await breaker.reportCheckErrors({ surfaceId: "a", key: "triage-3" })).toBe("alone");
+    const second = breaker.reportCheckErrors({ surfaceId: "b", key: "triage-3" });
+    await vi.waitFor(() => expect(dispatched).toEqual(["b:run-repair-1"]));
+    await answer(fixed);
+
+    expect(await second).toBe("shared");
+    expect(await entries()).toEqual([
+      signal("a"),
+      signal("b"),
+      aggregate("b", ["a", "b"]),
+      { t: "repair_request", surfaceId: "b", key: "triage-3" },
+      { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: "b" },
+      { t: "repair_terminus", attempt: 1, sessionKey: "run-repair-1", status: "completed", rationale: "restored the helper" },
+      healthy,
+    ]);
+    expect(changes).toEqual([
+      { state: "DEGRADED", affected: ["b"] },
+      { state: "REPAIRING", affected: ["b"], repair: { attempt: 1, of: 2 } },
+      { state: "HEALTHY", affected: ["b"] },
+    ]);
+  });
+
+  it("no longer counts earlier reports once a repair has worked", async () => {
+    const { breaker, dispatched } = await breakerOver([signal("a"), signal("b"), aggregate("b", ["a", "b"]), dispatch(1, "b"), terminus(1), healthy]);
+
+    expect(await breaker.reportCheckErrors({ surfaceId: "c", key: "triage-3" })).toBe("alone");
+    expect(dispatched).toEqual([]);
+  });
+
+  it("shares a repair already pending, without counting as evidence of its own", async () => {
+    const { breaker, dispatched, answer, entries } = await breakerOver();
+    const first = breaker.requestRepair({ surfaceId: "a", key: null, reason: "the shared helper is missing" });
+    const joined = breaker.reportCheckErrors({ surfaceId: "b", key: "triage-3" });
+    await vi.waitFor(() => expect(dispatched).toEqual(["a:run-repair-1"]));
+    await answer(fixed);
+
+    await first;
+    expect(await joined).toBe("shared");
+    expect((await entries()).map((entry) => entry.t)).toEqual(["breaker_degraded", "repair_request", "repair_request", "repair_dispatch", "repair_terminus", "breaker_healthy"]);
+  });
+
+  it("answers a report already repaired before a crash, without counting or repairing again", async () => {
+    const history: RunEntry[] = [signal("a"), signal("b"), aggregate("b", ["a", "b"]), { t: "repair_request", surfaceId: "b", key: "triage-3" }, dispatch(1, "b"), terminus(1), healthy];
+    const { breaker, dispatched, entries } = await breakerOver(history);
+
+    expect(await breaker.reportCheckErrors({ surfaceId: "b", key: "triage-3" })).toBe("shared");
+    expect(dispatched).toEqual([]);
+    expect(await entries()).toEqual(history);
+  });
+
+  it("trips when picked up after a crash that landed between the second report and the trip", async () => {
+    const { breaker, dispatched, answer } = await breakerOver([signal("a"), signal("b")]);
+
+    const again = breaker.reportCheckErrors({ surfaceId: "b", key: "triage-3" });
+    await vi.waitFor(() => expect(dispatched).toEqual(["b:run-repair-1"]));
+    await answer(fixed);
+    expect(await again).toBe("shared");
+  });
+
+  it("is refused once the run has given up", async () => {
+    const { breaker } = await breakerOver([degraded("a"), { t: "run_escalated", reason: "gave up" }]);
+    await expect(breaker.reportCheckErrors({ surfaceId: "b", key: "triage-3" })).rejects.toBeInstanceOf(RunHalted);
+  });
+});

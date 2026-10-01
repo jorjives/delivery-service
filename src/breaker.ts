@@ -1,7 +1,7 @@
 import type { BreakerCause, BreakerState, RepairStatus, RunEntry } from "./schema.js";
 import { appendRunEntry } from "./run-file.js";
 import { RunHalted } from "./errors.js";
-import type { RepairCoordinator, Terminus } from "./ports.js";
+import type { CheckErrorAnswer, CheckErrorReport, RepairCoordinator, Terminus } from "./ports.js";
 
 /**
  * How each run-file entry moves the shared environment's breaker. Total over
@@ -168,6 +168,8 @@ export interface RunBreakerOptions {
 export interface RunBreaker extends RepairCoordinator {
   /** Why the run gave up on the shared environment, once it has: start nothing more. */
   readonly gaveUp: string | undefined;
+  /** A task's check kept erroring until its re-checks ran out: is that its own problem, or everyone's? */
+  reportCheckErrors(report: CheckErrorReport): Promise<CheckErrorAnswer>;
 }
 
 /**
@@ -179,6 +181,11 @@ export interface RunBreaker extends RepairCoordinator {
  * is mid-check or mid-hand-off, and every request while it is pending shares
  * it. A task picked up while its run was repairing finds the repair started
  * again here at its first hold, since nobody else would start it.
+ *
+ * A trip opens two ways: a task finds the check cannot run before it has
+ * started (`requestRepair`), or a second, different task reports that its
+ * check kept erroring until its re-checks ran out (`reportCheckErrors`). One
+ * such report alone trips nothing.
  */
 export function createRunBreaker({ dir, history, limit, dispatch, onChange }: RunBreakerOptions): RunBreaker {
   const log: RunEntry[] = [...history];
@@ -293,6 +300,29 @@ export function createRunBreaker({ dir, history, limit, dispatch, onChange }: Ru
       }
       if (!requestedInOpenTrip(log, surfaceId, key)) await record({ t: "repair_request", surfaceId, key });
       await ensureRepair();
+    },
+
+    async reportCheckErrors({ surfaceId, key }) {
+      if (gaveUp !== undefined) throw new RunHalted(gaveUp);
+      if (servedAlready(log, surfaceId, key)) return "shared";
+      if (state === "HEALTHY") {
+        // One task's check erroring is that task's business; the same thing in a second, different task is the
+        // environment's. The same task counts once. No await before the trip: as in `requestRepair`, two tasks
+        // reporting in the same instant must see one count and one trip.
+        if (!signalsSinceHealthy(log).includes(surfaceId)) void record({ t: "gate_error_signal", surfaceId });
+        const surfaceIds = signalsSinceHealthy(log);
+        if (surfaceIds.length < SHARED_ERROR_THRESHOLD) {
+          // On disk before the task acts on the answer, like everything else decided here.
+          await writing;
+          return "alone";
+        }
+        void record({ t: "breaker_degraded", cause: { kind: "gate_error_aggregate", surfaceId, surfaceIds } });
+        onChange({ state: "DEGRADED", affected: [surfaceId] });
+      }
+      // A trip already open, whatever opened it, is repaired once for everyone: this report shares it.
+      if (!requestedInOpenTrip(log, surfaceId, key)) await record({ t: "repair_request", surfaceId, key });
+      await ensureRepair();
+      return "shared";
     },
   };
 }
