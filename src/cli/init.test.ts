@@ -11,7 +11,7 @@ import { NOT_A_REPOSITORY } from "./project.js";
 import { DEFAULT_CLOSER, resolveProject } from "./settings.js";
 import { queueTasks } from "./queue.js";
 import { READY, validateCommand } from "./validate-command.js";
-import { ALREADY_LISTED, CLOSER_QUESTION, CONFIG_FILE, DESCRIPTION_QUESTION, NOTHING_TO_DO, checkQuestion, initCommand, LEFT_ALONE, NEEDS_A_TERMINAL, WRITTEN, overwriteQuestion, taskQuestion, type ChoiceQuestion, type TextQuestion } from "./init.js";
+import { ALREADY_LISTED, atOnceQuestion, CLOSER_QUESTION, CONFIG_FILE, DESCRIPTION_QUESTION, NOTHING_TO_DO, checkQuestion, initCommand, LEFT_ALONE, NEEDS_A_TERMINAL, SUGGESTED_AT_ONCE, WRITTEN, overwriteQuestion, taskQuestion, type ChoiceQuestion, type ConfirmQuestion, type TextQuestion } from "./init.js";
 
 const TASK = "add a function that says hello to a name, with a test";
 
@@ -203,7 +203,7 @@ describe("the things you'd like done", () => {
 
     await initCommand({}, context(repo).ctx, ask);
 
-    expect(asked.slice(3)).toEqual([taskQuestion([]), taskQuestion(["add a hello"]), taskQuestion(["add a hello", "add a goodbye"])].map(
+    expect(asked.slice(3, 6)).toEqual([taskQuestion([]), taskQuestion(["add a hello"]), taskQuestion(["add a hello", "add a goodbye"])].map(
       (question) => ({ ...question, validate: expect.any(Function) }),
     ));
     expect(JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"))).toMatchObject({ tasks: ["add a hello", "add a goodbye"] });
@@ -250,6 +250,85 @@ describe("the things you'd like done", () => {
   });
 });
 
+describe("running some at the same time", () => {
+  /** Enter for the description and the check, then three things to do. */
+  const THREE = [undefined, undefined, "add a hello", "add a goodbye", "add a welcome"];
+  const written = (repo: string) => JSON.parse(readFileSync(CONFIG_FILE(repo), "utf-8"));
+  const yesOrNo = (question: unknown): question is ConfirmQuestion =>
+    typeof (question as ConfirmQuestion).default === "boolean";
+
+  it("asks once more than one thing is listed, saying how many there are and suggesting a number", async () => {
+    const repo = sample();
+    const { ask, asked } = scriptedAsk({ texts: THREE });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    const question = asked.at(-1) as ConfirmQuestion;
+    expect(question).toEqual(atOnceQuestion(3));
+    expect(question.message).toContain("3 things to do");
+    expect(question.message).toContain(`${SUGGESTED_AT_ONCE} at once`);
+  });
+
+  it("says in one sentence that it costs more at the same time and uses a working copy for each", () => {
+    const sentences = atOnceQuestion(3).message.split(/(?<=[.?])\s+/);
+    const explaining = sentences.filter((sentence) => /costs more|working copy/.test(sentence));
+
+    expect(explaining).toHaveLength(1);
+    expect(explaining[0]).toMatch(/costs more at the same time.*working copy/);
+  });
+
+  it("suggests two: the smallest number that is more than one at a time", () => {
+    expect(SUGGESTED_AT_ONCE).toBe(2);
+  });
+
+  it("writes the suggested number when told yes, and `delivery validate` reports it", async () => {
+    const repo = sample();
+    const { ask } = scriptedAsk({ texts: THREE, confirms: [true] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(written(repo)).toMatchObject({ concurrency: SUGGESTED_AT_ONCE });
+    const { ctx, lines } = context(repo);
+    expect(await validateCommand({}, ctx)).toBe(EXIT.ok);
+    expect(lines).toContain(`✓ concurrency: up to ${SUGGESTED_AT_ONCE} tasks at once (3 queued)`);
+  });
+
+  it.each([
+    { answer: "Enter", confirms: [] as boolean[] },
+    { answer: "no", confirms: [false] },
+  ])("writes nothing about it on $answer, leaving one at a time", async ({ confirms }) => {
+    const repo = sample();
+    const { ask, asked } = scriptedAsk({ texts: THREE, confirms });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect((asked.at(-1) as ConfirmQuestion).default).toBe(false);
+    expect(written(repo)).toMatchObject({ tasks: ["add a hello", "add a goodbye", "add a welcome"] });
+    expect(written(repo)).not.toHaveProperty("concurrency");
+  });
+
+  it("does not ask when only one thing is listed", async () => {
+    const repo = sample();
+    const { ask, asked } = scriptedAsk({ texts: [undefined, undefined, TASK], confirms: [true] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(asked.some(yesOrNo)).toBe(false);
+    expect(written(repo)).not.toHaveProperty("concurrency");
+  });
+
+  it("leaves the setting out on a second run that says no, though the file being replaced had it", async () => {
+    const repo = sample();
+    writeFileSync(CONFIG_FILE(repo), `${JSON.stringify({ tasks: ["a", "b"], concurrency: 2 })}\n`);
+    const { ask } = scriptedAsk({ texts: THREE, confirms: [true, false] });
+
+    await initCommand({}, context(repo).ctx, ask);
+
+    expect(written(repo)).toMatchObject({ tasks: ["add a hello", "add a goodbye", "add a welcome"] });
+    expect(written(repo)).not.toHaveProperty("concurrency");
+  });
+});
+
 describe("the words it uses", () => {
   it("says everything in everyday words, with none of the harness's own vocabulary", () => {
     const shown = [
@@ -263,10 +342,11 @@ describe("the words it uses", () => {
       ALREADY_LISTED,
       overwriteQuestion("delivery.config.json").message,
       overwriteQuestion("delivery.config.js").message,
+      atOnceQuestion(3).message,
     ];
 
     for (const text of shown) {
-      expect(text).not.toMatch(/domain|queue|intent|gate|closer|worktree|envelope|surface|case file|role config|schema/i);
+      expect(text).not.toMatch(/domain|queue|intent|gate|closer|worktree|envelope|surface|case file|role config|schema|concurrency/i);
     }
   });
 });

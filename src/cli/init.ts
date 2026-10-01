@@ -161,6 +161,35 @@ async function askTasks(ask: Ask): Promise<string[]> {
   }
 }
 
+/**
+ * How many to suggest running at the same time: the smallest number that is
+ * "some at once" at all, so saying yes at most doubles what is being spent at
+ * any moment and adds one working copy. It can never be more than the list,
+ * because the question is only asked with two or more things listed.
+ * ponytail: a fixed suggestion, not sized to the list or the machine. Revisit
+ * if owners routinely type a larger number in its place.
+ */
+export const SUGGESTED_AT_ONCE = 2;
+
+/**
+ * Whether to work on some of the list at the same time. Enter means no: one at
+ * a time is what every project gets unless its owner says otherwise, and
+ * nobody's costs should change because they pressed Enter.
+ */
+export const atOnceQuestion = (listed: number): ConfirmQuestion => ({
+  message:
+    `You've listed ${listed} things to do. Shall I work on some of them at the same time? ` +
+    "That costs more at the same time and uses a working copy of your project for each one. " +
+    `I'd suggest ${SUGGESTED_AT_ONCE} at once; say no and they are done one at a time.`,
+  default: false,
+});
+
+/** How many to run at the same time, or nothing when there is only one thing to do or the owner said no. */
+async function askAtOnce(ask: Ask, listed: number): Promise<number | undefined> {
+  if (listed < 2 || !(await ask.confirm(atOnceQuestion(listed)))) return undefined;
+  return SUGGESTED_AT_ONCE;
+}
+
 export const overwriteQuestion = (file: string): ConfirmQuestion => ({
   message: file.endsWith(".json")
     ? `There's already a ${file}. Shall I replace it with your answers?`
@@ -173,34 +202,39 @@ export const overwriteQuestion = (file: string): ConfirmQuestion => ({
  * because `task` is the hand-written one-off form. Parsed by the very schema
  * `delivery run` will parse it with, so this command can never write a file
  * its own loader would refuse. A blank description is left out rather than
- * written empty, which the loader would refuse. Limits are deliberately absent:
- * the defaults are better left implicit than frozen into a file nobody asked to set.
+ * written empty, which the loader would refuse. How many run at the same time
+ * is written only when the owner chose a number; left out, one at a time
+ * applies. Limits are deliberately absent: the defaults are better left
+ * implicit than frozen into a file nobody asked to set.
  */
 export function configFrom({
   description,
   check,
   closer,
   tasks,
+  atOnce,
 }: {
   description: string;
   check: string;
   closer: string;
   tasks: string[];
+  atOnce?: number;
 }): DeliveryConfig {
   return DeliveryConfig.parse({
     ...(description.trim() === "" ? {} : { domain: description }),
     tasks,
     gate: { type: "command", command: check, parseMode: "exitcode" },
     closer: { type: closer },
+    ...(atOnce === undefined ? {} : { concurrency: atOnce }),
   });
 }
 
 /**
  * `delivery init`: set a project up by answering questions instead of writing
  * the file by hand. It asks what the project is, what checks the agent's work,
- * what happens to work that passes, and what you'd like done, one thing at a
- * time, and writes the answers where the next `delivery run` will find them
- * with no flags at all.
+ * what happens to work that passes, what you'd like done, one thing at a time,
+ * and, when that is more than one thing, whether to work on some at the same time,
+ * and writes the answers where the next `delivery run` will find them with no flags at all.
  */
 export async function initCommand(options: InitOptions, ctx: CommandContext, ask: Ask): Promise<ExitCode> {
   // Before the repository is even looked for: needing somebody to answer is
@@ -223,8 +257,9 @@ export async function initCommand(options: InitOptions, ctx: CommandContext, ask
   const check = await ask.text(checkQuestion(await inferredCheck(repoPath)));
   const closer = await ask.choose(CLOSER_QUESTION);
   const tasks = await askTasks(ask);
+  const atOnce = await askAtOnce(ask, tasks.length);
 
-  await writeFile(file, `${JSON.stringify(configFrom({ description, check, closer, tasks }), null, 2)}\n`);
+  await writeFile(file, `${JSON.stringify(configFrom({ description, check, closer, tasks, atOnce }), null, 2)}\n`);
   ctx.writeLine(WRITTEN(file));
   return EXIT.ok;
 }

@@ -18,12 +18,20 @@ export function context(cwd: string, { interactive = true }: { interactive?: boo
  * An answer left out is Enter: the question's own default. An answer the
  * question refuses is recorded in `refused` and the next scripted answer is
  * tried, as a person would type again; a refused answer with nothing scripted
- * after it fails the test rather than asking forever.
+ * after it fails the test rather than asking forever. `confirms` answers the
+ * yes-or-no questions in the order they are asked; once it runs out, `confirm`
+ * answers every one, and with neither it is the question's own default.
  */
-export function scriptedAsk({ texts = [], choice, confirm }: { texts?: (string | undefined)[]; choice?: string; confirm?: boolean } = {}) {
+export function scriptedAsk({
+  texts = [],
+  choice,
+  confirm,
+  confirms = [],
+}: { texts?: (string | undefined)[]; choice?: string; confirm?: boolean; confirms?: boolean[] } = {}) {
   const asked: (TextQuestion | ChoiceQuestion | ConfirmQuestion)[] = [];
   const refused: string[] = [];
   const queue = [...texts];
+  const yesOrNo = [...confirms];
   const ask: Ask = {
     text(question) {
       asked.push(question);
@@ -42,7 +50,7 @@ export function scriptedAsk({ texts = [], choice, confirm }: { texts?: (string |
     },
     confirm(question) {
       asked.push(question);
-      return Promise.resolve(confirm ?? question.default);
+      return Promise.resolve(yesOrNo.shift() ?? confirm ?? question.default);
     },
   };
   return { ask, asked, refused };
