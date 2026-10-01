@@ -268,6 +268,7 @@ ordering, finer-grained hold) is not sliced.
 ## Slice 7: Be Offered a Sensible Number of Tasks at Once During Set-Up
 
 **Status:** ✅ Complete — 2026-10-01 — `1672989`
+**Tests:** ✅ Recorded — 2026-10-01 — `a7c52ad` — cli — 1 UAT + 2 AC, 0 skipped
 **Delivers:** When `delivery init` sets up a project with more than one task, it asks whether to run some at the same time and offers a conservative number, instead of silently choosing.
 
 ### Prerequisites
