@@ -442,6 +442,8 @@ you want and I'll propose how to verify it".
 
 ## Item 10: Multi-Surface Supervisor
 
+**Status:** ✅ Complete — 2026-10-01 — spec: `docs/superpowers/specs/2026-09-26-multi-surface-supervisor-design.md`
+
 **Delivers:** A supervisor that runs N surfaces concurrently against one
 target, with a shared task queue, worktree pool, breaker-based shared-fate
 handling, and run-level budgets.
