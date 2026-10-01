@@ -120,6 +120,10 @@ main was not changed. To look at the work: git log surface/<run-id>
 run stopped because it needs a decision from you, that decision is the first thing
 it prints, with the evidence behind it underneath.
 
+Once your project has a list of tasks (the next guide sets one up), `delivery report` is the
+command to come back to: it says in plain words which tasks landed, which need you, and what to do
+about each. See [Come back to your task list](../README.md#come-back-to-your-task-list).
+
 ## Where to go next
 
 - [Setting up a project](project-configuration.md): the next step. Describe your project
