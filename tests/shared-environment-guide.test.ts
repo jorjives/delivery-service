@@ -95,10 +95,18 @@ describe("docs/shared-environment.md", () => {
   // one the guide happens to show.
   const noticedByEither = /^It was first noticed by \[\d+\/4\] add a function that (?:turns a title into a URL slug|shortens long text to a given length), with a test: the shared helper \S+ is missing, so the check cannot run\.$/m;
 
+  // The held tasks are listed in the order they reached their check, so either order is right.
+  const heldEither = /^Held: \[\d+\/4\] add a function that (?:turns a title into a URL slug|shortens long text to a given length), with a test, \[\d+\/4\] add a function that (?:turns a title into a URL slug|shortens long text to a given length), with a test\.$/m;
+
   const expectShown = (stdout: string, section: string) => {
     for (const line of outputBlock(sectionOf(guide, section)).filter((shown) => shown !== "…")) {
       if (line.startsWith("It was first noticed by ")) {
         expect(stdout, `the guide shows "${line}"`).toMatch(noticedByEither);
+        continue;
+      }
+      if (line.startsWith("Held: ")) {
+        expect(stdout, `the guide shows "${line}"`).toMatch(heldEither);
+        expect(stdout).not.toMatch(/^Held: .*slug.*slug|^Held: .*shortens.*shortens/m);
         continue;
       }
       expect(stdout, `the guide shows "${line}"`).toMatch(documented(line));
