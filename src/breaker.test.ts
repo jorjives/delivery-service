@@ -2,13 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RunEntry } from "./schema.js";
-import { breakerOf, nextBreaker, openDispatch, openTrip, repairsUsed, requestedInOpenTrip, servedAlready, tripsOf, createRunBreaker, couldNotRepair, RECOVERED_REPAIR, type BreakerChange } from "./breaker.js";
+import { RunEntry } from "./schema.js";
+import { breakerOf, nextBreaker, openDispatch, openTrip, repairsUsed, requestedInOpenTrip, servedAlready, tripsOf, createRunBreaker, couldNotRepair, RECOVERED_REPAIR, signalsSinceHealthy, SHARED_ERROR_THRESHOLD, type BreakerChange } from "./breaker.js";
 import { createRunFile, loadRunFile } from "./run-file.js";
 import { RunHalted } from "./errors.js";
 import type { Terminus } from "./ports.js";
 
 const degraded = (surfaceId: string, reason = "the shared helper is missing"): RunEntry => ({ t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId, reason } });
+const signal = (surfaceId: string): RunEntry => ({ t: "gate_error_signal", surfaceId });
+const aggregate = (surfaceId: string, surfaceIds: string[]): RunEntry => ({ t: "breaker_degraded", cause: { kind: "gate_error_aggregate", surfaceId, surfaceIds } });
 const dispatch = (attempt: number, surfaceId = "a"): RunEntry => ({ t: "repair_dispatch", attempt, sessionKey: `run-repair-${attempt}`, surfaceId });
 const terminus = (attempt: number, status: "completed" | "escalate" | "incomplete" = "completed"): RunEntry => ({ t: "repair_terminus", attempt, sessionKey: `run-repair-${attempt}`, status, rationale: `attempt ${attempt}` });
 const healthy: RunEntry = { t: "breaker_healthy" };
@@ -31,6 +33,7 @@ describe("how each entry moves the breaker", () => {
       { t: "slot_free", slot: 1, surfaceId: "a", outcome: "closed" },
       { t: "held", surfaceId: "b" },
       { t: "repair_request", surfaceId: "a", key: null },
+      signal("a"),
     ];
     for (const entry of quiet) expect(nextBreaker("DEGRADED", entry)).toBe("DEGRADED");
   });
@@ -50,6 +53,37 @@ describe("the run's repairs", () => {
   it("finds a dispatch that never recorded a terminus, and only that", () => {
     expect(openDispatch([degraded("a"), dispatch(1)])).toMatchObject({ attempt: 1 });
     expect(openDispatch([degraded("a"), dispatch(1), terminus(1)])).toBeUndefined();
+  });
+});
+
+describe("the tasks whose check kept erroring", () => {
+  it("names each task once, in the order they first reported", () => {
+    expect(signalsSinceHealthy([signal("a"), signal("b"), signal("a")])).toEqual(["a", "b"]);
+    expect(signalsSinceHealthy([])).toEqual([]);
+  });
+
+  it("forgets every report made before the environment was last healthy", () => {
+    expect(signalsSinceHealthy([signal("a"), signal("b"), aggregate("b", ["a", "b"]), dispatch(1, "b"), terminus(1), healthy, signal("c")])).toEqual(["c"]);
+    expect(signalsSinceHealthy([signal("a"), degraded("z"), dispatch(1, "z"), terminus(1), healthy])).toEqual([]);
+  });
+
+  it("takes two different tasks to call it shared", () => {
+    expect(SHARED_ERROR_THRESHOLD).toBe(2);
+  });
+
+  it("records a trip those reports caused, in the copy of the task that reached the threshold", () => {
+    const [trip] = tripsOf([signal("a"), signal("b"), aggregate("b", ["a", "b"]), dispatch(1, "b"), terminus(1), healthy]);
+    expect(trip).toMatchObject({
+      cause: { kind: "gate_error_aggregate", surfaceId: "b", surfaceIds: ["a", "b"] },
+      held: ["b"],
+      repairs: [{ attempt: 1, surfaceId: "b", status: "completed" }],
+      ended: "repaired",
+    });
+  });
+
+  it("refuses a trip that names fewer than two tasks", () => {
+    expect(RunEntry.safeParse(aggregate("a", ["a"])).success).toBe(false);
+    expect(RunEntry.safeParse(aggregate("b", ["a", "b"])).success).toBe(true);
   });
 });
 

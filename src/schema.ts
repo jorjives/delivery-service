@@ -327,9 +327,12 @@ const SurfaceId = z.string().min(1);
 export const RepairStatus = z.enum(["completed", "escalate", "incomplete"]);
 export type RepairStatus = z.infer<typeof RepairStatus>;
 
-/** What tripped the breaker. One kind so far; repeated check errors across tasks are the next. */
+/** What tripped the breaker. Both kinds name `surfaceId`: the task whose report tripped it, in whose copy the repair runs. */
 export const BreakerCause = z.discriminatedUnion("kind", [
+  // A task found the check could not run before it had started.
   z.object({ kind: z.literal("gate_maintenance"), surfaceId: SurfaceId, reason: z.string() }),
+  // The check kept erroring in different tasks: `surfaceIds` is every task counted, in the order reported.
+  z.object({ kind: z.literal("gate_error_aggregate"), surfaceId: SurfaceId, surfaceIds: z.array(SurfaceId).min(2) }),
 ]);
 export type BreakerCause = z.infer<typeof BreakerCause>;
 
@@ -340,6 +343,8 @@ export const RunEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("breaker_degraded"), cause: BreakerCause }),
   // A task asked for the shared environment to be repaired; `key` names the setback it asked about, when it has one.
   z.object({ t: z.literal("repair_request"), surfaceId: SurfaceId, key: z.string().nullable() }),
+  // A task's check kept erroring until its own re-checks ran out. At most one per task since the environment was last healthy.
+  z.object({ t: z.literal("gate_error_signal"), surfaceId: SurfaceId }),
   // A task was held before checking or handing off its work.
   z.object({ t: z.literal("held"), surfaceId: SurfaceId }),
   // The dispatch entry is the burn on the run's repair limit.

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { logTail, resumeAction, type ResumeAction } from "../case-file.js";
 import { branchName } from "../provision.js";
-import type { BreakerState, RunOutcome, SurfaceState, TaskDef } from "../schema.js";
+import type { BreakerState, BreakerCause, RunOutcome, SurfaceState, TaskDef } from "../schema.js";
 import { repairsUsed, tripsOf, type Trip } from "../breaker.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
@@ -264,6 +264,16 @@ function taskLabel(view: SupervisedView, surfaceId: string): string {
   return `${tag}${taskIntent(task.taskDef)}`;
 }
 
+/** What tripped the breaker, as a person reads it. Total over the kinds, so a new one does not compile until it has words. */
+function whatBroke(view: SupervisedView, cause: BreakerCause): string {
+  switch (cause.kind) {
+    case "gate_maintenance":
+      return `It was first noticed by ${taskLabel(view, cause.surfaceId)}: ${cause.reason}.`;
+    case "gate_error_aggregate":
+      return `The check could not run in ${cause.surfaceIds.length} different tasks: ${cause.surfaceIds.map((surfaceId) => taskLabel(view, surfaceId)).join(", ")}.`;
+  }
+}
+
 /**
  * What a person reads first when the shared environment is not healthy: that
  * it broke and what is happening about it, which task found it and why, and
@@ -278,7 +288,7 @@ export function environmentNarration(view: SupervisedView): string[] {
       : `${view.breaker === "REPAIRING" ? "The shared environment is being repaired" : "Something in the shared environment looks broken"}: any task about to check or hand off its work is held until it is fixed.`;
   return [
     opening,
-    `It was first noticed by ${taskLabel(view, trip.cause.surfaceId)}: ${trip.cause.reason}.`,
+    whatBroke(view, trip.cause),
     `Held: ${trip.held.map((surfaceId) => taskLabel(view, surfaceId)).join(", ")}.`,
     ...(trip.ended === "gave_up" ? ["Once it is fixed, `delivery run` carries the held tasks on."] : []),
     "",

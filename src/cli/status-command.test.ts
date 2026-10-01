@@ -903,5 +903,36 @@ describe("delivery status for a run of several tasks at once", () => {
         reason: "the repair could not fix the shared environment: the helper is outside my copy; no task caused this",
       }]);
     });
+
+    it("says the check could not run in two different tasks when that is what tripped it", async () => {
+      const repo = initTempRepo("status-breaker-aggregate-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [HELLO, GOODBYE, "add a shout"], concurrency: 2 }) });
+      await writeRunRecord(repo, { runId: HELLO_RUN, task: HELLO });
+      await writeRunRecord(repo, { runId: GOODBYE_RUN, task: GOODBYE });
+      const reason = "the shared environment could not be repaired after 1 attempt; no task caused this";
+      const dir = await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 1 } }, [
+        { t: "slot_fill", slot: 1, surfaceId: HELLO_RUN, taskDef: { intent: HELLO } },
+        { t: "slot_fill", slot: 2, surfaceId: GOODBYE_RUN, taskDef: { intent: GOODBYE } },
+        { t: "gate_error_signal", surfaceId: HELLO_RUN },
+        { t: "gate_error_signal", surfaceId: GOODBYE_RUN },
+        { t: "breaker_degraded", cause: { kind: "gate_error_aggregate", surfaceId: GOODBYE_RUN, surfaceIds: [HELLO_RUN, GOODBYE_RUN] } },
+        { t: "repair_request", surfaceId: GOODBYE_RUN, key: "triage-3" },
+        { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: GOODBYE_RUN },
+        { t: "repair_terminus", attempt: 1, sessionKey: "run-repair-1", status: "incomplete", rationale: "ended without a result" },
+        { t: "run_escalated", reason },
+      ]);
+      await setRunOutcome(dir, { kind: "escalated", cause: "shared_environment", reason, at: "2026-09-30T10:00:00.000Z" });
+
+      const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
+
+      expect(stdout.split("\n").slice(0, 3)).toEqual([
+        "The shared environment could not be fixed after 1 attempt, so the run stopped; no task caused this.",
+        "The check could not run in 2 different tasks: [1/3] add a hello, [2/3] add a goodbye.",
+        "Held: [2/3] add a goodbye.",
+      ]);
+      expect(stdout).not.toMatch(/gate_error|aggregate/);
+
+      const document = JSON.parse((await delivery(["status", SUPERVISED, "--json"], { cwd: repo })).stdout);
+      expect(document.trips[0].cause).toEqual({ kind: "gate_error_aggregate", surfaceId: GOODBYE_RUN, surfaceIds: [HELLO_RUN, GOODBYE_RUN] });
+    });
   });
 });

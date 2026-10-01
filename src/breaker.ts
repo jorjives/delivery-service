@@ -15,6 +15,8 @@ const BREAKER_EDGES: Record<RunEntry["t"], (state: BreakerState) => BreakerState
   slot_free: (state) => state,
   held: (state) => state,
   repair_request: (state) => state,
+  // Evidence, not a trip: the trip it may lead to is its own `breaker_degraded` entry.
+  gate_error_signal: (state) => state,
   breaker_degraded: (state) => (state === "HEALTHY" ? "DEGRADED" : state),
   repair_dispatch: () => "REPAIRING",
   repair_terminus: () => "DEGRADED",
@@ -34,6 +36,20 @@ export function breakerOf(history: readonly RunEntry[]): BreakerState {
 /** Repair attempts spent, over the whole run: the dispatch entry is the burn. */
 export function repairsUsed(history: readonly RunEntry[]): number {
   return history.filter((entry) => entry.t === "repair_dispatch").length;
+}
+
+/**
+ * How many different tasks must each run out of re-checks on a check that
+ * keeps erroring, since the environment was last healthy, before the run
+ * treats it as shared.
+ */
+// ponytail: M=2 and no time window, so a scripted run reproduces it; retune (and consider a window) once real flake rates are known.
+export const SHARED_ERROR_THRESHOLD = 2;
+
+/** Every task that has reported since the environment was last healthy, each once, in the order first reported. */
+export function signalsSinceHealthy(history: readonly RunEntry[]): string[] {
+  const since = history.slice(history.findLastIndex((entry) => entry.t === "breaker_healthy") + 1);
+  return [...new Set(since.flatMap((entry) => (entry.t === "gate_error_signal" ? [entry.surfaceId] : [])))];
 }
 
 type Dispatch = Extract<RunEntry, { t: "repair_dispatch" }>;
