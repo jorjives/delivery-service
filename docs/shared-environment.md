@@ -2,7 +2,7 @@
 
 A run of several tasks at once uses one shared environment: files in the repository outside every task's copy. When something in that environment goes missing or becomes unusable, the first task to notice stops the entire run so it can be fixed once rather than by every task.
 
-This guide walks you through a concrete example. We'll break the shared helper our checks rely on, watch the run stop with that named as the cause, read what happened, fix it, and carry on.
+This guide walks you through a concrete example. We'll break the shared helper our checks rely on, watch the run stop with that named as the cause, read what happened, fix it, and carry on. The last two steps show a helper that comes and goes, and how the run tells one task's hiccup from a problem every task shares.
 
 ## 1. Get the example project
 
@@ -85,6 +85,52 @@ Every task on your list is done. Add another under `tasks` to keep going, or `de
 
 A new run picks up the held tasks from the stopped run and starts the queued ones. Each task runs, checks its work, and closes. The run finishes cleanly.
 
+## 5. A helper that comes and goes
+
+A helper that is missing from the start is found before any task begins, so the run treats it as shared straight away. One that fails now and then, while a task's finished work is being checked, is harder to tell from a one-off hiccup. The run waits for a second, different task to hit it before calling it shared.
+
+The example's check can act this out. Start again from a fresh copy of the example (step 1), then tell the check that the helper should not answer the first two tasks that check their work, four times each:
+
+```bash
+echo '{ "tasks": 2, "checks": 4 }' > shared/outage.json
+delivery run
+```
+
+```text
+Note: you have uncommitted changes. The agent works from your last commit, so it won't see them.
+Starting run <run-id>: 4 tasks, up to 2 at once
+…
+! Something in the shared environment looks broken. Holding any task about to check or hand off its work while it is repaired; work already under way carries on.
+  - repairing (attempt 1 of 2)
+✓ Fixed. Resuming.
+…
+Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.
+```
+
+Four is one check and the three free re-checks every task gets (`budgets.gateError`). What happens:
+
+1. The first task to run out of re-checks is on its own. Nothing run-wide is said and no other task is held: it repairs its own check on its own limit, exactly as a task run by itself would.
+2. When a second, different task runs out too, that is two tasks with the same problem. The run says the shared environment looks broken, holds checks and hand-offs, repairs once and carries on.
+3. The same task erroring again does not count twice, and once a repair has worked the count starts afresh.
+
+With `"tasks": 1` only one task is affected: it sorts itself out and you see no run-wide message at all.
+
+A session stopped by a usage limit is never counted here. It is reported as what it is: "the AI service is limiting requests" or "the spending limit has been reached".
+
+## 6. Look back at the repair
+
+```bash
+delivery status
+```
+
+```text
+Run <run-id>, started <when>: 4 tasks, up to 2 at once
+Environment: healthy (repaired once during this run)
+4 done
+```
+
+The environment line says the run repaired it. `delivery status <run-id> --json` has the detail under `trips`: for this run, `cause.surfaceIds` names the two tasks whose check kept erroring. Remove `shared/outage.json` when you have finished.
+
 ## When the repair can fix it
 
-If what broke is something the repair can reach (a file inside a task's own copy), it says "Fixed. Resuming.", held tasks carry on, and `delivery status` shows "Environment: healthy". The shared environment is back in use, and your tasks finish where they left off.
+If what broke is something the repair can reach (a file inside a task's own copy), it says "Fixed. Resuming.", held tasks carry on, and `delivery status` shows "Environment: healthy (repaired once during this run)". The shared environment is back in use, and your tasks finish where they left off.

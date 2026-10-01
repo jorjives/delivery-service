@@ -6,7 +6,7 @@
 // see is what the command prints. The fixture's own shape is checked here too:
 // one fixture, one guide, one test.
 
-import { cpSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -24,6 +24,8 @@ const STEP = {
   break: "## 2. Break the shared helper and run the list",
   status: "## 3. See what stopped it",
   fix: "## 4. Put it back and carry on",
+  comesAndGoes: "## 5. A helper that comes and goes",
+  lookBack: "## 6. Look back at the repair",
 } as const;
 
 const scratch = useScratch();
@@ -48,23 +50,44 @@ describe("the shared-environment example", () => {
   it("ships only its source, its check, its helper and its configuration", () => {
     expect(readdirSync(EXAMPLE).sort()).toEqual(["README.md", "check.mjs", "delivery.config.json", "package.json", "shared", "text.js", "text.test.js"]);
   });
+
+  it("does not answer the first copies to check their work while an outage is set, then answers again", async () => {
+    const copy = scratch("shared-environment-outage-");
+    const other = scratch("shared-environment-outage-other-");
+    cpSync(EXAMPLE, copy, { recursive: true });
+    cpSync(EXAMPLE, other, { recursive: true });
+    writeFileSync(join(copy, "shared", "outage.json"), JSON.stringify({ tasks: 1, checks: 2 }));
+    const check = (await import(pathToFileURL(join(copy, "check.mjs")).href)).default;
+
+    // The starting point is never affected: only a check of finished work is.
+    expect((await check.baseline({ worktreePath: copy })).status).toBe("PASS");
+    expect(await check.check({ worktreePath: copy })).toMatchObject({ status: "ERROR", detail: expect.stringContaining("did not answer") });
+    expect((await check.check({ worktreePath: copy })).status).toBe("ERROR");
+    expect((await check.check({ worktreePath: copy })).status).toBe("PASS");
+    // One copy was to be affected, and one has been.
+    expect((await check.check({ worktreePath: other })).status).toBe("PASS");
+  });
 });
+
+/** A fresh copy of the example as step 1 sets it up, and an agent whose every session answers "done" and writes a small file. */
+async function freshCopy(prefix: string): Promise<{ repo: string; env: NodeJS.ProcessEnv }> {
+  const repo = scratch(prefix);
+  cpSync(EXAMPLE, repo, { recursive: true });
+  git(repo, ["init", "-b", "main"]);
+  git(repo, ["add", "."]);
+  git(repo, ["commit", "-m", "start"]);
+  const script: MockScript = { expectations: [{ effects: [{ write: { path: "note.txt", content: "done\n" } }], json: { status: "completed", rationale: "done" } }] };
+  const scriptPath = join(scratch("shared-environment-script-"), "mock.json");
+  await writeMockScript(scriptPath, script);
+  return { repo, env: { ...process.env, [TEST_MOCK_SCRIPT]: scriptPath, XDG_STATE_HOME: scratch("shared-environment-state-") } };
+}
 
 describe("docs/shared-environment.md", () => {
   let repo: string;
   let env: NodeJS.ProcessEnv;
 
   beforeAll(async () => {
-    repo = scratch("shared-environment-guide-");
-    cpSync(EXAMPLE, repo, { recursive: true });
-    git(repo, ["init", "-b", "main"]);
-    git(repo, ["add", "."]);
-    git(repo, ["commit", "-m", "start"]);
-    // Every session answers "done" and writes a small file: a repair that says it fixed things but cannot reach the helper.
-    const script: MockScript = { expectations: [{ effects: [{ write: { path: "note.txt", content: "done\n" } }], json: { status: "completed", rationale: "done" } }] };
-    const scriptPath = join(scratch("shared-environment-script-"), "mock.json");
-    await writeMockScript(scriptPath, script);
-    env = { ...process.env, [TEST_MOCK_SCRIPT]: scriptPath, XDG_STATE_HOME: scratch("shared-environment-state-") };
+    ({ repo, env } = await freshCopy("shared-environment-guide-"));
   });
 
   // Two tasks run at once and either may reach its check first, so "It was
@@ -100,4 +123,32 @@ describe("docs/shared-environment.md", () => {
     expect(status).toBe(EXIT.ok);
     expectShown(stdout, STEP.fix);
   }, RUN_TIMEOUT);
+});
+
+describe("docs/shared-environment.md, when the helper comes and goes", () => {
+  let repo: string;
+  let env: NodeJS.ProcessEnv;
+
+  beforeAll(async () => {
+    ({ repo, env } = await freshCopy("shared-environment-outage-guide-"));
+  });
+
+  const shown = (section: string) => outputBlock(sectionOf(guide, section)).filter((line) => line !== "…");
+
+  it("treats the second task to hit it as a shared problem, repairs once and finishes the list", () => {
+    // The guide's own command: echo '{ "tasks": 2, "checks": 4 }' > shared/outage.json
+    expect(sectionOf(guide, STEP.comesAndGoes)).toContain(`echo '{ "tasks": 2, "checks": 4 }' > shared/outage.json`);
+    writeFileSync(join(repo, "shared", "outage.json"), '{ "tasks": 2, "checks": 4 }\n');
+
+    const { stdout, status } = runDelivery(["run"], { cwd: repo, env });
+
+    expect(status).toBe(EXIT.ok);
+    for (const line of shown(STEP.comesAndGoes)) expect(stdout, `the guide shows "${line}"`).toMatch(documented(line));
+    expect(stdout.split("\n").filter((line) => line.startsWith("  - repairing"))).toHaveLength(1);
+  }, RUN_TIMEOUT);
+
+  it("shows the repair when looking back", () => {
+    const { stdout } = runDelivery(["status"], { cwd: repo, env });
+    for (const line of shown(STEP.lookBack)) expect(stdout, `the guide shows "${line}"`).toMatch(documented(line));
+  });
 });
