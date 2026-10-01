@@ -5,6 +5,7 @@ import { appendEntry, create, initialCaseFile, setBaseBranch, setOutcome } from 
 import { runsRoot } from "../run-location.js";
 import type { RunRecord } from "../run-records.js";
 import type { CaseFileOutcome, CloserRef, CreateHeader, GateRef, HistoryEntry, OutcomeCause, RunEntry, RunFile, RunOutcome } from "../schema.js";
+import type { RecordSnapshot } from "./snapshot.js";
 
 /** Test support: one task's run, as much of it as a report reads. No `outcome` leaves it unfinished. */
 export interface TaskRun {
@@ -144,3 +145,14 @@ export const homepageAsks = recordOf({
 
 /** Set to work, and nothing since. */
 export const footerWorking = recordOf({ runId: ID.footer, task: FOOTER, closerRef: MERGE, history: attempt(1, "first go") });
+
+/** Test support: what `loadSnapshot` would return for the four-task list, nothing run and nothing going unless said. */
+export const snapshotOf = (over: Partial<RecordSnapshot> = {}): RecordSnapshot => ({
+  subject: { kind: "list" },
+  live: false,
+  list: [FORM, FOOTER, HOMEPAGE, BANNER].map((intent) => ({ intent })),
+  records: [],
+  runs: [],
+  damaged: [],
+  ...over,
+});
