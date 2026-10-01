@@ -52,6 +52,8 @@ several surfaces with a controlled interleaving, rather than having to run a rea
 concurrent session against real infrastructure to find out. Her existing goal (a
 working triage `role_cfg`, proven without reading source) is unchanged.
 
+**Goal extension (added by `observability-and-reporting-design`, autonomous run `20261001T131757Z`, for Item 11; ASSUMED, not human-confirmed):** Priya's goals so far cover wiring a working role configuration and proving it under concurrency. Item 11 adds a feedback half: after a run she should be able to see, per task and for the run as a whole, how much of each retry budget was spent and every triage decision with its rationale, so she can tune her gate and role configuration from evidence rather than by reading `log.jsonl` by hand. She should also be able to consume the same facts as versioned, machine-readable output (for her own dashboard or tooling) without parsing prose, and, when a gate-maintenance or shared-environment repair ran, see what it changed in her check. Her existing goals are unchanged.
+
 ---
 
 ## 2. Marcus Webb — On-call Engineer (technical triage reader)
@@ -84,6 +86,8 @@ to say plainly this is a run-wide environment problem affecting every paused
 surface, not a defect in any one task, so he doesn't spend time diagnosing a task
 that was never the cause. His existing goal and its success bar are otherwise
 unchanged.
+
+**Goal extension (added by `observability-and-reporting-design`, autonomous run `20261001T131757Z`, for Item 11; ASSUMED, not human-confirmed):** Marcus's goal is to decide from the packet alone. Item 11 adds that the packet is not the whole story he needs on a bad night: he should also be able to read, in one place, the triage history that led to the escalation (each round's trigger, verdict and rationale), the retry budgets at the moment it stopped, and, if a repair had run, what it changed, and to watch a run that is still going without attaching to the process that drives it. His existing goal and its success bar (verbatim evidence, no transcripts first) are unchanged.
 
 ---
 
@@ -151,3 +155,5 @@ shared-environment "breaker"), that the whole run has paused itself to fix it,
 said in the same plain-language spirit as her existing goals, not "the breaker
 tripped to DEGRADED". Her goals above (first run, running a project, reading
 escalation output) are unchanged.
+
+**Goal extension (added by `observability-and-reporting-design`, autonomous run `20261001T131757Z`, for Item 11; ASSUMED, not human-confirmed):** Dana's goals so far are starting a run, describing a project, and reading one task's output. Item 11 asks her to come back to a whole list of tasks (often run unattended overnight) and know three things from the first screen, in her own words: what was done and landed, what needs her and what the decision is, and what to do about each one next. She should be able to glance at a run in progress and tell which tasks are working, waiting or stuck, and to keep a durable copy of the summary to read later or forward. She still never needs the words "surface", "budget", "triage", "verdict" or "breaker". Her existing goals are unchanged.
