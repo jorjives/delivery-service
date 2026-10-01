@@ -57,6 +57,7 @@
     "demo:mock-slice-1": "npx tsx demos/agent-mock-slice-1-honest-double.ts",
     "demo:mock-slice-3": "npx tsx demos/agent-mock-slice-3-scripted-pipeline.ts",
     "demo:mock-slice-4": "npx tsx demos/agent-mock-slice-4-misbehaving-agent.ts",
+    "demo:report-slice-1": "npx tsx demos/observability-slice-1-report.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {

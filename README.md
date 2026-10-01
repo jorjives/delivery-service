@@ -281,6 +281,10 @@ run recorded.
 run id that names nothing). It prints text only for now: for one JSON document about a run, use
 `delivery status --json`.
 
+To see a report without an agent or a sign-in, run `npm run demo:report-slice-1` in a checkout of
+this repository: it runs a list of four tasks against a scripted agent, prints the report, follows
+its advice, and prints the report again.
+
 ## See what happened to a run
 
 To find out how a run ended, in a new terminal or days later:
