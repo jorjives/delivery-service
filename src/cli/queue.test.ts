@@ -7,8 +7,9 @@ import { create, setOutcome } from "../case-file.js";
 import type { GateRef, TaskDef } from "../schema.js";
 import { writeRunRecord } from "./command-fixtures.js";
 import { allRuns } from "./runs.js";
-import { runsRoot } from "./run-location.js";
-import { environmentGaveUp, findQueueRun, listExitCode, listStandings, liveRunFound, nextQueueTask, queuePositionOf, queueTasks, runPickedUp, runShape, taskEnded } from "./queue.js";
+import { runsRoot } from "../run-location.js";
+import { findQueueRun, queuePositionOf } from "../task-list.js";
+import { environmentGaveUp, listExitCode, listStandings, liveRunFound, nextQueueTask, queueTasks, runPickedUp, runShape, taskEnded } from "./queue.js";
 import { EXIT } from "./failures.js";
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };

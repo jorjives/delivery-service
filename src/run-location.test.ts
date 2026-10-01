@@ -3,10 +3,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { cleanGitEnv } from "../git-env.js";
-import { initTempRepo } from "../temp-repo.js";
+import { cleanGitEnv } from "./git-env.js";
+import { initTempRepo } from "./temp-repo.js";
 import { prepareRunDir, repoKey, runIdFor, runPlace, runsRoot, stateHome, supervisedPlace, supervisedRunId } from "./run-location.js";
-import { startedInstant } from "./runs.js";
+import { startedInstant } from "./run-records.js";
 
 const AT = new Date("2026-09-14T21:03:09.123Z");
 

@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join } from "node:path";
-import type { SurfaceLocation } from "../ports.js";
+import type { SurfaceLocation } from "./ports.js";
 
 /** How many words of the task name a run. Enough to tell runs apart at a glance. */
 const SLUG_WORDS = 5;

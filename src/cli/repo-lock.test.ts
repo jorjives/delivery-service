@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
 import { initTempRepo } from "../temp-repo.js";
 import { repoLocked, takeRepoLock } from "./repo-lock.js";
-import { supervisorLockPath } from "./run-location.js";
+import { supervisorLockPath } from "../run-location.js";
 
 const repo = (prefix: string) => initTempRepo(prefix, { "package.json": "{}" });
 

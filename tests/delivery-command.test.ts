@@ -7,7 +7,7 @@ import { TEST_MOCK_SCRIPT } from "../src/cli/agent-session.js";
 import { EXIT } from "../src/cli/failures.js";
 import { loadRunFile } from "../src/run-file.js";
 import { repoLocked } from "../src/cli/repo-lock.js";
-import { supervisedRoot } from "../src/cli/run-location.js";
+import { supervisedRoot } from "../src/run-location.js";
 import { STOPPED_PART_WAY } from "../src/cli/queue.js";
 import { writeMockScript } from "../src/mock-script.js";
 import { initTempRepo } from "../src/temp-repo.js";

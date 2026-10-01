@@ -4,7 +4,8 @@ import { resumeRun } from "./drive.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
 import { refuseIfRunGoing } from "./queue.js";
-import { alreadyFinished, chooseRun, readRun, unfinishedRuns, type RunRecord } from "./runs.js";
+import type { RunRecord } from "../run-records.js";
+import { alreadyFinished, chooseRun, readRun, unfinishedRuns } from "./runs.js";
 
 /** What `delivery resume` was given on the command line, besides the run id. */
 export interface ResumeOptions {

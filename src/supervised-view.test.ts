@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setRunOutcome } from "../run-file.js";
-import type { CaseFileOutcome, RunEntry, RunFile, RunOutcome, SlotOutcome } from "../schema.js";
-import { ESCALATION, writeRunRecord, writeSupervisedRun } from "./command-fixtures.js";
-import { queueTasks } from "./queue.js";
-import { allRuns, readSupervisedRun } from "./runs.js";
+import { setRunOutcome } from "./run-file.js";
+import type { CaseFileOutcome, RunEntry, RunFile, RunOutcome, SlotOutcome } from "./schema.js";
+import { ESCALATION, writeRunRecord, writeSupervisedRun } from "./cli/command-fixtures.js";
+import { queueTasks } from "./cli/queue.js";
+import { allRuns, readSupervisedRun } from "./cli/runs.js";
 import { claimedBy, overallOutcome, standingCounts, supervisedView, type SupervisedView } from "./supervised-view.js";
 
 const RUN = "run-20260930T090000Z";

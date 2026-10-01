@@ -59,11 +59,6 @@ export interface Settings extends ProjectSettings {
   taskDef: TaskDef;
 }
 
-/** The task's own words, for the run's id and the line that announces it. A task is opaque to the harness, so one shaped another way still gets a run. */
-export function taskIntent(taskDef: TaskDef): string {
-  return typeof taskDef.intent === "string" && taskDef.intent.trim() !== "" ? taskDef.intent.trim() : "run";
-}
-
 /**
  * The task this invocation named, from the flag, the file it points at or the
  * environment. Undefined when nobody named one: a task sitting in the project's

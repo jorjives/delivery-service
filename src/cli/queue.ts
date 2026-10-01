@@ -1,4 +1,3 @@
-import { isDeepStrictEqual } from "node:util";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import type { RunHeader, SlotOutcome, TaskDef, UsageLimit } from "../schema.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
@@ -12,48 +11,16 @@ import type { CommandContext } from "./context.js";
 import { dispatchRepair, resumeRun, startRun } from "./drive.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
-import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "./run-location.js";
-import { allRuns, describeRun, newestFirst, readRun, startedAt, type RunRecord, unfinishedSupervisedRun } from "./runs.js";
+import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "../run-location.js";
+import type { RunRecord } from "../run-records.js";
+import { findQueueRun, stillToTake, taskIntent, type QueuePosition } from "../task-list.js";
+import { allRuns, describeRun, readRun, startedAt, unfinishedSupervisedRun } from "./runs.js";
 import { repoLocked, takeRepoLock } from "./repo-lock.js";
-import { taskIntent, type ProjectSettings } from "./settings.js";
-
-/** Where a task sits in the list as it is written now, counted from one, which is how "Task N of M" reads. */
-export interface QueuePosition {
-  task: number;
-  of: number;
-}
+import type { ProjectSettings } from "./settings.js";
 
 /** Everything this project's list asks for, in the order it was written. */
 export function queueTasks(config: DeliveryConfig): TaskDef[] {
   return (config.tasks ?? []).map(structureTask);
-}
-
-/**
- * The run that answers for a task, or none yet. Identity is what the task says:
- * a run's record pins the task it was started with, so comparing the two is
- * enough, and nothing about the queue has to be stored. Position is deliberately
- * not identity — a checked-in list is inserted into, reordered and trimmed, and a
- * remembered index would silently skip a new entry or repeat an old one.
- *
- * Several runs can answer for one task: someone ran the same words ad hoc, or
- * asked for a fresh start. The most recently started one is the project's
- * current answer, as it is everywhere else the harness picks "the latest".
- */
-export function findQueueRun(records: RunRecord[], taskDef: TaskDef): RunRecord | undefined {
-  const [answering] = newestFirst(records.filter((record) => isDeepStrictEqual(record.caseFile.header.taskDef, taskDef)));
-  return answering;
-}
-
-/** Whether a task is done with: only a delivered run is. One that escalated or was stopped still needs the owner, so the list waits on it. */
-const isClosed = (record: RunRecord | undefined): boolean => record?.caseFile.outcome?.kind === "closed";
-
-/**
- * Whether a list task is still for a run to take: its run has not been
- * delivered, and no slot has already taken it in this run. The one rule
- * `delivery run` fills each slot by, and `delivery status` counts queued tasks by.
- */
-export function stillToTake(records: RunRecord[], taskDef: TaskDef, claimed: readonly TaskDef[] = []): boolean {
-  return !isClosed(findQueueRun(records, taskDef)) && !claimed.some((taken) => isDeepStrictEqual(taken, taskDef));
 }
 
 /**
@@ -65,12 +32,6 @@ export function stillToTake(records: RunRecord[], taskDef: TaskDef, claimed: rea
  */
 export function nextQueueTask(records: RunRecord[], tasks: TaskDef[], claimed: readonly TaskDef[] = []): QueuePosition | undefined {
   const index = tasks.findIndex((taskDef) => stillToTake(records, taskDef, claimed));
-  return index === -1 ? undefined : { task: index + 1, of: tasks.length };
-}
-
-/** Where a task sits in the list as it is written now, or nothing when the list no longer asks for it. */
-export function queuePositionOf(tasks: TaskDef[], taskDef: TaskDef): QueuePosition | undefined {
-  const index = tasks.findIndex((task) => isDeepStrictEqual(task, taskDef));
   return index === -1 ? undefined : { task: index + 1, of: tasks.length };
 }
 

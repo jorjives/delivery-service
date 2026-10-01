@@ -9,7 +9,7 @@ import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { ESCALATION, delivery, PACKAGE, writeRunRecord, writeSupervisedRun } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { runPlace, runsRoot } from "./run-location.js";
+import { runPlace, runsRoot } from "../run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
 import { ALL_AND_ONE, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
 import { initTempRepo } from "../temp-repo.js";

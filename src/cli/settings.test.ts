@@ -18,9 +18,9 @@ import {
   NO_TASK,
   NO_TASK_FILE,
   resolveSettings,
-  taskIntent,
   type RunFlags,
 } from "./settings.js";
+import { taskIntent } from "../task-list.js";
 
 const TASK = "add a function that says goodbye to a name, with a test";
 const NPM_TEST = { type: "command", command: "npm test", parseMode: "exitcode" } as const;

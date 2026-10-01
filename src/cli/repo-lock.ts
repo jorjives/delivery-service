@@ -1,5 +1,5 @@
 import lockfile from "proper-lockfile";
-import { prepareDeliveryDir, supervisorLockPath } from "./run-location.js";
+import { prepareDeliveryDir, supervisorLockPath } from "../run-location.js";
 
 /**
  * How long a lock nobody has touched is still taken to be held. `proper-lockfile`

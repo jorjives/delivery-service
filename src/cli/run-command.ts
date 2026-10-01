@@ -14,9 +14,9 @@ import {
   ignoredSettings,
   resolveProject,
   resolveSettings,
-  taskIntent,
   type RunFlags,
 } from "./settings.js";
+import { taskIntent } from "../task-list.js";
 
 export { NO_TASK } from "./settings.js";
 

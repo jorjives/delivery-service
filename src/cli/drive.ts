@@ -12,9 +12,10 @@ import type { CommandContext } from "./context.js";
 import { type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
 import { pickingUp } from "./output.js";
-import { prepareRunDir, runIdFor, runPlace } from "./run-location.js";
-import type { RunRecord } from "./runs.js";
-import { checkCustomModules, DEFAULT_CLOSER, taskIntent, type ProjectSettings } from "./settings.js";
+import { prepareRunDir, runIdFor, runPlace } from "../run-location.js";
+import type { RunRecord } from "../run-records.js";
+import { taskIntent } from "../task-list.js";
+import { checkCustomModules, DEFAULT_CLOSER, type ProjectSettings } from "./settings.js";
 
 /** A run about to exist: what it is being asked to do, and everything its project asks of every run. */
 export interface RunStart extends ProjectSettings {

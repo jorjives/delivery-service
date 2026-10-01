@@ -8,7 +8,8 @@ import { rolesFor } from "./roles.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { EVERY_TASK_DONE, nextQueueTask, queueTasks, taskHeading } from "./queue.js";
 import { allRuns } from "./runs.js";
-import { NO_TASK, taskIntent } from "./settings.js";
+import { taskIntent } from "../task-list.js";
+import { NO_TASK } from "./settings.js";
 import { locateConfig, readProject, type ValidateOptions } from "./validate-command.js";
 
 /** The roles an owner can see the instructions of. Triage is the harness's own and is not configurable from the file. */
