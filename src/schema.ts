@@ -206,6 +206,10 @@ export const DispatchEntry = z.object({
 });
 export type DispatchEntry = z.infer<typeof DispatchEntry>;
 
+/** A usage limit that can stop an agent session: the API's request rate, or the account's spending cap. */
+export const UsageLimit = z.enum(["rate", "spend"]);
+export type UsageLimit = z.infer<typeof UsageLimit>;
+
 export const TerminusEntry = z.object({
   t: z.literal("terminus"),
   attempt: z.number().int().positive(),
@@ -219,6 +223,9 @@ export const TerminusEntry = z.object({
   // from the log on resume. Optional, so every case file written before it
   // existed stays valid and keeps the retry it was recorded expecting.
   notRun: z.literal(true).optional(),
+  // Incomplete only: a usage limit stopped the session. Recorded so a report
+  // can say so; no routing decision reads it.
+  limit: UsageLimit.optional(),
 });
 export type TerminusEntry = z.infer<typeof TerminusEntry>;
 
@@ -266,6 +273,29 @@ export type HistoryEntry = z.infer<typeof HistoryEntry>;
 
 // --- Outcome ---
 
+/**
+ * Why a task stopped, as a closed set a reader can switch on. Written with the
+ * outcome and read only by reporting: nothing that decides what a run does
+ * next reads it.
+ */
+export const OutcomeCause = z.object({
+  kind: z.enum([
+    "authority",
+    "repair_gave_up",
+    "session_not_run",
+    "budget",
+    "triage_failure",
+    "triage_escalated",
+    "triage_abort",
+    "provisioning",
+  ]),
+  // authority and session_not_run only: whose session it was.
+  role: z.enum(["worker", "gate-maintenance"]).optional(),
+  // budget only: which retries ran out.
+  population: z.enum(["correction", "gateError", "gateMaintenance", "terminus", "close"]).optional(),
+});
+export type OutcomeCause = z.infer<typeof OutcomeCause>;
+
 export const CaseFileOutcome = z.object({
   kind: z.enum(["closed", "escalated", "aborted"]),
   source: z.string(),
@@ -274,6 +304,9 @@ export const CaseFileOutcome = z.object({
   // Escalated only: the ref holding the EscalationPacket a person reads.
   // Optional, so every case file written before packets existed stays valid.
   packetRef: z.string().optional(),
+  // Escalated and aborted only. Optional, so every case file written before
+  // causes were recorded stays valid; a reader shows such a stop as recorded.
+  cause: OutcomeCause.optional(),
 });
 export type CaseFileOutcome = z.infer<typeof CaseFileOutcome>;
 
@@ -326,10 +359,6 @@ const SurfaceId = z.string().min(1);
 
 export const RepairStatus = z.enum(["completed", "escalate", "incomplete"]);
 export type RepairStatus = z.infer<typeof RepairStatus>;
-
-/** A usage limit that can stop an agent session: the API's request rate, or the account's spending cap. */
-export const UsageLimit = z.enum(["rate", "spend"]);
-export type UsageLimit = z.infer<typeof UsageLimit>;
 
 /** What tripped the breaker. Both kinds name `surfaceId`: the task whose report tripped it, in whose copy the repair runs. */
 export const BreakerCause = z.discriminatedUnion("kind", [

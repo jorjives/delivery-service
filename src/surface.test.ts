@@ -19,7 +19,7 @@ import { fakeAgentPort, mockSessionEnvironment, promptsSent, readJournal } from 
 import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext, RepairCoordinator, RepairRequest, CheckErrorReport } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition, RunHalted } from "./errors.js";
-import type { BudgetPopulation, BudgetSet, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
+import type { BudgetPopulation, BudgetSet, CaseFile, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
 import { cleanGitEnv } from "./git-env.js";
 
 const budgets: BudgetSet = {
@@ -2202,5 +2202,141 @@ describe("a task of a run of several at once", () => {
     expect(reports).toHaveLength(1);
     expect(requests).toEqual([]);
     expect(gateRepairs((await load(dir)).history)).toHaveLength(2);
+  });
+});
+
+describe("why a task stopped, as its outcome records it", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  /** Drive the task to its end over a repository whose check passes (or cannot run at all) before the agent touches it. */
+  async function stoppedWith(ports: SurfacePorts, files: Record<string, string> = { "report.tap": PASSING_TAP }): Promise<CaseFile> {
+    const location = await provisioned(dir, files, ports);
+    await run(dir, location, ports);
+    return load(dir);
+  }
+
+  const breaksTheCheck = sessionAgent((_role, ctx) => {
+    writeFileSync(join(ctx.worktreePath, "report.tap"), FAILING_TAP);
+    return Promise.resolve({ status: "completed", rationale: "broke it" });
+  });
+  const stuck = (): Promise<Terminus> => Promise.resolve({ status: "escalate", category: "exhaustion", rationale: "stuck" });
+  const agentPacket = {
+    decision: "Decide whether to grant access.", evidence: "no access", dead_ends: "none", why_now: "a retry would repeat it", references: ["worker-1-0"],
+  };
+
+  it("records an authority stop and whose session it was", async () => {
+    const ports = portsWith(scriptedAgent([{ status: "escalate", category: "authority", rationale: "needs a sign-off" }]));
+
+    expect((await stoppedWith(ports)).outcome?.cause).toEqual({ kind: "authority", role: "worker" });
+  });
+
+  it("records a session that never started, for a worker and for a repair", async () => {
+    const neverStarted = scriptedAgent([{ status: "incomplete", notRun: true, rationale: "could not start" }]);
+
+    expect((await stoppedWith(portsWith(neverStarted))).outcome?.cause).toEqual({ kind: "session_not_run", role: "worker" });
+
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    // No report.tap: the check cannot run, so the first session is a repair.
+    expect((await stoppedWith(portsWith(neverStarted), { "seed.txt": "hello\n" })).outcome?.cause).toEqual({
+      kind: "session_not_run", role: "gate-maintenance",
+    });
+  });
+
+  it("records which retries ran out", async () => {
+    const neverEnds = portsWith(scriptedAgent([{ status: "incomplete", rationale: "hit the turn cap" }]));
+    expect((await stoppedWith(neverEnds)).outcome?.cause).toEqual({ kind: "budget", population: "terminus" });
+
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    const neverRepairs = portsWith(scriptedAgent([{ status: "completed", rationale: "claims to have fixed it" }]));
+    expect((await stoppedWith(neverRepairs, { "seed.txt": "hello\n" })).outcome?.cause).toEqual({ kind: "budget", population: "gateMaintenance" });
+
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    expect((await stoppedWith(portsWithTriage(breaksTheCheck))).outcome?.cause).toEqual({ kind: "budget", population: "correction" });
+  });
+
+  it("records a repair that gave up", async () => {
+    const ports = portsWith(scriptedAgent([{ status: "escalate", category: "exhaustion", rationale: "cannot repair this" }]));
+
+    expect((await stoppedWith(ports, { "seed.txt": "hello\n" })).outcome?.cause).toEqual({ kind: "repair_gave_up" });
+  });
+
+  it("records a triage agent's own escalation apart from a triage that failed", async () => {
+    const asks = sessionAgent(stuck, () => Promise.resolve({ status: "escalate", rationale: "no retry will help", payload: agentPacket }));
+    const escalated = await stoppedWith({ agent: asks, triage: createAgentTriage(asks), closer: noopCloser });
+    expect(escalated.outcome?.cause).toEqual({ kind: "triage_escalated" });
+    expect(await readRef(dir, "triage-0")).toMatchObject({ cause: { kind: "triage_escalated" } });
+
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    const fails = sessionAgent(stuck, () => Promise.resolve({ status: "incomplete", rationale: "triage said nothing usable" }));
+    const failed = await stoppedWith({ agent: fails, triage: createAgentTriage(fails), closer: noopCloser });
+    expect(failed.outcome?.cause).toEqual({ kind: "triage_failure" });
+  });
+
+  it("records a triage abort and a provisioning abort", async () => {
+    const aborting: SurfacePorts["triage"] = { triage: () => Promise.resolve({ verdict: "abort", rationale: "the task is unsound" }) };
+    expect((await stoppedWith({ agent: breaksTheCheck, triage: aborting, closer: noopCloser })).outcome?.cause).toEqual({ kind: "triage_abort" });
+
+    dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    const blocker = join(await mkdtemp(join(tmpdir(), "surface-block-")), "file");
+    await writeFile(blocker, "not a directory\n");
+    await advance(dir, { repoPath: initTempRepo("surface-repo-", { "seed.txt": "hello\n" }), worktreePath: join(blocker, "wt") }, portsWith(unusedAgent()));
+    expect((await load(dir)).outcome?.cause).toEqual({ kind: "provisioning" });
+  });
+
+  it("records no cause for a task that was delivered", async () => {
+    const ports = portsWithTriage(scriptedAgent([{ status: "completed", rationale: "done" }]));
+
+    const delivered = await stoppedWith(ports);
+
+    expect(delivered.outcome?.kind).toBe("closed");
+    expect(delivered.outcome).not.toHaveProperty("cause");
+  });
+
+  /** A log ending in a triage escalate whose outcome was never written: the crash window `escalateFromTail` resumes. */
+  async function crashedAfterTriageEscalate(roundRef: Record<string, unknown>): Promise<void> {
+    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+    await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" });
+    await appendEntry(dir, { t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0", status: "escalate", category: "exhaustion", rationale: "stuck" });
+    await writeRef(dir, "triage-0", { trigger: "worker_escalate", rationale: "no retry will help", artifact: agentPacket, ...roundRef });
+    await appendEntry(dir, { t: "triage", afterAttempt: 1, trigger: "worker_escalate", verdict: "escalate", rationale: "no retry will help", artifactRef: "triage-0" });
+  }
+
+  it("reads the cause back from the round's ref when the outcome is written on resume", async () => {
+    await crashedAfterTriageEscalate({ cause: { kind: "budget", population: "correction" } });
+
+    await advance(dir, { repoPath: "/unused", worktreePath: "/unused" }, portsWith(unusedAgent()));
+
+    expect((await load(dir)).outcome?.cause).toEqual({ kind: "budget", population: "correction" });
+  });
+
+  it("invents no cause on resume for a round recorded before causes were", async () => {
+    await crashedAfterTriageEscalate({});
+
+    await advance(dir, { repoPath: "/unused", worktreePath: "/unused" }, portsWith(unusedAgent()));
+
+    const { outcome } = await load(dir);
+    expect(outcome).toMatchObject({ kind: "escalated", source: "triage" });
+    expect(outcome).not.toHaveProperty("cause");
+  });
+
+  it("records on the session's own entry that a usage limit stopped it, and counts it as any other session that did not finish", async () => {
+    const limited = portsWith(scriptedAgent([{ status: "incomplete", limit: "rate", rationale: "the AI service is limiting requests" }]));
+
+    const { history, outcome } = await stoppedWith(limited);
+
+    const sessions = history.filter((entry) => entry.t === "terminus");
+    expect(sessions).toHaveLength(budgets.terminus.max);
+    expect(sessions.every((entry) => entry.limit === "rate")).toBe(true);
+    expect(outcome?.cause).toEqual({ kind: "budget", population: "terminus" });
   });
 });

@@ -9,6 +9,7 @@ import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
 import { EscalationPacket, type SharpenedBrief } from "./triage-role-config.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext } from "./ports.js";
+import { OutcomeCause } from "./schema.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
 
 export interface AdvanceResult {
@@ -169,6 +170,8 @@ async function escalate(
   ports: SurfacePorts,
   source: string,
   reason: string,
+  // Absent only when resuming a record whose triage round was written before causes were recorded.
+  cause: OutcomeCause | undefined,
   packet: EscalationPacket,
 ): Promise<AdvanceResult> {
   const packetRef = await writeRef(dir, "escalation", packet);
@@ -178,6 +181,7 @@ async function escalate(
     reason,
     at: new Date().toISOString(),
     packetRef,
+    ...(cause ? { cause } : {}),
   });
 }
 
@@ -186,8 +190,44 @@ async function packetFor(dir: string, cause: EscalationCause): Promise<Escalatio
   return resolveEscalationPacket(dir, await load(dir), cause);
 }
 
+/** What the outcome records of an in-memory cause: its kind and what a reader switches on, never its prose. */
+function outcomeCause(cause: EscalationCause): OutcomeCause {
+  switch (cause.kind) {
+    case "authority":
+    case "session_not_run":
+      return { kind: cause.kind, role: cause.role };
+    case "budget":
+      return { kind: "budget", population: cause.population };
+    case "repair_gave_up":
+    case "triage_failure":
+      return { kind: cause.kind };
+  }
+}
+
+/** Escalate for a cause the harness itself found: the one cause names the packet and what the outcome records. */
+async function escalateFor(
+  dir: string,
+  caseFile: CaseFile,
+  location: SurfaceLocation,
+  ports: SurfacePorts,
+  source: string,
+  reason: string,
+  cause: EscalationCause,
+): Promise<AdvanceResult> {
+  return escalate(dir, caseFile, location, ports, source, reason, outcomeCause(cause), await packetFor(dir, cause));
+}
+
 /** The ref shape `triage()` writes for an escalate round. */
-const PacketRef = z.object({ artifact: EscalationPacket });
+const PacketRef = z.object({ artifact: EscalationPacket, cause: OutcomeCause.optional() });
+
+/**
+ * What an escalate verdict's outcome records: the cause the port named, else
+ * whether the agent wrote the packet itself or the harness had to stand in.
+ */
+function triageCause(verdict: TriageVerdict): OutcomeCause {
+  if (verdict.cause) return outcomeCause(verdict.cause);
+  return { kind: EscalationPacket.safeParse(verdict.artifact).success ? "triage_escalated" : "triage_failure" };
+}
 
 /**
  * The packet for an escalate verdict: the agent's own when it wrote one, else
@@ -207,7 +247,7 @@ async function packetForVerdict(
   );
 }
 
-/** Terminate as ABORTED with the standard `{kind, source, reason, at}` shape. */
+/** Terminate as ABORTED with the standard `{kind, source, reason, at, cause}` shape. */
 function abort(
   dir: string,
   caseFile: CaseFile,
@@ -215,12 +255,14 @@ function abort(
   ports: SurfacePorts,
   source: string,
   reason: string,
+  cause: OutcomeCause,
 ): Promise<AdvanceResult> {
   return terminate(dir, caseFile, location, ports, "ABORTED", {
     kind: "aborted",
     source,
     reason,
     at: new Date().toISOString(),
+    cause,
   });
 }
 
@@ -240,22 +282,19 @@ async function escalateFromTail(
   const tail = logTail(caseFile);
   if (tail?.t === "triage") {
     // TRIAGE wrote this round's packet into its ref before appending the entry.
+    // The round's cause is there too: it cannot be worked out again from the log.
     const ref = PacketRef.safeParse(await readRef(dir, tail.artifactRef));
-    const packet = ref.success
-      ? ref.data.artifact
-      : await packetFor(dir, { kind: "triage_failure", rationale: tail.rationale });
-    return escalate(dir, caseFile, location, ports, "triage", tail.rationale, packet);
+    if (!ref.success) {
+      return escalateFor(dir, caseFile, location, ports, "triage", tail.rationale, { kind: "triage_failure", rationale: tail.rationale });
+    }
+    return escalate(dir, caseFile, location, ports, "triage", tail.rationale, ref.data.cause, ref.data.artifact);
   }
   const terminus = tail?.t === "terminus" ? tail : undefined;
   const cause: EscalationCause =
     terminus?.category === "authority"
       ? { kind: "authority", role: terminus.role ?? "worker" }
       : { kind: "repair_gave_up" };
-  return escalate(
-    dir, caseFile, location, ports, source,
-    terminus ? terminus.rationale : "the session escalated",
-    await packetFor(dir, cause),
-  );
+  return escalateFor(dir, caseFile, location, ports, source, terminus ? terminus.rationale : "the session escalated", cause);
 }
 
 /**
@@ -282,9 +321,7 @@ function escalateIfNotRun(
   tail: Extract<HistoryEntry, { t: "terminus" }>,
 ): Promise<AdvanceResult> | undefined {
   if (!tail.notRun) return undefined;
-  return packetFor(dir, { kind: "session_not_run", role }).then((packet) =>
-    escalate(dir, caseFile, location, ports, role, tail.rationale, packet),
-  );
+  return escalateFor(dir, caseFile, location, ports, role, tail.rationale, { kind: "session_not_run", role });
 }
 
 /**
@@ -377,16 +414,14 @@ async function dispatchSession(
     status: terminus.status,
     ...(terminus.status === "escalate" ? { category: terminus.category } : {}),
     ...(terminus.status === "incomplete" && terminus.notRun ? { notRun: true as const } : {}),
+    ...(terminus.status === "incomplete" && terminus.limit ? { limit: terminus.limit } : {}),
     rationale: terminus.rationale,
   };
   await appendEntry(dir, entry);
 
   const state = deriveStateFromEntry(entry);
   if (state === "ESCALATED") {
-    return escalate(
-      dir, caseFile, location, ports, role, terminus.rationale,
-      await packetFor(dir, { kind: "authority", role }),
-    );
+    return escalateFor(dir, caseFile, location, ports, role, terminus.rationale, { kind: "authority", role });
   }
   await updateCursor(dir, { state });
   return { state, done: false };
@@ -411,10 +446,10 @@ async function dispatchOwnRepair(
   const budgets = deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets);
   const { used, max } = budgets.gateMaintenance;
   if (used >= max) {
-    return escalate(
+    return escalateFor(
       dir, caseFile, location, ports, "gate-maintenance",
       budgetExhausted("gateMaintenance", { used, max }, reason),
-      await packetFor(dir, { kind: "budget", population: "gateMaintenance", budget: { used, max }, detail: reason }),
+      { kind: "budget", population: "gateMaintenance", budget: { used, max }, detail: reason },
     );
   }
 
@@ -536,7 +571,7 @@ async function provisioning(
     if (!(err instanceof ProvisioningFailure)) throw err;
     // Provisioning failure is infra-class and terminal: there is no worker or
     // triage move that helps, so it never reaches the caller as a throw.
-    return abort(dir, caseFile, location, ports, "provisioning", err.detail);
+    return abort(dir, caseFile, location, ports, "provisioning", err.detail, { kind: "provisioning" });
   }
 
   // Guarded rather than unconditional: provisioning legitimately runs twice
@@ -609,10 +644,10 @@ async function incompleteTerminus(
     caseFile.cursor.budgets,
   ).terminus;
   if (used >= max) {
-    return escalate(
+    return escalateFor(
       dir, caseFile, location, ports, "worker",
       budgetExhausted("terminus", { used, max }, tail.rationale),
-      await packetFor(dir, { kind: "budget", population: "terminus", budget: { used, max }, detail: tail.rationale }),
+      { kind: "budget", population: "terminus", budget: { used, max }, detail: tail.rationale },
     );
   }
 
@@ -751,11 +786,13 @@ async function triage(
   // overwrite each other's artefacts; a crash between the ref and the entry
   // leaves an orphan ref that the re-run overwrites at the same key.
   const packet = verdict.verdict === "escalate" ? await packetForVerdict(dir, caseFile, verdict) : undefined;
+  const cause = packet ? triageCause(verdict) : undefined;
   const artifact = packet ?? verdict.artifact;
   const artifactRef = await writeRef(dir, `triage-${priorTriages}`, {
     trigger,
     rationale: verdict.rationale,
     ...(artifact ? { artifact } : {}),
+    ...(cause ? { cause } : {}),
   });
 
   const entry: HistoryEntry = {
@@ -772,10 +809,10 @@ async function triage(
   // `packet` is set exactly when the verdict is escalate, which is exactly when
   // the entry routes to ESCALATED.
   if (state === "ESCALATED" && packet) {
-    return escalate(dir, caseFile, location, ports, "triage", verdict.rationale, packet);
+    return escalate(dir, caseFile, location, ports, "triage", verdict.rationale, cause, packet);
   }
   if (state === "ABORTED") {
-    return abort(dir, caseFile, location, ports, "triage", verdict.rationale);
+    return abort(dir, caseFile, location, ports, "triage", verdict.rationale, { kind: "triage_abort" });
   }
   await updateCursor(dir, { state });
   return { state, done: false };

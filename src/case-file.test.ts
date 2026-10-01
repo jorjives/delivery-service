@@ -1023,6 +1023,33 @@ describe("deriveBudgetsFromLog attribution", () => {
   });
 });
 
+describe("a recorded usage limit", () => {
+  const maxima: BudgetSet = {
+    correction: { used: 0, max: 3 },
+    gateError: { used: 0, max: 3 },
+    gateMaintenance: { used: 0, max: 2 },
+    terminus: { used: 0, max: 5 },
+    close: { used: 0, max: 3 },
+  };
+  const limited: HistoryEntry = { t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "incomplete", rationale: "stopped", limit: "spend" };
+  const dispatch: HistoryEntry = { t: "dispatch", attempt: 1, sessionKey: "worker-1-0" };
+
+  it("survives a write and a read of the log", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "case-file-"));
+    await create(dir, { surfaceId: "s", taskDef: { intent: "x" }, gateRef: { type: "command", command: "true", parseMode: "exitcode" } }, maxima);
+    await appendEntry(dir, dispatch);
+    await appendEntry(dir, limited);
+
+    expect((await load(dir)).history.at(-1)).toEqual(limited);
+  });
+
+  it("changes neither where the task is nor the retries it has used", () => {
+    // Exactly what a session that did not finish derives without the fact recorded.
+    expect(deriveStateFromEntry(limited)).toBe("INCOMPLETE_TERMINUS");
+    expect(deriveBudgetsFromLog([dispatch, limited], maxima)).toEqual({ ...maxima, terminus: { used: 1, max: 5 } });
+  });
+});
+
 describe("setbackOf", () => {
   it("classifies a failed gate as gate_fail and an errored gate as gate_error", () => {
     expect(setbackOf({ t: "gate", attempt: 1, status: "FAIL", newFailures: [] })).toEqual({ trigger: "gate_fail" });

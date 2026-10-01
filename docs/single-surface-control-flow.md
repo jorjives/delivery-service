@@ -387,9 +387,11 @@ CaseFile = {
   history: [ Entry ]
 
   # ── outcome: written once, on a terminal state ──
-  outcome?                    # {kind: closed|escalated|aborted, source, reason, at, packet_ref?}
+  outcome?                    # {kind: closed|escalated|aborted, source, reason, at, packet_ref?, cause?}
                               # packet_ref: escalated only → the EscalationPacket a person reads
                               # (decision, verbatim evidence, dead ends, why now, session keys)
+                              # cause: escalated and aborted only → {kind, role?, population?}, why the
+                              # task stopped, as a closed set. Read only by reporting, never by routing.
 }
 ```
 
@@ -403,7 +405,9 @@ Entry =
   | { t:"terminus", attempt, session_key,
         status: completed|escalate|incomplete,
         category?,             # for escalate: exhaustion | authority
-        rationale, role? }     # role as above; must match its dispatch
+        rationale, role?,      # role as above; must match its dispatch
+        limit? }               # for incomplete: rate | spend, the usage limit that stopped the
+                               # session. Read only by reporting, never by routing.
   | { t:"gate", attempt,
         status: PASS|FAIL|ERROR,
         new_failures: [{id, detail_ref}],   # empty on the PASS that ends the run
