@@ -128,7 +128,6 @@ export function listStandings(records: RunRecord[], tasks: TaskDef[]): ListStand
   return standings;
 }
 
-/** What a run of several at once says when it gives up on the environment its tasks share. */
 /** What a run of several at once says when it gives up on the environment its tasks share, or when a usage limit stops its repair. */
 export function environmentGaveUp(attempts: number, { waiting, finished, queued }: ListStandings, of: number, limit: UsageLimit | null = null): string {
   const tries = `${attempts} ${attempts === 1 ? "attempt" : "attempts"}`;
