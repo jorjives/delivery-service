@@ -400,26 +400,22 @@ async function dispatchSession(
  * A task of a run of several at once asks the run instead, and spends none of
  * its own budget.
  */
-async function dispatchGateMaintenance(
+/**
+ * Dispatch one repair session on this task's own limit, or escalate if that
+ * limit is spent. The dispatch entry IS the budget burn: the count is derived
+ * from the log first, and the entry appended only if under cap, so "burned
+ * live" and "derived from the log on rebuild" are the same computation by
+ * construction. Whether the task should be repairing at all, in a run of
+ * several at once, is decided by the two callers that learn the check cannot
+ * run, never here.
+ */
+async function dispatchOwnRepair(
   dir: string,
   caseFile: CaseFile,
   location: SurfaceLocation,
   ports: SurfacePorts,
   reason: string,
 ): Promise<AdvanceResult> {
-  // In a run of several at once the environment is shared, so the run repairs it, once, on its own limit.
-  const coordinator = ports.repairCoordinator;
-  if (coordinator) {
-    const tail = logTail(caseFile);
-    await coordinator.requestRepair({
-      surfaceId: caseFile.header.surfaceId,
-      // A post-task request names the triage round that ordered it, so a crash after the repair is not repaired twice.
-      key: tail?.t === "triage" ? tail.artifactRef : null,
-      reason,
-    });
-    return caseFile.header.baseline === null ? preGating(dir, caseFile, location, ports) : gating(dir, caseFile, location, ports);
-  }
-
   const budgets = deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets);
   const { used, max } = budgets.gateMaintenance;
   if (used >= max) {
@@ -453,13 +449,14 @@ async function preGating(
     return { state: "AGENT_ACTIVE", done: false };
   }
   // recordBaseline stores nothing on ERROR, so `caseFile` is still current.
-  return dispatchGateMaintenance(
-    dir,
-    caseFile,
-    location,
-    ports,
-    report.detail ?? "the gate could not run",
-  );
+  const reason = report.detail ?? "the gate could not run";
+  // In a run of several at once, a check that cannot run before this task has done anything is the environment
+  // every task shares: the run repairs it, once, on its own limit, and the baseline is taken again.
+  if (ports.repairCoordinator) {
+    await ports.repairCoordinator.requestRepair({ surfaceId: caseFile.header.surfaceId, reason });
+    return preGating(dir, caseFile, location, ports);
+  }
+  return dispatchOwnRepair(dir, caseFile, location, ports, reason);
 }
 
 /**
@@ -487,9 +484,14 @@ async function gateMaintenance(
   const tail = logTail(caseFile);
 
   if (tail?.t === "triage") {
-    return dispatchGateMaintenance(
-      dir, caseFile, location, ports, "triage routed the setback to a gate repair",
-    );
+    // The check kept erroring until this task's re-checks ran out. In a run of several at once that may be this
+    // task's own doing or the environment every task shares, so the run is asked: shared means it has been
+    // repaired, once, for everyone, and the same attempt is checked again; alone means this task deals with it
+    // exactly as a task on its own does. The round's ref names the setback, so a crash after the run's repair
+    // does not have it repaired twice.
+    const answer = await ports.repairCoordinator?.reportCheckErrors({ surfaceId: caseFile.header.surfaceId, key: tail.artifactRef });
+    if (answer === "shared") return gating(dir, caseFile, location, ports);
+    return dispatchOwnRepair(dir, caseFile, location, ports, "triage routed the setback to a gate repair");
   }
 
   if (tail?.t === "dispatch") {
@@ -514,7 +516,7 @@ async function gateMaintenance(
     case "incomplete":
       return (
         escalateIfNotRun(dir, caseFile, location, ports, "gate-maintenance", tail) ??
-        dispatchGateMaintenance(
+        dispatchOwnRepair(
           dir,
           caseFile,
           location,

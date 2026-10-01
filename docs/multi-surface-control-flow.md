@@ -117,7 +117,7 @@ run**, so an environment breakage is *shared-fate*.
 | `terminus` | task-local (this session ended abnormally) | per-surface, unchanged |
 | `close` | task-local (this accepted work failed to close) | per-surface, unchanged |
 | `gate_error` | flake, but aggregates into a shared signal | per-surface counter **+** run-level health signal |
-| `gate_maintenance` | the shared environment is broken | **run-level** |
+| `gate_maintenance` | the shared environment is broken, or one surface's own gate is | **run-level** once shared (pre-task, or two distinct surfaces); per-surface while uncorroborated |
 
 The rule: **task-local budgets stay per-surface; environment-facing budgets lift
 to the run.** Per-surface counters on a shared-fate population are actively wrong.
@@ -132,7 +132,7 @@ surface.
 
 ```
 HEALTHY     normal operation; surfaces run in parallel
-  → DEGRADED           (a surface hits GATE_MAINTENANCE, or gate_error aggregate trips the signal)
+  → DEGRADED           (a surface's baseline cannot be taken, or a second distinct surface exhausts its gate_error rechecks)
 
 DEGRADED    breakage suspected/confirmed; new gating and closing blocked
   → REPAIRING          (supervisor begins the exclusive repair)
@@ -144,9 +144,11 @@ REPAIRING   stop-the-world: no worker may mutate the shared box; one repair agen
 
 Mechanics:
 
-- A surface hitting `GATE_MAINTENANCE` does **not** dispatch its own repair agent.
-  It asks the run, which trips the breaker to `DEGRADED` and records the trip,
-  the request and every task it holds in the run file (not the case file).
+- A surface whose **baseline** cannot be taken (the gate ERRORs before any worker
+  has run) does **not** dispatch its own repair agent. Nothing the surface did can
+  explain it, so it asks the run, which trips the breaker to `DEGRADED` and
+  records the trip, the request and every task it holds in the run file (not the
+  case file).
 - **Checks and hand-offs are held, nothing else.** While the breaker is not
   `HEALTHY`, a surface about to take its baseline, check its work or hand it off
   waits; an agent session or triage call already under way carries on, since
@@ -155,10 +157,15 @@ Mechanics:
   copy of the surface that tripped it, and every request meanwhile shares it.
   (Settled in the multi-surface supervisor design, replacing the earlier
   full stop-the-world window.)
-- `gate_error` keeps its cheap per-surface re-run, but repeated errors across
-  *distinct* surfaces feed the breaker. M independent surfaces erroring on one box
-  is evidence of shared breakage, not M coincidences: counter is per-surface, the
-  aggregate signal is run-level.
+- `gate_error` keeps its cheap per-surface re-run. A surface that exhausts those
+  re-runs reports it to the run, which records one `gate_error_signal` per surface
+  since the breaker was last `HEALTHY`. The first such surface is told it is alone
+  and repairs its own gate on its own `gate_maintenance` budget, exactly as a
+  single surface does: one surface's error is that surface's business. A second,
+  *distinct* surface reporting trips the breaker (`gate_error_aggregate`) and the
+  run repairs once. The same surface reporting twice counts once, and a successful
+  repair clears the count. So `gate_maintenance` is run-level for a shared
+  breakage and stays per-surface for an uncorroborated one.
 
 ## Open items
 
@@ -168,6 +175,7 @@ Mechanics:
 - **Merge serialisation detail**: the exact critical section and lock granularity
   for the close/merge under the single repo-lock, once real merge throughput is
   observed.
-- **Breaker signal tuning**: the `gate_error` aggregate threshold (M distinct
-  surfaces, over what window) that trips `DEGRADED` without over-tripping on
-  genuine independent flakes.
+- **Breaker signal tuning**: the `gate_error` aggregate threshold is fixed at two
+  distinct surfaces since the breaker was last `HEALTHY`, with no time window
+  (`SHARED_ERROR_THRESHOLD` in `src/breaker.ts`). Retune it, and consider a
+  window, once real flake rates are known.

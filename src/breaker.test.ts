@@ -187,8 +187,8 @@ describe("one repair of the shared environment for the whole run", () => {
 
   it("runs one repair however many tasks ask, counts it once, and releases them all when it works", async () => {
     const { breaker, dispatched, answer, entries, changes } = await breakerOver();
-    const first = breaker.requestRepair({ surfaceId: "a", key: null, reason: "the shared helper is missing" });
-    const second = breaker.requestRepair({ surfaceId: "b", key: "triage-2", reason: "triage routed the setback to a gate repair" });
+    const first = breaker.requestRepair({ surfaceId: "a", reason: "the shared helper is missing" });
+    const second = breaker.reportCheckErrors({ surfaceId: "b", key: "triage-2" });
     const held = breaker.awaitClearance("c");
     await vi.waitFor(() => expect(dispatched).toEqual(["a:run-repair-1"]));
 
@@ -209,7 +209,7 @@ describe("one repair of the shared environment for the whole run", () => {
   it("waits for a task already checking its work before starting the repair", async () => {
     const { breaker, dispatched } = await breakerOver();
     const leave = await breaker.awaitClearance("b");
-    const asked = breaker.requestRepair({ surfaceId: "a", key: null, reason: "broken" });
+    const asked = breaker.requestRepair({ surfaceId: "a", reason: "broken" });
     await settle();
     expect(dispatched).toEqual([]);
 
@@ -220,7 +220,7 @@ describe("one repair of the shared environment for the whole run", () => {
 
   it("tries again after a repair that ended without a result, within the run's limit", async () => {
     const { breaker, dispatched, answer } = await breakerOver();
-    const asked = breaker.requestRepair({ surfaceId: "a", key: null, reason: "broken" });
+    const asked = breaker.requestRepair({ surfaceId: "a", reason: "broken" });
     await settle();
     await answer(nothing);
     await answer(fixed);
@@ -230,7 +230,7 @@ describe("one repair of the shared environment for the whole run", () => {
 
   it("gives up once the run's limit is spent, stopping every held task and every later one", async () => {
     const { breaker, answer, entries } = await breakerOver([], 1);
-    const asked = breaker.requestRepair({ surfaceId: "a", key: null, reason: "broken" });
+    const asked = breaker.requestRepair({ surfaceId: "a", reason: "broken" });
     const held = breaker.awaitClearance("b");
     await settle();
     await answer(nothing);
@@ -244,26 +244,26 @@ describe("one repair of the shared environment for the whole run", () => {
 
   it("counts repairs across trips against the one limit", async () => {
     const { breaker, answer, dispatched } = await breakerOver([], 2);
-    const one = breaker.requestRepair({ surfaceId: "a", key: null, reason: "broken" });
+    const one = breaker.requestRepair({ surfaceId: "a", reason: "broken" });
     await settle();
     await answer(fixed);
     await one;
-    const two = breaker.requestRepair({ surfaceId: "b", key: null, reason: "broken again" });
+    const two = breaker.requestRepair({ surfaceId: "b", reason: "broken again" });
     await settle();
     await answer(fixed);
     await two;
 
-    await expect(breaker.requestRepair({ surfaceId: "a", key: null, reason: "and again" })).rejects.toBeInstanceOf(RunHalted);
+    await expect(breaker.requestRepair({ surfaceId: "a", reason: "and again" })).rejects.toBeInstanceOf(RunHalted);
     expect(dispatched).toEqual(["a:run-repair-1", "b:run-repair-2"]);
   });
 
   it("gives a task that finds it broken again, once the fix is announced, a repair of its own", async () => {
     const { breaker, dispatched, answer, changes } = await breakerOver([], 3);
-    const first = breaker.requestRepair({ surfaceId: "a", key: null, reason: "broken" });
+    const first = breaker.requestRepair({ surfaceId: "a", reason: "broken" });
     await answer(fixed);
     // As soon as "fixed" is said, which may be before its entry is on disk: the new trip must not join the finished repair.
     await vi.waitFor(() => expect(changes.at(-1)?.state).toBe("HEALTHY"));
-    const again = breaker.requestRepair({ surfaceId: "b", key: null, reason: "broken again" });
+    const again = breaker.requestRepair({ surfaceId: "b", reason: "broken again" });
     await first;
     await answer(fixed);
     await again;
@@ -272,7 +272,7 @@ describe("one repair of the shared environment for the whole run", () => {
 
   it("gives up at once when the repair says only a change to the check would fix it", async () => {
     const { breaker, answer } = await breakerOver();
-    const asked = breaker.requestRepair({ surfaceId: "a", key: null, reason: "broken" });
+    const asked = breaker.requestRepair({ surfaceId: "a", reason: "broken" });
     await settle();
     await answer({ status: "escalate", category: "authority", rationale: "the only fix is to the check" });
     await expect(asked).rejects.toThrow("the only fix is to the check");
@@ -280,25 +280,11 @@ describe("one repair of the shared environment for the whole run", () => {
 
   it("gives up at once on a repair session that never started", async () => {
     const { breaker, answer, dispatched } = await breakerOver();
-    const asked = breaker.requestRepair({ surfaceId: "a", key: null, reason: "broken" });
+    const asked = breaker.requestRepair({ surfaceId: "a", reason: "broken" });
     await settle();
     await answer({ status: "incomplete", rationale: "the runtime would not start", notRun: true });
     await expect(asked).rejects.toBeInstanceOf(RunHalted);
     expect(dispatched).toHaveLength(1);
-  });
-
-  it("answers a request already repaired before a crash without tripping again", async () => {
-    const history: RunEntry[] = [
-      { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: "a", reason: "broken" } },
-      { t: "repair_request", surfaceId: "a", key: "triage-2" },
-      { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: "a" },
-      { t: "repair_terminus", attempt: 1, sessionKey: "run-repair-1", status: "completed", rationale: "fixed" },
-      { t: "breaker_healthy" },
-    ];
-    const { breaker, dispatched, entries } = await breakerOver(history);
-    await breaker.requestRepair({ surfaceId: "a", key: "triage-2", reason: "broken" });
-    expect(dispatched).toEqual([]);
-    expect(await entries()).toEqual(history);
   });
 
   it("resumes into a repair a crash interrupted, in the same trip, rather than losing it", async () => {
@@ -388,7 +374,7 @@ describe("a check that keeps erroring", () => {
 
   it("shares a repair already pending, without counting as evidence of its own", async () => {
     const { breaker, dispatched, answer, entries } = await breakerOver();
-    const first = breaker.requestRepair({ surfaceId: "a", key: null, reason: "the shared helper is missing" });
+    const first = breaker.requestRepair({ surfaceId: "a", reason: "the shared helper is missing" });
     const joined = breaker.reportCheckErrors({ surfaceId: "b", key: "triage-3" });
     await vi.waitFor(() => expect(dispatched).toEqual(["a:run-repair-1"]));
     await answer(fixed);

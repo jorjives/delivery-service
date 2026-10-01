@@ -35,6 +35,8 @@ export type {
   CloseReport,
   CloserPort,
   RepairRequest,
+  CheckErrorReport,
+  CheckErrorAnswer,
   RepairCoordinator,
   SurfacePorts,
   SurfaceLocation,

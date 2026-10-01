@@ -1148,36 +1148,38 @@ describe("delivery run with several tasks at once", () => {
     RUN_TIMEOUT,
   );
 
-  describe("when the shared environment breaks", () => {
-    /**
-     * A check whose shared helper is missing until some task's repair leaves a
-     * `.restored` marker in its copy; once any gate run sees one it stays
-     * restored for the rest of the process, as a helper put back would. Custom
-     * gates load from the repository root, outside every task's copy.
-     */
-    const RESTORABLE_GATE = [
-      'import { existsSync, readdirSync } from "node:fs";',
-      'import { dirname, join } from "node:path";',
-      "let restored = false;",
-      "const restoredIn = (copy) => readdirSync(dirname(copy)).some((other) => existsSync(join(dirname(copy), other, \".restored\")));",
-      "const measure = async ({ worktreePath }) => {",
-      "  restored ||= restoredIn(worktreePath);",
-      '  return restored ? { status: "PASS", assertions: [{ id: "shared-helper", outcome: "PASS", detail: "answered" }] } : { status: "ERROR", assertions: [], detail: "the shared helper is missing" };',
-      "};",
-      "export default { baseline: measure, check: measure };",
-    ].join("\n");
-    const BROKEN_GATE = 'const measure = async () => ({ status: "ERROR", assertions: [], detail: "the shared helper is missing" });\nexport default { baseline: measure, check: measure };\n';
-    const gateRef: GateRef = { type: "custom", modulePath: "./gates/shared.mjs" };
+  /**
+   * A check whose shared helper is missing until some task's repair leaves a
+   * `.restored` marker in its copy; once any gate run sees one it stays
+   * restored for the rest of the process, as a helper put back would. Custom
+   * gates load from the repository root, outside every task's copy.
+   */
+  const RESTORABLE_GATE = [
+    'import { existsSync, readdirSync } from "node:fs";',
+    'import { dirname, join } from "node:path";',
+    "let restored = false;",
+    "const restoredIn = (copy) => readdirSync(dirname(copy)).some((other) => existsSync(join(dirname(copy), other, \".restored\")));",
+    "const measure = async ({ worktreePath }) => {",
+    "  restored ||= restoredIn(worktreePath);",
+    '  return restored ? { status: "PASS", assertions: [{ id: "shared-helper", outcome: "PASS", detail: "answered" }] } : { status: "ERROR", assertions: [], detail: "the shared helper is missing" };',
+    "};",
+    "export default { baseline: measure, check: measure };",
+  ].join("\n");
+  const BROKEN_GATE = 'const measure = async () => ({ status: "ERROR", assertions: [], detail: "the shared helper is missing" });\nexport default { baseline: measure, check: measure };\n';
+  const gateRef: GateRef = { type: "custom", modulePath: "./gates/shared.mjs" };
 
-    const brokenRepo = (prefix: string, gate: string, tasks: string[]) => {
-      const repo = initTempRepo(prefix, {
-        "package.json": PACKAGE,
-        "delivery.config.json": JSON.stringify({ tasks, concurrency: 2, gate: gateRef }),
-      });
-      mkdirSync(join(repo, "gates"), { recursive: true });
-      writeFileSync(join(repo, "gates/shared.mjs"), gate);
-      return repo;
-    };
+  const brokenRepo = (prefix: string, gate: string, tasks: string[]) => {
+    const repo = initTempRepo(prefix, {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ tasks, concurrency: 2, gate: gateRef }),
+    });
+    mkdirSync(join(repo, "gates"), { recursive: true });
+    writeFileSync(join(repo, "gates/shared.mjs"), gate);
+    return repo;
+  };
+  const ofType = <T extends RunEntry["t"]>(history: RunEntry[], t: T) => history.filter((entry): entry is Extract<RunEntry, { t: T }> => entry.t === t);
+
+  describe("when the shared environment breaks", () => {
     /** Every session, worker or repair, writes the task's file; a repair's `.restored` is what puts the helper back. */
     const restores: MockScript = {
       expectations: [{
@@ -1188,7 +1190,6 @@ describe("delivery run with several tasks at once", () => {
         json: { status: "completed", rationale: "did it" },
       }],
     };
-    const ofType = <T extends RunEntry["t"]>(history: RunEntry[], t: T) => history.filter((entry): entry is Extract<RunEntry, { t: T }> => entry.t === t);
 
     it(
       "holds the tasks, repairs once, says it is fixed, and finishes every task",
@@ -1304,6 +1305,76 @@ describe("delivery run with several tasks at once", () => {
       expect(stdout).toContain("Stopping the run.");
       expect((await loadRunFile(supervisedPlace(repo, RUN))).outcome).toMatchObject({ kind: "escalated", cause: "shared_environment" });
     });
+  });
+
+  describe("when a check keeps erroring after a task has done its work", () => {
+    /**
+     * A check that runs at the start but, for the first `affected` copies to check their work, does not answer four
+     * times each (a check and its three re-checks), then answers. Counted per copy, so which task reaches its check
+     * first changes nothing.
+     */
+    const comesAndGoes = (affected: number) => [
+      "const refused = new Map();",
+      'const answered = { status: "PASS", assertions: [{ id: "shared-helper", outcome: "PASS", detail: "answered" }] };',
+      "const check = async ({ worktreePath }) => {",
+      "  const times = refused.get(worktreePath) ?? 0;",
+      `  if (times >= 4 || (times === 0 && refused.size >= ${affected})) return answered;`,
+      "  refused.set(worktreePath, times + 1);",
+      '  return { status: "ERROR", assertions: [], detail: "the shared helper did not answer" };',
+      "};",
+      "export default { baseline: async () => answered, check };",
+    ].join("\n");
+    const ownRepairs = async (repo: string) =>
+      (await allRuns(repo)).filter((record) => record.caseFile.history.some((entry) => entry.t === "dispatch" && entry.role === "gate-maintenance")).map((record) => record.runId);
+
+    it(
+      "leaves one task's errors to that task: no run-wide message, no hold, no run repair",
+      async () => {
+        const repo = brokenRepo("run-command-errors-alone-", comesAndGoes(1), [PAGE, SWAP, WAVE]);
+
+        const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+        expect(exitCode).toBe(EXIT.ok);
+        expect(stdout).not.toContain("shared environment");
+        const { history } = await theRunFile(repo);
+        const signals = ofType(history, "gate_error_signal");
+        expect(signals).toHaveLength(1);
+        expect(ofType(history, "breaker_degraded")).toEqual([]);
+        expect(ofType(history, "held")).toEqual([]);
+        expect(ofType(history, "repair_dispatch")).toEqual([]);
+        // That task repaired its own check, on its own limit.
+        expect(await ownRepairs(repo)).toEqual([signals[0]?.surfaceId]);
+      },
+      RUN_TIMEOUT * 2,
+    );
+
+    it(
+      "treats a second, different task hitting it as the shared environment: says so, repairs once, and finishes every task",
+      async () => {
+        const repo = brokenRepo("run-command-errors-shared-", comesAndGoes(2), [PAGE, SWAP, WAVE]);
+
+        const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+        expect(exitCode).toBe(EXIT.ok);
+        const lines = stdout.split("\n");
+        expect(lines.filter((line) => line.startsWith("! Something in the shared environment looks broken"))).toHaveLength(1);
+        expect(lines.filter((line) => line === "  - repairing (attempt 1 of 2)")).toHaveLength(1);
+        expect(lines.filter((line) => line === "✓ Fixed. Resuming.")).toHaveLength(1);
+        expect(lines.at(-2)).toBe(EVERY_TASK_DONE);
+        expect(stdout).not.toMatch(/DEGRADED|REPAIRING|HEALTHY|GATE_MAINTENANCE|gate_error/);
+
+        const { history } = await theRunFile(repo);
+        const reported = ofType(history, "gate_error_signal").map((entry) => entry.surfaceId);
+        expect(new Set(reported).size).toBe(2);
+        expect(ofType(history, "breaker_degraded").map((entry) => entry.cause)).toEqual([
+          { kind: "gate_error_aggregate", surfaceId: reported[1], surfaceIds: reported },
+        ]);
+        expect(ofType(history, "repair_dispatch")).toMatchObject([{ attempt: 1, surfaceId: reported[1] }]);
+        // The first to report was told it was alone and repaired its own check; the second was repaired by the run.
+        expect(await ownRepairs(repo)).toEqual([reported[0]]);
+      },
+      RUN_TIMEOUT * 2,
+    );
   });
 
   /** Records what the command arranged a stop to do, and whether it took that back by the end. */

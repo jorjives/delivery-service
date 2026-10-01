@@ -16,7 +16,7 @@ import { NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { fakeAgentPort, mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
-import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext, RepairCoordinator, RepairRequest } from "./ports.js";
+import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext, RepairCoordinator, RepairRequest, CheckErrorReport } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition, RunHalted } from "./errors.js";
 import type { BudgetPopulation, BudgetSet, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
@@ -2009,10 +2009,11 @@ describe("the close context", () => {
   });
 });
 
-/** A coordinator that clears at once and records what it was asked, with `repair` standing in for the run's one repair. */
-function fakeCoordinator(repair: () => void = () => undefined) {
+/** A coordinator that clears at once and records what it was asked. `repair` stands in for the run's one repair; `answer` is what it says to a task whose check kept erroring. */
+function fakeCoordinator(repair: () => void = () => undefined, answer: "shared" | "alone" = "shared") {
   const events: string[] = [];
   const requests: RepairRequest[] = [];
+  const reports: CheckErrorReport[] = [];
   const coordinator: RepairCoordinator = {
     awaitClearance: (surfaceId) => {
       events.push(`enter ${surfaceId}`);
@@ -2026,8 +2027,13 @@ function fakeCoordinator(repair: () => void = () => undefined) {
       repair();
       return Promise.resolve();
     },
+    reportCheckErrors: (report) => {
+      reports.push(report);
+      if (answer === "shared") repair();
+      return Promise.resolve(answer);
+    },
   };
-  return { coordinator, events, requests };
+  return { coordinator, events, requests, reports };
 }
 
 describe("a task of a run of several at once", () => {
@@ -2062,7 +2068,7 @@ describe("a task of a run of several at once", () => {
     await advance(dir, location, ports);
 
     expect(await advance(dir, location, ports)).toEqual({ state: "AGENT_ACTIVE", done: false });
-    expect(requests).toEqual([{ surfaceId: "surface-1", key: null, reason: expect.any(String) }]);
+    expect(requests).toEqual([{ surfaceId: "surface-1", reason: expect.any(String) }]);
     // The hold was let go before the request: the task must not wait on itself.
     expect(events).toEqual(["enter surface-1", "leave surface-1", "repair surface-1", "enter surface-1", "leave surface-1"]);
     const { history } = await load(dir);
@@ -2099,6 +2105,7 @@ describe("a task of a run of several at once", () => {
     const coordinator: RepairCoordinator = {
       awaitClearance: () => Promise.reject(new RunHalted("the shared environment could not be repaired")),
       requestRepair: () => Promise.reject(new RunHalted("the shared environment could not be repaired")),
+      reportCheckErrors: () => Promise.reject(new RunHalted("the shared environment could not be repaired")),
     };
     const location = {
       repoPath: initTempRepo("surface-repo-", { "report.tap": PASSING_TAP }),
@@ -2109,5 +2116,91 @@ describe("a task of a run of several at once", () => {
 
     await expect(advance(dir, location, ports)).rejects.toBeInstanceOf(RunHalted);
     expect((await load(dir)).outcome).toBeUndefined();
+  });
+
+  /** A worker whose change removes the file the check reads: the check can no longer run at all, an ERROR, not a failing test. */
+  const breaksTheCheck = (ctx: { worktreePath: string }): Promise<Terminus> => {
+    rmSync(join(ctx.worktreePath, "report.tap"));
+    return Promise.resolve({ status: "completed", rationale: "worked, broke the gate" });
+  };
+  const gateRepairs = (history: HistoryEntry[]) => history.filter((entry) => entry.t === "dispatch" && entry.role === "gate-maintenance");
+
+  it("repairs its own check, on its own limit, when the run says no other task has hit the same error", async () => {
+    const { coordinator, requests, reports } = fakeCoordinator(undefined, "alone");
+    const agent = sessionAgent((role, ctx) => {
+      if (role === "worker") return breaksTheCheck(ctx);
+      writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+      return Promise.resolve({ status: "completed", rationale: "restored report.tap" });
+    });
+    const ports = { ...portsWithTriage(agent), repairCoordinator: coordinator };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("CLOSED");
+
+    const { history } = await load(dir);
+    const ordered = history.findLast((entry) => entry.t === "triage");
+    expect(ordered).toMatchObject({ trigger: "gate_error", verdict: "fix_the_gate" });
+    // Asked once, about the round that ordered the repair, and only after its own three re-checks.
+    expect(reports).toEqual([{ surfaceId: "surface-1", key: ordered?.t === "triage" ? ordered.artifactRef : "" }]);
+    expect(requests).toEqual([]);
+    expect(gateRepairs(history)).toMatchObject([{ attempt: 1 }]);
+    expect(deriveBudgetsFromLog(history, budgets).gateMaintenance.used).toBe(1);
+  });
+
+  it("checks the same attempt again, with no repair of its own, when the run says it was shared and repaired", async () => {
+    let location: SurfaceLocation = { repoPath: "", worktreePath: "" };
+    const { coordinator, reports } = fakeCoordinator(() => writeFileSync(join(location.worktreePath, "report.tap"), PASSING_TAP));
+    const agent = sessionAgent((role, ctx) =>
+      role === "worker" ? breaksTheCheck(ctx) : Promise.reject(new Error("no repair of its own was expected")),
+    );
+    const ports = { ...portsWithTriage(agent), repairCoordinator: coordinator };
+    location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("CLOSED");
+
+    const { history } = await load(dir);
+    expect(reports).toHaveLength(1);
+    expect(gateRepairs(history)).toEqual([]);
+    expect(deriveBudgetsFromLog(history, budgets).gateMaintenance.used).toBe(0);
+    expect(history.filter((entry) => entry.t === "gate")).toMatchObject([
+      { attempt: 1, status: "ERROR" }, { attempt: 1, status: "ERROR" }, { attempt: 1, status: "ERROR" }, { attempt: 1, status: "ERROR" },
+      { attempt: 1, status: "PASS" },
+    ]);
+  });
+
+  it("reports each new round of errors, and stops on its own limit while it stays alone", async () => {
+    const { coordinator, reports } = fakeCoordinator(undefined, "alone");
+    const agent = sessionAgent((role, ctx) =>
+      role === "worker" ? breaksTheCheck(ctx) : Promise.resolve({ status: "completed", rationale: "tried, changed nothing" }),
+    );
+    const ports = { ...portsWithTriage(agent), repairCoordinator: coordinator };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("ESCALATED");
+
+    const { history } = await load(dir);
+    expect(reports).toHaveLength(2);
+    expect(new Set(reports.map((report) => report.key)).size).toBe(2);
+    expect(gateRepairs(history)).toHaveLength(2);
+  });
+
+  it("finishes a repair of its own without asking the run again when that repair ends without a result", async () => {
+    const { coordinator, requests, reports } = fakeCoordinator(undefined, "alone");
+    let repairs = 0;
+    const agent = sessionAgent((role, ctx) => {
+      if (role === "worker") return breaksTheCheck(ctx);
+      repairs += 1;
+      if (repairs === 1) return Promise.resolve({ status: "incomplete", rationale: "the repair session ended without a result" });
+      writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+      return Promise.resolve({ status: "completed", rationale: "restored report.tap" });
+    });
+    const ports = { ...portsWithTriage(agent), repairCoordinator: coordinator };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    expect((await run(dir, location, ports)).state).toBe("CLOSED");
+
+    expect(reports).toHaveLength(1);
+    expect(requests).toEqual([]);
+    expect(gateRepairs((await load(dir)).history)).toHaveLength(2);
   });
 });

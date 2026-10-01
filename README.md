@@ -152,11 +152,15 @@ refused because the first moved the base branch on, and it is handed back to you
 way. Each run of several at once also keeps a small record of its own under
 `.delivery/supervised/`.
 
-If the environment your tasks share breaks during a run of several at once (the check cannot
-run at all, for a task that has not started or one whose work is being checked), the run does
-not let every task discover it, retry and fight over it. It holds any task about to check or
-hand off its work, leaves work already under way alone, and repairs the environment once, with
-the same agent that repairs a check for a single task:
+If the environment your tasks share breaks during a run of several at once, the run does not let
+every task discover it, retry and fight over it. A check that cannot run at all before a task has
+started is treated as shared straight away. A check that keeps erroring on a task's finished work
+(the check itself erroring, not a failing test) is first that task's own business: it re-checks,
+then repairs its own check on its own limit, and no other task is affected. Only when a second,
+different task hits the same thing does the run treat it as shared; the same task erroring again
+does not count twice, and a successful repair starts the count afresh. Once it is shared, the run
+holds any task about to check or hand off its work, leaves work already under way alone, and
+repairs the environment once, with the same agent that repairs a check for a single task:
 
 ```text
 ! Something in the shared environment looks broken. Holding any task about to check or hand off its work while it is repaired; work already under way carries on.
@@ -360,7 +364,7 @@ same object works too, for a project that needs to compute a value.
 | `roles` | Changes what the worker, or the agent that repairs your check, is told and which tools it may use: `{ "worker": { "systemPromptFragment": "...", "allowedTools": ["Read", "Edit"] } }`, and `gateMaintenance` the same way. Anything you leave out keeps its built-in value. A run keeps the roles it started with. `delivery preview` shows the result. See [Configuring a role](docs/configuring-a-role.md#from-the-configuration-file). |
 | `gate` | What decides whether a change is good. The simplest is a ready-made check chosen by name: `{ "type": "test-runner" }` runs your tests (add `"command"` if they are not run with `npm test`), `{ "type": "file-exists", "path": "CHANGES.md" }`, `{ "type": "command-succeeds", "command": "npm run lint" }`, or `{ "type": "schema-validates", "file": "data.json", "schema": "data.schema.json" }`. `delivery validate` says what the chosen check does. To write one out in full, or write your own, see [Writing a gate](docs/writing-a-gate.md). |
 | `closer` | What happens to accepted work: see [Writing a closer](docs/writing-a-closer.md) |
-| `budgets` | How many attempts each kind of setback gets before the run asks a person: `correction`, `gateError`, `gateMaintenance`, `terminus` and `close`, each a whole number. Anything you leave out keeps its default (3, 3, 2, 5 and 3). With several tasks at once, `gateMaintenance` is one limit for the whole run: how many times it may repair the environment the tasks share. |
+| `budgets` | How many attempts each kind of setback gets before the run asks a person: `correction`, `gateError`, `gateMaintenance`, `terminus` and `close`, each a whole number. Anything you leave out keeps its default (3, 3, 2, 5 and 3). With several tasks at once, `gateMaintenance` is also one limit for the whole run: how many times it may repair the environment the tasks share. A task still has its own for a check error only it has hit. |
 | `concurrency` | How many tasks from your list may run at once, a whole number. The default, 1, works down the list one task at a time. 2 or more starts that many, each on its own copy with its own branch and record, and starts the next task on the list as soon as one finishes. |
 
 A gate or closer of your own is named here rather than on the command line, because it needs a

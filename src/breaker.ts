@@ -168,8 +168,6 @@ export interface RunBreakerOptions {
 export interface RunBreaker extends RepairCoordinator {
   /** Why the run gave up on the shared environment, once it has: start nothing more. */
   readonly gaveUp: string | undefined;
-  /** A task's check kept erroring until its re-checks ran out: is that its own problem, or everyone's? */
-  reportCheckErrors(report: CheckErrorReport): Promise<CheckErrorAnswer>;
 }
 
 /**
@@ -289,16 +287,16 @@ export function createRunBreaker({ dir, history, limit, dispatch, onChange }: Ru
       }
     },
 
-    async requestRepair({ surfaceId, key, reason }) {
+    async requestRepair({ surfaceId, reason }) {
       if (gaveUp !== undefined) throw new RunHalted(gaveUp);
-      if (key !== null && servedAlready(log, surfaceId, key)) return;
       // No await between the trip and its request: both land in the log before any other task's request or hold,
       // so the trip's own request is recorded first (the order the first test asserts). `record` chains the writes.
       if (state === "HEALTHY") {
         void record({ t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId, reason } });
         onChange({ state: "DEGRADED", affected: [surfaceId] });
       }
-      if (!requestedInOpenTrip(log, surfaceId, key)) await record({ t: "repair_request", surfaceId, key });
+      // Asked before the task has started, so there is no setback to name: taking the baseline again is itself the check.
+      if (!requestedInOpenTrip(log, surfaceId, null)) await record({ t: "repair_request", surfaceId, key: null });
       await ensureRepair();
     },
 
