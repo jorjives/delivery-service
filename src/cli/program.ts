@@ -7,6 +7,7 @@ import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
 import { inquirerAsk } from "./prompts.js";
 import { jsonReporter, plainReporter, type RunReporter } from "./report.js";
+import { reportCommand, type ReportOptions } from "./report-command.js";
 import { resumeCommand, type ResumeOptions } from "./resume-command.js";
 import { runCommand, type RunOptions } from "./run-command.js";
 import { statusCommand, type StatusOptions } from "./status-command.js";
@@ -114,6 +115,17 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
     .action(async (runId: string | undefined, options: StatusOptions, command: Command) => {
       exitCode = await statusCommand(runId, options, contextFor(io, command));
+    });
+
+  program
+    .command("report")
+    .description(
+      "say in plain words what happened to your task list and what to do next: which tasks landed, which need you, which need an engineer and which were not started, without changing anything",
+    )
+    .argument("[run-id]", "report this task's run, or this run of several tasks, instead of the task list")
+    .option("--repo <path>", "the git repository the runs belong to (default: the current folder)")
+    .action(async (runId: string | undefined, options: ReportOptions, command: Command) => {
+      exitCode = await reportCommand(runId, options, contextFor(io, command));
     });
 
   program

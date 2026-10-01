@@ -1,0 +1,279 @@
+import { execFileSync } from "node:child_process";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { cleanGitEnv } from "../git-env.js";
+import type { MockScript } from "../mock-script.js";
+import {
+  attempt,
+  BANNER,
+  closedAt,
+  damageLog,
+  failedCheck,
+  fill,
+  FOOTER,
+  FORM,
+  HOMEPAGE,
+  ID,
+  stoppedAt,
+  writeRecord,
+  type TaskRun,
+} from "../report/report-fixtures.js";
+import { initTempRepo } from "../temp-repo.js";
+import { TEST_MOCK_SCRIPT } from "./agent-session.js";
+import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeSupervisedRun } from "./command-fixtures.js";
+import { takeRepoLock } from "./repo-lock.js";
+
+const LIST = [FORM, FOOTER, HOMEPAGE, BANNER];
+
+const formDone: TaskRun = { runId: ID.form, task: FORM, closerRef: { type: "merge-back" }, history: attempt(1, "added the form"), outcome: closedAt("2026-10-01T02:19:10.000Z") };
+const footerFailed: TaskRun = {
+  runId: ID.footer,
+  task: FOOTER,
+  closerRef: { type: "merge-back" },
+  history: [...attempt(1, "first go"), ...failedCheck(1, "reroute"), ...attempt(2, "2 links still point nowhere"), ...failedCheck(2, "escalate")],
+  outcome: stoppedAt("2026-10-01T02:58:00.000Z", { kind: "budget", population: "correction" }, "correction budget exhausted (1/1)"),
+};
+
+async function project(prefix: string, tasks: string[] | undefined, runs: TaskRun[]): Promise<string> {
+  const repo = initTempRepo(prefix, { "package.json": PACKAGE, ...(tasks ? { "delivery.config.json": JSON.stringify({ tasks }) } : {}) });
+  for (const run of runs) await writeRecord(repo, run);
+  return repo;
+}
+
+/** Everything git can see of the folder, tracked or not, and the run records themselves, which git ignores. */
+const everything = (repo: string): string =>
+  ["status --porcelain --ignored", "stash list", "branch --list", "rev-parse HEAD"]
+    .map((args) => execFileSync("git", args.split(" "), { cwd: repo, env: cleanGitEnv(), encoding: "utf-8" }))
+    .concat(execFileSync("sh", ["-c", "find .delivery -type f | sort | xargs cksum"], { cwd: repo, encoding: "utf-8" }))
+    .join("\n");
+
+describe("delivery report", () => {
+  it("reports the project's task list: what landed, what needs the owner, and what was not started", async () => {
+    const repo = await project("report-list-", LIST, [formDone, footerFailed]);
+
+    const { exitCode, stdout, stderr } = await delivery(["report"], { cwd: repo });
+
+    expect(stdout.split("\n")).toEqual([
+      "Your task list: 1 of 4 tasks completed and merged; 1 failed after 2 attempts; 2 not started.",
+      "Started 1 Oct 02:01 UTC; last activity 1 Oct 02:58 UTC.",
+      "",
+      "NEEDS YOU (1)",
+      '  Task 2 of 4: "Fix the broken footer links"',
+      "    Failed after 2 attempts. The agent tried 2 times and the check you set up still does not pass.",
+      '    The agent said: "2 links still point nowhere"',
+      "    Where the work is: this task's changes were not added to main.",
+      "    To act: 1. Reword the task, or remove it from your list.",
+      "            2. Run: delivery run",
+      "    Full account: delivery status fix-the-broken-footer-links-20261001T022000Z",
+      "",
+      "DONE (1)",
+      '  Task 1 of 4: "Add a contact form": merged into main at 02:19',
+      "",
+      "NOT STARTED (2)",
+      '  Task 3 of 4: "Replace the old homepage"',
+      '  Task 4 of 4: "Add a cookie banner"',
+      "  These are waiting behind task 2. The harness does not skip a task that stopped, so it left these alone. Amend or remove task 2, then run `delivery run` to carry on with them.",
+      "",
+      "FOR WHOEVER TUNES THIS",
+      "  Retries used across these tasks: agent corrections 1 of 6; check re-runs 0 of 6; check repairs 0 of 4; agent restarts 0 of 10; hand-off retries 0 of 6.",
+      "  Time and cost were not recorded for this run.",
+      "",
+      "Next: delivery status --all (every run)",
+      "",
+    ]);
+    expect(stderr).toBe("");
+    // The report was made, so the command succeeded: a failed task is what the report says, not how the command went.
+    expect(exitCode).toBe(0);
+  });
+
+  it("prints the same bytes every time for the same records", async () => {
+    const repo = await project("report-same-", LIST, [formDone, footerFailed]);
+
+    const first = await delivery(["report"], { cwd: repo });
+    const second = await delivery(["report"], { cwd: repo });
+
+    expect(first.stdout.split("\n")[0]).toBe("Your task list: 1 of 4 tasks completed and merged; 1 failed after 2 attempts; 2 not started.");
+    expect(second.stdout).toBe(first.stdout);
+    expect(first.stdout).not.toContain("\u001B");
+  });
+
+  it("changes nothing: no file, no branch, no record", async () => {
+    const repo = await project("report-read-only-", LIST, [formDone, footerFailed]);
+    const before = everything(repo);
+
+    const list = await delivery(["report"], { cwd: repo });
+    const one = await delivery(["report", ID.footer], { cwd: repo });
+
+    expect([list.exitCode, one.exitCode]).toEqual([0, 0]);
+    expect(everything(repo)).toBe(before);
+  });
+
+  it("reports one task's run when given its id", async () => {
+    const repo = await project("report-named-", LIST, [formDone, footerFailed]);
+
+    const { exitCode, stdout } = await delivery(["report", ID.footer], { cwd: repo });
+    const lines = stdout.split("\n");
+
+    expect(lines[0]).toBe("This run: 0 of 1 task completed; 1 failed after 2 attempts.");
+    expect(lines).toContain('  Task 2 of 4: "Fix the broken footer links"');
+    expect(stdout).not.toContain("Add a contact form");
+    expect(exitCode).toBe(0);
+  });
+
+  it("reports a run of several tasks at once when given its id, and says it is still going while it holds the folder", async () => {
+    const repo = await project("report-run-", LIST, [formDone, { runId: ID.footer, task: FOOTER, history: attempt(1, "first go") }]);
+    await writeSupervisedRun(repo, { runId: ID.run, repoPath: repo, concurrency: 2, tasks: 4, runBudgetMax: { gateMaintenance: 2 } }, [
+      fill(1, ID.form, FORM),
+      fill(2, ID.footer, FOOTER),
+    ]);
+    const release = await takeRepoLock(repo);
+
+    const going = await delivery(["report", ID.run], { cwd: repo });
+    await release?.();
+    const stopped = await delivery(["report", ID.run], { cwd: repo });
+
+    expect(going.stdout.split("\n")[0]).toBe("This run is still going (4 tasks: 1 done, 1 working, 2 waiting to start).");
+    expect(stopped.stdout.split("\n")[0]).toBe("This run stopped part way (4 tasks: 1 done, 1 not finished, 2 waiting to start). To carry on: delivery run");
+    expect([going.exitCode, stopped.exitCode]).toEqual([0, 0]);
+  });
+
+  it("says so in one line, and reports the most recent run, when the project has no task list", async () => {
+    const repo = await project("report-no-list-", undefined, [formDone, footerFailed]);
+
+    const { exitCode, stdout } = await delivery(["report"], { cwd: repo });
+
+    expect(stdout.split("\n").slice(0, 2)).toEqual([
+      "This project has no task list, so this is its most recent run.",
+      "This run: 0 of 1 task completed; 1 failed after 2 attempts.",
+    ]);
+    expect(stdout).toContain('  Task: "Fix the broken footer links"');
+    expect(stdout).toContain('    To act: Reword the task and run it again: delivery run --task "<the reworded task>"');
+    expect(exitCode).toBe(0);
+  });
+
+  it("says there are no runs yet, and how to start one, in a folder that has never had one", async () => {
+    const repo = await project("report-empty-", LIST, []);
+
+    const { exitCode, stdout, stderr } = await delivery(["report"], { cwd: repo });
+
+    expect(stdout).toBe("No runs yet in this folder. Start one with: delivery run\n\nNext: delivery run\n");
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  });
+
+  it("names one damaged record with its file, says the report is incomplete, and still reports the rest", async () => {
+    const repo = await project("report-damaged-", LIST, [formDone, footerFailed]);
+    await damageLog(join(repo, ".delivery", "runs", ID.footer));
+
+    const { exitCode, stdout, stderr } = await delivery(["report"], { cwd: repo });
+
+    expect(stdout.split("\n").slice(0, 2)).toEqual([
+      "Incomplete report: the record for task 2 is damaged (.delivery/runs/fix-the-broken-footer-links-20261001T022000Z/log.jsonl); the other 3 tasks are reported below.",
+      "Your task list: 1 of 4 tasks completed and merged; 1 could not be read; 2 not started.",
+    ]);
+    expect(stdout).toContain('  Task 1 of 4: "Add a contact form": merged into main at 02:19');
+    expect(stdout + stderr).not.toContain("    at ");
+    expect(exitCode).toBe(0);
+  });
+
+  it("still reports when the damaged record is the very run asked about", async () => {
+    const repo = await project("report-damaged-named-", LIST, [footerFailed]);
+    await writeFile(join(repo, ".delivery", "runs", ID.footer, "case.json"), "{ truncated");
+
+    const { exitCode, stdout } = await delivery(["report", ID.footer], { cwd: repo });
+
+    expect(stdout.split("\n")[0]).toBe(
+      "Incomplete report: the record of run fix-the-broken-footer-links-20261001T022000Z is damaged (.delivery/runs/fix-the-broken-footer-links-20261001T022000Z/case.json); nothing else could be read.",
+    );
+    expect(exitCode).toBe(0);
+  });
+
+  it("fails, plainly, only when it could not answer: an id that names no run", async () => {
+    const repo = await project("report-unknown-", LIST, [formDone]);
+
+    const { exitCode, stdout, stderr } = await delivery(["report", "never-ran-20260101T000000Z"], { cwd: repo });
+
+    expect(exitCode).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("I couldn't find that run's record");
+    expect(stderr).not.toContain("    at ");
+  });
+
+  it("refuses --json for now rather than print text where a script expects data", async () => {
+    const repo = await project("report-json-", LIST, [formDone]);
+
+    const { exitCode, stdout, stderr } = await delivery(["report", "--json"], { cwd: repo });
+
+    expect(exitCode).toBe(2);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("`delivery report` prints its report as text only for now. Run it without `--json`.");
+  });
+
+  it("describes itself in the help, and is listed among the commands", async () => {
+    const repo = await project("report-help-", LIST, []);
+
+    const top = await delivery(["--help"], { cwd: repo });
+    const own = await delivery(["report", "--help"], { cwd: repo });
+
+    expect(top.stdout).toMatch(/^\s+report \[options\] \[run-id\]\s+say in plain words what happened/m);
+    expect(own.stdout).toContain("--repo <path>");
+  });
+
+  it(
+    "tells a real run of the list apart: the task that landed, and the one the agent stopped on for the owner's say-so",
+    async () => {
+      // Deliberately distinct in their first five words: a run id slugs only those.
+      const hello = "add a hello function that greets a name, with a test";
+      const purge = "delete every old page from the published site";
+      const script: MockScript = {
+        expectations: [
+          { when: { promptContains: purge }, json: { status: "escalate", category: "authority", rationale: "this would delete 14 published pages" } },
+          {
+            when: { promptContains: hello },
+            effects: [{ write: { path: "hello.js", content: "export const hello = (name) => `hello ${name}`;\n" } }],
+            json: { status: "completed", rationale: "added hello.js" },
+          },
+        ],
+      };
+      const repo = await project("report-real-", [hello, purge, "a third task nobody reaches"], []);
+      const env = { [TEST_MOCK_SCRIPT]: await scriptFile(script) };
+
+      await delivery(["run"], { cwd: repo, env });
+      const { exitCode, stdout } = await delivery(["report"], { cwd: repo, env });
+      const lines = stdout.split("\n");
+
+      expect(lines[0]).toBe("Your task list: 1 of 3 tasks completed and committed to its own branch; 1 needs your decision; 1 not started.");
+      expect(lines).toContain("    Needs your decision. The agent stopped and said it could not go on without your say-so.");
+      expect(lines).toContain('    The agent said: "this would delete 14 published pages"');
+      expect(lines).toContain("    To act: 1. Decide. To say yes, add the permission to the task wording. To say no, remove the task from your list.");
+      expect(lines).toContain('  Task 3 of 3: "a third task nobody reaches"');
+      expect(exitCode).toBe(0);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "counts a real run's attempts when the check never passes",
+    async () => {
+      const task = "add a hello function that greets a name, with a test";
+      const repo = initTempRepo("report-real-failing-", {
+        "package.json": JSON.stringify({ name: "scratch", private: true, scripts: { test: "test ! -f broken.txt" } }),
+        "delivery.config.json": JSON.stringify({ tasks: [task] }),
+      });
+      const env = { [TEST_MOCK_SCRIPT]: await scriptFile({ expectations: [{ effects: [{ write: { path: "broken.txt", content: "x\n" } }], json: { status: "completed", rationale: "I believe this is done" } }] }) };
+
+      await delivery(["run"], { cwd: repo, env });
+      const { exitCode, stdout } = await delivery(["report"], { cwd: repo, env });
+
+      const lines = stdout.split("\n");
+
+      expect(lines[0]).toBe("Your task list: 0 of 1 task completed; 1 failed after 4 attempts.");
+      expect(lines).toContain("    Failed after 4 attempts. The agent tried 4 times and the check you set up still does not pass.");
+      expect(lines).toContain('    The agent said: "I believe this is done"');
+      expect(lines).toContain("  Retries used across this task: agent corrections 3 of 3; check re-runs 0 of 3; check repairs 0 of 2; agent restarts 0 of 5; hand-off retries 0 of 3.");
+      expect(exitCode).toBe(0);
+    },
+    RUN_TIMEOUT * 2,
+  );
+});

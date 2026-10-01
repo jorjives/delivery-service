@@ -429,7 +429,7 @@ async function mostRecent(repoPath: string): Promise<RunRecord | SupervisedRecor
 }
 
 /** The project's list as written now, or none when there is no list or the file fails to load: status reads it only to annotate, never to gate. */
-async function listTasks(startDir: string, repoPath: string, ctx: CommandContext): Promise<TaskDef[]> {
+export async function listTasks(startDir: string, repoPath: string, ctx: CommandContext): Promise<TaskDef[]> {
   try {
     return queueTasks(await loadConfig({ startDir, repoPath, flag: undefined, env: ctx.env }));
   } catch (err) {
