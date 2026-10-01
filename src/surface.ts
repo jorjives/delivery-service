@@ -393,14 +393,6 @@ async function dispatchSession(
 }
 
 /**
- * Dispatch one repair session, or escalate if the gate-maintenance budget is
- * spent. The dispatch entry IS the budget burn: the count is derived from the
- * log first, and the entry appended only if under cap, so "burned live" and
- * "derived from the log on rebuild" are the same computation by construction.
- * A task of a run of several at once asks the run instead, and spends none of
- * its own budget.
- */
-/**
  * Dispatch one repair session on this task's own limit, or escalate if that
  * limit is spent. The dispatch entry IS the budget burn: the count is derived
  * from the log first, and the entry appended only if under cap, so "burned
