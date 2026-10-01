@@ -192,10 +192,11 @@ const slotOutcome = (exitCode: ExitCode): SlotOutcome =>
  */
 async function stopForEnvironment(repoPath: string, dir: string, runId: string, tasks: TaskDef[], ctx: CommandContext): Promise<ExitCode> {
   const { history } = await loadRunFile(dir);
-  const reason = history.findLast((entry) => entry.t === "run_escalated")?.reason ?? "the shared environment could not be repaired; no task caused this";
+  const trip = tripsOf(history).at(-1);
+  const reason = trip?.reason ?? "the shared environment could not be repaired; no task caused this";
   await setRunOutcome(dir, { kind: "escalated", cause: "shared_environment", reason, at: new Date().toISOString() });
   ctx.report.note(environmentGaveUp(repairsUsed(history), listStandings(await allRuns(repoPath), tasks), tasks.length));
-  ctx.report.run({ runId, state: "ESCALATED", affected: tripsOf(history).at(-1)?.held ?? [] });
+  ctx.report.run({ runId, state: "ESCALATED", affected: trip?.held ?? [] });
   return EXIT.escalated;
 }
 
