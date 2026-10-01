@@ -1,6 +1,7 @@
 # Multi-Surface Supervisor — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-09-26-multi-surface-supervisor-design.md`
+> **Status:** ✅ Complete — 2026-10-01 — all 7 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** as with Items 8 and 9, this item's product surface is the `delivery` command
@@ -266,6 +267,7 @@ ordering, finer-grained hold) is not sliced.
 
 ## Slice 7: Be Offered a Sensible Number of Tasks at Once During Set-Up
 
+**Status:** ✅ Complete — 2026-10-01 — `1672989`
 **Delivers:** When `delivery init` sets up a project with more than one task, it asks whether to run some at the same time and offers a conservative number, instead of silently choosing.
 
 ### Prerequisites

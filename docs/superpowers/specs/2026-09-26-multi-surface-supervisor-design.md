@@ -6,6 +6,7 @@ roadmap_item: 10
 
 # Multi-Surface Supervisor — Design
 
+> **Status:** ✅ Complete — 2026-10-01 — all 7 slices delivered
 > Roadmap: `docs/superpowers/specs/2026-09-04-delivery-harness-roadmap.md`, Item 10.
 > Resolves: the open items of `docs/multi-surface-control-flow.md` (host resource governor, merge serialisation detail, breaker signal tuning).
 > Extends: `2026-09-17-project-configuration-design.md` (Item 9: the sequential task queue, content identity via `findQueueRun`), `2026-09-14-cli-and-configuration-design.md` (Item 8: the `delivery` CLI, exit codes, `--json`, `delivery status`).
