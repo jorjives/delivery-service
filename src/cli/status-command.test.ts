@@ -867,7 +867,7 @@ describe("delivery status for a run of several tasks at once", () => {
       }
     });
 
-    it("says nothing of a trip the run repaired", async () => {
+    it("leads with nothing for a trip the run repaired, and says beside the environment that it was repaired", async () => {
       const repo = initTempRepo("status-breaker-repaired-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [HELLO], concurrency: 2 }) });
       await writeRunRecord(repo, { runId: HELLO_RUN, task: HELLO, outcome: CLOSED });
       await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } }, [
@@ -880,7 +880,7 @@ describe("delivery status for a run of several tasks at once", () => {
       ]);
       const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
       expect(stdout.split("\n")[0]).toMatch(/^Run run-/);
-      expect(stdout).toContain("Environment: healthy");
+      expect(stdout.split("\n")).toContain("Environment: healthy (repaired once during this run)");
     });
 
     it("gives the trip, the run's repair limit and why it stopped in --json, for looking back", async () => {

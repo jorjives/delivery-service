@@ -286,7 +286,7 @@ reads any other run.
 If the environment the tasks share broke, the report opens with that before anything else:
 whether it is being repaired or could not be fixed, which task found it and why, and which tasks
 it held. Those tasks count as "paused until the shared environment is fixed". A run that
-repaired its environment and carried on says only "Environment: healthy".
+repaired its environment and carried on says so beside it: "Environment: healthy (repaired once during this run)"; `--json` has the detail under `trips`.
 
 `delivery status run-… --json` gives the whole run as one document, for a script or for looking
 back after the fact: the run id, when it started, how many tasks and how many at once, whether it

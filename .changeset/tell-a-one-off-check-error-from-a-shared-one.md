@@ -8,3 +8,5 @@ task is held. Only when a second, different task hits the same thing does the ru
 environment as broken and repair it once. The same task erroring again counts once, and a
 successful repair starts the count afresh. A check that cannot run before a task has started still
 stops the run for one repair straight away. A run of one task at a time is unchanged.
+
+`delivery status` for a run that repaired its shared environment and carried on now says so beside the environment line: "Environment: healthy (repaired once during this run)". `--json` names every task whose check errors led to a repair under `trips[].cause`.

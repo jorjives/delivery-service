@@ -459,6 +459,13 @@ async function viewOf(record: SupervisedRecord, repoPath: string, startDir: stri
   return supervisedView(record.runFile, records, list, live);
 }
 
+/** Beside a healthy environment, how often the run repaired it: looking back, a repair is part of the run's history. Nothing while it is broken, where the report already leads with that. */
+function repairedDuringRun(view: SupervisedView): string {
+  const repaired = tripsOf(view.runFile.history).filter((trip) => trip.ended === "repaired").length;
+  if (view.breaker !== "HEALTHY" || repaired === 0) return "";
+  return ` (repaired ${repaired === 1 ? "once" : repaired === 2 ? "twice" : `${repaired} times`} during this run)`;
+}
+
 /**
  * A run of several tasks at once, as a person reads it: which run and its
  * shape, the shared environment, the counts, then one line per task in list
@@ -472,7 +479,7 @@ export async function supervisedReport(view: SupervisedView, ctx: CommandContext
   const lines = [
     ...environmentNarration(view),
     `Run ${header.runId}, started ${startedAt(header.runId)}: ${shapeOf(header.tasks, header.concurrency)}`,
-    `Environment: ${BREAKER_PHRASES[view.breaker]}`,
+    `Environment: ${BREAKER_PHRASES[view.breaker]}${repairedDuringRun(view)}`,
     ...(counts === "" ? [] : [counts]),
     ...(outcome === undefined && !view.live ? [STOPPED_PART_WAY] : []),
     "",
