@@ -2,11 +2,11 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { load } from "../case-file.js";
-import { FileNotFound, RunFileNotFound } from "../errors.js";
+import { RunFileNotFound } from "../errors.js";
 import { loadRunFile } from "../run-file.js";
 import type { RunFile } from "../schema.js";
 import { runsRoot, supervisedRoot, supervisedPlace } from "../run-location.js";
-import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js";
+import { newestFirstBy, readRunRecords, startedInstant, type RunRecord } from "../run-records.js";
 import { taskIntent } from "../task-list.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal } from "./failures.js";
@@ -45,26 +45,10 @@ export async function touchedAt(dir: string): Promise<number> {
  * not swallowed: it stops the command with the message that names the folder.
  */
 export async function allRuns(repoPath: string): Promise<RunRecord[]> {
-  let entries;
-  try {
-    entries = await readdir(runsRoot(repoPath), { withFileTypes: true });
-  } catch {
-    return []; // nothing has ever run here
-  }
-
-  const read = await Promise.all(
-    entries.filter((entry) => entry.isDirectory()).map((entry) =>
-      readRun(repoPath, entry.name).catch((err) => {
-        if (err instanceof FileNotFound) return undefined;
-        throw err;
-      }),
-    ),
-  );
-  const found = await Promise.all(
-    read
-      .filter((record): record is RunRecord => record !== undefined)
-      .map(async (record) => ({ record, touchedAt: await touchedAt(record.dir) })),
-  );
+  const { records, damaged } = await readRunRecords(repoPath);
+  const [unreadable] = damaged;
+  if (unreadable) throw unreadable.error;
+  const found = await Promise.all(records.map(async (record) => ({ record, touchedAt: await touchedAt(record.dir) })));
   return found.sort((a, b) => b.touchedAt - a.touchedAt).map(({ record }) => record);
 }
 
