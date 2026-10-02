@@ -384,7 +384,8 @@ whose brief or packet can no longer be read says "not recorded". `--decisions` c
 combined with `--all` or, for now, with `--json`: either stops with exit 2.
 
 `status` exits 0 whenever it could read the run and 2 when it could not find one, so a run that
-needs your decision is still a successful read. The exit codes in the table above are the run's
+needs your decision is still a successful read. `status --watch` is the exception: it ends with
+the code of the run it followed (see "Watch a run as it happens"). The exit codes in the table above are the run's
 own, reported by `delivery run`.
 
 Add `--json` to get the account as one JSON document instead of sentences (the triage rounds and
@@ -455,6 +456,59 @@ is going now, the environment, how it ended and when, why it stopped and whether
 each exactly the document `delivery status <task-run-id> --json` gives, and `queued`, the tasks
 it has yet to start with their place on your list. Every key is always present, `null` where it
 does not apply yet.
+
+### Watch a run as it happens
+
+To follow a run while it is going, from any terminal, without touching it:
+
+```bash
+delivery status --watch
+```
+
+```text
+Watching run run-20261001T020000Z: 4 tasks, up to 2 at once. Ctrl-C stops watching; the run is not affected.
+
+Right now (last activity 02:22 UTC): 4 tasks: 1 done, 2 working, 1 waiting to start.
+  Task 1 of 4: "Add a contact form": merged into main at 02:19
+  Task 2 of 4: "Fix the broken footer links": checking the agent's work (attempt 1). In this step since 02:22 UTC.
+  Task 3 of 4: "Replace the old homepage": the agent is working (attempt 1). In this step since 02:20 UTC.
+  Task 4 of 4: "Add a cookie banner": waiting to start
+
+02:23 Task 2 of 4: wrapping up.
+02:24 Task 2 of 4: done, merged into main.
+02:24 Task 4 of 4: the agent is working.
+02:41 ! Task 3 of 4: needs your decision.
+02:57 Task 4 of 4: checking the agent's work.
+02:58 Task 4 of 4: wrapping up.
+02:58 Task 4 of 4: done, merged into main.
+02:58 Run finished: 3 of 4 tasks completed and merged; 1 needs your decision. Run `delivery report` for what to do.
+```
+
+It says what it is watching, gives every task as the record shows it right now, then adds one
+line for each change: the time it was recorded (UTC), the task's place on your list, and what
+the task is now doing, in the words `delivery run` prints. A line that needs your attention is
+marked with `!` as well as its words. Lines are only ever added, never redrawn, so the output
+reads the same in a terminal, through a pipe and in a log file. Trouble with the setup every
+task shares, its repair and the tasks carrying on are told as lines of their own.
+
+With no run id it follows your task list, as `delivery report` does, or the most recent run
+when the project has no `tasks` list. `delivery status --watch <run-id>` follows one task's run
+or one run of several tasks at once.
+
+The watch ends when what it follows ends, with the counts `delivery report` opens with, and
+its exit code is the one that run ended with (the table above), so a script can wait on it. A
+list worked one task at a time ends when every task is done or when a task stops the list, with
+the code `delivery run` gives for that; the pause between one task finishing and the next
+starting does not end it. Nothing records whether such a list is still being worked on, so the
+watch says so once, gives the last recorded activity, and keeps waiting: it never decides for
+itself that a run has died. A run of several tasks at once does record that it is going; if it
+was stopped part way, the watch says so and how to carry on, and exits 0.
+
+It only ever reads the record, and takes no lock. It looks every 2 seconds; `--interval
+<seconds>` changes that. A run made by an earlier version recorded no times: it can still be
+watched, its lines leave the time out, and the watch says once that times were not recorded.
+`--watch` cannot be combined with `--all`, with `--decisions` or, for now, with `--json`, and
+`--interval` needs `--watch`: each stops with exit 2.
 
 ### See every run
 
