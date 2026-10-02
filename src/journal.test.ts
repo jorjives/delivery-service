@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appendLine, atomicWriteJson, MalformedLine, parseLines } from "./journal.js";
+import { appendLine, atomicWrite, atomicWriteJson, MalformedLine, parseLines } from "./journal.js";
 
 const scratch = () => mkdtempSync(join(tmpdir(), "journal-"));
 const asNumber = (value: unknown): number => {
@@ -47,5 +47,14 @@ describe("writing a journal", () => {
     await atomicWriteJson(join(dir, "run.json"), { a: 2 });
     expect(JSON.parse(readFileSync(join(dir, "run.json"), "utf-8"))).toEqual({ a: 2 });
     expect(readdirSync(dir)).toEqual(["run.json"]);
+  });
+
+  it("replaces a text file whole, with the permissions asked for, leaving no temporary file behind", async () => {
+    const dir = scratch();
+    await atomicWrite(join(dir, "report.txt"), "first\n", 0o600);
+    await atomicWrite(join(dir, "report.txt"), "second\n", 0o600);
+    expect(readFileSync(join(dir, "report.txt"), "utf-8")).toBe("second\n");
+    expect(statSync(join(dir, "report.txt")).mode & 0o777).toBe(0o600);
+    expect(readdirSync(dir)).toEqual(["report.txt"]);
   });
 });

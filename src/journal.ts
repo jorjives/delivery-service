@@ -7,8 +7,8 @@ import { open, rename } from "node:fs/promises";
  * synced before the call returns. The case file and the supervised run file
  * both build on this, so the two can never drift apart.
  */
-export async function writeAndSync(filePath: string, flag: "w" | "a", data: string): Promise<void> {
-  const fd = await open(filePath, flag);
+export async function writeAndSync(filePath: string, flag: "w" | "a", data: string, mode?: number): Promise<void> {
+  const fd = await open(filePath, flag, mode);
   try {
     await fd.write(data);
     await fd.datasync();
@@ -17,11 +17,19 @@ export async function writeAndSync(filePath: string, flag: "w" | "a", data: stri
   }
 }
 
-/** Replace a JSON file whole: a reader sees the old contents or the new, never half of either. */
-export async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
+/**
+ * Replace a file whole: a reader sees the old contents or the new, never half of either.
+ * `mode` is the permissions the file is created with; left out, the platform's default.
+ */
+export async function atomicWrite(filePath: string, data: string, mode?: number): Promise<void> {
   const tmp = filePath + ".tmp";
-  await writeAndSync(tmp, "w", JSON.stringify(data, null, 2));
+  await writeAndSync(tmp, "w", data, mode);
   await rename(tmp, filePath);
+}
+
+/** Replace a JSON file whole. */
+export async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
+  await atomicWrite(filePath, JSON.stringify(data, null, 2));
 }
 
 /** Append one value to a journal as its own line. */
