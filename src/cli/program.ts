@@ -132,6 +132,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .argument("[run-id]", "report this task's run, or this run of several tasks, instead of the task list")
     .option("--write", "also save the report as .delivery/last-report.txt and .delivery/last-report.json, as a run does when it ends")
+    .option("--schema", "print the published JSON Schema of the report document and of the events `status --watch --json` prints, instead of a report")
     .option("--repo <path>", "the git repository the runs belong to (default: the current folder)")
     .action(async (runId: string | undefined, options: ReportOptions, command: Command) => {
       exitCode = await reportCommand(runId, options, contextFor(io, command));

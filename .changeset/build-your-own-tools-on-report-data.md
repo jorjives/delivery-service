@@ -36,3 +36,14 @@ task of the list has been worked on its own after the run began. It exits with t
 watch in words exits with. Replaying a finished run prints exactly the lines that following it
 live printed. Standard output holds only events. The watch in words now ends a finished run's task
 list as it ends one followed while the run went: by that run's own outcome.
+
+`delivery report --schema` prints the JSON Schema of both formats, generated from the same
+definitions the harness validates its data with. Every document and event the commands print is
+valid against it. The schema is open: it accepts a key, a name or an event type it does not
+know, so data from a later release still passes. Within a version (`/1`) no key is ever removed,
+renamed or given another type and no name a value can take is removed; the test suite fails if
+one is. Consumers should ignore keys and names they do not know, and should not parse the
+sentences meant for people. The step-by-step lines `delivery run --json` prints are outside this
+promise and stay as they are. Every key of the document is always present, `null` where it does
+not apply: a task's `cause` and a trip's `cause` each name every key their kinds can have, with
+`null` where the kind has none.

@@ -1,0 +1,388 @@
+delivery.report/1.counts.*: integer
+delivery.report/1.counts: object
+delivery.report/1.incomplete: array
+delivery.report/1.incomplete[].file: string
+delivery.report/1.incomplete[].queue.of: integer
+delivery.report/1.incomplete[].queue.task: integer
+delivery.report/1.incomplete[].queue: null|object
+delivery.report/1.incomplete[].run: string
+delivery.report/1.incomplete[]: object
+delivery.report/1.kind = "list"
+delivery.report/1.kind = "run"
+delivery.report/1.kind = "task"
+delivery.report/1.kind: string
+delivery.report/1.live: boolean|null
+delivery.report/1.run.breaker = "DEGRADED"
+delivery.report/1.run.breaker = "HEALTHY"
+delivery.report/1.run.breaker = "REPAIRING"
+delivery.report/1.run.breaker: string
+delivery.report/1.run.cause = "shared_environment"
+delivery.report/1.run.cause = "usage_limit"
+delivery.report/1.run.cause: null|string
+delivery.report/1.run.concurrency: integer
+delivery.report/1.run.finishedAt: null|string
+delivery.report/1.run.governs: boolean
+delivery.report/1.run.lastActivityAt: null|string
+delivery.report/1.run.limit = "rate"
+delivery.report/1.run.limit = "spend"
+delivery.report/1.run.limit: null|string
+delivery.report/1.run.outcome = "drained"
+delivery.report/1.run.outcome = "escalated"
+delivery.report/1.run.outcome: null|string
+delivery.report/1.run.reason: null|string
+delivery.report/1.run.runBudgets.gateMaintenance.max: integer
+delivery.report/1.run.runBudgets.gateMaintenance.used: integer
+delivery.report/1.run.runBudgets.gateMaintenance: object
+delivery.report/1.run.runBudgets: object
+delivery.report/1.run.runId: string
+delivery.report/1.run.startedAt: null|string
+delivery.report/1.run.tasks: integer
+delivery.report/1.run: null|object
+delivery.report/1.schema = "delivery.report/1"
+delivery.report/1.schema: string
+delivery.report/1.surfaces: array
+delivery.report/1.surfaces[].attempts: integer
+delivery.report/1.surfaces[].base: null|string
+delivery.report/1.surfaces[].branch: null|string
+delivery.report/1.surfaces[].budgets: array
+delivery.report/1.surfaces[].budgets[].max: integer
+delivery.report/1.surfaces[].budgets[].population = "close"
+delivery.report/1.surfaces[].budgets[].population = "correction"
+delivery.report/1.surfaces[].budgets[].population = "gateError"
+delivery.report/1.surfaces[].budgets[].population = "gateMaintenance"
+delivery.report/1.surfaces[].budgets[].population = "terminus"
+delivery.report/1.surfaces[].budgets[].population: string
+delivery.report/1.surfaces[].budgets[].used: integer
+delivery.report/1.surfaces[].budgets[]: object
+delivery.report/1.surfaces[].cause.kind = "authority"
+delivery.report/1.surfaces[].cause.kind = "budget"
+delivery.report/1.surfaces[].cause.kind = "provisioning"
+delivery.report/1.surfaces[].cause.kind = "repair_gave_up"
+delivery.report/1.surfaces[].cause.kind = "session_not_run"
+delivery.report/1.surfaces[].cause.kind = "triage_abort"
+delivery.report/1.surfaces[].cause.kind = "triage_escalated"
+delivery.report/1.surfaces[].cause.kind = "triage_failure"
+delivery.report/1.surfaces[].cause.kind: string
+delivery.report/1.surfaces[].cause.population = "close"
+delivery.report/1.surfaces[].cause.population = "correction"
+delivery.report/1.surfaces[].cause.population = "gateError"
+delivery.report/1.surfaces[].cause.population = "gateMaintenance"
+delivery.report/1.surfaces[].cause.population = "terminus"
+delivery.report/1.surfaces[].cause.population: null|string
+delivery.report/1.surfaces[].cause.role = "gate-maintenance"
+delivery.report/1.surfaces[].cause.role = "worker"
+delivery.report/1.surfaces[].cause.role: null|string
+delivery.report/1.surfaces[].cause: null|object
+delivery.report/1.surfaces[].closer = "commit-to-branch"
+delivery.report/1.surfaces[].closer = "custom"
+delivery.report/1.surfaces[].closer = "merge-back"
+delivery.report/1.surfaces[].closer = "open-pr"
+delivery.report/1.surfaces[].closer: null|string
+delivery.report/1.surfaces[].decisions: array
+delivery.report/1.surfaces[].decisions[].afterAttempt: integer
+delivery.report/1.surfaces[].decisions[].brief.dead_ends: string
+delivery.report/1.surfaces[].decisions[].brief.diagnosis: string
+delivery.report/1.surfaces[].decisions[].brief.problem: string
+delivery.report/1.surfaces[].decisions[].brief.references: array
+delivery.report/1.surfaces[].decisions[].brief.references[]: string
+delivery.report/1.surfaces[].decisions[].brief.scope: string
+delivery.report/1.surfaces[].decisions[].brief: null|object
+delivery.report/1.surfaces[].decisions[].packet.dead_ends: string
+delivery.report/1.surfaces[].decisions[].packet.decision: string
+delivery.report/1.surfaces[].decisions[].packet.evidence: string
+delivery.report/1.surfaces[].decisions[].packet.references: array
+delivery.report/1.surfaces[].decisions[].packet.references[]: string
+delivery.report/1.surfaces[].decisions[].packet.why_now: string
+delivery.report/1.surfaces[].decisions[].packet: null|object
+delivery.report/1.surfaces[].decisions[].rationale: string
+delivery.report/1.surfaces[].decisions[].recorded: boolean
+delivery.report/1.surfaces[].decisions[].trigger: string
+delivery.report/1.surfaces[].decisions[].verdict = "abort"
+delivery.report/1.surfaces[].decisions[].verdict = "escalate"
+delivery.report/1.surfaces[].decisions[].verdict = "fix_the_gate"
+delivery.report/1.surfaces[].decisions[].verdict = "recheck_gate"
+delivery.report/1.surfaces[].decisions[].verdict = "reroute"
+delivery.report/1.surfaces[].decisions[].verdict = "retry_close"
+delivery.report/1.surfaces[].decisions[].verdict: string
+delivery.report/1.surfaces[].decisions[]: object
+delivery.report/1.surfaces[].escalation.dead_ends: string
+delivery.report/1.surfaces[].escalation.decision: string
+delivery.report/1.surfaces[].escalation.evidence: string
+delivery.report/1.surfaces[].escalation.references: array
+delivery.report/1.surfaces[].escalation.references[]: string
+delivery.report/1.surfaces[].escalation.why_now: string
+delivery.report/1.surfaces[].escalation: null|object
+delivery.report/1.surfaces[].finishedAt: null|string
+delivery.report/1.surfaces[].lastActivityAt: null|string
+delivery.report/1.surfaces[].limit = "rate"
+delivery.report/1.surfaces[].limit = "spend"
+delivery.report/1.surfaces[].limit: null|string
+delivery.report/1.surfaces[].plain.agentSaid: null|string
+delivery.report/1.surfaces[].plain.audience = "engineer"
+delivery.report/1.surfaces[].plain.audience = "owner"
+delivery.report/1.surfaces[].plain.audience = "unknown"
+delivery.report/1.surfaces[].plain.audience: string
+delivery.report/1.surfaces[].plain.group = "abandoned"
+delivery.report/1.surfaces[].plain.group = "failed_after_attempts"
+delivery.report/1.surfaces[].plain.group = "needs_an_engineer"
+delivery.report/1.surfaces[].plain.group = "needs_your_decision"
+delivery.report/1.surfaces[].plain.group = "stopped"
+delivery.report/1.surfaces[].plain.group: string
+delivery.report/1.surfaces[].plain.next: array
+delivery.report/1.surfaces[].plain.next[]: string
+delivery.report/1.surfaces[].plain.sentence: string
+delivery.report/1.surfaces[].plain: null|object
+delivery.report/1.surfaces[].queue.of: integer
+delivery.report/1.surfaces[].queue.task: integer
+delivery.report/1.surfaces[].queue: null|object
+delivery.report/1.surfaces[].reason: null|string
+delivery.report/1.surfaces[].run: null|string
+delivery.report/1.surfaces[].standing = "aborted"
+delivery.report/1.surfaces[].standing = "closed"
+delivery.report/1.surfaces[].standing = "escalated"
+delivery.report/1.surfaces[].standing = "not_started"
+delivery.report/1.surfaces[].standing = "paused"
+delivery.report/1.surfaces[].standing = "queued"
+delivery.report/1.surfaces[].standing = "unfinished"
+delivery.report/1.surfaces[].standing: string
+delivery.report/1.surfaces[].startedAt: null|string
+delivery.report/1.surfaces[].state = "ABORTED"
+delivery.report/1.surfaces[].state = "AGENT_ACTIVE"
+delivery.report/1.surfaces[].state = "CLOSED"
+delivery.report/1.surfaces[].state = "CLOSING"
+delivery.report/1.surfaces[].state = "ESCALATED"
+delivery.report/1.surfaces[].state = "GATE_MAINTENANCE"
+delivery.report/1.surfaces[].state = "GATING"
+delivery.report/1.surfaces[].state = "INCOMPLETE_TERMINUS"
+delivery.report/1.surfaces[].state = "PRE_GATING"
+delivery.report/1.surfaces[].state = "PROVISIONING"
+delivery.report/1.surfaces[].state = "TRIAGE"
+delivery.report/1.surfaces[].state: null|string
+delivery.report/1.surfaces[].states: array
+delivery.report/1.surfaces[].states[].at: null|string
+delivery.report/1.surfaces[].states[].state = "ABORTED"
+delivery.report/1.surfaces[].states[].state = "AGENT_ACTIVE"
+delivery.report/1.surfaces[].states[].state = "CLOSED"
+delivery.report/1.surfaces[].states[].state = "CLOSING"
+delivery.report/1.surfaces[].states[].state = "ESCALATED"
+delivery.report/1.surfaces[].states[].state = "GATE_MAINTENANCE"
+delivery.report/1.surfaces[].states[].state = "GATING"
+delivery.report/1.surfaces[].states[].state = "INCOMPLETE_TERMINUS"
+delivery.report/1.surfaces[].states[].state = "PRE_GATING"
+delivery.report/1.surfaces[].states[].state = "PROVISIONING"
+delivery.report/1.surfaces[].states[].state = "TRIAGE"
+delivery.report/1.surfaces[].states[].state: string
+delivery.report/1.surfaces[].states[]: object
+delivery.report/1.surfaces[].task: string
+delivery.report/1.surfaces[]: object
+delivery.report/1.trips: array
+delivery.report/1.trips[].cause.kind = "gate_error_aggregate"
+delivery.report/1.trips[].cause.kind = "gate_maintenance"
+delivery.report/1.trips[].cause.kind: string
+delivery.report/1.trips[].cause.reason: null|string
+delivery.report/1.trips[].cause.surfaceId: string
+delivery.report/1.trips[].cause.surfaceIds: array|null
+delivery.report/1.trips[].cause.surfaceIds[]: string
+delivery.report/1.trips[].cause: object
+delivery.report/1.trips[].ended = "gave_up"
+delivery.report/1.trips[].ended = "repaired"
+delivery.report/1.trips[].ended: null|string
+delivery.report/1.trips[].held: array
+delivery.report/1.trips[].held[]: string
+delivery.report/1.trips[].limit = "rate"
+delivery.report/1.trips[].limit = "spend"
+delivery.report/1.trips[].limit: null|string
+delivery.report/1.trips[].reason: null|string
+delivery.report/1.trips[].repairs: array
+delivery.report/1.trips[].repairs[].attempt: integer
+delivery.report/1.trips[].repairs[].rationale: null|string
+delivery.report/1.trips[].repairs[].sessionKey: string
+delivery.report/1.trips[].repairs[].status = "completed"
+delivery.report/1.trips[].repairs[].status = "escalate"
+delivery.report/1.trips[].repairs[].status = "incomplete"
+delivery.report/1.trips[].repairs[].status: null|string
+delivery.report/1.trips[].repairs[].surfaceId: string
+delivery.report/1.trips[].repairs[]: object
+delivery.report/1.trips[]: object
+delivery.event/1.at: null|string
+delivery.event/1.run: null|string
+delivery.event/1.schema = "delivery.event/1"
+delivery.event/1.schema: string
+delivery.event/1.seq: integer
+delivery.event/1.surface: null|string
+delivery.event/1.type: string
+delivery.event/1<breaker_changed>.at: null|string
+delivery.event/1<breaker_changed>.run: null|string
+delivery.event/1<breaker_changed>.schema = "delivery.event/1"
+delivery.event/1<breaker_changed>.schema: string
+delivery.event/1<breaker_changed>.seq: integer
+delivery.event/1<breaker_changed>.state = "DEGRADED"
+delivery.event/1<breaker_changed>.state = "HEALTHY"
+delivery.event/1<breaker_changed>.state = "REPAIRING"
+delivery.event/1<breaker_changed>.state: string
+delivery.event/1<breaker_changed>.surface: null|string
+delivery.event/1<breaker_changed>.type = "breaker_changed"
+delivery.event/1<breaker_changed>.type: string
+delivery.event/1<repair_finished>.at: null|string
+delivery.event/1<repair_finished>.run: null|string
+delivery.event/1<repair_finished>.schema = "delivery.event/1"
+delivery.event/1<repair_finished>.schema: string
+delivery.event/1<repair_finished>.seq: integer
+delivery.event/1<repair_finished>.status = "completed"
+delivery.event/1<repair_finished>.status = "escalate"
+delivery.event/1<repair_finished>.status = "incomplete"
+delivery.event/1<repair_finished>.status: string
+delivery.event/1<repair_finished>.surface: null|string
+delivery.event/1<repair_finished>.type = "repair_finished"
+delivery.event/1<repair_finished>.type: string
+delivery.event/1<repair_started>.at: null|string
+delivery.event/1<repair_started>.attempt: integer
+delivery.event/1<repair_started>.of: integer
+delivery.event/1<repair_started>.run: null|string
+delivery.event/1<repair_started>.schema = "delivery.event/1"
+delivery.event/1<repair_started>.schema: string
+delivery.event/1<repair_started>.seq: integer
+delivery.event/1<repair_started>.surface: null|string
+delivery.event/1<repair_started>.type = "repair_started"
+delivery.event/1<repair_started>.type: string
+delivery.event/1<run_outcome>.at: null|string
+delivery.event/1<run_outcome>.cause = "shared_environment"
+delivery.event/1<run_outcome>.cause = "usage_limit"
+delivery.event/1<run_outcome>.cause: null|string
+delivery.event/1<run_outcome>.outcome = "drained"
+delivery.event/1<run_outcome>.outcome = "escalated"
+delivery.event/1<run_outcome>.outcome: string
+delivery.event/1<run_outcome>.reason: null|string
+delivery.event/1<run_outcome>.run: null|string
+delivery.event/1<run_outcome>.schema = "delivery.event/1"
+delivery.event/1<run_outcome>.schema: string
+delivery.event/1<run_outcome>.seq: integer
+delivery.event/1<run_outcome>.surface: null|string
+delivery.event/1<run_outcome>.type = "run_outcome"
+delivery.event/1<run_outcome>.type: string
+delivery.event/1<stream_ended>.at: null|string
+delivery.event/1<stream_ended>.counts.*: integer
+delivery.event/1<stream_ended>.counts: object
+delivery.event/1<stream_ended>.ending = "ended"
+delivery.event/1<stream_ended>.ending = "nothing_recorded"
+delivery.event/1<stream_ended>.ending = "stopped_part_way"
+delivery.event/1<stream_ended>.ending = "unreadable"
+delivery.event/1<stream_ended>.ending: string
+delivery.event/1<stream_ended>.run: null|string
+delivery.event/1<stream_ended>.runOutcome = "drained"
+delivery.event/1<stream_ended>.runOutcome = "escalated"
+delivery.event/1<stream_ended>.runOutcome: null|string
+delivery.event/1<stream_ended>.schema = "delivery.event/1"
+delivery.event/1<stream_ended>.schema: string
+delivery.event/1<stream_ended>.seq: integer
+delivery.event/1<stream_ended>.subject = "list"
+delivery.event/1<stream_ended>.subject = "run"
+delivery.event/1<stream_ended>.subject = "task"
+delivery.event/1<stream_ended>.subject: string
+delivery.event/1<stream_ended>.surface: null|string
+delivery.event/1<stream_ended>.surfaceOutcome = "aborted"
+delivery.event/1<stream_ended>.surfaceOutcome = "closed"
+delivery.event/1<stream_ended>.surfaceOutcome = "escalated"
+delivery.event/1<stream_ended>.surfaceOutcome: null|string
+delivery.event/1<stream_ended>.type = "stream_ended"
+delivery.event/1<stream_ended>.type: string
+delivery.event/1<stream_started>.at: null|string
+delivery.event/1<stream_started>.run: null|string
+delivery.event/1<stream_started>.schema = "delivery.event/1"
+delivery.event/1<stream_started>.schema: string
+delivery.event/1<stream_started>.seq: integer
+delivery.event/1<stream_started>.subject = "list"
+delivery.event/1<stream_started>.subject = "run"
+delivery.event/1<stream_started>.subject = "task"
+delivery.event/1<stream_started>.subject: string
+delivery.event/1<stream_started>.surface: null|string
+delivery.event/1<stream_started>.type = "stream_started"
+delivery.event/1<stream_started>.type: string
+delivery.event/1<surface_outcome>.at: null|string
+delivery.event/1<surface_outcome>.outcome = "aborted"
+delivery.event/1<surface_outcome>.outcome = "closed"
+delivery.event/1<surface_outcome>.outcome = "escalated"
+delivery.event/1<surface_outcome>.outcome: string
+delivery.event/1<surface_outcome>.run: null|string
+delivery.event/1<surface_outcome>.schema = "delivery.event/1"
+delivery.event/1<surface_outcome>.schema: string
+delivery.event/1<surface_outcome>.seq: integer
+delivery.event/1<surface_outcome>.surface: null|string
+delivery.event/1<surface_outcome>.type = "surface_outcome"
+delivery.event/1<surface_outcome>.type: string
+delivery.event/1<surface_state>.at: null|string
+delivery.event/1<surface_state>.attempt: integer
+delivery.event/1<surface_state>.from = "ABORTED"
+delivery.event/1<surface_state>.from = "AGENT_ACTIVE"
+delivery.event/1<surface_state>.from = "CLOSED"
+delivery.event/1<surface_state>.from = "CLOSING"
+delivery.event/1<surface_state>.from = "ESCALATED"
+delivery.event/1<surface_state>.from = "GATE_MAINTENANCE"
+delivery.event/1<surface_state>.from = "GATING"
+delivery.event/1<surface_state>.from = "INCOMPLETE_TERMINUS"
+delivery.event/1<surface_state>.from = "PRE_GATING"
+delivery.event/1<surface_state>.from = "PROVISIONING"
+delivery.event/1<surface_state>.from = "TRIAGE"
+delivery.event/1<surface_state>.from: null|string
+delivery.event/1<surface_state>.run: null|string
+delivery.event/1<surface_state>.schema = "delivery.event/1"
+delivery.event/1<surface_state>.schema: string
+delivery.event/1<surface_state>.seq: integer
+delivery.event/1<surface_state>.state = "ABORTED"
+delivery.event/1<surface_state>.state = "AGENT_ACTIVE"
+delivery.event/1<surface_state>.state = "CLOSED"
+delivery.event/1<surface_state>.state = "CLOSING"
+delivery.event/1<surface_state>.state = "ESCALATED"
+delivery.event/1<surface_state>.state = "GATE_MAINTENANCE"
+delivery.event/1<surface_state>.state = "GATING"
+delivery.event/1<surface_state>.state = "INCOMPLETE_TERMINUS"
+delivery.event/1<surface_state>.state = "PRE_GATING"
+delivery.event/1<surface_state>.state = "PROVISIONING"
+delivery.event/1<surface_state>.state = "TRIAGE"
+delivery.event/1<surface_state>.state: string
+delivery.event/1<surface_state>.surface: null|string
+delivery.event/1<surface_state>.type = "surface_state"
+delivery.event/1<surface_state>.type: string
+delivery.event/1<triage_decision>.afterAttempt: integer
+delivery.event/1<triage_decision>.at: null|string
+delivery.event/1<triage_decision>.attempt: integer
+delivery.event/1<triage_decision>.from = "ABORTED"
+delivery.event/1<triage_decision>.from = "AGENT_ACTIVE"
+delivery.event/1<triage_decision>.from = "CLOSED"
+delivery.event/1<triage_decision>.from = "CLOSING"
+delivery.event/1<triage_decision>.from = "ESCALATED"
+delivery.event/1<triage_decision>.from = "GATE_MAINTENANCE"
+delivery.event/1<triage_decision>.from = "GATING"
+delivery.event/1<triage_decision>.from = "INCOMPLETE_TERMINUS"
+delivery.event/1<triage_decision>.from = "PRE_GATING"
+delivery.event/1<triage_decision>.from = "PROVISIONING"
+delivery.event/1<triage_decision>.from = "TRIAGE"
+delivery.event/1<triage_decision>.from: null|string
+delivery.event/1<triage_decision>.rationale: string
+delivery.event/1<triage_decision>.run: null|string
+delivery.event/1<triage_decision>.schema = "delivery.event/1"
+delivery.event/1<triage_decision>.schema: string
+delivery.event/1<triage_decision>.seq: integer
+delivery.event/1<triage_decision>.state = "ABORTED"
+delivery.event/1<triage_decision>.state = "AGENT_ACTIVE"
+delivery.event/1<triage_decision>.state = "CLOSED"
+delivery.event/1<triage_decision>.state = "CLOSING"
+delivery.event/1<triage_decision>.state = "ESCALATED"
+delivery.event/1<triage_decision>.state = "GATE_MAINTENANCE"
+delivery.event/1<triage_decision>.state = "GATING"
+delivery.event/1<triage_decision>.state = "INCOMPLETE_TERMINUS"
+delivery.event/1<triage_decision>.state = "PRE_GATING"
+delivery.event/1<triage_decision>.state = "PROVISIONING"
+delivery.event/1<triage_decision>.state = "TRIAGE"
+delivery.event/1<triage_decision>.state: string
+delivery.event/1<triage_decision>.surface: null|string
+delivery.event/1<triage_decision>.trigger: string
+delivery.event/1<triage_decision>.type = "triage_decision"
+delivery.event/1<triage_decision>.type: string
+delivery.event/1<triage_decision>.verdict = "abort"
+delivery.event/1<triage_decision>.verdict = "escalate"
+delivery.event/1<triage_decision>.verdict = "fix_the_gate"
+delivery.event/1<triage_decision>.verdict = "recheck_gate"
+delivery.event/1<triage_decision>.verdict = "reroute"
+delivery.event/1<triage_decision>.verdict = "retry_close"
+delivery.event/1<triage_decision>.verdict: string

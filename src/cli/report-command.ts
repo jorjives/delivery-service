@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { deriveReport, mostRecentSubject } from "../report/derive.js";
 import type { ReportDocument } from "../report/document.js";
+import { publishedSchema } from "../report/json-schema.js";
 import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { closingSentence, NO_RUNS_YET, NO_TASK_LIST, renderText, reportPointer } from "../report/text.js";
 import { supervisedPlace } from "../run-location.js";
@@ -17,6 +18,8 @@ import { listTasks } from "./status-command.js";
 export interface ReportOptions {
   repo?: string;
   write?: boolean;
+  /** Print the published schema of both data formats instead of a report. */
+  schema?: boolean;
 }
 
 /** A report read from the records: the document, and the lines it is told in. */
@@ -62,6 +65,11 @@ export async function readReport(repoPath: string, named: ReportSubject | undefi
  * A report that cannot be saved is still printed, with one line saying so.
  */
 export async function reportCommand(runId: string | undefined, options: ReportOptions, ctx: CommandContext): Promise<ExitCode> {
+  // Before the repository is looked for: the schema is the same wherever it is asked for.
+  if (options.schema) {
+    ctx.writeLine(JSON.stringify(publishedSchema(), null, 2));
+    return EXIT.ok;
+  }
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
   const report = await readReport(repoPath, runId === undefined ? undefined : namedSubject(repoPath, runId), await listTasks(startDir, repoPath, ctx));

@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { cleanGitEnv } from "../git-env.js";
 import type { MockScript } from "../mock-script.js";
 import {
@@ -21,6 +23,7 @@ import {
   type TaskRun,
 } from "../report/report-fixtures.js";
 import { ReportDocument } from "../report/document.js";
+import { publishedSchema } from "../report/json-schema.js";
 import { NO_TASK_LIST } from "../report/text.js";
 import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
@@ -471,5 +474,51 @@ describe("delivery report --json", () => {
     expect(documentIn(stdout).kind).toBe("list");
     expect(stderr).toMatch(/^This report could not be saved to \.delivery\/last-report\.txt and \.delivery\/last-report\.json\. The system said: "E[A-Z]+: /);
     expect(exitCode).toBe(0);
+  });
+});
+
+describe("delivery report --schema", () => {
+  it("prints the schema of both formats, anywhere: it needs no project and reads no record", async () => {
+    const nowhere = mkdtempSync(join(tmpdir(), "report-schema-"));
+
+    const { exitCode, stdout, stderr } = await delivery(["report", "--schema"], { cwd: nowhere, isTTY: true });
+    const parsed = JSON.parse(stdout);
+
+    expect(Object.keys(parsed)).toEqual(["delivery.report/1", "delivery.event/1"]);
+    // Each schema has $schema and some structural content (properties or anyOf)
+    for (const schema of Object.values(parsed) as Record<string, unknown>[]) {
+      expect(schema.$schema).toBe("https://json-schema.org/draft/2020-12/schema");
+      expect(schema.properties || schema.anyOf).toBeTruthy();
+    }
+    expect(stdout).not.toContain("\u001B");
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  });
+
+  it("describes every document and every event the commands print", async () => {
+    const repo = await project("report-schema-valid-", LIST, [formDone, footerFailed]);
+    await writeSupervisedRun(repo, { runId: ID.run, repoPath: repo, concurrency: 2, tasks: 4, runBudgetMax: { gateMaintenance: 2 } }, [fill(1, ID.form, FORM), fill(2, ID.footer, FOOTER)]);
+    const printed = JSON.parse((await delivery(["report", "--schema"], { cwd: repo })).stdout);
+    const [report, event] = [z.fromJSONSchema(printed["delivery.report/1"]), z.fromJSONSchema(printed["delivery.event/1"])];
+    const out = async (...args: string[]): Promise<string> => (await delivery(args, { cwd: repo })).stdout;
+
+    const documents = [
+      JSON.parse(await out("report", "--json")),
+      JSON.parse(await out("report", ID.footer, "--json")),
+      JSON.parse(await out("report", ID.run, "--json")),
+      JSON.parse(await out("status", ID.footer, "--json")).report,
+      JSON.parse(await out("status", ID.run, "--json")).report,
+    ];
+    const events = (await out("--json", "status", "--watch", ID.run)).trimEnd().split("\n").map((line) => JSON.parse(line));
+
+    for (const document of documents) expect(report.safeParse(document).error).toBeUndefined();
+    expect(events.length).toBeGreaterThan(2);
+    for (const line of events) expect(event.safeParse(line).error).toBeUndefined();
+  });
+
+  it("is described in the command's own help", async () => {
+    const repo = await project("report-schema-help-", LIST, []);
+
+    expect((await delivery(["report", "--help"], { cwd: repo })).stdout).toContain("--schema");
   });
 });

@@ -319,6 +319,11 @@ it is exactly what is saved as `last-report.json`. In a folder with no runs yet 
 document, with every task `not_started`. [Reports as data](docs/reporting.md) lists every key
 and states what is promised not to change.
 
+`delivery report --schema` prints the JSON Schema of that document and of the events `delivery
+status --watch --json` prints, generated from the definitions the harness validates its own data
+with. It needs no project. Every document and event the commands print is valid against it, and
+it accepts keys and names it does not know, so data from a later release still passes.
+
 To see a report without an agent or a sign-in, run `npm run demo:report-slice-1` in a checkout of
 this repository: it runs a list of four tasks against a scripted agent, prints the report, follows
 its advice, and prints the report again.
