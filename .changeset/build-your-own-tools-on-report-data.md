@@ -47,3 +47,8 @@ sentences meant for people. The step-by-step lines `delivery run --json` prints 
 promise and stay as they are. Every key of the document is always present, `null` where it does
 not apply: a task's `cause` and a trip's `cause` each name every key their kinds can have, with
 `null` where the kind has none.
+
+The functions the commands are built on are now part of the package: `loadSnapshot` (read a
+project's records), `deriveReport` (the document), `eventsOf` (its events), `renderText` (the
+report in words), `streamStarted` and `streamEnded` (the two marker events), `publishedSchema`,
+`repoLocked`, and the `ReportDocument` and `ReportEvent` schemas with their types.
