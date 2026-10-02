@@ -46,6 +46,11 @@ const STOP_WORDS: Record<PlainGroup, (surface: ReportSurface) => string> = {
 
 const stoppedWords = (surface: ReportSurface): string => (surface.plain === null ? "stopped" : STOP_WORDS[surface.plain.group](surface));
 
+/** The sentence said once when nothing records whether the work is still going. */
+export function livenessUnknown(kind: ReportDocument["kind"]): string {
+  return `Nothing records whether ${kind === "list" ? "your task list" : "this run"} is still being worked on`;
+}
+
 /** The steps a task ends in: told by its outcome, which says where the work went, rather than by the step. */
 const ENDED: readonly SurfaceState[] = ["CLOSED", "ESCALATED", "ABORTED"];
 
@@ -234,7 +239,7 @@ export function watchTick(previous: WatchState | undefined, snapshot: RecordSnap
   if (doc.live !== true && !state.saidUnknown) {
     const at = lastActivity(doc);
     lines.push(
-      `Nothing records whether ${doc.kind === "list" ? "your task list" : "this run"} is still being worked on. Last recorded activity: ${at === null ? "not recorded" : `${minuteOf(at)} UTC`}. Still watching.`,
+      `${livenessUnknown(doc.kind)}. Last recorded activity: ${at === null ? "not recorded" : `${minuteOf(at)} UTC`}. Still watching.`,
     );
     state.saidUnknown = true;
   }

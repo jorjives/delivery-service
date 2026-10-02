@@ -285,6 +285,45 @@ describe("delivery status --watch --json", () => {
     expect(eventsIn(stdout).at(-1)).toMatchObject({ type: "stream_ended", ending: "ended", surfaceOutcome: "escalated" });
     expect(exitCode).toBe(EXIT.escalated);
   });
+
+  it("says on standard error, once, that liveness is unknown when nothing records whether the work is going", async () => {
+    const repo = await project("watch-json-unknown-", LIST, [formDone, footerAt(2)]);
+    const release = await takeRepoLock(repo);
+
+    const stderr: string[] = [];
+    const lines: string[] = [];
+    const waits: number[] = [];
+    const ctx: CommandContext = {
+      cwd: repo,
+      env: process.env,
+      colour: false,
+      json: true,
+      stdin: Object.assign(Readable.from([]), { isTTY: undefined }),
+      writeLine: (line) => void lines.push(line),
+      report: plainReporter((line) => void stderr.push(line), false),
+    };
+    const steps = [
+      async () => {
+        await release?.();
+      },
+      async () => {
+        await record(repo, 3);
+      },
+      async () => {
+        await setOutcome(footerDir(repo), closedAt("2026-10-01T02:24:30.000Z"));
+      },
+    ];
+    await watchCommand(undefined, { watch: true }, ctx, async (ms) => {
+      waits.push(ms);
+      const step = steps.shift();
+      if (step === undefined) throw new Error(`the watch was still waiting after every change:\n${lines.join("\n")}`);
+      await step();
+    });
+
+    const events = eventsIn(lines.join("\n"));
+    expect(events[0]).toMatchObject({ type: "stream_started" });
+    expect(stderr.filter((line) => line.includes("Nothing records whether your task list is still being worked on"))).toHaveLength(1);
+  });
 });
 
 describe("delivery status --watch, asked for something it does not do", () => {

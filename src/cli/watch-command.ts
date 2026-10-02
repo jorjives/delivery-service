@@ -2,7 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { InvalidArgumentError } from "commander";
-import { mostRecentSubject } from "../report/derive.js";
+import { deriveReport, mostRecentSubject } from "../report/derive.js";
 import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { NO_RUNS_YET, NO_TASK_LIST } from "../report/text.js";
 import { runsRoot, supervisedRoot } from "../run-location.js";
@@ -12,7 +12,7 @@ import { findRepository } from "./project.js";
 import { namedSubject } from "./report-command.js";
 import { repoLocked } from "../repo-lock.js";
 import { listTasks, type StatusOptions } from "./status-command.js";
-import { emptyStream, streamTick, watchTick, type WatchState } from "./watch.js";
+import { emptyStream, livenessUnknown, streamTick, watchTick, type WatchState } from "./watch.js";
 
 /** How often a watch looks at the record when it is not told. */
 export const DEFAULT_INTERVAL_SECONDS = 2;
@@ -111,6 +111,13 @@ export async function watchCommand(
         }
         const tick = (ctx.json ? streamTick : watchTick)(state, snapshot);
         for (const line of tick.lines) ctx.writeLine(line);
+        if (ctx.json) {
+          const doc = deriveReport(snapshot);
+          if (doc.live === null && tick.exitCode === null && !tick.state.saidUnknown) {
+            ctx.report.note(livenessUnknown(doc.kind));
+            tick.state.saidUnknown = true;
+          }
+        }
         state = tick.state;
         if (tick.exitCode !== null) return tick.exitCode;
       }
