@@ -1,4 +1,6 @@
-import type { BreakerCause, BreakerState, RepairStatus, RunEntry, UsageLimit } from "./schema.js";
+import type { BreakerState, RunEntry, Trip, UsageLimit } from "./schema.js";
+
+export type { RepairAttempt, Trip } from "./schema.js";
 import { appendRunEntry } from "./run-file.js";
 import { RunHalted } from "./errors.js";
 import type { RepairCoordinator, Terminus } from "./ports.js";
@@ -61,28 +63,6 @@ export function openDispatch(history: readonly RunEntry[]): Dispatch | undefined
   if (last === undefined) return undefined;
   const answered = history.some((entry) => entry.t === "repair_terminus" && entry.sessionKey === last.sessionKey);
   return answered ? undefined : last;
-}
-
-export interface RepairAttempt {
-  attempt: number;
-  sessionKey: string;
-  /** Whose copy and record the repair ran in: the task whose report tripped the breaker. */
-  surfaceId: string;
-  status: RepairStatus | null;
-  rationale: string | null;
-}
-
-/** One time the shared environment broke: what broke it, every task it held, each repair, and how it ended. */
-export interface Trip {
-  cause: BreakerCause;
-  /** Every task it held, each once, in the order held, the one that found it first. */
-  held: string[];
-  repairs: RepairAttempt[];
-  ended: "repaired" | "gave_up" | null;
-  /** Why the run gave up, when it did. */
-  reason: string | null;
-  /** The usage limit that stopped the repair, when that, not the environment, is why the run gave up. */
-  limit: UsageLimit | null;
 }
 
 export function tripsOf(history: readonly RunEntry[]): Trip[] {

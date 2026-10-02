@@ -387,6 +387,31 @@ export const BreakerCause = z.discriminatedUnion("kind", [
 ]);
 export type BreakerCause = z.infer<typeof BreakerCause>;
 
+/** One repair of the setup every task shares: which attempt, whose copy it ran in, and how its session ended (null while it is still going). */
+export const RepairAttempt = z.object({
+  attempt: z.number().int().positive(),
+  sessionKey: z.string().min(1),
+  /** Whose copy and record the repair ran in: the task whose report tripped the breaker. */
+  surfaceId: SurfaceId,
+  status: RepairStatus.nullable(),
+  rationale: z.string().nullable(),
+});
+export type RepairAttempt = z.infer<typeof RepairAttempt>;
+
+/** One time the shared environment broke: what broke it, every task it held, each repair, and how it ended. Never stored: `tripsOf` folds it from the run's history. */
+export const Trip = z.object({
+  cause: BreakerCause,
+  /** Every task it held, each once, in the order held, the one that found it first. */
+  held: z.array(SurfaceId),
+  repairs: z.array(RepairAttempt),
+  ended: z.enum(["repaired", "gave_up"]).nullable(),
+  /** Why the run gave up, when it did. */
+  reason: z.string().nullable(),
+  /** The usage limit that stopped the repair, when that, not the environment, is why the run gave up. */
+  limit: UsageLimit.nullable(),
+});
+export type Trip = z.infer<typeof Trip>;
+
 export const RunEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("slot_fill"), slot: Slot, surfaceId: SurfaceId, taskDef: TaskDef, at: At.optional() }),
   z.object({ t: z.literal("slot_free"), slot: Slot, surfaceId: SurfaceId, outcome: SlotOutcome, at: At.optional() }),
