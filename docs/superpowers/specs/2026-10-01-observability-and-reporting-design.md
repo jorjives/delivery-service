@@ -1051,6 +1051,28 @@ artefacts, recorded for the spec-reviewer:
   `delivery.report/1` document for the same subject: the document keeps the key names this
   spec gives it, `report --json` and `status --json`'s `report` are identical, and nothing
   shipped changes. `status --all --json` stays the shipped array.
+- **Two event types of section 8 are not emitted in `/1` as first published** (slice 5
+  plan). `run_started` has no journal entry to stand for (a run's journal opens with its
+  first `slot_fill`), and `stream_started` already names the run. `budget_spent` would be a
+  second event for an entry that `surface_state` or `triage_decision` already tells, against
+  "one-to-one with log entries", and the document carries every budget. Either can be added
+  later as a new `type` without breaking the promise, since consumers ignore unknown types.
+  A `triage` entry is told as `triage_decision`, which carries everything `surface_state`
+  does, so every log entry is still exactly one event.
+- **Which run a task list belongs to is decided from the record** (slice 5 plan). Section 2's
+  table says a list "whose tasks a supervised run claimed" ends with that run, and a list
+  with no run ends with the task that stopped it, but not how the two are told apart for a
+  list that was worked both ways. The document says it: `run.governs` is true in a report on
+  the run, and in a report on the list while the run is going or until a task of the list is
+  worked on its own after the run began; it is false once a task of the list has been, and
+  then the run is only history. A watch, in words or as data, and both stream markers read
+  that one key, so a replay of a finished record ends as following it live did.
+- **The document gives every key of a cause, null where its kind has none** (slice 5 plan).
+  Section 8 promises every key is always present. The record's own cause shapes leave a key
+  out by kind, so the document's `surfaces[].cause` (`role`, `population`) and
+  `trips[].cause` (`reason`, `surfaceIds`) are mapped to shapes that name them all, with
+  `null` where the kind has none. The record schemas and the shipped `status --json` `trips`
+  are untouched.
 
 ## Open questions
 

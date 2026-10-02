@@ -105,6 +105,7 @@ function changeLine(event: ReportEvent, doc: ReportDocument): string[] {
   const surface = doc.surfaces.find((candidate) => candidate.run !== null && candidate.run === event.surface);
   switch (event.type) {
     case "surface_state":
+    case "triage_decision":
       if (surface === undefined || event.state === event.from || ENDED.includes(event.state)) return [];
       return [`${stamp(event.at)}${place(surface)}: ${stepWords(event.state, event.attempt)}.`];
     case "surface_outcome":
@@ -121,6 +122,11 @@ function changeLine(event: ReportEvent, doc: ReportDocument): string[] {
       return [`${stamp(event.at)}The setup is being repaired (repair ${event.attempt} of ${event.of}).`];
     case "repair_finished":
       return event.status === "completed" ? [] : [`${stamp(event.at)}! That repair did not fix the setup.`];
+    // The closing line tells how a run ended, and the markers are a stream's own.
+    case "run_outcome":
+    case "stream_started":
+    case "stream_ended":
+      return [];
   }
 }
 
