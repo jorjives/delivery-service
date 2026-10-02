@@ -1,6 +1,6 @@
 import { deriveReport } from "../report/derive.js";
 import { stepOf, type PlainGroup, type ReportDocument, type ReportSurface } from "../report/document.js";
-import { eventsOf, sourceOf, type ReportEvent } from "../report/events.js";
+import { eventsOf, sourceOf, type ReportEvent, type StreamEnding } from "../report/events.js";
 import { attemptsWord, landedWords, RETRY_WORDS } from "../report/plain.js";
 import type { RecordSnapshot } from "../report/snapshot.js";
 import { doneItem, headlineCounts, incompleteLines, label, lastActivity, minuteOf, quoted, reportPointer, stoppedPartWay, tasksWord } from "../report/text.js";
@@ -161,21 +161,44 @@ function ending(doc: ReportDocument): { words: string; exitCode: ExitCode } | un
 }
 
 /**
+ * Why the watch is over, once it is, and the code it ends with: its subject
+ * ended (the code is the one that run, or `delivery run` for that list, ended
+ * with), a run of several tasks is known to have been stopped part way, or the
+ * subject cannot be read at all (ok both times: there is no outcome to mirror).
+ * Nothing while there is more to wait for: where nothing records whether the
+ * work is still going, a watch never decides for itself that a run is dead.
+ */
+function endOf(doc: ReportDocument): { ending: StreamEnding; words: string; exitCode: ExitCode } | undefined {
+  if (doc.surfaces.length === 0 && doc.incomplete.length > 0) return { ending: "unreadable", words: "", exitCode: EXIT.ok };
+  const ended = ending(doc);
+  if (ended) return { ending: "ended", ...ended };
+  // Only a run of several tasks holds the lock, so only one of those can be known to have been stopped.
+  if (doc.live === false && (doc.kind === "task" || doc.run?.outcome === null)) return { ending: "stopped_part_way", words: "", exitCode: EXIT.ok };
+  return undefined;
+}
+
+/** One look's reading of the record: the document, the events no earlier look told, and what to remember for the next. */
+function look(previous: WatchState | undefined, snapshot: RecordSnapshot): { doc: ReportDocument; fresh: ReportEvent[]; state: WatchState } {
+  const doc = deriveReport(snapshot);
+  const events = eventsOf(snapshot);
+  const told = previous?.cursors ?? {};
+  const cursors = { ...told };
+  for (const event of events) cursors[sourceOf(event)] = Math.max(cursors[sourceOf(event)] ?? 0, event.seq + 1);
+  return {
+    doc,
+    fresh: events.filter((event) => event.seq >= (told[sourceOf(event)] ?? 0)),
+    state: { cursors, saidUnknown: previous?.saidUnknown ?? false, saidNoTimes: previous?.saidNoTimes ?? false },
+  };
+}
+
+/**
  * One look at the record, as lines to add. The first look says what is being
  * watched and gives the picture as it stands; every later look adds one line
  * for each change recorded since the one before. Pure and deterministic: it
  * reads no file and no clock, so the same looks always give the same lines.
- *
- * The watch is over when its subject ended (the code is the one that run, or
- * `delivery run` for that list, ended with) or when a run of several tasks is
- * known to have been stopped part way (ok: there is no outcome to mirror).
- * Where nothing records whether the work is still going, it says so once and
- * keeps waiting: it never decides for itself that a run is dead.
  */
 export function watchTick(previous: WatchState | undefined, snapshot: RecordSnapshot): WatchTick {
-  const doc = deriveReport(snapshot);
-  const events = eventsOf(snapshot);
-  const state: WatchState = { ...(previous ?? { cursors: {}, saidUnknown: false, saidNoTimes: false }) };
+  const { doc, fresh, state } = look(previous, snapshot);
   const lines: string[] = [];
 
   if (previous === undefined) {
@@ -185,8 +208,7 @@ export function watchTick(previous: WatchState | undefined, snapshot: RecordSnap
       state.saidNoTimes = true;
     }
   } else {
-    for (const event of events) {
-      if (event.seq < (state.cursors[sourceOf(event)] ?? 0)) continue;
+    for (const event of fresh) {
       const told = changeLine(event, doc);
       if (told.length > 0 && event.at === null && !state.saidNoTimes) {
         lines.push(TIMES_NOT_RECORDED);
@@ -195,24 +217,19 @@ export function watchTick(previous: WatchState | undefined, snapshot: RecordSnap
       lines.push(...told);
     }
   }
-  state.cursors = { ...state.cursors };
-  for (const event of events) state.cursors[sourceOf(event)] = Math.max(state.cursors[sourceOf(event)] ?? 0, event.seq + 1);
 
-  // A subject that cannot be read at all: the picture names it on the first look, and a later look names it here, so a
-  // record damaged while it is watched never ends the watch without a word. There is nothing to wait for.
-  if (doc.surfaces.length === 0 && doc.incomplete.length > 0) {
-    return { lines: previous === undefined ? lines : [...lines, ...incompleteLines(doc)], state, exitCode: EXIT.ok };
-  }
-
-  const ended = ending(doc);
-  if (ended) {
-    lines.push(`${stamp(lastActivity(doc))}${ended.words}: ${headlineCounts(doc)}. ${reportPointer(doc)}`);
-    return { lines, state, exitCode: ended.exitCode };
-  }
-  // Only a run of several tasks holds the lock, so only one of those can be known to have been stopped.
-  if (doc.live === false && (doc.kind === "task" || doc.run?.outcome === null)) {
-    lines.push(stoppedPartWay(doc));
-    return { lines, state, exitCode: EXIT.ok };
+  const end = endOf(doc);
+  switch (end?.ending) {
+    case "unreadable":
+      // The picture names a subject that cannot be read on the first look, and a later look names it here, so a
+      // record damaged while it is watched never ends the watch without a word.
+      return { lines: previous === undefined ? lines : [...lines, ...incompleteLines(doc)], state, exitCode: end.exitCode };
+    case "ended":
+      lines.push(`${stamp(lastActivity(doc))}${end.words}: ${headlineCounts(doc)}. ${reportPointer(doc)}`);
+      return { lines, state, exitCode: end.exitCode };
+    case "stopped_part_way":
+      lines.push(stoppedPartWay(doc));
+      return { lines, state, exitCode: end.exitCode };
   }
   if (doc.live !== true && !state.saidUnknown) {
     const at = lastActivity(doc);
