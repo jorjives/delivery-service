@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { GateRef, CloserRef, CloseReport } from "./schema.js";
+import { GateRef, CloserRef, CloseReport, HistoryEntry, RunEntry } from "./schema.js";
 
 describe("GateRef", () => {
   it("accepts a command ref with a supported parse mode", () => {
@@ -85,5 +85,47 @@ describe("CloseReport", () => {
     expect(CloseReport.safeParse({ status: "OK", detail: "x" }).success).toBe(false);
     expect(CloseReport.safeParse({ status: "DONE" }).success).toBe(false);
     expect(CloseReport.safeParse(undefined).success).toBe(false);
+  });
+});
+
+describe("the time a step was recorded", () => {
+  const AT = "2026-10-01T02:20:00.000Z";
+  const steps: HistoryEntry[] = [
+    { t: "dispatch", attempt: 1, sessionKey: "worker-1-0" },
+    { t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "completed", rationale: "done" },
+    { t: "gate", attempt: 1, status: "PASS", newFailures: [] },
+    { t: "triage", afterAttempt: 1, trigger: "gate_fail", verdict: "reroute", rationale: "try again", artifactRef: "triage-0" },
+    { t: "close", status: "DONE", detailRef: "close-1" },
+    { t: "baseline", status: "PASS" },
+  ];
+  const runSteps: RunEntry[] = [
+    { t: "slot_fill", slot: 1, surfaceId: "a", taskDef: { intent: "a" } },
+    { t: "slot_free", slot: 1, surfaceId: "a", outcome: "closed" },
+    { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: "a", reason: "the check could not run" } },
+    { t: "repair_request", surfaceId: "a", key: null },
+    { t: "gate_error_signal", surfaceId: "a" },
+    { t: "held", surfaceId: "a" },
+    { t: "repair_dispatch", attempt: 1, sessionKey: "repair-1-0", surfaceId: "a" },
+    { t: "repair_terminus", attempt: 1, sessionKey: "repair-1-0", status: "completed", rationale: "fixed" },
+    { t: "breaker_healthy" },
+    { t: "run_escalated", reason: "could not be repaired" },
+  ];
+
+  it("is kept on every kind of step a task's log holds", () => {
+    for (const step of steps) expect(HistoryEntry.parse({ ...step, at: AT })).toEqual({ ...step, at: AT });
+  });
+
+  it("is kept on every kind of step a run's log holds", () => {
+    for (const step of runSteps) expect(RunEntry.parse({ ...step, at: AT })).toEqual({ ...step, at: AT });
+  });
+
+  it("is optional, so a step recorded before steps carried a time still reads", () => {
+    for (const step of steps) expect(HistoryEntry.parse(step)).toEqual(step);
+    for (const step of runSteps) expect(RunEntry.parse(step)).toEqual(step);
+  });
+
+  it("must be a time: anything else is refused", () => {
+    expect(HistoryEntry.safeParse({ t: "baseline", status: "PASS", at: "yesterday" }).success).toBe(false);
+    expect(RunEntry.safeParse({ t: "breaker_healthy", at: 1727749200 }).success).toBe(false);
   });
 });

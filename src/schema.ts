@@ -196,6 +196,14 @@ export type CaseFileCursor = z.infer<typeof CaseFileCursor>;
 
 // --- History entries ---
 
+/**
+ * When a step was recorded: ISO 8601, UTC. Stamped by the two functions that
+ * write a log line (`appendEntry`, `appendRunEntry`) and by nothing else, and
+ * read only by reporting: nothing that decides what a run does next reads it.
+ * Optional, so every record written before steps carried a time stays valid.
+ */
+const At = z.iso.datetime();
+
 export const DispatchEntry = z.object({
   t: z.literal("dispatch"),
   attempt: z.number().int().positive(),
@@ -203,6 +211,7 @@ export const DispatchEntry = z.object({
   briefRef: z.string().optional(),
   // Absent means "worker" — every Item 1/2 case file stays valid.
   role: z.enum(["worker", "gate-maintenance"]).optional(),
+  at: At.optional(),
 });
 export type DispatchEntry = z.infer<typeof DispatchEntry>;
 
@@ -230,6 +239,7 @@ export const TerminusEntry = z.object({
   // Incomplete only: a usage limit stopped the session. Recorded so a report
   // can say so; no routing decision reads it.
   limit: UsageLimit.optional(),
+  at: At.optional(),
 });
 export type TerminusEntry = z.infer<typeof TerminusEntry>;
 
@@ -239,6 +249,7 @@ export const GateEntry = z.object({
   status: GateStatus,
   newFailures: z.array(z.object({ id: z.string(), detailRef: z.string() })),
   class: z.enum(["fail", "error"]).optional(),
+  at: At.optional(),
 });
 export type GateEntry = z.infer<typeof GateEntry>;
 
@@ -249,6 +260,7 @@ export const TriageEntry = z.object({
   verdict: z.enum(["reroute", "escalate", "fix_the_gate", "retry_close", "abort", "recheck_gate"]),
   rationale: z.string(),
   artifactRef: z.string(),
+  at: At.optional(),
 });
 export type TriageEntry = z.infer<typeof TriageEntry>;
 
@@ -256,12 +268,14 @@ export const CloseEntry = z.object({
   t: z.literal("close"),
   status: z.enum(["DONE", "FAIL", "ERROR"]),
   detailRef: z.string(),
+  at: At.optional(),
 });
 export type CloseEntry = z.infer<typeof CloseEntry>;
 
 export const BaselineEntry = z.object({
   t: z.literal("baseline"),
   status: GateStatus,
+  at: At.optional(),
 });
 export type BaselineEntry = z.infer<typeof BaselineEntry>;
 
@@ -374,22 +388,22 @@ export const BreakerCause = z.discriminatedUnion("kind", [
 export type BreakerCause = z.infer<typeof BreakerCause>;
 
 export const RunEntry = z.discriminatedUnion("t", [
-  z.object({ t: z.literal("slot_fill"), slot: Slot, surfaceId: SurfaceId, taskDef: TaskDef }),
-  z.object({ t: z.literal("slot_free"), slot: Slot, surfaceId: SurfaceId, outcome: SlotOutcome }),
+  z.object({ t: z.literal("slot_fill"), slot: Slot, surfaceId: SurfaceId, taskDef: TaskDef, at: At.optional() }),
+  z.object({ t: z.literal("slot_free"), slot: Slot, surfaceId: SurfaceId, outcome: SlotOutcome, at: At.optional() }),
   // A task found the shared environment broken while it was healthy.
-  z.object({ t: z.literal("breaker_degraded"), cause: BreakerCause }),
+  z.object({ t: z.literal("breaker_degraded"), cause: BreakerCause, at: At.optional() }),
   // A task asked for the shared environment to be repaired; `key` names the setback it asked about, when it has one.
-  z.object({ t: z.literal("repair_request"), surfaceId: SurfaceId, key: z.string().nullable() }),
+  z.object({ t: z.literal("repair_request"), surfaceId: SurfaceId, key: z.string().nullable(), at: At.optional() }),
   // A task's check kept erroring until its own re-checks ran out. At most one per task since the environment was last healthy.
-  z.object({ t: z.literal("gate_error_signal"), surfaceId: SurfaceId }),
+  z.object({ t: z.literal("gate_error_signal"), surfaceId: SurfaceId, at: At.optional() }),
   // A task was held before checking or handing off its work.
-  z.object({ t: z.literal("held"), surfaceId: SurfaceId }),
+  z.object({ t: z.literal("held"), surfaceId: SurfaceId, at: At.optional() }),
   // The dispatch entry is the burn on the run's repair limit.
-  z.object({ t: z.literal("repair_dispatch"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), surfaceId: SurfaceId }),
-  z.object({ t: z.literal("repair_terminus"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), status: RepairStatus, rationale: z.string() }),
-  z.object({ t: z.literal("breaker_healthy") }),
+  z.object({ t: z.literal("repair_dispatch"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), surfaceId: SurfaceId, at: At.optional() }),
+  z.object({ t: z.literal("repair_terminus"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), status: RepairStatus, rationale: z.string(), at: At.optional() }),
+  z.object({ t: z.literal("breaker_healthy"), at: At.optional() }),
   // `limit` is set when a usage limit, not the environment, is why the run stopped.
-  z.object({ t: z.literal("run_escalated"), reason: z.string().min(1), limit: UsageLimit.optional() }),
+  z.object({ t: z.literal("run_escalated"), reason: z.string().min(1), limit: UsageLimit.optional(), at: At.optional() }),
 ]);
 export type RunEntry = z.infer<typeof RunEntry>;
 
