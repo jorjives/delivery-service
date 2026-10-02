@@ -10,6 +10,10 @@ import type { CommandContext } from "./context.js";
 import { loadConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { RunFileNotFound } from "../errors.js";
+import { deriveReport } from "../report/derive.js";
+import { detailLines } from "../report/detail.js";
+import type { ReportDocument } from "../report/document.js";
+import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
 import { paint } from "../paint.js";
@@ -330,6 +334,11 @@ function taskLine(task: ViewTask, live: boolean): string {
 export const ALL_AND_ONE =
   "Use either `--all` or a run id, not both: `--all` lists every run, and a run id reads one of them in full.";
 
+export const ALL_AND_DECISIONS =
+  "Use either `--all` or `--decisions`, not both: `--all` lists every run, and `--decisions` prints one run's triage rounds in full.";
+
+export const NO_DECISIONS_DATA_YET = "`--decisions` prints the triage rounds as text only for now. Run it without `--json`.";
+
 /** One entry of `status --all --json`: a single run, or a run of several at once with its tasks under it. Every key in both, null where it does not apply. */
 export interface ListedRun {
   run: string;
@@ -402,6 +411,8 @@ export interface StatusOptions {
   repo?: string;
   /** List every run this repository holds instead of reading one. */
   all?: boolean;
+  /** Print every triage round in full, where the usual account gives each one line. */
+  decisions?: boolean;
 }
 
 /**
@@ -505,6 +516,25 @@ export async function supervisedReport(view: SupervisedView, ctx: CommandContext
 }
 
 /**
+ * The report document for what `status` was asked about: the read model
+ * `delivery report` renders, read by the reader it uses. The detail `status`
+ * adds beneath its own account is a rendering of this, never a second working
+ * out of budgets or rounds.
+ */
+async function documentOf(repoPath: string, startDir: string, subject: ReportSubject, ctx: CommandContext): Promise<ReportDocument> {
+  // ponytail: this reads every record once more than the account above it needed. Serve the account from the
+  // same snapshot if a repository with thousands of runs makes `status` slow.
+  const [list, live] = await Promise.all([listTasks(startDir, repoPath, ctx), repoLocked(repoPath)]);
+  return deriveReport(await loadSnapshot(repoPath, subject, { live, list }));
+}
+
+/** Where to go from here: the triage rounds in full, when there are any and they were not just printed, and the report. */
+function nextLine(runId: string, report: string, rounds: number, full: boolean): string {
+  const more = rounds > 0 && !full ? [`delivery status ${runId} --decisions (every triage round in full)`] : [];
+  return `Next: ${[...more, report].join(", ")}`;
+}
+
+/**
  * `delivery status`: read one run's record and say what happened to it, for
  * whoever was not watching when it ended. It only ever reads, so it is safe to
  * run against a run that is still going, and a run that needed a person is
@@ -516,6 +546,9 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   // mistake wherever it was typed, and hearing about the folder first would
   // send the reader after the wrong problem.
   if (options.all && runId !== undefined) throw new Refusal(ALL_AND_ONE, EXIT.configuration);
+  if (options.all && options.decisions) throw new Refusal(ALL_AND_DECISIONS, EXIT.configuration);
+  if (options.decisions && ctx.json) throw new Refusal(NO_DECISIONS_DATA_YET, EXIT.configuration);
+  const full = options.decisions === true;
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
   if (options.all) return listRuns(repoPath, startDir, ctx);
@@ -526,9 +559,19 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
     else for (const line of await supervisedReport(view, ctx)) ctx.writeLine(line);
     return EXIT.ok;
   }
-  const position = await positionOf(record, startDir, ctx);
-  // Indented rather than one line: a person reads this output too, and a parser does not mind.
-  if (ctx.json) ctx.writeLine(JSON.stringify(await statusDocument(record, ctx, position), null, 2));
-  else for (const line of await statusReport(record, ctx, position)) ctx.writeLine(line);
+  if (ctx.json) {
+    // Indented rather than one line: a person reads this output too, and a parser does not mind.
+    ctx.writeLine(JSON.stringify(await statusDocument(record, ctx, await positionOf(record, startDir, ctx)), null, 2));
+    return EXIT.ok;
+  }
+  // The account first, every line as it has always been; then the detail, from the document the report is made from.
+  const [surface] = (await documentOf(repoPath, startDir, { kind: "task", runId: record.runId }, ctx)).surfaces;
+  const lines = [
+    ...(await statusReport(record, ctx, surface?.queue ?? undefined)),
+    ...(surface ? ["", ...detailLines(surface, { full })] : []),
+    "",
+    nextLine(record.runId, "delivery report (your task list)", surface?.decisions.length ?? 0, full),
+  ];
+  for (const line of lines) ctx.writeLine(line);
   return EXIT.ok;
 }

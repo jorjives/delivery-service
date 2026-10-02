@@ -11,7 +11,9 @@ import { ESCALATION, delivery, PACKAGE, writeRunRecord, writeSupervisedRun } fro
 import { EXIT } from "./failures.js";
 import { runPlace, runsRoot } from "../run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
-import { ALL_AND_ONE, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
+import { ALL_AND_DECISIONS, ALL_AND_ONE, NO_DECISIONS_DATA_YET, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
+import { RESUME_DOES_NOT_APPLY, UNCHANGED_NOT_RUN_AGAIN } from "../report/detail.js";
+import { attempt, BRIEF, failedCheck, PACKET, stoppedAt, writeRecord } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
 import { setRunOutcome } from "../run-file.js";
@@ -256,6 +258,185 @@ describe("delivery status", () => {
     expect(own.stdout).toContain("Usage: delivery status");
     expect(own.stdout).toContain("--last");
     expect(own.stdout).toContain("--repo");
+  });
+});
+
+describe("delivery status, beneath its own account of one task", () => {
+  const FORM = "Add a contact form";
+  const FOOTER = "Fix the broken footer links";
+  const FOOTER_RUN = "fix-the-broken-footer-links-20261001T022000Z";
+
+  /** A project whose second task failed its check after every attempt: four attempts, four triage rounds, the corrections spent. */
+  async function footerStopped(prefix: string): Promise<string> {
+    const repo = initTempRepo(prefix, { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [FORM, FOOTER] }) });
+    await writeRecord(repo, {
+      runId: FOOTER_RUN,
+      task: FOOTER,
+      history: [
+        ...attempt(1, "first go"),
+        ...failedCheck(1, "reroute"),
+        ...attempt(2, "second go"),
+        ...failedCheck(2, "reroute"),
+        ...attempt(3, "third go"),
+        ...failedCheck(3, "reroute"),
+        ...attempt(4, "I fixed 4 of the 6 links."),
+        ...failedCheck(4, "escalate"),
+      ],
+      outcome: stoppedAt("2026-10-01T02:58:00.000Z", { kind: "budget", population: "correction" }, "correction budget exhausted (3/3)"),
+      refs: {
+        "triage-0": { trigger: "gate_fail", rationale: "gate_fail: reroute", artifact: BRIEF },
+        "triage-1": { trigger: "gate_fail", rationale: "gate_fail: reroute" },
+        "triage-2": { trigger: "gate_fail", rationale: "gate_fail: reroute" },
+        "triage-3": { trigger: "gate_fail", rationale: "gate_fail: escalate", artifact: PACKET },
+      },
+    });
+    return repo;
+  }
+
+  it("keeps every line it printed before, then says how the task got here, the retries at stop and what to do", async () => {
+    const repo = await footerStopped("status-detail-");
+
+    const { stdout, exitCode } = await delivery(["status", FOOTER_RUN], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const lines = stdout.trimEnd().split("\n");
+    const before = await statusReport(await readRun(repo, FOOTER_RUN), await context(), { task: 2, of: 2 });
+    expect(lines.slice(0, before.length)).toEqual(before);
+    expect(lines.slice(before.length)).toEqual([
+      "",
+      "How it got here (triage rounds; --decisions for the full text):",
+      "  After attempt 1: a gate failure; verdict: reroute",
+      "  After attempt 2: a gate failure; verdict: reroute",
+      "  After attempt 3: a gate failure; verdict: reroute",
+      "  After attempt 4: a gate failure; verdict: escalate",
+      "",
+      "Retry budgets at stop, after 4 attempts:",
+      "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "To act: 1. Reword the task, or remove it from your list.",
+      "        2. Run: delivery run",
+      UNCHANGED_NOT_RUN_AGAIN,
+      RESUME_DOES_NOT_APPLY,
+      "",
+      `Next: delivery status ${FOOTER_RUN} --decisions (every triage round in full), delivery report (your task list)`,
+    ]);
+  });
+
+  it("gives the advice `delivery report` gives for the same task", async () => {
+    const repo = await footerStopped("status-detail-advice-");
+
+    const status = await delivery(["status", FOOTER_RUN], { cwd: repo });
+    const report = await delivery(["report", FOOTER_RUN], { cwd: repo });
+
+    const advice = status.stdout.split("\n").filter((line) => /^(To act:| {8}\d\.)/.test(line));
+    expect(advice).toHaveLength(2);
+    for (const line of advice) expect(report.stdout.split("\n")).toContain(`    ${line}`);
+  });
+
+  it("prints every triage round in full with --decisions, in place of the one line each", async () => {
+    const repo = await footerStopped("status-decisions-");
+
+    const { stdout, exitCode } = await delivery(["status", FOOTER_RUN, "--decisions"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const lines = stdout.trimEnd().split("\n");
+    const at = lines.indexOf("How it got here (4 triage rounds, in full):");
+    expect(lines.slice(at + 1, at + 11)).toEqual([
+      "  Round 1, after attempt 1",
+      "    Trigger: a gate failure (gate_fail)",
+      "    Verdict: reroute",
+      '    Rationale: "gate_fail: reroute"',
+      "    Brief for the next session:",
+      `      Problem: ${BRIEF.problem}`,
+      `      Dead ends: ${BRIEF.dead_ends}`,
+      `      Scope: ${BRIEF.scope}`,
+      "      References: worker-1-0",
+      `      Diagnosis (a hypothesis to test, not an established fact): ${BRIEF.diagnosis}`,
+    ]);
+    expect(stdout).toContain(`      Decision: "${PACKET.decision}"`);
+    expect(stdout).not.toContain("--decisions for the full text");
+    expect(lines.at(-1)).toBe("Next: delivery report (your task list)");
+    // The account above the rounds, and the retries and advice below them, are there as they are without the flag.
+    const before = await statusReport(await readRun(repo, FOOTER_RUN), await context(), { task: 2, of: 2 });
+    expect(lines.slice(0, before.length)).toEqual(before);
+    expect(lines.slice(-9, -2)).toEqual([
+      "Retry budgets at stop, after 4 attempts:",
+      "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "To act: 1. Reword the task, or remove it from your list.",
+      "        2. Run: delivery run",
+      UNCHANGED_NOT_RUN_AGAIN,
+      RESUME_DOES_NOT_APPLY,
+    ]);
+  });
+
+  it("says in one line each that a finished task had no triage rounds and did not stop", async () => {
+    const repo = initTempRepo("status-detail-closed-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });
+
+    const { stdout } = await delivery(["status", RUN_ID], { cwd: repo });
+
+    expect(stdout.trimEnd().split("\n").slice(4)).toEqual([
+      "",
+      "How it got here: no triage rounds.",
+      "",
+      "Retry budgets when it finished, after 0 attempts:",
+      "  correction 0 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "No stop: this run finished.",
+      "",
+      "Next: delivery report (your task list)",
+    ]);
+  });
+
+  it("says of a run that has not finished that it has not stopped, after saying how to carry it on", async () => {
+    const repo = initTempRepo("status-detail-unfinished-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK });
+
+    const lines = (await delivery(["status", RUN_ID], { cwd: repo })).stdout.trimEnd().split("\n");
+
+    expect(lines[2]).toBe(`To finish it: delivery resume ${RUN_ID}`);
+    expect(lines).toContain("Retry budgets so far, after 0 attempts:");
+    expect(lines).toContain("No stop: this run has not finished.");
+    expect(lines.at(-1)).toBe("Next: delivery report (your task list)");
+  });
+
+  it("shows what an older record holds, and says not recorded for the advice it cannot back", async () => {
+    const repo = initTempRepo("status-detail-old-", { "package.json": PACKAGE });
+    await writeRecord(repo, {
+      runId: FOOTER_RUN,
+      task: FOOTER,
+      history: [...attempt(1, "first go"), ...failedCheck(1, "escalate")],
+      outcome: stoppedAt("2026-09-01T10:00:00.000Z", undefined, "correction budget exhausted (3/3)"),
+    });
+
+    const { stdout, exitCode } = await delivery(["status", FOOTER_RUN, "--decisions"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain("This needs your decision: correction budget exhausted (3/3)");
+    expect(stdout).toContain("    Packet for a person: not recorded.");
+    expect(stdout).toContain("To act: not recorded; the record does not say what kind of stop this was.");
+    expect(stdout).not.toContain(UNCHANGED_NOT_RUN_AGAIN);
+    expect(stdout).toContain(RESUME_DOES_NOT_APPLY);
+  });
+
+  it("stops when --decisions is given with --all, or with --json, rather than quietly ignoring it", async () => {
+    const repo = await footerStopped("status-decisions-conflict-");
+
+    const withAll = await delivery(["status", "--all", "--decisions"], { cwd: repo });
+    const withJson = await delivery(["status", FOOTER_RUN, "--decisions", "--json"], { cwd: repo });
+
+    expect(withAll.exitCode).toBe(EXIT.configuration);
+    expect(withAll.stderr).toContain(ALL_AND_DECISIONS);
+    expect(withJson.exitCode).toBe(EXIT.configuration);
+    expect(withJson.stdout).toBe("");
+    expect(withJson.stderr).toContain(NO_DECISIONS_DATA_YET);
+  });
+
+  it("describes --decisions in the command's own help", async () => {
+    const repo = initTempRepo("status-decisions-help-", { "package.json": PACKAGE });
+
+    expect((await delivery(["status", "--help"], { cwd: repo })).stdout).toContain("--decisions");
   });
 });
 
@@ -675,7 +856,7 @@ describe("delivery status for a run of several tasks at once", () => {
     const { stdout } = await delivery(["status", IDS.hello], { cwd: repo });
 
     const own = await statusReport(await readRun(repo, IDS.hello), await context(), { task: 1, of: 4 });
-    expect(stdout.trimEnd().split("\n")).toEqual(own);
+    expect(stdout.split("\n").slice(0, own.length)).toEqual(own);
   });
 
   it("gives the usual message when a run-style id names nothing", async () => {
