@@ -169,6 +169,7 @@ agent-written plain summary) is not sliced.
 ## Slice 4: Find a Saved Report After a Run Ends
 
 **Status:** ✅ Complete — 2026-10-02 — `e4386b8`
+**Tests:** ✅ Recorded — 2026-10-02 — `ebee7a8` — cli — 1 UAT + 3 AC, 2 skipped
 
 **Delivers:** When `delivery run` or `delivery resume` ends, the report is saved as a plain-text file and a data file in a fixed place, and the run's last lines say what happened and where to read more.
 
