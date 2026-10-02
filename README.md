@@ -547,8 +547,15 @@ was stopped part way, the watch says so and how to carry on, and exits 0.
 It only ever reads the record, and takes no lock. It looks every 2 seconds; `--interval
 <seconds>` changes that. A run made by an earlier version recorded no times: it can still be
 watched, its lines leave the time out, and the watch says once that times were not recorded.
-`--watch` cannot be combined with `--all`, with `--decisions` or, for now, with `--json`, and
+`--watch` cannot be combined with `--all` or with `--decisions`, and
 `--interval` needs `--watch`: each stops with exit 2.
+
+For a script, `delivery status --watch --json` prints the same watch as data, one JSON event to
+a line: a first line saying what is being followed (`"type": "stream_started"`), one event for
+every step the record holds and then for each step as it is recorded, and a last line saying how
+it ended (`"type": "stream_ended"`). It exits with the same code. Replaying a run that has
+finished prints exactly the lines that following it live printed. [Reports as data](docs/reporting.md)
+lists the events.
 
 ### See every run
 

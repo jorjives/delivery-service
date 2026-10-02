@@ -12,7 +12,7 @@ import { findRepository } from "./project.js";
 import { namedSubject } from "./report-command.js";
 import { repoLocked } from "./repo-lock.js";
 import { listTasks, type StatusOptions } from "./status-command.js";
-import { watchTick, type WatchState } from "./watch.js";
+import { emptyStream, streamTick, watchTick, type WatchState } from "./watch.js";
 
 /** How often a watch looks at the record when it is not told. */
 export const DEFAULT_INTERVAL_SECONDS = 2;
@@ -24,8 +24,6 @@ export const INTERVAL_NEEDS_WATCH = "`--interval` says how often `--watch` looks
 export const WATCH_AND_ALL = "Use either `--watch` or `--all`, not both: `--watch` follows one run or your task list, and `--all` lists every run.";
 
 export const WATCH_AND_DECISIONS = "Use either `--watch` or `--decisions`, not both: `--watch` follows a run as it happens, and `--decisions` prints one run's triage rounds in full.";
-
-export const NO_WATCH_DATA_YET = "`--watch` prints its lines as text only for now. Run it without `--json`.";
 
 /** `--interval`'s value as a number of seconds, or commander's own refusal naming the option. */
 export function intervalSeconds(value: string): number {
@@ -78,7 +76,6 @@ export async function watchCommand(
   if (!options.watch) throw new Refusal(INTERVAL_NEEDS_WATCH, EXIT.configuration);
   if (options.all) throw new Refusal(WATCH_AND_ALL, EXIT.configuration);
   if (options.decisions) throw new Refusal(WATCH_AND_DECISIONS, EXIT.configuration);
-  if (ctx.json) throw new Refusal(NO_WATCH_DATA_YET, EXIT.configuration);
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
   // ponytail: the list is read once, so a list edited while it is watched is followed as it was; read it each look if that is ever wanted.
@@ -99,7 +96,7 @@ export async function watchCommand(
       let snapshot = await loadSnapshot(repoPath, subject, { live, list });
       const nothingYet = state === undefined && snapshot.records.length + snapshot.runs.length + snapshot.damaged.length === 0;
       if (nothingYet && !live) {
-        for (const line of [NO_RUNS_YET, "", "Next: delivery run"]) ctx.writeLine(line);
+        for (const line of ctx.json ? emptyStream(snapshot) : [NO_RUNS_YET, "", "Next: delivery run"]) ctx.writeLine(line);
         return EXIT.ok;
       }
       // A run of several tasks takes the lock before it records anything: held with nothing recorded, it is starting,
@@ -107,11 +104,12 @@ export async function watchCommand(
       if (!nothingYet) {
         const recent = state === undefined && runId === undefined && list.length === 0 ? mostRecentSubject(snapshot) : undefined;
         if (recent) {
-          ctx.writeLine(NO_TASK_LIST);
+          // Said to a person only: a stream names what it follows in its first line.
+          if (!ctx.json) ctx.writeLine(NO_TASK_LIST);
           subject = recent;
           snapshot = { ...snapshot, subject };
         }
-        const tick = watchTick(state, snapshot);
+        const tick = (ctx.json ? streamTick : watchTick)(state, snapshot);
         for (const line of tick.lines) ctx.writeLine(line);
         state = tick.state;
         if (tick.exitCode !== null) return tick.exitCode;

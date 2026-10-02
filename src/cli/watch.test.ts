@@ -17,7 +17,8 @@ import {
 } from "../report/report-fixtures.js";
 import type { RecordSnapshot } from "../report/snapshot.js";
 import type { HistoryEntry, RunEntry } from "../schema.js";
-import { TIMES_NOT_RECORDED, watchTick, type WatchTick } from "./watch.js";
+import { ReportEvent } from "../report/events.js";
+import { emptyStream, streamTick, TIMES_NOT_RECORDED, watchTick, type WatchTick } from "./watch.js";
 
 const MERGE = { type: "merge-back" } as const;
 const BASELINE: HistoryEntry = { t: "baseline", status: "PASS" };
@@ -281,5 +282,145 @@ describe("a watch of a record that cannot be read", () => {
 
     expect(second?.lines).toEqual([`Incomplete report: the record of run ${ID.footer} is damaged (.delivery/runs/x/log.jsonl); nothing else could be read.`]);
     expect(second?.exitCode).toBe(0);
+  });
+});
+
+describe("a watch as a stream of data", () => {
+  const subject = { kind: "task", runId: ID.footer } as const;
+  const footer = (steps: number, ended = false): RecordSnapshot => snapshotOf({ subject, list: [], records: [footerAt(steps, ended)] });
+
+  /** Several looks in a row as a stream, each given what the one before remembered. */
+  function stream(snapshots: RecordSnapshot[]): WatchTick[] {
+    const ticks: WatchTick[] = [];
+    for (const snapshot of snapshots) ticks.push(streamTick(ticks.at(-1)?.state, snapshot));
+    return ticks;
+  }
+  /** Every line read back as the event it is: a line that is not one event fails here. */
+  const eventsIn = (lines: string[]): ReportEvent[] => lines.map((line) => ReportEvent.parse(JSON.parse(line)));
+
+  it("begins with a line saying what is followed, then gives every step recorded so far, one event to a line", () => {
+    const { lines, exitCode } = streamTick(undefined, footer(3));
+
+    expect(eventsIn(lines).map((event) => [event.type, event.seq])).toEqual([["stream_started", 0], ["surface_state", 0], ["surface_state", 1], ["surface_state", 2]]);
+    expect(eventsIn(lines)[0]).toMatchObject({ schema: "delivery.event/1", subject: "task", surface: ID.footer, run: null });
+    expect(lines.every((line) => !line.includes("\n"))).toBe(true);
+    expect(exitCode).toBeNull();
+  });
+
+  it("adds one event for each step recorded since the look before, and nothing when nothing was", () => {
+    const [, second, third] = stream([footer(3), footer(4), footer(4)]);
+
+    expect(eventsIn(second?.lines ?? []).map((event) => [event.type, event.seq])).toEqual([["surface_state", 3]]);
+    expect(third?.lines).toEqual([]);
+  });
+
+  it("ends with a line saying how what it followed ended, and the code the watch in words ends with", () => {
+    const [, last] = stream([footer(3), footer(5, true)]);
+
+    expect(eventsIn(last?.lines ?? []).map((event) => event.type)).toEqual(["surface_state", "surface_state", "surface_outcome", "stream_ended"]);
+    expect(eventsIn(last?.lines ?? []).at(-1)).toMatchObject({ ending: "ended", surfaceOutcome: "closed", at: "2026-10-01T02:24:30.000Z" });
+    expect(last?.exitCode).toBe(watchTick(undefined, footer(5, true)).exitCode);
+  });
+
+  it("gives, for a finished task replayed, exactly the lines following it live gave", () => {
+    const live = stream([footer(1), footer(2), footer(2), footer(4), footer(5), footer(5, true)]).flatMap((tick) => tick.lines);
+
+    expect(streamTick(undefined, footer(5, true)).lines).toEqual(live);
+  });
+
+  it("gives, for a finished run of several tasks replayed, exactly the lines following it live gave", () => {
+    const run = { kind: "run", runId: ID.run } as const;
+    const drained = runFileOf(ID.run, fills, { kind: "drained", at: "2026-10-01T02:58:30.000Z" });
+    const finished = snapshotOf({ subject: run, records: [formDone, footerAt(5, true)], runs: [drained] });
+
+    const live = stream([{ ...going([formDone, footerAt(2)]), subject: run }, { ...going([formDone, footerAt(4)]), subject: run }, finished]);
+
+    expect(streamTick(undefined, finished).lines).toEqual(live.flatMap((tick) => tick.lines));
+    expect(eventsIn(live.at(-1)?.lines ?? []).slice(-2)).toMatchObject([{ type: "run_outcome", outcome: "drained" }, { type: "stream_ended", runOutcome: "drained", run: ID.run }]);
+    expect(live.map((tick) => tick.exitCode)).toEqual([null, null, 0]);
+  });
+
+  describe("a task list a run of several tasks worked", () => {
+    const stoppedFooter = recordOf({
+      runId: ID.footer,
+      task: FOOTER,
+      closerRef: MERGE,
+      history: timed([BASELINE, ...attempt(1, "I need the owner to confirm.", "authority")], "2026-10-01T02:20:00.000Z"),
+      outcome: stoppedAt("2026-10-01T02:58:00.000Z", { kind: "authority", role: "worker" }),
+    });
+
+    it("gives, once the run gave up with a task unfinished, the lines following it live gave when replayed, and ends with that run's code", () => {
+      const gaveUp = runFileOf(ID.run, fills, { kind: "escalated", cause: "shared_environment", reason: "the setup could not be repaired", at: "2026-10-01T03:17:00.000Z" });
+      const finished = snapshotOf({ records: [formDone, footerAt(3)], runs: [gaveUp] });
+
+      const live = stream([going([formDone, footerAt(2)]), going([formDone, footerAt(3)]), finished]);
+      const replay = streamTick(undefined, finished);
+
+      expect(replay.lines).toEqual(live.flatMap((tick) => tick.lines));
+      expect(eventsIn(replay.lines).slice(-2)).toMatchObject([{ type: "run_outcome", outcome: "escalated" }, { type: "stream_ended", ending: "ended", run: ID.run, runOutcome: "escalated", surfaceOutcome: null }]);
+      expect([...live.map((tick) => tick.exitCode), replay.exitCode]).toEqual([null, null, 4, 4]);
+    });
+
+    it("gives, once the run drained with a task stopped, the lines following it live gave when replayed: the run's outcome, and the stopped task's code", () => {
+      const drained = runFileOf(ID.run, fills, { kind: "drained", at: "2026-10-01T02:58:30.000Z" });
+      const finished = snapshotOf({ records: [formDone, stoppedFooter], runs: [drained] });
+
+      const live = stream([going([formDone, footerAt(2)]), finished]);
+      const replay = streamTick(undefined, finished);
+
+      expect(replay.lines).toEqual(live.flatMap((tick) => tick.lines));
+      expect(eventsIn(replay.lines).at(-1)).toMatchObject({ type: "stream_ended", ending: "ended", run: ID.run, runOutcome: "drained", surfaceOutcome: null });
+      expect([...live.map((tick) => tick.exitCode), replay.exitCode]).toEqual([null, 4, 4]);
+    });
+
+    it("says no run is its own, in a replay as it did live, once a task was worked on its own after the run: the old run is not in the stream, and the stream ends with the stop", () => {
+      const older = runFileOf(ID.run, [fill(1, ID.form, FORM)], { kind: "drained", at: "2026-10-01T02:10:00.000Z" });
+      const finished = snapshotOf({ records: [formDone, stoppedFooter], runs: [older] });
+
+      const live = stream([snapshotOf({ records: [formDone, footerAt(2)], runs: [older] }), finished]);
+      const replay = streamTick(undefined, finished);
+      const events = eventsIn(replay.lines);
+
+      expect(replay.lines).toEqual(live.flatMap((tick) => tick.lines));
+      expect(events[0]).toMatchObject({ type: "stream_started", subject: "list", run: null });
+      expect(events.at(-1)).toMatchObject({ type: "stream_ended", ending: "ended", run: null, runOutcome: null, surfaceOutcome: "escalated", at: "2026-10-01T02:58:00.000Z" });
+      expect(events.filter((event) => event.run !== null || event.type === "run_outcome")).toEqual([]);
+      expect([...live.map((tick) => tick.exitCode), replay.exitCode]).toEqual([null, 4, 4]);
+    });
+  });
+
+  it("marks a list worked one task at a time as having no run of its own, and ends with the code `delivery run` ends with for that list", () => {
+    const stopped = snapshotOf({ records: [formDone, recordOf({ runId: ID.footer, task: FOOTER, closerRef: MERGE, history: attempt(1, "x"), outcome: stoppedAt("2026-10-01T02:58:00.000Z", undefined) })] });
+
+    const { lines, exitCode } = streamTick(undefined, stopped);
+
+    expect(eventsIn(lines)[0]).toMatchObject({ type: "stream_started", subject: "list", run: null, surface: null });
+    expect(eventsIn(lines).at(-1)).toMatchObject({ type: "stream_ended", ending: "ended", runOutcome: null, surfaceOutcome: "escalated" });
+    expect(exitCode).toBe(4);
+  });
+
+  it("says a run known to have been stopped part way ended that way, and a record that cannot be read as unreadable, both ok", () => {
+    const killed = streamTick(undefined, { ...going([formDone, footerAt(3)]), live: false });
+    const damaged = streamTick(undefined, snapshotOf({ subject, damaged: [{ runId: ID.footer, file: ".delivery/runs/x/log.jsonl" }] }));
+
+    expect(eventsIn(killed.lines).at(-1)).toMatchObject({ type: "stream_ended", ending: "stopped_part_way" });
+    expect(eventsIn(damaged.lines).map((event) => event.type)).toEqual(["stream_started", "stream_ended"]);
+    expect(eventsIn(damaged.lines).at(-1)).toMatchObject({ ending: "unreadable" });
+    expect([killed.exitCode, damaged.exitCode]).toEqual([0, 0]);
+  });
+
+  it("keeps waiting, saying nothing, where nothing records whether the work is still going", () => {
+    const [first, second] = stream([snapshotOf({ records: [formDone, footerAt(3)] }), snapshotOf({ records: [formDone, footerAt(3)] })]);
+
+    expect(eventsIn(first?.lines ?? []).at(-1)?.type).toBe("surface_state");
+    expect(second?.lines).toEqual([]);
+    expect([first?.exitCode, second?.exitCode]).toEqual([null, null]);
+  });
+
+  it("is a start and an end with nothing between, for a folder that holds no run to follow", () => {
+    expect(eventsIn(emptyStream(snapshotOf({ records: [] }))).map((event) => [event.type, "ending" in event ? event.ending : null])).toEqual([
+      ["stream_started", null],
+      ["stream_ended", "nothing_recorded"],
+    ]);
   });
 });

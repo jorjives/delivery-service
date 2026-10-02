@@ -1,6 +1,6 @@
 import { deriveReport } from "../report/derive.js";
 import { stepOf, type PlainGroup, type ReportDocument, type ReportSurface } from "../report/document.js";
-import { eventsOf, sourceOf, type ReportEvent, type StreamEnding } from "../report/events.js";
+import { eventsOf, sourceOf, streamEnded, streamStarted, type ReportEvent, type StreamEnding } from "../report/events.js";
 import { attemptsWord, landedWords, RETRY_WORDS } from "../report/plain.js";
 import type { RecordSnapshot } from "../report/snapshot.js";
 import { doneItem, headlineCounts, incompleteLines, label, lastActivity, minuteOf, quoted, reportPointer, stoppedPartWay, tasksWord } from "../report/text.js";
@@ -239,4 +239,25 @@ export function watchTick(previous: WatchState | undefined, snapshot: RecordSnap
     state.saidUnknown = true;
   }
   return { lines, state, exitCode: null };
+}
+
+/**
+ * The same look as a stream of data, one event to a line: the first look says
+ * what is being followed and gives every event recorded so far, every later
+ * look the events recorded since, and the look that ends the watch a last line
+ * saying how. Every line between the two markers is one recorded entry, so a
+ * finished run replayed gives the lines a live watch of it gave. No line is
+ * prose, and none depends on the clock or on whether the work is still going.
+ */
+export function streamTick(previous: WatchState | undefined, snapshot: RecordSnapshot): WatchTick {
+  const { doc, fresh, state } = look(previous, snapshot);
+  const end = endOf(doc);
+  const events = [...(previous === undefined ? [streamStarted(doc)] : []), ...fresh, ...(end ? [streamEnded(doc, end.ending)] : [])];
+  return { lines: events.map((event) => JSON.stringify(event)), state, exitCode: end?.exitCode ?? null };
+}
+
+/** The whole stream for a folder that holds no run to follow: it starts, and it ends with nothing recorded. */
+export function emptyStream(snapshot: RecordSnapshot): string[] {
+  const doc = deriveReport(snapshot);
+  return [streamStarted(doc), streamEnded(doc, "nothing_recorded")].map((event) => JSON.stringify(event));
 }

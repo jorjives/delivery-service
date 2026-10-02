@@ -23,3 +23,16 @@ the same versioned document `delivery report <run-id> --json` prints for that ru
 already reads `status --json` finds the retry budgets, the state history and every triage round
 there. `delivery status --decisions --json` is no longer refused: it prints that same document,
 which holds every round in full.
+
+`delivery status --watch --json` follows a run as data: one JSON event to a line, each naming its
+format and version (`"schema": "delivery.event/1"`). The first line says what is being followed
+(`stream_started`), then comes one event for every step the record already holds and one for
+each step as it is recorded (a task entering a step, a triage round with its reasoning, a task
+ending, the setup a run's tasks share breaking and being repaired, a run ending), and the last
+line says how it ended (`stream_ended`), so a reader knows when to stop. A list worked one task
+at a time, or since a run of several tasks took one of its tasks, is marked as having no run of
+its own (`"run": null`); the document says the same with `run.governs`, which is `false` once a
+task of the list has been worked on its own after the run began. It exits with the code the
+watch in words exits with. Replaying a finished run prints exactly the lines that following it
+live printed. Standard output holds only events. The watch in words now ends a finished run's task
+list as it ends one followed while the run went: by that run's own outcome.

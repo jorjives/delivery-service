@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { setOutcome } from "../case-file.js";
 import { appendLine } from "../journal.js";
 import { attempt, closedAt, fill, FOOTER, FORM, ID, timed, writeRecord, type TaskRun } from "../report/report-fixtures.js";
+import { ReportEvent } from "../report/events.js";
 import { NO_RUNS_YET, NO_TASK_LIST } from "../report/text.js";
 import { setRunOutcome } from "../run-file.js";
 import { runsRoot, supervisedPlace } from "../run-location.js";
@@ -16,7 +17,7 @@ import { EXIT } from "./failures.js";
 import { plainReporter } from "./report.js";
 import { takeRepoLock } from "./repo-lock.js";
 import type { StatusOptions } from "./status-command.js";
-import { INTERVAL_NEEDS_WATCH, INTERVAL_SECONDS, NO_WATCH_DATA_YET, signatureOf, WATCH_AND_ALL, WATCH_AND_DECISIONS, watchCommand } from "./watch-command.js";
+import { INTERVAL_NEEDS_WATCH, INTERVAL_SECONDS, signatureOf, WATCH_AND_ALL, WATCH_AND_DECISIONS, watchCommand } from "./watch-command.js";
 
 const MERGE = { type: "merge-back" } as const;
 const LIST = [FORM, FOOTER];
@@ -38,16 +39,17 @@ async function project(prefix: string, tasks: string[] | undefined, runs: TaskRu
 /**
  * Watch `repo` in process. Each wait between looks runs the next of `between`
  * instead of passing time, so a test changes the record exactly where a run
- * would; a watch still waiting when they run out is a failure.
+ * would; a watch still waiting when they run out is a failure. `json` is the
+ * invocation having asked for data.
  */
-async function watch(repo: string, between: (() => Promise<unknown>)[], options: StatusOptions = {}, runId?: string) {
+async function watch(repo: string, between: (() => Promise<unknown>)[], options: StatusOptions = {}, runId?: string, json = false) {
   const lines: string[] = [];
   const waits: number[] = [];
   const ctx: CommandContext = {
     cwd: repo,
     env: process.env,
     colour: false,
-    json: false,
+    json,
     stdin: Object.assign(Readable.from([]), { isTTY: undefined }),
     writeLine: (line) => void lines.push(line),
     report: plainReporter(() => undefined, false),
@@ -211,12 +213,85 @@ describe("delivery status --watch", () => {
   });
 });
 
+describe("delivery status --watch --json", () => {
+  /** Every line of standard output read back as the event it is: a line that is not one event fails here. */
+  const eventsIn = (stdout: string): ReportEvent[] => stdout.trimEnd().split("\n").map((line) => ReportEvent.parse(JSON.parse(line)));
+
+  it("prints one event to a line as it is recorded, from a line announcing the stream to a line saying how it ended", async () => {
+    const repo = await project("watch-json-", LIST, [formDone, footerAt(3)]);
+
+    const { exitCode, lines } = await watch(
+      repo,
+      [
+        () => record(repo, 3),
+        async () => {
+          await record(repo, 4);
+          await setOutcome(footerDir(repo), closedAt("2026-10-01T02:24:30.000Z"));
+        },
+      ],
+      {},
+      undefined,
+      true,
+    );
+    const events = eventsIn(lines.join("\n"));
+
+    expect(events[0]).toEqual({ schema: "delivery.event/1", run: null, surface: null, seq: 0, at: null, type: "stream_started", subject: "list" });
+    expect(events.filter((event) => event.surface === ID.footer).map((event) => [event.seq, event.type])).toEqual([
+      [0, "surface_state"],
+      [1, "surface_state"],
+      [2, "surface_state"],
+      [3, "surface_state"],
+      [4, "surface_state"],
+      [5, "surface_outcome"],
+    ]);
+    expect(events.at(-1)).toMatchObject({ type: "stream_ended", ending: "ended", surfaceOutcome: null, counts: { closed: 2 } });
+    expect(exitCode).toBe(EXIT.ok);
+  });
+
+  it("gives, replaying the finished list, exactly the lines following it live gave", async () => {
+    const repo = await project("watch-json-replay-", LIST, [formDone, footerAt(3)]);
+    const live = await watch(repo, [() => record(repo, 3), () => record(repo, 4), () => setOutcome(footerDir(repo), closedAt("2026-10-01T02:24:30.000Z"))], {}, undefined, true);
+
+    const replay = await delivery(["--json", "status", "--watch"], { cwd: repo });
+
+    expect(replay.stdout).toBe(`${live.lines.join("\n")}\n`);
+    expect(replay.exitCode).toBe(live.exitCode);
+  });
+
+  it("puts nothing on standard output but events: no colour, no sentence for a person, even where the words would say one", async () => {
+    const noList = await project("watch-json-no-list-", undefined, [formDone]);
+    const empty = await project("watch-json-empty-", LIST, []);
+
+    const recent = await delivery(["--json", "status", "--watch"], { cwd: noList, isTTY: true });
+    const nothing = await delivery(["--json", "status", "--watch"], { cwd: empty, isTTY: true });
+
+    expect(eventsIn(recent.stdout)[0]).toMatchObject({ type: "stream_started", subject: "task", surface: ID.form });
+    expect(eventsIn(nothing.stdout).map((event) => [event.type, "ending" in event ? event.ending : null])).toEqual([
+      ["stream_started", null],
+      ["stream_ended", "nothing_recorded"],
+    ]);
+    expect(recent.stdout + nothing.stdout).not.toContain("\u001B");
+    expect([recent.stderr, nothing.stderr, recent.exitCode, nothing.exitCode]).toEqual(["", "", EXIT.ok, EXIT.ok]);
+  });
+
+  it("ends with the code the watch in words ends with", async () => {
+    const repo = await project("watch-json-stopped-", LIST, [
+      formDone,
+      { ...footerAt(3), outcome: { kind: "escalated", source: "worker", reason: "worker escalated: authority", at: "2026-10-01T02:58:00.000Z", cause: { kind: "authority", role: "worker" } } },
+    ]);
+
+    const { exitCode, stdout } = await delivery(["--json", "status", "--watch"], { cwd: repo });
+
+    expect(eventsIn(stdout).at(-1)).toMatchObject({ type: "stream_ended", ending: "ended", surfaceOutcome: "escalated" });
+    expect(exitCode).toBe(EXIT.escalated);
+  });
+});
+
 describe("delivery status --watch, asked for something it does not do", () => {
   it.each([
     [["status", "--interval", "5"], INTERVAL_NEEDS_WATCH],
     [["status", "--watch", "--all"], WATCH_AND_ALL],
     [["status", "--watch", "--decisions"], WATCH_AND_DECISIONS],
-    [["--json", "status", "--watch"], NO_WATCH_DATA_YET],
     [["status", "--watch", "--interval", "0"], INTERVAL_SECONDS],
     [["status", "--watch", "--interval", "soon"], INTERVAL_SECONDS],
   ])("refuses %j, saying what to do instead", async (args, message) => {
