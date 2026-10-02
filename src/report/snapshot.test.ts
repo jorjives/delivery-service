@@ -7,7 +7,7 @@ import { prepareRunDir, supervisedPlace } from "../run-location.js";
 import type { HistoryEntry, RunEntry } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { writeSupervisedRun } from "../cli/command-fixtures.js";
-import { attempt, closedAt, damageLog, failedCheck, fill, FOOTER, FORM, ID, writeRecord } from "./report-fixtures.js";
+import { attempt, closedAt, damageLog, failedCheck, fill, FOOTER, FORM, ID, PACKET, stoppedAt, writeRecord } from "./report-fixtures.js";
 import { loadSnapshot } from "./snapshot.js";
 
 const LIST = [{ intent: FORM }, { intent: FOOTER }];
@@ -95,6 +95,21 @@ describe("reading what a report is derived from", () => {
     const snapshot = await loadSnapshot(repo, { kind: "list" }, { live: false, list: LIST });
 
     expect(snapshot.refs).toEqual({ [ID.footer]: { "triage-0": round } });
+  });
+
+  it("reads back the packet a stopped task left for a person, by the ref its outcome names", async () => {
+    const repo = initTempRepo("snapshot-packet-", { "README.md": "x\n" });
+    await writeRecord(repo, {
+      runId: ID.footer,
+      task: FOOTER,
+      history: attempt(1, "I need the owner to confirm.", "authority"),
+      refs: { escalation: PACKET },
+      outcome: { ...stoppedAt("2026-10-01T02:58:00.000Z", { kind: "authority", role: "worker" }), packetRef: "escalation" },
+    });
+
+    const snapshot = await loadSnapshot(repo, { kind: "list" }, { live: false, list: LIST });
+
+    expect(snapshot.refs).toEqual({ [ID.footer]: { escalation: PACKET } });
   });
 
   it("leaves out a round's ref that is missing or cannot be read, and still reads the record", async () => {

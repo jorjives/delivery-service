@@ -224,6 +224,86 @@ describe("a report on a run of several tasks at once", () => {
   });
 });
 
+describe("what a stop left for a person", () => {
+  const stopped = recordOf({
+    runId: ID.footer,
+    task: FOOTER,
+    history: attempt(1, "I need the owner to confirm.", "authority"),
+    outcome: { ...stoppedAt("2026-10-01T02:58:00.000Z", { kind: "authority", role: "worker" }), packetRef: "escalation" },
+  });
+  const surfaces = (refs: any) => deriveReport(snapshotOf({ records: [formDone, stopped], refs })).surfaces;
+
+  it("is carried word for word: the packet the stopped task's record points at", () => {
+    expect(surfaces({ [ID.footer]: { escalation: PACKET } })[1]?.escalation).toEqual(PACKET);
+  });
+
+  it("is null, never missing, for a task that left none: one delivered, one not started, one whose packet is not there or is not a packet", () => {
+    expect(surfaces({ [ID.footer]: { escalation: PACKET } }).map((surface) => surface.escalation === null)).toEqual([true, false, true, true]);
+    expect(surfaces({})[1]?.escalation).toBeNull();
+    expect(surfaces({ [ID.footer]: { escalation: { decision: 7 } } })[1]?.escalation).toBeNull();
+  });
+});
+
+describe("why a task stopped, as the document tells it", () => {
+  const causeOf = (cause: any) =>
+    deriveReport(snapshotOf({ records: [formDone, recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "x"), outcome: stoppedAt("2026-10-01T02:58:00.000Z", cause) })] })).surfaces[1]?.cause;
+
+  it("names every key, null where its kind has none, so a reader never meets a missing one", () => {
+    expect(causeOf({ kind: "authority", role: "worker" })).toEqual({ kind: "authority", role: "worker", population: null });
+    expect(causeOf({ kind: "budget", population: "correction" })).toEqual({ kind: "budget", role: null, population: "correction" });
+    expect(causeOf({ kind: "provisioning" })).toEqual({ kind: "provisioning", role: null, population: null });
+  });
+
+  it("is null for a task that stopped before causes were recorded", () => {
+    expect(causeOf(undefined)).toBeNull();
+  });
+});
+
+describe("what a report says of the setup a run's tasks share", () => {
+  const troubled = runFileOf(ID.run, [
+    fill(1, ID.form, FORM),
+    { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: ID.form, reason: "the check cannot run" } },
+    { t: "held", surfaceId: ID.form },
+    { t: "repair_dispatch", attempt: 1, sessionKey: "repair-1", surfaceId: ID.form },
+  ]);
+  const doc = deriveReport(snapshotOf({ subject: { kind: "run", runId: ID.run }, live: true, records: [footerWorking], runs: [troubled] }));
+
+  it("says how it stands now", () => {
+    expect(doc.run?.breaker).toBe("REPAIRING");
+    expect(deriveReport(snapshotOf({ subject: { kind: "run", runId: ID.run }, records: [formDone], runs: [runFileOf(ID.run, [fill(1, ID.form, FORM)])] })).run?.breaker).toBe("HEALTHY");
+  });
+
+  it("tells each time it broke: why, which tasks were held, and every repair tried", () => {
+    expect(doc.trips).toEqual([
+      {
+        cause: { kind: "gate_maintenance", surfaceId: ID.form, reason: "the check cannot run", surfaceIds: null },
+        held: [ID.form],
+        repairs: [{ attempt: 1, sessionKey: "repair-1", surfaceId: ID.form, status: null, rationale: null }],
+        ended: null,
+        reason: null,
+        limit: null,
+      },
+    ]);
+    expect(ReportDocument.parse(doc)).toEqual(doc);
+  });
+
+  it("gives a trip's cause every key, null where its kind has none, so a reader never meets a missing one", () => {
+    const aggregate = runFileOf(ID.run, [
+      fill(1, ID.form, FORM),
+      fill(2, ID.footer, FOOTER),
+      { t: "breaker_degraded", cause: { kind: "gate_error_aggregate", surfaceId: ID.form, surfaceIds: [ID.form, ID.footer] } },
+    ]);
+    const { trips } = deriveReport(snapshotOf({ subject: { kind: "run", runId: ID.run }, live: true, records: [footerWorking], runs: [aggregate] }));
+
+    expect(trips[0]?.cause).toEqual({ kind: "gate_error_aggregate", surfaceId: ID.form, surfaceIds: [ID.form, ID.footer], reason: null });
+    expect(doc.trips[0]?.cause).toEqual({ kind: "gate_maintenance", surfaceId: ID.form, reason: "the check cannot run", surfaceIds: null });
+  });
+
+  it("tells of none, as an empty list, where no run of several tasks is reported", () => {
+    expect(deriveReport(snapshotOf({ records: [formDone, footerFailed] })).trips).toEqual([]);
+  });
+});
+
 describe("a report on one task's run", () => {
   it("reports that task alone, with its place on the list", () => {
     const doc = deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [formDone, footerFailed] }));

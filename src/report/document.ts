@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OutcomeCause, Population, SurfaceState, TriageEntry, UsageLimit } from "../schema.js";
+import { BreakerState, OutcomeCause, Population, SurfaceState, TriageEntry, Trip, UsageLimit } from "../schema.js";
 import { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
 
 /** The version every report document names itself by. A later version adds keys; it never renames or removes one. */
@@ -67,6 +67,17 @@ export type Decision = z.infer<typeof Decision>;
 export const StateVisit = z.object({ state: SurfaceState, at: z.string().nullable() });
 export type StateVisit = z.infer<typeof StateVisit>;
 
+/**
+ * Why a task stopped, as the document tells it. The record's own shape carries
+ * `role` and `population` only for the kinds that have one; every key of the
+ * document is always present, so this names both, with null where the kind has none.
+ */
+export const SurfaceCause = z.object({
+  kind: OutcomeCause.shape.kind,
+  role: OutcomeCause.shape.role.unwrap().nullable(),
+  population: OutcomeCause.shape.population.unwrap().nullable(),
+});
+
 /** One task. Every key is always there: null where the record does not hold the fact. */
 export const ReportSurface = z.object({
   /** The task's own run id; null for a task with no run yet. */
@@ -86,7 +97,7 @@ export const ReportSurface = z.object({
   lastActivityAt: z.string().nullable(),
   /** How it ended, as the run recorded it. */
   reason: z.string().nullable(),
-  cause: OutcomeCause.nullable(),
+  cause: SurfaceCause.nullable(),
   /** How this task's work is landed, as its run pinned it. */
   closer: z.enum(["merge-back", "commit-to-branch", "open-pr", "custom"]).nullable(),
   branch: z.string().nullable(),
@@ -98,10 +109,29 @@ export const ReportSurface = z.object({
   decisions: z.array(Decision),
   /** The usage limit that stopped the task's last session, when one did. */
   limit: UsageLimit.nullable(),
+  /** The packet the task stopped with, word for word as the harness wrote it for a person; null for a task that did not stop for one, or whose packet cannot be read back. */
+  escalation: EscalationPacket.nullable(),
   /** Stopped tasks only. */
   plain: Plain.nullable(),
 });
 export type ReportSurface = z.infer<typeof ReportSurface>;
+
+/**
+ * What tripped the breaker, as the document tells it. The record holds one shape
+ * for each of the two kinds; the document names the keys of both, with null for
+ * `reason` where the kind is not `gate_maintenance` and for `surfaceIds` where it
+ * is not `gate_error_aggregate`.
+ */
+export const TripCause = z.object({
+  kind: z.enum(["gate_maintenance", "gate_error_aggregate"]),
+  surfaceId: z.string().min(1),
+  reason: z.string().nullable(),
+  surfaceIds: z.array(z.string().min(1)).nullable(),
+});
+
+/** One time the setup every task shares broke, as the document tells it: the record's own trip, with its cause given every key. */
+export const ReportTrip = Trip.extend({ cause: TripCause });
+export type ReportTrip = z.infer<typeof ReportTrip>;
 
 /** The run of several tasks at once a report is about. */
 export const ReportRun = z.object({
@@ -109,6 +139,8 @@ export const ReportRun = z.object({
   startedAt: z.string().nullable(),
   tasks: z.number().int().nonnegative(),
   concurrency: z.number().int().positive(),
+  /** Whether the setup every task shares is fit to use, as the run's own record leaves it. */
+  breaker: BreakerState,
   outcome: z.enum(["drained", "escalated"]).nullable(),
   finishedAt: z.string().nullable(),
   /** The latest time the run's own record or any task it took holds; null when they hold none. */
@@ -149,5 +181,7 @@ export const ReportDocument = z.object({
   counts: z.record(Standing, z.number().int().nonnegative()),
   run: ReportRun.nullable(),
   surfaces: z.array(ReportSurface),
+  /** Every time the setup the run's tasks share broke, oldest first; empty where the report has no run of several tasks. */
+  trips: z.array(ReportTrip),
 });
 export type ReportDocument = z.infer<typeof ReportDocument>;

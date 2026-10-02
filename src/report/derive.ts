@@ -1,14 +1,15 @@
 import { isDeepStrictEqual } from "node:util";
-import { repairsUsed } from "../breaker.js";
+import { breakerOf, repairsUsed, tripsOf } from "../breaker.js";
 import { deriveBudgetsFromLog, deriveStateFromEntry } from "../case-file.js";
 import { branchName } from "../provision.js";
 import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js";
-import { Population, type HistoryEntry, type RunFile, type TaskDef } from "../schema.js";
+import { Population, type HistoryEntry, type RunFile, type TaskDef, type Trip } from "../schema.js";
 import { claimedBy, supervisedView } from "../supervised-view.js";
 import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
 import { BriefRef } from "../prompt-assembly.js";
 import { PacketRef } from "../surface.js";
-import { latestOf, REPORT_SCHEMA, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRun, type ReportSurface, type StateVisit } from "./document.js";
+import { EscalationPacket } from "../triage-role-config.js";
+import { latestOf, REPORT_SCHEMA, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRun, type ReportSurface, type ReportTrip, type StateVisit } from "./document.js";
 import { plainOf } from "./plain.js";
 import type { DamagedFile, RecordSnapshot, ReportSubject } from "./snapshot.js";
 
@@ -33,6 +34,7 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
     budgets: [],
     decisions: [],
     limit: null,
+    escalation: null,
     plain: null,
   };
 }
@@ -62,6 +64,24 @@ function decisionsOf(record: RunRecord, refs: Record<string, unknown>): Decision
       },
     ];
   });
+}
+
+/** A trip as the document tells it: the cause names every key, with null where its kind has none. */
+const tripOf = ({ cause, ...trip }: Trip): ReportTrip => ({
+  ...trip,
+  cause: {
+    kind: cause.kind,
+    surfaceId: cause.surfaceId,
+    reason: cause.kind === "gate_maintenance" ? cause.reason : null,
+    surfaceIds: cause.kind === "gate_error_aggregate" ? cause.surfaceIds : null,
+  },
+});
+
+/** The packet a task stopped with, as the run wrote it beside its outcome; null when it wrote none or it cannot be read back. */
+function packetOf(packetRef: string | undefined, refs: Record<string, unknown>): EscalationPacket | null {
+  if (packetRef === undefined) return null;
+  const packet = EscalationPacket.safeParse(refs[packetRef]);
+  return packet.success ? packet.data : null;
 }
 
 /**
@@ -107,7 +127,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     finishedAt: outcome?.at ?? null,
     lastActivityAt: lastActivityOf(record),
     reason: outcome?.reason ?? null,
-    cause,
+    cause: cause === null ? null : { kind: cause.kind, role: cause.role ?? null, population: cause.population ?? null },
     // A run that pinned no closer predates closers being pinned, and was committed to its branch.
     closer: header.closerRef?.type ?? "commit-to-branch",
     branch: branchName(header.surfaceId),
@@ -116,6 +136,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     budgets: Population.options.map((population) => ({ population, used: budgets[population].used, max: budgets[population].max })),
     decisions: decisionsOf(record, snapshot.refs[record.runId] ?? {}),
     limit,
+    escalation: packetOf(outcome?.packetRef, snapshot.refs[record.runId] ?? {}),
     plain:
       standing === "escalated" || standing === "aborted"
         ? plainOf({
@@ -140,6 +161,7 @@ function runBlock(runFile: RunFile, records: readonly RunRecord[]): ReportRun {
     startedAt: startedInstant(header.runId),
     tasks: header.tasks,
     concurrency: header.concurrency,
+    breaker: breakerOf(history),
     outcome: outcome?.kind ?? null,
     finishedAt: outcome?.at ?? null,
     lastActivityAt: latestOf([outcome?.at, ...history.map((entry) => entry.at), ...records.filter((record) => taken.has(record.runId)).map(lastActivityOf)]),
@@ -153,10 +175,11 @@ function runBlock(runFile: RunFile, records: readonly RunRecord[]): ReportRun {
 function document(
   snapshot: RecordSnapshot,
   parts: { live: boolean | null; run: ReportRun | null; surfaces: ReportSurface[]; incomplete: DamagedRecord[] },
+  runFile?: RunFile,
 ): ReportDocument {
   const counts = Object.fromEntries(Standing.options.map((standing) => [standing, 0])) as Record<Standing, number>;
   for (const surface of parts.surfaces) counts[surface.standing] += 1;
-  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts };
+  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts, trips: runFile ? tripsOf(runFile.history).map(tripOf) : [] };
 }
 
 const asIncomplete = (damaged: DamagedFile, list: TaskDef[]): DamagedRecord => ({
@@ -203,7 +226,7 @@ function runReport(snapshot: RecordSnapshot, runId: string): ReportDocument {
     return document(snapshot, { live: false, run: null, surfaces: [], incomplete });
   }
   const live = runFile.outcome === undefined && snapshot.live;
-  return document(snapshot, { live, run: runBlock(runFile, snapshot.records), ...runSurfaces(snapshot, runFile, live) });
+  return document(snapshot, { live, run: runBlock(runFile, snapshot.records), ...runSurfaces(snapshot, runFile, live) }, runFile);
 }
 
 /**
@@ -248,12 +271,16 @@ function listReport(snapshot: RecordSnapshot): ReportDocument {
   }
 
   const unfinished = surfaces.some((surface) => surface.standing === "unfinished");
-  return document(snapshot, {
-    live: going ? live : unfinished ? null : false,
-    run: run ? runBlock(run, records) : null,
-    surfaces,
-    incomplete,
-  });
+  return document(
+    snapshot,
+    {
+      live: going ? live : unfinished ? null : false,
+      run: run ? runBlock(run, records) : null,
+      surfaces,
+      incomplete,
+    },
+    run,
+  );
 }
 
 /**

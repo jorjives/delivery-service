@@ -18,8 +18,8 @@ export interface DamagedFile {
   taskDef?: TaskDef;
 }
 
-/** What the triage rounds of each run point at, read back: by run id, then by ref id. A ref that is missing or unreadable is simply not there. */
-export type TriageRefs = Record<string, Record<string, unknown>>;
+/** What each run wrote beside its log that a report shows, read back: by run id, then by ref id. A ref that is missing or unreadable is simply not there. */
+export type RecordRefs = Record<string, Record<string, unknown>>;
 
 /** Everything a report is derived from, read once. Plain data: `deriveReport` does no reading of its own. */
 export interface RecordSnapshot {
@@ -31,7 +31,7 @@ export interface RecordSnapshot {
   records: RunRecord[];
   runs: RunFile[];
   damaged: DamagedFile[];
-  refs: TriageRefs;
+  refs: RecordRefs;
 }
 
 /** Every run of several at once this repository holds, and the ones whose record cannot be read back. */
@@ -64,17 +64,20 @@ const asDamagedFile = (repoPath: string, { runId, dir, file, taskDef }: DamagedR
 });
 
 /**
- * What each triage round of each record wrote beside its log entry: the brief
- * or packet the round produced. Read here so that `deriveReport` reads nothing.
- * A ref that is missing or damaged is left out, and the round then reads "not
- * recorded": one lost file must not cost the reader the whole account.
+ * What each record wrote beside its log that a report shows: the brief or
+ * packet each triage round produced, and the packet the task stopped with.
+ * Read here so that `deriveReport` reads nothing. A ref that is missing or
+ * damaged is left out, and what it held then reads "not recorded": one lost
+ * file must not cost the reader the whole account.
  */
-async function readTriageRefs(records: RunRecord[]): Promise<TriageRefs> {
+async function readRefs(records: RunRecord[]): Promise<RecordRefs> {
   const read = await Promise.all(
     records.map(async (record) => {
-      const ids = record.caseFile.history.flatMap((entry) => (entry.t === "triage" ? [entry.artifactRef] : []));
+      const { history, outcome } = record.caseFile;
+      const ids = new Set(history.flatMap((entry) => (entry.t === "triage" ? [entry.artifactRef] : [])));
+      if (outcome?.packetRef !== undefined) ids.add(outcome.packetRef);
       const found = await Promise.all(
-        ids.map(async (id): Promise<[string, unknown][]> => {
+        [...ids].map(async (id): Promise<[string, unknown][]> => {
           try {
             return [[id, await readRef(record.dir, id)]];
           } catch (err) {
@@ -118,5 +121,5 @@ export async function loadSnapshot(repoPath: string, subject: ReportSubject, { l
   // ponytail: a list or a run still reads every record's rounds; narrow those to the records they show if a
   // repository with thousands of runs makes a report slow.
   const rounds = subject.kind === "task" ? tasks.records.filter((record) => record.runId === subject.runId) : tasks.records;
-  return { subject, live, list, records: tasks.records, runs: supervised.runs, damaged, refs: await readTriageRefs(rounds) };
+  return { subject, live, list, records: tasks.records, runs: supervised.runs, damaged, refs: await readRefs(rounds) };
 }
