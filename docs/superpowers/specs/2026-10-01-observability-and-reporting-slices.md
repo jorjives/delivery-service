@@ -77,6 +77,7 @@ agent-written plain summary) is not sliced.
 
 ## Slice 2: See Why a Task Stopped, With Every Decision and Retry Behind It
 
+**Status:** ✅ Complete — 2026-10-02 — `50bc3a1`
 **Delivers:** An engineer types `delivery status` for a stopped or running task and reads the decision asked, the retry budgets at that moment, and each triage round that led there, with the full text of every round on request.
 
 **Build note:** The detail is another rendering of the read model the report already uses, not a second derivation; the existing escalation packet rendering at the top of `delivery status` is kept as it is. Budget figures and triage rounds come from the record the harness already keeps and the folds that resuming uses.
