@@ -305,7 +305,6 @@ export function budgetTotals(surfaces: ReportSurface[]): BudgetRow[] {
   });
 }
 
-/** Retries used, in the owner's vocabulary, for whoever adjusts the limits. Nothing when no task has a run to count. */
 /**
  * Retries used, in the owner's vocabulary, for whoever adjusts the limits, then where this report was saved when
  * it was. Nothing when no task has a run to count and nothing was saved.
