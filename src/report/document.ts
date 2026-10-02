@@ -139,6 +139,8 @@ export const ReportRun = z.object({
   startedAt: z.string().nullable(),
   tasks: z.number().int().nonnegative(),
   concurrency: z.number().int().positive(),
+  /** Whether the run says how the report's tasks stand. Always true in a report on the run itself; false in a report on the task list once a task of it was worked on its own after the run began, when the run is only history. */
+  governs: z.boolean(),
   /** Whether the setup every task shares is fit to use, as the run's own record leaves it. */
   breaker: BreakerState,
   outcome: z.enum(["drained", "escalated"]).nullable(),

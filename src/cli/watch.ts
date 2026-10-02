@@ -13,8 +13,6 @@ import { listExitCode, shapeOf } from "./queue.js";
 export interface WatchState {
   /** For each journal (a task's own, or its run's), the position after the last entry already told. */
   cursors: Record<string, number>;
-  /** The run of several tasks this watch has seen unfinished: its end ends the watch. */
-  followedRun: string | null;
   /** Said once: nothing records whether the work is still going. */
   saidUnknown: boolean;
   /** Said once: this record holds no times. */
@@ -130,8 +128,11 @@ function changeLine(event: ReportEvent, doc: ReportDocument): string[] {
 const timeless = (doc: ReportDocument): boolean =>
   doc.surfaces.some((surface) => (surface.standing === "unfinished" || surface.standing === "paused") && surface.states.some((visit) => visit.at === null));
 
-/** How the watch's subject ended, once it has: the closing words and the code its run ended with. Nothing while there is more to wait for. */
-function ending(doc: ReportDocument, followedRun: string | null): { words: string; exitCode: ExitCode } | undefined {
+/**
+ * How the watch's subject ended, once it has: the closing words and the code its run ended with. Nothing while there is more to wait for.
+ * A task list ended with the run of several tasks that governs it (see `ReportRun.governs`), or else with the first task that stopped it.
+ */
+function ending(doc: ReportDocument): { words: string; exitCode: ExitCode } | undefined {
   const standings = doc.surfaces.flatMap((surface) => (surface.standing === "closed" || surface.standing === "escalated" || surface.standing === "aborted" ? [surface.standing] : []));
   const [only] = doc.surfaces;
   if (doc.kind === "task") {
@@ -139,7 +140,7 @@ function ending(doc: ReportDocument, followedRun: string | null): { words: strin
     return { words: only.standing === "closed" ? "This run finished" : "This run stopped", exitCode: listExitCode(standings) };
   }
   if (doc.run !== null && doc.run.outcome === null) return undefined;
-  if (doc.run !== null && (doc.kind === "run" || doc.run.runId === followedRun)) {
+  if (doc.run?.governs) {
     // A run that gave up on the setup its tasks share stopped with tasks still to finish: it did not finish.
     return doc.run.outcome === "escalated" ? { words: "Run stopped", exitCode: EXIT.escalated } : { words: "Run finished", exitCode: listExitCode(standings) };
   }
@@ -168,7 +169,7 @@ function ending(doc: ReportDocument, followedRun: string | null): { words: strin
 export function watchTick(previous: WatchState | undefined, snapshot: RecordSnapshot): WatchTick {
   const doc = deriveReport(snapshot);
   const events = eventsOf(snapshot);
-  const state: WatchState = { ...(previous ?? { cursors: {}, followedRun: null, saidUnknown: false, saidNoTimes: false }) };
+  const state: WatchState = { ...(previous ?? { cursors: {}, saidUnknown: false, saidNoTimes: false }) };
   const lines: string[] = [];
 
   if (previous === undefined) {
@@ -190,7 +191,6 @@ export function watchTick(previous: WatchState | undefined, snapshot: RecordSnap
   }
   state.cursors = { ...state.cursors };
   for (const event of events) state.cursors[sourceOf(event)] = Math.max(state.cursors[sourceOf(event)] ?? 0, event.seq + 1);
-  if (doc.run !== null && doc.run.outcome === null) state.followedRun = doc.run.runId;
 
   // A subject that cannot be read at all: the picture names it on the first look, and a later look names it here, so a
   // record damaged while it is watched never ends the watch without a word. There is nothing to wait for.
@@ -198,7 +198,7 @@ export function watchTick(previous: WatchState | undefined, snapshot: RecordSnap
     return { lines: previous === undefined ? lines : [...lines, ...incompleteLines(doc)], state, exitCode: EXIT.ok };
   }
 
-  const ended = ending(doc, state.followedRun);
+  const ended = ending(doc);
   if (ended) {
     lines.push(`${stamp(lastActivity(doc))}${ended.words}: ${headlineCounts(doc)}. ${reportPointer(doc)}`);
     return { lines, state, exitCode: ended.exitCode };

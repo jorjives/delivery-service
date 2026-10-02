@@ -175,7 +175,7 @@ export function incompleteLines(doc: ReportDocument): string[] {
  * that task may have been the last to move.
  */
 export function lastActivity(doc: ReportDocument): string | null {
-  if (doc.run) return doc.run.lastActivityAt;
+  if (doc.run?.governs) return doc.run.lastActivityAt;
   const ran = doc.surfaces.filter((surface) => surface.run !== null);
   return ran.every((surface) => surface.lastActivityAt !== null) ? latestOf(ran.map((surface) => surface.lastActivityAt)) : null;
 }

@@ -197,7 +197,7 @@ describe("delivery status --watch", () => {
 
     expect(lines).not.toContain(NO_RUNS_YET);
     expect(lines.at(0)).toBe("Watching your task list: 2 tasks. Ctrl-C stops watching; the run is not affected.");
-    expect(lines.at(-1)).toBe("02:25 Every task on your list is done: 2 of 2 tasks completed and merged. Run `delivery report` for what to do.");
+    expect(lines.at(-1)).toBe("02:25 Run finished: 2 of 2 tasks completed and merged. Run `delivery report` for what to do.");
     expect(exitCode).toBe(EXIT.ok);
   });
 

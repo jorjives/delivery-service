@@ -152,7 +152,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
   };
 }
 
-function runBlock(runFile: RunFile, records: readonly RunRecord[]): ReportRun {
+function runBlock(runFile: RunFile, records: readonly RunRecord[], governs: boolean): ReportRun {
   const { header, history, outcome } = runFile;
   const taken = new Set(claimedBy(runFile).map((claim) => claim.surfaceId));
   const escalated = outcome?.kind === "escalated" ? outcome : undefined;
@@ -161,6 +161,7 @@ function runBlock(runFile: RunFile, records: readonly RunRecord[]): ReportRun {
     startedAt: startedInstant(header.runId),
     tasks: header.tasks,
     concurrency: header.concurrency,
+    governs,
     breaker: breakerOf(history),
     outcome: outcome?.kind ?? null,
     finishedAt: outcome?.at ?? null,
@@ -226,7 +227,21 @@ function runReport(snapshot: RecordSnapshot, runId: string): ReportDocument {
     return document(snapshot, { live: false, run: null, surfaces: [], incomplete });
   }
   const live = runFile.outcome === undefined && snapshot.live;
-  return document(snapshot, { live, run: runBlock(runFile, snapshot.records), ...runSurfaces(snapshot, runFile, live) }, runFile);
+  return document(snapshot, { live, run: runBlock(runFile, snapshot.records, true), ...runSurfaces(snapshot, runFile, live) }, runFile);
+}
+
+/**
+ * Whether a run of several tasks still says how the task list stands. It does
+ * while it is going, and once it has ended until a task of the list is worked on
+ * its own after it began: the list's standing is then that task's, and the run is
+ * only history. Decided from the record alone, so a replay and a live watch agree.
+ */
+function governs(snapshot: RecordSnapshot, run: RunFile): boolean {
+  if (run.outcome === undefined) return true;
+  const taken = new Set(claimedBy(run).map((claim) => claim.surfaceId));
+  const began = startedInstant(run.header.runId) ?? "";
+  const worked = [...snapshot.records.map((record) => ({ runId: record.runId, taskDef: record.caseFile.header.taskDef })), ...snapshot.damaged];
+  return !worked.some(({ runId, taskDef }) => !taken.has(runId) && (startedInstant(runId) ?? "") > began && snapshot.list.some((task) => isDeepStrictEqual(task, taskDef)));
 }
 
 /**
@@ -275,7 +290,7 @@ function listReport(snapshot: RecordSnapshot): ReportDocument {
     snapshot,
     {
       live: going ? live : unfinished ? null : false,
-      run: run ? runBlock(run, records) : null,
+      run: run ? runBlock(run, records, governs(snapshot, run)) : null,
       surfaces,
       incomplete,
     },

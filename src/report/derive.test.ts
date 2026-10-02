@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { ReportDocument, stepOf } from "./document.js";
 import { deriveReport, mostRecentSubject } from "./derive.js";
+import type { OutcomeCause } from "../schema.js";
+import type { RecordSnapshot } from "./snapshot.js";
 import { attempt, BANNER, BRIEF, closedAt, failedCheck, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt, timed } from "./report-fixtures.js";
 
 describe("a report on the project's task list", () => {
@@ -231,7 +233,7 @@ describe("what a stop left for a person", () => {
     history: attempt(1, "I need the owner to confirm.", "authority"),
     outcome: { ...stoppedAt("2026-10-01T02:58:00.000Z", { kind: "authority", role: "worker" }), packetRef: "escalation" },
   });
-  const surfaces = (refs: any) => deriveReport(snapshotOf({ records: [formDone, stopped], refs })).surfaces;
+  const surfaces = (refs: Record<string, unknown>) => deriveReport(snapshotOf({ records: [formDone, stopped], refs })).surfaces;
 
   it("is carried word for word: the packet the stopped task's record points at", () => {
     expect(surfaces({ [ID.footer]: { escalation: PACKET } })[1]?.escalation).toEqual(PACKET);
@@ -245,7 +247,7 @@ describe("what a stop left for a person", () => {
 });
 
 describe("why a task stopped, as the document tells it", () => {
-  const causeOf = (cause: any) =>
+  const causeOf = (cause: OutcomeCause | undefined) =>
     deriveReport(snapshotOf({ records: [formDone, recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "x"), outcome: stoppedAt("2026-10-01T02:58:00.000Z", cause) })] })).surfaces[1]?.cause;
 
   it("names every key, null where its kind has none, so a reader never meets a missing one", () => {
@@ -301,6 +303,31 @@ describe("what a report says of the setup a run's tasks share", () => {
 
   it("tells of none, as an empty list, where no run of several tasks is reported", () => {
     expect(deriveReport(snapshotOf({ records: [formDone, footerFailed] })).trips).toEqual([]);
+  });
+});
+
+describe("which run a task list's standing belongs to", () => {
+  const drained = runFileOf(ID.run, [fill(1, ID.form, FORM)], { kind: "drained", at: "2026-10-01T02:30:00.000Z" });
+  const governs = (over: Partial<RecordSnapshot>) => deriveReport(snapshotOf(over)).run?.governs;
+
+  it("is the run's own while it is going, and once it has ended, so long as no task of the list was worked on its own since", () => {
+    expect(governs({ live: true, records: [formDone], runs: [runFileOf(ID.run, [fill(1, ID.form, FORM)])] })).toBe(true);
+    expect(governs({ records: [formDone], runs: [drained] })).toBe(true);
+  });
+
+  it("is no longer the run's once a task of the list has been worked on its own since the run began, whether or not that record can be read", () => {
+    expect(governs({ records: [formDone, footerFailed], runs: [drained] })).toBe(false);
+    expect(governs({ records: [formDone], damaged: [{ runId: ID.footer, file: ".delivery/runs/x/log.jsonl", taskDef: { intent: FOOTER } }], runs: [drained] })).toBe(false);
+  });
+
+  it("is not undone by a task worked on its own before the run began, or by one the run took itself", () => {
+    const before = recordOf({ runId: "fix-the-broken-footer-links-20260930T120000Z", task: FOOTER, history: attempt(1, "x"), outcome: stoppedAt("2026-09-30T12:30:00.000Z", undefined) });
+
+    expect(governs({ records: [formDone, before], runs: [drained] })).toBe(true);
+  });
+
+  it("is always the run's in a report on the run itself", () => {
+    expect(deriveReport(snapshotOf({ subject: { kind: "run", runId: ID.run }, records: [formDone, footerFailed], runs: [drained] })).run?.governs).toBe(true);
   });
 });
 

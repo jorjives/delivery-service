@@ -161,6 +161,31 @@ describe("a watch of a run of several tasks", () => {
     expect(last?.exitCode).toBe(4);
   });
 
+  it("ends a finished run's task list replayed as it ended when followed: by the run's own outcome, not by the first task that did not finish", () => {
+    const gaveUp = runFileOf(ID.run, fills, { kind: "escalated", cause: "shared_environment", reason: "the setup could not be repaired", at: "2026-10-01T03:17:00.000Z" });
+
+    const { lines, exitCode } = watchTick(undefined, snapshotOf({ records: [formDone, footerAt(3)], runs: [gaveUp] }));
+
+    expect(lines.at(-1)).toBe("03:17 Run stopped: 4 tasks: 1 done, 1 not finished, 2 not started. Run `delivery report` for what to do.");
+    expect(exitCode).toBe(4);
+  });
+
+  it("ends a drained run's task list replayed by the run, with the code of the task that stopped", () => {
+    const { lines, exitCode } = watchTick(undefined, snapshotOf({ records: [formDone, footerStopped], runs: [drained] }));
+
+    expect(lines.at(-1)).toMatch(/^02:58 Run finished: /);
+    expect(exitCode).toBe(4);
+  });
+
+  it("ends a list worked one task at a time since an older run took one of its tasks by the task that stopped it, at the time it stopped: the old run says nothing of how the list stands", () => {
+    const older = runFileOf(ID.run, [fill(1, ID.form, FORM)], { kind: "drained", at: "2026-10-01T02:10:00.000Z" });
+
+    const { lines, exitCode } = watchTick(undefined, snapshotOf({ records: [formDone, footerStopped], runs: [older] }));
+
+    expect(lines.at(-1)).toMatch(/^02:58 Your task list has stopped: /);
+    expect(exitCode).toBe(4);
+  });
+
   it("recognises a run that was stopped part way: says so, says how to carry on, and ends ok", () => {
     const { lines, exitCode } = watchTick(undefined, { ...going([formDone, footerAt(3)]), live: false });
 
