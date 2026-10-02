@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { deriveReport } from "./derive.js";
-import { detailLines, RESUME_DOES_NOT_APPLY, UNCHANGED_NOT_RUN_AGAIN } from "./detail.js";
+import { detailLines, RESUME_DOES_NOT_APPLY, rollUpLines, UNCHANGED_NOT_RUN_AGAIN } from "./detail.js";
 import type { ReportSurface } from "./document.js";
-import { attempt, BRIEF, FOOTER, footerFailed, footerWorking, formDone, homepageAsks, ID, PACKET, recordOf, snapshotOf, stoppedAt } from "./report-fixtures.js";
+import { attempt, BRIEF, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, homepageAsks, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 import { renderText } from "./text.js";
 
@@ -219,5 +219,28 @@ describe("the detail under a task that has less to tell", () => {
       "  After attempt 4: a gate failure; verdict: escalate",
     ]);
     expect(lines.slice(-3)).toEqual(["To act: not recorded; the record does not say what kind of stop this was.", UNCHANGED_NOT_RUN_AGAIN, RESUME_DOES_NOT_APPLY]);
+  });
+});
+
+describe("the retries of a run of several tasks, added up", () => {
+  const roll = (over: Partial<RecordSnapshot>): string[] => rollUpLines(deriveReport(snapshotOf({ subject: { kind: "run", runId: ID.run }, ...over })));
+
+  it("adds each kind up across the tasks the run has taken, and says the run's shared repair limit beside them", () => {
+    const run = runFileOf(ID.run, [
+      fill(1, ID.form, FORM),
+      fill(2, ID.footer, FOOTER),
+      { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: ID.footer },
+      fill(1, ID.homepage, HOMEPAGE),
+    ]);
+
+    expect(roll({ records: [formDone, footerFailed], runs: [run] })).toEqual([
+      "Retry budgets across the 2 tasks this run has taken:",
+      "  correction 3 of 6, gate recheck 0 of 6, gate repair 0 of 4, session retry 0 of 10, close retry 0 of 6",
+      "  shared repair limit for the run: 1 of 2 used",
+    ]);
+  });
+
+  it("says so, with the shared limit, when no task of the run has started", () => {
+    expect(roll({ runs: [runFileOf(ID.run, [])] })).toEqual(["Retry budgets: no task of this run has started.", "  shared repair limit for the run: 0 of 2 used"]);
   });
 });

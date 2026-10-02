@@ -1,8 +1,8 @@
 import { POPULATION_LABELS, SETBACK_LABELS } from "../escalation-packet.js";
 import { briefLines } from "../prompt-assembly.js";
-import type { BudgetRow, Decision, ReportSurface, Standing } from "./document.js";
+import type { BudgetRow, Decision, ReportDocument, ReportSurface, Standing } from "./document.js";
 import { attemptsWord } from "./plain.js";
-import { quoted, stripControl, toAct } from "./text.js";
+import { budgetTotals, quoted, stripControl, toAct } from "./text.js";
 
 /** Said under a stopped task that is on the project's list: running the list again does not run it again. */
 export const UNCHANGED_NOT_RUN_AGAIN = "An unchanged task on your list is not run again: `delivery run` would retell this outcome.";
@@ -107,4 +107,16 @@ function actLines(surface: ReportSurface): string[] {
  */
 export function detailLines(surface: ReportSurface, { full }: { full: boolean }): string[] {
   return [...roundLines(surface.decisions, { full }), "", ...budgetLines(surface), "", ...actLines(surface)];
+}
+
+/**
+ * The retries of a run of several tasks added up across the tasks it has
+ * taken, with the run's own limit on repairs of what its tasks share: the one
+ * figure no single task holds.
+ */
+export function rollUpLines(doc: ReportDocument): string[] {
+  const ran = doc.surfaces.filter((surface) => surface.budgets.length > 0);
+  const shared = doc.run === null ? [] : [`  shared repair limit for the run: ${doc.run.runBudgets.gateMaintenance.used} of ${doc.run.runBudgets.gateMaintenance.max} used`];
+  if (ran.length === 0) return ["Retry budgets: no task of this run has started.", ...shared];
+  return [`Retry budgets across the ${ran.length === 1 ? "1 task" : `${ran.length} tasks`} this run has taken:`, `  ${budgetWords(budgetTotals(ran))}`, ...shared];
 }
