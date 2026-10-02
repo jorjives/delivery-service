@@ -121,6 +121,7 @@ agent-written plain summary) is not sliced.
 ## Slice 3: Watch a Run in Progress From Another Terminal
 
 **Status:** ✅ Complete — 2026-10-02 — `a3fcefd`
+**Tests:** ✅ Recorded — 2026-10-02 — `030ff01` — cli — 1 UAT + 2 AC, 6 skipped
 **Delivers:** Anyone types `delivery status --watch` in a second terminal and sees what each task is doing now and each change as it happens, with times, until the run ends, without touching the run.
 
 **Operational note:** From this slice on every step the harness records carries the time it was recorded; nothing that decides what a run does next reads those times, and records made earlier read as "times were not recorded". The harness's own tests that compare recorded steps exactly must compare them without the time, through one shared helper, and tests that need times fix the clock rather than reading the real one. Watching reads the record on disk and takes no lock, so it works from any terminal, for any run, including one started by someone else.
