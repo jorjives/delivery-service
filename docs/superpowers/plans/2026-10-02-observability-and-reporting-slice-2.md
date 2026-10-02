@@ -1,5 +1,6 @@
 # Observability and Reporting — Slice 2: See Why a Task Stopped, With Every Decision and Retry Behind It
 
+> **Status:** ✅ Complete — 2026-10-02 — `50bc3a1`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 2 of `docs/superpowers/specs/2026-10-01-observability-and-reporting-slices.md`
