@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +9,23 @@ import { withoutAt } from "./without-at.js";
 
 const HEADER: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 3, tasks: 10, runBudgetMax: { gateMaintenance: 2 } };
 const runDir = () => mkdtempSync(join(tmpdir(), "run-file-"));
+
+describe("the time a step of a run of several tasks is recorded", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is written with the step, as the time of writing", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-01T02:20:00.000Z"));
+    const dir = runDir();
+    await createRunFile(dir, HEADER);
+
+    await appendRunEntry(dir, { t: "breaker_healthy" });
+
+    expect((await loadRunFile(dir)).history).toEqual([{ t: "breaker_healthy", at: "2026-10-01T02:20:00.000Z" }]);
+  });
+});
 
 describe("a supervised run's record", () => {
   it("reads back the header it was created with, nothing yet in its history and no outcome", async () => {

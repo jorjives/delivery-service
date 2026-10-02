@@ -25,7 +25,7 @@ export async function createRunFile(dir: string, header: RunHeader): Promise<voi
 export async function appendRunEntry(dir: string, entry: RunEntry): Promise<void> {
   RunEntry.parse(entry);
   try {
-    await appendLine(logPath(dir), entry);
+    await appendLine(logPath(dir), { ...entry, at: new Date().toISOString() });
   } catch (err) {
     throw new WriteFailure(dir, String(err));
   }

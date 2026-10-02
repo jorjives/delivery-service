@@ -77,7 +77,8 @@ export async function appendEntry(
   HistoryEntry.parse(entry);
 
   try {
-    await appendLine(join(dir, "log.jsonl"), entry);
+    // The writer owns the time: every call site builds its entry in place, so none carries one of its own.
+    await appendLine(join(dir, "log.jsonl"), { ...entry, at: new Date().toISOString() });
   } catch (err) {
     throw new WriteFailure(dir, String(err));
   }

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, readFile, writeFile, appendFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -165,6 +165,54 @@ describe("appendEntry", () => {
     expect(lines).toHaveLength(2);
     expect(withoutAt(JSON.parse(lines[0] as string) as HistoryEntry)).toEqual(entry1);
     expect(withoutAt(JSON.parse(lines[1] as string) as HistoryEntry)).toEqual(entry2);
+  });
+});
+
+describe("the time a step is recorded", () => {
+  const NOW = "2026-10-01T02:20:00.000Z";
+  let dir: string;
+
+  beforeEach(async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+    dir = await mkdtemp(join(tmpdir(), "cf-at-"));
+    await create(dir, {
+      surfaceId: "surface-1",
+      taskDef: { intent: "fix bug" },
+      gateRef,
+    }, budgetDefaults);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("is written with the step, by the one function that writes a step", async () => {
+    await appendEntry(dir, { t: "baseline", status: "PASS" });
+
+    expect((await load(dir)).history).toEqual([{ t: "baseline", status: "PASS", at: NOW }]);
+  });
+
+  it("is the time of writing, whatever time the step was handed in with", async () => {
+    await appendEntry(dir, { t: "baseline", status: "PASS", at: "1999-01-01T00:00:00.000Z" });
+
+    expect((await load(dir)).history[0]?.at).toBe(NOW);
+  });
+
+  it("changes neither where a task is nor the retries it has used", () => {
+    const steps: HistoryEntry[] = [
+      { t: "baseline", status: "PASS" },
+      { t: "dispatch", attempt: 1, sessionKey: "worker-1-0" },
+      { t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "completed", rationale: "done" },
+      { t: "gate", attempt: 1, status: "FAIL", newFailures: [{ id: "x", detailRef: "gate-1" }] },
+      { t: "triage", afterAttempt: 1, trigger: "gate_fail", verdict: "reroute", rationale: "try again", artifactRef: "triage-0" },
+      { t: "dispatch", attempt: 2, sessionKey: "worker-2-0" },
+      { t: "terminus", attempt: 2, sessionKey: "worker-2-0", status: "incomplete", rationale: "ended without a result" },
+    ];
+    const stamped = steps.map((step): HistoryEntry => ({ ...step, at: NOW }));
+
+    expect(stamped.map(deriveStateFromEntry)).toEqual(steps.map(deriveStateFromEntry));
+    expect(deriveBudgetsFromLog(stamped, budgetDefaults)).toEqual(deriveBudgetsFromLog(steps, budgetDefaults));
+    expect(resumeAction(stamped.at(-1))).toBe(resumeAction(steps.at(-1)));
   });
 });
 
