@@ -270,7 +270,10 @@ of the list. In a project with no `tasks` list, `delivery report` reports the mo
 says so in its first line.
 
 It only ever reads, and takes no lock, so it is safe while a run is going: it then says the run is
-still going rather than giving a final count. Where nothing records whether a task worked one at a
+still going rather than giving a final count, and how to follow it ("Follow it: delivery status
+--watch"). For work that has not finished, its second line gives the last time the record shows
+anything happening ("last activity 1 Oct 02:22 UTC"): a time from the record for you to judge
+by, never a guess at whether the work is still going. Where nothing records whether a task worked one at a
 time is still going, it says exactly that and how to carry on if it is not. If one run's record is
 damaged, the report names that task and the file, says at the top that it is incomplete, and
 still reports the rest. A run made by an earlier version still reports: where its record does not
@@ -306,7 +309,8 @@ What you get depends on how the run ended:
   what had already been tried, why it stopped when it did, and the agent sessions it covers, all
   in the harness's own words. Then where its branch, its working copy and its record are.
 - **Stopped for another reason:** why, in plain language.
-- **Not finished yet:** what picking it up will carry on with, and the command to do that.
+- **Not finished yet:** what picking it up will carry on with, when its record last shows anything
+  happening ("Last recorded activity: 2026-10-01 02:22 UTC."), and the command to pick it up.
 
 If the run's task is on your `tasks` list, it also says which task of how many it is, worked out
 from the list as it is written now.
@@ -407,8 +411,11 @@ own run id once it has one. A task that needs
 your decision is followed by the same account `delivery status` gives of it on its own. A task
 waiting only because every slot is busy shows as "queued, waiting for a free slot"; if the run
 was stopped part way, it says how to carry it on. While the run is going, a task under way says
-what it is doing right now and which attempt it is on ("the agent is working, attempt 2",
-"checking the agent's work, attempt 1"); once the run has stopped, it says "not finished yet".
+what it is doing right now, which attempt it is on and since when ("the agent is working, attempt 2,
+since 2026-09-30 09:14 UTC"); once the run has stopped, it says "not finished yet". A run that
+has not finished also says when its record last shows anything happening ("Last recorded
+activity: 2026-09-30 09:14 UTC."). A run made by an earlier version recorded no times: it leaves
+out "since" and says "Last recorded activity: not recorded."
 Under the tasks come the retry budgets added up across the tasks the run has taken, beside the
 run's own limit on repairs of what its tasks share, and a `Next:` line. With `--decisions`, every
 task's triage rounds are printed in full beneath that.

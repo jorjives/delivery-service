@@ -12,7 +12,7 @@ import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { RunFileNotFound } from "../errors.js";
 import { deriveReport } from "../report/derive.js";
 import { detailLines, rollUpLines, roundLines } from "../report/detail.js";
-import type { ReportDocument, ReportSurface } from "../report/document.js";
+import { latestOf, stepOf, type ReportDocument, type ReportSurface } from "../report/document.js";
 import { headlineCounts } from "../report/text.js";
 import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { findRepository } from "./project.js";
@@ -85,6 +85,9 @@ export async function statusReport(record: RunRecord, ctx: CommandContext, posit
   ];
 }
 
+/** When an unfinished run's record last shows anything happening: a fact for the reader to judge by, never a guess that it is still going. */
+const lastRecordedActivity = (at: string | null): string => `Last recorded activity: ${at === null ? "not recorded" : readableUtc(at)}.`;
+
 /** What happened to one run, after the line naming it: the part a run of several at once repeats under a task that needs a decision. */
 export async function statusBody(record: RunRecord, ctx: CommandContext): Promise<string[]> {
   const { caseFile, dir, runId } = record;
@@ -93,6 +96,7 @@ export async function statusBody(record: RunRecord, ctx: CommandContext): Promis
   if (!outcome) {
     return [
       paint(ctx.colour, "quiet", `This run hasn't finished. Picking it up will carry on with ${nextStepPhrase(caseFile)}.`),
+      lastRecordedActivity(latestOf(caseFile.history.map((entry) => entry.at))),
       `To finish it: delivery resume ${runId}`,
     ];
   }
@@ -323,8 +327,9 @@ function taskName(task: ViewTask): string {
 
 /** What a task that is going is doing right now, in the words the run itself prints as it goes, and which attempt it is on. */
 function inFlight(surface: ReportSurface | undefined): string | undefined {
-  if (surface?.state == null) return undefined;
-  return `${STEP_PHRASES[surface.state]}${surface.attempts > 0 ? `, attempt ${surface.attempts}` : ""}`;
+  const step = surface === undefined ? null : stepOf(surface);
+  if (surface === undefined || step === null) return undefined;
+  return `${STEP_PHRASES[step.state]}${surface.attempts > 0 ? `, attempt ${surface.attempts}` : ""}${step.at === null ? "" : `, since ${readableUtc(step.at)}`}`;
 }
 
 /**
@@ -529,6 +534,7 @@ export async function supervisedReport(view: SupervisedView, ctx: CommandContext
     `Run ${header.runId}, started ${startedAt(header.runId)}: ${shapeOf(header.tasks, header.concurrency)}`,
     `Environment: ${BREAKER_PHRASES[view.breaker]}${repairedDuringRun(view)}`,
     ...(counts === "" ? [] : [counts]),
+    ...(outcome === undefined ? [lastRecordedActivity(doc.run?.lastActivityAt ?? null)] : []),
     ...(outcome === undefined && !view.live ? [STOPPED_PART_WAY] : []),
     "",
   ];

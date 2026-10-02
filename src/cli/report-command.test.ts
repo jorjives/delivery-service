@@ -133,7 +133,7 @@ describe("delivery report", () => {
     await release?.();
     const stopped = await delivery(["report", ID.run], { cwd: repo });
 
-    expect(going.stdout.split("\n")[0]).toBe("This run is still going (4 tasks: 1 done, 1 working, 2 waiting to start).");
+    expect(going.stdout.split("\n")[0]).toBe(`This run is still going (4 tasks: 1 done, 1 working, 2 waiting to start). Follow it: delivery status --watch ${ID.run}`);
     expect(stopped.stdout.split("\n")[0]).toBe("This run stopped part way (4 tasks: 1 done, 1 not finished, 2 waiting to start). To carry on: delivery run");
     expect([going.exitCode, stopped.exitCode]).toEqual([0, 0]);
   });

@@ -1,7 +1,7 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { Population } from "../schema.js";
-import type { BudgetRow, DamagedRecord, ReportDocument, ReportRun, ReportSurface } from "./document.js";
+import { latestOf, type BudgetRow, type DamagedRecord, type ReportDocument, type ReportRun, type ReportSurface } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
 export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery run";
@@ -136,13 +136,23 @@ const SUBJECT: Record<ReportDocument["kind"], { final: string; going: string; pa
   task: { final: "This run", going: "This run is still going", partWay: "This run stopped part way", unknown: "This run has not finished" },
 };
 
+/** That the work stopped part way, and how to carry it on. A run that records why it stopped says how in its own line instead. */
+export function stoppedPartWay(doc: ReportDocument): string {
+  return `${SUBJECT[doc.kind].partWay} (${tally(doc)}).${doc.run?.cause == null ? " To carry on: delivery run" : ""}`;
+}
+
+/** How to follow what the report is about as it happens: the list by default, anything else by its id. */
+function followIt(doc: ReportDocument): string {
+  const id = doc.kind === "list" ? undefined : doc.kind === "run" ? doc.run?.runId : doc.surfaces[0]?.run;
+  return `Follow it: delivery status --watch${id == null ? "" : ` ${id}`}`;
+}
+
 /** The first lines: what happened, counted. Never final-sounding while a task is still to finish. */
 function opening(doc: ReportDocument): string[] {
   const words = SUBJECT[doc.kind];
   if (waitingIn(doc) === 0) return doc.surfaces.length === 0 ? [] : [`${words.final}: ${headline(doc)}.`];
-  if (doc.live === true) return [`${words.going} (${tally(doc)}).`];
-  // A run that records why it stopped says how to carry on in its own line, below.
-  if (doc.live === false) return [`${words.partWay} (${tally(doc)}).${doc.run?.cause == null ? " To carry on: delivery run" : ""}`];
+  if (doc.live === true) return [`${words.going} (${tally(doc)}). ${followIt(doc)}`];
+  if (doc.live === false) return [stoppedPartWay(doc)];
   const unfinished = doc.surfaces.find((surface) => surface.standing === "unfinished");
   return [
     `${words.unknown} (${tally(doc)}); nothing records whether it is still going.${unfinished?.run ? ` If it is not, carry on with: delivery resume ${unfinished.run}` : ""}`,
@@ -159,6 +169,22 @@ function incompleteLines(doc: ReportDocument): string[] {
   );
 }
 
+/**
+ * The last time the record shows anything happening, for the whole report. A run of several at once has its own; a
+ * list worked one task at a time has only its tasks', and says nothing when a task that ran holds no time at all:
+ * that task may have been the last to move.
+ */
+export function lastActivity(doc: ReportDocument): string | null {
+  if (doc.run) return doc.run.lastActivityAt;
+  const ran = doc.surfaces.filter((surface) => surface.run !== null);
+  return ran.every((surface) => surface.lastActivityAt !== null) ? latestOf(ran.map((surface) => surface.lastActivityAt)) : null;
+}
+
+const lastActivityWords = (doc: ReportDocument): string => {
+  const at = lastActivity(doc);
+  return `last activity ${at === null ? "not recorded" : `${dayAndMinute(at)} UTC`}`;
+};
+
 /** When the work ran. A run of several at once has times of its own; a list worked one task at a time has only its tasks'. */
 function whenLines(doc: ReportDocument): string[] {
   const { run } = doc;
@@ -166,17 +192,13 @@ function whenLines(doc: ReportDocument): string[] {
     const shape = `up to ${tasksWord(run.concurrency)} at once`;
     if (run.startedAt === null) return [`Run ${run.runId}, start time not recorded, ${shape}.`];
     return run.finishedAt === null
-      ? [`Run ${run.runId}, started ${dayAndMinute(run.startedAt)} UTC, ${shape}.`]
+      ? [`Run ${run.runId}, started ${dayAndMinute(run.startedAt)} UTC, ${shape}; ${lastActivityWords(doc)}.`]
       : [`Run ${run.runId}, ${dayAndMinute(run.startedAt)} to ${minuteOf(run.finishedAt)} UTC (${elapsed(run.startedAt, run.finishedAt)}), ${shape}.`];
   }
   const ran = doc.surfaces.filter((surface) => surface.run !== null);
   if (ran.length === 0) return [];
   const started = ran.flatMap((surface) => (surface.startedAt === null ? [] : [surface.startedAt])).sort().at(0);
-  // Only an ended task records a time, so a task still to finish leaves the last activity unknown.
-  const finished = ran.every((surface) => surface.finishedAt !== null) ? ran.flatMap((surface) => surface.finishedAt ?? []).sort().at(-1) : undefined;
-  return [
-    `Started ${started === undefined ? "at a time not recorded" : `${dayAndMinute(started)} UTC`}; last activity ${finished === undefined ? "not recorded" : `${dayAndMinute(finished)} UTC`}.`,
-  ];
+  return [`Started ${started === undefined ? "at a time not recorded" : `${dayAndMinute(started)} UTC`}; ${lastActivityWords(doc)}.`];
 }
 
 /** Why a run of several at once stopped when no task caused it. Total over the causes a run records. */

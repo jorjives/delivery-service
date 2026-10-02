@@ -13,7 +13,7 @@ import { runPlace, runsRoot } from "../run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
 import { ALL_AND_DECISIONS, ALL_AND_ONE, NO_DECISIONS_DATA_YET, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
 import { RESUME_DOES_NOT_APPLY, UNCHANGED_NOT_RUN_AGAIN } from "../report/detail.js";
-import { attempt, BRIEF, failedCheck, PACKET, stoppedAt, writeRecord } from "../report/report-fixtures.js";
+import { attempt, BRIEF, failedCheck, PACKET, stoppedAt, timed, writeRecord } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
 import { setRunOutcome } from "../run-file.js";
@@ -54,6 +54,7 @@ describe("what a run's record says about an unfinished run", () => {
     expect(lines).toEqual([
       `Run ${RUN_ID}, started 2026-09-14 21:03 UTC: ${TASK}`,
       "This run hasn't finished. Picking it up will carry on with getting the agent going.",
+      "Last recorded activity: not recorded.",
       `To finish it: delivery resume ${RUN_ID}`,
     ]);
   });
@@ -395,10 +396,23 @@ describe("delivery status, beneath its own account of one task", () => {
 
     const lines = (await delivery(["status", RUN_ID], { cwd: repo })).stdout.trimEnd().split("\n");
 
-    expect(lines[2]).toBe(`To finish it: delivery resume ${RUN_ID}`);
+    expect(lines[3]).toBe(`To finish it: delivery resume ${RUN_ID}`);
     expect(lines).toContain("Retry budgets so far, after 0 attempts:");
     expect(lines).toContain("No stop: this run has not finished.");
     expect(lines.at(-1)).toBe("Next: delivery report (your task list)");
+  });
+
+  it("states the last recorded activity of a run that has not finished as a time", async () => {
+    const repo = initTempRepo("status-detail-last-activity-", { "package.json": PACKAGE });
+    await writeRecord(repo, { runId: FOOTER_RUN, task: FOOTER, history: timed(attempt(1, "first go"), "2026-10-01T02:21:00.000Z") });
+
+    const lines = (await delivery(["status", FOOTER_RUN], { cwd: repo })).stdout.trimEnd().split("\n");
+
+    expect(lines.slice(1, 4)).toEqual([
+      "This run hasn't finished. Picking it up will carry on with checking the agent's work.",
+      "Last recorded activity: 2026-10-01 02:22 UTC.",
+      `To finish it: delivery resume ${FOOTER_RUN}`,
+    ]);
   });
 
   it("shows what an older record holds, and says not recorded for the advice it cannot back", async () => {
@@ -931,6 +945,25 @@ describe("delivery status for a run of several tasks at once", () => {
       `  [2/3] ${GREETING} (${IDS.greeting}): not finished yet`,
       `  [3/3] ${GOODBYE}: queued`,
     ]);
+  });
+
+  it("says since when a task under way has been in its step, and the run's last recorded activity, once steps carry a time", async () => {
+    const repo = initTempRepo("status-supervised-since-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ concurrency: 2, tasks: [HELLO, GREETING] }),
+    });
+    await writeRecord(repo, { runId: IDS.hello, task: HELLO, history: timed(attempt(1, "done"), "2026-09-30T09:01:00.000Z") });
+    await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 2, runBudgetMax: { gateMaintenance: 2 } }, [fill(1, IDS.hello, HELLO)]);
+    const release = await takeRepoLock(repo);
+    let stdout: string;
+    try {
+      ({ stdout } = await delivery(["status", SUPERVISED], { cwd: repo }));
+    } finally {
+      await release?.();
+    }
+
+    expect(taskLines(stdout)[0]).toBe(`  [1/2] ${HELLO} (${IDS.hello}): checking the agent's work, attempt 1, since 2026-09-30 09:02 UTC`);
+    expect(stdout.split("\n")).toContain("Last recorded activity: 2026-09-30 09:02 UTC.");
   });
 
   it("adds the retries up across the tasks the run has taken, beside the run's shared repair limit, and points at the rounds", async () => {

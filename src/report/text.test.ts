@@ -18,6 +18,7 @@ import {
   runFileOf,
   snapshotOf,
   stoppedAt,
+  timed,
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 import { renderText, stripControl } from "./text.js";
@@ -88,6 +89,31 @@ describe("the report on a list worked one task at a time", () => {
   });
 });
 
+describe("the report on work that has not finished", () => {
+  const footerAt = (history: Parameters<typeof recordOf>[0]["history"]) => recordOf({ runId: ID.footer, task: FOOTER, closerRef: { type: "merge-back" }, history });
+  const timedFooter = footerAt(timed(attempt(1, "first go"), "2026-10-01T02:21:00.000Z"));
+
+  it("states the last recorded activity of a list worked one task at a time as a time", () => {
+    expect(report(snapshotOf({ records: [formDone, timedFooter] }))[1]).toBe("Started 1 Oct 02:01 UTC; last activity 1 Oct 02:22 UTC.");
+  });
+
+  it("states the last recorded activity of a run of several tasks, and says not recorded when the record holds none", () => {
+    const run = (records: RecordSnapshot["records"], fills = [fill(1, ID.form, FORM), fill(2, ID.footer, FOOTER)]) =>
+      report(snapshotOf({ subject: { kind: "run", runId: ID.run }, live: true, records, runs: [runFileOf(ID.run, fills)] }))[1];
+
+    expect(run([formDone, timedFooter])).toBe("Run run-20261001T020000Z, started 1 Oct 02:00 UTC, up to 2 tasks at once; last activity 1 Oct 02:22 UTC.");
+    expect(run([footerAt(attempt(1, "first go"))], [fill(2, ID.footer, FOOTER)])).toBe("Run run-20261001T020000Z, started 1 Oct 02:00 UTC, up to 2 tasks at once; last activity not recorded.");
+  });
+
+  it("says how to follow a run that is going, by its id unless it is the task list", () => {
+    const going = (subject: RecordSnapshot["subject"]) => report(snapshotOf({ subject, live: true, records: [formDone, timedFooter], runs: [runFileOf(ID.run, [fill(1, ID.form, FORM), fill(2, ID.footer, FOOTER)])] }))[0];
+
+    expect(going({ kind: "list" })).toMatch(/\. Follow it: delivery status --watch$/);
+    expect(going({ kind: "run", runId: ID.run })).toMatch(/\. Follow it: delivery status --watch run-20261001T020000Z$/);
+    expect(going({ kind: "task", runId: ID.footer })).toMatch(/\. Follow it: delivery status --watch fix-the-broken-footer-links-20261001T022000Z$/);
+  });
+});
+
 describe("the report on a list worked several tasks at once", () => {
   const five = snapshotOf({
     records: [formDone, footerFailed, homepageAsks, bannerDone],
@@ -126,8 +152,8 @@ describe("the report on a list worked several tasks at once", () => {
     const lines = report(snapshotOf({ live: true, records: [formDone, footerWorking], runs: [going] }));
 
     expect(lines.slice(0, 2)).toEqual([
-      "Your task list is still being worked on (4 tasks: 1 done, 1 working, 2 waiting to start).",
-      "Run run-20261001T020000Z, started 1 Oct 02:00 UTC, up to 2 tasks at once.",
+      "Your task list is still being worked on (4 tasks: 1 done, 1 working, 2 waiting to start). Follow it: delivery status --watch",
+      "Run run-20261001T020000Z, started 1 Oct 02:00 UTC, up to 2 tasks at once; last activity 1 Oct 02:19 UTC.",
     ]);
     expect(lines.slice(lines.indexOf("NOT FINISHED (3)"), lines.indexOf("NOT FINISHED (3)") + 4)).toEqual([
       "NOT FINISHED (3)",
