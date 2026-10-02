@@ -168,6 +168,8 @@ agent-written plain summary) is not sliced.
 
 ## Slice 4: Find a Saved Report After a Run Ends
 
+**Status:** ✅ Complete — 2026-10-02 — `e4386b8`
+
 **Delivers:** When `delivery run` or `delivery resume` ends, the report is saved as a plain-text file and a data file in a fixed place, and the run's last lines say what happened and where to read more.
 
 **Operational note:** Every run and resume now leaves two files in the project's `.delivery` folder, replaced by the next run; they sit inside the folder that already keeps itself out of version control, are readable only by the user who ran the command, and are written whole or not at all. They are copies for convenience: every command still reads the record, never these files. This fixed pair is what a scheduled run will hand over in Item 13. A run whose report cannot be saved still ends with its normal outcome and exit code.
