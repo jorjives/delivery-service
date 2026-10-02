@@ -1,5 +1,6 @@
 # Observability and Reporting — Slice 1: Come Back to Your Task List and See What Happened and What to Do
 
+> **Status:** ✅ Complete — 2026-10-02 — `f608aaa`
 > **For agentic workers:** REQUIRED SUB-SKILL: Use jorj-skills:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Slice:** 1 of `docs/superpowers/specs/2026-10-01-observability-and-reporting-slices.md`
@@ -4348,7 +4349,7 @@ git commit -m "Document delivery report" -m "The command is the first thing a re
 
 A demo is not a test and has no failing-test step: the check is that it runs and prints the two reports.
 
-- [ ] **Step 1: Create `demos/observability-slice-1-report.ts`**
+- [x] **Step 1: Create `demos/observability-slice-1-report.ts`**
 
 ```ts
 /**
@@ -4432,7 +4433,7 @@ main().catch((err: unknown) => {
 });
 ```
 
-- [ ] **Step 2: Add the script**
+- [x] **Step 2: Add the script**
 
 In `package.json`, after the line `"demo:mock-slice-4": "npx tsx demos/agent-mock-slice-4-misbehaving-agent.ts",` add:
 
@@ -4440,7 +4441,7 @@ In `package.json`, after the line `"demo:mock-slice-4": "npx tsx demos/agent-moc
     "demo:report-slice-1": "npx tsx demos/observability-slice-1-report.ts",
 ```
 
-- [ ] **Step 3: Run it**
+- [x] **Step 3: Run it**
 
 Run: `npm run demo:report-slice-1`
 Expected: exit 0. The first `delivery run` ends `(exit 4)`. The first `delivery report` begins `Your task list: 2 of 4 tasks completed and merged; 1 needs your decision; 1 not started.`, quotes `"This would delete 14 published pages. I need the owner to confirm before I remove them."` under `NEEDS YOU (1)`, and ends `(exit 0)`. The second `delivery report` begins `Your task list: 4 of 4 tasks completed and merged.`
@@ -4448,7 +4449,7 @@ Expected: exit 0. The first `delivery run` ends `(exit 4)`. The first `delivery 
 Run: `npx tsc --noEmit && npx eslint demos/observability-slice-1-report.ts`
 Expected: no output.
 
-- [ ] **Step 4: Name the demo in the README**
+- [x] **Step 4: Name the demo in the README**
 
 In `README.md`, at the end of the section "Come back to your task list" (after the paragraph that ends "use `delivery status --json`."), add:
 
@@ -4458,7 +4459,7 @@ this repository: it runs a list of four tasks against a scripted agent, prints t
 its advice, and prints the report again.
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add demos/observability-slice-1-report.ts package.json README.md
