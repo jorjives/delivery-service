@@ -1,6 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
-import { CorruptRunFile, FileNotFound, RunFileNotFound } from "../errors.js";
+import { readRef } from "../case-file.js";
+import { CorruptCaseFile, CorruptRunFile, FileNotFound, RunFileNotFound } from "../errors.js";
 import { loadRunFile } from "../run-file.js";
 import { runsRoot, supervisedRoot } from "../run-location.js";
 import { readRunRecords, type DamagedRun, type RunRecord } from "../run-records.js";
@@ -17,6 +18,9 @@ export interface DamagedFile {
   taskDef?: TaskDef;
 }
 
+/** What the triage rounds of each run point at, read back: by run id, then by ref id. A ref that is missing or unreadable is simply not there. */
+export type TriageRefs = Record<string, Record<string, unknown>>;
+
 /** Everything a report is derived from, read once. Plain data: `deriveReport` does no reading of its own. */
 export interface RecordSnapshot {
   subject: ReportSubject;
@@ -27,6 +31,7 @@ export interface RecordSnapshot {
   records: RunRecord[];
   runs: RunFile[];
   damaged: DamagedFile[];
+  refs: TriageRefs;
 }
 
 /** Every run of several at once this repository holds, and the ones whose record cannot be read back. */
@@ -59,6 +64,32 @@ const asDamagedFile = (repoPath: string, { runId, dir, file, taskDef }: DamagedR
 });
 
 /**
+ * What each triage round of each record wrote beside its log entry: the brief
+ * or packet the round produced. Read here so that `deriveReport` reads nothing.
+ * A ref that is missing or damaged is left out, and the round then reads "not
+ * recorded": one lost file must not cost the reader the whole account.
+ */
+async function readTriageRefs(records: RunRecord[]): Promise<TriageRefs> {
+  const read = await Promise.all(
+    records.map(async (record) => {
+      const ids = record.caseFile.history.flatMap((entry) => (entry.t === "triage" ? [entry.artifactRef] : []));
+      const found = await Promise.all(
+        ids.map(async (id): Promise<[string, unknown][]> => {
+          try {
+            return [[id, await readRef(record.dir, id)]];
+          } catch (err) {
+            if (err instanceof FileNotFound || err instanceof CorruptCaseFile) return [];
+            throw err;
+          }
+        }),
+      );
+      return [record.runId, Object.fromEntries(found.flat())] as const;
+    }),
+  );
+  return Object.fromEntries(read.filter(([, refs]) => Object.keys(refs).length > 0));
+}
+
+/**
  * Read everything a report on `subject` is derived from. The only reading a
  * report does, and it takes no lock, so it is safe while a run is going: the
  * records are replaced whole or appended to, never half-written. A damaged
@@ -82,5 +113,10 @@ export async function loadSnapshot(repoPath: string, subject: ReportSubject, { l
     const dir = join(supervisedRoot(repoPath), subject.runId);
     throw new RunFileNotFound(dir, join(dir, "run.json"));
   }
-  return { subject, live, list, records: tasks.records, runs: supervised.runs, damaged };
+  // One task's report renders only that task's rounds, so only its refs are read: `status <task-id>` must not
+  // cost a file read per round of every run the repository has ever had (spec, "Read cost").
+  // ponytail: a list or a run still reads every record's rounds; narrow those to the records they show if a
+  // repository with thousands of runs makes a report slow.
+  const rounds = subject.kind === "task" ? tasks.records.filter((record) => record.runId === subject.runId) : tasks.records;
+  return { subject, live, list, records: tasks.records, runs: supervised.runs, damaged, refs: await readTriageRefs(rounds) };
 }

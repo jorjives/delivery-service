@@ -1,11 +1,11 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FileNotFound, RunFileNotFound } from "../errors.js";
 import { appendRunEntry, createRunFile } from "../run-file.js";
 import { prepareRunDir, supervisedPlace } from "../run-location.js";
 import { initTempRepo } from "../temp-repo.js";
-import { attempt, closedAt, damageLog, fill, FOOTER, FORM, ID, writeRecord } from "./report-fixtures.js";
+import { attempt, closedAt, damageLog, failedCheck, fill, FOOTER, FORM, ID, writeRecord } from "./report-fixtures.js";
 import { loadSnapshot } from "./snapshot.js";
 
 const LIST = [{ intent: FORM }, { intent: FOOTER }];
@@ -29,6 +29,7 @@ describe("reading what a report is derived from", () => {
       records: [],
       runs: [],
       damaged: [],
+      refs: {},
     });
   });
 
@@ -65,6 +66,44 @@ describe("reading what a report is derived from", () => {
 
     expect(snapshot.runs).toEqual([]);
     expect(snapshot.damaged).toEqual([{ runId: ID.run, file: `.delivery/supervised/${ID.run}` }]);
+  });
+
+  it("reads back what each triage round wrote beside its log entry, by run and by ref", async () => {
+    const repo = initTempRepo("snapshot-refs-", { "README.md": "x\n" });
+    const round = { trigger: "gate_fail", rationale: "gate_fail: reroute (correction 0/3)" };
+    await writeRecord(repo, { runId: ID.form, task: FORM, history: attempt(1, "done"), outcome: closedAt("2026-10-01T02:19:10.000Z") });
+    await writeRecord(repo, { runId: ID.footer, task: FOOTER, history: [...attempt(1, "first go"), ...failedCheck(1, "reroute")], refs: { "triage-0": round } });
+
+    const snapshot = await loadSnapshot(repo, { kind: "list" }, { live: false, list: LIST });
+
+    expect(snapshot.refs).toEqual({ [ID.footer]: { "triage-0": round } });
+  });
+
+  it("leaves out a round's ref that is missing or cannot be read, and still reads the record", async () => {
+    const repo = initTempRepo("snapshot-refs-missing-", { "README.md": "x\n" });
+    const history = [...attempt(1, "first go"), ...failedCheck(1, "reroute"), ...attempt(2, "second go"), ...failedCheck(2, "escalate")];
+    const dir = await writeRecord(repo, { runId: ID.footer, task: FOOTER, history });
+    await mkdir(join(dir, "refs"), { recursive: true });
+    await writeFile(join(dir, "refs", "triage-1.json"), "{ truncated");
+
+    const snapshot = await loadSnapshot(repo, { kind: "task", runId: ID.footer }, { live: false, list: LIST });
+
+    expect(snapshot.refs).toEqual({});
+    expect(snapshot.records.map((record) => record.runId)).toEqual([ID.footer]);
+    expect(snapshot.damaged).toEqual([]);
+  });
+
+  it("reads only the rounds of the task a report on one task is about", async () => {
+    const repo = initTempRepo("snapshot-refs-one-task-", { "README.md": "x\n" });
+    const round = { trigger: "gate_fail", rationale: "gate_fail: reroute (correction 0/3)" };
+    const history = [...attempt(1, "first go"), ...failedCheck(1, "reroute")];
+    await writeRecord(repo, { runId: ID.form, task: FORM, history, refs: { "triage-0": round } });
+    await writeRecord(repo, { runId: ID.footer, task: FOOTER, history, refs: { "triage-0": round } });
+
+    const snapshot = await loadSnapshot(repo, { kind: "task", runId: ID.footer }, { live: false, list: LIST });
+
+    expect(snapshot.refs).toEqual({ [ID.footer]: { "triage-0": round } });
+    expect(snapshot.records.map((record) => record.runId).sort()).toEqual([ID.form, ID.footer].sort());
   });
 
   it("fails to answer for a named run nothing on disk answers for", async () => {

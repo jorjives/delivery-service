@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
-import { appendEntry, create, initialCaseFile, setBaseBranch, setOutcome } from "../case-file.js";
+import { appendEntry, create, initialCaseFile, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
 import { runsRoot } from "../run-location.js";
 import type { RunRecord } from "../run-records.js";
 import type { CaseFileOutcome, CloserRef, CreateHeader, GateRef, HistoryEntry, OutcomeCause, RunEntry, RunFile, RunOutcome } from "../schema.js";
@@ -15,6 +15,8 @@ export interface TaskRun {
   outcome?: CaseFileOutcome;
   /** Absent: no closer pinned, as in a record from before closers were. */
   closerRef?: CloserRef;
+  /** What the run wrote beside its log, by ref id: only `writeRecord` puts these on disk. */
+  refs?: Record<string, unknown>;
 }
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
@@ -44,6 +46,7 @@ export async function writeRecord(repoPath: string, run: TaskRun): Promise<strin
   await create(dir, headerOf(run), DEFAULT_BUDGETS);
   await setBaseBranch(dir, "main");
   for (const entry of run.history ?? []) await appendEntry(dir, entry);
+  for (const [refId, data] of Object.entries(run.refs ?? {})) await writeRef(dir, refId, data);
   if (run.outcome) await setOutcome(dir, run.outcome);
   return dir;
 }
@@ -154,5 +157,6 @@ export const snapshotOf = (over: Partial<RecordSnapshot> = {}): RecordSnapshot =
   records: [],
   runs: [],
   damaged: [],
+  refs: {},
   ...over,
 });
