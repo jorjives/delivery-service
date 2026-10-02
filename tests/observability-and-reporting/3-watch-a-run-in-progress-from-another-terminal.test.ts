@@ -107,7 +107,9 @@ describe("UAT: keep an eye on a run from a second terminal and see each task's p
       expect(run.child.exitCode).toBeNull();
       expect(first.out()).not.toContain("Run finished");
 
-      // ...then watch again: the picture is of now, and the watch ends with the run, with its headline counts.
+      // ...then watch again, once the last task has started (so tasks 1 and 2 have landed whatever the machine's load):
+      // the picture is of now, and the watch ends with the run, with its headline counts.
+      await until("the last task to start", () => run.out().includes("[4/4]"));
       const second = terminal(["status", "--watch", "--interval", "0.5"], repo, env);
       expect(await second.exited).toBe(EXIT.ok);
       expect(await run.exited).toBe(EXIT.ok);
