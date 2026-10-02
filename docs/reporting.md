@@ -160,6 +160,11 @@ name. A value that is one of a set of names (`standing`, `outcome`, `verdict` an
 published as a string, with the names in use today listed as `examples`. An event whose `type`
 the schema does not name is valid so long as it carries the six keys every event carries.
 
+An event of a known `type` is validated only for the six keys every event carries. The schema
+does not check the keys that type requires. A `surface_state` event lacking a `state` field
+still passes validation. Those keys are held by the stability promise instead; the published
+schema enforces only the envelope.
+
 ## What will not change
 
 Within a version (the `/1` in `delivery.report/1` and `delivery.event/1`):
