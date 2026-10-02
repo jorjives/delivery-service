@@ -1,10 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
-import { appendEntry, create, initialCaseFile, setBaseBranch, setOutcome, updateCursor, writeRef } from "../case-file.js";
+import { create, initialCaseFile, setBaseBranch, setOutcome, updateCursor, writeRef } from "../case-file.js";
+import { appendLine } from "../journal.js";
 import { runsRoot } from "../run-location.js";
 import type { RunRecord } from "../run-records.js";
-import type { CaseFileOutcome, CloserRef, CreateHeader, GateRef, HistoryEntry, OutcomeCause, RunEntry, RunFile, RunOutcome, SurfaceState } from "../schema.js";
+import { HistoryEntry, type CaseFileOutcome, type CloserRef, type CreateHeader, type GateRef, type OutcomeCause, type RunEntry, type RunFile, type RunOutcome, type SurfaceState } from "../schema.js";
 import type { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
 import type { RecordSnapshot } from "./snapshot.js";
 
@@ -48,13 +49,17 @@ export function recordOf(run: TaskRun, repoPath = "/repo"): RunRecord {
   };
 }
 
-/** Test support: the same record on disk, written the way a run writes it. */
+/**
+ * Test support: the same record on disk, as a run leaves it. Each step is written exactly as given, with the time it
+ * names or none, never the time of writing: a fixture says when things happened, so what is read back is the same
+ * on every run, and a step given no time is a record from before steps carried one.
+ */
 export async function writeRecord(repoPath: string, run: TaskRun): Promise<string> {
   const dir = join(runsRoot(repoPath), run.runId);
   await mkdir(dir, { recursive: true });
   await create(dir, headerOf(run), DEFAULT_BUDGETS);
   await setBaseBranch(dir, "main");
-  for (const entry of run.history ?? []) await appendEntry(dir, entry);
+  for (const entry of run.history ?? []) await appendLine(join(dir, "log.jsonl"), HistoryEntry.parse(entry));
   for (const [refId, data] of Object.entries(run.refs ?? {})) await writeRef(dir, refId, data);
   if (run.state) await updateCursor(dir, { state: run.state });
   if (run.outcome) await setOutcome(dir, run.outcome);
@@ -176,6 +181,11 @@ export const homepageAsks = recordOf({
 
 /** Set to work, and nothing since. */
 export const footerWorking = recordOf({ runId: ID.footer, task: FOOTER, closerRef: MERGE, history: attempt(1, "first go") });
+
+/** Test support: the same steps, each recorded a minute after the one before, the first at `from`. */
+export function timed<T extends object>(entries: readonly T[], from: string): (T & { at: string })[] {
+  return entries.map((entry, index) => ({ ...entry, at: new Date(Date.parse(from) + index * 60_000).toISOString() }));
+}
 
 /** Test support: what `loadSnapshot` would return for the four-task list, nothing run and nothing going unless said. */
 export const snapshotOf = (over: Partial<RecordSnapshot> = {}): RecordSnapshot => ({

@@ -11,8 +11,9 @@ import { deterministicRouter } from "../router.js";
 import { advance } from "../surface.js";
 import { fakeAgentPort } from "../agent-port-double.js";
 import type { AgentContext, Terminus } from "../ports.js";
-import { appendRunEntry, createRunFile } from "../run-file.js";
-import type { CaseFileOutcome, GateRef, RoleOverrides, RunEntry, RunHeader } from "../schema.js";
+import { appendLine } from "../journal.js";
+import { createRunFile } from "../run-file.js";
+import { RunEntry, type CaseFileOutcome, type GateRef, type RoleOverrides, type RunHeader } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { ExitOnInterrupt } from "./context.js";
 import { runCli } from "./program.js";
@@ -161,12 +162,13 @@ export async function writeRunRecord(
 /**
  * Test support: a run of several tasks at once, as its record is on disk: the
  * header it started with and the slots it has recorded so far. No outcome, so
- * unfinished, which is what a stopped or killed run leaves behind.
+ * unfinished, which is what a stopped or killed run leaves behind. Each step is
+ * written exactly as given, with the time it names or none, never the time of writing.
  */
 export async function writeSupervisedRun(repoPath: string, header: RunHeader, history: RunEntry[] = []): Promise<string> {
   const dir = supervisedPlace(repoPath, header.runId);
   await prepareRunDir(repoPath, dir);
   await createRunFile(dir, header);
-  for (const entry of history) await appendRunEntry(dir, entry);
+  for (const entry of history) await appendLine(join(dir, "log.jsonl"), RunEntry.parse(entry));
   return dir;
 }

@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import { FileNotFound, RunFileNotFound } from "../errors.js";
 import { appendRunEntry, createRunFile } from "../run-file.js";
 import { prepareRunDir, supervisedPlace } from "../run-location.js";
+import type { HistoryEntry, RunEntry } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
+import { writeSupervisedRun } from "../cli/command-fixtures.js";
 import { attempt, closedAt, damageLog, failedCheck, fill, FOOTER, FORM, ID, writeRecord } from "./report-fixtures.js";
 import { loadSnapshot } from "./snapshot.js";
 
@@ -17,6 +19,22 @@ async function writeRun(repo: string): Promise<string> {
   await appendRunEntry(dir, fill(1, ID.form, FORM));
   return dir;
 }
+
+describe("a record written for a test", () => {
+  it("is read back exactly as it was given: a step keeps the time it names, and a step given none has none", async () => {
+    const repo = initTempRepo("snapshot-exact-", { "README.md": "x\n" });
+    const [setToWork, answered] = attempt(1, "done");
+    const history = [{ ...setToWork, at: "2026-10-01T02:20:00.000Z" }, answered] as HistoryEntry[];
+    await writeRecord(repo, { runId: ID.form, task: FORM, history });
+    const fills: RunEntry[] = [{ ...fill(1, ID.form, FORM), at: "2026-10-01T02:00:00.000Z" }, fill(2, ID.footer, FOOTER)];
+    await writeSupervisedRun(repo, { runId: ID.run, repoPath: repo, concurrency: 2, tasks: 2, runBudgetMax: { gateMaintenance: 2 } }, fills);
+
+    const snapshot = await loadSnapshot(repo, { kind: "list" }, { live: false, list: LIST });
+
+    expect(snapshot.records[0]?.caseFile.history).toEqual(history);
+    expect(snapshot.runs[0]?.history).toEqual(fills);
+  });
+});
 
 describe("reading what a report is derived from", () => {
   it("is empty, not an error, where nothing has ever run", async () => {

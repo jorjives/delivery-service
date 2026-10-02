@@ -82,6 +82,17 @@ type-checked against its role, and a role with no reply fails the test by name. 
 to `AgentPort["invoke"]`: the linter rejects it, because the cast lets a reply of the wrong
 shape compile.
 
+Every step a run records carries the time it was recorded, `at`, stamped by `appendEntry` and
+`appendRunEntry` and by nothing else. Only reporting reads it: nothing that decides what a run
+does next may. A test that compares recorded steps exactly drops the time through `withoutAt`
+from `src/without-at.ts`, the one place that does; do not strip `at` by hand or match it with
+`expect.any(String)`. A test that needs a time fixes the clock with
+`vi.useFakeTimers({ toFake: ["Date"] })` and `vi.setSystemTime(...)`, and restores it with
+`vi.useRealTimers()` in `afterEach`. The record fixtures (`writeRecord` in
+`src/report/report-fixtures.ts`, `writeSupervisedRun` in `src/cli/command-fixtures.ts`) write
+each step exactly as given, so a step given no `at` is a record from before steps carried a
+time; `timed(steps, from)` gives the steps times a minute apart.
+
 ## Describing your change
 
 Every change that a user of the package would notice needs a changeset: a short
