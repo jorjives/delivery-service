@@ -516,13 +516,6 @@ function repairedDuringRun(view: SupervisedView): string {
  * shape, the shared environment, the counts, then one line per task in list
  * order. A task that needs a decision is followed by exactly what `status`
  * says of it on its own, so the decision reads the same wherever it is met.
- * A run that stopped part way says how to carry it on.
- */
-/**
- * A run of several tasks at once, as a person reads it: which run and its
- * shape, the shared environment, the counts, then one line per task in list
- * order. A task that needs a decision is followed by exactly what `status`
- * says of it on its own, so the decision reads the same wherever it is met.
  * A run that stopped part way says how to carry it on. Then, from the report
  * document: the retries added up across the run with its shared repair limit,
  * and, when asked for, every task's triage rounds in full.
