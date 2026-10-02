@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appendRunEntry, createRunFile, loadRunFile } from "./run-file.js";
 import type { RunHeader, RunEntry, SlotOutcome } from "./schema.js";
+import { withoutAt } from "./without-at.js";
 import { supervise, type Claim } from "./supervisor.js";
 
 /** Let every promise callback already queued run, so a test sees what the pool has started so far. */
@@ -132,7 +133,7 @@ describe("running several tasks from a list at once", () => {
 
     const runFile = await loadRunFile(dir);
     expect(runFile.header).toEqual(header);
-    expect(runFile.history.slice(0, 4)).toEqual([
+    expect(withoutAt(runFile.history.slice(0, 4))).toEqual([
       { t: "slot_fill", slot: 1, surfaceId: "task-1", taskDef: { intent: "task 1" } },
       { t: "slot_fill", slot: 2, surfaceId: "task-2", taskDef: { intent: "task 2" } },
       { t: "slot_free", slot: 1, surfaceId: "task-1", outcome: "closed" },
@@ -140,7 +141,7 @@ describe("running several tasks from a list at once", () => {
       { t: "slot_fill", slot: 1, surfaceId: "task-3", taskDef: { intent: "task 3" } },
     ]);
     expect(runFile.history.slice(4)).toHaveLength(2);
-    expect(runFile.history.slice(4)).toEqual(
+    expect(withoutAt(runFile.history.slice(4))).toEqual(
       expect.arrayContaining([
         { t: "slot_free", slot: 2, surfaceId: "task-2", outcome: "closed" },
         { t: "slot_free", slot: 1, surfaceId: "task-3", outcome: "closed" },
@@ -167,7 +168,7 @@ describe("running several tasks from a list at once", () => {
 
     const runFile = await loadRunFile(dir);
     expect(runFile.header).toEqual(header);
-    expect(runFile.history).toEqual([
+    expect(withoutAt(runFile.history)).toEqual([
       ...before,
       { t: "slot_fill", slot: 1, surfaceId: "task-1", taskDef: { intent: "task 1" } },
       { t: "slot_free", slot: 1, surfaceId: "task-1", outcome: "closed" },

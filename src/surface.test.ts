@@ -20,6 +20,7 @@ import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, 
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition, RunHalted } from "./errors.js";
 import type { BudgetPopulation, BudgetSet, CaseFile, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
+import { withoutAt } from "./without-at.js";
 import { cleanGitEnv } from "./git-env.js";
 
 const budgets: BudgetSet = {
@@ -214,7 +215,7 @@ describe("advance", () => {
     expect(reloaded.header.baseline?.status).toBe("PASS");
     expect(reloaded.cursor.state).toBe("AGENT_ACTIVE");
     expect(agent.calls).toEqual([]);
-    expect(reloaded.history).toEqual([{ t: "baseline", status: "PASS" }]);
+    expect(withoutAt(reloaded.history)).toEqual([{ t: "baseline", status: "PASS" }]);
   });
 
   it("baselines a red-but-running gate and still lands on AGENT_ACTIVE", async () => {
@@ -267,7 +268,7 @@ describe("advance", () => {
     const reloaded = await load(dir);
     expect(reloaded.header.baseline).toBeNull();
     expect(reloaded.cursor.state).toBe("GATE_MAINTENANCE");
-    expect(reloaded.history).toEqual([
+    expect(withoutAt(reloaded.history)).toEqual([
       { t: "dispatch", role: "gate-maintenance", attempt: 1, sessionKey: "gate-maintenance-1-0" },
       {
         t: "terminus",
@@ -476,7 +477,7 @@ describe("the AGENT_ACTIVE edge", () => {
     expect(result).toEqual({ state: "GATING", done: false });
     expect(agent.calls).toEqual(["worker:worker-1-0"]);
     const { history, cursor } = await load(dir);
-    expect(history).toEqual([
+    expect(withoutAt(history)).toEqual([
       { t: "baseline", status: "PASS" },
       { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" },
       {

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { create, initialCaseFile, appendEntry, load, logTail, updateCursor, rebuild, resumeAction, setBaseline, setBaseBranch, setOutcome, incrementBudget, writeRef, readRef, deriveStateFromEntry, deriveBudgetsFromLog, setbackOf } from "./case-file.js";
 import { FileNotFound, CorruptCaseFile, ImmutabilityViolation } from "./errors.js";
 import type { BudgetSet, CreateHeader, HistoryEntry, GateReport } from "./schema.js";
+import { withoutAt } from "./without-at.js";
 
 const budgetDefaults: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -139,7 +140,7 @@ describe("appendEntry", () => {
     const logRaw = await readFile(join(dir, "log.jsonl"), "utf-8");
     const lines = logRaw.trimEnd().split("\n");
     expect(lines).toHaveLength(1);
-    expect(JSON.parse(lines[0] as string)).toEqual(entry);
+    expect(withoutAt(JSON.parse(lines[0] as string) as HistoryEntry)).toEqual(entry);
   });
 
   it("appends multiple entries in order", async () => {
@@ -162,8 +163,8 @@ describe("appendEntry", () => {
     const logRaw = await readFile(join(dir, "log.jsonl"), "utf-8");
     const lines = logRaw.trimEnd().split("\n");
     expect(lines).toHaveLength(2);
-    expect(JSON.parse(lines[0] as string)).toEqual(entry1);
-    expect(JSON.parse(lines[1] as string)).toEqual(entry2);
+    expect(withoutAt(JSON.parse(lines[0] as string) as HistoryEntry)).toEqual(entry1);
+    expect(withoutAt(JSON.parse(lines[1] as string) as HistoryEntry)).toEqual(entry2);
   });
 });
 
@@ -206,8 +207,7 @@ describe("load", () => {
     expect(loaded.cursor.state).toBe("PROVISIONING");
     expect(loaded.cursor.budgets).toEqual(budgetDefaults);
     expect(loaded.history).toHaveLength(2);
-    expect(loaded.history[0]).toEqual(entry1);
-    expect(loaded.history[1]).toEqual(entry2);
+    expect(withoutAt(loaded.history)).toEqual([entry1, entry2]);
     expect(loaded.outcome).toBeUndefined();
   });
 
@@ -284,7 +284,7 @@ describe("crash recovery: truncated log line", () => {
 
     const loaded = await load(dir);
     expect(loaded.history).toHaveLength(1);
-    expect(loaded.history[0]).toEqual(entry);
+    expect(withoutAt(loaded.history)).toEqual([entry]);
   });
 
   it("loads correctly when log has only a truncated line (no complete entries)", async () => {
@@ -333,7 +333,7 @@ describe("logTail", () => {
 
     const loaded = await load(dir);
     const tail = logTail(loaded);
-    expect(tail).toEqual(entry2);
+    expect(tail && withoutAt(tail)).toEqual(entry2);
   });
 });
 
@@ -1040,7 +1040,7 @@ describe("a recorded usage limit", () => {
     await appendEntry(dir, dispatch);
     await appendEntry(dir, limited);
 
-    expect((await load(dir)).history.at(-1)).toEqual(limited);
+    expect(withoutAt((await load(dir)).history).at(-1)).toEqual(limited);
   });
 
   it("changes neither where the task is nor the retries it has used", () => {

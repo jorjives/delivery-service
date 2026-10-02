@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { RunEntry } from "./schema.js";
 import { breakerOf, nextBreaker, openDispatch, openTrip, repairsUsed, requestedInOpenTrip, servedAlready, tripsOf, createRunBreaker, couldNotRepair, RECOVERED_REPAIR, signalsSinceHealthy, SHARED_ERROR_THRESHOLD, type BreakerChange } from "./breaker.js";
 import { createRunFile, loadRunFile } from "./run-file.js";
+import { withoutAt } from "./without-at.js";
 import { RunHalted } from "./errors.js";
 import type { Terminus } from "./ports.js";
 
@@ -171,7 +172,7 @@ async function breakerOver(history: RunEntry[] = [], limit = 2) {
     await vi.waitFor(() => expect(answers.length).toBeGreaterThan(answered));
     answers[answered++]?.resolve(terminus);
   };
-  const entries = async () => (await loadRunFile(dir)).history;
+  const entries = async () => withoutAt((await loadRunFile(dir)).history);
   return { dir, breaker, dispatched, changes, answer, entries };
 }
 

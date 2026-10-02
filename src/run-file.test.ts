@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { CorruptRunFile, ImmutabilityViolation, RunFileNotFound } from "./errors.js";
 import { appendRunEntry, createRunFile, loadRunFile, setRunOutcome } from "./run-file.js";
 import type { RunEntry, RunHeader } from "./schema.js";
+import { withoutAt } from "./without-at.js";
 
 const HEADER: RunHeader = { runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 3, tasks: 10, runBudgetMax: { gateMaintenance: 2 } };
 const runDir = () => mkdtempSync(join(tmpdir(), "run-file-"));
@@ -21,7 +22,7 @@ describe("a supervised run's record", () => {
     await createRunFile(dir, HEADER);
     await appendRunEntry(dir, { t: "slot_fill", slot: 1, surfaceId: "add-a-page-20260930T090000Z", taskDef: { intent: "add a page" } });
     await appendRunEntry(dir, { t: "slot_free", slot: 1, surfaceId: "add-a-page-20260930T090000Z", outcome: "escalated" });
-    expect((await loadRunFile(dir)).history).toEqual([
+    expect(withoutAt((await loadRunFile(dir)).history)).toEqual([
       { t: "slot_fill", slot: 1, surfaceId: "add-a-page-20260930T090000Z", taskDef: { intent: "add a page" } },
       { t: "slot_free", slot: 1, surfaceId: "add-a-page-20260930T090000Z", outcome: "escalated" },
     ]);
@@ -31,7 +32,7 @@ describe("a supervised run's record", () => {
     const dir = runDir();
     await createRunFile(dir, HEADER);
     await expect(appendRunEntry(dir, { t: "slot_fill", slot: 0, surfaceId: "x", taskDef: {} })).rejects.toThrow();
-    expect((await loadRunFile(dir)).history).toEqual([]);
+    expect(withoutAt((await loadRunFile(dir)).history)).toEqual([]);
   });
 
   it("drops a final entry a crash cut short, as the case file does", async () => {
@@ -91,7 +92,7 @@ describe("the breaker and its repairs, in the run file", () => {
       { t: "run_escalated", reason: "the shared environment could not be repaired after 2 attempts" },
     ];
     for (const entry of entries) await appendRunEntry(dir, entry);
-    expect((await loadRunFile(dir)).history).toEqual(entries);
+    expect(withoutAt((await loadRunFile(dir)).history)).toEqual(entries);
   });
 
   it("keeps a run that gave up on the shared environment as its outcome, naming the cause", async () => {

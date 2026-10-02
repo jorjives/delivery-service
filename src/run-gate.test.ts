@@ -6,6 +6,7 @@ import { create, load, readRef } from "./case-file.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
 import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
 import type { BudgetSet, GateRef } from "./schema.js";
+import { withoutAt } from "./without-at.js";
 import type { SurfaceLocation } from "./ports.js";
 
 const budgets: BudgetSet = {
@@ -120,7 +121,7 @@ describe("runCheck", () => {
 
     expect(delta.pass).toBe(true);
     const loaded = await load(surfaceDir);
-    expect(loaded.history).toEqual([
+    expect(withoutAt(loaded.history)).toEqual([
       { t: "baseline", status: "PASS" },
       { t: "gate", attempt: 1, status: "PASS", newFailures: [] },
     ]);
@@ -136,7 +137,7 @@ describe("runCheck", () => {
     expect(delta.class).toBe("fail");
 
     const loaded = await load(surfaceDir);
-    expect(loaded.history[1]).toEqual({
+    expect(withoutAt(loaded.history)[1]).toEqual({
       t: "gate",
       attempt: 1,
       status: "FAIL",
@@ -174,7 +175,7 @@ describe("runCheck", () => {
     expect(delta.newFailures).toEqual([]);
 
     const loaded = await load(surfaceDir);
-    expect(loaded.history[1]).toEqual({
+    expect(withoutAt(loaded.history)[1]).toEqual({
       t: "gate",
       attempt: 2,
       status: "ERROR",

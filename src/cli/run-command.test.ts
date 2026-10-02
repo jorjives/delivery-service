@@ -7,6 +7,7 @@ import type { MockScript } from "../mock-script.js";
 import { SurfaceState, type RunEntry, type GateRef } from "../schema.js";
 import { RECOVERED_REPAIR } from "../breaker.js";
 import { loadRunFile, setRunOutcome } from "../run-file.js";
+import { withoutAt } from "../without-at.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot, interruptedRun, writesHello, writeSupervisedRun, rateLimited } from "./command-fixtures.js";
@@ -1057,7 +1058,7 @@ describe("delivery run with several tasks at once", () => {
       // The same run's record, carried on: what it held, then this invocation's slots, then its end.
       const runFile = await theRunFile(repo);
       expect(runFile.header.runId).toBe(RUN);
-      expect(runFile.history.slice(0, 4)).toEqual(before);
+      expect(withoutAt(runFile.history.slice(0, 4))).toEqual(before);
       expect(fillsOf(runFile.history.slice(4)).map((fill) => fill.taskDef)).toEqual([{ intent: SWAP }, { intent: WAVE }, { intent: SHOUT }]);
       expect(runFile.outcome?.kind).toBe("drained");
       expect(git(repo, ["branch", "--list", "surface/*"]).split("\n")).toHaveLength(3);
