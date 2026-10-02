@@ -15,6 +15,11 @@ export interface ReportOptions {
   repo?: string;
 }
 
+/** What an id names: a run of several tasks at once keeps a record of its own; any other id names one task's run. */
+export function namedSubject(repoPath: string, runId: string): ReportSubject {
+  return existsSync(join(supervisedPlace(repoPath, runId), "run.json")) ? { kind: "run", runId } : { kind: "task", runId };
+}
+
 export const NO_REPORT_DATA_YET = "`delivery report` prints its report as text only for now. Run it without `--json`.";
 
 /**
@@ -31,13 +36,7 @@ export async function reportCommand(runId: string | undefined, options: ReportOp
   const repoPath = await findRepository(startDir);
   const [list, live] = await Promise.all([listTasks(startDir, repoPath, ctx), repoLocked(repoPath)]);
 
-  // A run of several tasks at once keeps a record of its own; any other id names one task's run.
-  const named: ReportSubject | undefined =
-    runId === undefined
-      ? undefined
-      : existsSync(join(supervisedPlace(repoPath, runId), "run.json"))
-        ? { kind: "run", runId }
-        : { kind: "task", runId };
+  const named = runId === undefined ? undefined : namedSubject(repoPath, runId);
   const snapshot = await loadSnapshot(repoPath, named ?? { kind: "list" }, { live, list });
 
   if (snapshot.records.length + snapshot.runs.length + snapshot.damaged.length === 0) {
