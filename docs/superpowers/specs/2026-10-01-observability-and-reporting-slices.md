@@ -28,6 +28,7 @@ agent-written plain summary) is not sliced.
 ## Slice 1: Come Back to Your Task List and See What Happened and What to Do
 
 **Status:** ✅ Complete — 2026-10-02 — `f608aaa`
+**Tests:** ✅ Recorded — 2026-10-02 — `8c0c721` — cli — 1 UAT + 3 AC, 4 skipped
 **Delivers:** A project owner types `delivery report` and reads, in plain words, how many tasks landed, which need her, which need an engineer, which were not started, and the next step for each.
 
 **Operational note:** No set-up change and no configuration key: the report works on any runs already on disk, including ones made before this slice, and reads without taking the lock, so it is safe during a run. Reports are a pure reading of the record, so a problem a user hits can be reproduced from a copy of their run folder. A reporting demo built on the scripted agent sits with the existing demos, so the output can be seen with no agent and no sign-in. The reason a task stopped starts being recorded with each outcome from this slice on; nothing that decides what a run does next reads it.
