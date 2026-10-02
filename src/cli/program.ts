@@ -12,6 +12,7 @@ import { resumeCommand, type ResumeOptions } from "./resume-command.js";
 import { runCommand, type RunOptions } from "./run-command.js";
 import { statusCommand, type StatusOptions } from "./status-command.js";
 import { validateCommand, type ValidateOptions } from "./validate-command.js";
+import { intervalSeconds, watchCommand } from "./watch-command.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
 export interface CliIo {
@@ -113,9 +114,15 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--last", "read the run touched most recently, which is also what no run id means")
     .option("--all", "list every run in this repository, newest first, instead of reading one")
     .option("--decisions", "print every triage round in full: what set it off, the verdict, the reasoning word for word, and the brief or packet it produced")
+    .option(
+      "--watch",
+      "follow the run as it happens, from any terminal: what each task is doing now, then one line for each change, until the run ends. With no run id it follows your task list. Ctrl-C stops watching; the run is not affected",
+    )
+    .option("--interval <seconds>", "with --watch, how often to look at the record (default: every 2 seconds)", intervalSeconds)
     .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
     .action(async (runId: string | undefined, options: StatusOptions, command: Command) => {
-      exitCode = await statusCommand(runId, options, contextFor(io, command));
+      const ctx = contextFor(io, command);
+      exitCode = options.watch || options.interval !== undefined ? await watchCommand(runId, options, ctx) : await statusCommand(runId, options, ctx);
     });
 
   program

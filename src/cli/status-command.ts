@@ -445,6 +445,10 @@ export interface StatusOptions {
   all?: boolean;
   /** Print every triage round in full, where the usual account gives each one line. */
   decisions?: boolean;
+  /** Follow the run as it happens instead of reading it once: `watchCommand`'s to act on. */
+  watch?: boolean;
+  /** With `watch`: seconds between one look at the record and the next. */
+  interval?: number;
 }
 
 /**
