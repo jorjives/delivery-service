@@ -58,7 +58,7 @@ describe("the detail under a stopped task's status", () => {
     const lines = short(footerFailed, { list: [] });
 
     expect(lines).not.toContain(UNCHANGED_NOT_RUN_AGAIN);
-    expect(lines.slice(-2)).toEqual(['To act: Reword the task and run it again: delivery run --task "<the reworded task>"', RESUME_DOES_NOT_APPLY]);
+    expect(lines.slice(-2)).toEqual(['To act: Reword the task and run it again: delivery run --task "the reworded task"', RESUME_DOES_NOT_APPLY]);
   });
 
   it("never advises picking up a run that has ended", () => {

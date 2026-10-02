@@ -239,7 +239,7 @@ describe("a report on one task's run", () => {
     const [surface] = deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.homepage }, records: [adHoc] })).surfaces;
 
     expect(surface?.queue).toBeNull();
-    expect(surface?.plain?.next).toEqual(['Reword the task and run it again: delivery run --task "<the reworded task>"']);
+    expect(surface?.plain?.next).toEqual(['Reword the task and run it again: delivery run --task "the reworded task"']);
   });
 
   it("knows an unfinished task is going only when a run of several that took it holds the repository", () => {

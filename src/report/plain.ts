@@ -152,9 +152,9 @@ const ROUTE: Record<Stop, Route> = {
 const RUN_LIST = "Run: delivery run";
 // ponytail: `--task` matches a list entry written as a sentence. An entry written as an object with extra keys is not
 // matched by it, so the list would retell the old outcome; say so here if such lists turn up.
-const RUN_AGAIN_ALONE = 'Run this task again on its own: delivery run --task "<the task, exactly as it is written>"';
+const RUN_AGAIN_ALONE = 'Run this task again on its own: delivery run --task "the task, exactly as it is written"';
 const THEN_THE_LIST = "Then carry on with your list: delivery run";
-const RUN_REWORDED = 'delivery run --task "<the reworded task>"';
+const RUN_REWORDED = 'delivery run --task "the reworded task"';
 
 /** What to do about it, in order. `listed` decides whether the task is amended in the list or typed again. */
 const NEXT: Record<Route, (facts: PlainFacts) => string[]> = {

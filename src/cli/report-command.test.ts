@@ -148,7 +148,7 @@ describe("delivery report", () => {
       "This run: 0 of 1 task completed; 1 failed after 2 attempts.",
     ]);
     expect(stdout).toContain('  Task: "Fix the broken footer links"');
-    expect(stdout).toContain('    To act: Reword the task and run it again: delivery run --task "<the reworded task>"');
+    expect(stdout).toContain('    To act: Reword the task and run it again: delivery run --task "the reworded task"');
     expect(exitCode).toBe(0);
   });
 

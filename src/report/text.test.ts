@@ -240,7 +240,7 @@ describe("where a stopped task is told", () => {
     expect(lines).toContain("    Stopped because a usage limit was reached: the spending limit has been reached.");
     expect(lines.slice(lines.indexOf("    To act: 1. Wait until the limit no longer applies."), lines.indexOf("    To act: 1. Wait until the limit no longer applies.") + 3)).toEqual([
       "    To act: 1. Wait until the limit no longer applies.",
-      '            2. Run this task again on its own: delivery run --task "<the task, exactly as it is written>"',
+      '            2. Run this task again on its own: delivery run --task "the task, exactly as it is written"',
       "            3. Then carry on with your list: delivery run",
     ]);
   });
@@ -353,6 +353,21 @@ describe("the report's own words", () => {
   it("never send a task that has ended to `delivery resume`", () => {
     for (const snapshot of everyReport.filter((each) => each.records.every((record) => record.caseFile.outcome !== undefined))) {
       expect(report(snapshot).join("\n")).not.toContain("delivery resume");
+    }
+  });
+
+  it("keep every word when the text is viewed as Markdown: nothing is taken for a tag, a heading, a rule or a block of code", () => {
+    const typedAgain = snapshotOf({ subject: { kind: "task", runId: ID.footer }, list: [], records: [footerFailed] });
+
+    for (const snapshot of [...everyReport, typedAgain]) {
+      const lines = renderText(deriveReport(snapshot), { colour: false, saved: "Saved to: .delivery/last-report.txt and .delivery/last-report.json" });
+      // Angle brackets around words are an HTML tag to a Markdown viewer, which shows nothing in their place.
+      expect(lines.join("\n")).not.toMatch(/<[A-Za-z/][^>]*>/);
+      for (const [index, line] of lines.entries()) {
+        expect(line).not.toMatch(/^ {0,3}(#{1,6} |[-=*_]{3,}\s*$)/);
+        // Four spaces open a block of code only after a blank line; under a line of text they continue it.
+        if (index === 0 || lines[index - 1] === "") expect(line).not.toMatch(/^ {4}/);
+      }
     }
   });
 

@@ -120,14 +120,14 @@ describe("what to do about a stopped task", () => {
 
   it("has a task that is not on a list typed again with its new wording", () => {
     expect(plainOf(facts({ kind: "budget", population: "correction" }, { listed: false })).next).toEqual([
-      'Reword the task and run it again: delivery run --task "<the reworded task>"',
+      'Reword the task and run it again: delivery run --task "the reworded task"',
     ]);
   });
 
   it("has the owner wait out a usage limit, then run that task on its own before the list", () => {
     expect(plainOf(facts({ kind: "budget", population: "terminus" }, { limit: "rate" })).next).toEqual([
       "Wait until the limit no longer applies.",
-      'Run this task again on its own: delivery run --task "<the task, exactly as it is written>"',
+      'Run this task again on its own: delivery run --task "the task, exactly as it is written"',
       "Then carry on with your list: delivery run",
     ]);
   });
