@@ -63,6 +63,10 @@ export const Decision = z.object({
 });
 export type Decision = z.infer<typeof Decision>;
 
+/** One step a task was in, and when it entered it; `at` is null for a record made before steps carried a time. */
+export const StateVisit = z.object({ state: SurfaceState, at: z.string().nullable() });
+export type StateVisit = z.infer<typeof StateVisit>;
+
 /** One task. Every key is always there: null where the record does not hold the fact. */
 export const ReportSurface = z.object({
   /** The task's own run id; null for a task with no run yet. */
@@ -74,8 +78,12 @@ export const ReportSurface = z.object({
   standing: Standing,
   /** The state the record is in; null for a task with no run. Right for a task that is going; a killed run can leave it one step behind its log. */
   state: SurfaceState.nullable(),
+  /** Every step the log shows the task entering, oldest first; a step entered again is there again. Empty before the first step is recorded. */
+  states: z.array(StateVisit),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
+  /** The latest time the record holds: when it ended, else its last recorded step. null when it holds none. Never measured against now. */
+  lastActivityAt: z.string().nullable(),
   /** How it ended, as the run recorded it. */
   reason: z.string().nullable(),
   cause: OutcomeCause.nullable(),
@@ -103,6 +111,8 @@ export const ReportRun = z.object({
   concurrency: z.number().int().positive(),
   outcome: z.enum(["drained", "escalated"]).nullable(),
   finishedAt: z.string().nullable(),
+  /** The latest time the run's own record or any task it took holds; null when they hold none. */
+  lastActivityAt: z.string().nullable(),
   reason: z.string().nullable(),
   cause: z.enum(["shared_environment", "usage_limit"]).nullable(),
   limit: UsageLimit.nullable(),
@@ -113,6 +123,16 @@ export type ReportRun = z.infer<typeof ReportRun>;
 /** A record that could not be read back: which run, which of its files, and the list task it answered for when that could still be told. */
 export const DamagedRecord = z.object({ run: z.string(), file: z.string(), queue: QueuePosition.nullable() });
 export type DamagedRecord = z.infer<typeof DamagedRecord>;
+
+/** The step a task's record shows it in: the last its log entered, or the one the record was created in before any is logged. null for a task with no run. */
+export function stepOf(surface: ReportSurface): StateVisit | null {
+  return surface.states.at(-1) ?? (surface.state === null ? null : { state: surface.state, at: null });
+}
+
+/** The latest of some recorded times; null when there are none. ISO 8601 UTC instants order as text. */
+export function latestOf(times: readonly (string | null | undefined)[]): string | null {
+  return times.reduce<string | null>((latest, time) => (time != null && (latest === null || time > latest) ? time : latest), null);
+}
 
 /**
  * What happened, as data: one document for a single task, a run of several at

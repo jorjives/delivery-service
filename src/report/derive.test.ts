@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { ReportDocument } from "./document.js";
+import { ReportDocument, stepOf } from "./document.js";
 import { deriveReport, mostRecentSubject } from "./derive.js";
-import { attempt, BANNER, BRIEF, closedAt, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt } from "./report-fixtures.js";
+import { attempt, BANNER, BRIEF, closedAt, failedCheck, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt, timed } from "./report-fixtures.js";
 
 describe("a report on the project's task list", () => {
   it("stands each task as its latest run left it, and a task with no run as not started", () => {
@@ -291,6 +291,56 @@ describe("a damaged record", () => {
 
     expect(doc.incomplete.map((record) => record.run)).toEqual([ID.footer]);
     expect(doc.surfaces.map((surface) => surface.queue?.task)).toEqual([1, 3, 4]);
+  });
+});
+
+describe("when a report says things happened", () => {
+  const steps = timed([{ t: "baseline", status: "PASS" } as const, ...attempt(1, "first go"), ...failedCheck(1, "reroute"), ...attempt(2, "second go").slice(0, 1)], "2026-10-01T02:20:00.000Z");
+  const surfaceOf = (history: typeof steps | ReturnType<typeof attempt>, outcome?: ReturnType<typeof closedAt>) =>
+    deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [recordOf({ runId: ID.footer, task: FOOTER, history, ...(outcome ? { outcome } : {}) })] })).surfaces[0];
+
+  it("lists every step the log shows the task entering, oldest first, each with the time it was entered", () => {
+    expect(surfaceOf(steps)?.states).toEqual([
+      { state: "AGENT_ACTIVE", at: "2026-10-01T02:20:00.000Z" },
+      { state: "GATING", at: "2026-10-01T02:22:00.000Z" },
+      { state: "TRIAGE", at: "2026-10-01T02:23:00.000Z" },
+      { state: "AGENT_ACTIVE", at: "2026-10-01T02:24:00.000Z" },
+    ]);
+  });
+
+  it("shows an agent set to work as working, where picking the run up would treat it as a session that died", () => {
+    const working = surfaceOf(steps.slice(0, 2));
+
+    expect(working?.states.at(-1)?.state).toBe("AGENT_ACTIVE");
+    expect(working && stepOf(working)).toEqual({ state: "AGENT_ACTIVE", at: "2026-10-01T02:20:00.000Z" });
+  });
+
+  it("holds the steps with no time for a record made before steps carried one", () => {
+    const old = surfaceOf(attempt(1, "first go"));
+
+    expect(old?.states).toEqual([{ state: "AGENT_ACTIVE", at: null }, { state: "GATING", at: null }]);
+    expect(old?.lastActivityAt).toBeNull();
+  });
+
+  it("falls back to the step the record was created in before any step is logged, and to nothing for a task with no run", () => {
+    const [created, , notStarted] = deriveReport(snapshotOf({ records: [recordOf({ runId: ID.form, task: FORM })] })).surfaces;
+
+    expect(created && stepOf(created)).toEqual({ state: "PROVISIONING", at: null });
+    expect(notStarted && stepOf(notStarted)).toBeNull();
+  });
+
+  it("takes the latest time a task's record holds as its last activity: its last step, then its outcome once it has ended", () => {
+    expect(surfaceOf(steps)?.lastActivityAt).toBe("2026-10-01T02:25:00.000Z");
+    expect(surfaceOf(steps, closedAt("2026-10-01T02:40:00.000Z"))?.lastActivityAt).toBe("2026-10-01T02:40:00.000Z");
+  });
+
+  it("gives a run of several tasks the latest time its own log or any task it took holds", () => {
+    const runOf = (fills: Parameters<typeof runFileOf>[1]) =>
+      deriveReport(snapshotOf({ subject: { kind: "run", runId: ID.run }, live: true, records: [formDone, recordOf({ runId: ID.footer, task: FOOTER, history: steps })], runs: [runFileOf(ID.run, fills)] })).run;
+
+    expect(runOf([fill(1, ID.form, FORM), fill(2, ID.footer, FOOTER)])?.lastActivityAt).toBe("2026-10-01T02:25:00.000Z");
+    expect(runOf(timed([fill(1, ID.form, FORM), fill(2, ID.footer, FOOTER)], "2026-10-01T03:00:00.000Z"))?.lastActivityAt).toBe("2026-10-01T03:01:00.000Z");
+    expect(runOf([fill(1, ID.homepage, HOMEPAGE)])?.lastActivityAt).toBeNull();
   });
 });
 

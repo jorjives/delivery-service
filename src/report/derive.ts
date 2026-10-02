@@ -1,14 +1,14 @@
 import { isDeepStrictEqual } from "node:util";
 import { repairsUsed } from "../breaker.js";
-import { deriveBudgetsFromLog } from "../case-file.js";
+import { deriveBudgetsFromLog, deriveStateFromEntry } from "../case-file.js";
 import { branchName } from "../provision.js";
 import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js";
-import { Population, type RunFile, type TaskDef } from "../schema.js";
+import { Population, type HistoryEntry, type RunFile, type TaskDef } from "../schema.js";
 import { claimedBy, supervisedView } from "../supervised-view.js";
 import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
 import { BriefRef } from "../prompt-assembly.js";
 import { PacketRef } from "../surface.js";
-import { REPORT_SCHEMA, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRun, type ReportSurface } from "./document.js";
+import { latestOf, REPORT_SCHEMA, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRun, type ReportSurface, type StateVisit } from "./document.js";
 import { plainOf } from "./plain.js";
 import type { DamagedFile, RecordSnapshot, ReportSubject } from "./snapshot.js";
 
@@ -20,8 +20,10 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
     queue,
     standing,
     state: null,
+    states: [],
     startedAt: null,
     finishedAt: null,
+    lastActivityAt: null,
     reason: null,
     cause: null,
     closer: null,
@@ -62,6 +64,28 @@ function decisionsOf(record: RunRecord, refs: Record<string, unknown>): Decision
   });
 }
 
+/**
+ * The step a task is in once `entry` is recorded, by the fold resuming uses, with one difference: an agent set to
+ * work is working. Resuming reads a session with no answer as one that died, which is a judgement about a run that
+ * has stopped, not a fact about one that is going.
+ */
+export function stateAfter(entry: HistoryEntry): StateVisit["state"] {
+  return entry.t === "dispatch" && (entry.role ?? "worker") === "worker" ? "AGENT_ACTIVE" : deriveStateFromEntry(entry);
+}
+
+/** Every step the log shows a task entering, oldest first, each with the time of the entry that put it there. */
+function statesOf(history: readonly HistoryEntry[]): StateVisit[] {
+  const visits: StateVisit[] = [];
+  for (const entry of history) {
+    const state = stateAfter(entry);
+    if (visits.at(-1)?.state !== state) visits.push({ state, at: entry.at ?? null });
+  }
+  return visits;
+}
+
+/** The latest time one task's record holds. */
+const lastActivityOf = (record: RunRecord): string | null => latestOf([record.caseFile.outcome?.at, ...record.caseFile.history.map((entry) => entry.at)]);
+
 /** One task from its own record. The retries are the log's, by the fold resuming uses, so a report and a resume cannot disagree. */
 function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePosition | null, standing: Standing): ReportSurface {
   const { header, history, outcome, cursor } = record.caseFile;
@@ -78,8 +102,10 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     queue,
     standing,
     state: cursor.state,
+    states: statesOf(history),
     startedAt: startedInstant(record.runId),
     finishedAt: outcome?.at ?? null,
+    lastActivityAt: lastActivityOf(record),
     reason: outcome?.reason ?? null,
     cause,
     // A run that pinned no closer predates closers being pinned, and was committed to its branch.
@@ -105,8 +131,9 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
   };
 }
 
-function runBlock(runFile: RunFile): ReportRun {
+function runBlock(runFile: RunFile, records: readonly RunRecord[]): ReportRun {
   const { header, history, outcome } = runFile;
+  const taken = new Set(claimedBy(runFile).map((claim) => claim.surfaceId));
   const escalated = outcome?.kind === "escalated" ? outcome : undefined;
   return {
     runId: header.runId,
@@ -115,6 +142,7 @@ function runBlock(runFile: RunFile): ReportRun {
     concurrency: header.concurrency,
     outcome: outcome?.kind ?? null,
     finishedAt: outcome?.at ?? null,
+    lastActivityAt: latestOf([outcome?.at, ...history.map((entry) => entry.at), ...records.filter((record) => taken.has(record.runId)).map(lastActivityOf)]),
     reason: escalated?.reason ?? null,
     cause: escalated?.cause ?? null,
     limit: history.findLast((entry) => entry.t === "run_escalated")?.limit ?? null,
@@ -175,7 +203,7 @@ function runReport(snapshot: RecordSnapshot, runId: string): ReportDocument {
     return document(snapshot, { live: false, run: null, surfaces: [], incomplete });
   }
   const live = runFile.outcome === undefined && snapshot.live;
-  return document(snapshot, { live, run: runBlock(runFile), ...runSurfaces(snapshot, runFile, live) });
+  return document(snapshot, { live, run: runBlock(runFile, snapshot.records), ...runSurfaces(snapshot, runFile, live) });
 }
 
 /**
@@ -222,7 +250,7 @@ function listReport(snapshot: RecordSnapshot): ReportDocument {
   const unfinished = surfaces.some((surface) => surface.standing === "unfinished");
   return document(snapshot, {
     live: going ? live : unfinished ? null : false,
-    run: run ? runBlock(run) : null,
+    run: run ? runBlock(run, records) : null,
     surfaces,
     incomplete,
   });
