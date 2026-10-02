@@ -37,6 +37,17 @@ export interface AssembledPrompt {
 export const BriefRef = z.object({ artifact: SharpenedBrief });
 const CloseDetail = z.object({ detail: z.string() });
 
+/** A brief as the session it was written for reads it, one line per field. Exported so a report shows exactly what that session was told. */
+export function briefLines(brief: SharpenedBrief): string[] {
+  return [
+    `Problem: ${brief.problem}`,
+    `Dead ends: ${brief.dead_ends}`,
+    `Scope: ${brief.scope}`,
+    `References: ${brief.references.length === 0 ? "none" : brief.references.join(", ")}`,
+    `Diagnosis (a hypothesis to test, not an established fact): ${brief.diagnosis}`,
+  ];
+}
+
 /**
  * Read what the log points at. The only I/O in this module, split out so that
  * `assemblePrompt` stays a pure function of its arguments and determinism is
@@ -109,13 +120,7 @@ export function assemblePrompt(
   const brief =
     evidence.brief === null
       ? "No distilled brief — work from the task and the gate evidence below."
-      : [
-          `Problem: ${evidence.brief.problem}`,
-          `Dead ends: ${evidence.brief.dead_ends}`,
-          `Scope: ${evidence.brief.scope}`,
-          `References: ${evidence.brief.references.length === 0 ? "none" : evidence.brief.references.join(", ")}`,
-          `Diagnosis (a hypothesis to test, not an established fact): ${evidence.brief.diagnosis}`,
-        ].join("\n");
+      : briefLines(evidence.brief).join("\n");
 
   const gateEvidence =
     evidence.newFailures.length === 0

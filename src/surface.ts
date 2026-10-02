@@ -218,7 +218,7 @@ async function escalateFor(
 }
 
 /** The ref shape `triage()` writes for an escalate round. */
-const PacketRef = z.object({ artifact: EscalationPacket, cause: OutcomeCause.optional() });
+export const PacketRef = z.object({ artifact: EscalationPacket, cause: OutcomeCause.optional() });
 
 /**
  * What an escalate verdict's outcome records: the cause the port named, else
