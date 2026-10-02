@@ -406,7 +406,12 @@ decision, stopped or are still queued, then one line per task in list order, nam
 own run id once it has one. A task that needs
 your decision is followed by the same account `delivery status` gives of it on its own. A task
 waiting only because every slot is busy shows as "queued, waiting for a free slot"; if the run
-was stopped part way, it says how to carry it on.
+was stopped part way, it says how to carry it on. While the run is going, a task under way says
+what it is doing right now and which attempt it is on ("the agent is working, attempt 2",
+"checking the agent's work, attempt 1"); once the run has stopped, it says "not finished yet".
+Under the tasks come the retry budgets added up across the tasks the run has taken, beside the
+run's own limit on repairs of what its tasks share, and a `Next:` line. With `--decisions`, every
+task's triage rounds are printed in full beneath that.
 
 ```text
 Run run-20260930T090000Z, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once
@@ -420,7 +425,13 @@ This needs your decision: …
   [3/4] add a goodbye (add-a-goodbye-20260930T090100Z): done
   [4/4] add a shout (add-a-shout-20260930T090200Z): done
 
+Retry budgets across the 4 tasks this run has taken:
+  correction 0 of 12, gate recheck 0 of 12, gate repair 0 of 8, session retry 0 of 20, close retry 0 of 12
+  shared repair limit for the run: 0 of 2 used
+
 To read one task in full: delivery status delete-the-greeting-20260930T090000Z
+
+Next: delivery report run-20260930T090000Z (this run in plain words)
 ```
 
 Every task keeps its own run id, and `delivery status <task-run-id>` reads it exactly as it

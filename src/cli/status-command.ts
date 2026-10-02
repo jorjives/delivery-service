@@ -11,13 +11,13 @@ import { loadConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { RunFileNotFound } from "../errors.js";
 import { deriveReport } from "../report/derive.js";
-import { detailLines } from "../report/detail.js";
-import type { ReportDocument } from "../report/document.js";
+import { detailLines, rollUpLines, roundLines } from "../report/detail.js";
+import type { ReportDocument, ReportSurface } from "../report/document.js";
 import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
 import { paint } from "../paint.js";
-import { BREAKER_PHRASES, nextStepPhrase } from "./output.js";
+import { BREAKER_PHRASES, nextStepPhrase, STEP_PHRASES } from "./output.js";
 import { queueTasks, shapeOf, STOPPED_PART_WAY } from "./queue.js";
 import { repoLocked } from "./repo-lock.js";
 import { runPlace } from "../run-location.js";
@@ -314,21 +314,33 @@ export function countsLine(tasks: readonly ViewTask[]): string {
     .join(", ");
 }
 
+/** A task's place in the list, what it was asked to do, and its own run id once it has one. */
+function taskName(task: ViewTask): string {
+  const tag = task.position ? `[${task.position.task}/${task.position.of}] ` : "";
+  return `${tag}${taskIntent(task.taskDef)}${task.record ? ` (${task.record.runId})` : ""}`;
+}
+
+/** What a task that is going is doing right now, in the words the run itself prints as it goes, and which attempt it is on. */
+function inFlight(surface: ReportSurface | undefined): string | undefined {
+  if (surface?.state == null) return undefined;
+  return `${STEP_PHRASES[surface.state]}${surface.attempts > 0 ? `, attempt ${surface.attempts}` : ""}`;
+}
+
 /**
  * One task's line: its place in the list, what it was asked to do, its own run
  * id once it has one (so any task can be read in full with `delivery status <id>`),
- * and where it stands.
+ * and where it stands. While the run is going, a task under way says what it
+ * is doing; once the run has stopped, nothing is doing anything, so it says
+ * only that it has not finished.
  */
-function taskLine(task: ViewTask, live: boolean): string {
-  const tag = task.position ? `[${task.position.task}/${task.position.of}] ` : "";
-  const id = task.record ? ` (${task.record.runId})` : "";
+function taskLine(task: ViewTask, live: boolean, surface: ReportSurface | undefined): string {
   const standing =
     task.standing === "escalated"
       ? `${STANDING_WORDS.escalated} (see below)`
       : task.standing === "queued" && live
         ? WAITING_FOR_A_SLOT
-        : STANDING_WORDS[task.standing];
-  return `  ${tag}${taskIntent(task.taskDef)}${id}: ${standing}`;
+        : ((task.standing === "unfinished" && live ? inFlight(surface) : undefined) ?? STANDING_WORDS[task.standing]);
+  return `  ${taskName(task)}: ${standing}`;
 }
 
 export const ALL_AND_ONE =
@@ -491,8 +503,18 @@ function repairedDuringRun(view: SupervisedView): string {
  * says of it on its own, so the decision reads the same wherever it is met.
  * A run that stopped part way says how to carry it on.
  */
-export async function supervisedReport(view: SupervisedView, ctx: CommandContext): Promise<string[]> {
+/**
+ * A run of several tasks at once, as a person reads it: which run and its
+ * shape, the shared environment, the counts, then one line per task in list
+ * order. A task that needs a decision is followed by exactly what `status`
+ * says of it on its own, so the decision reads the same wherever it is met.
+ * A run that stopped part way says how to carry it on. Then, from the report
+ * document: the retries added up across the run with its shared repair limit,
+ * and, when asked for, every task's triage rounds in full.
+ */
+export async function supervisedReport(view: SupervisedView, ctx: CommandContext, doc: ReportDocument, { full }: { full: boolean }): Promise<string[]> {
   const { header, outcome } = view.runFile;
+  const surfaceOf = (task: ViewTask): ReportSurface | undefined => doc.surfaces.find((surface) => surface.run !== null && surface.run === task.record?.runId);
   const counts = countsLine(view.tasks);
   const lines = [
     ...environmentNarration(view),
@@ -503,15 +525,22 @@ export async function supervisedReport(view: SupervisedView, ctx: CommandContext
     "",
   ];
   for (const task of view.tasks) {
-    lines.push(taskLine(task, view.live));
+    lines.push(taskLine(task, view.live, surfaceOf(task)));
     if (task.standing === "escalated" && task.record) lines.push(...(await statusBody(task.record, ctx)), "");
   }
-  const readable = view.tasks.find((task) => task.standing === "escalated") ?? view.tasks.find((task) => task.record);
-  if (readable?.record) {
-    // Exactly one blank line before the footer, whether or not the last task carried a decision's account.
-    if (lines.at(-1) !== "") lines.push("");
-    lines.push(`To read one task in full: delivery status ${readable.record.runId}`);
+  // Exactly one blank line after the tasks, whether or not the last one carried a decision's account.
+  if (lines.at(-1) !== "") lines.push("");
+  lines.push(...rollUpLines(doc));
+  if (full) {
+    for (const task of view.tasks) {
+      const surface = surfaceOf(task);
+      if (surface) lines.push("", `${taskName(task)}:`, ...roundLines(surface.decisions, { full }));
+    }
   }
+  const readable = view.tasks.find((task) => task.standing === "escalated") ?? view.tasks.find((task) => task.record);
+  if (readable?.record) lines.push("", `To read one task in full: delivery status ${readable.record.runId}`);
+  const rounds = doc.surfaces.reduce((sum, surface) => sum + surface.decisions.length, 0);
+  lines.push("", nextLine(header.runId, `delivery report ${header.runId} (this run in plain words)`, rounds, full));
   return lines;
 }
 
@@ -555,8 +584,12 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   const record = runId === undefined ? await mostRecent(repoPath) : await lookUp(repoPath, runId);
   if ("runFile" in record) {
     const view = await viewOf(record, repoPath, startDir, ctx);
-    if (ctx.json) ctx.writeLine(JSON.stringify(await supervisedDocument(view, ctx), null, 2));
-    else for (const line of await supervisedReport(view, ctx)) ctx.writeLine(line);
+    if (ctx.json) {
+      ctx.writeLine(JSON.stringify(await supervisedDocument(view, ctx), null, 2));
+      return EXIT.ok;
+    }
+    const doc = await documentOf(repoPath, startDir, { kind: "run", runId: view.runFile.header.runId }, ctx);
+    for (const line of await supervisedReport(view, ctx, doc, { full })) ctx.writeLine(line);
     return EXIT.ok;
   }
   if (ctx.json) {

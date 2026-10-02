@@ -17,3 +17,8 @@ with `--all` or, for now, with `--json`.
 
 Every line `status` printed before is still printed, and its exit codes and `--json` output are
 unchanged.
+
+For a run of several tasks at once, a task under way says what it is doing right now and which
+attempt it is on, in place of "not finished yet", while the run is going. Under the tasks, the
+retry budgets are added up across the run beside the run's shared repair limit, and
+`--decisions` prints every task's triage rounds in full.

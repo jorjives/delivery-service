@@ -127,7 +127,9 @@ describe("UAT: check on a run with several tasks and see at a glance what is don
       // The footer offers the escalated task (task 2), since that's the one the reader needs next.
       const task2Id = /\[2\/4\] .*? \((\S+)\): needs your decision/.exec(status.stdout)?.[1];
       if (!task2Id) throw new Error(`could not find task 2's own run id in:\n${status.stdout}`);
-      expect(lines.at(-1)).toBe(`To read one task in full: delivery status ${task2Id}`);
+      expect(lines).toContain(`To read one task in full: delivery status ${task2Id}`);
+      // Every status output now ends by saying where to go next.
+      expect(lines.at(-1)).toBe(`Next: delivery report ${runId} (this run in plain words)`);
 
       // Step 3: copy task 1's own id from the list and read it in full.
       const task1Status = runDelivery(["status", task1Id], { cwd: repo, env });

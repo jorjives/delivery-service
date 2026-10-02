@@ -804,7 +804,15 @@ describe("delivery status for a run of several tasks at once", () => {
       `  [3/4] ${GOODBYE} (${IDS.goodbye}): done`,
       `  [4/4] ${SHOUT} (${IDS.shout}): done`,
     ]);
-    expect(stdout.trimEnd().split("\n").at(-1)).toBe(`To read one task in full: delivery status ${IDS.greeting}`);
+    expect(stdout.trimEnd().split("\n").slice(-7)).toEqual([
+      "Retry budgets across the 4 tasks this run has taken:",
+      "  correction 0 of 12, gate recheck 0 of 12, gate repair 0 of 8, session retry 0 of 20, close retry 0 of 12",
+      "  shared repair limit for the run: 0 of 2 used",
+      "",
+      `To read one task in full: delivery status ${IDS.greeting}`,
+      "",
+      `Next: delivery report ${SUPERVISED} (this run in plain words)`,
+    ]);
     expect(stdout).not.toMatch(/HEALTHY|ESCALATED|CLOSED|DRAINED|escalated|closed/);
   });
 
@@ -833,8 +841,8 @@ describe("delivery status for a run of several tasks at once", () => {
 
     expect(stdout).toContain("2 not finished yet, 1 queued");
     expect(taskLines(stdout)).toEqual([
-      `  [1/3] ${HELLO} (${IDS.hello}): not finished yet`,
-      `  [2/3] ${GREETING} (${IDS.greeting}): not finished yet`,
+      `  [1/3] ${HELLO} (${IDS.hello}): setting up`,
+      `  [2/3] ${GREETING} (${IDS.greeting}): setting up`,
       `  [3/3] ${GOODBYE}: ${WAITING_FOR_A_SLOT}`,
     ]);
     expect(stdout).not.toContain(STOPPED_PART_WAY);
@@ -848,6 +856,96 @@ describe("delivery status for a run of several tasks at once", () => {
     expect(stdout).toContain(STOPPED_PART_WAY);
     expect(taskLines(stdout)).toContain(`  [3/3] ${GOODBYE}: queued`);
     expect(stdout).not.toContain(WAITING_FOR_A_SLOT);
+  });
+
+  /** A run of two at once whose first task is on its second attempt and whose second is having its first checked. */
+  async function workingSupervisedRun(prefix: string): Promise<string> {
+    const repo = initTempRepo(prefix, {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ concurrency: 2, tasks: [HELLO, GREETING, GOODBYE] }),
+    });
+    await writeRecord(repo, {
+      runId: IDS.hello,
+      task: HELLO,
+      history: [...attempt(1, "first go"), ...failedCheck(1, "reroute"), { t: "dispatch", role: "worker", attempt: 2, sessionKey: "worker-2-0" }],
+      state: "AGENT_ACTIVE",
+      // What the rule-based router writes for a round: its trigger and reasoning, and no brief.
+      refs: { "triage-0": { trigger: "gate_fail", rationale: "gate_fail: reroute" } },
+    });
+    await writeRecord(repo, { runId: IDS.greeting, task: GREETING, history: attempt(1, "done"), state: "GATING" });
+    await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 2 } }, [
+      fill(1, IDS.hello, HELLO),
+      fill(2, IDS.greeting, GREETING),
+    ]);
+    return repo;
+  }
+
+  it("says what each task under way is doing right now, and which attempt it is on, while the run is going", async () => {
+    const repo = await workingSupervisedRun("status-supervised-in-flight-");
+    const release = await takeRepoLock(repo);
+    let stdout: string;
+    try {
+      ({ stdout } = await delivery(["status", SUPERVISED], { cwd: repo }));
+    } finally {
+      await release?.();
+    }
+
+    expect(taskLines(stdout)).toEqual([
+      `  [1/3] ${HELLO} (${IDS.hello}): the agent is working, attempt 2`,
+      `  [2/3] ${GREETING} (${IDS.greeting}): checking the agent's work, attempt 1`,
+      `  [3/3] ${GOODBYE}: ${WAITING_FOR_A_SLOT}`,
+    ]);
+  });
+
+  it("does not say a task is doing anything once the run has stopped part way", async () => {
+    const repo = await workingSupervisedRun("status-supervised-not-in-flight-");
+
+    const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
+
+    expect(taskLines(stdout)).toEqual([
+      `  [1/3] ${HELLO} (${IDS.hello}): not finished yet`,
+      `  [2/3] ${GREETING} (${IDS.greeting}): not finished yet`,
+      `  [3/3] ${GOODBYE}: queued`,
+    ]);
+  });
+
+  it("adds the retries up across the tasks the run has taken, beside the run's shared repair limit, and points at the rounds", async () => {
+    const repo = await workingSupervisedRun("status-supervised-roll-up-");
+
+    const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
+
+    expect(stdout.trimEnd().split("\n").slice(-7)).toEqual([
+      "Retry budgets across the 2 tasks this run has taken:",
+      "  correction 1 of 6, gate recheck 0 of 6, gate repair 0 of 4, session retry 0 of 10, close retry 0 of 6",
+      "  shared repair limit for the run: 0 of 2 used",
+      "",
+      `To read one task in full: delivery status ${IDS.hello}`,
+      "",
+      `Next: delivery status ${SUPERVISED} --decisions (every triage round in full), delivery report ${SUPERVISED} (this run in plain words)`,
+    ]);
+  });
+
+  it("prints every task's triage rounds in full with --decisions", async () => {
+    const repo = await workingSupervisedRun("status-supervised-decisions-");
+
+    const { stdout, exitCode } = await delivery(["status", SUPERVISED, "--decisions"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const lines = stdout.trimEnd().split("\n");
+    const at = lines.indexOf(`[1/3] ${HELLO} (${IDS.hello}):`);
+    expect(lines.slice(at, at + 10)).toEqual([
+      `[1/3] ${HELLO} (${IDS.hello}):`,
+      "How it got here (1 triage round, in full):",
+      "  Round 1, after attempt 1",
+      "    Trigger: a gate failure (gate_fail)",
+      "    Verdict: reroute",
+      '    Rationale: "gate_fail: reroute"',
+      "    Brief for the next session: none; this round wrote no brief.",
+      "",
+      `[2/3] ${GREETING} (${IDS.greeting}):`,
+      "How it got here: no triage rounds.",
+    ]);
+    expect(lines.at(-1)).toBe(`Next: delivery report ${SUPERVISED} (this run in plain words)`);
   });
 
   it("reads one task of the run by its own id exactly as it reads any run", async () => {
