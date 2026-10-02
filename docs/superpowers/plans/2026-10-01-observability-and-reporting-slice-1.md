@@ -7,7 +7,7 @@
 
 **Goal:** A project owner types `delivery report` and reads, in plain words, how many tasks landed, which need her, which need an engineer, which were not started, and the next step for each.
 
-**Architecture:** One read model in the library, apart from the code that prints it: `loadSnapshot(repoPath, subject, { live, list })` is the only reading (it takes no lock and sets a damaged record aside instead of throwing), `deriveReport(snapshot)` is a pure function to one `ReportDocument`, and `renderText(doc, { colour })` is a pure function to lines. They live in a new `src/report/` and are exported from `src/index.ts`; `src/cli/report-command.ts` only resolves what is being asked about and prints. Two facts the report needs and the record does not yet hold start being recorded, both optional and read by nothing that decides what a run does next: why a task stopped (`outcome.cause`) and which usage limit stopped a session (`limit` on a terminus entry). Wording comes from closed phrase tables that are total over a closed set of stops, so a new kind of stop does not compile until it has words.
+**Architecture:** One read model in the library, apart from the code that prints it: `loadSnapshot(repoPath, subject, { live, list })` is the only reading (it takes no lock and sets a damaged record aside instead of throwing), `deriveReport(snapshot)` is a pure function to one `ReportDocument`, and `renderText(doc, { colour })` is a pure function to lines. They live in a new `src/report/`, in the library and not yet part of its public surface (Slice 5 exports them from `src/index.ts`, with the stability promise); `src/cli/report-command.ts` only resolves what is being asked about and prints. Two facts the report needs and the record does not yet hold start being recorded, both optional and read by nothing that decides what a run does next: why a task stopped (`outcome.cause`) and which usage limit stopped a session (`limit` on a terminus entry). Wording comes from closed phrase tables that are total over a closed set of stops, so a new kind of stop does not compile until it has words.
 
 **Tech Stack:** TypeScript (Node ≥22, ES2024, `module: Node16`, `.js` import suffixes), zod v4, vitest v5, commander v14. The scripted agent (`vendor/claude-mock`, through the `DELIVERY_TEST_MOCK_SCRIPT` seam) for the two real runs in the command tests and for the demo. No new dependency.
 
@@ -32,7 +32,7 @@
   - **The library does not import the command line.** `supervisedView`, the run-location helpers, `RunRecord`, the list-matching helpers and `paint` lived in `src/cli/`. Rather than have `src/report/` reach into `src/cli/`, or copy them, Task 1 moves them into the library first, with no behaviour change and no re-export shims: every importer is updated.
   - **One cause, written once.** `escalateFor` takes the in-memory cause and derives both the escalation packet and the recorded `outcome.cause` from it, so the two cannot drift. A triage round's cause is written into that round's ref, because on resume it cannot be worked out again from the log. A round recorded before this slice has none, and none is invented.
   - **One reader of the run folders.** `readRunRecords` returns the records that read back and the damaged ones set aside; `allRuns` (which `status` uses, and which must keep stopping on damage) is re-expressed over it rather than left as a second directory walk. Which file is damaged is found by re-reading `case.json`, not by adding a field to `CorruptCaseFile`.
-  - **`--json` is refused by `delivery report` for now** (exit 2, one sentence), rather than printing text where a script expects data or publishing a document shape before Slice 5 makes the stability promise. The `ReportDocument` built here holds only what this slice renders; `states`, `decisions`, `escalation`, `usage`, `repairs`, entry times, `--write`, `--schema` and `--watch` belong to later slices.
+  - **`--json` is refused by `delivery report` for now** (exit 2, one sentence), rather than printing text where a script expects data or publishing a document shape before Slice 5 makes the stability promise. The `ReportDocument` built here holds only what this slice renders; `states`, `decisions`, `escalation`, `usage`, `repairs`, entry times, `--write`, `--schema` and `--watch` belong to later slices. For the same reason nothing is added to `src/index.ts` in this slice: making the pipeline and its schemas available to code that imports the package is a Slice 5 acceptance criterion, and exporting `delivery.report/1` now would publish a shape the next four slices still change.
   - **Routes that work, checked against the code.** A list task whose run has ended is only run again when its wording changes, so the advice for it is to reword or remove it and then `delivery run`. Two kinds of stop are not about the wording (a usage limit; an agent that could not be started): for those the route is to wait or sign in, then `delivery run --task "<the task, exactly as it is written>"`, which starts a fresh run that becomes the task's current answer, then `delivery run` for the rest. That is never "simply run again": a bare `delivery run` on an unchanged list would only retell the old outcome. `--task` matches a list entry written as a sentence; the ceiling is marked with a `ponytail:` comment.
   - **`delivery resume <id>` is advised only where it works.** It reads one task's record, so it is advised for an unfinished task of a list worked one at a time. An unfinished run of several tasks is advised `delivery run`, which is what picks such a run up. This narrows the slice's "a run that did not finish is advised `delivery resume` with its id" to the case where that command exists.
   - **A fifth section, "Not finished".** The slice names four sections; a task that is still working, held or waiting in a run of several is none of them, and the slice also requires that a run still going is reported as such. Those tasks are told under "Not finished", present only when it has tasks.
@@ -53,13 +53,12 @@
   - `docs/getting-started.md`, "4. Read what happened, later": a pointer to `delivery report` → Task 7.
   - `delivery --help` and `delivery report --help` (`src/cli/program.ts`) → Task 7.
   - `.changeset/come-back-to-your-task-list.md` (every user-visible change gets a changeset here) → Task 7.
-  - `src/index.ts`: the report pipeline and the tolerant reader are exported for library users → Task 6.
 - **Inherited (Operational note):** "A reporting demo built on the scripted agent sits with the existing demos" → `demos/observability-slice-1-report.ts` and the `demo:report-slice-1` script in `package.json`, Task 8, named in the README section by Task 8. "No set-up change and no configuration key" → nothing in `init`, `validate` or the config schema is touched.
-- Checked and unchanged: the global `--json` help text in `src/cli/program.ts` ("one JSON document from status and validate" stays true); README "See what happened to a run" and "See every run" (`status` is untouched); `docs/project-configuration.md`, `docs/shared-environment.md` and `docs/testing-your-pipeline.md` (they describe `run` and `status` output, which does not change); `docs/multi-surface-control-flow.md` (the run file gains nothing); `CONTRIBUTING.md`; `vendor/` (never edited). No `CLAUDE.md` or `AGENTS.md` in this repo.
+- Checked and unchanged: the global `--json` help text in `src/cli/program.ts` ("one JSON document from status and validate" stays true); README "See what happened to a run" and "See every run" (`status` is untouched); `docs/project-configuration.md`, `docs/shared-environment.md` and `docs/testing-your-pipeline.md` (they describe `run` and `status` output, which does not change); `docs/multi-surface-control-flow.md` (the run file gains nothing); `src/index.ts` (the public exports are Slice 5's); `CONTRIBUTING.md`; `vendor/` (never edited). No `CLAUDE.md` or `AGENTS.md` in this repo.
 
 ---
 
-### Task 1: Tidy first: put what a report reads in the library
+### Task 1: Tidy first: put what a report reads in the library ✅ DONE (deliver-slice)
 
 No behaviour changes in this task. It moves code so that `src/report/` (Tasks 3 to 6) never imports from `src/cli/`. There is no new test: the existing tests of the moved code are the check, before and after.
 
@@ -711,7 +710,7 @@ git commit -m "Move paint out of src/cli" -m "The report's text renderer lives i
 
 ---
 
-### Task 2: Record why a task stopped, and which usage limit stopped a session
+### Task 2: Record why a task stopped, and which usage limit stopped a session ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/schema.ts` (`UsageLimit` moves above `TerminusEntry`; `TerminusEntry.limit`; new `OutcomeCause`; `CaseFileOutcome.cause`)
@@ -1277,7 +1276,7 @@ git commit -m "Record why a task stopped and which usage limit stopped a session
 
 ---
 
-### Task 3: Read every record without stopping at a damaged one
+### Task 3: Read every record without stopping at a damaged one ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/report/report-fixtures.ts` (test support, shipped beside the code as `src/cli/command-fixtures.ts` is)
@@ -1402,7 +1401,7 @@ export function runFileOf(runId: string, history: RunEntry[], outcome?: RunOutco
 }
 
 /** The words the owner is never shown: the harness's own names for things. */
-export const FORBIDDEN = /\b(surfaces?|budgets?|gates?|triage|authority|terminus|breaker|escalat\w*|workers?|router|slots?|populations?|degraded|verdicts?)\b/i;
+export const FORBIDDEN = /\b(surfaces?|budgets?|gates?|triage|authority|terminus|breaker|escalat\w*|workers?|router|slots?|populations?|degraded|verdicts?|repair sessions?)\b/i;
 
 /** A small project's list, and the ids its runs were given. */
 export const FORM = "Add a contact form";
@@ -1879,7 +1878,10 @@ const asDamagedFile = (repoPath: string, { runId, dir, file, taskDef }: DamagedR
  * error a lookup of that id does anywhere else.
  */
 export async function loadSnapshot(repoPath: string, subject: ReportSubject, { live, list }: { live: boolean; list: TaskDef[] }): Promise<RecordSnapshot> {
-  const [tasks, supervised] = await Promise.all([readRunRecords(repoPath), readRunFiles(repoPath)]);
+  // A run's own record first, then its tasks': the run's outcome is written last, so a run read as ended
+  // never sits beside a task read before it ended (spec, "Reading while a run writes").
+  const supervised = await readRunFiles(repoPath);
+  const tasks = await readRunRecords(repoPath);
   const damaged = [...tasks.damaged.map((run) => asDamagedFile(repoPath, run)), ...supervised.damaged];
   const known = (runId: string): boolean => damaged.some((file) => file.runId === runId);
 
@@ -1912,7 +1914,7 @@ git commit -m "Add the snapshot a report is derived from" -m "Everything a repor
 
 ---
 
-### Task 4: The report document, and a stop in the owner's words
+### Task 4: The report document, and a stop in the owner's words ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/report/document.ts`
@@ -2508,7 +2510,7 @@ git commit -m "Say what kind of stop a task had, in the owner's words" -m "A rep
 
 ---
 
-### Task 5: Derive the report from the record
+### Task 5: Derive the report from the record ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/report/derive.ts`
@@ -2780,7 +2782,15 @@ describe("the run a project with no task list is told about", () => {
     expect(mostRecentSubject(snapshotOf({ list: [], records: [formDone], runs: [run] }))).toEqual({ kind: "run", runId: ID.run });
   });
 
-  it("is nothing when no record reads back", () => {
+  it("is a damaged record when that is the newest run, rather than an older run passed off as the latest", () => {
+    const damaged = { runId: ID.footer, file: `.delivery/runs/${ID.footer}/log.jsonl`, taskDef: { intent: FOOTER } };
+    const snapshot = snapshotOf({ list: [], records: [formDone], damaged: [damaged] });
+
+    expect(mostRecentSubject(snapshot)).toEqual({ kind: "task", runId: ID.footer });
+    expect(deriveReport({ ...snapshot, subject: { kind: "task", runId: ID.footer } }).incomplete).toEqual([{ run: ID.footer, file: damaged.file, queue: null }]);
+  });
+
+  it("is nothing when the folder holds no run at all", () => {
     expect(mostRecentSubject(snapshotOf({ list: [] }))).toBeUndefined();
   });
 });
@@ -3006,13 +3016,16 @@ function listReport(snapshot: RecordSnapshot): ReportDocument {
 /**
  * The run a report falls back to when the project has no task list: the one
  * started most recently, a run of several at once counting as one run and its
- * tasks as part of it. Nothing when no record could be read.
+ * tasks as part of it. A damaged record is still a run: when it is the newest,
+ * it is the subject, so the report names it rather than passing an older run
+ * off as the latest. Nothing when the folder holds no run at all.
  */
 export function mostRecentSubject(snapshot: RecordSnapshot): ReportSubject | undefined {
   const taken = new Set(snapshot.runs.flatMap((run) => claimedBy(run).map((claim) => claim.surfaceId)));
   const subjects: Exclude<ReportSubject, { kind: "list" }>[] = [
     ...snapshot.runs.map((run) => ({ kind: "run" as const, runId: run.header.runId })),
     ...snapshot.records.filter((record) => !taken.has(record.runId)).map((record) => ({ kind: "task" as const, runId: record.runId })),
+    ...snapshot.damaged.filter((file) => !taken.has(file.runId)).map((file) => ({ kind: "task" as const, runId: file.runId })),
   ];
   return newestFirstBy(subjects, (subject) => subject.runId).at(0);
 }
@@ -3038,7 +3051,7 @@ export function deriveReport(snapshot: RecordSnapshot): ReportDocument {
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `npx vitest run src/report/derive.test.ts`
-Expected: PASS (29 tests).
+Expected: PASS (30 tests).
 
 Run: `npx tsc --noEmit && npx eslint src/report`
 Expected: no output.
@@ -3052,12 +3065,11 @@ git commit -m "Derive one report document from the record" -m "Every rendering, 
 
 ---
 
-### Task 6: Print the report as plain lines
+### Task 6: Print the report as plain lines ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/report/text.ts`
-- Modify: `src/index.ts` (export the pipeline)
-- Test: `src/report/text.test.ts`, `src/index.test.ts`
+- Test: `src/report/text.test.ts`
 
 **Interfaces:**
 - Consumes: `ReportDocument`, `ReportSurface`, `ReportRun`, `DamagedRecord` (Task 4); `completedWords`, `landedWords`, `whereTheWorkIs`, `RETRY_WORDS`, `Landing` (Task 4); `paint`, `Tone` (`src/paint.ts`, Task 1); `USAGE_LIMIT_WORDS` (`src/ports.ts`); `deriveReport` (Task 5) and the fixtures (Task 3) in the tests.
@@ -3068,7 +3080,6 @@ git commit -m "Derive one report document from the record" -m "Every rendering, 
   export function stripControl(text: string): string
   export function renderText(doc: ReportDocument, options: { colour: boolean }): string[]
   ```
-- Produces (`src/index.ts`): `readRunRecords`, `newestFirst`, `newestFirstBy`, `startedInstant`, `RunRecord`, `DamagedRun`, `REPORT_SCHEMA`, the document schemas, `loadSnapshot`, `RecordSnapshot`, `ReportSubject`, `DamagedFile`, `deriveReport`, `mostRecentSubject`, `renderText`, `stripControl`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3776,66 +3787,11 @@ git add src/report/text.ts src/report/text.test.ts
 git commit -m "Print a report as plain lines a person can act on" -m "The owner reads the report in a terminal, a pipe or a screen reader, so it is one fact per line with no layout to break. Words from the record appear only in quotation marks with control characters removed, so nothing an agent or a check printed can rewrite her screen."
 ```
 
-- [ ] **Step 6: Write the failing test for the library exports**
-
-Replace `src/index.test.ts` with:
-
-```ts
-import { describe, it, expect } from "vitest";
-import { deriveReport } from "./report/derive.js";
-import { loadSnapshot } from "./report/snapshot.js";
-import { renderText } from "./report/text.js";
-
-describe("index", () => {
-  it("loads without errors", async () => {
-    const index = await import("./index.js");
-    expect(index).toBeDefined();
-  });
-
-  it("exports the report pipeline, so a report can be made without the command line", async () => {
-    const index = await import("./index.js");
-
-    expect(index.loadSnapshot).toBe(loadSnapshot);
-    expect(index.deriveReport).toBe(deriveReport);
-    expect(index.renderText).toBe(renderText);
-    expect(index.REPORT_SCHEMA).toBe("delivery.report/1");
-  });
-});
-```
-
-Run: `npx vitest run src/index.test.ts`
-Expected: FAIL, 1 failed ("exports the report pipeline…": `expected undefined to be [AsyncFunction loadSnapshot]`) and 1 passed.
-
-- [ ] **Step 7: Export the pipeline from `src/index.ts`**
-
-Append at the end of the file:
-
-```ts
-export { readRunRecords, newestFirst, newestFirstBy, startedInstant } from "./run-records.js";
-export type { RunRecord, DamagedRun } from "./run-records.js";
-export { REPORT_SCHEMA, ReportDocument, ReportSurface, ReportRun, DamagedRecord, Plain, PlainGroup, Audience, Standing } from "./report/document.js";
-export { loadSnapshot } from "./report/snapshot.js";
-export type { RecordSnapshot, ReportSubject, DamagedFile } from "./report/snapshot.js";
-export { deriveReport, mostRecentSubject } from "./report/derive.js";
-export { renderText, stripControl } from "./report/text.js";
-```
-
-- [ ] **Step 8: Run the test to verify it passes, and commit**
-
-Run: `npx vitest run src/index.test.ts`
-Expected: PASS (2 tests).
-
-Run: `npx tsc --noEmit && npx eslint src/index.ts src/index.test.ts`
-Expected: no output.
-
-```bash
-git add src/index.ts src/index.test.ts
-git commit -m "Export the report pipeline from the library" -m "The read model belongs to the library so that a tool built on delivery-service can make the same report the command line prints, without shelling out to it."
-```
+`src/index.ts` is not touched: the pipeline is in the library, where `src/cli/` and later slices reach it by path, and Slice 5 makes it public.
 
 ---
 
-### Task 7: The `delivery report` command
+### Task 7: The `delivery report` command ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `src/cli/report-command.ts`
@@ -4368,8 +4324,6 @@ it is named, with its file, and the rest is reported.
 A run's record now says why a task stopped (`cause` on its outcome) and which usage limit stopped
 an agent session (`limit` on that session's entry). Both are optional, so older records read as
 before, and nothing that decides what a run does next reads them.
-
-The library exports the same pipeline: `loadSnapshot`, `deriveReport` and `renderText`.
 ```
 
 - [ ] **Step 10: Commit**
@@ -4381,7 +4335,7 @@ git commit -m "Document delivery report" -m "The command is the first thing a re
 
 ---
 
-### Task 8: A demo of the report on the scripted agent
+### Task 8: A demo of the report on the scripted agent ✅ DONE (deliver-slice)
 
 **Files:**
 - Create: `demos/observability-slice-1-report.ts`
