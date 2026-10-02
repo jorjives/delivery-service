@@ -322,7 +322,8 @@ and states what is promised not to change.
 `delivery report --schema` prints the JSON Schema of that document and of the events `delivery
 status --watch --json` prints, generated from the definitions the harness validates its own data
 with. It needs no project. Every document and event the commands print is valid against it, and
-it accepts keys and names it does not know, so data from a later release still passes.
+it accepts keys and names it does not know, so data from a later release still passes. It takes
+no run id and no `--write`.
 
 To see a report without an agent or a sign-in, run `npm run demo:report-slice-1` in a checkout of
 this repository: it runs a list of four tasks against a scripted agent, prints the report, follows

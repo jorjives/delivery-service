@@ -8,7 +8,7 @@ import { closingSentence, NO_RUNS_YET, NO_TASK_LIST, renderText, reportPointer }
 import { supervisedPlace } from "../run-location.js";
 import type { TaskDef } from "../schema.js";
 import type { CommandContext } from "./context.js";
-import { EXIT, type ExitCode } from "./failures.js";
+import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
 import { repoLocked } from "../repo-lock.js";
 import { isSaved, notSaved, SAVED_TO, saveReport } from "./saved-report.js";
@@ -21,6 +21,8 @@ export interface ReportOptions {
   /** Print the published schema of both data formats instead of a report. */
   schema?: boolean;
 }
+
+export const SCHEMA_AND_REPORT = "Use `--schema` on its own: it prints the schema of the data, not a report, so it takes no run id and saves nothing.";
 
 /** A report read from the records: the document, and the lines it is told in. */
 export interface Report {
@@ -67,6 +69,9 @@ export async function readReport(repoPath: string, named: ReportSubject | undefi
 export async function reportCommand(runId: string | undefined, options: ReportOptions, ctx: CommandContext): Promise<ExitCode> {
   // Before the repository is looked for: the schema is the same wherever it is asked for.
   if (options.schema) {
+    if (runId !== undefined || options.write) {
+      throw new Refusal(SCHEMA_AND_REPORT, EXIT.configuration);
+    }
     ctx.writeLine(JSON.stringify(publishedSchema(), null, 2));
     return EXIT.ok;
   }

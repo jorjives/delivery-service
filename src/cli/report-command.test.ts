@@ -30,6 +30,7 @@ import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeSupervisedRun } from "./command-fixtures.js";
 import { takeRepoLock } from "../repo-lock.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
+import { SCHEMA_AND_REPORT } from "./report-command.js";
 
 const LIST = [FORM, FOOTER, HOMEPAGE, BANNER];
 
@@ -520,5 +521,20 @@ describe("delivery report --schema", () => {
     const repo = await project("report-schema-help-", LIST, []);
 
     expect((await delivery(["report", "--help"], { cwd: repo })).stdout).toContain("--schema");
+  });
+
+  it("refuses --schema with a run id or --write", async () => {
+    const repo = await project("report-schema-conflicts-", LIST, [formDone, footerFailed]);
+
+    const withId = await delivery(["report", ID.footer, "--schema"], { cwd: repo });
+    const withWrite = await delivery(["report", "--schema", "--write"], { cwd: repo });
+
+    expect(withId.exitCode).toBe(2);
+    expect(withId.stdout).toBe("");
+    expect(withId.stderr).toContain(SCHEMA_AND_REPORT);
+
+    expect(withWrite.exitCode).toBe(2);
+    expect(withWrite.stdout).toBe("");
+    expect(withWrite.stderr).toContain(SCHEMA_AND_REPORT);
   });
 });
