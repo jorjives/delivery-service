@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { OutcomeCause, Population, UsageLimit } from "../schema.js";
+import { OutcomeCause, Population, SurfaceState, TriageEntry, UsageLimit } from "../schema.js";
+import { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
 
 /** The version every report document names itself by. A later version adds keys; it never renames or removes one. */
 export const REPORT_SCHEMA = "delivery.report/1";
@@ -42,6 +43,26 @@ const BudgetRow = z.object({
 });
 export type BudgetRow = z.infer<typeof BudgetRow>;
 
+/**
+ * One triage round: what set it off, what was decided and why, in the
+ * harness's own words, with what the round produced for whoever came next.
+ */
+export const Decision = z.object({
+  /** The attempt the round followed. */
+  afterAttempt: TriageEntry.shape.afterAttempt,
+  trigger: TriageEntry.shape.trigger,
+  verdict: TriageEntry.shape.verdict,
+  /** The round's reasoning, word for word. */
+  rationale: z.string(),
+  /** Whether what the round wrote beside the log could be read back. False: `brief` and `packet` are null because the record cannot say, not because the round wrote neither. */
+  recorded: z.boolean(),
+  /** The brief the round wrote for the next session; null when it wrote none, or when what it wrote cannot be read back (`recorded` says which). */
+  brief: SharpenedBrief.nullable(),
+  /** The packet the round wrote for a person; null likewise. */
+  packet: EscalationPacket.nullable(),
+});
+export type Decision = z.infer<typeof Decision>;
+
 /** One task. Every key is always there: null where the record does not hold the fact. */
 export const ReportSurface = z.object({
   /** The task's own run id; null for a task with no run yet. */
@@ -51,6 +72,8 @@ export const ReportSurface = z.object({
   /** Its place in the project's list as written now. */
   queue: QueuePosition.nullable(),
   standing: Standing,
+  /** The state the record is in; null for a task with no run. Right for a task that is going; a killed run can leave it one step behind its log. */
+  state: SurfaceState.nullable(),
   startedAt: z.string().nullable(),
   finishedAt: z.string().nullable(),
   /** How it ended, as the run recorded it. */
@@ -63,6 +86,8 @@ export const ReportSurface = z.object({
   /** How many times the agent was set to work on the task. */
   attempts: z.number().int().nonnegative(),
   budgets: z.array(BudgetRow),
+  /** Every triage round, oldest first. */
+  decisions: z.array(Decision),
   /** The usage limit that stopped the task's last session, when one did. */
   limit: UsageLimit.nullable(),
   /** Stopped tasks only. */

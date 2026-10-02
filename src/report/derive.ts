@@ -6,7 +6,9 @@ import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js
 import { Population, type RunFile, type TaskDef } from "../schema.js";
 import { claimedBy, supervisedView } from "../supervised-view.js";
 import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
-import { REPORT_SCHEMA, Standing, type DamagedRecord, type ReportDocument, type ReportRun, type ReportSurface } from "./document.js";
+import { BriefRef } from "../prompt-assembly.js";
+import { PacketRef } from "../surface.js";
+import { REPORT_SCHEMA, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRun, type ReportSurface } from "./document.js";
 import { plainOf } from "./plain.js";
 import type { DamagedFile, RecordSnapshot, ReportSubject } from "./snapshot.js";
 
@@ -17,6 +19,7 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
     task: taskIntent(taskDef),
     queue,
     standing,
+    state: null,
     startedAt: null,
     finishedAt: null,
     reason: null,
@@ -26,13 +29,41 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
     base: null,
     attempts: 0,
     budgets: [],
+    decisions: [],
     limit: null,
     plain: null,
   };
 }
 
+/**
+ * Every triage round of one record, oldest first, with what each produced. The
+ * round's ref is asked the same two questions the harness asks it (`BriefRef`,
+ * `PacketRef`), so a report and the next session cannot read it differently.
+ */
+function decisionsOf(record: RunRecord, refs: Record<string, unknown>): Decision[] {
+  return record.caseFile.history.flatMap((entry) => {
+    if (entry.t !== "triage") return [];
+    const ref = refs[entry.artifactRef];
+    const brief = BriefRef.safeParse(ref);
+    const packet = PacketRef.safeParse(ref);
+    // A round always writes its ref, with `artifact` only when it produced one: a ref with none is a round that wrote none.
+    const wroteNeither = typeof ref === "object" && ref !== null && !("artifact" in ref);
+    return [
+      {
+        afterAttempt: entry.afterAttempt,
+        trigger: entry.trigger,
+        verdict: entry.verdict,
+        rationale: entry.rationale,
+        recorded: brief.success || packet.success || wroteNeither,
+        brief: brief.success ? brief.data.artifact : null,
+        packet: packet.success ? packet.data.artifact : null,
+      },
+    ];
+  });
+}
+
 /** One task from its own record. The retries are the log's, by the fold resuming uses, so a report and a resume cannot disagree. */
-function withRun(record: RunRecord, queue: QueuePosition | null, standing: Standing): ReportSurface {
+function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePosition | null, standing: Standing): ReportSurface {
   const { header, history, outcome, cursor } = record.caseFile;
   const budgets = deriveBudgetsFromLog(history, cursor.budgets);
   const lastSession = history.findLast((entry) => entry.t === "terminus");
@@ -46,6 +77,7 @@ function withRun(record: RunRecord, queue: QueuePosition | null, standing: Stand
     task: taskIntent(header.taskDef),
     queue,
     standing,
+    state: cursor.state,
     startedAt: startedInstant(record.runId),
     finishedAt: outcome?.at ?? null,
     reason: outcome?.reason ?? null,
@@ -56,6 +88,7 @@ function withRun(record: RunRecord, queue: QueuePosition | null, standing: Stand
     base: header.baseBranch ?? null,
     attempts,
     budgets: Population.options.map((population) => ({ population, used: budgets[population].used, max: budgets[population].max })),
+    decisions: decisionsOf(record, snapshot.refs[record.runId] ?? {}),
     limit,
     plain:
       standing === "escalated" || standing === "aborted"
@@ -115,7 +148,7 @@ function taskReport(snapshot: RecordSnapshot, runId: string): ReportDocument {
   const finished = record.caseFile.outcome !== undefined;
   // Only a run of several at once holds the lock, so only a task one of those took can be known to be going.
   const taken = runs.some((run) => run.outcome === undefined && claimedBy(run).some((claim) => claim.surfaceId === runId));
-  const surface = withRun(record, queuePositionOf(list, record.caseFile.header.taskDef) ?? null, record.caseFile.outcome?.kind ?? "unfinished");
+  const surface = withRun(snapshot, record, queuePositionOf(list, record.caseFile.header.taskDef) ?? null, record.caseFile.outcome?.kind ?? "unfinished");
   return document(snapshot, { live: finished ? false : taken ? live : null, run: null, surfaces: [surface], incomplete: [] });
 }
 
@@ -129,7 +162,7 @@ function runSurfaces(snapshot: RecordSnapshot, runFile: RunFile, live: boolean):
     // A damaged record's task reads as waiting to the view, which only knows it has no record: it is reported as damaged instead.
     .filter((task) => task.record !== undefined || !damaged.some((file) => isDeepStrictEqual(file.taskDef, task.taskDef)))
     .map((task) =>
-      task.record ? withRun(task.record, task.position ?? null, task.standing) : withoutRun(task.taskDef, task.position ?? null, task.standing),
+      task.record ? withRun(snapshot, task.record, task.position ?? null, task.standing) : withoutRun(task.taskDef, task.position ?? null, task.standing),
     );
   return { surfaces, incomplete: damaged.map((file) => asIncomplete(file, list)) };
 }
@@ -179,7 +212,7 @@ function listReport(snapshot: RecordSnapshot): ReportDocument {
     if (damaged && (record === undefined || (startedInstant(damaged.runId) ?? "") > (startedInstant(record.runId) ?? ""))) {
       return void incomplete.push({ run: damaged.runId, file: damaged.file, queue });
     }
-    surfaces.push(record ? withRun(record, queue, record.caseFile.outcome?.kind ?? "unfinished") : withoutRun(taskDef, queue, "not_started"));
+    surfaces.push(record ? withRun(snapshot, record, queue, record.caseFile.outcome?.kind ?? "unfinished") : withoutRun(taskDef, queue, "not_started"));
   });
   // A record too damaged to say which task it was for may be one of this list's: named, so the report is marked incomplete.
   for (const file of snapshot.damaged) {

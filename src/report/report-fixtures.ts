@@ -1,10 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
-import { appendEntry, create, initialCaseFile, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
+import { appendEntry, create, initialCaseFile, setBaseBranch, setOutcome, updateCursor, writeRef } from "../case-file.js";
 import { runsRoot } from "../run-location.js";
 import type { RunRecord } from "../run-records.js";
-import type { CaseFileOutcome, CloserRef, CreateHeader, GateRef, HistoryEntry, OutcomeCause, RunEntry, RunFile, RunOutcome } from "../schema.js";
+import type { CaseFileOutcome, CloserRef, CreateHeader, GateRef, HistoryEntry, OutcomeCause, RunEntry, RunFile, RunOutcome, SurfaceState } from "../schema.js";
+import type { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
 import type { RecordSnapshot } from "./snapshot.js";
 
 /** Test support: one task's run, as much of it as a report reads. No `outcome` leaves it unfinished. */
@@ -15,6 +16,8 @@ export interface TaskRun {
   outcome?: CaseFileOutcome;
   /** Absent: no closer pinned, as in a record from before closers were. */
   closerRef?: CloserRef;
+  /** The state the record is in. Absent: the state a record is created in. */
+  state?: SurfaceState;
   /** What the run wrote beside its log, by ref id: only `writeRecord` puts these on disk. */
   refs?: Record<string, unknown>;
 }
@@ -35,7 +38,13 @@ export function recordOf(run: TaskRun, repoPath = "/repo"): RunRecord {
     runId: run.runId,
     repoPath,
     dir: join(runsRoot(repoPath), run.runId),
-    caseFile: { ...caseFile, header: { ...caseFile.header, baseBranch: "main" }, history: run.history ?? [], ...(run.outcome ? { outcome: run.outcome } : {}) },
+    caseFile: {
+      ...caseFile,
+      header: { ...caseFile.header, baseBranch: "main" },
+      cursor: { ...caseFile.cursor, ...(run.state ? { state: run.state } : {}) },
+      history: run.history ?? [],
+      ...(run.outcome ? { outcome: run.outcome } : {}),
+    },
   };
 }
 
@@ -47,6 +56,7 @@ export async function writeRecord(repoPath: string, run: TaskRun): Promise<strin
   await setBaseBranch(dir, "main");
   for (const entry of run.history ?? []) await appendEntry(dir, entry);
   for (const [refId, data] of Object.entries(run.refs ?? {})) await writeRef(dir, refId, data);
+  if (run.state) await updateCursor(dir, { state: run.state });
   if (run.outcome) await setOutcome(dir, run.outcome);
   return dir;
 }
@@ -87,6 +97,24 @@ export const stoppedAt = (at: string, cause: OutcomeCause | undefined, reason = 
   at,
   ...(cause ? { cause } : {}),
 });
+
+/** What an agent-run triage round writes for the next session. */
+export const BRIEF: SharpenedBrief = {
+  problem: "Two footer links point at pages that were removed.",
+  dead_ends: "Attempt 1 rewrote the link text and left the targets alone.",
+  scope: "Only src/footer.html.",
+  references: ["worker-1-0"],
+  diagnosis: "The targets moved under /about.",
+};
+
+/** What a round that gives up writes for a person. */
+export const PACKET: EscalationPacket = {
+  decision: "No correction budget remains (3/3 used). Decide whether to continue manually, amend the task, or abandon it.",
+  evidence: "footer-links: 2 of 6 links still fail",
+  dead_ends: "1. Rewrote the link text.\n2. Pointed both links at the homepage.",
+  why_now: "The correction budget is spent (3/3 used), so the harness cannot try again.",
+  references: ["worker-4-0", "triage-3"],
+};
 
 /** A run of several at once taking a task into a slot. */
 export const fill = (slot: number, surfaceId: string, task: string): RunEntry => ({ t: "slot_fill", slot, surfaceId, taskDef: { intent: task } });

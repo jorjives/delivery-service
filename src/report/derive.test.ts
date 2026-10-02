@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ReportDocument } from "./document.js";
 import { deriveReport, mostRecentSubject } from "./derive.js";
-import { attempt, BANNER, closedAt, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, recordOf, runFileOf, snapshotOf, stoppedAt } from "./report-fixtures.js";
+import { attempt, BANNER, BRIEF, closedAt, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt } from "./report-fixtures.js";
 
 describe("a report on the project's task list", () => {
   it("stands each task as its latest run left it, and a task with no run as not started", () => {
@@ -107,6 +107,57 @@ describe("what a report says of one task", () => {
     const [, surface] = deriveReport(snapshotOf({ records: [formDone, old] })).surfaces;
 
     expect(surface).toMatchObject({ cause: null, reason: "correction budget exhausted (3/3)", plain: { group: "stopped", audience: "unknown", next: [] } });
+  });
+});
+
+describe("what a report says of how a task got where it is", () => {
+  const refs = {
+    [ID.footer]: {
+      "triage-0": { trigger: "gate_fail", rationale: "gate_fail: reroute", artifact: BRIEF },
+      "triage-1": { trigger: "gate_fail", rationale: "gate_fail: reroute" },
+      "triage-3": { trigger: "gate_fail", rationale: "gate_fail: escalate", artifact: PACKET, cause: { kind: "budget", population: "correction" } },
+    },
+  };
+  const doc = deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [footerFailed], refs }));
+  const [failed] = doc.surfaces;
+
+  it("lists every triage round, oldest first, in the harness's own words", () => {
+    expect(failed?.decisions.map((round) => [round.afterAttempt, round.trigger, round.verdict, round.rationale])).toEqual([
+      [1, "gate_fail", "reroute", "gate_fail: reroute"],
+      [2, "gate_fail", "reroute", "gate_fail: reroute"],
+      [3, "gate_fail", "reroute", "gate_fail: reroute"],
+      [4, "gate_fail", "escalate", "gate_fail: escalate"],
+    ]);
+  });
+
+  it("carries the brief a round wrote for the next session, and the packet a round wrote for a person", () => {
+    expect(failed?.decisions[0]).toMatchObject({ recorded: true, brief: BRIEF, packet: null });
+    expect(failed?.decisions[3]).toMatchObject({ recorded: true, brief: null, packet: PACKET });
+    expect(ReportDocument.parse(doc)).toEqual(doc);
+  });
+
+  it("tells a round that wrote neither from a round whose ref is not there or is not what a round writes", () => {
+    expect(failed?.decisions[1]).toMatchObject({ recorded: true, brief: null, packet: null });
+    expect(failed?.decisions[2]).toMatchObject({ recorded: false, brief: null, packet: null });
+
+    const garbled = { [ID.footer]: { "triage-0": { trigger: "gate_fail", rationale: "gate_fail: reroute", artifact: { problem: 7 } } } };
+    const [surface] = deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [footerFailed], refs: garbled })).surfaces;
+    expect(surface?.decisions[0]).toMatchObject({ recorded: false, brief: null, packet: null });
+  });
+
+  it("has no rounds for a task nothing set back, and none for a task with no run", () => {
+    const quiet = deriveReport(snapshotOf({ records: [formDone] }));
+
+    expect(quiet.surfaces.map((surface) => surface.decisions)).toEqual([[], [], [], []]);
+  });
+
+  it("names the state the record is in, and none for a task with no run", () => {
+    const working = recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "first go"), state: "GATING" });
+
+    const [, going, notStarted] = deriveReport(snapshotOf({ records: [formDone, working] })).surfaces;
+
+    expect(going?.state).toBe("GATING");
+    expect(notStarted?.state).toBeNull();
   });
 });
 
