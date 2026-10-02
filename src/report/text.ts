@@ -1,7 +1,7 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { Population } from "../schema.js";
-import type { DamagedRecord, ReportDocument, ReportRun, ReportSurface } from "./document.js";
+import type { BudgetRow, DamagedRecord, ReportDocument, ReportRun, ReportSurface } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
 export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery run";
@@ -21,7 +21,7 @@ export function stripControl(text: string): string {
 }
 
 /** Words from the record, in quotation marks, with later lines set under the first. */
-function quoted(text: string, indent: string): string {
+export function quoted(text: string, indent: string): string {
   return `"${stripControl(text).trim().split("\n").join(`\n${indent}`)}"`;
 }
 
@@ -188,12 +188,12 @@ function runStopLines(run: ReportRun | null): string[] {
   }
 }
 
-/** "To act:" with its steps, numbered only when there is more than one. */
-function toAct(next: string[]): string[] {
+/** "To act:" with its steps, numbered only when there is more than one. Indented under a task in the report; flush left in `status`. */
+export function toAct(next: string[], indent = "    "): string[] {
   const [only] = next;
   if (only === undefined) return [];
-  if (next.length === 1) return [`    To act: ${only}`];
-  return next.map((step, index) => `    ${index === 0 ? "To act:" : "       "} ${index + 1}. ${step}`);
+  if (next.length === 1) return [`${indent}To act: ${only}`];
+  return next.map((step, index) => `${indent}${index === 0 ? "To act:" : "       "} ${index + 1}. ${step}`);
 }
 
 /** A stopped task: the kind of stop, the agent's own words, where the work is, and what to do. */
@@ -269,14 +269,19 @@ function sectionLines(doc: ReportDocument, section: Section, colour: boolean): s
   return ["", paint(colour, tone, `${title} (${surfaces.length})`), ...body];
 }
 
+/** The retries of several tasks added up, kind by kind, in the fixed order of the kinds. */
+export function budgetTotals(surfaces: ReportSurface[]): BudgetRow[] {
+  return Population.options.map((population) => {
+    const rows = surfaces.flatMap((surface) => surface.budgets.filter((row) => row.population === population));
+    return { population, used: rows.reduce((sum, row) => sum + row.used, 0), max: rows.reduce((sum, row) => sum + row.max, 0) };
+  });
+}
+
 /** Retries used, in the owner's vocabulary, for whoever adjusts the limits. Nothing when no task has a run to count. */
 function tuningLines(doc: ReportDocument, colour: boolean): string[] {
   const ran = doc.surfaces.filter((surface) => surface.budgets.length > 0);
   if (ran.length === 0) return [];
-  const sums = Population.options.map((population) => {
-    const rows = ran.flatMap((surface) => surface.budgets.filter((row) => row.population === population));
-    return `${RETRY_WORDS[population]} ${rows.reduce((sum, row) => sum + row.used, 0)} of ${rows.reduce((sum, row) => sum + row.max, 0)}`;
-  });
+  const sums = budgetTotals(ran).map((row) => `${RETRY_WORDS[row.population]} ${row.used} of ${row.max}`);
   return [
     "",
     paint(colour, "quiet", "FOR WHOEVER TUNES THIS"),

@@ -99,7 +99,7 @@ const AUDIENCE: Record<PlainGroup, Audience> = {
   stopped: "unknown",
 };
 
-const attemptsWord = (count: number): string => `${count} ${count === 1 ? "attempt" : "attempts"}`;
+export const attemptsWord = (count: number): string => `${count} ${count === 1 ? "attempt" : "attempts"}`;
 const timesWord = (count: number): string => (count === 1 ? "once" : `${count} times`);
 
 const NOT_YOURS = "This is a problem with the setup, not a decision for you.";
