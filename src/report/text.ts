@@ -1,7 +1,7 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { Population } from "../schema.js";
-import { latestOf, type BudgetRow, type DamagedRecord, type ReportDocument, type ReportRun, type ReportSurface } from "./document.js";
+import { lastActivity, type BudgetRow, type DamagedRecord, type ReportDocument, type ReportRun, type ReportSurface } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
 export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery run";
@@ -167,17 +167,6 @@ export function incompleteLines(doc: ReportDocument): string[] {
       ? `Incomplete report: the record for task ${damaged.queue.task} is damaged (${damaged.file}); ${rest}.`
       : `Incomplete report: the record of run ${damaged.run} is damaged (${damaged.file}); ${others === 0 ? "nothing else could be read" : "what could be read is reported below"}.`,
   );
-}
-
-/**
- * The last time the record shows anything happening, for the whole report. A run of several at once has its own; a
- * list worked one task at a time has only its tasks', and says nothing when a task that ran holds no time at all:
- * that task may have been the last to move.
- */
-export function lastActivity(doc: ReportDocument): string | null {
-  if (doc.run?.governs) return doc.run.lastActivityAt;
-  const ran = doc.surfaces.filter((surface) => surface.run !== null);
-  return ran.every((surface) => surface.lastActivityAt !== null) ? latestOf(ran.map((surface) => surface.lastActivityAt)) : null;
 }
 
 const lastActivityWords = (doc: ReportDocument): string => {

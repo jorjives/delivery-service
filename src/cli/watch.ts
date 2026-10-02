@@ -1,9 +1,9 @@
 import { deriveReport } from "../report/derive.js";
-import { stepOf, type PlainGroup, type ReportDocument, type ReportSurface } from "../report/document.js";
+import { lastActivity, stepOf, type PlainGroup, type ReportDocument, type ReportSurface } from "../report/document.js";
 import { eventsOf, sourceOf, streamEnded, streamStarted, type ReportEvent, type StreamEnding } from "../report/events.js";
 import { attemptsWord, landedWords, RETRY_WORDS } from "../report/plain.js";
 import type { RecordSnapshot } from "../report/snapshot.js";
-import { doneItem, headlineCounts, incompleteLines, label, lastActivity, minuteOf, quoted, reportPointer, stoppedPartWay, tasksWord } from "../report/text.js";
+import { doneItem, headlineCounts, incompleteLines, label, minuteOf, quoted, reportPointer, stoppedPartWay, tasksWord } from "../report/text.js";
 import type { SurfaceState } from "../schema.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import { STEP_PHRASES } from "./output.js";

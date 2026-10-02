@@ -169,6 +169,17 @@ export function latestOf(times: readonly (string | null | undefined)[]): string 
 }
 
 /**
+ * The last time the record shows anything happening, for the whole report. A run of several at once has its own; a
+ * list worked one task at a time has only its tasks', and says nothing when a task that ran holds no time at all:
+ * that task may have been the last to move.
+ */
+export function lastActivity(doc: ReportDocument): string | null {
+  if (doc.run?.governs) return doc.run.lastActivityAt;
+  const ran = doc.surfaces.filter((surface) => surface.run !== null);
+  return ran.every((surface) => surface.lastActivityAt !== null) ? latestOf(ran.map((surface) => surface.lastActivityAt)) : null;
+}
+
+/**
  * What happened, as data: one document for a single task, a run of several at
  * once, or the project's task list. Derived from the record alone
  * (`deriveReport`) and rendered by whoever reads it (`renderText`).

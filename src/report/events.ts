@@ -3,9 +3,8 @@ import { BreakerState, RepairStatus, SlotOutcome, SurfaceState, TriageEntry, typ
 import type { RunRecord } from "../run-records.js";
 import { claimedBy } from "../supervised-view.js";
 import { deriveReport, stateAfter } from "./derive.js";
-import { Standing, type ReportDocument } from "./document.js";
+import { lastActivity, Standing, type ReportDocument } from "./document.js";
 import type { RecordSnapshot } from "./snapshot.js";
-import { lastActivity } from "./text.js";
 
 /** The version every event names itself by, under the promise the report document makes for its own. */
 export const EVENT_SCHEMA = "delivery.event/1";
