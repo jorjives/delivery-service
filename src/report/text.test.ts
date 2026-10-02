@@ -21,7 +21,7 @@ import {
   timed,
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
-import { renderText, stripControl } from "./text.js";
+import { closingSentence, renderText, reportPointer, stripControl } from "./text.js";
 
 const report = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false });
 
@@ -360,6 +360,44 @@ describe("the report's own words", () => {
     const lines = report(snapshotOf({ records: [formDone, footerFailed] }));
 
     expect(lines.indexOf("FOR WHOEVER TUNES THIS")).toBeGreaterThan(lines.indexOf("NOT STARTED (2)"));
+  });
+});
+
+describe("where a report was saved", () => {
+  const SAVED = "Saved to: .delivery/last-report.txt and .delivery/last-report.json";
+  const told = (snapshot: RecordSnapshot, saved?: string): string[] => renderText(deriveReport(snapshot), { colour: false, saved });
+
+  it("is the last line of the tuning section, when the report is told it was saved", () => {
+    const lines = told(snapshotOf({ records: [formDone, footerFailed] }), SAVED);
+
+    expect(lines.slice(-4)).toEqual(["  Time and cost were not recorded for this run.", `  ${SAVED}`, "", "Next: delivery status --all (every run)"]);
+  });
+
+  it("is not mentioned by a report that was not saved", () => {
+    expect(told(snapshotOf({ records: [formDone, footerFailed] })).join("\n")).not.toContain("Saved to");
+  });
+
+  it("still has its section when no task has run, so the sentence always has a place", () => {
+    expect(told(snapshotOf(), SAVED).slice(-4)).toEqual(["FOR WHOEVER TUNES THIS", `  ${SAVED}`, "", "Next: delivery status --all (every run)"]);
+    expect(told(snapshotOf()).join("\n")).not.toContain("FOR WHOEVER TUNES THIS");
+  });
+});
+
+describe("what a command says as it stops working on something", () => {
+  it("is the counts the report opens with, in one sentence", () => {
+    const doc = deriveReport(snapshotOf({ records: [formDone, footerFailed] }));
+
+    expect(closingSentence(doc)).toBe(renderText(doc, { colour: false })[0]);
+    expect(closingSentence(doc)).toBe("Your task list: 1 of 4 tasks completed and merged; 1 failed after 4 attempts; 2 not started.");
+  });
+
+  it("counts what is left without wondering whether the work is still going", () => {
+    expect(closingSentence(deriveReport(snapshotOf({ records: [formDone, footerWorking] })))).toBe("Your task list: 4 tasks: 1 done, 1 not finished, 2 not started.");
+  });
+
+  it("points at the report: the list by default, one run by its id", () => {
+    expect(reportPointer(deriveReport(snapshotOf({ records: [formDone] })))).toBe("Run `delivery report` for what to do.");
+    expect(reportPointer(deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.form }, records: [formDone] })))).toBe(`Run \`delivery report ${ID.form}\` for what to do.`);
   });
 });
 

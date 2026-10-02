@@ -306,17 +306,38 @@ export function budgetTotals(surfaces: ReportSurface[]): BudgetRow[] {
 }
 
 /** Retries used, in the owner's vocabulary, for whoever adjusts the limits. Nothing when no task has a run to count. */
-function tuningLines(doc: ReportDocument, colour: boolean): string[] {
+/**
+ * Retries used, in the owner's vocabulary, for whoever adjusts the limits, then where this report was saved when
+ * it was. Nothing when no task has a run to count and nothing was saved.
+ */
+function tuningLines(doc: ReportDocument, colour: boolean, saved: string | undefined): string[] {
   const ran = doc.surfaces.filter((surface) => surface.budgets.length > 0);
-  if (ran.length === 0) return [];
   const sums = budgetTotals(ran).map((row) => `${RETRY_WORDS[row.population]} ${row.used} of ${row.max}`);
-  return [
-    "",
-    paint(colour, "quiet", "FOR WHOEVER TUNES THIS"),
-    `  Retries used across ${ran.length === 1 ? "this task" : "these tasks"}: ${sums.join("; ")}.`,
-    ...(doc.run ? [`  Repairs of the setup every task shares: ${doc.run.runBudgets.gateMaintenance.used} of ${doc.run.runBudgets.gateMaintenance.max}.`] : []),
-    "  Time and cost were not recorded for this run.",
+  const lines = [
+    ...(ran.length === 0
+      ? []
+      : [
+          `  Retries used across ${ran.length === 1 ? "this task" : "these tasks"}: ${sums.join("; ")}.`,
+          ...(doc.run ? [`  Repairs of the setup every task shares: ${doc.run.runBudgets.gateMaintenance.used} of ${doc.run.runBudgets.gateMaintenance.max}.`] : []),
+          "  Time and cost were not recorded for this run.",
+        ]),
+    ...(saved === undefined ? [] : [`  ${saved}`]),
   ];
+  return lines.length === 0 ? [] : ["", paint(colour, "quiet", "FOR WHOEVER TUNES THIS"), ...lines];
+}
+
+/** How to read more about what a report is about: the list by default, anything else by its id. */
+export function reportPointer(doc: ReportDocument): string {
+  const id = doc.kind === "list" ? undefined : doc.kind === "run" ? doc.run?.runId : doc.surfaces[0]?.run;
+  return `Run \`delivery report${id == null ? "" : ` ${id}`}\` for what to do.`;
+}
+
+/**
+ * What a command that has just stopped working on something says of it in one sentence: the counts the report
+ * opens with. It never wonders whether the work is still going, because the command saying it is the work.
+ */
+export function closingSentence(doc: ReportDocument): string {
+  return `${SUBJECT[doc.kind].final}: ${headlineCounts(doc)}.`;
 }
 
 /** Where to go from here: only commands that exist. */
@@ -333,15 +354,18 @@ function nextLine(doc: ReportDocument): string {
  * reader. Pure: the same document always gives the same text. Every sentence
  * outside quotation marks is from a fixed table; words from the record appear
  * only quoted, with control characters taken out.
+ *
+ * `saved` is one sentence about the copy of this report kept on disk: where it
+ * was saved, or that it could not be. Left out, the report says nothing of one.
  */
-export function renderText(doc: ReportDocument, { colour }: { colour: boolean }): string[] {
+export function renderText(doc: ReportDocument, { colour, saved }: { colour: boolean; saved?: string }): string[] {
   return [
     ...incompleteLines(doc),
     ...opening(doc),
     ...whenLines(doc),
     ...runStopLines(doc.run),
     ...SECTIONS.flatMap((section) => sectionLines(doc, section, colour)),
-    ...tuningLines(doc, colour),
+    ...tuningLines(doc, colour, saved),
     "",
     nextLine(doc),
   ];

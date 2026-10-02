@@ -3,7 +3,7 @@ import { stepOf, type PlainGroup, type ReportDocument, type ReportSurface } from
 import { eventsOf, sourceOf, type ReportEvent } from "../report/events.js";
 import { attemptsWord, landedWords, RETRY_WORDS } from "../report/plain.js";
 import type { RecordSnapshot } from "../report/snapshot.js";
-import { doneItem, headlineCounts, incompleteLines, label, lastActivity, minuteOf, quoted, stoppedPartWay, tasksWord } from "../report/text.js";
+import { doneItem, headlineCounts, incompleteLines, label, lastActivity, minuteOf, quoted, reportPointer, stoppedPartWay, tasksWord } from "../report/text.js";
 import type { SurfaceState } from "../schema.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import { STEP_PHRASES } from "./output.js";
@@ -151,12 +151,6 @@ function ending(doc: ReportDocument, followedRun: string | null): { words: strin
   }
   // ponytail: a list with a damaged record is never called done, so its watch waits until stopped; end it with a code of its own if that proves a nuisance.
   return doc.surfaces.length === 0 || doc.incomplete.length > 0 ? undefined : { words: "Every task on your list is done", exitCode: EXIT.ok };
-}
-
-/** How to read more about what was watched: the list by default, anything else by its id. */
-function reportPointer(doc: ReportDocument): string {
-  const id = doc.kind === "list" ? undefined : doc.kind === "run" ? doc.run?.runId : doc.surfaces[0]?.run;
-  return `Run \`delivery report${id == null ? "" : ` ${id}`}\` for what to do.`;
 }
 
 /**
