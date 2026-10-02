@@ -141,7 +141,15 @@ Starting run run-20260926T090000Z: 3 tasks, up to 2 at once
 [3/3] Starting run send-a-reminder-the-morning-20260926T090412Z: send a reminder the morning before someone's on-call day starts
 …
 Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.
+Your task list: 3 of 3 tasks completed and committed to their own branches.
+Run `delivery report` for what to do.
 ```
+
+Every `delivery run` and `delivery resume` ends with those two lines: the first sentence of the
+report, and the command that prints the rest. The report is saved as the command ends, as
+`.delivery/last-report.txt` and `.delivery/last-report.json`, replacing the pair from the run
+before, so the result is waiting as a file for whoever was not there. If it cannot be saved, the
+run ends exactly as it would have, with its usual exit code and one line saying so.
 
 With several at once, a task that needs a decision from you does not hold up the others: its
 place goes to the next task, and the run ends by naming each task that needs you. The exit code
@@ -282,9 +290,9 @@ still reports the rest. A run made by an earlier version still reports: where it
 say why a task stopped, the task appears under "Stopped, for your engineers" with the reason the
 run recorded.
 
-`delivery report --write` also saves the report it prints, for your list or for the run you name,
-as two files in your project's `.delivery` folder: `last-report.txt`, the same text without
-colour, ready to open or paste into a message, and `last-report.json`, the same report as data.
+`delivery run` and `delivery resume` save the report when they end, and `delivery report --write`
+saves the one it prints, for your list or for the run you name, as two files in your project's
+`.delivery` folder: `last-report.txt`, the same text without colour, ready to open or paste into a message, and `last-report.json`, the same report as data.
 Each save replaces the pair saved before. The files are copies for your convenience: only you can
 read them, they are never committed with your project's work, and no command reads its answer
 from them, so deleting them loses nothing. While the saved copy is the report you are looking at,

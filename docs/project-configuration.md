@@ -189,6 +189,8 @@ Starting run <run-id>: add a function that shortens long text to a given length,
 Done: the change for "add a function that shortens long text to a given length, with a test" passed `npm test` and is committed on branch surface/<run-id>.
 main was not changed. To look at the work: git log surface/<run-id>
 Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.
+Your task list: 2 of 2 tasks completed and committed to their own branches.
+Run `delivery report` for what to do.
 ```
 
 Each task ends by naming the branch its work is on. Your `main` branch is untouched: read
@@ -237,6 +239,8 @@ Starting run <run-id>: add a function that counts the words in a sentence, with 
 Done: the change for "add a function that counts the words in a sentence, with a test" passed `npm test` and is committed on branch surface/<run-id>.
 main was not changed. To look at the work: git log surface/<run-id>
 Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.
+Your task list: 3 of 3 tasks completed and committed to their own branches.
+Run `delivery report` for what to do.
 ```
 
 Only your new task runs. The first two already have finished runs, and what is left to do

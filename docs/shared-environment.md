@@ -38,6 +38,8 @@ Starting run <run-id>: 4 tasks, up to 2 at once
 ✓ Fixed. Resuming.
 …
 Couldn't fix it after 2 attempts. Stopping the run. 2 of 4 tasks were waiting on this and need your attention; 0 had already finished, 2 are still queued.
+Your task list: 4 tasks: 2 not finished, 2 not started.
+Run `delivery report` for what to do.
 ```
 
 Three things happen at once:
@@ -81,6 +83,8 @@ delivery run
 Starting run <run-id>: 4 tasks, up to 2 at once
 …
 Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.
+Your task list: 4 of 4 tasks completed and committed to their own branches.
+Run `delivery report` for what to do.
 ```
 
 A new run picks up the held tasks from the stopped run and starts the queued ones. Each task runs, checks its work, and closes. The run finishes cleanly.
@@ -105,6 +109,8 @@ Starting run <run-id>: 4 tasks, up to 2 at once
 ✓ Fixed. Resuming.
 …
 Every task on your list is done. Add another under `tasks` to keep going, or `delivery status --all` to review what ran.
+Your task list: 4 of 4 tasks completed and committed to their own branches.
+Run `delivery report` for what to do.
 ```
 
 Four is one check and the three free re-checks every task gets (`budgets.gateError`). What happens:

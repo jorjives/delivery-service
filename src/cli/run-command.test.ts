@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
@@ -21,6 +21,7 @@ import { EVERY_TASK_DONE, liveRunFound, taskEnded, runPickedUp, STOPPED_PART_WAY
 import { repoLocked, takeRepoLock } from "./repo-lock.js";
 import { supervisedPlace, supervisorLockPath } from "../run-location.js";
 import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
+import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
 
 const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 const ESC = "[";
@@ -862,8 +863,8 @@ describe("delivery run with several tasks at once", () => {
       expect(exitCode).toBe(EXIT.ok);
       const lines = stdout.trimEnd().split("\n");
       expect(lines[0]).toMatch(/^Starting run run-\d{8}T\d{6}Z: 3 tasks, up to 2 at once$/);
-      expect(lines.at(-1)).toBe(EVERY_TASK_DONE);
-      for (const line of lines.slice(1, -1)) expect(line).toMatch(/^\[[123]\/3\] /);
+      expect(lines.at(-3)).toBe(EVERY_TASK_DONE);
+      for (const line of lines.slice(1, -3)) expect(line).toMatch(/^\[[123]\/3\] /);
       for (const [index, task] of [PAGE, SWAP, WAVE].entries()) {
         expect(stdout).toContain(`[${index + 1}/3] Done: the change for "${task}" passed \`npm test\``);
       }
@@ -949,7 +950,7 @@ describe("delivery run with several tasks at once", () => {
       expect(stdout).toContain(`[1/3] Done: the change for "${PAGE}"`);
       expect(stdout).toContain(`[3/3] Done: the change for "${WAVE}"`);
       expect(stdout).toContain("[2/3] This needs your decision:");
-      expect(stdout.trimEnd().split("\n").at(-1)).toBe(taskEnded({ task: 2, of: 3 }, "escalated"));
+      expect(stdout.trimEnd().split("\n").at(-3)).toBe(taskEnded({ task: 2, of: 3 }, "escalated"));
       expect(stdout).not.toContain(EVERY_TASK_DONE);
       expect(fillsOf((await theRunFile(repo)).history)).toHaveLength(3);
     },
@@ -1042,7 +1043,7 @@ describe("delivery run with several tasks at once", () => {
       expect(stdout).toContain(`[3/4] Resuming run ${waveId}: ${WAVE}`);
       expect(stdout).toMatch(/^\[4\/4\] Starting run /m);
       expect(stdout).not.toContain("[1/4]");
-      expect(stdout.trimEnd().split("\n").at(-1)).toBe(EVERY_TASK_DONE);
+      expect(stdout.trimEnd().split("\n").at(-3)).toBe(EVERY_TASK_DONE);
 
       // One record per task: nothing was started a second time.
       const ids = readdirSync(runsRoot(repo));
@@ -1090,7 +1091,7 @@ describe("delivery run with several tasks at once", () => {
     const { exitCode, stdout } = await delivery(["run"], { cwd: repo });
 
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout.trimEnd()).toBe(EVERY_TASK_DONE);
+    expect(stdout.split("\n")[0]).toBe(EVERY_TASK_DONE);
     expect((await loadRunFile(dir)).outcome?.kind).toBe("drained");
   });
 
@@ -1221,7 +1222,7 @@ describe("delivery run with several tasks at once", () => {
         expect(lines.filter((line) => line.startsWith("! Something in the shared environment looks broken"))).toHaveLength(1);
         expect(lines.filter((line) => line === "  - repairing (attempt 1 of 2)")).toHaveLength(1);
         expect(lines.filter((line) => line === "✓ Fixed. Resuming.")).toHaveLength(1);
-        expect(lines.at(-2)).toBe(EVERY_TASK_DONE);
+        expect(lines.at(-4)).toBe(EVERY_TASK_DONE);
         expect(stdout).not.toMatch(/DEGRADED|REPAIRING|HEALTHY|GATE_MAINTENANCE/);
 
         const { history } = await theRunFile(repo);
@@ -1243,7 +1244,7 @@ describe("delivery run with several tasks at once", () => {
         const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
 
         expect(exitCode).toBe(EXIT.escalated);
-        expect(stdout.trimEnd().split("\n").at(-1)).toBe(
+        expect(stdout.trimEnd().split("\n").at(-3)).toBe(
           "Couldn't fix it after 2 attempts. Stopping the run. 2 of 3 tasks were waiting on this and need your attention; 0 had already finished, 1 is still queued."
         );
         expect(stdout).not.toMatch(/DEGRADED|REPAIRING|HEALTHY|ESCALATED|GATE_MAINTENANCE/);
@@ -1266,7 +1267,7 @@ describe("delivery run with several tasks at once", () => {
         const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(rateLimited) } });
 
         expect(exitCode).toBe(EXIT.escalated);
-        expect(stdout.trimEnd().split("\n").at(-1)).toBe(
+        expect(stdout.trimEnd().split("\n").at(-3)).toBe(
           "The repair could not run because the AI service is limiting requests. Stopping the run. 2 of 3 tasks were waiting on this and need your attention; 0 had already finished, 1 is still queued.",
         );
         expect(stdout).not.toContain("Couldn't fix it");
@@ -1398,7 +1399,7 @@ describe("delivery run with several tasks at once", () => {
         expect(lines.filter((line) => line.startsWith("! Something in the shared environment looks broken"))).toHaveLength(1);
         expect(lines.filter((line) => line === "  - repairing (attempt 1 of 2)")).toHaveLength(1);
         expect(lines.filter((line) => line === "✓ Fixed. Resuming.")).toHaveLength(1);
-        expect(lines.at(-2)).toBe(EVERY_TASK_DONE);
+        expect(lines.at(-4)).toBe(EVERY_TASK_DONE);
         expect(stdout).not.toMatch(/DEGRADED|REPAIRING|HEALTHY|GATE_MAINTENANCE|gate_error/);
 
         const { history } = await theRunFile(repo);
@@ -1454,4 +1455,106 @@ describe("delivery run with several tasks at once", () => {
     },
     RUN_TIMEOUT,
   );
+});
+
+describe("what delivery run leaves behind when it ends", () => {
+  const PAGE = "add a hello function that greets a name, with a test";
+  const SWAP = "write a goodbye function that farewells a name, with a test";
+  const closed = { kind: "closed", source: "close", reason: "the work was committed", at: "2026-09-17T09:00:00.000Z" } as const;
+  const savedText = (repo: string): string => readFileSync(join(repo, SAVED_TEXT), "utf-8");
+  const savedData = (repo: string): Record<string, unknown> => JSON.parse(readFileSync(join(repo, SAVED_DATA), "utf-8")) as Record<string, unknown>;
+
+  /** A project whose list is `tasks`, with PAGE already delivered and SWAP stopped short. */
+  async function listRepo(prefix: string, tasks: string[]): Promise<string> {
+    const repo = initTempRepo(prefix, { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks }) });
+    await writeRunRecord(repo, { runId: "add-a-hello-20260917T090000Z", task: PAGE, outcome: closed });
+    await writeRunRecord(repo, {
+      runId: "write-a-goodbye-20260917T100000Z",
+      task: SWAP,
+      outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: "2026-09-17T10:05:00.000Z" },
+      packet: ESCALATION,
+    });
+    return repo;
+  }
+
+  it(
+    "ends one task's run with the report's opening sentence and where to read the rest, and saves that report for the run",
+    async () => {
+      const repo = initTempRepo("run-command-saved-", { "package.json": PACKAGE });
+
+      const { exitCode, stdout } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      const runId = branchIn(stdout).replace("surface/", "");
+
+      expect(stdout.trimEnd().split("\n").slice(-2)).toEqual([
+        "This run: 1 of 1 task completed and committed to its own branch.",
+        `Run \`delivery report ${runId}\` for what to do.`,
+      ]);
+      const report = await delivery(["report", runId], { cwd: repo });
+      expect(savedText(repo)).toBe(report.stdout);
+      expect(savedText(repo)).toContain("  Saved to: .delivery/last-report.txt and .delivery/last-report.json");
+      expect(savedData(repo)).toMatchObject({ schema: "delivery.report/1", kind: "task" });
+      expect([SAVED_TEXT, SAVED_DATA].map((file) => statSync(join(repo, file)).mode & 0o777)).toEqual([0o600, 0o600]);
+      expect(git(repo, ["status", "--porcelain"])).toBe("");
+      expect(exitCode).toBe(EXIT.ok);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it("ends a run of the list with the list's sentence, and saves the report `delivery report` prints", async () => {
+    const repo = await listRepo("run-command-saved-list-", [PAGE, SWAP]);
+
+    const { exitCode, stdout } = await delivery(["run"], { cwd: repo });
+
+    expect(stdout.trimEnd().split("\n").slice(-2)).toEqual([
+      "Your task list: 1 of 2 tasks completed and committed to its own branch; 1 stopped, for your engineers.",
+      "Run `delivery report` for what to do.",
+    ]);
+    expect(savedText(repo)).toBe((await delivery(["report"], { cwd: repo })).stdout);
+    expect(savedData(repo)).toMatchObject({ kind: "list", counts: { closed: 1, escalated: 1 } });
+    expect(exitCode).toBe(EXIT.escalated);
+  });
+
+  it("replaces the pair the run before left", async () => {
+    const repo = await listRepo("run-command-saved-again-", [PAGE, SWAP]);
+    await delivery(["run"], { cwd: repo });
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ tasks: [PAGE] }));
+
+    await delivery(["run"], { cwd: repo });
+
+    expect(savedText(repo).split("\n")[0]).toBe("Your task list: 1 of 1 task completed and committed to its own branch.");
+    expect(savedData(repo)).toMatchObject({ counts: { closed: 1, escalated: 0 } });
+    expect(readdirSync(join(repo, ".delivery")).sort()).toEqual([".gitignore", "last-report.json", "last-report.txt", "runs"]);
+  });
+
+  it("ends as it would have, saying in one line that the report was not saved and why, when the files cannot be written", async () => {
+    const repo = await listRepo("run-command-unsaved-", [PAGE, SWAP]);
+    // A folder where the data file belongs: nothing can be written over it.
+    mkdirSync(join(repo, SAVED_DATA), { recursive: true });
+
+    const { exitCode, stdout, stderr } = await delivery(["run"], { cwd: repo });
+    const lines = stdout.trimEnd().split("\n");
+
+    expect(exitCode).toBe(EXIT.escalated);
+    expect(lines.slice(-3, -1)).toEqual([
+      "Your task list: 1 of 2 tasks completed and committed to its own branch; 1 stopped, for your engineers.",
+      "Run `delivery report` for what to do.",
+    ]);
+    expect(lines.at(-1)).toMatch(/^This report could not be saved to \.delivery\/last-report\.txt and \.delivery\/last-report\.json\. The system said: "E[A-Z]+: /);
+    expect(existsSync(join(repo, SAVED_TEXT))).toBe(false);
+    expect(stderr).toBe("");
+    expect((await delivery(["report"], { cwd: repo })).stdout.split("\n")[0]).toBe(lines.at(-3));
+  });
+
+  it("keeps the closing lines off the data stream under --json, and still saves the report", async () => {
+    const repo = await listRepo("run-command-saved-json-", [PAGE, SWAP]);
+
+    const { stdout, stderr } = await delivery(["run", "--json"], { cwd: repo });
+
+    expect(stdout).not.toContain("Your task list");
+    expect(stderr.trimEnd().split("\n").slice(-2)).toEqual([
+      "Your task list: 1 of 2 tasks completed and committed to its own branch; 1 stopped, for your engineers.",
+      "Run `delivery report` for what to do.",
+    ]);
+    expect(existsSync(join(repo, SAVED_TEXT))).toBe(true);
+  });
 });

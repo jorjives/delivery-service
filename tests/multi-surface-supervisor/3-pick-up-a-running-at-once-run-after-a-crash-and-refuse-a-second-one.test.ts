@@ -135,7 +135,7 @@ describe("UAT: stop a run that has several tasks going, start it again, and have
       expect(resumed.stdout).toContain("[2/4] Resuming run");
       expect(resumed.stdout).toMatch(/^\[3\/4\] Starting run /m);
       expect(resumed.stdout).toMatch(/^\[4\/4\] Starting run /m);
-      expect(lines.at(-1)).toBe(EVERY_TASK_DONE);
+      expect(lines.at(-3)).toBe(EVERY_TASK_DONE);
 
       // Every task ends up done exactly once, each on its own branch: no working copy set up
       // twice and no finished work merged twice.
@@ -189,7 +189,7 @@ describe("AC: a lock left behind by a killed process does not block the resume t
 
       expect(resumed.status).toBe(EXIT.ok);
       expect(resumed.stdout).toMatch(/^Picking up run run-\d{8}T\d{6}Z: 2 tasks, up to 2 at once$/m);
-      expect(resumed.stdout.trimEnd().split("\n").at(-1)).toBe(EVERY_TASK_DONE);
+      expect(resumed.stdout.trimEnd().split("\n").at(-3)).toBe(EVERY_TASK_DONE);
       expect(git(repo, ["branch", "--list", "surface/*"]).split("\n").filter(Boolean)).toHaveLength(2);
     },
     RUN_TIMEOUT,

@@ -98,7 +98,7 @@ describe("UAT: have several tasks from your list worked on at the same time inst
       // The run opens with one line naming the run and its shape.
       expect(lines[0]).toMatch(/^Starting run run-\d{8}T\d{6}Z: 4 tasks, up to 2 at once$/);
       // Every following line is prefixed with the task's position, never distinguished by colour alone.
-      for (const line of lines.slice(1, -1)) expect(line).toMatch(/^\[[1234]\/4\] /);
+      for (const line of lines.slice(1, -3)) expect(line).toMatch(/^\[[1234]\/4\] /);
       // Both slots are taken before either frees, so lines from two different tasks interleave.
       expect(lines.some((line) => line.startsWith("[1/4] "))).toBe(true);
       expect(lines.some((line) => line.startsWith("[2/4] "))).toBe(true);
@@ -109,7 +109,7 @@ describe("UAT: have several tasks from your list worked on at the same time inst
       expect(task1Lines.some((line) => line.includes(`Done: the change for "${task1}" passed`))).toBe(true);
 
       // The run ends saying every task on the list is done, naming the branch for each.
-      expect(lines.at(-1)).toBe(EVERY_TASK_DONE);
+      expect(lines.at(-3)).toBe(EVERY_TASK_DONE);
       expect(git(repo, ["branch", "--list", "surface/*"]).split("\n")).toHaveLength(4);
     },
     RUN_TIMEOUT * 2,

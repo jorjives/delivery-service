@@ -170,7 +170,7 @@ describe("UAT: write a short to-do list in plain English and have the harness wo
 
       // Step 5: a final `delivery run` says every queued task is done, with no agent needed.
       const fourthRun = runDelivery(["run"], { cwd: repo, env: { ...process.env, XDG_STATE_HOME: state } });
-      expect(fourthRun.stdout.trim()).toBe(EVERY_TASK_DONE);
+      expect(fourthRun.stdout.split("\n")[0]).toBe(EVERY_TASK_DONE);
       expect(fourthRun.status).toBe(EXIT.ok);
     },
     RUN_TIMEOUT * 4,

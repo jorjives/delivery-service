@@ -17,6 +17,8 @@ import {
   type RunFlags,
 } from "./settings.js";
 import { taskIntent } from "../task-list.js";
+import { closingReport } from "./report-command.js";
+import { runIdFor } from "../run-location.js";
 
 export { NO_TASK } from "./settings.js";
 
@@ -41,7 +43,12 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
 
   const intent = await explicitIntent(options, ctx.env, ctx.cwd);
   const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
-  if (intent === undefined && config.tasks) return startQueue(options, { repoPath, config }, ctx);
+  const list = queueTasks(config);
+  if (intent === undefined && config.tasks) {
+    const exitCode = await startQueue(options, { repoPath, config }, ctx);
+    await closingReport(repoPath, { kind: "list" }, list, ctx);
+    return exitCode;
+  }
 
   const unfinished = options.fresh ? [] : await unfinishedRuns(repoPath);
   const [mostRecent] = unfinished;
@@ -55,7 +62,9 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
     if (!resuming) throw new Refusal(unfinishedRunFound(mostRecent), EXIT.configuration);
     const ignored = ignoredSettings(options, ctx.env, resuming.caseFile.header);
     if (ignored.length > 0) ctx.report.note(ignoredNote(ignored));
-    return resumeRun(resuming, ctx);
+    const exitCode = await resumeRun(resuming, ctx);
+    await closingReport(repoPath, { kind: "task", runId: resuming.runId }, list, ctx);
+    return exitCode;
   }
   return startOne(options, { repoPath, intent, config }, ctx);
 }
@@ -87,5 +96,9 @@ async function startOne(
   await checkCustomModules(settings.gateRef, settings.closerRef, repoPath);
   const session = await agentSession(ctx.env);
   if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
-  return startRun({ repoPath, ...settings }, session, ctx);
+  // The id is chosen here rather than left to `startRun`, so the report at the end knows which run to tell.
+  const runId = runIdFor(taskIntent(settings.taskDef), new Date());
+  const exitCode = await startRun({ repoPath, ...settings, runId }, session, ctx);
+  await closingReport(repoPath, { kind: "task", runId }, queueTasks(config), ctx);
+  return exitCode;
 }

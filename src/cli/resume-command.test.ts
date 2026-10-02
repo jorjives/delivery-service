@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readdirSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initTempRepo } from "../temp-repo.js";
@@ -16,6 +16,7 @@ import {
 } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { NOTHING_TO_RESUME } from "./runs.js";
+import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
 
 describe("delivery resume", () => {
   it(
@@ -69,6 +70,26 @@ describe("delivery resume", () => {
       });
 
       expect(stdout).toContain(`Resuming run ${newest}`);
+      expect(exitCode).toBe(EXIT.ok);
+    },
+  );
+
+  it(
+    "ends with the report's opening sentence and where to read the rest, and saves the report on the run it picked up",
+    async () => {
+      const repo = initTempRepo("resume-saved-", { "package.json": PACKAGE });
+      const state = mkdtempSync(join(tmpdir(), "resume-state-"));
+      const runId = await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello });
+      const env = { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+
+      const { stdout, exitCode } = await delivery(["resume"], { cwd: repo, env });
+
+      expect(stdout.trimEnd().split("\n").slice(-2)).toEqual([
+        "This run: 1 of 1 task completed and committed to its own branch.",
+        `Run \`delivery report ${runId}\` for what to do.`,
+      ]);
+      expect(readFileSync(join(repo, SAVED_TEXT), "utf-8")).toBe((await delivery(["report", runId], { cwd: repo, env })).stdout);
+      expect(JSON.parse(readFileSync(join(repo, SAVED_DATA), "utf-8"))).toMatchObject({ kind: "task" });
       expect(exitCode).toBe(EXIT.ok);
     },
   );

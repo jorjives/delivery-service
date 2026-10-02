@@ -92,7 +92,12 @@ Starting run <run-id>: add a function that greets a name, with a test
 - done
 Done: the change for "add a function that greets a name, with a test" passed `npm test` and is committed on branch surface/<run-id>.
 main was not changed. To look at the work: git log surface/<run-id>
+This run: 1 of 1 task completed and committed to its own branch.
+Run `delivery report <run-id>` for what to do.
 ```
+
+The last two lines sum the run up and name the command that says it again in full. The same
+report is kept as a file, `.delivery/last-report.txt`, until the next run replaces it.
 
 Your `main` branch is untouched. Read what the agent did with
 `git log -p surface/<run-id>`, and merge it yourself if you like it.

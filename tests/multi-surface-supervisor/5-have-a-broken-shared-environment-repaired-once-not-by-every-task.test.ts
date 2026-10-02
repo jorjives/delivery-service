@@ -94,7 +94,7 @@ describe("UAT: trust that one broken piece of shared set-up is fixed once for th
       // AC: repair failing within the run-wide limit stops the run, says how many tasks were
       // waiting, finished and still queued, and exits with the "needs a decision" code.
       expect(run.status).toBe(EXIT.escalated);
-      expect(run.stdout.trimEnd().split("\n").at(-1)).toBe(
+      expect(run.stdout.trimEnd().split("\n").at(-3)).toBe(
         "Couldn't fix it after 2 attempts. Stopping the run. 2 of 4 tasks were waiting on this and need your attention; 0 had already finished, 2 are still queued.",
       );
 

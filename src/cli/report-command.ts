@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { deriveReport, mostRecentSubject } from "../report/derive.js";
 import type { ReportDocument } from "../report/document.js";
 import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
-import { NO_RUNS_YET, NO_TASK_LIST, renderText } from "../report/text.js";
+import { closingSentence, NO_RUNS_YET, NO_TASK_LIST, renderText, reportPointer } from "../report/text.js";
 import { supervisedPlace } from "../run-location.js";
 import type { TaskDef } from "../schema.js";
 import type { CommandContext } from "./context.js";
@@ -78,4 +78,23 @@ export async function reportCommand(runId: string | undefined, options: ReportOp
       : undefined;
   for (const line of report.lines({ colour: ctx.colour, saved })) ctx.writeLine(line);
   return EXIT.ok;
+}
+
+/**
+ * What `delivery run` and `delivery resume` end with: the report's opening
+ * counts in one sentence, where to read the rest, and the report itself saved
+ * as the fixed pair for whoever was not there. It never changes how the command
+ * ends: a report that cannot be read or saved is said in one line, and the run's
+ * own outcome and exit code stand.
+ */
+export async function closingReport(repoPath: string, subject: ReportSubject, list: TaskDef[], ctx: CommandContext): Promise<void> {
+  try {
+    const report = await readReport(repoPath, subject, list);
+    if (report === undefined) return;
+    ctx.report.note(closingSentence(report.doc));
+    ctx.report.note(reportPointer(report.doc));
+    await saveReport(repoPath, report.doc, report.lines({ colour: false, saved: SAVED_TO }));
+  } catch (err) {
+    ctx.report.note(notSaved(err));
+  }
 }

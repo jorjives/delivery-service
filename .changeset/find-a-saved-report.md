@@ -2,6 +2,14 @@
 "delivery-service": minor
 ---
 
+`delivery run` and `delivery resume` now end with the report's first sentence ("Your task list: 3
+of 4 tasks completed and merged; 1 needs your decision.") and a pointer to `delivery report`, and
+leave the report saved as `.delivery/last-report.txt` and `.delivery/last-report.json`, replacing
+the pair from the run before. The result of a run is waiting as a file for whoever was not there
+when it ended. Under `--json` the two lines go to standard error, so standard output stays data
+only. A run whose report cannot be saved ends with its usual outcome and exit code, and one line
+saying it was not saved and why.
+
 The report's text now reads the same when it is pasted into a message or opened in a Markdown
 viewer. Two of its instructions used to put a placeholder in angle brackets, which such a viewer
 hides; they now read `delivery run --task "the reworded task"` and
