@@ -3,14 +3,12 @@ import { repairsUsed } from "../breaker.js";
 import { deriveBudgetsFromLog } from "../case-file.js";
 import { branchName } from "../provision.js";
 import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js";
-import type { RunFile, TaskDef } from "../schema.js";
+import { Population, type RunFile, type TaskDef } from "../schema.js";
 import { claimedBy, supervisedView } from "../supervised-view.js";
 import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
 import { REPORT_SCHEMA, Standing, type DamagedRecord, type ReportDocument, type ReportRun, type ReportSurface } from "./document.js";
 import { plainOf } from "./plain.js";
 import type { DamagedFile, RecordSnapshot, ReportSubject } from "./snapshot.js";
-
-const POPULATIONS = ["correction", "gateError", "gateMaintenance", "terminus", "close"] as const;
 
 /** A task with no run of its own yet: every fact about a run is null. */
 function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Standing): ReportSurface {
@@ -57,7 +55,7 @@ function withRun(record: RunRecord, queue: QueuePosition | null, standing: Stand
     branch: branchName(header.surfaceId),
     base: header.baseBranch ?? null,
     attempts,
-    budgets: POPULATIONS.map((population) => ({ population, used: budgets[population].used, max: budgets[population].max })),
+    budgets: Population.options.map((population) => ({ population, used: budgets[population].used, max: budgets[population].max })),
     limit,
     plain:
       standing === "escalated" || standing === "aborted"

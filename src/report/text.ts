@@ -1,5 +1,6 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
+import { Population } from "../schema.js";
 import type { DamagedRecord, ReportDocument, ReportRun, ReportSurface } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
@@ -272,8 +273,7 @@ function sectionLines(doc: ReportDocument, section: Section, colour: boolean): s
 function tuningLines(doc: ReportDocument, colour: boolean): string[] {
   const ran = doc.surfaces.filter((surface) => surface.budgets.length > 0);
   if (ran.length === 0) return [];
-  const populations = ["correction", "gateError", "gateMaintenance", "terminus", "close"] as const;
-  const sums = populations.map((population) => {
+  const sums = Population.options.map((population) => {
     const rows = ran.flatMap((surface) => surface.budgets.filter((row) => row.population === population));
     return `${RETRY_WORDS[population]} ${rows.reduce((sum, row) => sum + row.used, 0)} of ${rows.reduce((sum, row) => sum + row.max, 0)}`;
   });

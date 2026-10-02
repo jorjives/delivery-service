@@ -1,5 +1,5 @@
 import { USAGE_LIMIT_WORDS } from "../ports.js";
-import type { OutcomeCause, UsageLimit } from "../schema.js";
+import type { CloserRef, OutcomeCause, Population, UsageLimit } from "../schema.js";
 import type { Audience, Plain, PlainGroup } from "./document.js";
 
 /** What `plainOf` reads of a stopped task: facts from its record, never prose to paraphrase. */
@@ -178,7 +178,7 @@ export function plainOf(facts: PlainFacts): Plain {
 }
 
 /** How a project lands its work. `ReportSurface.closer`, without the null a task with no run has. */
-export type Landing = "merge-back" | "commit-to-branch" | "open-pr" | "custom";
+export type Landing = CloserRef["type"];
 
 const NOT_RECORDED = "not recorded";
 
@@ -217,7 +217,7 @@ export function whereTheWorkIs(closer: Landing, base: string | null): string {
 }
 
 /** The five kinds of retry, as the owner reads them. */
-export const RETRY_WORDS: Record<"correction" | "gateError" | "gateMaintenance" | "terminus" | "close", string> = {
+export const RETRY_WORDS: Record<Population, string> = {
   correction: "agent corrections",
   gateError: "check re-runs",
   gateMaintenance: "check repairs",

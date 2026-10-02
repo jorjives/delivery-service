@@ -206,6 +206,10 @@ export const DispatchEntry = z.object({
 });
 export type DispatchEntry = z.infer<typeof DispatchEntry>;
 
+/** The kinds of retry a task budgets. */
+export const Population = z.enum(["correction", "gateError", "gateMaintenance", "terminus", "close"]);
+export type Population = z.infer<typeof Population>;
+
 /** A usage limit that can stop an agent session: the API's request rate, or the account's spending cap. */
 export const UsageLimit = z.enum(["rate", "spend"]);
 export type UsageLimit = z.infer<typeof UsageLimit>;
@@ -292,7 +296,7 @@ export const OutcomeCause = z.object({
   // authority and session_not_run only: whose session it was.
   role: z.enum(["worker", "gate-maintenance"]).optional(),
   // budget only: which retries ran out.
-  population: z.enum(["correction", "gateError", "gateMaintenance", "terminus", "close"]).optional(),
+  population: Population.optional(),
 });
 export type OutcomeCause = z.infer<typeof OutcomeCause>;
 

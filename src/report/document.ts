@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { OutcomeCause, UsageLimit } from "../schema.js";
+import { OutcomeCause, Population, UsageLimit } from "../schema.js";
 
 /** The version every report document names itself by. A later version adds keys; it never renames or removes one. */
 export const REPORT_SCHEMA = "delivery.report/1";
@@ -36,7 +36,7 @@ export type Plain = z.infer<typeof Plain>;
 const QueuePosition = z.object({ task: z.number().int().positive(), of: z.number().int().positive() });
 
 const BudgetRow = z.object({
-  population: z.enum(["correction", "gateError", "gateMaintenance", "terminus", "close"]),
+  population: Population,
   used: z.number().int().nonnegative(),
   max: z.number().int().nonnegative(),
 });
