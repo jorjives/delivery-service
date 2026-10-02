@@ -28,7 +28,7 @@ export function quoted(text: string, indent: string): string {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** "02:19", from an ISO 8601 UTC instant by its own digits: no clock and no locale is read. */
-const minuteOf = (iso: string): string => iso.slice(11, 16);
+export const minuteOf = (iso: string): string => iso.slice(11, 16);
 
 /** "1 Oct 02:19", the same way. */
 const dayAndMinute = (iso: string): string => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1] ?? iso.slice(5, 7)} ${minuteOf(iso)}`;
@@ -39,7 +39,7 @@ function elapsed(from: string, to: string): string {
   return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min` : `${minutes} min`;
 }
 
-const tasksWord = (count: number): string => `${count} ${count === 1 ? "task" : "tasks"}`;
+export const tasksWord = (count: number): string => `${count} ${count === 1 ? "task" : "tasks"}`;
 
 /** The part of the report a task is told in. */
 type Section = "needs_you" | "engineers" | "done" | "not_finished" | "not_started";
@@ -71,7 +71,7 @@ function sectionOf(surface: ReportSurface): Section {
   }
 }
 
-const label = (surface: ReportSurface): string =>
+export const label = (surface: ReportSurface): string =>
   `${surface.queue ? `Task ${surface.queue.task} of ${surface.queue.of}` : "Task"}: ${quoted(surface.task, "    ")}`;
 
 const stoppedByLimit = (surface: ReportSurface): boolean =>
@@ -159,7 +159,7 @@ function opening(doc: ReportDocument): string[] {
   ];
 }
 
-function incompleteLines(doc: ReportDocument): string[] {
+export function incompleteLines(doc: ReportDocument): string[] {
   const others = doc.surfaces.length;
   const rest = others === 0 ? "nothing else could be read" : `the other ${tasksWord(others)} ${others === 1 ? "is" : "are"} reported below`;
   return doc.incomplete.map((damaged: DamagedRecord) =>
@@ -240,7 +240,7 @@ function stoppedItem(surface: ReportSurface): string[] {
   ];
 }
 
-const doneItem = (surface: ReportSurface): string =>
+export const doneItem = (surface: ReportSurface): string =>
   `  ${label(surface)}: ${landedWords(surface.closer ?? "commit-to-branch", surface.branch, surface.base)}${surface.finishedAt === null ? "" : ` at ${minuteOf(surface.finishedAt)}`}`;
 
 /** A task that has not finished, and how to carry it on when nothing says it is still going. */
