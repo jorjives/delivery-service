@@ -5,3 +5,6 @@ dist/
 
 # The vendored scripted agent ships prebuilt so installing needs no build step (vendor/README.md).
 !vendor/claude-mock/dist/
+
+# Implementation plans are working documents, not project history.
+docs/superpowers/plans/
