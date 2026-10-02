@@ -1,0 +1,12 @@
+#!/bin/sh
+# Refuse a body that starts on the line after the subject: git reads everything
+# up to the first blank line as the subject, so `git log --oneline` shows it all.
+# ponytail: a second line starting with "#" passes as an editor comment, though
+# `-m` keeps it; the hook is not told which cleanup mode git will apply.
+set -e
+second=$(sed '/^# -* >8 -*$/,$d' "$1" | git stripspace --strip-comments | sed -n 2p)
+[ -z "$second" ] && exit 0
+echo "commit-msg: put a blank line after the subject, before the body." >&2
+echo "The line after the subject reads: $second" >&2
+echo "With -m, pass the subject and the body as separate -m options." >&2
+exit 1
