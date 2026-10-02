@@ -16,3 +16,10 @@ sentence for a person. With `--write` it is exactly what is saved as `.delivery/
 The document gains three keys, which the saved `last-report.json` carries too: each task's
 `escalation` (the packet it stopped with), a run's `breaker` (how the setup its tasks share
 stands) and `trips` (each time that setup broke, with every repair tried).
+
+`delivery status --json` still prints every key it printed before, with the same names and
+meanings, for one run and for a run of several tasks at once, and now carries one more: `report`,
+the same versioned document `delivery report <run-id> --json` prints for that run. A script that
+already reads `status --json` finds the retry budgets, the state history and every triage round
+there. `delivery status --decisions --json` is no longer refused: it prints that same document,
+which holds every round in full.

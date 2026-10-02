@@ -1041,6 +1041,16 @@ artefacts, recorded for the spec-reviewer:
 - **The forbidden-word list** is the union of the two artefacts' lists (the vocabulary
   table's right column, and "budget", "gate", "triage", "authority", "surface",
   "terminus", "repair session", "escalat").
+- **`status --json` carries the report document under `report`** (slice 5 plan). Section 3
+  calls `ReportDocument` a superset of the two shipped `status --json` shapes, but two keys
+  collide: a single run's top-level `run` is the run id (a string) where the document's `run`
+  is the run block, and a supervised run's `surfaces` holds only the tasks with a record,
+  each a `RunStatusDocument`, where the document's holds one entry per task with nulls. A
+  top-level merge would re-type a shipped key, which section 8 forbids. So `status --json`
+  prints the shipped keys unchanged plus one new key, `report`, holding the
+  `delivery.report/1` document for the same subject: the document keeps the key names this
+  spec gives it, `report --json` and `status --json`'s `report` are identical, and nothing
+  shipped changes. `status --all --json` stays the shipped array.
 
 ## Open questions
 

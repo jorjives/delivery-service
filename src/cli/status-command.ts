@@ -355,8 +355,6 @@ export const ALL_AND_ONE =
 export const ALL_AND_DECISIONS =
   "Use either `--all` or `--decisions`, not both: `--all` lists every run, and `--decisions` prints one run's triage rounds in full.";
 
-export const NO_DECISIONS_DATA_YET = "`--decisions` prints the triage rounds as text only for now. Run it without `--json`.";
-
 /** One entry of `status --all --json`: a single run, or a run of several at once with its tasks under it. Every key in both, null where it does not apply. */
 export interface ListedRun {
   run: string;
@@ -594,7 +592,6 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   // send the reader after the wrong problem.
   if (options.all && runId !== undefined) throw new Refusal(ALL_AND_ONE, EXIT.configuration);
   if (options.all && options.decisions) throw new Refusal(ALL_AND_DECISIONS, EXIT.configuration);
-  if (options.decisions && ctx.json) throw new Refusal(NO_DECISIONS_DATA_YET, EXIT.configuration);
   const full = options.decisions === true;
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
@@ -602,21 +599,22 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   const record = runId === undefined ? await mostRecent(repoPath) : await lookUp(repoPath, runId);
   if ("runFile" in record) {
     const view = await viewOf(record, repoPath, startDir, ctx);
+    const doc = await documentOf(repoPath, startDir, { kind: "run", runId: view.runFile.header.runId }, ctx);
     if (ctx.json) {
-      ctx.writeLine(JSON.stringify(await supervisedDocument(view, ctx), null, 2));
+      ctx.writeLine(JSON.stringify({ ...(await supervisedDocument(view, ctx)), report: doc }, null, 2));
       return EXIT.ok;
     }
-    const doc = await documentOf(repoPath, startDir, { kind: "run", runId: view.runFile.header.runId }, ctx);
     for (const line of await supervisedReport(view, ctx, doc, { full })) ctx.writeLine(line);
     return EXIT.ok;
   }
+  const doc = await documentOf(repoPath, startDir, { kind: "task", runId: record.runId }, ctx);
   if (ctx.json) {
     // Indented rather than one line: a person reads this output too, and a parser does not mind.
-    ctx.writeLine(JSON.stringify(await statusDocument(record, ctx, await positionOf(record, startDir, ctx)), null, 2));
+    ctx.writeLine(JSON.stringify({ ...(await statusDocument(record, ctx, await positionOf(record, startDir, ctx))), report: doc }, null, 2));
     return EXIT.ok;
   }
   // The account first, every line as it has always been; then the detail, from the document the report is made from.
-  const [surface] = (await documentOf(repoPath, startDir, { kind: "task", runId: record.runId }, ctx)).surfaces;
+  const [surface] = doc.surfaces;
   const lines = [
     ...(await statusReport(record, ctx, surface?.queue ?? undefined)),
     ...(surface ? ["", ...detailLines(surface, { full })] : []),

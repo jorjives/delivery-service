@@ -11,8 +11,9 @@ import { ESCALATION, delivery, PACKAGE, writeRunRecord, writeSupervisedRun } fro
 import { EXIT } from "./failures.js";
 import { runPlace, runsRoot } from "../run-location.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
-import { ALL_AND_DECISIONS, ALL_AND_ONE, NO_DECISIONS_DATA_YET, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
+import { ALL_AND_DECISIONS, ALL_AND_ONE, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
 import { RESUME_DOES_NOT_APPLY, UNCHANGED_NOT_RUN_AGAIN } from "../report/detail.js";
+import { ReportDocument } from "../report/document.js";
 import { attempt, BRIEF, failedCheck, PACKET, stoppedAt, timed, writeRecord } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
@@ -23,6 +24,7 @@ import { WAITING_FOR_A_SLOT } from "./status-command.js";
 
 const AT = "2026-09-14T21:05:09.123Z";
 const RUN_ID = "add-a-hello-function-20260914T210309Z";
+const OTHER_ID = "add-a-hello-function-20260914T220309Z";
 const TASK = "add a function that says hello to a name, with a test";
 
 /** A context with nobody in front of it: no colour, no answers, and its own state folder so the working copy's place is this test's. */
@@ -434,17 +436,29 @@ describe("delivery status, beneath its own account of one task", () => {
     expect(stdout).toContain(RESUME_DOES_NOT_APPLY);
   });
 
-  it("stops when --decisions is given with --all, or with --json, rather than quietly ignoring it", async () => {
+  it("stops when --decisions is given with --all rather than quietly ignoring it", async () => {
     const repo = await footerStopped("status-decisions-conflict-");
 
     const withAll = await delivery(["status", "--all", "--decisions"], { cwd: repo });
-    const withJson = await delivery(["status", FOOTER_RUN, "--decisions", "--json"], { cwd: repo });
 
     expect(withAll.exitCode).toBe(EXIT.configuration);
     expect(withAll.stderr).toContain(ALL_AND_DECISIONS);
-    expect(withJson.exitCode).toBe(EXIT.configuration);
-    expect(withJson.stdout).toBe("");
-    expect(withJson.stderr).toContain(NO_DECISIONS_DATA_YET);
+  });
+
+  it("prints with --json the document `status --json` prints: every round is in it in full, so there is nothing more to ask for", async () => {
+    const repo = await footerStopped("status-decisions-json-");
+
+    const withDecisions = await delivery(["status", FOOTER_RUN, "--decisions", "--json"], { cwd: repo });
+    const without = await delivery(["status", FOOTER_RUN, "--json"], { cwd: repo });
+
+    expect(withDecisions.stdout).toBe(without.stdout);
+    expect(JSON.parse(withDecisions.stdout).report.surfaces[0].decisions.map((round: { verdict: string; brief: unknown; packet: unknown }) => [round.verdict, round.brief, round.packet])).toEqual([
+      ["reroute", BRIEF, null],
+      ["reroute", null, null],
+      ["reroute", null, null],
+      ["escalate", null, PACKET],
+    ]);
+    expect(withDecisions.exitCode).toBe(EXIT.ok);
   });
 
   it("describes --decisions in the command's own help", async () => {
@@ -519,6 +533,102 @@ describe("delivery status --json", () => {
     expect(exitCode).toBe(EXIT.configuration);
     expect(stdout).toBe("");
     expect(stderr).toContain("I couldn't find that run's record");
+  });
+});
+
+/** What kind of value a key holds, as the stability promise counts kinds. */
+const kindOf = (value: unknown): string => (value === null ? "null" : Array.isArray(value) ? "array" : typeof value);
+
+/** Every key `delivery status --json` printed for one run before reports were data, and the kinds of value each may hold. None may go or change kind. */
+const RUN_KEYS: Record<string, string[]> = {
+  run: ["string"],
+  task: ["string"],
+  startedAt: ["string", "null"],
+  outcome: ["string"],
+  state: ["string"],
+  finishedAt: ["string", "null"],
+  reason: ["string", "null"],
+  nextStep: ["string", "null"],
+  summary: ["string", "null"],
+  details: ["array"],
+  branch: ["string"],
+  base: ["string", "null"],
+  dir: ["string"],
+  worktree: ["string", "null"],
+  escalation: ["object", "null"],
+  queue: ["object", "null"],
+};
+
+/** The same for a run of several tasks. */
+const SUPERVISED_KEYS: Record<string, string[]> = {
+  runId: ["string"],
+  startedAt: ["string", "null"],
+  tasks: ["number"],
+  concurrency: ["number"],
+  live: ["boolean"],
+  breaker: ["string"],
+  outcome: ["string", "null"],
+  finishedAt: ["string", "null"],
+  surfaces: ["array"],
+  queued: ["array"],
+  reason: ["string", "null"],
+  cause: ["string", "null"],
+  runBudgets: ["object"],
+  trips: ["array"],
+};
+
+/** `document` holds every key of `keys`, each a kind of value it always was, and beside them only the report. */
+function expectKept(document: Record<string, unknown>, keys: Record<string, string[]>): void {
+  expect(Object.keys(document).sort()).toEqual([...Object.keys(keys), "report"].sort());
+  for (const [key, kinds] of Object.entries(keys)) expect(kinds, key).toContain(kindOf(document[key]));
+}
+
+describe("delivery status --json, now that reports are data", () => {
+  it("keeps every key it printed for one run, the kind of value it was, whether the run finished, stopped or neither", async () => {
+    const repo = initTempRepo("status-json-kept-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK });
+    const unfinished = JSON.parse((await delivery(["status", RUN_ID, "--json"], { cwd: repo })).stdout);
+    await writeRunRecord(repo, { runId: OTHER_ID, task: TASK, outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: AT }, packet: ESCALATION });
+    const escalated = JSON.parse((await delivery(["status", OTHER_ID, "--json"], { cwd: repo })).stdout);
+
+    expectKept(unfinished, RUN_KEYS);
+    expectKept(escalated, RUN_KEYS);
+    expect(unfinished).toMatchObject({ run: RUN_ID, outcome: "unfinished", state: "PROVISIONING", nextStep: "start", escalation: null });
+    expect(escalated).toMatchObject({ run: OTHER_ID, outcome: "escalated", reason: "authority limit", escalation: ESCALATION });
+  });
+
+  it("carries, under `report`, the very document `delivery report --json` prints for that run", async () => {
+    const repo = initTempRepo("status-json-report-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: { kind: "escalated", source: "worker", reason: "authority limit", at: AT }, packet: ESCALATION });
+
+    const status = JSON.parse((await delivery(["status", RUN_ID, "--json"], { cwd: repo })).stdout);
+    const report = JSON.parse((await delivery(["report", RUN_ID, "--json"], { cwd: repo })).stdout);
+
+    expect(status.report).toEqual(report);
+    expect(ReportDocument.parse(status.report)).toMatchObject({ schema: "delivery.report/1", kind: "task", surfaces: [{ run: RUN_ID, standing: "escalated", escalation: ESCALATION }] });
+  });
+
+  it("keeps every key it printed for a run of several tasks, and carries that run's report beside them", async () => {
+    const repo = await finishedSupervisedRun("status-json-kept-run-");
+
+    const status = JSON.parse((await delivery(["status", SUPERVISED, "--json"], { cwd: repo })).stdout);
+    const report = JSON.parse((await delivery(["report", SUPERVISED, "--json"], { cwd: repo })).stdout);
+
+    expectKept(status, SUPERVISED_KEYS);
+    // Each task it took is still the document a task's own run always printed, with no report of its own inside the run's.
+    for (const surface of status.surfaces) expect(Object.keys(surface).sort()).toEqual(Object.keys(RUN_KEYS).sort());
+    expect(status.report).toEqual(report);
+    expect(ReportDocument.parse(status.report)).toMatchObject({ kind: "run", run: { runId: SUPERVISED, outcome: "drained", breaker: "HEALTHY" }, counts: { closed: 3, escalated: 1 } });
+  });
+
+  it("prints nothing but the document, without colour, on a terminal too", async () => {
+    const repo = await finishedSupervisedRun("status-json-plain-");
+
+    const { stdout, stderr } = await delivery(["status", SUPERVISED, "--json"], { cwd: repo, isTTY: true });
+
+    expect(() => JSON.parse(stdout)).not.toThrow();
+    expect(stdout).not.toContain("\u001B");
+    expect(stderr).toBe("");
   });
 });
 
@@ -1032,7 +1142,7 @@ describe("delivery status for a run of several tasks at once", () => {
     expect(exitCode).toBe(EXIT.ok);
     const document = JSON.parse(stdout);
     expect(Object.keys(document).sort()).toEqual(
-      ["breaker", "cause", "concurrency", "finishedAt", "live", "outcome", "queued", "reason", "runBudgets", "runId", "startedAt", "surfaces", "tasks", "trips"],
+      ["breaker", "cause", "concurrency", "finishedAt", "live", "outcome", "queued", "reason", "report", "runBudgets", "runId", "startedAt", "surfaces", "tasks", "trips"],
     );
     expect(document).toMatchObject({
       runId: SUPERVISED,

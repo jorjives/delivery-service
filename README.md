@@ -416,15 +416,15 @@ Each round gives what set it off, the verdict, the reasoning word for word, and 
 produced: the brief the next session was given, exactly as that session read it, or the packet
 written for a person. A round that wrote no brief says so ("none; this round wrote no brief"); one
 whose brief or packet can no longer be read says "not recorded". `--decisions` cannot be
-combined with `--all` or, for now, with `--json`: either stops with exit 2.
+combined with `--all`, which stops with exit 2. With `--json` it prints the same document
+`status --json` does, which already carries every round in full.
 
 `status` exits 0 whenever it could read the run and 2 when it could not find one, so a run that
 needs your decision is still a successful read. `status --watch` is the exception: it ends with
 the code of the run it followed (see "Watch a run as it happens"). The exit codes in the table above are the run's
 own, reported by `delivery run`.
 
-Add `--json` to get the account as one JSON document instead of sentences (the triage rounds and
-retry budgets are text only for now):
+Add `--json` to get the account as one JSON document instead of sentences:
 
 ```bash
 delivery status --last --json
@@ -436,6 +436,10 @@ branch, where the run's record is, and, for a run that stopped for a decision, e
 escalation packet. Every key is always present: a `null` means "not that kind of run", so
 a script never has to check whether a key is there. A run that could not be found is still a
 plain-language message on standard error and exit 2, not JSON.
+
+The document also carries `report`: the same versioned document `delivery report <run-id> --json`
+prints for that run, with its state history, retry budgets and every triage round in full. See
+[Reports as data](docs/reporting.md).
 
 ### A run of several tasks at once
 
@@ -489,7 +493,8 @@ repaired its environment and carried on says so beside it: "Environment: healthy
 back after the fact: the run id, when it started, how many tasks and how many at once, whether it
 is going now, the environment, how it ended and when, why it stopped and whether the shared environment or a usage limit was the cause (`reason`, `cause`), how many repairs it used of its limit (`runBudgets`), every time its environment broke with the task that found it, the tasks it held and each repair attempt (`trips`), then `surfaces`, one entry per task it took,
 each exactly the document `delivery status <task-run-id> --json` gives, and `queued`, the tasks
-it has yet to start with their place on your list. Every key is always present, `null` where it
+it has yet to start with their place on your list, and `report`, the versioned document
+`delivery report run-… --json` prints for the run. Every key is always present, `null` where it
 does not apply yet.
 
 ### Watch a run as it happens
