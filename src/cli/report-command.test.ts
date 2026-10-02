@@ -28,7 +28,7 @@ import { NO_TASK_LIST } from "../report/text.js";
 import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeSupervisedRun } from "./command-fixtures.js";
-import { takeRepoLock } from "./repo-lock.js";
+import { takeRepoLock } from "../repo-lock.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
 
 const LIST = [FORM, FOOTER, HOMEPAGE, BANNER];

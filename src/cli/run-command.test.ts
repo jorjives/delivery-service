@@ -18,7 +18,7 @@ import { allRuns, readRun } from "./runs.js";
 import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
 import { EVERY_TASK_DONE, liveRunFound, taskEnded, runPickedUp, STOPPED_PART_WAY } from "./queue.js";
-import { repoLocked, takeRepoLock } from "./repo-lock.js";
+import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import { supervisedPlace, supervisorLockPath } from "../run-location.js";
 import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";

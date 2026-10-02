@@ -15,7 +15,7 @@ import { delivery, PACKAGE, writeSupervisedRun } from "./command-fixtures.js";
 import type { CommandContext } from "./context.js";
 import { EXIT } from "./failures.js";
 import { plainReporter } from "./report.js";
-import { takeRepoLock } from "./repo-lock.js";
+import { takeRepoLock } from "../repo-lock.js";
 import type { StatusOptions } from "./status-command.js";
 import { INTERVAL_NEEDS_WATCH, INTERVAL_SECONDS, signatureOf, WATCH_AND_ALL, WATCH_AND_DECISIONS, watchCommand } from "./watch-command.js";
 

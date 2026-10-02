@@ -19,7 +19,7 @@ import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
 import { setRunOutcome } from "../run-file.js";
 import { STOPPED_PART_WAY } from "./queue.js";
-import { takeRepoLock } from "./repo-lock.js";
+import { takeRepoLock } from "../repo-lock.js";
 import { WAITING_FOR_A_SLOT } from "./status-command.js";
 
 const AT = "2026-09-14T21:05:09.123Z";

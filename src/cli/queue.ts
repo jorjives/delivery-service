@@ -15,7 +15,7 @@ import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "../ru
 import type { RunRecord } from "../run-records.js";
 import { findQueueRun, stillToTake, taskIntent, type QueuePosition } from "../task-list.js";
 import { allRuns, describeRun, readRun, startedAt, unfinishedSupervisedRun } from "./runs.js";
-import { repoLocked, takeRepoLock } from "./repo-lock.js";
+import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import type { ProjectSettings } from "./settings.js";
 
 /** Everything this project's list asks for, in the order it was written. */

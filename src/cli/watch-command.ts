@@ -10,7 +10,7 @@ import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
 import { namedSubject } from "./report-command.js";
-import { repoLocked } from "./repo-lock.js";
+import { repoLocked } from "../repo-lock.js";
 import { listTasks, type StatusOptions } from "./status-command.js";
 import { emptyStream, streamTick, watchTick, type WatchState } from "./watch.js";
 

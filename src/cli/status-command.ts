@@ -20,7 +20,7 @@ import { packetOf, summariseOutcome } from "./outcome.js";
 import { paint } from "../paint.js";
 import { BREAKER_PHRASES, nextStepPhrase, STEP_PHRASES } from "./output.js";
 import { queueTasks, shapeOf, STOPPED_PART_WAY } from "./queue.js";
-import { repoLocked } from "./repo-lock.js";
+import { repoLocked } from "../repo-lock.js";
 import { runPlace } from "../run-location.js";
 import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js";
 import { queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";

@@ -10,7 +10,7 @@ import type { TaskDef } from "../schema.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
-import { repoLocked } from "./repo-lock.js";
+import { repoLocked } from "../repo-lock.js";
 import { isSaved, notSaved, SAVED_TO, saveReport } from "./saved-report.js";
 import { listTasks } from "./status-command.js";
 

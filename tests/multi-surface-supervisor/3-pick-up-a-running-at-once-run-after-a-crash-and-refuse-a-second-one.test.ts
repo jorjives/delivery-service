@@ -179,7 +179,7 @@ describe("AC: a lock left behind by a killed process does not block the resume t
       first.child.kill("SIGKILL");
       await first.exit;
 
-      // `proper-lockfile`'s own staleness window (src/cli/repo-lock.ts's STALE_MS): a run
+      // `proper-lockfile`'s own staleness window (src/repo-lock.ts's STALE_MS): a run
       // started within it is refused as though the old one were live, so the live drive
       // waits it out rather than asserting against internal lock state.
       await new Promise((resolve) => setTimeout(resolve, 11_000));
