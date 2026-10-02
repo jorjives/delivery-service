@@ -459,14 +459,18 @@ delivery status --all
 
 ```text
 3 runs in this repository, newest first:
-  add-a-goodbye-20261001T113000Z, started 2026-10-01 11:30 UTC: add a goodbye (hasn't finished yet)
-  run-20260930T090000Z, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once (3 done, 1 needs your decision)
-  add-a-hello-20260914T210309Z, started 2026-09-14 21:03 UTC: add a hello (finished)
+  add-a-goodbye-20261001T113000Z, started 2026-10-01 11:30 UTC: add a goodbye (hasn't finished yet): 1 task: 1 not finished
+  run-20260930T090000Z, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once (3 done, 1 needs your decision): 3 of 4 tasks completed and committed to their own branches; 1 needs your decision
+  add-a-hello-20260914T210309Z, started 2026-09-14 21:03 UTC: add a hello (finished): 1 of 1 task completed and committed to its own branch
 To read one in full: delivery status <run-id>
+
+Next: delivery report (your task list)
 ```
 
 A run of several tasks at once is one line: its shape and how its tasks stand. Its tasks are read
-with `delivery status run-…`, and each of those by its own run id.
+with `delivery status run-…`, and each of those by its own run id. Every line ends with the
+counts `delivery report` opens with for that run, so a task that failed after its attempts reads
+differently from one waiting on your decision.
 
 `--all --json` gives the same list as an array, each entry with the run id, the task, the
 instant it started, how it ended and `tasks`: `null` for a single run; for a run of several at

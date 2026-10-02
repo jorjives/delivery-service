@@ -117,6 +117,13 @@ function tally(doc: ReportDocument): string {
   ].join(", ")}`;
 }
 
+const waitingIn = (doc: ReportDocument): number => doc.counts.unfinished + doc.counts.paused + doc.counts.queued;
+
+/** The counts a report opens with, without the words around them: the headline once nothing is still to finish, the tally until then. */
+export function headlineCounts(doc: ReportDocument): string {
+  return waitingIn(doc) === 0 ? headline(doc) : tally(doc);
+}
+
 /** What the report is about, as its opening words. Total over the kinds of report. */
 const SUBJECT: Record<ReportDocument["kind"], { final: string; going: string; partWay: string; unknown: string }> = {
   list: {
@@ -132,8 +139,7 @@ const SUBJECT: Record<ReportDocument["kind"], { final: string; going: string; pa
 /** The first lines: what happened, counted. Never final-sounding while a task is still to finish. */
 function opening(doc: ReportDocument): string[] {
   const words = SUBJECT[doc.kind];
-  const waiting = doc.counts.unfinished + doc.counts.paused + doc.counts.queued;
-  if (waiting === 0) return doc.surfaces.length === 0 ? [] : [`${words.final}: ${headline(doc)}.`];
+  if (waitingIn(doc) === 0) return doc.surfaces.length === 0 ? [] : [`${words.final}: ${headline(doc)}.`];
   if (doc.live === true) return [`${words.going} (${tally(doc)}).`];
   // A run that records why it stopped says how to carry on in its own line, below.
   if (doc.live === false) return [`${words.partWay} (${tally(doc)}).${doc.run?.cause == null ? " To carry on: delivery run" : ""}`];

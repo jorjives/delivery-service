@@ -22,3 +22,7 @@ For a run of several tasks at once, a task under way says what it is doing right
 attempt it is on, in place of "not finished yet", while the run is going. Under the tasks, the
 retry budgets are added up across the run beside the run's shared repair limit, and
 `--decisions` prints every task's triage rounds in full.
+
+`delivery status --all` ends each run's line with the counts `delivery report` opens with for
+that run, so a task that failed after its attempts reads differently from one waiting on a
+decision. Every text output of `status` now ends with a `Next:` line.

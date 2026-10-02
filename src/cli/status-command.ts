@@ -13,6 +13,7 @@ import { RunFileNotFound } from "../errors.js";
 import { deriveReport } from "../report/derive.js";
 import { detailLines, rollUpLines, roundLines } from "../report/detail.js";
 import type { ReportDocument, ReportSurface } from "../report/document.js";
+import { headlineCounts } from "../report/text.js";
 import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
@@ -375,9 +376,14 @@ function listedRun(entry: RunRecord | SupervisedView): ListedRun {
   };
 }
 
-/** Every run this repository holds, one to a line; a run of several at once is one line saying its shape and how its tasks stand. */
-export function runListing(entries: (RunRecord | SupervisedView)[]): string[] {
-  if (entries.length === 0) return [NOTHING_HERE];
+/**
+ * Every run this repository holds, one to a line; a run of several at once is
+ * one line saying its shape and how its tasks stand. Each line ends with the
+ * counts `delivery report` would open with for that run, which tell a task
+ * that failed after its attempts from one waiting on a decision.
+ */
+export function runListing(entries: (RunRecord | SupervisedView)[], countsOf: (entry: RunRecord | SupervisedView) => string): string[] {
+  if (entries.length === 0) return [NOTHING_HERE, "", 'Next: delivery run --task "..."'];
   const line = (entry: RunRecord | SupervisedView): string => {
     if (!isSupervised(entry)) return `${describeRun(entry)} (${OUTCOME_WORDS[runSummary(entry).outcome]})`;
     const { runId, tasks, concurrency } = entry.runFile.header;
@@ -386,8 +392,10 @@ export function runListing(entries: (RunRecord | SupervisedView)[]): string[] {
   };
   return [
     `${entries.length} run${entries.length === 1 ? "" : "s"} in this repository, newest first:`,
-    ...entries.map((entry) => `  ${line(entry)}`),
+    ...entries.map((entry) => `  ${line(entry)}: ${countsOf(entry)}`),
     "To read one in full: delivery status <run-id>",
+    "",
+    "Next: delivery report (your task list)",
   ];
 }
 
@@ -407,8 +415,15 @@ async function listRuns(repoPath: string, startDir: string, ctx: CommandContext)
   const views = supervised.map((record) => supervisedView(record.runFile, records, list, record.runFile.outcome === undefined && locked));
   const members = new Set(views.flatMap((view) => claimedBy(view.runFile).map((claim) => claim.surfaceId)));
   const entries = newestFirstBy<RunRecord | SupervisedView>([...records.filter((record) => !members.has(record.runId)), ...views], listedId);
-  if (ctx.json) ctx.writeLine(JSON.stringify(entries.map(listedRun), null, 2));
-  else for (const line of runListing(entries)) ctx.writeLine(line);
+  if (ctx.json) {
+    ctx.writeLine(JSON.stringify(entries.map(listedRun), null, 2));
+    return EXIT.ok;
+  }
+  // One reading for every line's counts: each is the report document for that run, derived from the same snapshot.
+  const snapshot = await loadSnapshot(repoPath, { kind: "list" }, { live: locked, list });
+  const countsOf = (entry: RunRecord | SupervisedView): string =>
+    headlineCounts(deriveReport({ ...snapshot, subject: { kind: isSupervised(entry) ? "run" : "task", runId: listedId(entry) } }));
+  for (const line of runListing(entries, countsOf)) ctx.writeLine(line);
   return EXIT.ok;
 }
 

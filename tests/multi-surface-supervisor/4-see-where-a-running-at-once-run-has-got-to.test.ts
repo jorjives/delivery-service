@@ -143,7 +143,8 @@ describe("UAT: check on a run with several tasks and see at a glance what is don
       const all = runDelivery(["status", "--all"], { cwd: repo, env });
       expect(all.status).toBe(EXIT.ok);
       expect(all.stdout).toMatch(
-        new RegExp(`^  ${runId}, started [\\d-]+ [\\d:]+ UTC: 4 tasks, up to 2 at once \\(3 done, 1 needs your decision\\)$`, "m"),
+        // The line goes on to the counts a report on the run opens with, so it is matched from its start.
+        new RegExp(`^  ${runId}, started [\\d-]+ [\\d:]+ UTC: 4 tasks, up to 2 at once \\(3 done, 1 needs your decision\\): `, "m"),
       );
       // The run is one line, not its four tasks unrolled.
       expect(all.stdout).not.toMatch(/\[1\/4\]/);

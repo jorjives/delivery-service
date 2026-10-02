@@ -654,16 +654,40 @@ describe("delivery status --all", () => {
     return repo;
   }
 
-  it("lists every run, newest first, with its task and how it ended", async () => {
+  it("lists every run, newest first, with its task, how it ended, and the counts a report on it opens with", async () => {
     const repo = await threeRuns("status-all-");
 
     const { stdout, exitCode } = await delivery(["status", "--all"], { cwd: repo });
 
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout.split("\n").filter((line) => line.startsWith("  "))).toEqual([
-      "  add-a-goodbye-20260916T113000Z, started 2026-09-16 11:30 UTC: add a goodbye (hasn't finished yet)",
-      "  delete-the-greeting-20260915T090000Z, started 2026-09-15 09:00 UTC: delete the greeting (needs a decision from you)",
-      "  add-a-hello-20260914T210309Z, started 2026-09-14 21:03 UTC: add a hello (finished)",
+      "  add-a-goodbye-20260916T113000Z, started 2026-09-16 11:30 UTC: add a goodbye (hasn't finished yet): 1 task: 1 not finished",
+      "  delete-the-greeting-20260915T090000Z, started 2026-09-15 09:00 UTC: delete the greeting (needs a decision from you): 0 of 1 task completed; 1 stopped, for your engineers",
+      "  add-a-hello-20260914T210309Z, started 2026-09-14 21:03 UTC: add a hello (finished): 1 of 1 task completed and committed to its own branch",
+    ]);
+    expect(stdout.trimEnd().split("\n").slice(-3)).toEqual(["To read one in full: delivery status <run-id>", "", "Next: delivery report (your task list)"]);
+  });
+
+  it("tells a task that failed after its attempts from one waiting on a decision, on its line", async () => {
+    const repo = initTempRepo("status-all-counts-", { "package.json": PACKAGE });
+    await writeRecord(repo, {
+      runId: "fix-the-broken-footer-links-20261001T022000Z",
+      task: "Fix the broken footer links",
+      history: [...attempt(1, "first go"), ...failedCheck(1, "reroute"), ...attempt(2, "second go"), ...failedCheck(2, "escalate")],
+      outcome: stoppedAt("2026-10-01T02:58:00.000Z", { kind: "budget", population: "correction" }, "correction budget exhausted (1/1)"),
+    });
+    await writeRecord(repo, {
+      runId: "replace-the-old-homepage-20261001T030000Z",
+      task: "Replace the old homepage",
+      history: attempt(1, "I need the owner to confirm.", "authority"),
+      outcome: stoppedAt("2026-10-01T03:04:00.000Z", { kind: "authority", role: "worker" }, "worker escalated: authority"),
+    });
+
+    const { stdout } = await delivery(["status", "--all"], { cwd: repo });
+
+    expect(stdout.split("\n").filter((line) => line.startsWith("  ")).map((line) => line.split("): ")[1])).toEqual([
+      "0 of 1 task completed; 1 needs your decision",
+      "0 of 1 task completed; 1 failed after 2 attempts",
     ]);
   });
 
@@ -699,7 +723,7 @@ describe("delivery status --all", () => {
     const json = await delivery(["status", "--all", "--json"], { cwd: repo });
 
     expect(plain.exitCode).toBe(EXIT.ok);
-    expect(plain.stdout).toContain(NOTHING_HERE);
+    expect(plain.stdout.trimEnd().split("\n")).toEqual([NOTHING_HERE, "", 'Next: delivery run --task "..."']);
     expect(json.exitCode).toBe(EXIT.ok);
     expect(JSON.parse(json.stdout)).toEqual([]);
   });
@@ -1061,9 +1085,11 @@ describe("delivery status for a run of several tasks at once", () => {
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout.trimEnd().split("\n")).toEqual([
       "2 runs in this repository, newest first:",
-      "  add-a-wave-20261001T100000Z, started 2026-10-01 10:00 UTC: add a wave (finished)",
-      `  ${SUPERVISED}, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once (3 done, 1 needs your decision)`,
+      "  add-a-wave-20261001T100000Z, started 2026-10-01 10:00 UTC: add a wave (finished): 1 of 1 task completed and committed to its own branch",
+      `  ${SUPERVISED}, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once (3 done, 1 needs your decision): 3 of 4 tasks completed and committed to their own branches; 1 stopped, for your engineers`,
       "To read one in full: delivery status <run-id>",
+      "",
+      "Next: delivery report (your task list)",
     ]);
   });
 
