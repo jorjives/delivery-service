@@ -738,6 +738,7 @@ configuration in the same words, and takes `--config` and `--repo`.
 - [Getting started](docs/getting-started.md): install the command and finish your first run
 - [Setting up a project](docs/project-configuration.md): describe a project, list its tasks, check, preview and run them
 - [When the shared environment breaks](docs/shared-environment.md): what a run of several tasks at once does when the environment its tasks share breaks, with an example to try
+- [Reports as data](docs/reporting.md): the report and the watch as versioned JSON, their schema, and what is promised not to change
 - [Design docs](docs/)
 - [Configuring a role](docs/configuring-a-role.md): set up a worker or gate-maintenance agent
 - [Writing a gate](docs/writing-a-gate.md): configure the command gate or write your own

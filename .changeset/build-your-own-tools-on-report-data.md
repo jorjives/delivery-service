@@ -52,3 +52,6 @@ The functions the commands are built on are now part of the package: `loadSnapsh
 project's records), `deriveReport` (the document), `eventsOf` (its events), `renderText` (the
 report in words), `streamStarted` and `streamEnded` (the two marker events), `publishedSchema`,
 `repoLocked`, and the `ReportDocument` and `ReportEvent` schemas with their types.
+
+[Reports as data](../docs/reporting.md) lists every key of both formats and every event, and
+states the promise in full.
