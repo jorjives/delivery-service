@@ -244,6 +244,7 @@ NOT STARTED (1)
 FOR WHOEVER TUNES THIS
   Retries used across these tasks: agent corrections 0 of 9; check re-runs 0 of 9; check repairs 0 of 6; agent restarts 0 of 15; hand-off retries 0 of 9.
   Time and cost were not recorded for this run.
+  Saved to: .delivery/last-report.txt and .delivery/last-report.json
 
 Next: delivery status --all (every run)
 ```
@@ -263,13 +264,14 @@ it has tasks in it:
 
 Words taken from a run (your task, what the agent said) are always in quotation marks; every other
 sentence is the harness's own and is the same for every project. "For whoever tunes this" counts
-the retries used, for the person who sets the limits.
+the retries used, for the person who sets the limits, and names the saved copy of the report when
+there is one.
 
 `delivery report <run-id>` reports one task's run, or one run of several tasks at once, instead
 of the list. In a project with no `tasks` list, `delivery report` reports the most recent run and
 says so in its first line.
 
-It only ever reads, and takes no lock, so it is safe while a run is going: it then says the run is
+It never changes a run or its record, and takes no lock, so it is safe while a run is going: it then says the run is
 still going rather than giving a final count, and how to follow it ("Follow it: delivery status
 --watch"). For work that has not finished, its second line gives the last time the record shows
 anything happening ("last activity 1 Oct 02:22 UTC"): a time from the record for you to judge
@@ -279,6 +281,15 @@ damaged, the report names that task and the file, says at the top that it is inc
 still reports the rest. A run made by an earlier version still reports: where its record does not
 say why a task stopped, the task appears under "Stopped, for your engineers" with the reason the
 run recorded.
+
+`delivery report --write` also saves the report it prints, for your list or for the run you name,
+as two files in your project's `.delivery` folder: `last-report.txt`, the same text without
+colour, ready to open or paste into a message, and `last-report.json`, the same report as data.
+Each save replaces the pair saved before. The files are copies for your convenience: only you can
+read them, they are never committed with your project's work, and no command reads its answer
+from them, so deleting them loses nothing. While the saved copy is the report you are looking at,
+the report's last section names it ("Saved to: ..."). If the files cannot be written, the report
+is still printed, with one line in that place saying it was not saved and why.
 
 `report` exits 0 whenever the report could be made, whatever it says, and 2 when it could not (a
 run id that names nothing). It prints text only for now: for one JSON document about a run, use

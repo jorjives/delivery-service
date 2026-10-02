@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -23,6 +24,7 @@ import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeSupervisedRun } from "./command-fixtures.js";
 import { takeRepoLock } from "./repo-lock.js";
+import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
 
 const LIST = [FORM, FOOTER, HOMEPAGE, BANNER];
 
@@ -218,6 +220,7 @@ describe("delivery report", () => {
 
     expect(top.stdout).toMatch(/^\s+report \[options\] \[run-id\]\s+say in plain words what happened/m);
     expect(own.stdout).toContain("--repo <path>");
+    expect(own.stdout).toMatch(/--write\s+also save the report/);
   });
 
   it(
@@ -276,4 +279,81 @@ describe("delivery report", () => {
     },
     RUN_TIMEOUT * 2,
   );
+
+  it("saves the report with --write, as text and as data, and says where: the saved text is what it printed", async () => {
+    const repo = await project("report-write-", LIST, [formDone, footerFailed]);
+
+    const { exitCode, stdout, stderr } = await delivery(["report", "--write"], { cwd: repo });
+
+    expect(stdout.split("\n")).toContain("  Saved to: .delivery/last-report.txt and .delivery/last-report.json");
+    expect(readFileSync(join(repo, SAVED_TEXT), "utf-8")).toBe(stdout);
+    const data = JSON.parse(readFileSync(join(repo, SAVED_DATA), "utf-8")) as { schema: string; kind: string; counts: Record<string, number> };
+    expect(data).toMatchObject({ schema: "delivery.report/1", kind: "list", counts: { closed: 1, escalated: 1, not_started: 2 } });
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  });
+
+  it("saves the report on the run it is given with --write, replacing the pair saved before", async () => {
+    const repo = await project("report-write-named-", LIST, [formDone, footerFailed]);
+    await delivery(["report", "--write"], { cwd: repo });
+
+    const { stdout } = await delivery(["report", ID.footer, "--write"], { cwd: repo });
+
+    expect(stdout.split("\n")[0]).toBe("This run: 0 of 1 task completed; 1 failed after 2 attempts.");
+    expect(readFileSync(join(repo, SAVED_TEXT), "utf-8")).toBe(stdout);
+    expect(JSON.parse(readFileSync(join(repo, SAVED_DATA), "utf-8"))).toMatchObject({ kind: "task" });
+  });
+
+  it("names the saved copy without --write only while that copy is this very report", async () => {
+    const repo = await project("report-saved-", LIST, [formDone, footerFailed]);
+    const before = await delivery(["report"], { cwd: repo });
+    const written = await delivery(["report", "--write"], { cwd: repo });
+
+    const same = await delivery(["report"], { cwd: repo });
+    const another = await delivery(["report", ID.footer], { cwd: repo });
+
+    expect(before.stdout).not.toContain("Saved to");
+    expect(same.stdout).toBe(written.stdout);
+    expect(another.stdout).not.toContain("Saved to");
+  });
+
+  it("keeps the saved text free of colour, of patches and of the full text of any triage round, so it can be pasted into a message", async () => {
+    const repo = await project("report-write-plain-", LIST, [formDone, footerFailed]);
+
+    await delivery(["report", "--write"], { cwd: repo, isTTY: true });
+    const text = readFileSync(join(repo, SAVED_TEXT), "utf-8");
+
+    expect(text).not.toContain("\u001B");
+    expect(text).not.toMatch(/^(diff --git|@@ |\+\+\+ |--- )/m);
+    expect(text).not.toContain("gate_fail");
+    expect(text.split("\n")[0]).toBe("Your task list: 1 of 4 tasks completed and merged; 1 failed after 2 attempts; 2 not started.");
+    expect(text.trimEnd().split("\n").at(-1)).toBe("Next: delivery status --all (every run)");
+  });
+
+  it("still prints the report, and says in one line that it was not saved and why, when the files cannot be written", async () => {
+    const repo = await project("report-write-fails-", LIST, [formDone, footerFailed]);
+    // A folder where the data file belongs: nothing can be written over it.
+    mkdirSync(join(repo, SAVED_DATA), { recursive: true });
+
+    const { exitCode, stdout, stderr } = await delivery(["report", "--write"], { cwd: repo });
+    const lines = stdout.split("\n");
+
+    expect(lines[0]).toBe("Your task list: 1 of 4 tasks completed and merged; 1 failed after 2 attempts; 2 not started.");
+    expect(lines.filter((line) => line.includes("could not be saved"))).toHaveLength(1);
+    expect(stdout).toMatch(/^ {2}This report could not be saved to \.delivery\/last-report\.txt and \.delivery\/last-report\.json\. The system said: "E[A-Z]+: /m);
+    expect(stdout).not.toContain("Saved to");
+    expect(existsSync(join(repo, SAVED_TEXT))).toBe(false);
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  });
+
+  it("saves nothing with --write in a folder that has never had a run: there is no report to keep", async () => {
+    const repo = await project("report-write-empty-", LIST, []);
+
+    const { exitCode, stdout } = await delivery(["report", "--write"], { cwd: repo });
+
+    expect(stdout).toBe("No runs yet in this folder. Start one with: delivery run\n\nNext: delivery run\n");
+    expect(existsSync(join(repo, ".delivery"))).toBe(false);
+    expect(exitCode).toBe(0);
+  });
 });

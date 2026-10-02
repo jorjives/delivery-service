@@ -128,9 +128,10 @@ export async function runCli(io: CliIo): Promise<number> {
   program
     .command("report")
     .description(
-      "say in plain words what happened to your task list and what to do next: which tasks landed, which need you, which need an engineer and which were not started, without changing anything",
+      "say in plain words what happened to your task list and what to do next: which tasks landed, which need you, which need an engineer and which were not started, without changing any run",
     )
     .argument("[run-id]", "report this task's run, or this run of several tasks, instead of the task list")
+    .option("--write", "also save the report as .delivery/last-report.txt and .delivery/last-report.json, as a run does when it ends")
     .option("--repo <path>", "the git repository the runs belong to (default: the current folder)")
     .action(async (runId: string | undefined, options: ReportOptions, command: Command) => {
       exitCode = await reportCommand(runId, options, contextFor(io, command));
