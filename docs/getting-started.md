@@ -114,11 +114,25 @@ Run <run-id>, started <when>: add a function that greets a name, with a test
 Done: the change for "add a function that greets a name, with a test" passed `npm test` and is committed on branch surface/<run-id>.
 It finished <when>.
 main was not changed. To look at the work: git log surface/<run-id>
+
+How it got here: no triage rounds.
+
+Retry budgets when it finished, after 1 attempt:
+  correction 0 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3
+
+No stop: this run finished.
+
+Next: delivery report (your task list)
 ```
 
 `delivery status` only ever reads, so it is safe while a run is still going. If a
 run stopped because it needs a decision from you, that decision is the first thing
 it prints, with the evidence behind it underneath.
+
+Beneath that account it says how the task got there: the times the harness had to decide what to
+do after a setback ("triage rounds"; none here, because the first attempt passed), how many
+retries of each kind were used, and, for a task that stopped, what to do about it. The last line
+names where to go next.
 
 Once your project has a list of tasks (the next guide sets one up), `delivery report` is the
 command to come back to: it says in plain words which tasks landed, which need you, and what to do

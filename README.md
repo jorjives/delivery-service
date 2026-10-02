@@ -311,11 +311,80 @@ What you get depends on how the run ended:
 If the run's task is on your `tasks` list, it also says which task of how many it is, worked out
 from the list as it is written now.
 
+Beneath that account, `status` says how the task got there, for whoever has to find out why. These
+parts use the harness's own words (triage, gate, correction) on purpose: they are the words to
+search the run's record for.
+
+- **How it got here:** one line for each triage round, which is each time the harness had to
+  decide what to do after a setback: the attempt it followed, what set it off, and the verdict.
+- **Retry budgets:** how many retries of each of the five kinds were used of how many are
+  allowed, and how many attempts the agent made.
+- **To act:** for a task that stopped, the same steps `delivery report` gives for it, then two
+  things that are easy to get wrong: an unchanged task on your list is not run again, and
+  `delivery resume` does not apply to a run that has finished.
+
+```text
+How it got here (triage rounds; --decisions for the full text):
+  After attempt 1: a gate failure; verdict: reroute
+  After attempt 2: a gate failure; verdict: reroute
+  After attempt 3: a gate failure; verdict: reroute
+  After attempt 4: a gate failure; verdict: escalate
+
+Retry budgets at stop, after 4 attempts:
+  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3
+
+To act: 1. Reword the task, or remove it from your list.
+        2. Run: delivery run
+An unchanged task on your list is not run again: `delivery run` would retell this outcome.
+`delivery resume` does not apply: this run is finished.
+
+Next: delivery status fix-the-broken-footer-links-20261001T022000Z --decisions (every triage round in full), delivery report (your task list)
+```
+
+A task with no triage rounds, or one that did not stop, says so in one line. A run made by an
+earlier version shows what its record holds and "not recorded" for the rest. The last line,
+`Next:`, names the commands that go further.
+
+To read every triage round in full, add `--decisions`:
+
+```bash
+delivery status fix-the-broken-footer-links-20261001T022000Z --decisions
+```
+
+```text
+How it got here (4 triage rounds, in full):
+  Round 1, after attempt 1
+    Trigger: a gate failure (gate_fail)
+    Verdict: reroute
+    Rationale: "gate_fail: reroute"
+    Brief for the next session:
+      Problem: Two footer links point at pages that were removed.
+      Dead ends: Attempt 1 rewrote the link text and left the targets alone.
+      Scope: Only src/footer.html.
+      References: worker-1-0
+      Diagnosis (a hypothesis to test, not an established fact): The targets moved under /about.
+  …
+  Round 4, after attempt 4
+    Trigger: a gate failure (gate_fail)
+    Verdict: escalate
+    Rationale: "gate_fail: escalate"
+    Packet for a person:
+      Decision: "No correction budget remains (3/3 used). Decide whether to continue manually, amend the task, or abandon it."
+      …
+```
+
+Each round gives what set it off, the verdict, the reasoning word for word, and what the round
+produced: the brief the next session was given, exactly as that session read it, or the packet
+written for a person. A round that wrote no brief says so ("none; this round wrote no brief"); one
+whose brief or packet can no longer be read says "not recorded". `--decisions` cannot be
+combined with `--all` or, for now, with `--json`: either stops with exit 2.
+
 `status` exits 0 whenever it could read the run and 2 when it could not find one, so a run that
 needs your decision is still a successful read. The exit codes in the table above are the run's
 own, reported by `delivery run`.
 
-Add `--json` to get the same information as one JSON document instead of sentences:
+Add `--json` to get the account as one JSON document instead of sentences (the triage rounds and
+retry budgets are text only for now):
 
 ```bash
 delivery status --last --json
