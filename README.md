@@ -75,8 +75,10 @@ id. Every key is present, `null` where it does not apply. A run of several at on
 `HEALTHY`, and `ESCALATED` when it gives up), with `affected` listing the task run ids it
 concerns (`null` on the run starting and finishing).
 
-`--json` works on `delivery resume`, `delivery status` and `delivery validate` too. Without it the output is
+`--json` works on `delivery resume`, `delivery status`, `delivery report` and `delivery validate` too. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
+The lines above are the running command's own account of itself and carry no version. To build
+on what a run did, use the versioned data described in [Reports as data](docs/reporting.md).
 
 `delivery --help` and `delivery run --help` list the options; `--no-color`, or setting
 `NO_COLOR`, turns colour off.
@@ -300,8 +302,22 @@ the report's last section names it ("Saved to: ..."). If the files cannot be wri
 is still printed, with one line in that place saying it was not saved and why.
 
 `report` exits 0 whenever the report could be made, whatever it says, and 2 when it could not (a
-run id that names nothing). It prints text only for now: for one JSON document about a run, use
-`delivery status --json`.
+run id that names nothing).
+
+Add `--json` to get the same report as one JSON document, for a dashboard or a script:
+
+```bash
+delivery report --json
+```
+
+The document names its format and version (`"schema": "delivery.report/1"`) and carries
+everything the report says: how many tasks stand where (`counts`), and for each task its
+standing, the recorded reason and cause of a stop, who must act (`plain.audience`), its retry
+budgets, every triage round and whether the work is still going (`live`). Every key is always
+present, `null` where it does not apply. Standard output holds only the document; with `--write`
+it is exactly what is saved as `last-report.json`. In a folder with no runs yet it is still a
+document, with every task `not_started`. [Reports as data](docs/reporting.md) lists every key
+and states what is promised not to change.
 
 To see a report without an agent or a sign-in, run `npm run demo:report-slice-1` in a checkout of
 this repository: it runs a list of four tasks against a scripted agent, prints the report, follows

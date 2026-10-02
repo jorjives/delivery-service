@@ -20,6 +20,8 @@ import {
   writeRecord,
   type TaskRun,
 } from "../report/report-fixtures.js";
+import { ReportDocument } from "../report/document.js";
+import { NO_TASK_LIST } from "../report/text.js";
 import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeSupervisedRun } from "./command-fixtures.js";
@@ -202,16 +204,6 @@ describe("delivery report", () => {
     expect(stderr).not.toContain("    at ");
   });
 
-  it("refuses --json for now rather than print text where a script expects data", async () => {
-    const repo = await project("report-json-", LIST, [formDone]);
-
-    const { exitCode, stdout, stderr } = await delivery(["report", "--json"], { cwd: repo });
-
-    expect(exitCode).toBe(2);
-    expect(stdout).toBe("");
-    expect(stderr).toContain("`delivery report` prints its report as text only for now. Run it without `--json`.");
-  });
-
   it("describes itself in the help, and is listed among the commands", async () => {
     const repo = await project("report-help-", LIST, []);
 
@@ -354,6 +346,130 @@ describe("delivery report", () => {
 
     expect(stdout).toBe("No runs yet in this folder. Start one with: delivery run\n\nNext: delivery run\n");
     expect(existsSync(join(repo, ".delivery"))).toBe(false);
+    expect(exitCode).toBe(0);
+  });
+});
+
+describe("delivery report --json", () => {
+  /** Standard output read back as the document it is: output that is not one valid document fails here. */
+  const documentIn = (stdout: string): ReportDocument => ReportDocument.parse(JSON.parse(stdout));
+
+  it("prints the report as one document that names its format and version: the counts, and each task with why it stopped and who must act", async () => {
+    const repo = await project("report-json-", LIST, [formDone, footerFailed]);
+
+    const { exitCode, stdout, stderr } = await delivery(["report", "--json"], { cwd: repo });
+    const doc = documentIn(stdout);
+
+    expect(doc).toMatchObject({
+      schema: "delivery.report/1",
+      kind: "list",
+      live: false,
+      incomplete: [],
+      run: null,
+      trips: [],
+      counts: { closed: 1, escalated: 1, aborted: 0, paused: 0, unfinished: 0, queued: 0, not_started: 2 },
+    });
+    expect(doc.surfaces.map((surface) => [surface.queue?.task, surface.task, surface.standing])).toEqual([
+      [1, FORM, "closed"],
+      [2, FOOTER, "escalated"],
+      [3, HOMEPAGE, "not_started"],
+      [4, BANNER, "not_started"],
+    ]);
+    expect(doc.surfaces[1]).toMatchObject({
+      run: ID.footer,
+      reason: "correction budget exhausted (1/1)",
+      cause: { kind: "budget", population: "correction" },
+      attempts: 2,
+      escalation: null,
+      plain: { group: "failed_after_attempts", audience: "owner", agentSaid: "2 links still point nowhere" },
+    });
+    expect(doc.surfaces[1]?.budgets).toContainEqual({ population: "correction", used: 1, max: 3 });
+    expect(doc.surfaces[1]?.decisions.map((round) => [round.afterAttempt, round.verdict, round.rationale])).toEqual([
+      [1, "reroute", "gate_fail: reroute"],
+      [2, "escalate", "gate_fail: escalate"],
+    ]);
+    expect(doc.surfaces[1]?.states.map((visit) => visit.state)).toContain("TRIAGE");
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(0);
+  });
+
+  it("gives every task the same keys, with null where one does not apply, so a reader never probes for a key", async () => {
+    const repo = await project("report-json-keys-", LIST, [formDone, footerFailed]);
+
+    const { surfaces } = documentIn((await delivery(["report", "--json"], { cwd: repo })).stdout);
+
+    for (const surface of surfaces) expect(Object.keys(surface).sort()).toEqual(Object.keys(surfaces[1] ?? {}).sort());
+    expect(surfaces[3]).toMatchObject({ run: null, state: null, reason: null, cause: null, branch: null, plain: null, escalation: null, attempts: 0, decisions: [], states: [] });
+  });
+
+  it("covers one task's run and a run of several tasks, each named by its id", async () => {
+    const repo = await project("report-json-named-", LIST, [formDone, { runId: ID.footer, task: FOOTER, history: attempt(1, "first go") }]);
+    await writeSupervisedRun(repo, { runId: ID.run, repoPath: repo, concurrency: 2, tasks: 4, runBudgetMax: { gateMaintenance: 2 } }, [fill(1, ID.form, FORM), fill(2, ID.footer, FOOTER)]);
+    const release = await takeRepoLock(repo);
+
+    const task = documentIn((await delivery(["report", ID.form, "--json"], { cwd: repo })).stdout);
+    const going = documentIn((await delivery(["report", ID.run, "--json"], { cwd: repo })).stdout);
+    await release?.();
+    const stopped = documentIn((await delivery(["report", ID.run, "--json"], { cwd: repo })).stdout);
+
+    expect(task).toMatchObject({ kind: "task", surfaces: [{ run: ID.form, standing: "closed" }] });
+    expect(going).toMatchObject({ kind: "run", live: true, run: { runId: ID.run, concurrency: 2, tasks: 4, breaker: "HEALTHY", outcome: null }, counts: { closed: 1, unfinished: 1, queued: 2 } });
+    expect(stopped.live).toBe(false);
+  });
+
+  it("says null for whether the work is still going where nothing records it", async () => {
+    const repo = await project("report-json-unknown-", LIST, [formDone, { runId: ID.footer, task: FOOTER, history: attempt(1, "first go") }]);
+
+    expect(documentIn((await delivery(["report", "--json"], { cwd: repo })).stdout).live).toBeNull();
+  });
+
+  it("marks a damaged task record as making the document incomplete, and still carries the other tasks", async () => {
+    const repo = await project("report-json-damaged-", LIST, [formDone, footerFailed]);
+    await damageLog(join(repo, ".delivery", "runs", ID.footer));
+
+    const { exitCode, stdout } = await delivery(["report", "--json"], { cwd: repo });
+    const doc = documentIn(stdout);
+
+    expect(doc.incomplete).toEqual([{ run: ID.footer, file: `.delivery/runs/${ID.footer}/log.jsonl`, queue: { task: 2, of: 4 } }]);
+    expect(doc.surfaces.map((surface) => surface.task)).toEqual([FORM, HOMEPAGE, BANNER]);
+    expect(exitCode).toBe(0);
+  });
+
+  it("puts nothing on standard output but the document: no colour, and no sentence for a person even where the words would say one", async () => {
+    const noList = await project("report-json-no-list-", undefined, [formDone, footerFailed]);
+    const empty = await project("report-json-empty-", LIST, []);
+
+    const recent = await delivery(["report", "--json"], { cwd: noList, isTTY: true });
+    const nothing = await delivery(["report", "--json"], { cwd: empty, isTTY: true });
+
+    expect(documentIn(recent.stdout)).toMatchObject({ kind: "task", surfaces: [{ run: ID.footer }] });
+    expect(documentIn(nothing.stdout)).toMatchObject({ kind: "list", live: false, counts: { not_started: 4 } });
+    expect(recent.stdout + nothing.stdout).not.toContain("\u001B");
+    expect(recent.stdout).not.toContain(NO_TASK_LIST);
+    expect(nothing.stdout).not.toContain("No runs yet");
+    expect([recent.stderr, nothing.stderr]).toEqual(["", ""]);
+  });
+
+  it("prints with --write exactly the data it saves, beside the same text the report in words saves", async () => {
+    const repo = await project("report-json-write-", LIST, [formDone, footerFailed]);
+    const words = await delivery(["report", "--write"], { cwd: repo });
+
+    const { stdout, stderr } = await delivery(["report", "--json", "--write"], { cwd: repo });
+
+    expect(readFileSync(join(repo, SAVED_DATA), "utf-8")).toBe(stdout);
+    expect(readFileSync(join(repo, SAVED_TEXT), "utf-8")).toBe(words.stdout);
+    expect(stderr).toBe("");
+  });
+
+  it("says on standard error, never among the data, that the report could not be saved", async () => {
+    const repo = await project("report-json-write-fails-", LIST, [formDone, footerFailed]);
+    // A folder where the data file belongs: nothing can be written over it.
+    mkdirSync(join(repo, SAVED_DATA), { recursive: true });
+
+    const { exitCode, stdout, stderr } = await delivery(["report", "--json", "--write"], { cwd: repo });
+
+    expect(documentIn(stdout).kind).toBe("list");
+    expect(stderr).toMatch(/^This report could not be saved to \.delivery\/last-report\.txt and \.delivery\/last-report\.json\. The system said: "E[A-Z]+: /);
     expect(exitCode).toBe(0);
   });
 });
