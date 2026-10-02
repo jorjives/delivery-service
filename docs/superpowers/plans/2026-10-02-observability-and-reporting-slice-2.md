@@ -20,7 +20,7 @@
 - **Compatibility (slice criterion 9):** every line `delivery status` prints today is still printed, in the same order, and its exit codes are unchanged (0 whenever the run could be read, 2 when it could not be found or the options contradict each other). `--json` output of `status`, `status <run>` and `status --all` is unchanged, key for key: the triage rounds and budgets join the published document in Slice 5.
 - **Exit codes, one rule** (spec, "Commands and exit codes"): `status` exits ok whenever the report could be made, whatever it says.
 - **Vocabulary:** the sections this slice adds are the technical ones. They use the harness's own words (triage, gate, correction, verdict, reroute, escalate) deliberately; the "To act" steps are the report's own plain words, unchanged. Evidence, rationales, briefs and packets are shown word for word, never paraphrased.
-- **Accuracy:** nothing is stated that the record cannot back. A missing fact reads "not recorded" or "none recorded", never `0`, blank or a guess.
+- **Accuracy:** nothing is stated that the record cannot back. A missing fact reads "not recorded", never `0`, blank or a guess; "none" is said only where the record shows there was none.
 - **Determinism:** `src/report/derive.ts` and `src/report/detail.ts` read no file, clock, locale, environment variable or terminal width. The same record, list and `live` value give byte-identical lines.
 - **Terminal safety** (spec, "Security"): every field quoted from the record goes through `stripControl` (or `quoted`, which uses it) before it is printed. The record is never altered.
 - User-facing copy (status lines, `--help`, README, docs, changeset): controlled British English, plain words, no em-dashes (colons, semicolons, commas instead).
@@ -33,9 +33,9 @@
   - **Existing lines are appended to, never re-laid.** The spec's sample of the status detail uses capital headings and a different order. Criterion 9 and the Build note outrank the sample: `statusReport` and the packet rendering stay byte for byte, and the new sections follow in the sentence style `status` already has ("How it got here", "Retry budgets at stop", "To act").
   - **The document gains only what this slice renders:** `state` and `decisions` on each task. `states`, `nextStep`, `escalation`, `usage`, `repairs` and entry times belong to later slices and are not added.
   - **Refs are read in `loadSnapshot`, so `deriveReport` stays pure.** A round's ref is parsed with the harness's own validators (`BriefRef` from `src/prompt-assembly.ts`, `PacketRef` from `src/surface.ts`), so a report and the next session cannot read it differently. A missing or damaged ref is left out and the round reads "not recorded": one lost file must not cost the reader the whole account.
-  - **`status` reads the records once more than before.** It keeps its own lookups (`lookUp`, `mostRecent`, `viewOf`, `allRuns`) because they own which run is meant, the wording of every refusal and the exit codes, and then derives the report document for the new sections. `status <task-id>` therefore reads every record once, as `delivery report <id>` does. The spec asks that reading cost be no worse than today's `status`; the extra read is accepted for now and marked with a `ponytail:` comment naming the upgrade (serve the account from the same snapshot).
+  - **`status` reads the records once more than before.** It keeps its own lookups (`lookUp`, `mostRecent`, `viewOf`, `allRuns`) because they own which run is meant, the wording of every refusal and the exit codes, and then derives the report document for the new sections. `status <task-id>` therefore reads every record once, as `delivery report <id>` does; the triage refs it reads are only that task's own (Task 2), not every run's. The spec asks that reading cost be no worse than today's `status`; the extra read is accepted for now and marked with a `ponytail:` comment naming the upgrade (serve the account from the same snapshot).
   - **A round's brief is printed by the function that builds the prompt.** `briefLines` is lifted out of `assemblePrompt` (Task 1) and used by both, so "what the next attempt was told" is the same text, not a look-alike.
-  - **"none recorded" covers two cases that the record cannot tell apart:** a round the router decided without writing a brief, and a brief that cannot be read back. Both are true readings of "none recorded"; nothing is guessed.
+  - **A round that wrote no brief is told apart from a brief that cannot be read back.** The record does tell them apart: a round always writes its ref (`{ trigger, rationale }`, plus `artifact` when it produced one), so a ref that is there with no `artifact` means the round wrote none, and a ref that is missing or damaged means the record cannot say. The first reads "Brief for the next session: none; this round wrote no brief." and the second "Brief for the next session: not recorded." The rule-based router the command line runs never writes a brief, so the first is what most rounds of a real run show; calling it "not recorded" would make every such run read as if it had lost data. `Decision.recorded` carries the difference from `deriveReport` to the renderer.
   - **The one-line form names the trigger in words and the verdict as the harness spells it** ("After attempt 2: a gate failure; verdict: reroute"). A trigger this build has no words for is shown as the record holds it, with control characters removed.
   - **`--decisions` expands the rounds in place;** the rest of the output is the same. It works on a run of several tasks (each task's rounds, under its name). It is refused with `--all` (a listing has no rounds) and with `--json` (printing text where a script expects data would be worse than saying so), both exit 2, the code `status` already uses for contradictory options.
   - **The two plain statements are said only where true.** "An unchanged task on your list is not run again" is printed only for a stopped task that is on the list; "`delivery resume` does not apply" under every stopped task. A stop with no recorded cause (a run made before Slice 1) gets "To act: not recorded" and no invented steps.
@@ -60,7 +60,7 @@
 
 ---
 
-### Task 1: Tidy first: export what the detail reuses
+### Task 1: Tidy first: export what the detail reuses ✅ DONE (deliver-slice)
 
 No behaviour changes in this task. It lifts four small pieces out of where they are private so that Tasks 3, 4 and 6 reuse them instead of copying them. There is no new test: the existing tests of the code that moves are the check, before and after.
 
@@ -253,7 +253,7 @@ git commit -m "Export the report's wording helpers for a second renderer" -m "Th
 
 ---
 
-### Task 2: Read back what each triage round wrote
+### Task 2: Read back what each triage round wrote ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/report/snapshot.ts`
@@ -264,7 +264,7 @@ git commit -m "Export the report's wording helpers for a second renderer" -m "Th
 - Consumes: `readRef(dir: string, refId: string): Promise<unknown>` from `src/case-file.ts`; `FileNotFound`, `CorruptCaseFile` from `src/errors.ts` (both exist).
 - Produces:
   - `export type TriageRefs = Record<string, Record<string, unknown>>` from `src/report/snapshot.ts`: by run id, then by ref id.
-  - `RecordSnapshot.refs: TriageRefs`. A run with no readable ref has no key.
+  - `RecordSnapshot.refs: TriageRefs`. A run with no readable ref has no key. For a `task` subject only that task's refs are read; for a `list` or `run` subject, every record's.
   - Test support: `TaskRun.refs?: Record<string, unknown>` (written to disk by `writeRecord`); `snapshotOf()` defaults `refs: {}`.
 
 - [ ] **Step 1: Let the fixtures write a round's ref**
@@ -317,7 +317,7 @@ Apply to `src/report/snapshot.test.ts`:
      });
    });
  
-@@ -67,6 +68,31 @@ describe("reading what a report is derived from", () => {
+@@ -67,6 +68,44 @@ describe("reading what a report is derived from", () => {
      expect(snapshot.damaged).toEqual([{ runId: ID.run, file: `.delivery/supervised/${ID.run}` }]);
    });
  
@@ -346,6 +346,19 @@ Apply to `src/report/snapshot.test.ts`:
 +    expect(snapshot.damaged).toEqual([]);
 +  });
 +
++  it("reads only the rounds of the task a report on one task is about", async () => {
++    const repo = initTempRepo("snapshot-refs-one-task-", { "README.md": "x\n" });
++    const round = { trigger: "gate_fail", rationale: "gate_fail: reroute (correction 0/3)" };
++    const history = [...attempt(1, "first go"), ...failedCheck(1, "reroute")];
++    await writeRecord(repo, { runId: ID.form, task: FORM, history, refs: { "triage-0": round } });
++    await writeRecord(repo, { runId: ID.footer, task: FOOTER, history, refs: { "triage-0": round } });
++
++    const snapshot = await loadSnapshot(repo, { kind: "task", runId: ID.footer }, { live: false, list: LIST });
++
++    expect(snapshot.refs).toEqual({ [ID.footer]: { "triage-0": round } });
++    expect(snapshot.records.map((record) => record.runId).sort()).toEqual([ID.form, ID.footer].sort());
++  });
++
    it("fails to answer for a named run nothing on disk answers for", async () => {
      const repo = initTempRepo("snapshot-unknown-", { "README.md": "x\n" });
      await writeRecord(repo, { runId: ID.form, task: FORM });
@@ -354,7 +367,7 @@ Apply to `src/report/snapshot.test.ts`:
 - [ ] **Step 3: Run the tests to see them fail**
 
 Run: `npx vitest run src/report/snapshot.test.ts`
-Expected: FAIL. Three tests fail: the empty-snapshot test (the snapshot has no `refs` key) and the two new ones (`snapshot.refs` is `undefined`).
+Expected: FAIL. Four tests fail: the empty-snapshot test (the snapshot has no `refs` key) and the three new ones (`snapshot.refs` is `undefined`).
 
 - [ ] **Step 4: Read the refs in `loadSnapshot`**
 
@@ -382,7 +395,7 @@ Apply to `src/report/snapshot.ts`:
  /** Everything a report is derived from, read once. Plain data: `deriveReport` does no reading of its own. */
  export interface RecordSnapshot {
    subject: ReportSubject;
-@@ -27,6 +31,35 @@ export interface RecordSnapshot {
+@@ -27,6 +31,33 @@ export interface RecordSnapshot {
    records: RunRecord[];
    runs: RunFile[];
    damaged: DamagedFile[];
@@ -396,8 +409,6 @@ Apply to `src/report/snapshot.ts`:
 + * recorded": one lost file must not cost the reader the whole account.
 + */
 +async function readTriageRefs(records: RunRecord[]): Promise<TriageRefs> {
-+  // ponytail: every record's rounds are read, whichever task is asked about. Narrow this to the subject's
-+  // records if a repository with thousands of runs makes a report slow.
 +  const read = await Promise.all(
 +    records.map(async (record) => {
 +      const ids = record.caseFile.history.flatMap((entry) => (entry.t === "triage" ? [entry.artifactRef] : []));
@@ -418,12 +429,17 @@ Apply to `src/report/snapshot.ts`:
  }
  
  /** Every run of several at once this repository holds, and the ones whose record cannot be read back. */
-@@ -82,5 +115,5 @@ export async function loadSnapshot(repoPath: string, subject: ReportSubject, { l
+@@ -82,5 +113,10 @@ export async function loadSnapshot(repoPath: string, subject: ReportSubject, { l
      const dir = join(supervisedRoot(repoPath), subject.runId);
      throw new RunFileNotFound(dir, join(dir, "run.json"));
    }
 -  return { subject, live, list, records: tasks.records, runs: supervised.runs, damaged };
-+  return { subject, live, list, records: tasks.records, runs: supervised.runs, damaged, refs: await readTriageRefs(tasks.records) };
++  // One task's report renders only that task's rounds, so only its refs are read: `status <task-id>` must not
++  // cost a file read per round of every run the repository has ever had (spec, "Read cost").
++  // ponytail: a list or a run still reads every record's rounds; narrow those to the records they show if a
++  // repository with thousands of runs makes a report slow.
++  const rounds = subject.kind === "task" ? tasks.records.filter((record) => record.runId === subject.runId) : tasks.records;
++  return { subject, live, list, records: tasks.records, runs: supervised.runs, damaged, refs: await readTriageRefs(rounds) };
  }
 ```
 
@@ -461,7 +477,7 @@ git commit -m "Read each triage round's ref into the report snapshot" -m "The br
 
 ---
 
-### Task 3: Put the triage rounds and the state on the report document
+### Task 3: Put the triage rounds and the state on the report document ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/report/document.ts`
@@ -472,7 +488,7 @@ git commit -m "Read each triage round's ref into the report snapshot" -m "The br
 **Interfaces:**
 - Consumes: `RecordSnapshot.refs` (Task 2); `BriefRef` from `src/prompt-assembly.ts`; `PacketRef` from `src/surface.ts` (Task 1); `SharpenedBrief`, `EscalationPacket` from `src/triage-role-config.ts`; `SurfaceState`, `TriageEntry` from `src/schema.ts`.
 - Produces:
-  - `Decision` (schema and type) from `src/report/document.ts`: `{ afterAttempt: number; trigger: string; verdict: "reroute" | "fix_the_gate" | "retry_close" | "recheck_gate" | "escalate" | "abort"; rationale: string; brief: SharpenedBrief | null; packet: EscalationPacket | null }` (the first three take their types from `TriageEntry`).
+  - `Decision` (schema and type) from `src/report/document.ts`: `{ afterAttempt: number; trigger: string; verdict: "reroute" | "fix_the_gate" | "retry_close" | "recheck_gate" | "escalate" | "abort"; rationale: string; recorded: boolean; brief: SharpenedBrief | null; packet: EscalationPacket | null }`; `recorded` is false when the round's ref is missing or cannot be read as what a round writes, so a renderer can tell "wrote none" from "not recorded" (the first three take their types from `TriageEntry`).
   - `ReportSurface.state: SurfaceState | null` and `ReportSurface.decisions: Decision[]` (oldest first; `[]` for a task with no run).
   - Test support from `src/report/report-fixtures.ts`: `TaskRun.state?: SurfaceState`, `BRIEF: SharpenedBrief`, `PACKET: EscalationPacket`.
 
@@ -562,7 +578,7 @@ Apply to `src/report/derive.test.ts`:
  
  describe("a report on the project's task list", () => {
    it("stands each task as its latest run left it, and a task with no run as not started", () => {
-@@ -110,6 +110,53 @@ describe("what a report says of one task", () => {
+@@ -110,6 +110,57 @@ describe("what a report says of one task", () => {
    });
  });
  
@@ -587,14 +603,18 @@ Apply to `src/report/derive.test.ts`:
 +  });
 +
 +  it("carries the brief a round wrote for the next session, and the packet a round wrote for a person", () => {
-+    expect(failed?.decisions[0]).toMatchObject({ brief: BRIEF, packet: null });
-+    expect(failed?.decisions[3]).toMatchObject({ brief: null, packet: PACKET });
++    expect(failed?.decisions[0]).toMatchObject({ recorded: true, brief: BRIEF, packet: null });
++    expect(failed?.decisions[3]).toMatchObject({ recorded: true, brief: null, packet: PACKET });
 +    expect(ReportDocument.parse(doc)).toEqual(doc);
 +  });
 +
-+  it("says null, never a guess, for a round that wrote neither, and for a round whose ref is not there", () => {
-+    expect(failed?.decisions[1]).toMatchObject({ brief: null, packet: null });
-+    expect(failed?.decisions[2]).toMatchObject({ brief: null, packet: null });
++  it("tells a round that wrote neither from a round whose ref is not there or is not what a round writes", () => {
++    expect(failed?.decisions[1]).toMatchObject({ recorded: true, brief: null, packet: null });
++    expect(failed?.decisions[2]).toMatchObject({ recorded: false, brief: null, packet: null });
++
++    const garbled = { [ID.footer]: { "triage-0": { trigger: "gate_fail", rationale: "gate_fail: reroute", artifact: { problem: 7 } } } };
++    const [surface] = deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [footerFailed], refs: garbled })).surfaces;
++    expect(surface?.decisions[0]).toMatchObject({ recorded: false, brief: null, packet: null });
 +  });
 +
 +  it("has no rounds for a task nothing set back, and none for a task with no run", () => {
@@ -640,7 +660,7 @@ Apply to `src/report/document.ts`:
  
  /** The version every report document names itself by. A later version adds keys; it never renames or removes one. */
  export const REPORT_SCHEMA = "delivery.report/1";
-@@ -42,6 +43,24 @@ const BudgetRow = z.object({
+@@ -42,6 +43,26 @@ const BudgetRow = z.object({
  });
  export type BudgetRow = z.infer<typeof BudgetRow>;
  
@@ -655,7 +675,9 @@ Apply to `src/report/document.ts`:
 +  verdict: TriageEntry.shape.verdict,
 +  /** The round's reasoning, word for word. */
 +  rationale: z.string(),
-+  /** The brief the round wrote for the next session; null when it wrote none, or when what it wrote cannot be read back. */
++  /** Whether what the round wrote beside the log could be read back. False: `brief` and `packet` are null because the record cannot say, not because the round wrote neither. */
++  recorded: z.boolean(),
++  /** The brief the round wrote for the next session; null when it wrote none, or when what it wrote cannot be read back (`recorded` says which). */
 +  brief: SharpenedBrief.nullable(),
 +  /** The packet the round wrote for a person; null likewise. */
 +  packet: EscalationPacket.nullable(),
@@ -665,7 +687,7 @@ Apply to `src/report/document.ts`:
  /** One task. Every key is always there: null where the record does not hold the fact. */
  export const ReportSurface = z.object({
    /** The task's own run id; null for a task with no run yet. */
-@@ -51,6 +70,8 @@ export const ReportSurface = z.object({
+@@ -51,6 +72,8 @@ export const ReportSurface = z.object({
    /** Its place in the project's list as written now. */
    queue: QueuePosition.nullable(),
    standing: Standing,
@@ -674,7 +696,7 @@ Apply to `src/report/document.ts`:
    startedAt: z.string().nullable(),
    finishedAt: z.string().nullable(),
    /** How it ended, as the run recorded it. */
-@@ -63,6 +84,8 @@ export const ReportSurface = z.object({
+@@ -63,6 +86,8 @@ export const ReportSurface = z.object({
    /** How many times the agent was set to work on the task. */
    attempts: z.number().int().nonnegative(),
    budgets: z.array(BudgetRow),
@@ -711,7 +733,7 @@ Apply to `src/report/derive.ts`:
      startedAt: null,
      finishedAt: null,
      reason: null,
-@@ -26,13 +29,38 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
+@@ -26,13 +29,41 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
      base: null,
      attempts: 0,
      budgets: [],
@@ -732,12 +754,15 @@ Apply to `src/report/derive.ts`:
 +    const ref = refs[entry.artifactRef];
 +    const brief = BriefRef.safeParse(ref);
 +    const packet = PacketRef.safeParse(ref);
++    // A round always writes its ref, with `artifact` only when it produced one: a ref with none is a round that wrote none.
++    const wroteNeither = typeof ref === "object" && ref !== null && !("artifact" in ref);
 +    return [
 +      {
 +        afterAttempt: entry.afterAttempt,
 +        trigger: entry.trigger,
 +        verdict: entry.verdict,
 +        rationale: entry.rationale,
++        recorded: brief.success || packet.success || wroteNeither,
 +        brief: brief.success ? brief.data.artifact : null,
 +        packet: packet.success ? packet.data.artifact : null,
 +      },
@@ -751,7 +776,7 @@ Apply to `src/report/derive.ts`:
    const { header, history, outcome, cursor } = record.caseFile;
    const budgets = deriveBudgetsFromLog(history, cursor.budgets);
    const lastSession = history.findLast((entry) => entry.t === "terminus");
-@@ -46,6 +74,7 @@ function withRun(record: RunRecord, queue: QueuePosition | null, standing: Stand
+@@ -46,6 +77,7 @@ function withRun(record: RunRecord, queue: QueuePosition | null, standing: Stand
      task: taskIntent(header.taskDef),
      queue,
      standing,
@@ -759,7 +784,7 @@ Apply to `src/report/derive.ts`:
      startedAt: startedInstant(record.runId),
      finishedAt: outcome?.at ?? null,
      reason: outcome?.reason ?? null,
-@@ -56,6 +85,7 @@ function withRun(record: RunRecord, queue: QueuePosition | null, standing: Stand
+@@ -56,6 +88,7 @@ function withRun(record: RunRecord, queue: QueuePosition | null, standing: Stand
      base: header.baseBranch ?? null,
      attempts,
      budgets: Population.options.map((population) => ({ population, used: budgets[population].used, max: budgets[population].max })),
@@ -767,7 +792,7 @@ Apply to `src/report/derive.ts`:
      limit,
      plain:
        standing === "escalated" || standing === "aborted"
-@@ -115,7 +145,7 @@ function taskReport(snapshot: RecordSnapshot, runId: string): ReportDocument {
+@@ -115,7 +148,7 @@ function taskReport(snapshot: RecordSnapshot, runId: string): ReportDocument {
    const finished = record.caseFile.outcome !== undefined;
    // Only a run of several at once holds the lock, so only a task one of those took can be known to be going.
    const taken = runs.some((run) => run.outcome === undefined && claimedBy(run).some((claim) => claim.surfaceId === runId));
@@ -776,7 +801,7 @@ Apply to `src/report/derive.ts`:
    return document(snapshot, { live: finished ? false : taken ? live : null, run: null, surfaces: [surface], incomplete: [] });
  }
  
-@@ -129,7 +159,7 @@ function runSurfaces(snapshot: RecordSnapshot, runFile: RunFile, live: boolean):
+@@ -129,7 +162,7 @@ function runSurfaces(snapshot: RecordSnapshot, runFile: RunFile, live: boolean):
      // A damaged record's task reads as waiting to the view, which only knows it has no record: it is reported as damaged instead.
      .filter((task) => task.record !== undefined || !damaged.some((file) => isDeepStrictEqual(file.taskDef, task.taskDef)))
      .map((task) =>
@@ -785,7 +810,7 @@ Apply to `src/report/derive.ts`:
      );
    return { surfaces, incomplete: damaged.map((file) => asIncomplete(file, list)) };
  }
-@@ -179,7 +209,7 @@ function listReport(snapshot: RecordSnapshot): ReportDocument {
+@@ -179,7 +212,7 @@ function listReport(snapshot: RecordSnapshot): ReportDocument {
      if (damaged && (record === undefined || (startedInstant(damaged.runId) ?? "") > (startedInstant(record.runId) ?? ""))) {
        return void incomplete.push({ run: damaged.runId, file: damaged.file, queue });
      }
@@ -813,7 +838,7 @@ git commit -m "Put each task's triage rounds and state on the report document" -
 
 ---
 
-### Task 4: Render one task's detail as lines
+### Task 4: Render one task's detail as lines ✅ DONE (deliver-slice)
 
 A pure function from one `ReportSurface` to the lines `status` adds beneath its own account. It reads nothing.
 
@@ -845,8 +870,8 @@ import { renderText } from "./text.js";
 const FOOTER_REFS = {
   [ID.footer]: {
     "triage-0": { trigger: "gate_fail", rationale: "gate_fail: reroute", artifact: BRIEF },
+    // Round 2 wrote no brief, as the rule-based router never does; round 3's ref (`triage-2`) is lost.
     "triage-1": { trigger: "gate_fail", rationale: "gate_fail: reroute" },
-    "triage-2": { trigger: "gate_fail", rationale: "gate_fail: reroute" },
     "triage-3": { trigger: "gate_fail", rationale: "gate_fail: escalate", artifact: PACKET },
   },
 };
@@ -943,12 +968,12 @@ describe("every triage round in full", () => {
       "    Trigger: a gate failure (gate_fail)",
       "    Verdict: reroute",
       '    Rationale: "gate_fail: reroute"',
-      "    Brief for the next session: none recorded.",
+      "    Brief for the next session: none; this round wrote no brief.",
       "  Round 3, after attempt 3",
       "    Trigger: a gate failure (gate_fail)",
       "    Verdict: reroute",
       '    Rationale: "gate_fail: reroute"',
-      "    Brief for the next session: none recorded.",
+      "    Brief for the next session: not recorded.",
       "  Round 4, after attempt 4",
       "    Trigger: a gate failure (gate_fail)",
       "    Verdict: escalate",
@@ -1047,7 +1072,13 @@ describe("the detail under a task that has less to tell", () => {
 
     const lines = short(old);
 
-    expect(lines.slice(0, 5)).toEqual(short(footerFailed).slice(0, 5));
+    expect(lines.slice(0, 5)).toEqual([
+      "How it got here (triage rounds; --decisions for the full text):",
+      "  After attempt 1: a gate failure; verdict: reroute",
+      "  After attempt 2: a gate failure; verdict: reroute",
+      "  After attempt 3: a gate failure; verdict: reroute",
+      "  After attempt 4: a gate failure; verdict: escalate",
+    ]);
     expect(lines.slice(-3)).toEqual(["To act: not recorded; the record does not say what kind of stop this was.", UNCHANGED_NOT_RUN_AGAIN, RESUME_DOES_NOT_APPLY]);
   });
 });
@@ -1099,9 +1130,9 @@ function producedLines(round: Decision): string[] {
     case "reroute":
     case "fix_the_gate":
     case "retry_close":
-      return round.brief === null
-        ? ["    Brief for the next session: none recorded."]
-        : ["    Brief for the next session:", ...briefLines(round.brief).map((line) => `      ${stripControl(line).split("\n").join("\n      ")}`)];
+      // A round that wrote no brief is not one whose brief was lost: only the second is "not recorded".
+      if (round.brief === null) return [`    Brief for the next session: ${round.recorded ? "none; this round wrote no brief." : "not recorded."}`];
+      return ["    Brief for the next session:", ...briefLines(round.brief).map((line) => `      ${stripControl(line).split("\n").join("\n      ")}`)];
     case "escalate":
       return round.packet === null
         ? ["    Packet for a person: not recorded."]
@@ -1192,7 +1223,7 @@ git commit -m "Render a task's triage rounds, retry budgets and advice as lines"
 
 ---
 
-### Task 5: Show the detail under one task's status, and `--decisions`
+### Task 5: Show the detail under one task's status, and `--decisions` ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/cli/status-command.ts`
@@ -1676,7 +1707,8 @@ How it got here (4 triage rounds, in full):
 
 Each round gives what set it off, the verdict, the reasoning word for word, and what the round
 produced: the brief the next session was given, exactly as that session read it, or the packet
-written for a person. A round that wrote no brief says "none recorded". `--decisions` cannot be
+written for a person. A round that wrote no brief says so ("none; this round wrote no brief"); one
+whose brief or packet can no longer be read says "not recorded". `--decisions` cannot be
 combined with `--all` or, for now, with `--json`: either stops with exit 2.
 ````
 
@@ -1728,7 +1760,7 @@ git commit -m "Document the detail under delivery status and --decisions" -m "Th
 
 ---
 
-### Task 6: A run of several tasks: what each is doing now, and the retries rolled up
+### Task 6: A run of several tasks: what each is doing now, and the retries rolled up ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/report/detail.ts` (new export `rollUpLines`)
@@ -1888,6 +1920,8 @@ Add this helper and these four tests directly before the test "says how to carry
       task: HELLO,
       history: [...attempt(1, "first go"), ...failedCheck(1, "reroute"), { t: "dispatch", role: "worker", attempt: 2, sessionKey: "worker-2-0" }],
       state: "AGENT_ACTIVE",
+      // What the rule-based router writes for a round: its trigger and reasoning, and no brief.
+      refs: { "triage-0": { trigger: "gate_fail", rationale: "gate_fail: reroute" } },
     });
     await writeRecord(repo, { runId: IDS.greeting, task: GREETING, history: attempt(1, "done"), state: "GATING" });
     await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 2 } }, [
@@ -1957,7 +1991,7 @@ Add this helper and these four tests directly before the test "says how to carry
       "    Trigger: a gate failure (gate_fail)",
       "    Verdict: reroute",
       '    Rationale: "gate_fail: reroute"',
-      "    Brief for the next session: none recorded.",
+      "    Brief for the next session: none; this round wrote no brief.",
       "",
       `[2/3] ${GREETING} (${IDS.greeting}):`,
       "How it got here: no triage rounds.",
@@ -2187,7 +2221,7 @@ git commit -m "Say what each task of a run is doing now, and roll its retries up
 
 ---
 
-### Task 7: The headline counts on each line of `status --all`
+### Task 7: The headline counts on each line of `status --all` ✅ DONE (deliver-slice)
 
 **Files:**
 - Modify: `src/report/text.ts` (new export `headlineCounts`)
