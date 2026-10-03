@@ -135,14 +135,10 @@ function actLines(surface: ReportSurface): string[] {
 /**
  * What `delivery status` says of one task beneath its own account: the triage
  * rounds (one line each, or in full), the retry budgets, the repairs (one line
- * each, or with their patches), and what to do. Another rendering of the report
+ * each, or with their patches), the time and cost of its agent sessions, and what to do. Another rendering of the report
  * document, so it is pure and reads nothing. The technical parts use the harness's
  * own words, because whoever reads them is looking for those words; the advice is
  * the report's, unchanged.
- */
-/**
- * A stopped task's triage, budget, repairs and next actions, line by line: what it did, how many retries it used,
- * the time and cost of its agent sessions, any repairs and where to go from here.
  */
 export function detailLines(surface: ReportSurface, { full, patches }: { full: boolean; patches: boolean }): string[] {
   return [...roundLines(surface.decisions, { full }), "", ...budgetLines(surface), "", usageSentence(surface, "this task"), "", ...repairLines(surface.repairs, { patches }), "", ...actLines(surface)];
@@ -157,6 +153,9 @@ export function detailLines(surface: ReportSurface, { full, patches }: { full: b
 export function rollUpLines(doc: ReportDocument): string[] {
   const ran = doc.surfaces.filter((surface) => surface.budgets.length > 0);
   const shared = doc.run === null ? [] : [`  shared repair limit for the run: ${doc.run.runBudgets.gateMaintenance.used} of ${doc.run.runBudgets.gateMaintenance.max} used`];
-  if (ran.length === 0) return ["Retry budgets: no task of this run has started.", ...shared, "", usageSentence(doc, "this run")];
-  return [`Retry budgets across the ${ran.length === 1 ? "1 task" : `${ran.length} tasks`} this run has taken:`, `  ${budgetWords(budgetTotals(ran))}`, ...shared, "", usageSentence(doc, "this run")];
+  const budgets =
+    ran.length === 0
+      ? ["Retry budgets: no task of this run has started."]
+      : [`Retry budgets across the ${ran.length === 1 ? "1 task" : `${ran.length} tasks`} this run has taken:`, `  ${budgetWords(budgetTotals(ran))}`];
+  return [...budgets, ...shared, "", usageSentence(doc, "this run")];
 }
