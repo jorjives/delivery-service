@@ -8,6 +8,7 @@ import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
 import { EscalationPacket, type SharpenedBrief } from "./triage-role-config.js";
+import { captureRepair, checkFilesOf } from "./repair-changes.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext } from "./ports.js";
 import { OutcomeCause } from "./schema.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
@@ -402,10 +403,16 @@ async function dispatchSession(
 
   const briefRef = await currentBriefRef(dir, caseFile.history, role);
   await appendEntry(dir, { t: "dispatch", role, attempt, sessionKey, ...(briefRef ? { briefRef } : {}) });
-  const terminus = await ports.agent.invoke(
-    { role },
-    { worktreePath: worktreeOf(caseFile, location), dir, sessionKey },
-  );
+  const worktreePath = worktreeOf(caseFile, location);
+  const session = () => ports.agent.invoke({ role }, { worktreePath, dir, sessionKey });
+  // A repair may edit the very check that guards the work: what it changed is kept, before its terminus, so a
+  // crash leaves at most an orphan ref (the recovered retry gets a new session key, so a new ref). Only kept,
+  // never judged: nothing below reads it.
+  const { result: terminus, changes } =
+    role === "gate-maintenance"
+      ? await captureRepair(worktreePath, checkFilesOf(caseFile.header.gateRef, { repoPath: location.repoPath, worktreePath }), session)
+      : { result: await session(), changes: undefined };
+  const changesRef = changes === undefined ? undefined : await writeRef(dir, `repair-${sessionKey}`, changes);
   const entry: HistoryEntry = {
     t: "terminus",
     role,
@@ -415,6 +422,7 @@ async function dispatchSession(
     ...(terminus.status === "escalate" ? { category: terminus.category } : {}),
     ...(terminus.status === "incomplete" && terminus.notRun ? { notRun: true as const } : {}),
     ...(terminus.status === "incomplete" && terminus.limit ? { limit: terminus.limit } : {}),
+    ...(changesRef === undefined ? {} : { changesRef }),
     rationale: terminus.rationale,
   };
   await appendEntry(dir, entry);

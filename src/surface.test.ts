@@ -20,6 +20,7 @@ import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, 
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition, RunHalted } from "./errors.js";
 import type { BudgetPopulation, BudgetSet, CaseFile, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
+import { RepairChanges } from "./schema.js";
 import { withoutAt } from "./without-at.js";
 import { cleanGitEnv } from "./git-env.js";
 
@@ -276,6 +277,7 @@ describe("advance", () => {
         attempt: 1,
         sessionKey: "gate-maintenance-1-0",
         status: "completed",
+        changesRef: "repair-gate-maintenance-1-0",
         rationale: "reinstalled the runner",
       },
     ]);
@@ -298,6 +300,45 @@ describe("advance", () => {
     const reloaded = await load(dir);
     expect(reloaded.header.baseline?.status).toBe("PASS");
     expect(agent.calls).toEqual(["gate-maintenance:gate-maintenance-1-0"]);
+  });
+
+  it("keeps what a repair changed beside its terminus, and moves on exactly as it would have", async () => {
+    const agent = sessionAgent((_role, ctx) => {
+      writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+      return Promise.resolve({ status: "completed", rationale: "restored report.tap" });
+    });
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "seed.txt": "hello\n" }, ports);
+
+    expect(await advance(dir, location, ports)).toEqual({ state: "GATE_MAINTENANCE", done: false });
+    expect(await advance(dir, location, ports)).toEqual({ state: "AGENT_ACTIVE", done: false });
+
+    const terminus = (await load(dir)).history.find((entry) => entry.t === "terminus");
+    expect(terminus).toMatchObject({ role: "gate-maintenance", changesRef: "repair-gate-maintenance-1-0" });
+    const changes = RepairChanges.parse(await readRef(dir, "repair-gate-maintenance-1-0"));
+    expect(changes.files.map(({ patch, ...file }) => file)).toEqual([
+      { path: "report.tap", status: "added", added: 3, removed: 0, touchesCheck: false },
+    ]);
+    expect(changes.files[0]?.patch).toContain("+ok 1 - alpha");
+    // The repair's work is left in the working copy exactly as the repair left it: nothing staged.
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: location.worktreePath, env: cleanGitEnv() }).toString()).toBe("?? report.tap\n");
+  });
+
+  it("records no changes for a worker's session", async () => {
+    const agent = sessionAgent((_role, ctx) => Promise.resolve({ status: "completed", rationale: "did it" }));
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+
+    // Advance from PROVISIONING -> PRE_GATING -> AGENT_ACTIVE (gate passes)
+    while ((await load(dir)).cursor.state !== "AGENT_ACTIVE") {
+      await advance(dir, location, ports);
+    }
+    // Advance from AGENT_ACTIVE -> CLOSING (worker session dispatched and completed)
+    await advance(dir, location, ports);
+
+    // Find the worker's terminus (should not have changesRef)
+    const workerTerminus = (await load(dir)).history.find((entry) => entry.t === "terminus" && entry.role === "worker");
+    expect(workerTerminus).not.toHaveProperty("changesRef");
   });
 
   it("escalates when a repair session escalates outright", async () => {
@@ -1623,6 +1664,11 @@ describe("escalation packets", () => {
     const repair = (await load(dir)).history.find((e) => e.t === "dispatch");
     expect(repair).toMatchObject({ role: "gate-maintenance" });
     expect(repair).not.toHaveProperty("briefRef");
+
+    // Git cannot read "/unused": the repair still ran and ended as it did, with no record of its changes.
+    const end = (await load(dir)).history.find((e) => e.t === "terminus");
+    expect(end).toMatchObject({ role: "gate-maintenance", status: "completed" });
+    expect(end).not.toHaveProperty("changesRef");
   });
 });
 

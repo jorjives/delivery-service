@@ -239,6 +239,10 @@ export const TerminusEntry = z.object({
   // Incomplete only: a usage limit stopped the session. Recorded so a report
   // can say so; no routing decision reads it.
   limit: UsageLimit.optional(),
+  // Repair sessions only: the ref holding what the session changed in the
+  // working copy (`RepairChanges`). Absent for a record made before changes
+  // were kept, or where they could not be read. No routing decision reads it.
+  changesRef: z.string().optional(),
   at: At.optional(),
 });
 export type TerminusEntry = z.infer<typeof TerminusEntry>;

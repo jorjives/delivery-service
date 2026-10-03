@@ -406,8 +406,12 @@ Entry =
         status: completed|escalate|incomplete,
         category?,             # for escalate: exhaustion | authority
         rationale, role?,      # role as above; must match its dispatch
-        limit? }               # for incomplete: rate | spend, the usage limit that stopped the
+        limit?,                # for incomplete: rate | spend, the usage limit that stopped the
                                # session. Read only by reporting, never by routing.
+        changes_ref? }         # gate-maintenance only → RepairChanges: what the repair changed
+                               # in the working copy (files, counts, touches_check, capped
+                               # patches), captured read-only before this entry. Read only by
+                               # reporting, never by routing.
   | { t:"gate", attempt,
         status: PASS|FAIL|ERROR,
         new_failures: [{id, detail_ref}],   # empty on the PASS that ends the run
