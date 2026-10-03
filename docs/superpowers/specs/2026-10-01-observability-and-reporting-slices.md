@@ -1,6 +1,7 @@
 # Observability and Reporting — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-10-01-observability-and-reporting-design.md`
+> **Status:** ✅ Complete — 2026-10-03 — all 7 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** as with Items 8 to 10, this item's product surface is the `delivery` command,
@@ -302,6 +303,7 @@ agent-written plain summary) is not sliced.
 
 ## Slice 7: See How Long a Run Took and Roughly What It Cost
 
+**Status:** ✅ Complete — 2026-10-03 — `1712f71`
 **Delivers:** The report and status show the time and estimated cost of the agent sessions behind each task and the whole run, and always say how many sessions the figure covers.
 
 **Operational note:** From this slice on each agent session's duration and estimated cost are recorded with the run; earlier runs read "not recorded". The scripted agent used by the test suite gains the ability to script a session's cost and duration, since it reports zero for both today; this is a small addition to the vendored mock that adopters' own scripted tests can use too.

@@ -7,6 +7,7 @@ seeded_by: [50-20260930T212043Z-gate-maintenance-can-weaken-the-check.md]
 
 # Observability and Reporting — Design
 
+> **Status:** ✅ Complete — 2026-10-03 — all 7 slices delivered
 > Roadmap: `docs/superpowers/specs/2026-09-04-delivery-harness-roadmap.md`, Item 11.
 > Extends: `2026-09-14-cli-and-configuration-design.md` (Item 8: the `delivery` CLI, exit codes, `--json`, `delivery status`, the terminal renderer), `2026-09-26-multi-surface-supervisor-design.md` (Item 10: the run file, breaker and repair entries, the supervised `status` view).
 > Builds on: `2026-09-04-case-file-persistence-design.md` (three-part persistence, log-tail authority), `2026-09-10-triage-and-router-design.md` (triage entries, `EscalationPacket`), `2026-09-17-project-configuration-design.md` (the task list, content identity via `findQueueRun`), `2026-09-13-agent-mock-design.md` (the scripted mock stack).
