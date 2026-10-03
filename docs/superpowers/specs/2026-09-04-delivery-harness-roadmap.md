@@ -480,6 +480,8 @@ scripted interleavings.
 
 ## Item 11: Observability and Reporting
 
+**Status:** ✅ Complete — 2026-10-03 — spec: `docs/superpowers/specs/2026-10-01-observability-and-reporting-design.md`
+
 **Delivers:** Structured visibility into what the harness is doing: run
 progress, surface states, budget consumption, triage decisions, and terminal
 outcomes, available both during and after a run.
