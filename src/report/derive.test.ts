@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ReportDocument, stepOf } from "./document.js";
 import { deriveReport, mostRecentSubject } from "./derive.js";
 import type { OutcomeCause } from "../schema.js";
-import type { RecordSnapshot } from "./snapshot.js";
+import type { RecordRefs, RecordSnapshot } from "./snapshot.js";
 import { attempt, BANNER, BRIEF, closedAt, failedCheck, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt, timed } from "./report-fixtures.js";
 
 describe("a report on the project's task list", () => {
@@ -233,7 +233,7 @@ describe("what a stop left for a person", () => {
     history: attempt(1, "I need the owner to confirm.", "authority"),
     outcome: { ...stoppedAt("2026-10-01T02:58:00.000Z", { kind: "authority", role: "worker" }), packetRef: "escalation" },
   });
-  const surfaces = (refs: Record<string, unknown>) => deriveReport(snapshotOf({ records: [formDone, stopped], refs })).surfaces;
+  const surfaces = (refs: RecordRefs) => deriveReport(snapshotOf({ records: [formDone, stopped], refs })).surfaces;
 
   it("is carried word for word: the packet the stopped task's record points at", () => {
     expect(surfaces({ [ID.footer]: { escalation: PACKET } })[1]?.escalation).toEqual(PACKET);
