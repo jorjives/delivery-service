@@ -243,6 +243,32 @@ export const TerminusEntry = z.object({
 });
 export type TerminusEntry = z.infer<typeof TerminusEntry>;
 
+/** How a file stands after a repair: renames are told as a deleted file and an added one. */
+export const RepairFileStatus = z.enum(["added", "modified", "deleted"]);
+export type RepairFileStatus = z.infer<typeof RepairFileStatus>;
+
+/**
+ * What one repair session changed in the working copy it ran in, captured
+ * with git before its terminus was recorded and kept as a ref beside the log.
+ * `patch` is absent for a binary file or one past the size kept; `truncated`
+ * says that happened. `touchesCheck` says only that the path is one the check
+ * runs, never whether the change was safe. Read only by reporting.
+ */
+export const RepairChanges = z.object({
+  files: z.array(
+    z.object({
+      path: z.string(),
+      status: RepairFileStatus,
+      added: z.number().int().nonnegative(),
+      removed: z.number().int().nonnegative(),
+      touchesCheck: z.boolean(),
+      patch: z.string().optional(),
+    }),
+  ),
+  truncated: z.boolean(),
+});
+export type RepairChanges = z.infer<typeof RepairChanges>;
+
 export const GateEntry = z.object({
   t: z.literal("gate"),
   attempt: z.number().int().positive(),
