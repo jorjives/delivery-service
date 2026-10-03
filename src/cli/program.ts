@@ -114,6 +114,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--last", "read the run touched most recently, which is also what no run id means")
     .option("--all", "list every run in this repository, newest first, instead of reading one")
     .option("--decisions", "print every triage round in full: what set it off, the verdict, the reasoning word for word, and the brief or packet it produced")
+    .option("--repairs", "print what each repair changed in the task's working copy: every changed file and its patch, marking a file the check runs")
     .option(
       "--watch",
       "follow the run as it happens, from any terminal: what each task is doing now, then one line for each change, until the run ends. With no run id it follows your task list. Ctrl-C stops watching; the run is not affected",

@@ -17,7 +17,7 @@ import { EXIT } from "./failures.js";
 import { plainReporter } from "./report.js";
 import { takeRepoLock } from "../repo-lock.js";
 import type { StatusOptions } from "./status-command.js";
-import { INTERVAL_NEEDS_WATCH, INTERVAL_SECONDS, signatureOf, WATCH_AND_ALL, WATCH_AND_DECISIONS, watchCommand } from "./watch-command.js";
+import { INTERVAL_NEEDS_WATCH, INTERVAL_SECONDS, signatureOf, WATCH_AND_ALL, WATCH_AND_DECISIONS, WATCH_AND_REPAIRS, watchCommand } from "./watch-command.js";
 
 const MERGE = { type: "merge-back" } as const;
 const LIST = [FORM, FOOTER];
@@ -331,6 +331,7 @@ describe("delivery status --watch, asked for something it does not do", () => {
     [["status", "--interval", "5"], INTERVAL_NEEDS_WATCH],
     [["status", "--watch", "--all"], WATCH_AND_ALL],
     [["status", "--watch", "--decisions"], WATCH_AND_DECISIONS],
+    [["status", "--watch", "--repairs"], WATCH_AND_REPAIRS],
     [["status", "--watch", "--interval", "0"], INTERVAL_SECONDS],
     [["status", "--watch", "--interval", "soon"], INTERVAL_SECONDS],
   ])("refuses %j, saying what to do instead", async (args, message) => {

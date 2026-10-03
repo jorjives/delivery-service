@@ -11,7 +11,7 @@ import { loadConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { RunFileNotFound } from "../errors.js";
 import { deriveReport } from "../report/derive.js";
-import { detailLines, rollUpLines, roundLines } from "../report/detail.js";
+import { detailLines, repairLines, rollUpLines, roundLines } from "../report/detail.js";
 import { latestOf, stepOf, type ReportDocument, type ReportSurface } from "../report/document.js";
 import { headlineCounts } from "../report/text.js";
 import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
@@ -355,6 +355,9 @@ export const ALL_AND_ONE =
 export const ALL_AND_DECISIONS =
   "Use either `--all` or `--decisions`, not both: `--all` lists every run, and `--decisions` prints one run's triage rounds in full.";
 
+export const ALL_AND_REPAIRS =
+  "Use either `--all` or `--repairs`, not both: `--all` lists every run, and `--repairs` prints what one run's repairs changed.";
+
 /** One entry of `status --all --json`: a single run, or a run of several at once with its tasks under it. Every key in both, null where it does not apply. */
 export interface ListedRun {
   run: string;
@@ -443,6 +446,8 @@ export interface StatusOptions {
   all?: boolean;
   /** Print every triage round in full, where the usual account gives each one line. */
   decisions?: boolean;
+  /** Print every file each repair changed with its patch, where the usual account gives each repair one line. */
+  repairs?: boolean;
   /** Follow the run as it happens instead of reading it once: `watchCommand`'s to act on. */
   watch?: boolean;
   /** With `watch`: seconds between one look at the record and the next. */
@@ -527,7 +532,7 @@ function repairedDuringRun(view: SupervisedView): string {
  * document: the retries added up across the run with its shared repair limit,
  * and, when asked for, every task's triage rounds in full.
  */
-export async function supervisedReport(view: SupervisedView, ctx: CommandContext, doc: ReportDocument, { full }: { full: boolean }): Promise<string[]> {
+export async function supervisedReport(view: SupervisedView, ctx: CommandContext, doc: ReportDocument, { full, patches }: { full: boolean; patches: boolean }): Promise<string[]> {
   const { header, outcome } = view.runFile;
   const surfaceOf = (task: ViewTask): ReportSurface | undefined => doc.surfaces.find((surface) => surface.run !== null && surface.run === task.record?.runId);
   const counts = countsLine(view.tasks);
@@ -553,10 +558,15 @@ export async function supervisedReport(view: SupervisedView, ctx: CommandContext
       if (surface) lines.push("", `${taskName(task)}:`, ...roundLines(surface.decisions, { full }));
     }
   }
+  // Mirrors the --decisions block: each task a repair ran in, under its name. Tasks no repair touched are left out.
+  for (const task of view.tasks) {
+    const surface = surfaceOf(task);
+    if (surface && surface.repairs.length > 0) lines.push("", `${taskName(task)}:`, ...repairLines(surface.repairs, { patches }));
+  }
   const readable = view.tasks.find((task) => task.standing === "escalated") ?? view.tasks.find((task) => task.record);
   if (readable?.record) lines.push("", `To read one task in full: delivery status ${readable.record.runId}`);
   const rounds = doc.surfaces.reduce((sum, surface) => sum + surface.decisions.length, 0);
-  lines.push("", nextLine(header.runId, `delivery report ${header.runId} (this run in plain words)`, rounds, full));
+  lines.push("", nextLine(header.runId, `delivery report ${header.runId} (this run in plain words)`, { rounds, full, changed: anyChanged(doc.surfaces), patches }));
   return lines;
 }
 
@@ -573,11 +583,17 @@ async function documentOf(repoPath: string, startDir: string, subject: ReportSub
   return deriveReport(await loadSnapshot(repoPath, subject, { live, list }));
 }
 
-/** Where to go from here: the triage rounds in full, when there are any and they were not just printed, and the report. */
-function nextLine(runId: string, report: string, rounds: number, full: boolean): string {
-  const more = rounds > 0 && !full ? [`delivery status ${runId} --decisions (every triage round in full)`] : [];
+/** Where to go from here: the triage rounds in full and the repairs' patches, when there are any and they were not just printed, and the report. */
+function nextLine(runId: string, report: string, { rounds, full, changed, patches }: { rounds: number; full: boolean; changed: boolean; patches: boolean }): string {
+  const more = [
+    ...(rounds > 0 && !full ? [`delivery status ${runId} --decisions (every triage round in full)`] : []),
+    ...(changed && !patches ? [`delivery status ${runId} --repairs (each repair's patch)`] : []),
+  ];
   return `Next: ${[...more, report].join(", ")}`;
 }
+
+/** Whether any repair in the document has recorded files to show the patches of. */
+const anyChanged = (surfaces: readonly ReportSurface[]): boolean => surfaces.some((surface) => surface.repairs.some((repair) => repair.files.length > 0));
 
 /**
  * `delivery status`: read one run's record and say what happened to it, for
@@ -592,7 +608,9 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   // send the reader after the wrong problem.
   if (options.all && runId !== undefined) throw new Refusal(ALL_AND_ONE, EXIT.configuration);
   if (options.all && options.decisions) throw new Refusal(ALL_AND_DECISIONS, EXIT.configuration);
+  if (options.all && options.repairs) throw new Refusal(ALL_AND_REPAIRS, EXIT.configuration);
   const full = options.decisions === true;
+  const patches = options.repairs === true;
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
   if (options.all) return listRuns(repoPath, startDir, ctx);
@@ -604,7 +622,7 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
       ctx.writeLine(JSON.stringify({ ...(await supervisedDocument(view, ctx)), report: doc }, null, 2));
       return EXIT.ok;
     }
-    for (const line of await supervisedReport(view, ctx, doc, { full })) ctx.writeLine(line);
+    for (const line of await supervisedReport(view, ctx, doc, { full, patches })) ctx.writeLine(line);
     return EXIT.ok;
   }
   const doc = await documentOf(repoPath, startDir, { kind: "task", runId: record.runId }, ctx);
@@ -617,9 +635,9 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   const [surface] = doc.surfaces;
   const lines = [
     ...(await statusReport(record, ctx, surface?.queue ?? undefined)),
-    ...(surface ? ["", ...detailLines(surface, { full })] : []),
+    ...(surface ? ["", ...detailLines(surface, { full, patches })] : []),
     "",
-    nextLine(record.runId, "delivery report (your task list)", surface?.decisions.length ?? 0, full),
+    nextLine(record.runId, "delivery report (your task list)", { rounds: surface?.decisions.length ?? 0, full, changed: anyChanged(doc.surfaces), patches }),
   ];
   for (const line of lines) ctx.writeLine(line);
   return EXIT.ok;

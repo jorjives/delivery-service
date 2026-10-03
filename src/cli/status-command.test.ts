@@ -4,17 +4,18 @@ import { mkdtemp, mkdir, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import type { CaseFileOutcome, RunEntry, SlotOutcome } from "../schema.js";
+import type { CaseFileOutcome, RepairChanges, RunEntry, SlotOutcome } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { ESCALATION, delivery, PACKAGE, writeRunRecord, writeSupervisedRun } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { runPlace, runsRoot } from "../run-location.js";
+import { runPlace, runsRoot, supervisedPlace } from "../run-location.js";
+import { writeRef } from "../case-file.js";
 import { NOTHING_HERE, readRun } from "./runs.js";
-import { ALL_AND_DECISIONS, ALL_AND_ONE, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
+import { ALL_AND_DECISIONS, ALL_AND_ONE, ALL_AND_REPAIRS, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
 import { RESUME_DOES_NOT_APPLY, UNCHANGED_NOT_RUN_AGAIN } from "../report/detail.js";
 import { ReportDocument } from "../report/document.js";
-import { attempt, BRIEF, failedCheck, PACKET, stoppedAt, timed, writeRecord } from "../report/report-fixtures.js";
+import { attempt, BRIEF, CHANGES_TOUCHING_CHECK, failedCheck, ownRepair, PACKET, setupRepair, stoppedAt, timed, writeRecord } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
 import { setRunOutcome } from "../run-file.js";
@@ -316,6 +317,8 @@ describe("delivery status, beneath its own account of one task", () => {
       "Retry budgets at stop, after 4 attempts:",
       "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
       "",
+      "Repairs: none ran for this task.",
+      "",
       "To act: 1. Reword the task, or remove it from your list.",
       "        2. Run: delivery run",
       UNCHANGED_NOT_RUN_AGAIN,
@@ -362,9 +365,11 @@ describe("delivery status, beneath its own account of one task", () => {
     // The account above the rounds, and the retries and advice below them, are there as they are without the flag.
     const before = await statusReport(await readRun(repo, FOOTER_RUN), await context(), { task: 2, of: 2 });
     expect(lines.slice(0, before.length)).toEqual(before);
-    expect(lines.slice(-9, -2)).toEqual([
+    expect(lines.slice(-11, -2)).toEqual([
       "Retry budgets at stop, after 4 attempts:",
       "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "Repairs: none ran for this task.",
       "",
       "To act: 1. Reword the task, or remove it from your list.",
       "        2. Run: delivery run",
@@ -385,6 +390,8 @@ describe("delivery status, beneath its own account of one task", () => {
       "",
       "Retry budgets when it finished, after 0 attempts:",
       "  correction 0 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "Repairs: none ran for this task.",
       "",
       "No stop: this run finished.",
       "",
@@ -465,6 +472,63 @@ describe("delivery status, beneath its own account of one task", () => {
     const repo = initTempRepo("status-decisions-help-", { "package.json": PACKAGE });
 
     expect((await delivery(["status", "--help"], { cwd: repo })).stdout).toContain("--decisions");
+  });
+
+  describe("what a repair changed, in status", () => {
+    async function repairedTask(prefix: string): Promise<string> {
+      const repo = initTempRepo(prefix, { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [FORM, FOOTER] }) });
+      await writeRecord(repo, {
+        runId: FOOTER_RUN,
+        task: FOOTER,
+        history: [...ownRepair(1, "repair-gate-maintenance-1-0"), ...attempt(1, "first go")],
+        refs: { "repair-gate-maintenance-1-0": CHANGES_TOUCHING_CHECK },
+      });
+      return repo;
+    }
+
+    it("shows one line per repair, and points at --repairs", async () => {
+      const repo = await repairedTask("status-repairs-");
+
+      const { stdout, exitCode } = await delivery(["status", FOOTER_RUN], { cwd: repo });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain("Repairs (--repairs for each patch):\n  Repair 1 (of the check, attempt 1 of 2) changed 3 files, +3 -1: check.mjs (the check runs this file), notes.txt, big.bin\n");
+      expect(stdout.trimEnd().split("\n").at(-1)).toContain(`delivery status ${FOOTER_RUN} --repairs (each repair's patch)`);
+      expect(stdout).not.toContain("+export default lenient;");
+    });
+
+    it("prints each repair's patch with --repairs, and stops pointing at it", async () => {
+      const repo = await repairedTask("status-repairs-full-");
+
+      const { stdout, exitCode } = await delivery(["status", FOOTER_RUN, "--repairs"], { cwd: repo });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain("      +export default lenient;");
+      expect(stdout).toContain("    big.bin: added, +0 -0\n      patch too large to keep");
+      expect(stdout).not.toContain("--repairs (each repair's patch)");
+    });
+
+    it("carries the same repairs in --json, patches and all", async () => {
+      const repo = await repairedTask("status-repairs-json-");
+
+      const { stdout } = await delivery(["status", FOOTER_RUN, "--repairs", "--json"], { cwd: repo });
+
+      expect(JSON.parse(stdout).report.surfaces[0].repairs[0].files[0]).toMatchObject({ path: "check.mjs", touchesCheck: true, patch: expect.stringContaining("+export default lenient;") });
+    });
+
+    it("stops when --repairs is given with --all rather than quietly ignoring it", async () => {
+      const repo = await repairedTask("status-repairs-all-");
+
+      const withAll = await delivery(["status", "--all", "--repairs"], { cwd: repo });
+
+      expect(withAll.exitCode).toBe(EXIT.configuration);
+      expect(withAll.stderr).toContain(ALL_AND_REPAIRS);
+    });
+
+    it("describes --repairs in the command's own help", async () => {
+      const repo = initTempRepo("status-repairs-help-", { "package.json": PACKAGE });
+      expect((await delivery(["status", "--help"], { cwd: repo })).stdout).toContain("--repairs");
+    });
   });
 });
 

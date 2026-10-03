@@ -25,6 +25,8 @@ export const WATCH_AND_ALL = "Use either `--watch` or `--all`, not both: `--watc
 
 export const WATCH_AND_DECISIONS = "Use either `--watch` or `--decisions`, not both: `--watch` follows a run as it happens, and `--decisions` prints one run's triage rounds in full.";
 
+export const WATCH_AND_REPAIRS = "Use either `--watch` or `--repairs`, not both: `--watch` follows a run as it happens, and `--repairs` prints what one run's repairs changed.";
+
 /** `--interval`'s value as a number of seconds, or commander's own refusal naming the option. */
 export function intervalSeconds(value: string): number {
   const seconds = Number(value);
@@ -76,6 +78,7 @@ export async function watchCommand(
   if (!options.watch) throw new Refusal(INTERVAL_NEEDS_WATCH, EXIT.configuration);
   if (options.all) throw new Refusal(WATCH_AND_ALL, EXIT.configuration);
   if (options.decisions) throw new Refusal(WATCH_AND_DECISIONS, EXIT.configuration);
+  if (options.repairs) throw new Refusal(WATCH_AND_REPAIRS, EXIT.configuration);
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
   // ponytail: the list is read once, so a list edited while it is watched is followed as it was; read it each look if that is ever wanted.
