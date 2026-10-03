@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BreakerState, OutcomeCause, Population, SurfaceState, TriageEntry, Trip, UsageLimit } from "../schema.js";
+import { BreakerState, OutcomeCause, Population, RepairChanges, RepairStatus, SurfaceState, TriageEntry, Trip, UsageLimit } from "../schema.js";
 import { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
 
 /** The version every report document names itself by. A later version adds keys; it never renames or removes one. */
@@ -78,6 +78,33 @@ export const SurfaceCause = z.object({
   population: OutcomeCause.shape.population.unwrap().nullable(),
 });
 
+/** One file a repair changed, as the document tells it: `patch` is null for a binary file or one past the size kept. */
+export const RepairFile = RepairChanges.shape.files.element.extend({ patch: z.string().nullable() });
+export type RepairFile = z.infer<typeof RepairFile>;
+
+/**
+ * One repair session that ran in a task's working copy: the task's own repair
+ * of the check (`of: "check"`), or its run's repair of the setup every task
+ * shares (`of: "setup"`), with what it changed there as recorded. Shown, never
+ * judged: `touchesCheck` on a file says only that the check runs it.
+ */
+export const ReportRepair = z.object({
+  of: z.enum(["check", "setup"]),
+  /** Which of the repairs its limit allows this was, and how many that limit allows. */
+  attempt: z.number().int().positive(),
+  max: z.number().int().positive(),
+  /** When it was set going; null for a record from before steps carried a time. */
+  at: z.string().nullable(),
+  /** How its session ended; null while it is still going. */
+  status: RepairStatus.nullable(),
+  /** Whether the record holds what it changed. False: `files` is empty because the record cannot say, not because it changed nothing. */
+  recorded: z.boolean(),
+  files: z.array(RepairFile),
+  /** Whether a patch was left out: a binary file, or the size kept was reached. */
+  truncated: z.boolean(),
+});
+export type ReportRepair = z.infer<typeof ReportRepair>;
+
 /** One task. Every key is always there: null where the record does not hold the fact. */
 export const ReportSurface = z.object({
   /** The task's own run id; null for a task with no run yet. */
@@ -107,6 +134,8 @@ export const ReportSurface = z.object({
   budgets: z.array(BudgetRow),
   /** Every triage round, oldest first. */
   decisions: z.array(Decision),
+  /** Every repair that ran in the task's working copy, its own and its run's, oldest first. */
+  repairs: z.array(ReportRepair),
   /** The usage limit that stopped the task's last session, when one did. */
   limit: UsageLimit.nullable(),
   /** The packet the task stopped with, word for word as the harness wrote it for a person; null for a task that did not stop for one, or whose packet cannot be read back. */

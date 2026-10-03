@@ -3,7 +3,8 @@ import { ReportDocument, stepOf } from "./document.js";
 import { deriveReport, mostRecentSubject } from "./derive.js";
 import type { OutcomeCause } from "../schema.js";
 import type { RecordRefs, RecordSnapshot } from "./snapshot.js";
-import { attempt, BANNER, BRIEF, closedAt, failedCheck, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt, timed } from "./report-fixtures.js";
+import { attempt, BANNER, BRIEF, closedAt, failedCheck, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt, timed, ownRepair, setupRepair, CHANGES_TOUCHING_CHECK } from "./report-fixtures.js";
+import type { HistoryEntry } from "../schema.js";
 
 describe("a report on the project's task list", () => {
   it("stands each task as its latest run left it, and a task with no run as not started", () => {
@@ -469,6 +470,48 @@ describe("the run a project with no task list is told about", () => {
 
   it("is nothing when the folder holds no run at all", () => {
     expect(mostRecentSubject(snapshotOf({ list: [] }))).toBeUndefined();
+  });
+});
+
+describe("a task's repairs", () => {
+  const repaired = recordOf({ runId: ID.footer, task: FOOTER, history: [...ownRepair(1, "repair-gate-maintenance-1-0"), ...ownRepair(2)] });
+  const surfaceOf = (snapshot: RecordSnapshot) => deriveReport(snapshot).surfaces.find((surface) => surface.run === ID.footer);
+
+  it("lists each of its own repairs with what it changed as recorded, and one recorded before changes were kept as not recorded", () => {
+    const snapshot = snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [repaired], refs: { [ID.footer]: { "repair-gate-maintenance-1-0": CHANGES_TOUCHING_CHECK } } });
+
+    expect(surfaceOf(snapshot)?.repairs).toEqual([
+      {
+        of: "check", attempt: 1, max: 2, at: null, status: "completed", recorded: true, truncated: true,
+        files: CHANGES_TOUCHING_CHECK.files.map((file) => ({ ...file, patch: file.patch ?? null })),
+      },
+      { of: "check", attempt: 2, max: 2, at: null, status: "completed", recorded: false, files: [], truncated: false },
+    ]);
+  });
+
+  it("lists the run's repair of the setup under the task in whose copy it ran", () => {
+    const run = runFileOf(ID.run, [fill(1, ID.footer, FOOTER), ...setupRepair(1, ID.footer, "repair-run-repair-1")]);
+    const snapshot = snapshotOf({ subject: { kind: "run", runId: ID.run }, records: [footerWorking], runs: [run], refs: { [ID.run]: { "repair-run-repair-1": { files: [], truncated: false } } } });
+
+    expect(surfaceOf(snapshot)?.repairs).toEqual([{ of: "setup", attempt: 1, max: 2, at: null, status: "completed", recorded: true, files: [], truncated: false }]);
+  });
+
+  it("shows a repair still going as having no end and nothing recorded yet", () => {
+    const going = recordOf({ runId: ID.footer, task: FOOTER, history: [ownRepair(1)[0] as HistoryEntry] });
+
+    expect(surfaceOf(snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [going] }))?.repairs).toEqual([
+      { of: "check", attempt: 1, max: 2, at: null, status: null, recorded: false, files: [], truncated: false },
+    ]);
+  });
+
+  it("reads a damaged ref as not recorded", () => {
+    const snapshot = snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [repaired], refs: { [ID.footer]: { "repair-gate-maintenance-1-0": { files: "nonsense" } } } });
+
+    expect(surfaceOf(snapshot)?.repairs[0]).toMatchObject({ recorded: false, files: [] });
+  });
+
+  it("is empty for a task with no run", () => {
+    expect(deriveReport(snapshotOf()).surfaces.every((surface) => surface.repairs.length === 0)).toBe(true);
   });
 });
 

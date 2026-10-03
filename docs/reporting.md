@@ -70,9 +70,25 @@ Each entry of `surfaces`:
 | `attempts` | How many times the agent was set to work on it |
 | `budgets` | Each kind of retry: its `population`, how many were `used` and the `max` allowed |
 | `decisions` | Every triage round, oldest first: `afterAttempt`, `trigger`, `verdict`, the `rationale` word for word, and the `brief` or `packet` the round produced. `recorded` is `false` when what the round wrote can no longer be read |
+| `repairs` | Every repair that ran in the task's working copy, oldest first. See below |
 | `limit` | The usage limit that stopped its last session, when one did |
 | `escalation` | The packet the task stopped with, word for word: `decision`, `evidence`, `dead_ends`, `why_now`, `references` |
 | `plain` | For a stopped task, the stop in plain words: the `group` it is reported under, the `audience` who must act (`owner`, `engineer` or `unknown`), the `sentence`, what the agent last said as `agentSaid`, and what to do `next` |
+
+Each entry of `repairs`:
+
+| Key | What it holds |
+|---|---|
+| `of` | `"check"` for the task's own repair of its check, `"setup"` for its run's repair of the setup every task shares, which ran in this task's copy |
+| `attempt`, `max` | Which repair of how many its limit allows |
+| `at` | When it was set going |
+| `status` | How its session ended: `"completed"`, `"escalate"` or `"incomplete"`; `null` while it is still going |
+| `recorded` | `false` when the record does not hold what it changed: a repair from before changes were kept, one still going, or one whose record of them cannot be read. `files` is then empty because the record cannot say |
+| `files` | Each file it changed: its `path`, its `status` (`"added"`, `"modified"` or `"deleted"`; a rename is a deleted file and an added one), the lines `added` and `removed`, `touchesCheck` (the check runs this file: a custom check's module, or a command's first word), and the `patch`, which is `null` for a binary file or once the 256 KiB kept per repair is used |
+| `truncated` | Whether any patch was left out |
+
+`touchesCheck` says only that the path is one the check runs. Nothing in the document says
+whether a change was safe, and nothing a run does depends on it.
 
 ## What `delivery status --json` prints
 

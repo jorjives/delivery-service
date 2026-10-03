@@ -316,7 +316,7 @@ describe("advance", () => {
     const terminus = (await load(dir)).history.find((entry) => entry.t === "terminus");
     expect(terminus).toMatchObject({ role: "gate-maintenance", changesRef: "repair-gate-maintenance-1-0" });
     const changes = RepairChanges.parse(await readRef(dir, "repair-gate-maintenance-1-0"));
-    expect(changes.files.map(({ patch, ...file }) => file)).toEqual([
+    expect(changes.files.map(({  ...file }) => file)).toEqual([
       { path: "report.tap", status: "added", added: 3, removed: 0, touchesCheck: false },
     ]);
     expect(changes.files[0]?.patch).toContain("+ok 1 - alpha");
@@ -325,7 +325,8 @@ describe("advance", () => {
   });
 
   it("records no changes for a worker's session", async () => {
-    const agent = sessionAgent((_role, ctx) => Promise.resolve({ status: "completed", rationale: "did it" }));
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const agent = sessionAgent((_role, _ctx) => Promise.resolve({ status: "completed", rationale: "did it" }));
     const ports = portsWith(agent);
     const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
 

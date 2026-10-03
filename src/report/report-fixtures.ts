@@ -5,7 +5,7 @@ import { create, initialCaseFile, setBaseBranch, setOutcome, updateCursor, write
 import { appendLine } from "../journal.js";
 import { runsRoot } from "../run-location.js";
 import type { RunRecord } from "../run-records.js";
-import { HistoryEntry, type CaseFileOutcome, type CloserRef, type CreateHeader, type GateRef, type OutcomeCause, type RunEntry, type RunFile, type RunOutcome, type SurfaceState } from "../schema.js";
+import { HistoryEntry, type CaseFileOutcome, type CloserRef, type CreateHeader, type GateRef, type OutcomeCause, type RepairChanges, type RunEntry, type RunFile, type RunOutcome, type SurfaceState } from "../schema.js";
 import type { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
 import type { RecordSnapshot } from "./snapshot.js";
 
@@ -198,3 +198,31 @@ export const snapshotOf = (over: Partial<RecordSnapshot> = {}): RecordSnapshot =
   refs: {},
   ...over,
 });
+
+/** A task's own repair of the check: set going, and how it ended, naming what it changed when given. */
+export function ownRepair(number: number, changesRef?: string): HistoryEntry[] {
+  const sessionKey = `gate-maintenance-${number}-0`;
+  return [
+    { t: "dispatch", role: "gate-maintenance", attempt: number, sessionKey },
+    { t: "terminus", role: "gate-maintenance", attempt: number, sessionKey, status: "completed", rationale: "put the helper back", ...(changesRef ? { changesRef } : {}) },
+  ];
+}
+
+/** The run's repair of the setup its tasks share, run in `surfaceId`'s copy. */
+export function setupRepair(number: number, surfaceId: string, changesRef?: string): RunEntry[] {
+  const sessionKey = `run-repair-${number}`;
+  return [
+    { t: "repair_dispatch", attempt: number, sessionKey, surfaceId },
+    { t: "repair_terminus", attempt: number, sessionKey, status: "completed", rationale: "put the helper back", ...(changesRef ? { changesRef } : {}) },
+  ];
+}
+
+/** What a repair that edited the check and added a note left: one file the check runs, one it does not, one too large to keep. */
+export const CHANGES_TOUCHING_CHECK: RepairChanges = {
+  files: [
+    { path: "check.mjs", status: "modified", added: 2, removed: 1, touchesCheck: true, patch: "diff --git a/check.mjs b/check.mjs\n--- a/check.mjs\n+++ b/check.mjs\n@@ -1 +1,2 @@\n-export default strict;\n+export default lenient;\n+// relaxed\n" },
+    { path: "notes.txt", status: "added", added: 1, removed: 0, touchesCheck: false, patch: "diff --git a/notes.txt b/notes.txt\nnew file mode 100644\n--- /dev/null\n+++ b/notes.txt\n@@ -0,0 +1 @@\n+why\n" },
+    { path: "big.bin", status: "added", added: 0, removed: 0, touchesCheck: false },
+  ],
+  truncated: true,
+};

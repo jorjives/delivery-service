@@ -7,8 +7,9 @@ import { prepareRunDir, supervisedPlace } from "../run-location.js";
 import type { HistoryEntry, RunEntry } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { writeSupervisedRun } from "../cli/command-fixtures.js";
-import { attempt, closedAt, damageLog, failedCheck, fill, FOOTER, FORM, ID, PACKET, stoppedAt, writeRecord } from "./report-fixtures.js";
+import { attempt, closedAt, damageLog, failedCheck, fill, FOOTER, FORM, ID, PACKET, stoppedAt, writeRecord, ownRepair, setupRepair, CHANGES_TOUCHING_CHECK } from "./report-fixtures.js";
 import { loadSnapshot } from "./snapshot.js";
+import { writeRef } from "../case-file.js";
 
 const LIST = [{ intent: FORM }, { intent: FOOTER }];
 
@@ -145,5 +146,20 @@ describe("reading what a report is derived from", () => {
 
     await expect(loadSnapshot(repo, { kind: "task", runId: "no-such-run" }, { live: false, list: LIST })).rejects.toBeInstanceOf(FileNotFound);
     await expect(loadSnapshot(repo, { kind: "run", runId: "no-such-run" }, { live: false, list: LIST })).rejects.toBeInstanceOf(RunFileNotFound);
+  });
+});
+
+describe("what a repair changed", () => {
+  it("is read from the task's own folder and the run's, and survives the working copy being cleared away", async () => {
+    const repo = initTempRepo("snapshot-repairs-", { "README.md": "x\n" });
+    await writeRecord(repo, { runId: ID.footer, task: FOOTER, history: [...ownRepair(1, "repair-gate-maintenance-1-0")], refs: { "repair-gate-maintenance-1-0": CHANGES_TOUCHING_CHECK } });
+    const dir = await writeRun(repo);
+    for (const entry of setupRepair(1, ID.footer, "repair-run-repair-1")) await appendRunEntry(dir, entry);
+    await writeRef(dir, "repair-run-repair-1", { files: [], truncated: false });
+
+    const snapshot = await loadSnapshot(repo, { kind: "task", runId: ID.footer }, { live: false, list: LIST });
+
+    expect(snapshot.refs[ID.footer]?.["repair-gate-maintenance-1-0"]).toEqual(CHANGES_TOUCHING_CHECK);
+    expect(snapshot.refs[ID.run]?.["repair-run-repair-1"]).toEqual({ files: [], truncated: false });
   });
 });

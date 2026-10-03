@@ -3,15 +3,63 @@ import { breakerOf, repairsUsed, tripsOf } from "../breaker.js";
 import { deriveBudgetsFromLog, deriveStateFromEntry } from "../case-file.js";
 import { branchName } from "../provision.js";
 import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js";
-import { Population, type HistoryEntry, type RunFile, type TaskDef, type Trip } from "../schema.js";
+import { Population, RepairChanges, type HistoryEntry, type RepairStatus, type RunEntry, type RunFile, type TaskDef, type Trip } from "../schema.js";
 import { claimedBy, supervisedView } from "../supervised-view.js";
 import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
 import { BriefRef } from "../prompt-assembly.js";
 import { PacketRef } from "../surface.js";
 import { EscalationPacket } from "../triage-role-config.js";
-import { latestOf, REPORT_SCHEMA, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRun, type ReportSurface, type ReportTrip, type StateVisit } from "./document.js";
+import { latestOf, REPORT_SCHEMA, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type ReportTrip, type StateVisit } from "./document.js";
 import { plainOf } from "./plain.js";
 import type { DamagedFile, RecordSnapshot, ReportSubject } from "./snapshot.js";
+
+/** A repair as the document tells it, from how it was set going, how it ended, and the refs of the folder it was recorded in. */
+function repairOf(
+  of: ReportRepair["of"],
+  start: { attempt: number; at?: string | undefined },
+  max: number,
+  end: { status: RepairStatus; changesRef?: string | undefined } | undefined,
+  refs: Record<string, unknown>,
+): ReportRepair {
+  const held = end?.changesRef === undefined ? undefined : RepairChanges.safeParse(refs[end.changesRef]);
+  const changes = held?.success ? held.data : undefined;
+  return {
+    of,
+    attempt: start.attempt,
+    max,
+    at: start.at ?? null,
+    status: end?.status ?? null,
+    recorded: changes !== undefined,
+    files: (changes?.files ?? []).map(({ patch, ...file }) => ({ ...file, patch: patch ?? null })),
+    truncated: changes?.truncated ?? false,
+  };
+}
+
+/**
+ * Every repair that ran in one task's working copy, oldest first: its own,
+ * each dispatch a burn on its limit, and every run's repair of the shared setup
+ * that ran in its copy. Each paired with its end by session key.
+ */
+function repairsOf(snapshot: RecordSnapshot, record: RunRecord): ReportRepair[] {
+  const { history, cursor } = record.caseFile;
+  const refs = snapshot.refs[record.runId] ?? {};
+  const own = history
+    .filter((entry): entry is Extract<HistoryEntry, { t: "dispatch" }> => entry.t === "dispatch" && entry.role === "gate-maintenance")
+    .map((dispatch, index) => {
+      const end = history.find((entry): entry is Extract<HistoryEntry, { t: "terminus" }> => entry.t === "terminus" && entry.sessionKey === dispatch.sessionKey);
+      return repairOf("check", { attempt: index + 1, at: dispatch.at }, cursor.budgets.gateMaintenance.max, end, refs);
+    });
+  const setup = snapshot.runs.flatMap((run) =>
+    run.history
+      .filter((entry): entry is Extract<RunEntry, { t: "repair_dispatch" }> => entry.t === "repair_dispatch" && entry.surfaceId === record.runId)
+      .map((dispatch) => {
+        const end = run.history.find((entry): entry is Extract<RunEntry, { t: "repair_terminus" }> => entry.t === "repair_terminus" && entry.sessionKey === dispatch.sessionKey);
+        return repairOf("setup", dispatch, run.header.runBudgetMax.gateMaintenance, end, snapshot.refs[run.header.runId] ?? {});
+      }),
+  );
+  // A stable sort: a record from before steps carried a time keeps its own order, the task's repairs before its runs'.
+  return [...own, ...setup].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""));
+}
 
 /** A task with no run of its own yet: every fact about a run is null. */
 function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Standing): ReportSurface {
@@ -33,6 +81,7 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
     attempts: 0,
     budgets: [],
     decisions: [],
+    repairs: [],
     limit: null,
     escalation: null,
     plain: null,
@@ -135,6 +184,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     attempts,
     budgets: Population.options.map((population) => ({ population, used: budgets[population].used, max: budgets[population].max })),
     decisions: decisionsOf(record, snapshot.refs[record.runId] ?? {}),
+    repairs: repairsOf(snapshot, record),
     limit,
     escalation: packetOf(outcome?.packetRef, snapshot.refs[record.runId] ?? {}),
     plain:

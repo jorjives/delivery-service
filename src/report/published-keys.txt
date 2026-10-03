@@ -105,6 +105,31 @@ delivery.report/1.surfaces[].decisions[].verdict = "reroute"
 delivery.report/1.surfaces[].decisions[].verdict = "retry_close"
 delivery.report/1.surfaces[].decisions[].verdict: string
 delivery.report/1.surfaces[].decisions[]: object
+delivery.report/1.surfaces[].repairs: array
+delivery.report/1.surfaces[].repairs[].at: null|string
+delivery.report/1.surfaces[].repairs[].attempt: integer
+delivery.report/1.surfaces[].repairs[].files: array
+delivery.report/1.surfaces[].repairs[].files[].added: integer
+delivery.report/1.surfaces[].repairs[].files[].patch: null|string
+delivery.report/1.surfaces[].repairs[].files[].path: string
+delivery.report/1.surfaces[].repairs[].files[].removed: integer
+delivery.report/1.surfaces[].repairs[].files[].status = "added"
+delivery.report/1.surfaces[].repairs[].files[].status = "deleted"
+delivery.report/1.surfaces[].repairs[].files[].status = "modified"
+delivery.report/1.surfaces[].repairs[].files[].status: string
+delivery.report/1.surfaces[].repairs[].files[].touchesCheck: boolean
+delivery.report/1.surfaces[].repairs[].files[]: object
+delivery.report/1.surfaces[].repairs[].max: integer
+delivery.report/1.surfaces[].repairs[].of = "check"
+delivery.report/1.surfaces[].repairs[].of = "setup"
+delivery.report/1.surfaces[].repairs[].of: string
+delivery.report/1.surfaces[].repairs[].recorded: boolean
+delivery.report/1.surfaces[].repairs[].status = "completed"
+delivery.report/1.surfaces[].repairs[].status = "escalate"
+delivery.report/1.surfaces[].repairs[].status = "incomplete"
+delivery.report/1.surfaces[].repairs[].status: null|string
+delivery.report/1.surfaces[].repairs[].truncated: boolean
+delivery.report/1.surfaces[].repairs[]: object
 delivery.report/1.surfaces[].escalation.dead_ends: string
 delivery.report/1.surfaces[].escalation.decision: string
 delivery.report/1.surfaces[].escalation.evidence: string

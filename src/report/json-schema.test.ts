@@ -5,7 +5,7 @@ import { deriveReport } from "./derive.js";
 import { EVENT_SCHEMA, eventsOf, streamEnded, streamStarted } from "./events.js";
 import { REPORT_SCHEMA } from "./document.js";
 import { publishedKeys, publishedSchema } from "./json-schema.js";
-import { attempt, failedCheck, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, homepageAsks, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt, timed } from "./report-fixtures.js";
+import { attempt, failedCheck, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, homepageAsks, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt, timed, ownRepair, CHANGES_TOUCHING_CHECK } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 
 const schema = publishedSchema();
@@ -45,6 +45,11 @@ const SNAPSHOTS: Record<string, RecordSnapshot> = {
   "one task that left a packet": snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [withPacket], refs: { [ID.footer]: { escalation: PACKET, "triage-0": { trigger: "gate_fail", rationale: "gate_fail: escalate", artifact: PACKET } } } }),
   "a run of several tasks": snapshotOf({ subject: { kind: "run", runId: ID.run }, records: [formDone, footerWorking], runs: [troubled] }),
   "a damaged record": snapshotOf({ records: [formDone], damaged: [{ runId: ID.footer, file: ".delivery/runs/x/log.jsonl" }] }),
+  "a task a repair changed": snapshotOf({
+    subject: { kind: "task", runId: ID.footer },
+    records: [recordOf({ runId: ID.footer, task: FOOTER, history: ownRepair(1, "repair-gate-maintenance-1-0") })],
+    refs: { [ID.footer]: { "repair-gate-maintenance-1-0": CHANGES_TOUCHING_CHECK } },
+  }),
 };
 
 describe("the published schema", () => {

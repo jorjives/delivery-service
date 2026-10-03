@@ -66,6 +66,7 @@ export type {
   NewFailure,
   DeltaResult,
   DeltaOptions,
+  RepairChanges,
 } from "./schema.js";
 export type { ResumeAction, Setback } from "./case-file.js";
 export type { Gate, GateContext } from "./command-gate.js";
@@ -101,7 +102,7 @@ export { createAgentTriage, needsJudgement, toTriageVerdict, legalVerdicts } fro
 export { buildEscalationPacket, resolveEscalationPacket, POPULATION_LABELS, SETBACK_LABELS, NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 export type { PacketFacts } from "./escalation-packet.js";
 export { REPORT_SCHEMA, ReportDocument } from "./report/document.js";
-export type { Audience, BudgetRow, DamagedRecord, Decision, Plain, PlainGroup, ReportRun, ReportSurface, ReportTrip, Standing, StateVisit } from "./report/document.js";
+export type { Audience, BudgetRow, DamagedRecord, Decision, Plain, PlainGroup, RepairFile, ReportRepair, ReportRun, ReportSurface, ReportTrip, Standing, StateVisit } from "./report/document.js";
 export { loadSnapshot } from "./report/snapshot.js";
 export type { RecordSnapshot, ReportSubject } from "./report/snapshot.js";
 export { deriveReport } from "./report/derive.js";
