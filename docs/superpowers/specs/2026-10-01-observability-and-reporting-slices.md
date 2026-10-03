@@ -258,6 +258,7 @@ agent-written plain summary) is not sliced.
 ## Slice 6: See What a Repair Changed in Your Check
 
 **Status:** ✅ Complete — 2026-10-03 — `51b8982`
+**Tests:** ✅ Recorded — 2026-10-03 — `c9fe9ca` — cli — 1 UAT + 1 AC, 4 skipped
 **Delivers:** When the harness repairs a broken check or shared setup, the report and status show which files that repair changed, flag a change to a file the check itself runs, and show the patch on request.
 
 **Operational note:** From this slice on, each repair's changes are captured before the task carries on and kept with the run's record, up to a fixed size; this is the only newly recorded free text in this item, and it is as sensitive as the rest of the record. The capture only reads the working copy: it stages and commits nothing, so what a task finally lands is unchanged, and it happens whichever way the project lands work. This slice shows; it never approves, refuses or judges a repair.
