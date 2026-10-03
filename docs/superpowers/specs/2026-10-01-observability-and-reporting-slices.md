@@ -212,6 +212,7 @@ agent-written plain summary) is not sliced.
 
 ## Slice 5: Build Your Own Tools on Versioned Report Data
 
+**Status:** ✅ Complete — 2026-10-02 — `6a6f4a7`
 **Delivers:** An extender gets everything the reports say as versioned data, as one document from `delivery report --json` and `delivery status --json` and as a stream of events from `delivery status --watch --json`, with a published schema and a stated promise about what will not change.
 
 **Operational note:** The two data formats carry a version and a stability promise that the test suite enforces: a test fails if a published key disappears or changes type. The promise, and the fact that the older step-by-step output of `delivery run --json` is outside it, are stated in the project's documentation. The read model and schemas are part of the package's public library surface, which Items 13 and 14 will build on.
