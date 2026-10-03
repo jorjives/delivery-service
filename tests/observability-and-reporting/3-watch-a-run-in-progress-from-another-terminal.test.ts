@@ -86,7 +86,11 @@ describe("UAT: keep an eye on a run from a second terminal and see each task's p
       // Steps 1-2: a list of four tasks, two at once, running in one terminal; the watch in a second.
       const { repo, env } = await project(2);
       const run = terminal(["run"], repo, env);
-      await until("the run to start two tasks", () => run.out().includes("[2/4]"));
+      // Open the watch once task 1's agent is working, as `status` records it: the run's own "[2/4]" line comes while
+      // task 1 may still be checking its starting point. The slow agent then holds that step for the picture to catch.
+      await until("task 1's agent to be working", () =>
+        /^ {2}\[1\/4\] .*: the agent is working/m.test(runDelivery(["status"], { cwd: repo, env }).stdout),
+      );
       const first = terminal(["status", "--watch", "--interval", "0.5"], repo, env);
 
       // Step 3: it names what it watches and how to stop, then the "Right now" picture of every task.
