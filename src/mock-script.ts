@@ -23,6 +23,10 @@ export interface MockExpectation {
   fail?: { message: string };
   /** Milliseconds to wait before answering this turn. */
   delayMs?: number;
+  /** The cost the session reports, in US dollars: the result's `total_cost_usd`. Reported only. Default 0. */
+  costUsd?: number;
+  /** How long the session reports it took, in milliseconds: the result's `duration_ms`. Reported only: nothing waits for it (`delayMs` does). Default 0. */
+  durationMs?: number;
 }
 
 /** A whole script. Every session re-reads it from the start, so a run of several sessions sees every expectation afresh each time. */

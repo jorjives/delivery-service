@@ -239,6 +239,7 @@ correspondence is exact:
 - **Envelope** ↔ the expectation's `json` field (structured output on the result).
 - **Worktree edits** ↔ the expectation's `effects` (`write` / `edit`, applied for
   real inside `cwd`).
+- **`usage`** ↔ the expectation's `costUsd` and `durationMs` (each `0` when not scripted).
 - **Terminus mapping** ↔ what the harness does with the mock's reply. A prompt no
   expectation matches, a `reply` with no `json`, a `json` the role's schema rejects, and a
   scripted `fail` each exercise the `INCOMPLETE_TERMINUS` path
@@ -251,9 +252,8 @@ correspondence is exact:
 Because the mock sits at the CLI seam the SDK spawns, an SDK shape change surfaces
 as a parse failure against the real primitive rather than a passing fiction.
 
-`claude-mock` is **vendored** in `vendor/claude-mock`: the sibling project's source,
-unchanged, with its prebuilt `dist/` committed, installed by `npm install`
-(`vendor/README.md` records the upstream commit and how to update the copy). Tests and demos
+`claude-mock` is **vendored** in `vendor/claude-mock`: the sibling project's source, with its prebuilt `dist/` committed, installed by `npm install`
+(one local change ahead of upstream, recorded in `vendor/README.md`; `vendor/README.md` also records the upstream commit and how to update the copy). Tests and demos
 reach it through `mockSessionEnvironment` from `src/testing.ts`, which resolves the installed
 copy by absolute path and hands it the script and journal locations, so nothing depends on
 `PATH` and no mock-backed suite skips. [Testing your delivery pipeline](testing-your-pipeline.md)

@@ -105,6 +105,17 @@ describe('fake CLI', () => {
     expect(result.result).toContain('rate limited');
   });
 
+  it('reports a scripted cost and duration on the result, and zero for both when none is scripted', async () => {
+    const scripted: any = (await collect('hello', script([{ reply: 'hi', costUsd: 0.42, durationMs: 1500 }]))).at(-1);
+    expect([scripted.total_cost_usd, scripted.duration_ms]).toEqual([0.42, 1500]);
+
+    const failed: any = (await collect('hello', script([{ fail: { message: 'boom' }, costUsd: 0.1, durationMs: 200 }]))).at(-1);
+    expect([failed.is_error, failed.total_cost_usd, failed.duration_ms]).toEqual([true, 0.1, 200]);
+
+    const plain: any = (await collect('hello', script([{ reply: 'hi' }]))).at(-1);
+    expect([plain.total_cost_usd, plain.duration_ms]).toEqual([0, 0]);
+  });
+
   it('passes slash_commands from init config into the init message', async () => {
     const cmds = [{ name: '/test', description: 'A test command' }];
     const messages = await collect(

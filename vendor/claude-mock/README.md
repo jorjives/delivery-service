@@ -67,6 +67,8 @@ put the nudged response behind a `when`, and the unconditional one after it.
 | `reply` | Assistant text, and the result message's `result` |
 | `json` | Sets `structured_output` on the result message |
 | `fail.message` | Result with `is_error: true` carrying that text |
+| `costUsd` | The result message's `total_cost_usd` (default `0`) |
+| `durationMs` | The result message's `duration_ms` (default `0`). Reported only: nothing waits for it; `delayMs` does |
 
 Effects run inside the CLI's working directory (the SDK's `cwd`) and each one
 emits the matching `tool_use`/`tool_result` pair, so the transcript your harness

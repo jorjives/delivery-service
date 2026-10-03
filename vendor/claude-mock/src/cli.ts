@@ -59,9 +59,10 @@ function respondToTurn(prompt: string) {
 
   const emit = () => {
     journal({ event: 'matched', prompt, expectation: index });
+    const reported = { costUsd: expectation.costUsd, durationMs: expectation.durationMs };
 
     if (expectation.fail) {
-      emitter.result({ text: expectation.fail.message, isError: true, numTurns });
+      emitter.result({ text: expectation.fail.message, isError: true, numTurns, ...reported });
       return;
     }
 
@@ -69,13 +70,13 @@ function respondToTurn(prompt: string) {
       emitter.runEffects(root, expectation.effects ?? []);
     } catch (err) {
       journal({ event: 'effect_failed', prompt, expectation: index, error: String(err) });
-      emitter.result({ text: String(err), isError: true, numTurns });
+      emitter.result({ text: String(err), isError: true, numTurns, ...reported });
       return;
     }
 
     const text = expectation.reply ?? (expectation.json !== undefined ? JSON.stringify(expectation.json) : '');
     if (text) emitter.assistant([{ type: 'text', text }]);
-    emitter.result({ text, isError: false, structuredOutput: expectation.json, numTurns });
+    emitter.result({ text, isError: false, structuredOutput: expectation.json, numTurns, ...reported });
   };
 
   if (delay > 0) setTimeout(emit, delay);

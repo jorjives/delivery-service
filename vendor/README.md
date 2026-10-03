@@ -2,8 +2,8 @@
 
 ## claude-mock
 
-`claude-mock/` is the estate's scripted fake `claude` CLI, copied **unchanged** from its
-sibling project so that a plain `npm install` provides it. The sibling project is
+`claude-mock/` is the estate's scripted fake `claude` CLI, copied from its
+sibling project, unchanged except for the local change recorded below, so that a plain `npm install` provides it. The sibling project is
 `"private": true` and published nowhere, so there is nothing to install it from otherwise.
 
 - **Upstream commit:** `8dea7997178ffb6eab79eb291a10e335e3f317a6`
@@ -57,6 +57,13 @@ npm test
 
 Then update the upstream commit above. `npm ci` (not `npm install`) is what refreshes the
 copy in `node_modules`, because the package version does not change between syncs.
+
+### Local change ahead of upstream
+
+`costUsd` and `durationMs` on an expectation (`src/mock.ts`, `src/cli.ts`, `test/sdk.test.ts`,
+and the rebuilt `dist/`) were added here for the harness's time-and-cost reporting, and are not
+yet in the sibling project. Port them upstream, then re-vendor as above and update the upstream
+commit; until then a re-vendor would drop them, and `src/mock-script.test.ts` would fail to compile.
 
 ### Licence
 

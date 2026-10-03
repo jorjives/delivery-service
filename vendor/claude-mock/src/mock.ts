@@ -18,6 +18,10 @@ export type Expectation = {
   fail?: { message: string };
   /** Delay in ms before responding to this turn. Overrides Script-level delayMs. */
   delayMs?: number;
+  /** Sets `total_cost_usd` on the result message. Reported only. Default 0. */
+  costUsd?: number;
+  /** Sets `duration_ms` on the result message. Reported only: nothing waits for it (`delayMs` does). Default 0. */
+  durationMs?: number;
 };
 
 export type InitConfig = {
@@ -141,17 +145,17 @@ export class Emitter {
     });
   }
 
-  result(opts: { text: string; isError: boolean; structuredOutput?: unknown; numTurns: number }) {
+  result(opts: { text: string; isError: boolean; structuredOutput?: unknown; numTurns: number; costUsd?: number; durationMs?: number }) {
     this.envelope({
       type: 'result',
       subtype: 'success',
-      duration_ms: 0,
+      duration_ms: opts.durationMs ?? 0,
       duration_api_ms: 0,
       is_error: opts.isError,
       num_turns: opts.numTurns,
       result: opts.text,
       stop_reason: 'end_turn',
-      total_cost_usd: 0,
+      total_cost_usd: opts.costUsd ?? 0,
       usage: USAGE,
       modelUsage: {},
       permission_denials: [],
