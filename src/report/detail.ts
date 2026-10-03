@@ -2,7 +2,7 @@ import { POPULATION_LABELS, SETBACK_LABELS } from "../escalation-packet.js";
 import { briefLines } from "../prompt-assembly.js";
 import type { BudgetRow, Decision, ReportDocument, RepairFile, ReportRepair, ReportSurface, Standing } from "./document.js";
 import { attemptsWord } from "./plain.js";
-import { budgetTotals, pathName, quoted, REPAIR_OF, stripControl, toAct } from "./text.js";
+import { budgetTotals, pathName, quoted, REPAIR_OF, stripControl, toAct, usageSentence } from "./text.js";
 
 /** Said under a stopped task that is on the project's list: running the list again does not run it again. */
 export const UNCHANGED_NOT_RUN_AGAIN = "An unchanged task on your list is not run again: `delivery run` would retell this outcome.";
@@ -140,18 +140,23 @@ function actLines(surface: ReportSurface): string[] {
  * own words, because whoever reads them is looking for those words; the advice is
  * the report's, unchanged.
  */
+/**
+ * A stopped task's triage, budget, repairs and next actions, line by line: what it did, how many retries it used,
+ * the time and cost of its agent sessions, any repairs and where to go from here.
+ */
 export function detailLines(surface: ReportSurface, { full, patches }: { full: boolean; patches: boolean }): string[] {
-  return [...roundLines(surface.decisions, { full }), "", ...budgetLines(surface), "", ...repairLines(surface.repairs, { patches }), "", ...actLines(surface)];
+  return [...roundLines(surface.decisions, { full }), "", ...budgetLines(surface), "", usageSentence(surface, "this task"), "", ...repairLines(surface.repairs, { patches }), "", ...actLines(surface)];
 }
 
 /**
  * The retries of a run of several tasks added up across the tasks it has
  * taken, with the run's own limit on repairs of what its tasks share: the one
- * figure no single task holds.
+ * figure no single task holds, and the time and cost of every agent session
+ * behind the run.
  */
 export function rollUpLines(doc: ReportDocument): string[] {
   const ran = doc.surfaces.filter((surface) => surface.budgets.length > 0);
   const shared = doc.run === null ? [] : [`  shared repair limit for the run: ${doc.run.runBudgets.gateMaintenance.used} of ${doc.run.runBudgets.gateMaintenance.max} used`];
-  if (ran.length === 0) return ["Retry budgets: no task of this run has started.", ...shared];
-  return [`Retry budgets across the ${ran.length === 1 ? "1 task" : `${ran.length} tasks`} this run has taken:`, `  ${budgetWords(budgetTotals(ran))}`, ...shared];
+  if (ran.length === 0) return ["Retry budgets: no task of this run has started.", ...shared, "", usageSentence(doc, "this run")];
+  return [`Retry budgets across the ${ran.length === 1 ? "1 task" : `${ran.length} tasks`} this run has taken:`, `  ${budgetWords(budgetTotals(ran))}`, ...shared, "", usageSentence(doc, "this run")];
 }

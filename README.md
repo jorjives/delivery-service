@@ -253,7 +253,7 @@ NOT STARTED (1)
 
 FOR WHOEVER TUNES THIS
   Retries used across these tasks: agent corrections 0 of 9; check re-runs 0 of 9; check repairs 0 of 6; agent restarts 0 of 15; hand-off retries 0 of 9.
-  Time and cost were not recorded for this run.
+  Time and cost, recorded for 3 of 3 agent sessions: 3 min 41 s of session time; USD 0.50, estimated by the agent runtime.
   Saved to: .delivery/last-report.txt and .delivery/last-report.json
 
 Next: delivery status --all (every run)
@@ -274,8 +274,7 @@ it has tasks in it:
 
 Words taken from a run (your task, what the agent said) are always in quotation marks; every other
 sentence is the harness's own and is the same for every project. "For whoever tunes this" counts
-the retries used, for the person who sets the limits, and names the saved copy of the report when
-there is one.
+the retries used, for the person who sets the limits, says how long the agent sessions took and roughly what they cost (an estimate from the agent runtime, with how many sessions it covers, or "not recorded"), and names the saved copy of the report when there is one.
 
 `delivery report <run-id>` reports one task's run, or one run of several tasks at once, instead
 of the list. In a project with no `tasks` list, `delivery report` reports the most recent run and
@@ -364,6 +363,7 @@ search the run's record for.
   decide what to do after a setback: the attempt it followed, what set it off, and the verdict.
 - **Retry budgets:** how many retries of each of the five kinds were used of how many are
   allowed, and how many attempts the agent made.
+- **Time and cost:** how long the task's agent sessions took and roughly what they cost, as the agent runtime reported them, and how many of its sessions that covers. Nothing recorded reads "not recorded", never zero. The figures are information only: nothing a run does depends on them.
 - **Repairs:** one line for each repair that ran in the task's working copy, its own repair of
   the check or its run's repair of the setup every task shares: how many files it changed, the
   lines added and removed, and the file names. A file the check itself runs is marked "(the check
@@ -383,6 +383,8 @@ How it got here (triage rounds; --decisions for the full text):
 
 Retry budgets at stop, after 4 attempts:
   correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3
+
+Time and cost, recorded for 4 of 4 agent sessions: 9 min 12 s of session time; USD 1.18, estimated by the agent runtime.
 
 Repairs: none ran for this task.
 
@@ -510,6 +512,8 @@ This needs your decision: …
 Retry budgets across the 4 tasks this run has taken:
   correction 0 of 12, gate recheck 0 of 12, gate repair 0 of 8, session retry 0 of 20, close retry 0 of 12
   shared repair limit for the run: 0 of 2 used
+
+Time and cost, recorded for 4 of 4 agent sessions: 6 min 20 s of session time; USD 0.88, estimated by the agent runtime.
 
 To read one task in full: delivery status delete-the-greeting-20260930T090000Z
 

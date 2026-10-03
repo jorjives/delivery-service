@@ -317,6 +317,8 @@ describe("delivery status, beneath its own account of one task", () => {
       "Retry budgets at stop, after 4 attempts:",
       "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
       "",
+      "Time and cost were not recorded for this task.",
+      "",
       "Repairs: none ran for this task.",
       "",
       "To act: 1. Reword the task, or remove it from your list.",
@@ -365,9 +367,11 @@ describe("delivery status, beneath its own account of one task", () => {
     // The account above the rounds, and the retries and advice below them, are there as they are without the flag.
     const before = await statusReport(await readRun(repo, FOOTER_RUN), await context(), { task: 2, of: 2 });
     expect(lines.slice(0, before.length)).toEqual(before);
-    expect(lines.slice(-11, -2)).toEqual([
+    expect(lines.slice(-13, -2)).toEqual([
       "Retry budgets at stop, after 4 attempts:",
       "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "Time and cost were not recorded for this task.",
       "",
       "Repairs: none ran for this task.",
       "",
@@ -390,6 +394,8 @@ describe("delivery status, beneath its own account of one task", () => {
       "",
       "Retry budgets when it finished, after 0 attempts:",
       "  correction 0 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "Time and cost were not recorded for this task.",
       "",
       "Repairs: none ran for this task.",
       "",
@@ -1016,10 +1022,12 @@ describe("delivery status for a run of several tasks at once", () => {
       `  [3/4] ${GOODBYE} (${IDS.goodbye}): done`,
       `  [4/4] ${SHOUT} (${IDS.shout}): done`,
     ]);
-    expect(stdout.trimEnd().split("\n").slice(-7)).toEqual([
+    expect(stdout.trimEnd().split("\n").slice(-9)).toEqual([
       "Retry budgets across the 4 tasks this run has taken:",
       "  correction 0 of 12, gate recheck 0 of 12, gate repair 0 of 8, session retry 0 of 20, close retry 0 of 12",
       "  shared repair limit for the run: 0 of 2 used",
+      "",
+      "Time and cost were not recorded for this run.",
       "",
       `To read one task in full: delivery status ${IDS.greeting}`,
       "",
@@ -1145,10 +1153,12 @@ describe("delivery status for a run of several tasks at once", () => {
 
     const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
 
-    expect(stdout.trimEnd().split("\n").slice(-7)).toEqual([
+    expect(stdout.trimEnd().split("\n").slice(-9)).toEqual([
       "Retry budgets across the 2 tasks this run has taken:",
       "  correction 1 of 6, gate recheck 0 of 6, gate repair 0 of 4, session retry 0 of 10, close retry 0 of 6",
       "  shared repair limit for the run: 0 of 2 used",
+      "",
+      "Time and cost were not recorded for this run.",
       "",
       `To read one task in full: delivery status ${IDS.hello}`,
       "",

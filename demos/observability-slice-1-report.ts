@@ -31,6 +31,8 @@ const PERMISSION = "The owner has confirmed the 14 published pages may be delete
 const writes = (path: string, said: string) => ({
   effects: [{ write: { path, content: `${said}\n` } }],
   json: { status: "completed", rationale: said },
+  costUsd: 0.21,
+  durationMs: 95_000,
 });
 
 /** The agent, scripted: it does each task, except that it will not delete published pages until the task says it may. */
@@ -40,6 +42,8 @@ const script: MockScript = {
     {
       when: { promptContains: PURGE },
       json: { status: "escalate", category: "authority", rationale: "This would delete 14 published pages. I need the owner to confirm before I remove them." },
+      costUsd: 0.08,
+      durationMs: 31_000,
     },
     { when: { promptContains: FORM }, ...writes("contact.html", "added the contact form") },
     { when: { promptContains: PRICES }, ...writes("prices.html", "updated the prices page") },

@@ -1,7 +1,7 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { Population } from "../schema.js";
-import { lastActivity, type BudgetRow, type DamagedRecord, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface } from "./document.js";
+import { lastActivity, type BudgetRow, type DamagedRecord, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type UsageCoverage, type UsageTotal } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
 export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery run";
@@ -302,6 +302,29 @@ export function budgetTotals(surfaces: ReportSurface[]): BudgetRow[] {
   });
 }
 
+/** A length of time as a person says it: seconds under a minute, minutes and seconds under an hour, else hours and minutes. */
+export function durationWords(ms: number): string {
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return seconds % 60 === 0 ? `${minutes} min` : `${minutes} min ${seconds % 60} s`;
+  return minutes % 60 === 0 ? `${Math.floor(minutes / 60)} h` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
+/** An estimated cost in US dollars, to the cent; a cost too small to show in cents is said to be under one. */
+const costWords = (usd: number): string => (usd > 0 && usd < 0.005 ? "under USD 0.01" : `USD ${usd.toFixed(2)}`);
+
+/**
+ * What the agent sessions behind something took and cost, always with how many
+ * sessions the figure covers, so a partial figure never reads as the whole.
+ * Nothing recorded reads as not recorded, never as zero. Information only.
+ */
+export function usageSentence({ usage, usageRecorded }: { usage: UsageTotal | null; usageRecorded: UsageCoverage }, subject: string): string {
+  if (usage === null) return `Time and cost were not recorded for ${subject}.`;
+  const { recorded, sessions } = usageRecorded;
+  return `Time and cost, recorded for ${recorded} of ${sessions} agent ${sessions === 1 ? "session" : "sessions"}: ${durationWords(usage.durationMs)} of session time; ${costWords(usage.costUsd)}, estimated by the agent runtime.`;
+}
+
 /**
  * Each repair that changed a file the check runs: which task and which files, that this report cannot tell whether
  * the change was safe, and where to see it. Nothing when no repair recorded one: a repair is shown, never judged.
@@ -324,8 +347,9 @@ function worthALookLines(doc: ReportDocument, colour: boolean): string[] {
 }
 
 /**
- * Retries used, in the owner's vocabulary, for whoever adjusts the limits, then where this report was saved when
- * it was. Nothing when no task has a run to count and nothing was saved.
+ * Retries used, and the time and cost of the agent sessions with how many sessions that covers, in the owner's vocabulary,
+ * for whoever adjusts the limits, then where this report was saved when it was. Nothing when no task has a run to count and
+ * nothing was saved.
  */
 function tuningLines(doc: ReportDocument, colour: boolean, saved: string | undefined): string[] {
   const ran = doc.surfaces.filter((surface) => surface.budgets.length > 0);
@@ -336,7 +360,7 @@ function tuningLines(doc: ReportDocument, colour: boolean, saved: string | undef
       : [
           `  Retries used across ${ran.length === 1 ? "this task" : "these tasks"}: ${sums.join("; ")}.`,
           ...(doc.run ? [`  Repairs of the setup every task shares: ${doc.run.runBudgets.gateMaintenance.used} of ${doc.run.runBudgets.gateMaintenance.max}.`] : []),
-          "  Time and cost were not recorded for this run.",
+          `  ${usageSentence(doc, "this run")}`,
         ]),
     ...(saved === undefined ? [] : [`  ${saved}`]),
   ];

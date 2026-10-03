@@ -584,6 +584,20 @@ see every attempt's rationale, read the terminus entries of `load(dir)`'s
 Expectations left unused are not an incomplete attempt: nothing in the run
 notices them. `assertFullyConsumed` is how you find out.
 
+## Giving a session a cost and a time
+
+The scripted agent reports a cost of 0 and a time of 0 for every session unless the script says
+otherwise, and the harness records them as the runtime's figures. To see what a report says
+about a run's cost, give an expectation `costUsd`, an estimated cost in US dollars, and
+`durationMs`, how long the session took in milliseconds: for example `costUsd: 0.25` and
+`durationMs: 60_000` beside its `json`. They apply to whatever that turn ends in, a scripted
+`fail` included. They are reported only: nothing waits for `durationMs` (`delayMs` does that),
+and nothing a run does depends on either.
+
+`delivery status` for the task then says `Time and cost, recorded for 1 of 1 agent session: 1 min
+of session time; USD 0.25, estimated by the agent runtime.`, and the report document carries the
+same figures under `usage` and `usageRecorded` (see [Reports as data](reporting.md)).
+
 ## What the scripted agent cannot prove
 
 **The scripted agent cannot prove that a role is refused a tool it was not

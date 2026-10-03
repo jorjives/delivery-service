@@ -9,10 +9,14 @@ import { deterministicRouter } from "./router.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { triageRoleConfig } from "./triage-role-config.js";
 import { DID_NOT_COMPLETE } from "./agent-invoke.js";
-import { assertFullyConsumed, promptsSent, runSurfaceAgainstMock } from "./testing.js";
+import { assertFullyConsumed, expectEnvelope, promptsSent, runSurfaceAgainstMock } from "./testing.js";
 import type { MockExpectation, MockScript, ScriptedSurfaceRun } from "./testing.js";
 import type { TriageInput } from "./ports.js";
 import type { BudgetSet, CloserRef, GateRef } from "./schema.js";
+import { createAgentTriage } from "./triage.js";
+import { deriveReport } from "./report/derive.js";
+import { renderText } from "./report/text.js";
+import { snapshotOf } from "./report/report-fixtures.js";
 
 // Small correction and terminus caps keep the runs that cannot succeed short.
 const budgets: BudgetSet = {
@@ -202,5 +206,35 @@ describe("runSurfaceAgainstMock when the agent misbehaves", () => {
     expect(git(repoPath, ["show", "main:report.tap"])).toBe(PASSING_TAP.trim());
     expect(git(repoPath, ["show", "main:greeting.txt"])).toBe("hello");
     expect(() => assertFullyConsumed(journal, script)).not.toThrow();
+  });
+
+  it("reports the cost and time a script gave each session, the worker's and an agent's triage alike", async () => {
+    const script: MockScript = {
+      expectations: [
+        // Only triage's prompt carries its verdicts' names, so this expectation is triage's alone.
+        {
+          when: { promptContains: "\"reroute\"" },
+          json: expectEnvelope(triageRoleConfig, { status: "reroute", rationale: "the beta check broke", payload: { problem: "beta fails", dead_ends: "attempt 1 broke it", scope: "report.tap", references: ["worker-1-0"], diagnosis: "restore beta" } }),
+          costUsd: 0.05,
+          durationMs: 4_000,
+        },
+        {
+          when: { promptContains: "2 - beta (PASS -> FAIL)" },
+          effects: [{ write: { path: "report.tap", content: PASSING_TAP } }],
+          json: { status: "completed", rationale: "restored the beta check" },
+          costUsd: 0.2,
+          durationMs: 56_000,
+        },
+        { when: { promptContains: INTENT }, effects: [{ write: { path: "report.tap", content: FAILING_TAP } }], json: { status: "completed", rationale: "broke the beta check" }, costUsd: 0.25, durationMs: 60_000 },
+      ],
+    };
+
+    const { result, dir, repoPath } = await scratchRun(script, (agent) => createAgentTriage(agent));
+    const record = { runId: "greeting", repoPath, dir, caseFile: await load(dir) };
+    const doc = deriveReport(snapshotOf({ subject: { kind: "task", runId: "greeting" }, list: [], records: [record] }));
+
+    expect(result.state).toBe("CLOSED");
+    expect(doc.usageRecorded).toEqual({ recorded: 3, sessions: 3 });
+    expect(renderText(doc, { colour: false })).toContain("  Time and cost, recorded for 3 of 3 agent sessions: 2 min of session time; USD 0.50, estimated by the agent runtime.");
   });
 });

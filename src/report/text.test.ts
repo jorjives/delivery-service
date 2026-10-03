@@ -24,7 +24,8 @@ import {
   timed,
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
-import { closingSentence, renderText, reportPointer, stripControl } from "./text.js";
+import type { HistoryEntry } from "../schema.js";
+import { closingSentence, durationWords, renderText, reportPointer, stripControl, usageSentence } from "./text.js";
 
 const report = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false });
 
@@ -481,5 +482,38 @@ describe("a repair that changed a file the check runs", () => {
     const lines = renderText(deriveReport(snapshotOf({ subject: { kind: "run", runId: ID.run }, records: [footerWorking], runs: [run], refs: { [ID.run]: { "repair-run-repair-1": CHANGES_TOUCHING_CHECK } } })), { colour: false });
 
     expect(lines).toContain('  A repair of the setup changed a file the check runs ("check.mjs") during task 2.');
+  });
+});
+
+describe("time and cost", () => {
+  const formPaid = recordOf({
+    runId: ID.form,
+    task: FORM,
+    closerRef: { type: "merge-back" },
+    history: attempt(1, "added the form").map((entry): HistoryEntry => (entry.t === "terminus" ? { ...entry, usage: { costUsd: 0.25, durationMs: 60_000 } } : entry)),
+    outcome: closedAt("2026-10-01T02:19:10.000Z"),
+  });
+
+  it("says, for whoever tunes this, the session time and estimated cost across the run, and how many sessions they cover", () => {
+    expect(report(snapshotOf({ records: [formPaid, footerFailed] }))).toContain(
+      "  Time and cost, recorded for 1 of 5 agent sessions: 1 min of session time; USD 0.25, estimated by the agent runtime.",
+    );
+  });
+
+  it("still says it was not recorded, never zero, when no session recorded it", () => {
+    expect(report(snapshotOf({ records: [formDone, footerFailed] }))).toContain("  Time and cost were not recorded for this run.");
+  });
+
+  it("says a figure the runtime reported as zero as it was reported, and one too small for cents as under a cent", () => {
+    expect(usageSentence({ usage: { costUsd: 0, durationMs: 0 }, usageRecorded: { recorded: 1, sessions: 1 } }, "this task")).toBe(
+      "Time and cost, recorded for 1 of 1 agent session: 0 s of session time; USD 0.00, estimated by the agent runtime.",
+    );
+    expect(usageSentence({ usage: { costUsd: 0.004, durationMs: 1_000 }, usageRecorded: { recorded: 2, sessions: 3 } }, "this task")).toBe(
+      "Time and cost, recorded for 2 of 3 agent sessions: 1 s of session time; under USD 0.01, estimated by the agent runtime.",
+    );
+  });
+
+  it("says a length of time in seconds, minutes and seconds, or hours and minutes", () => {
+    expect([0, 45_400, 59_600, 60_000, 125_000, 3_600_000, 7_380_000].map(durationWords)).toEqual(["0 s", "45 s", "1 min", "1 min", "2 min 5 s", "1 h", "2 h 3 min"]);
   });
 });

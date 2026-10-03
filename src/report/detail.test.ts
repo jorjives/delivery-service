@@ -36,6 +36,8 @@ describe("the detail under a stopped task's status", () => {
       "Retry budgets at stop, after 4 attempts:",
       "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
       "",
+      "Time and cost were not recorded for this task.",
+      "",
       "Repairs: none ran for this task.",
       "",
       "To act: 1. Reword the task, or remove it from your list.",
@@ -136,6 +138,8 @@ describe("every triage round in full", () => {
       "Retry budgets at stop, after 4 attempts:",
       "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
       "",
+      "Time and cost were not recorded for this task.",
+      "",
       "Repairs: none ran for this task.",
       "",
       "To act: 1. Reword the task, or remove it from your list.",
@@ -146,7 +150,7 @@ describe("every triage round in full", () => {
   });
 
   it("says not recorded for a packet that cannot be read back, rather than leaving the round out", () => {
-    expect(full(footerFailed).slice(-15, -10)).toEqual([
+    expect(full(footerFailed).slice(-17, -12)).toEqual([
       "  Round 4, after attempt 4",
       "    Trigger: a gate failure (gate_fail)",
       "    Verdict: escalate",
@@ -197,6 +201,8 @@ describe("the detail under a task that has less to tell", () => {
       "Retry budgets when it finished, after 1 attempt:",
       "  correction 0 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
       "",
+      "Time and cost were not recorded for this task.",
+      "",
       "Repairs: none ran for this task.",
       "",
       "No stop: this run finished.",
@@ -207,6 +213,8 @@ describe("the detail under a task that has less to tell", () => {
     expect(short(footerWorking).slice(2)).toEqual([
       "Retry budgets so far, after 1 attempt:",
       "  correction 0 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "Time and cost were not recorded for this task.",
       "",
       "Repairs: none ran for this task.",
       "",
@@ -299,10 +307,26 @@ describe("the retries of a run of several tasks, added up", () => {
       "Retry budgets across the 2 tasks this run has taken:",
       "  correction 3 of 6, gate recheck 0 of 6, gate repair 0 of 4, session retry 0 of 10, close retry 0 of 6",
       "  shared repair limit for the run: 1 of 2 used",
+      "",
+      "Time and cost were not recorded for this run.",
     ]);
   });
 
   it("says so, with the shared limit, when no task of the run has started", () => {
-    expect(roll({ runs: [runFileOf(ID.run, [])] })).toEqual(["Retry budgets: no task of this run has started.", "  shared repair limit for the run: 0 of 2 used"]);
+    expect(roll({ runs: [runFileOf(ID.run, [])] })).toEqual([
+      "Retry budgets: no task of this run has started.",
+      "  shared repair limit for the run: 0 of 2 used",
+      "",
+      "Time and cost were not recorded for this run.",
+    ]);
+  });
+});
+
+describe("a task's time and cost, as status says them", () => {
+  it("gives the task's own figure and how many of its sessions it covers", () => {
+    const history = [...attempt(1, "first go"), ...attempt(2, "second go").map((entry) => (entry.t === "terminus" ? { ...entry, usage: { costUsd: 0.37, durationMs: 250_000 } } : entry))];
+    const lines = detailLines(surfaceOf(recordOf({ runId: ID.footer, task: FOOTER, history })), { full: false, patches: false });
+
+    expect(lines).toContain("Time and cost, recorded for 1 of 2 agent sessions: 4 min 10 s of session time; USD 0.37, estimated by the agent runtime.");
   });
 });
