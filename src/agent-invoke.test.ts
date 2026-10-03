@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
 import { create, readRef } from "./case-file.js";
-import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef, usageLimitOf } from "./agent-invoke.js";
+import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef, usageLimitOf, usageOf } from "./agent-invoke.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import { createToolAuthority } from "./tool-authority.js";
@@ -24,6 +24,8 @@ const budgets: BudgetSet = {
 };
 
 const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode: "tap" };
+
+const NO_COST = { costUsd: 0, durationMs: 0 }; // what the scripted agent reports when the script sets no figure
 
 let dir: string;
 let worktreePath: string;
@@ -54,7 +56,7 @@ describe("invoke against a scripted agent session", () => {
   it("returns one completed terminus carrying the agent's explanation", async () => {
     await script([{ json: { status: "completed", rationale: "added the greeting endpoint" } }]);
     const terminus = await invoke(workerRoleConfig, ctx, useMock());
-    expect(terminus).toEqual({ status: "completed", rationale: "added the greeting endpoint" });
+    expect(terminus).toEqual({ status: "completed", rationale: "added the greeting endpoint", usage: NO_COST });
   });
 
   it("returns one escalate terminus naming the category", async () => {
@@ -66,6 +68,7 @@ describe("invoke against a scripted agent session", () => {
       status: "escalate",
       category: "authority",
       rationale: "needs a credential I was not given",
+      usage: NO_COST,
     });
   });
 
@@ -105,6 +108,7 @@ describe("invoke against a scripted agent session", () => {
     expect(terminus).toEqual({
       status: "incomplete",
       rationale: `worker session did not complete: ${DID_NOT_COMPLETE.wrongShape}`,
+      usage: NO_COST,
     });
   });
 
@@ -230,6 +234,40 @@ describe("invoke without a runnable session", () => {
   });
 });
 
+describe("what a session cost and took", () => {
+  it("carries the cost and time the runtime reported on the terminus", async () => {
+    await script([{ json: { status: "completed", rationale: "added it" }, costUsd: 0.42, durationMs: 1500 }]);
+    expect(await invoke(workerRoleConfig, ctx, useMock())).toEqual({ status: "completed", rationale: "added it", usage: { costUsd: 0.42, durationMs: 1500 } });
+  });
+
+  it("carries them on a session that gave no usable reply: it still ran, and still cost", async () => {
+    await script([{ reply: "no envelope", costUsd: 0.1, durationMs: 800 }]);
+    expect(await invoke(workerRoleConfig, ctx, useMock())).toMatchObject({ status: "incomplete", usage: { costUsd: 0.1, durationMs: 800 } });
+  });
+
+  it("carries them on a session that ended in an error", async () => {
+    await script([{ fail: { message: "boom" }, costUsd: 0.05, durationMs: 300 }]);
+    expect(await invoke(workerRoleConfig, ctx, useMock())).toMatchObject({ status: "incomplete", usage: { costUsd: 0.05, durationMs: 300 } });
+  });
+
+  it("carries none when no session ran: there is nothing the runtime could report", async () => {
+    await script([{ reply: "unreachable" }]);
+    const terminus = await invoke(workerRoleConfig, ctx, { pathToClaudeCodeExecutable: join(dir, "no-such-binary"), env: { ...process.env, CLAUDE_MOCK_SCRIPT: scriptPath } });
+    expect(terminus).not.toHaveProperty("usage");
+  });
+});
+
+describe("usageOf", () => {
+  it("reads the runtime's cost and time, whole milliseconds", () => {
+    expect(usageOf({ total_cost_usd: 0.42, duration_ms: 1500.6 })).toEqual({ costUsd: 0.42, durationMs: 1501 });
+  });
+
+  it("leaves out a figure that is not a finite, non-negative number rather than record it", () => {
+    expect(usageOf({ total_cost_usd: Number.NaN, duration_ms: -1 })).toEqual({});
+    expect(usageOf({ total_cost_usd: undefined as unknown as number, duration_ms: Number.POSITIVE_INFINITY })).toEqual({});
+  });
+});
+
 // A case file that cannot be read cannot have its failure reported into it, so
 // this is a run-level error for the caller, not an agent outcome, and no
 // session is spent on it.
@@ -336,6 +374,7 @@ describe("invoke with the guard installed", () => {
     expect(terminus).toEqual({
       status: "completed",
       rationale: "guard installed, run unaffected",
+      usage: NO_COST,
     });
   });
 });
@@ -359,6 +398,7 @@ describe("invoking gate-maintenance through the same seam as the worker", () => 
     expect(terminus).toEqual({
       status: "completed",
       rationale: "set the missing PORT in .env so the service can start",
+      usage: NO_COST,
     });
     expect(await readFile(join(worktreePath, ".env"), "utf-8")).toBe("PORT=8080\n");
   });
@@ -395,7 +435,7 @@ describe("createAgentPort against a scripted session", () => {
     expect(TriageEnvelope.safeParse(triaged).success).toBe(true);
 
     const worked = await port.invoke({ role: "worker" }, ctx);
-    expect(worked).toEqual({ status: "completed", rationale: "done" });
+    expect(worked).toEqual({ status: "completed", rationale: "done", usage: NO_COST });
   });
 });
 
@@ -410,6 +450,7 @@ describe("a session stopped by a usage limit", () => {
       status: "incomplete",
       rationale: "worker session did not complete: the AI service is limiting requests",
       limit: "rate",
+      usage: NO_COST,
     });
   });
 
@@ -419,6 +460,7 @@ describe("a session stopped by a usage limit", () => {
       status: "incomplete",
       rationale: "worker session did not complete: the spending limit has been reached",
       limit: "spend",
+      usage: NO_COST,
     });
   });
 
@@ -427,6 +469,7 @@ describe("a session stopped by a usage limit", () => {
     expect(await invoke(workerRoleConfig, ctx, useMock())).toEqual({
       status: "incomplete",
       rationale: `worker session did not complete: ${DID_NOT_COMPLETE.errored}`,
+      usage: NO_COST,
     });
   });
 

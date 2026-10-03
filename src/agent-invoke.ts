@@ -4,12 +4,12 @@ import { load, writeRef } from "./case-file.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
-import type { AgentContext, AgentPort, RoleHandle, Incomplete } from "./ports.js";
+import type { AgentContext, AgentPort, RoleHandle, Incomplete, Metered } from "./ports.js";
 import { USAGE_LIMIT_WORDS } from "./ports.js";
 import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
 import { messageOf } from "./gate-support.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
-import type { UsageLimit } from "./schema.js";
+import type { UsageLimit, SessionUsage } from "./schema.js";
 
 /**
  * The four ways a session fails to produce a usable answer, and the one
@@ -83,6 +83,19 @@ export function usageLimitOf({ apiError, status, text }: { apiError: string | un
   if (apiError === "billing_error" || /enforced_spend_limit_reached|billing_error/.test(text)) return "spend";
   if (apiError === "rate_limit" || status === 429 || text.includes("rate_limit_error")) return "rate";
   return undefined;
+}
+
+/**
+ * What the runtime reported a session cost and took, from its result message.
+ * A figure that is not a finite, non-negative number is left out rather than
+ * recorded: it is the runtime's output, and the record would refuse it.
+ */
+export function usageOf(result: Pick<SDKResultMessage, "total_cost_usd" | "duration_ms">): SessionUsage {
+  const { total_cost_usd: cost, duration_ms: duration } = result;
+  return {
+    ...(Number.isFinite(cost) && cost >= 0 ? { costUsd: cost } : {}),
+    ...(Number.isFinite(duration) && duration >= 0 ? { durationMs: Math.round(duration) } : {}),
+  };
 }
 
 /** How much of an unusable reply is kept: enough to diagnose, never a runaway file. */
@@ -216,13 +229,13 @@ export function buildSessionOptions(
  *   receive it.
  *
  * Every *agent* outcome, success or failure, returns as the role's envelope or
- * an incomplete terminus.
+ * an incomplete terminus, carrying `usage` whenever the runtime produced a result.
  */
 export async function invoke<E>(
   roleCfg: RoleConfig<E>,
   ctx: AgentContext,
   session: SessionEnvironment = {},
-): Promise<E | Incomplete> {
+): Promise<Metered<E | Incomplete>> {
   validateRoleConfig(roleCfg);
 
   const caseFile = await load(ctx.dir);
@@ -244,8 +257,12 @@ export async function invoke<E>(
     return authorityRefusal(roleCfg, authority.refusals, []) ?? incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   }
 
+  // Whatever the session ended as, if it produced a result the runtime said what it cost and took.
+  const usage = result === undefined ? undefined : usageOf(result);
+  const metered = <T>(terminus: T): Metered<T> => (usage === undefined ? terminus : { ...terminus, usage }) as Metered<T>;
+
   const refusal = authorityRefusal(roleCfg, authority.refusals, result?.permission_denials ?? []);
-  if (refusal) return refusal;
+  if (refusal) return metered(refusal);
 
   if (!result) return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   if (result.subtype !== "success" || result.is_error) {
@@ -253,11 +270,11 @@ export async function invoke<E>(
     const limit = usageLimitOf({ apiError, status: result.subtype === "success" ? result.api_error_status : undefined, text: cause });
     const reason = limit ? USAGE_LIMIT_WORDS[limit] : DID_NOT_COMPLETE.errored;
     await recordFailureCause(roleCfg, ctx, reason, { cause });
-    return incomplete(roleCfg, reason, limit);
+    return metered(incomplete(roleCfg, reason, limit));
   }
   if (result.structured_output === undefined) {
     await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.noEnvelope, { agentReply: result.result });
-    return incomplete(roleCfg, DID_NOT_COMPLETE.noEnvelope);
+    return metered(incomplete(roleCfg, DID_NOT_COMPLETE.noEnvelope));
   }
 
   const envelope = roleCfg.envelopeSchema.safeParse(result.structured_output);
@@ -266,11 +283,11 @@ export async function invoke<E>(
       cause: z.prettifyError(envelope.error),
       agentReply: JSON.stringify(result.structured_output),
     });
-    return incomplete(roleCfg, DID_NOT_COMPLETE.wrongShape);
+    return metered(incomplete(roleCfg, DID_NOT_COMPLETE.wrongShape));
   }
 
   // A valid envelope IS the terminus — see `Envelope` in role-config.ts.
-  return envelope.data;
+  return metered(envelope.data);
 }
 
 /**

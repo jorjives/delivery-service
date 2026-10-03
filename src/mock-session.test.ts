@@ -20,6 +20,8 @@ const budgets: BudgetSet = {
   close: { used: 0, max: 3 },
 };
 
+const NO_COST = { costUsd: 0, durationMs: 0 }; // what the scripted agent reports when the script sets no figure
+
 const paths = { scriptPath: "/tmp/run/mock.json", journalPath: "/tmp/run/journal.jsonl" };
 
 afterEach(() => {
@@ -81,7 +83,7 @@ describe("a session driven through the helper", () => {
       mockSessionEnvironment({ scriptPath, journalPath }),
     );
 
-    expect(terminus).toEqual({ status: "completed", rationale: "added the greeting" });
+    expect(terminus).toEqual({ status: "completed", rationale: "added the greeting", usage: NO_COST });
     expect(promptsSent(await readJournal(journalPath))[0]).toContain("add a greeting");
   });
 });

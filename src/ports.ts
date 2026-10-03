@@ -1,4 +1,4 @@
-import type { Budget, BudgetPopulation, BudgetSet, CaseFile, CloseReport, UsageLimit } from "./schema.js";
+import type { Budget, BudgetPopulation, BudgetSet, CaseFile, CloseReport, UsageLimit, SessionUsage } from "./schema.js";
 import type { CloseRepairBrief, EscalationPacket, SharpenedBrief, TriageEnvelope } from "./triage-role-config.js";
 
 // --- AgentPort (createAgentPort in agent-invoke.ts is the SDK-backed implementation) ---
@@ -50,6 +50,14 @@ export type Terminus =
 /** The harness's own verdict on a session that produced nothing usable, for any role. */
 export type Incomplete = Extract<Terminus, { status: "incomplete" }>;
 
+/**
+ * A terminus as the agent port returns it: with what the agent runtime reported
+ * for the session, when one ran and reported anything. Never part of what an
+ * agent may say: the harness adds it after the reply is validated. Read only by
+ * what records it; no routing decision reads it.
+ */
+export type Metered<T> = T & { usage?: SessionUsage };
+
 /** The plain words a usage limit is always described with. One table, so every place that names a limit names it the same way. */
 export const USAGE_LIMIT_WORDS: Record<UsageLimit, string> = {
   rate: "the AI service is limiting requests",
@@ -59,9 +67,9 @@ export const USAGE_LIMIT_WORDS: Record<UsageLimit, string> = {
 export type TriageTerminus = TriageEnvelope | Incomplete;
 
 export interface RoleTerminusMap {
-  worker: Terminus;
-  "gate-maintenance": Terminus;
-  triage: TriageTerminus;
+  worker: Metered<Terminus>;
+  "gate-maintenance": Metered<Terminus>;
+  triage: Metered<TriageTerminus>;
 }
 
 export interface AgentPort {

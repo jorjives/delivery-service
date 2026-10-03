@@ -223,6 +223,18 @@ export type Population = z.infer<typeof Population>;
 export const UsageLimit = z.enum(["rate", "spend"]);
 export type UsageLimit = z.infer<typeof UsageLimit>;
 
+/**
+ * What the agent runtime reported for one session: its estimated cost in US
+ * dollars (the SDK's `total_cost_usd`, which covers any subagents) and how long
+ * it took (`duration_ms`). Either is absent when the runtime did not report it.
+ * Recorded for reporting only: nothing that decides what a run does next reads it.
+ */
+export const SessionUsage = z.object({
+  costUsd: z.number().nonnegative().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+});
+export type SessionUsage = z.infer<typeof SessionUsage>;
+
 export const TerminusEntry = z.object({
   t: z.literal("terminus"),
   attempt: z.number().int().positive(),

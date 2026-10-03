@@ -51,7 +51,7 @@ describe("UAT: write an agent stand-in the compiler checks", () => {
     const s = sectionOf(stdout, "3. A stand-in whose worker replies with a triage verdict");
     expect(s).toContain("The compiler reports:");
     expect(s).toContain("error TS2322");
-    expect(s).toContain("is not assignable to type 'Terminus'");
+    expect(s).toContain("is not assignable to type 'Metered<Terminus>'");
     expect(s).toContain('Type \'"reroute"\' is not assignable to type \'"incomplete"\'');
     expect(s).toContain("It is a compile error, not a passing run: the stand-in never gets to run.");
   });

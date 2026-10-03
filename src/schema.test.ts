@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { GateRef, CloserRef, CloseReport, HistoryEntry, RunEntry } from "./schema.js";
+import { GateRef, CloserRef, CloseReport, HistoryEntry, RunEntry, SessionUsage } from "./schema.js";
 
 describe("GateRef", () => {
   it("accepts a command ref with a supported parse mode", () => {
@@ -127,5 +127,14 @@ describe("the time a step was recorded", () => {
   it("must be a time: anything else is refused", () => {
     expect(HistoryEntry.safeParse({ t: "baseline", status: "PASS", at: "yesterday" }).success).toBe(false);
     expect(RunEntry.safeParse({ t: "breaker_healthy", at: 1727749200 }).success).toBe(false);
+  });
+});
+
+describe("what a session cost and took", () => {
+  it("refuses a figure no runtime reports: a negative cost, or a fraction of a millisecond", () => {
+    expect(SessionUsage.safeParse({ costUsd: 0.42, durationMs: 1500 }).success).toBe(true);
+    expect(SessionUsage.safeParse({}).success).toBe(true);
+    expect(SessionUsage.safeParse({ costUsd: -1 }).success).toBe(false);
+    expect(SessionUsage.safeParse({ durationMs: 1.5 }).success).toBe(false);
   });
 });

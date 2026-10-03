@@ -188,6 +188,13 @@ terminus carries `limit` (`"rate"` or `"spend"`). A task retries it as any
 incomplete session; a run of several at once never counts it as evidence that
 the shared environment is broken.
 
+Whatever the terminus, a session that produced a result also returns what the agent runtime
+reported for it, as `usage`: `costUsd`, the runtime's estimated cost in US dollars
+(`total_cost_usd`, which covers any subagents), and `durationMs` (`duration_ms`). A figure the
+runtime did not report, or reported as something other than a finite, non-negative number, is
+left out. A session that never ran carries no `usage`. Nothing that routes a terminus reads it;
+it is recorded for reporting.
+
 ## Tool authority
 
 Each role's blast radius is a security boundary, not a convention, so it is enforced

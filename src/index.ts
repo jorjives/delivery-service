@@ -40,6 +40,7 @@ export type {
   RepairCoordinator,
   SurfacePorts,
   SurfaceLocation,
+  Metered,
 } from "./ports.js";
 export type {
   CaseFile,
@@ -58,6 +59,7 @@ export type {
   Budget,
   BudgetPopulation,
   UsageLimit,
+  SessionUsage,
   TaskDef,
   GateRef,
   CloserRef,
