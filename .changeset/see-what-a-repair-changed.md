@@ -11,3 +11,9 @@ task carries on, without staging or committing anything, so what a task lands is
 to 256 KiB of patches is kept per repair with the run's record, and a larger or binary file keeps
 its name and counts. Nothing about a run depends on what a repair changed: it is shown, never
 judged. The report document gains `surfaces[].repairs`.
+
+`delivery report` gains a "Worth a look" section, only when a repair changed a file the check
+runs: it names the task and the file, says the report cannot tell whether the change was safe,
+and gives the `delivery status <id> --repairs` command that shows it. The saved
+`.delivery/last-report.txt` carries this summary only, never a patch; `last-report.json` carries
+the patches as recorded.

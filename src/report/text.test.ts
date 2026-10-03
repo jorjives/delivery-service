@@ -3,6 +3,7 @@ import { deriveReport } from "./derive.js";
 import {
   attempt,
   BANNER,
+  CHANGES_TOUCHING_CHECK,
   closedAt,
   fill,
   FOOTER,
@@ -14,8 +15,10 @@ import {
   HOMEPAGE,
   homepageAsks,
   ID,
+  ownRepair,
   recordOf,
   runFileOf,
+  setupRepair,
   snapshotOf,
   stoppedAt,
   timed,
@@ -313,6 +316,7 @@ describe("words taken from the record", () => {
 });
 
 describe("the report's own words", () => {
+  const changed = recordOf({ runId: ID.footer, task: FOOTER, history: [...ownRepair(1, "repair-gate-maintenance-1-0"), ...attempt(1, "first go")] });
   const everyReport = [
     snapshotOf(),
     snapshotOf({ records: [formDone, footerFailed] }),
@@ -320,6 +324,7 @@ describe("the report's own words", () => {
     snapshotOf({ live: true, records: [formDone, footerWorking], runs: [going] }),
     snapshotOf({ live: false, records: [formDone, footerWorking], runs: [going] }),
     snapshotOf({ records: [formDone, homepageAsks] }),
+    snapshotOf({ records: [formDone, changed], refs: { [ID.footer]: { "repair-gate-maintenance-1-0": CHANGES_TOUCHING_CHECK } } }),
     stopped({ kind: "budget", population: "gateError" }),
     stopped({ kind: "budget", population: "gateMaintenance" }),
     stopped({ kind: "budget", population: "close" }),
@@ -432,5 +437,42 @@ describe("the text of a report", () => {
     // eslint-disable-next-line no-control-regex
     expect(coloured.map((line) => line.replace(/\u001B\[[0-9;]*m/g, ""))).toEqual(plain);
     expect(coloured.filter((line, index) => line !== plain[index]).length).toBe(4);
+  });
+});
+
+describe("a repair that changed a file the check runs", () => {
+  const changed = recordOf({ runId: ID.footer, task: FOOTER, history: [...ownRepair(1, "repair-gate-maintenance-1-0"), ...attempt(1, "first go")] });
+  const snapshot = snapshotOf({ records: [formDone, changed], refs: { [ID.footer]: { "repair-gate-maintenance-1-0": CHANGES_TOUCHING_CHECK } } });
+
+  it("is worth a look: which task and file, that the report cannot tell whether it was safe, and the command that shows it", () => {
+    const lines = renderText(deriveReport(snapshot), { colour: false });
+    const at = lines.indexOf("WORTH A LOOK");
+
+    expect(at).toBeGreaterThan(-1);
+    expect(lines.slice(at, at + 4)).toEqual([
+      "WORTH A LOOK",
+      '  A repair of the check changed a file the check runs ("check.mjs") during task 2.',
+      "    This report shows what changed; it cannot tell you whether the change was safe.",
+      `    See it: delivery status ${ID.footer} --repairs`,
+    ]);
+    expect(lines.indexOf("WORTH A LOOK")).toBeLessThan(lines.findIndex((line) => line.startsWith("FOR WHOEVER TUNES THIS")));
+  });
+
+  it("carries no patch: the summary only, as the saved text report does", () => {
+    expect(renderText(deriveReport(snapshot), { colour: false }).join("\n")).not.toMatch(/lenient|diff --git/);
+  });
+
+  it("is not there when no repair changed a file the check runs, or none was recorded", () => {
+    const harmless = { files: [{ path: "notes.txt", status: "added" as const, added: 1, removed: 0, touchesCheck: false }], truncated: false };
+    for (const refs of [{ [ID.footer]: { "repair-gate-maintenance-1-0": harmless } }, {}]) {
+      expect(renderText(deriveReport(snapshotOf({ records: [formDone, changed], refs })), { colour: false })).not.toContain("WORTH A LOOK");
+    }
+  });
+
+  it("names the repair of the setup as such", () => {
+    const run = runFileOf(ID.run, [fill(1, ID.footer, FOOTER), ...setupRepair(1, ID.footer, "repair-run-repair-1")]);
+    const lines = renderText(deriveReport(snapshotOf({ subject: { kind: "run", runId: ID.run }, records: [footerWorking], runs: [run], refs: { [ID.run]: { "repair-run-repair-1": CHANGES_TOUCHING_CHECK } } })), { colour: false });
+
+    expect(lines).toContain('  A repair of the setup changed a file the check runs ("check.mjs") during task 2.');
   });
 });

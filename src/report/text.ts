@@ -298,6 +298,27 @@ export function budgetTotals(surfaces: ReportSurface[]): BudgetRow[] {
 }
 
 /**
+ * Each repair that changed a file the check runs: which task and which files, that this report cannot tell whether
+ * the change was safe, and where to see it. Nothing when no repair recorded one: a repair is shown, never judged.
+ */
+function worthALookLines(doc: ReportDocument, colour: boolean): string[] {
+  const items = doc.surfaces.flatMap((surface) => {
+    const { run } = surface;
+    if (run === null) return [];
+    return surface.repairs.flatMap((repair) => {
+      const touched = repair.files.filter((file) => file.touchesCheck);
+      if (touched.length === 0) return [];
+      return [
+        `  A repair ${REPAIR_OF[repair.of]} changed ${touched.length === 1 ? "a file" : "files"} the check runs (${touched.map((file) => quoted(file.path, "")).join(", ")}) during ${surface.queue ? `task ${surface.queue.task}` : "this task"}.`,
+        "    This report shows what changed; it cannot tell you whether the change was safe.",
+        `    See it: delivery status ${run} --repairs`,
+      ];
+    });
+  });
+  return items.length === 0 ? [] : ["", paint(colour, "attention", "WORTH A LOOK"), ...items];
+}
+
+/**
  * Retries used, in the owner's vocabulary, for whoever adjusts the limits, then where this report was saved when
  * it was. Nothing when no task has a run to count and nothing was saved.
  */
@@ -346,7 +367,9 @@ function nextLine(doc: ReportDocument): string {
  * outside quotation marks is from a fixed table; words from the record appear
  * only quoted, with control characters taken out.
  *
- * `saved` is one sentence about the copy of this report kept on disk: where it
+ * Sections: NEEDS YOU, STOPPED, DONE, NOT FINISHED, NOT STARTED, a "WORTH A LOOK"
+ * alert when a repair changed a file the check runs, retries and time used, and next
+ * steps. `saved` is one sentence about the copy of this report kept on disk: where it
  * was saved, or that it could not be. Left out, the report says nothing of one.
  */
 export function renderText(doc: ReportDocument, { colour, saved }: { colour: boolean; saved?: string }): string[] {
@@ -356,6 +379,7 @@ export function renderText(doc: ReportDocument, { colour, saved }: { colour: boo
     ...whenLines(doc),
     ...runStopLines(doc.run),
     ...SECTIONS.flatMap((section) => sectionLines(doc, section, colour)),
+    ...worthALookLines(doc, colour),
     ...tuningLines(doc, colour, saved),
     "",
     nextLine(doc),

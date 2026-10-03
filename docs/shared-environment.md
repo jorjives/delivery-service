@@ -137,6 +137,17 @@ Environment: healthy (repaired once during this run)
 
 The environment line says the run repaired it. `delivery status <run-id> --json` has the detail under `trips`: for this run, `cause.surfaceIds` names the two tasks whose check kept erroring. Remove `shared/outage.json` when you have finished.
 
+To see what the repair changed, read the task it ran in:
+
+```bash
+delivery status <task-id> --repairs
+```
+
+It lists every file the repair changed in that task's copy, with the lines added and removed and
+the patch, and marks a file the check itself runs. When a repair changed such a file, `delivery
+report` says so under "Worth a look", names the task and the file, and gives this command. It
+cannot tell you whether the change was safe: that is for you to read.
+
 ## When the repair can fix it
 
 If what broke is something the repair can reach (a file inside a task's own copy), it says "Fixed. Resuming.", held tasks carry on, and `delivery status` shows "Environment: healthy (repaired once during this run)". The shared environment is back in use, and your tasks finish where they left off.
