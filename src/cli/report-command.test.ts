@@ -23,7 +23,6 @@ import {
   type TaskRun,
 } from "../report/report-fixtures.js";
 import { ReportDocument } from "../report/document.js";
-import { publishedSchema } from "../report/json-schema.js";
 import { NO_TASK_LIST } from "../report/text.js";
 import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
