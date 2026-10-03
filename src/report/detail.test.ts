@@ -274,6 +274,14 @@ describe("a task's repairs, as status says them", () => {
     expect(rendered).not.toContain("\u001b");
     expect(rendered).not.toContain("\u0007");
   });
+
+  it("keeps a path with a line break in it on its own line, so it cannot pass for another", () => {
+    const forged = [{ path: "a.txt\nRepair 2 (of the check, attempt 2 of 2) changed no files.", status: "added" as const, added: 1, removed: 0, touchesCheck: false, patch: null }];
+
+    expect(repairLine({ ...base, recorded: true, files: forged }, 0)).toBe(
+      "Repair 1 (of the check, attempt 1 of 2) changed 1 file, +1 -0: a.txt\\nRepair 2 (of the check, attempt 2 of 2) changed no files."
+    );
+  });
 });
 
 describe("the retries of a run of several tasks, added up", () => {

@@ -2,7 +2,7 @@ import { POPULATION_LABELS, SETBACK_LABELS } from "../escalation-packet.js";
 import { briefLines } from "../prompt-assembly.js";
 import type { BudgetRow, Decision, ReportDocument, RepairFile, ReportRepair, ReportSurface, Standing } from "./document.js";
 import { attemptsWord } from "./plain.js";
-import { budgetTotals, quoted, REPAIR_OF, stripControl, toAct } from "./text.js";
+import { budgetTotals, pathName, quoted, REPAIR_OF, stripControl, toAct } from "./text.js";
 
 /** Said under a stopped task that is on the project's list: running the list again does not run it again. */
 export const UNCHANGED_NOT_RUN_AGAIN = "An unchanged task on your list is not run again: `delivery run` would retell this outcome.";
@@ -90,7 +90,7 @@ function budgetLines(surface: ReportSurface): string[] {
 const filesWord = (count: number): string => `${count} ${count === 1 ? "file" : "files"}`;
 
 /** A changed file by name, marked when it is one the check runs. Says nothing about whether the change was safe. */
-const fileName = (file: RepairFile): string => `${stripControl(file.path)}${file.touchesCheck ? " (the check runs this file)" : ""}`;
+const fileName = (file: RepairFile): string => `${pathName(file.path)}${file.touchesCheck ? " (the check runs this file)" : ""}`;
 
 /** One repair in one line: which, how many files it changed, the lines added and removed, and the names. */
 export function repairLine(repair: ReportRepair, index: number): string {

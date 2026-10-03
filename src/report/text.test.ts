@@ -458,6 +458,13 @@ describe("a repair that changed a file the check runs", () => {
     expect(lines.indexOf("WORTH A LOOK")).toBeLessThan(lines.findIndex((line) => line.startsWith("FOR WHOEVER TUNES THIS")));
   });
 
+  it("keeps a path with a line break in it on the line that names it", () => {
+    const forged = { files: [{ path: "check.mjs\nDONE (5)", status: "modified" as const, added: 1, removed: 0, touchesCheck: true }], truncated: false };
+    const lines = renderText(deriveReport(snapshotOf({ records: [formDone, changed], refs: { [ID.footer]: { "repair-gate-maintenance-1-0": forged } } })), { colour: false });
+
+    expect(lines).toContain('  A repair of the check changed a file the check runs ("check.mjs\\nDONE (5)") during task 2.');
+  });
+
   it("carries no patch: the summary only, as the saved text report does", () => {
     expect(renderText(deriveReport(snapshot), { colour: false }).join("\n")).not.toMatch(/lenient|diff --git/);
   });

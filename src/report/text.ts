@@ -20,6 +20,11 @@ export function stripControl(text: string): string {
   return text.replace(/\u001B\[[0-?]*[ -/]*[@-~]|\u001B\][^\u0007\u001B]*(?:\u0007|\u001B\\)?|[\u0000-\u0008\u000B-\u001F\u007F-\u009F]/g, "");
 }
 
+/** A file name from the record on one line: a line break in it is shown as a backslash and n, as git shows it, not broken onto a line of its own. */
+export function pathName(path: string): string {
+  return stripControl(path).replace(/\n/g, "\\n");
+}
+
 /** Words from the record, in quotation marks, with later lines set under the first. */
 export function quoted(text: string, indent: string): string {
   return `"${stripControl(text).trim().split("\n").join(`\n${indent}`)}"`;
@@ -309,7 +314,7 @@ function worthALookLines(doc: ReportDocument, colour: boolean): string[] {
       const touched = repair.files.filter((file) => file.touchesCheck);
       if (touched.length === 0) return [];
       return [
-        `  A repair ${REPAIR_OF[repair.of]} changed ${touched.length === 1 ? "a file" : "files"} the check runs (${touched.map((file) => quoted(file.path, "")).join(", ")}) during ${surface.queue ? `task ${surface.queue.task}` : "this task"}.`,
+        `  A repair ${REPAIR_OF[repair.of]} changed ${touched.length === 1 ? "a file" : "files"} the check runs (${touched.map((file) => `"${pathName(file.path)}"`).join(", ")}) during ${surface.queue ? `task ${surface.queue.task}` : "this task"}.`,
         "    This report shows what changed; it cannot tell you whether the change was safe.",
         `    See it: delivery status ${run} --repairs`,
       ];
