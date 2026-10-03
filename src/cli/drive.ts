@@ -4,7 +4,7 @@ import { resolveCloser } from "../resolve-closer.js";
 import { deterministicRouter } from "../router.js";
 import { advance, type AdvanceResult } from "../surface.js";
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { SurfacePorts } from "../ports.js";
+import type { SurfacePorts, Terminus } from "../ports.js";
 import type { TaskDef } from "../schema.js";
 import { captureRepair, checkFilesOf } from "../repair-changes.js";
 import type { RepairOutcome } from "../breaker.js";
