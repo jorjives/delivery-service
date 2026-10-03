@@ -2,12 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RunEntry } from "./schema.js";
-import { breakerOf, nextBreaker, openDispatch, openTrip, repairsUsed, requestedInOpenTrip, servedAlready, tripsOf, createRunBreaker, couldNotRepair, RECOVERED_REPAIR, signalsSinceHealthy, SHARED_ERROR_THRESHOLD, type BreakerChange } from "./breaker.js";
+import { RunEntry, type RepairChanges } from "./schema.js";
+import { breakerOf, nextBreaker, openDispatch, openTrip, repairsUsed, requestedInOpenTrip, servedAlready, tripsOf, createRunBreaker, couldNotRepair, RECOVERED_REPAIR, signalsSinceHealthy, SHARED_ERROR_THRESHOLD, type BreakerChange, type RepairOutcome } from "./breaker.js";
 import { createRunFile, loadRunFile } from "./run-file.js";
 import { withoutAt } from "./without-at.js";
 import { RunHalted } from "./errors.js";
 import type { Terminus } from "./ports.js";
+import { readRef } from "./case-file.js";
 
 const degraded = (surfaceId: string, reason = "the shared helper is missing"): RunEntry => ({ t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId, reason } });
 const signal = (surfaceId: string): RunEntry => ({ t: "gate_error_signal", surfaceId });
@@ -152,7 +153,7 @@ async function breakerOver(history: RunEntry[] = [], limit = 2) {
   const { appendRunEntry } = await import("./run-file.js");
   for (const entry of history) await appendRunEntry(dir, entry);
   const dispatched: string[] = [];
-  const answers: PromiseWithResolvers<Terminus>[] = [];
+  const answers: PromiseWithResolvers<RepairOutcome>[] = [];
   const changes: BreakerChange[] = [];
   const breaker = createRunBreaker({
     dir,
@@ -160,7 +161,7 @@ async function breakerOver(history: RunEntry[] = [], limit = 2) {
     limit,
     dispatch: (surfaceId, sessionKey) => {
       dispatched.push(`${surfaceId}:${sessionKey}`);
-      const answer = Promise.withResolvers<Terminus>();
+      const answer = Promise.withResolvers<RepairOutcome>();
       answers.push(answer);
       return answer.promise;
     },
@@ -168,9 +169,9 @@ async function breakerOver(history: RunEntry[] = [], limit = 2) {
   });
   // Each answer waits for the next dispatch to exist, since every dispatch follows fsynced run-file writes.
   let answered = 0;
-  const answer = async (terminus: Terminus) => {
+  const answer = async (terminus: Terminus, changesData?: RepairChanges) => {
     await vi.waitFor(() => expect(answers.length).toBeGreaterThan(answered));
-    answers[answered++]?.resolve(terminus);
+    answers[answered++]?.resolve({ terminus, ...(changesData === undefined ? {} : { changes: changesData }) });
   };
   const entries = async () => withoutAt((await loadRunFile(dir)).history);
   return { dir, breaker, dispatched, changes, answer, entries };
@@ -332,6 +333,29 @@ describe("one repair of the shared environment for the whole run", () => {
     const history = await entries();
     expect(history.at(-1)).toEqual({ t: "run_escalated", reason: "the repair could not run because the AI service is limiting requests; no task caused this", limit: "rate" });
     expect(tripsOf(history).at(-1)).toMatchObject({ ended: "gave_up", limit: "rate" });
+  });
+
+  it("keeps what the repair changed in the run's own folder and names it on the repair's terminus", async () => {
+    const changed: RepairChanges = { files: [{ path: "check.mjs", status: "modified", added: 1, removed: 1, touchesCheck: true, patch: "diff --git a/check.mjs b/check.mjs\n" }], truncated: false };
+    const { dir, breaker, answer, entries } = await breakerOver();
+    const repaired = breaker.requestRepair({ surfaceId: "a", reason: "the shared helper is missing" });
+
+    await answer(fixed, changed);
+    await repaired;
+
+    expect((await entries()).find((entry) => entry.t === "repair_terminus")).toMatchObject({ sessionKey: "run-repair-1", status: "completed", changesRef: "repair-run-repair-1" });
+    expect(await readRef(dir, "repair-run-repair-1")).toEqual(changed);
+  });
+
+  it("names no changes on a repair whose changes could not be read, and goes on just the same", async () => {
+    const { breaker, answer, entries } = await breakerOver();
+    const repaired = breaker.requestRepair({ surfaceId: "a", reason: "the shared helper is missing" });
+
+    await answer(fixed);
+    await repaired;
+
+    expect((await entries()).find((entry) => entry.t === "repair_terminus")).not.toHaveProperty("changesRef");
+    expect((await entries()).map((entry) => entry.t)).toContain("breaker_healthy");
   });
 });
 

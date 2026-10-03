@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
 import type { MockScript } from "../mock-script.js";
-import { SurfaceState, type RunEntry, type GateRef } from "../schema.js";
+import { SurfaceState, type RunEntry, type GateRef, RepairChanges } from "../schema.js";
 import { RECOVERED_REPAIR } from "../breaker.js";
 import { loadRunFile, setRunOutcome } from "../run-file.js";
 import { withoutAt } from "../without-at.js";
+import { readRef } from "../case-file.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot, interruptedRun, writesHello, writeSupervisedRun, rateLimited } from "./command-fixtures.js";
@@ -1232,6 +1233,13 @@ describe("delivery run with several tasks at once", () => {
         for (const record of await allRuns(repo)) {
           expect(record.caseFile.history.filter((entry) => entry.t === "dispatch" && entry.role === "gate-maintenance")).toEqual([]);
         }
+
+        const repair = ofType(history, "repair_terminus")[0];
+        expect(repair?.changesRef).toBe("repair-run-repair-1");
+        const [runFolder] = readdirSync(join(repo, ".delivery", "supervised"));
+        const changes = RepairChanges.parse(await readRef(join(repo, ".delivery", "supervised", runFolder ?? ""), "repair-run-repair-1"));
+        // The repair's `.restored` is what put the helper back; the worker may already have written hello.js, so only `.restored` is certain.
+        expect(changes.files).toContainEqual(expect.objectContaining({ path: ".restored", status: "added", added: 1, removed: 0, touchesCheck: false }));
       },
       RUN_TIMEOUT * 2,
     );

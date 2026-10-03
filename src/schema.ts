@@ -455,7 +455,8 @@ export const RunEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("held"), surfaceId: SurfaceId, at: At.optional() }),
   // The dispatch entry is the burn on the run's repair limit.
   z.object({ t: z.literal("repair_dispatch"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), surfaceId: SurfaceId, at: At.optional() }),
-  z.object({ t: z.literal("repair_terminus"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), status: RepairStatus, rationale: z.string(), at: At.optional() }),
+  // `changesRef` names the ref in the run's own folder holding what the repair changed (`RepairChanges`); read only by reporting.
+  z.object({ t: z.literal("repair_terminus"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), status: RepairStatus, rationale: z.string(), changesRef: z.string().optional(), at: At.optional() }),
   z.object({ t: z.literal("breaker_healthy"), at: At.optional() }),
   // `limit` is set when a usage limit, not the environment, is why the run stopped.
   z.object({ t: z.literal("run_escalated"), reason: z.string().min(1), limit: UsageLimit.optional(), at: At.optional() }),

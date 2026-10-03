@@ -6,6 +6,8 @@ import { advance, type AdvanceResult } from "../surface.js";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import type { SurfacePorts, Terminus } from "../ports.js";
 import type { TaskDef } from "../schema.js";
+import { captureRepair, checkFilesOf } from "../repair-changes.js";
+import type { RepairOutcome } from "../breaker.js";
 import { rolesFor } from "./roles.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
@@ -90,15 +92,19 @@ export async function driveToOutcome(
  * One repair of the environment every task of a run shares: the existing
  * gate-maintenance role, its instructions and its tools, run in the copy and
  * against the record of the task that found it broken, with that task's own
- * roles. Nothing about what the repair may touch changes because the run asked.
+ * roles. Nothing about what the repair may touch changes because the run asked,
+ * and what it changed in that copy, captured as a task's own repair is.
  */
-export function dispatchRepair(record: RunRecord, sessionKey: string, session: SessionEnvironment, env: NodeJS.ProcessEnv): Promise<Terminus> {
+export async function dispatchRepair(record: RunRecord, sessionKey: string, session: SessionEnvironment, env: NodeJS.ProcessEnv): Promise<RepairOutcome> {
   const { location } = runPlace(record.repoPath, record.runId, env);
   const agent = createAgentPort(rolesFor(record.caseFile.header.roleOverrides), session);
-  return agent.invoke(
-    { role: "gate-maintenance" },
-    { worktreePath: record.caseFile.cursor.worktreeRef || location.worktreePath, dir: record.dir, sessionKey },
+  const worktreePath = record.caseFile.cursor.worktreeRef || location.worktreePath;
+  const { result: terminus, changes } = await captureRepair(
+    worktreePath,
+    checkFilesOf(record.caseFile.header.gateRef, { repoPath: record.repoPath, worktreePath }),
+    () => agent.invoke({ role: "gate-maintenance" }, { worktreePath, dir: record.dir, sessionKey }),
   );
+  return { terminus, ...(changes === undefined ? {} : { changes }) };
 }
 
 export async function resumeRun(record: RunRecord, ctx: CommandContext, session?: SessionEnvironment): Promise<ExitCode> {

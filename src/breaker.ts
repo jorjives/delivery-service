@@ -1,10 +1,17 @@
-import type { BreakerState, RunEntry, Trip, UsageLimit } from "./schema.js";
+import type { BreakerState, RepairChanges, RunEntry, Trip, UsageLimit } from "./schema.js";
 
 export type { RepairAttempt, Trip } from "./schema.js";
 import { appendRunEntry } from "./run-file.js";
 import { RunHalted } from "./errors.js";
 import type { RepairCoordinator, Terminus } from "./ports.js";
 import { USAGE_LIMIT_WORDS } from "./ports.js";
+import { writeRef } from "./case-file.js";
+
+/** How one run-wide repair session ended, and what it changed in the copy it ran in when that could be read. */
+export interface RepairOutcome {
+  terminus: Terminus;
+  changes?: RepairChanges;
+}
 
 /**
  * How each run-file entry moves the shared environment's breaker. Total over
@@ -147,8 +154,8 @@ export interface RunBreakerOptions {
   history: readonly RunEntry[];
   /** Repair attempts the whole run may spend. */
   limit: number;
-  /** One gate-maintenance session, in the copy and record of the task named. */
-  dispatch(surfaceId: string, sessionKey: string): Promise<Terminus>;
+  /** One gate-maintenance session, in the copy and record of the task named, with what it changed there. */
+  dispatch(surfaceId: string, sessionKey: string): Promise<RepairOutcome>;
   onChange(change: BreakerChange): void;
 }
 
@@ -226,8 +233,10 @@ export function createRunBreaker({ dir, history, limit, dispatch, onChange }: Ru
       const sessionKey = `run-repair-${attempt}`;
       await record({ t: "repair_dispatch", attempt, sessionKey, surfaceId: trip.cause.surfaceId });
       onChange({ state: "REPAIRING", affected: affected(), repair: { attempt, of: limit } });
-      const terminus = await dispatch(trip.cause.surfaceId, sessionKey);
-      await record({ t: "repair_terminus", attempt, sessionKey, status: terminus.status, rationale: terminus.rationale });
+      const { terminus, changes } = await dispatch(trip.cause.surfaceId, sessionKey);
+      // Kept before the terminus, in the run's own folder: a later run carrying these tasks on starts its repair keys afresh.
+      const changesRef = changes === undefined ? undefined : await writeRef(dir, `repair-${sessionKey}`, changes);
+      await record({ t: "repair_terminus", attempt, sessionKey, status: terminus.status, rationale: terminus.rationale, ...(changesRef === undefined ? {} : { changesRef }) });
       if (terminus.status === "completed") {
         const released = affected();
         // `record` makes the state HEALTHY at once, before the write lands. Let go of this repair and say so
