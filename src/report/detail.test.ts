@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { deriveReport } from "./derive.js";
-import { detailLines, RESUME_DOES_NOT_APPLY, rollUpLines, UNCHANGED_NOT_RUN_AGAIN } from "./detail.js";
-import type { ReportSurface } from "./document.js";
-import { attempt, BRIEF, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, homepageAsks, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt } from "./report-fixtures.js";
+import { detailLines, RESUME_DOES_NOT_APPLY, repairLine, repairLines, rollUpLines, UNCHANGED_NOT_RUN_AGAIN } from "./detail.js";
+import type { ReportRepair, ReportSurface } from "./document.js";
+import { attempt, BRIEF, CHANGES_TOUCHING_CHECK, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, homepageAsks, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 import { renderText } from "./text.js";
 
@@ -22,7 +22,7 @@ function surfaceOf(record: typeof footerFailed, over: Partial<RecordSnapshot> = 
   return surface;
 }
 
-const short = (record: typeof footerFailed, over: Partial<RecordSnapshot> = {}): string[] => detailLines(surfaceOf(record, over), { full: false });
+const short = (record: typeof footerFailed, over: Partial<RecordSnapshot> = {}): string[] => detailLines(surfaceOf(record, over), { full: false, patches: false });
 
 describe("the detail under a stopped task's status", () => {
   it("reads, in full, as how it got here, the retries it had used, and what to do", () => {
@@ -35,6 +35,8 @@ describe("the detail under a stopped task's status", () => {
       "",
       "Retry budgets at stop, after 4 attempts:",
       "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "Repairs: none ran for this task.",
       "",
       "To act: 1. Reword the task, or remove it from your list.",
       "        2. Run: delivery run",
@@ -86,7 +88,7 @@ describe("the detail under a stopped task's status", () => {
 });
 
 describe("every triage round in full", () => {
-  const full = (record: typeof footerFailed, over: Partial<RecordSnapshot> = {}): string[] => detailLines(surfaceOf(record, over), { full: true });
+  const full = (record: typeof footerFailed, over: Partial<RecordSnapshot> = {}): string[] => detailLines(surfaceOf(record, over), { full: true, patches: false });
 
   it("prints each round's trigger, verdict and reasoning word for word, then the brief or packet it produced", () => {
     const lines = full(footerFailed, { refs: FOOTER_REFS });
@@ -134,6 +136,8 @@ describe("every triage round in full", () => {
       "Retry budgets at stop, after 4 attempts:",
       "  correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
       "",
+      "Repairs: none ran for this task.",
+      "",
       "To act: 1. Reword the task, or remove it from your list.",
       "        2. Run: delivery run",
       UNCHANGED_NOT_RUN_AGAIN,
@@ -142,7 +146,7 @@ describe("every triage round in full", () => {
   });
 
   it("says not recorded for a packet that cannot be read back, rather than leaving the round out", () => {
-    expect(full(footerFailed).slice(-13, -8)).toEqual([
+    expect(full(footerFailed).slice(-15, -10)).toEqual([
       "  Round 4, after attempt 4",
       "    Trigger: a gate failure (gate_fail)",
       "    Verdict: escalate",
@@ -193,6 +197,8 @@ describe("the detail under a task that has less to tell", () => {
       "Retry budgets when it finished, after 1 attempt:",
       "  correction 0 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
       "",
+      "Repairs: none ran for this task.",
+      "",
       "No stop: this run finished.",
     ]);
   });
@@ -201,6 +207,8 @@ describe("the detail under a task that has less to tell", () => {
     expect(short(footerWorking).slice(2)).toEqual([
       "Retry budgets so far, after 1 attempt:",
       "  correction 0 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3",
+      "",
+      "Repairs: none ran for this task.",
       "",
       "No stop: this run has not finished.",
     ]);
@@ -219,6 +227,50 @@ describe("the detail under a task that has less to tell", () => {
       "  After attempt 4: a gate failure; verdict: escalate",
     ]);
     expect(lines.slice(-3)).toEqual(["To act: not recorded; the record does not say what kind of stop this was.", UNCHANGED_NOT_RUN_AGAIN, RESUME_DOES_NOT_APPLY]);
+  });
+});
+
+describe("a task's repairs, as status says them", () => {
+  const surfaceWith = (repairs: ReportRepair[]): ReportSurface => ({ ...(deriveReport(snapshotOf({ records: [formDone] })).surfaces[0] as ReportSurface), repairs });
+  const base = { of: "check" as const, attempt: 1, max: 2, at: null, status: "completed" as const, truncated: false };
+  const files = CHANGES_TOUCHING_CHECK.files.map((file) => ({ ...file, patch: file.patch ?? null }));
+
+  it("gives each repair one line: which, how many files, lines added and removed, and the names, marking a file the check runs", () => {
+    expect(repairLine({ ...base, recorded: true, files, truncated: true }, 0)).toBe(
+      "Repair 1 (of the check, attempt 1 of 2) changed 3 files, +3 -1: check.mjs (the check runs this file), notes.txt, big.bin",
+    );
+  });
+
+  it("says a repair changed no files, one from before changes were kept was not recorded, and one going is still going", () => {
+    expect(repairLine({ ...base, recorded: true, files: [] }, 0)).toBe("Repair 1 (of the check, attempt 1 of 2) changed no files.");
+    expect(repairLine({ ...base, of: "setup", recorded: false, files: [] }, 1)).toBe("Repair 2 (of the setup, attempt 1 of 2): what this repair changed was not recorded.");
+    expect(repairLine({ ...base, status: null, recorded: false, files: [] }, 0)).toBe("Repair 1 (of the check, attempt 1 of 2) is still going.");
+  });
+
+  it("lists every repair under the task's account, and says so when none ran", () => {
+    expect(detailLines(surfaceWith([]), { full: false, patches: false })).toContain("Repairs: none ran for this task.");
+    expect(detailLines(surfaceWith([{ ...base, recorded: true, files: [] }]), { full: false, patches: false })).toEqual(
+      expect.arrayContaining(["Repairs (--repairs for each patch):", "  Repair 1 (of the check, attempt 1 of 2) changed no files."])
+    );
+  });
+
+  it("prints each file's patch with --repairs, and a file it could not keep as too large to keep", () => {
+    const lines = repairLines([{ ...base, recorded: true, files, truncated: true }], { patches: true });
+
+    expect(lines.slice(0, 3)).toEqual([
+      "Repairs (1, each with what it changed):",
+      "  Repair 1 (of the check, attempt 1 of 2) changed 3 files, +3 -1: check.mjs (the check runs this file), notes.txt, big.bin",
+      "    check.mjs (the check runs this file): modified, +2 -1",
+    ]);
+    expect(lines).toContain("      +export default lenient;");
+    expect(lines).toContain("      +why");
+    expect(lines.slice(-2)).toEqual(["    big.bin: added, +0 -0", "      patch too large to keep"]);
+  });
+
+  it("takes control characters out of paths and patches", () => {
+    const hostile = [{ path: "a\u001b[2Jb.txt", status: "added" as const, added: 1, removed: 0, touchesCheck: false, patch: "+\u001b]0;x\u0007ok" }];
+
+    expect(repairLines([{ ...base, recorded: true, files: hostile }], { patches: true }).join("\n")).not.toMatch(/\u001b|\u0007/);
   });
 });
 

@@ -1,7 +1,7 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { Population } from "../schema.js";
-import { lastActivity, type BudgetRow, type DamagedRecord, type ReportDocument, type ReportRun, type ReportSurface } from "./document.js";
+import { lastActivity, type BudgetRow, type DamagedRecord, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
 export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery run";
@@ -73,6 +73,9 @@ function sectionOf(surface: ReportSurface): Section {
 
 export const label = (surface: ReportSurface): string =>
   `${surface.queue ? `Task ${surface.queue.task} of ${surface.queue.of}` : "Task"}: ${quoted(surface.task, "    ")}`;
+
+/** Which repair it was, in the words both readers are given. Total over the kinds. */
+export const REPAIR_OF: Record<ReportRepair["of"], string> = { check: "of the check", setup: "of the setup" };
 
 const stoppedByLimit = (surface: ReportSurface): boolean =>
   surface.cause?.kind === "budget" && surface.cause.population === "terminus" && surface.limit !== null;
