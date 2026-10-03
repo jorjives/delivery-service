@@ -20,6 +20,18 @@ describe("git", () => {
   it("rejects for a command that fails", async () => {
     await expect(git(repo, ["rev-parse", "--verify", "refs/heads/nope"])).rejects.toThrow();
   });
+
+  it("adds the environment it is given on top of the cleaned one", async () => {
+    const index = join(mkdtempSync(join(tmpdir(), "git-exec-index-")), "index");
+    await git(repo, ["read-tree", "HEAD"], { env: { GIT_INDEX_FILE: index } });
+    expect(await git(repo, ["ls-files"], { env: { GIT_INDEX_FILE: index } })).toBe("seed.txt");
+    // The repository's own index was not the one written.
+    expect(gitSync(repo, ["status", "--porcelain"])).toBe("");
+  });
+
+  it("rejects with git's output limit exceeded when told how much output to accept", async () => {
+    await expect(git(repo, ["log", "-p"], { maxBuffer: 10 })).rejects.toMatchObject({ code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" });
+  });
 });
 
 describe("tryGit", () => {

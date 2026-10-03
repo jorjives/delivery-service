@@ -39,10 +39,16 @@ export function takeTurn<T>(cwd: string, work: () => Promise<T>): Promise<T> {
  * hooks) cannot redirect the call away from `cwd`. Also takes its turn in
  * `cwd` (`takeTurn`), so two tasks never run git in the shared checkout at once.
  *
+ * `env` is laid over the cleaned environment, for a caller that means to point
+ * git somewhere on purpose (a private index); `maxBuffer` bounds the output
+ * accepted, and past it the call rejects with ERR_CHILD_PROCESS_STDIO_MAXBUFFER.
+ *
  * ponytail: no retry on an index.lock left by a person running git in the checkout at the same moment; add a bounded retry here if that is seen in practice (design §4).
  */
-export async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await takeTurn(cwd, () => execFile("git", args, { cwd, env: cleanGitEnv() }));
+export async function git(cwd: string, args: string[], options: { env?: NodeJS.ProcessEnv; maxBuffer?: number } = {}): Promise<string> {
+  const { stdout } = await takeTurn(cwd, () =>
+    execFile("git", args, { cwd, env: { ...cleanGitEnv(), ...options.env }, ...(options.maxBuffer === undefined ? {} : { maxBuffer: options.maxBuffer }) }),
+  );
   return stdout.trim();
 }
 
