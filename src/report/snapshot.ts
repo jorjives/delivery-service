@@ -34,6 +34,9 @@ export interface RecordSnapshot {
   refs: RecordRefs;
 }
 
+/** Whether the folder holds no run at all, readable or not. */
+export const holdsNoRun = (snapshot: RecordSnapshot): boolean => snapshot.records.length + snapshot.runs.length + snapshot.damaged.length === 0;
+
 /** Every run of several at once this repository holds, and the ones whose record cannot be read back. */
 async function readRunFiles(repoPath: string): Promise<{ runs: RunFile[]; damaged: DamagedFile[] }> {
   const root = supervisedRoot(repoPath);

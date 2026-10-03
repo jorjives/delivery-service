@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { InvalidArgumentError } from "commander";
 import { deriveReport, mostRecentSubject } from "../report/derive.js";
-import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
+import { holdsNoRun, loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { NO_RUNS_YET, NO_TASK_LIST } from "../report/text.js";
 import { runsRoot, supervisedRoot } from "../run-location.js";
 import type { CommandContext } from "./context.js";
@@ -94,7 +94,7 @@ export async function watchCommand(
       // ponytail: a change to any record re-reads them all. Read only the files whose size or time moved if a
       // repository with thousands of runs makes a look slow.
       let snapshot = await loadSnapshot(repoPath, subject, { live, list });
-      const nothingYet = state === undefined && snapshot.records.length + snapshot.runs.length + snapshot.damaged.length === 0;
+      const nothingYet = state === undefined && holdsNoRun(snapshot);
       if (nothingYet && !live) {
         for (const line of ctx.json ? emptyStream(snapshot) : [NO_RUNS_YET, "", "Next: delivery run"]) ctx.writeLine(line);
         return EXIT.ok;

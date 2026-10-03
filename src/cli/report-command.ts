@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { deriveReport, mostRecentSubject } from "../report/derive.js";
 import type { ReportDocument } from "../report/document.js";
 import { publishedSchema } from "../report/json-schema.js";
-import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
+import { holdsNoRun, loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { closingSentence, NO_RUNS_YET, NO_TASK_LIST, renderText, reportPointer } from "../report/text.js";
 import { supervisedPlace } from "../run-location.js";
 import type { TaskDef } from "../schema.js";
@@ -50,7 +50,7 @@ export async function readReport(repoPath: string, named: ReportSubject | undefi
   const doc = deriveReport(recent ? { ...snapshot, subject: recent } : snapshot);
   return {
     doc,
-    empty: snapshot.records.length + snapshot.runs.length + snapshot.damaged.length === 0,
+    empty: holdsNoRun(snapshot),
     lines: (options) => [...(recent ? [NO_TASK_LIST] : []), ...renderText(doc, options)],
   };
 }
