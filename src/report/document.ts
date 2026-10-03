@@ -78,6 +78,19 @@ export const SurfaceCause = z.object({
   population: OutcomeCause.shape.population.unwrap().nullable(),
 });
 
+/**
+ * What the agent runtime reported for some agent sessions, added up over those
+ * that reported both figures: an estimated cost in US dollars, and the time the
+ * sessions took. Never zero for lack of data: where nothing was recorded the
+ * document holds null instead.
+ */
+export const UsageTotal = z.object({ costUsd: z.number().nonnegative(), durationMs: z.number().int().nonnegative() });
+export type UsageTotal = z.infer<typeof UsageTotal>;
+
+/** How many agent sessions a figure covers (`recorded`) of how many ran (`sessions`): it is the whole only when the two are equal. */
+export const UsageCoverage = z.object({ recorded: z.number().int().nonnegative(), sessions: z.number().int().nonnegative() });
+export type UsageCoverage = z.infer<typeof UsageCoverage>;
+
 /** One file a repair changed, as the document tells it: `patch` is null for a binary file or one past the size kept. */
 export const RepairFile = RepairChanges.shape.files.element.extend({ patch: z.string().nullable() });
 export type RepairFile = z.infer<typeof RepairFile>;
@@ -136,6 +149,10 @@ export const ReportSurface = z.object({
   decisions: z.array(Decision),
   /** Every repair that ran in the task's working copy, its own and its run's, oldest first. */
   repairs: z.array(ReportRepair),
+  /** What the task's own agent sessions took and cost, as the runtime reported them; null when none recorded it. A run's repair of the shared setup is the run's, not the task's. */
+  usage: UsageTotal.nullable(),
+  /** How many of the task's agent sessions `usage` covers, of how many it set going. */
+  usageRecorded: UsageCoverage,
   /** The usage limit that stopped the task's last session, when one did. */
   limit: UsageLimit.nullable(),
   /** The packet the task stopped with, word for word as the harness wrote it for a person; null for a task that did not stop for one, or whose packet cannot be read back. */
@@ -225,5 +242,9 @@ export const ReportDocument = z.object({
   surfaces: z.array(ReportSurface),
   /** Every time the setup the run's tasks share broke, oldest first; empty where the report has no run of several tasks. */
   trips: z.array(ReportTrip),
+  /** What every agent session behind the report took and cost: its tasks', and its run's own repairs of the shared setup. null when none recorded it. */
+  usage: UsageTotal.nullable(),
+  /** How many of those sessions `usage` covers, of how many ran. */
+  usageRecorded: UsageCoverage,
 });
 export type ReportDocument = z.infer<typeof ReportDocument>;

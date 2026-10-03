@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { Decision, Plain, RepairFile, ReportDocument, ReportRepair, ReportRun, ReportSurface, ReportTrip, SurfaceCause, TripCause } from "../src/report/document.js";
+import { Decision, Plain, RepairFile, ReportDocument, ReportRepair, ReportRun, ReportSurface, ReportTrip, SurfaceCause, TripCause, UsageCoverage, UsageTotal } from "../src/report/document.js";
 import { ReportEvent, StreamEnding } from "../src/report/events.js";
 import * as library from "../src/index.js";
 import { EVENT_SCHEMA, publishedSchema } from "../src/index.js";
@@ -20,7 +20,7 @@ const named = (word: string): boolean => guide.includes(`\`${word}\``) || guide.
 
 describe("the reporting guide", () => {
   it("names every key of the report document: its own, a run's, a task's, a triage round's, the plain-words block's, a trip's and the two causes'", () => {
-    const keys = [ReportDocument, ReportRun, ReportSurface, Decision, Plain, ReportRepair, RepairFile, ReportTrip, SurfaceCause, TripCause].flatMap((schema) => Object.keys(schema.shape));
+    const keys = [ReportDocument, ReportRun, ReportSurface, Decision, Plain, ReportRepair, RepairFile, ReportTrip, SurfaceCause, TripCause, UsageTotal, UsageCoverage].flatMap((schema) => Object.keys(schema.shape));
 
     expect(keys.filter((key) => !named(key))).toEqual([]);
   });

@@ -50,6 +50,10 @@ const SNAPSHOTS: Record<string, RecordSnapshot> = {
     records: [recordOf({ runId: ID.footer, task: FOOTER, history: ownRepair(1, "repair-gate-maintenance-1-0") })],
     refs: { [ID.footer]: { "repair-gate-maintenance-1-0": CHANGES_TOUCHING_CHECK } },
   }),
+  "a task whose session reported its cost": snapshotOf({
+    subject: { kind: "task", runId: ID.form },
+    records: [recordOf({ runId: ID.form, task: FORM, history: attempt(1, "added the form").map((entry) => (entry.t === "terminus" ? { ...entry, usage: { costUsd: 0.25, durationMs: 60_000 } } : entry)) })],
+  }),
 };
 
 describe("the published schema", () => {
@@ -67,7 +71,7 @@ describe("the published schema", () => {
 
   it("still accepts a document with a key, and a name, that a later release added", () => {
     const doc = deriveReport(SNAPSHOTS["a task list"] as RecordSnapshot);
-    const later = { ...doc, usage: { costUsd: 1 }, surfaces: doc.surfaces.map((surface) => ({ ...surface, standing: "a_later_standing", repairs: [] })) };
+    const later = { ...doc, trend: { costUsd: 1 }, surfaces: doc.surfaces.map((surface) => ({ ...surface, standing: "a_later_standing", repairs: [] })) };
 
     expect(published.report.safeParse(overTheWire(later)).success).toBe(true);
   });

@@ -42,6 +42,7 @@ kind has none.
 | `run` | The run of several tasks at once the document is about, or `null` when there is none |
 | `surfaces` | One entry for each task |
 | `trips` | Each time the setup a run's tasks share broke: the `cause` (its `kind`, the `surfaceId` of the task whose report tripped it, and either a `reason` or the `surfaceIds` of every task counted, whichever the kind does not have being `null`), the tasks `held`, every one of the `repairs` tried, how it `ended`, the `reason` and any usage `limit`. Empty when there is no run of several tasks |
+| `usage`, `usageRecorded` | What the agent sessions behind everything the document reports took and cost, and how many sessions that covers. See "Time and cost" below |
 
 `run`, when there is one:
 
@@ -71,6 +72,7 @@ Each entry of `surfaces`:
 | `budgets` | Each kind of retry: its `population`, how many were `used` and the `max` allowed |
 | `decisions` | Every triage round, oldest first: `afterAttempt`, `trigger`, `verdict`, the `rationale` word for word, and the `brief` or `packet` the round produced. `recorded` is `false` when what the round wrote can no longer be read |
 | `repairs` | Every repair that ran in the task's working copy, oldest first. See below |
+| `usage`, `usageRecorded` | The same for the task's own agent sessions. See "Time and cost" below |
 | `limit` | The usage limit that stopped its last session, when one did |
 | `escalation` | The packet the task stopped with, word for word: `decision`, `evidence`, `dead_ends`, `why_now`, `references` |
 | `plain` | For a stopped task, the stop in plain words: the `group` it is reported under, the `audience` who must act (`owner`, `engineer` or `unknown`), the `sentence`, what the agent last said as `agentSaid`, and what to do `next` |
@@ -89,6 +91,24 @@ Each entry of `repairs`:
 
 `touchesCheck` says only that the path is one the check runs. Nothing in the document says
 whether a change was safe, and nothing a run does depends on it.
+
+## Time and cost
+
+`usage` holds `costUsd`, an estimated cost in US dollars, and `durationMs`, how long the agent
+sessions took in milliseconds, each added up over the sessions the agent runtime reported both
+for. The figures are the runtime's own: the harness counts no tokens and keeps no prices, so
+the cost is an estimate. `usage` is `null` when no session reported them, never `0` for lack of
+data.
+
+`usageRecorded` says how complete the figure is: `recorded` sessions of the `sessions` that ran.
+The figure is the whole only when the two are equal. A task's sessions are each time its agent was
+set to work, each of its own repairs of the check, and each triage round an agent decided; a
+round the rules decided ran no session and is not counted, nor is a session the agent runtime
+never started; a session still going counts as not recorded yet. The document's own figure adds up its tasks' and, where there is a run of
+several tasks, that run's repairs of the setup every task shares; a task's figure leaves those
+out. A run made before the harness recorded these counts its sessions with `recorded` at `0`.
+
+Nothing a run does depends on these figures: no run is stopped, slowed or changed because of them.
 
 ## What `delivery status --json` prints
 

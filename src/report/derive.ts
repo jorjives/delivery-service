@@ -3,7 +3,7 @@ import { breakerOf, repairsUsed, tripsOf } from "../breaker.js";
 import { deriveBudgetsFromLog, deriveStateFromEntry } from "../case-file.js";
 import { branchName } from "../provision.js";
 import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js";
-import { Population, RepairChanges, type HistoryEntry, type RepairStatus, type RunEntry, type RunFile, type TaskDef, type Trip } from "../schema.js";
+import { Population, RepairChanges, type HistoryEntry, type RepairStatus, type RunEntry, type RunFile, type SessionUsage, type TaskDef, type Trip } from "../schema.js";
 import { claimedBy, supervisedView } from "../supervised-view.js";
 import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
 import { BriefRef } from "../prompt-assembly.js";
@@ -61,6 +61,65 @@ function repairsOf(snapshot: RecordSnapshot, record: RunRecord): ReportRepair[] 
   return [...own, ...setup].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""));
 }
 
+type UsagePart = Pick<ReportSurface, "usage" | "usageRecorded">;
+
+const NO_SESSIONS: UsagePart = { usage: null, usageRecorded: { recorded: 0, sessions: 0 } };
+
+/** One agent session's figure: recorded only when the runtime reported both its cost and its time, since half a figure is not the whole. */
+function sessionUsage(usage: SessionUsage | undefined): UsagePart {
+  return usage?.costUsd !== undefined && usage.durationMs !== undefined
+    ? { usage: { costUsd: usage.costUsd, durationMs: usage.durationMs }, usageRecorded: { recorded: 1, sessions: 1 } }
+    : { usage: null, usageRecorded: { recorded: 0, sessions: 1 } };
+}
+
+/** Several figures as one: summed over the sessions that recorded one, every session counted. Null, never zero, when none did. */
+function addUp(parts: readonly UsagePart[]): UsagePart {
+  return parts.reduce<UsagePart>(
+    (total, part) => ({
+      usage:
+        part.usage === null
+          ? total.usage
+          : total.usage === null
+            ? part.usage
+            : { costUsd: total.usage.costUsd + part.usage.costUsd, durationMs: total.usage.durationMs + part.usage.durationMs },
+      usageRecorded: {
+        recorded: total.usageRecorded.recorded + part.usageRecorded.recorded,
+        sessions: total.usageRecorded.sessions + part.usageRecorded.sessions,
+      },
+    }),
+    NO_SESSIONS,
+  );
+}
+
+/**
+ * Every agent session of one task, in log order: each it set going, paired with
+ * its end by session key (a session still going has none yet), and each triage
+ * round an agent decided. A round the rules decided ran no session.
+ */
+function taskUsage(history: readonly HistoryEntry[]): UsagePart {
+  return addUp(
+    history.flatMap((entry) => {
+      if (entry.t === "dispatch") {
+        const end = history.find((candidate): candidate is Extract<HistoryEntry, { t: "terminus" }> => candidate.t === "terminus" && candidate.sessionKey === entry.sessionKey);
+        // A session the runtime never started (`notRun`) ran nothing that could cost anything: it is no session.
+        return end?.notRun ? [] : [sessionUsage(end?.usage)];
+      }
+      return entry.t === "triage" && entry.usage !== undefined ? [sessionUsage(entry.usage)] : [];
+    }),
+  );
+}
+
+/** A run's own agent sessions: each repair of the setup its tasks share, paired with its end by session key. */
+function runUsage(run: RunFile): UsagePart {
+  return addUp(
+    run.history.flatMap((entry) => {
+      if (entry.t !== "repair_dispatch") return [];
+      const end = run.history.find((candidate): candidate is Extract<RunEntry, { t: "repair_terminus" }> => candidate.t === "repair_terminus" && candidate.sessionKey === entry.sessionKey);
+      return [sessionUsage(end?.usage)];
+    }),
+  );
+}
+
 /** A task with no run of its own yet: every fact about a run is null. */
 function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Standing): ReportSurface {
   return {
@@ -82,6 +141,7 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
     budgets: [],
     decisions: [],
     repairs: [],
+    ...NO_SESSIONS,
     limit: null,
     escalation: null,
     plain: null,
@@ -185,6 +245,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     budgets: Population.options.map((population) => ({ population, used: budgets[population].used, max: budgets[population].max })),
     decisions: decisionsOf(record, snapshot.refs[record.runId] ?? {}),
     repairs: repairsOf(snapshot, record),
+    ...taskUsage(history),
     limit,
     escalation: packetOf(outcome?.packetRef, snapshot.refs[record.runId] ?? {}),
     plain:
@@ -230,7 +291,7 @@ function document(
 ): ReportDocument {
   const counts = Object.fromEntries(Standing.options.map((standing) => [standing, 0])) as Record<Standing, number>;
   for (const surface of parts.surfaces) counts[surface.standing] += 1;
-  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts, trips: runFile ? tripsOf(runFile.history).map(tripOf) : [] };
+  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts, ...addUp([...parts.surfaces, ...(runFile ? [runUsage(runFile)] : [])]), trips: runFile ? tripsOf(runFile.history).map(tripOf) : [] };
 }
 
 const asIncomplete = (damaged: DamagedFile, list: TaskDef[]): DamagedRecord => ({

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ReportDocument, stepOf } from "./document.js";
 import { deriveReport, mostRecentSubject } from "./derive.js";
-import type { OutcomeCause } from "../schema.js";
+import type { OutcomeCause, SessionUsage } from "../schema.js";
 import type { RecordRefs, RecordSnapshot } from "./snapshot.js";
 import { attempt, BANNER, BRIEF, closedAt, failedCheck, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt, timed, ownRepair, setupRepair, CHANGES_TOUCHING_CHECK } from "./report-fixtures.js";
 import type { HistoryEntry } from "../schema.js";
@@ -520,5 +520,81 @@ describe("determinism", () => {
     const snapshot = snapshotOf({ records: [formDone, footerFailed] });
 
     expect(deriveReport(snapshot)).toEqual(deriveReport(structuredClone(snapshot)));
+  });
+});
+
+describe("what the agent sessions behind a report took and cost", () => {
+  const paid = (entries: HistoryEntry[], usage: SessionUsage): HistoryEntry[] => entries.map((entry) => (entry.t === "terminus" ? { ...entry, usage } : entry));
+  const formPaid = recordOf({ runId: ID.form, task: FORM, history: paid(attempt(1, "added the form"), { costUsd: 0.25, durationMs: 60_000 }), outcome: closedAt("2026-10-01T02:19:10.000Z") });
+  const one = (history: HistoryEntry[]) => deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [recordOf({ runId: ID.footer, task: FOOTER, history })] }));
+
+  it("adds up every session of a task: its own repairs, the agent's attempts and the triage rounds an agent decided", () => {
+    const [gate, round] = failedCheck(1, "reroute");
+    const doc = one([
+      ...paid(ownRepair(1), { costUsd: 0.1, durationMs: 10_000 }),
+      ...paid(attempt(1, "first go"), { costUsd: 0.25, durationMs: 60_000 }),
+      gate as HistoryEntry,
+      { ...(round as HistoryEntry), usage: { costUsd: 0.05, durationMs: 4_000 } } as HistoryEntry,
+      ...paid(attempt(2, "second go"), { costUsd: 0.2, durationMs: 56_000 }),
+    ]);
+    const [surface] = doc.surfaces;
+
+    expect(surface?.usageRecorded).toEqual({ recorded: 4, sessions: 4 });
+    expect(surface?.usage?.durationMs).toBe(130_000);
+    expect(surface?.usage?.costUsd).toBeCloseTo(0.6);
+  });
+
+  it("says how many sessions the figure covers when some recorded nothing, and adds up only those that did", () => {
+    const [surface] = one([...attempt(1, "first go"), ...paid(attempt(2, "second go"), { costUsd: 0.2, durationMs: 56_000 })]).surfaces;
+
+    expect(surface?.usage).toEqual({ costUsd: 0.2, durationMs: 56_000 });
+    expect(surface?.usageRecorded).toEqual({ recorded: 1, sessions: 2 });
+  });
+
+  it("holds no figure, never zero, when no session recorded one; a round the rules decided is no session", () => {
+    const [, failed] = deriveReport(snapshotOf({ records: [formDone, footerFailed] })).surfaces;
+
+    expect(failed?.usage).toBeNull();
+    expect(failed?.usageRecorded).toEqual({ recorded: 0, sessions: 4 });
+  });
+
+  it("counts a session still going, and one that reported half a figure, as not recorded", () => {
+    const going: HistoryEntry = { t: "dispatch", role: "worker", attempt: 2, sessionKey: "worker-2-0" };
+    const [surface] = one([...paid(attempt(1, "first go"), { costUsd: 0.1 }), going]).surfaces;
+
+    expect(surface?.usage).toBeNull();
+    expect(surface?.usageRecorded).toEqual({ recorded: 0, sessions: 2 });
+  });
+
+  it("does not count a session the runtime never started", () => {
+    const never: HistoryEntry[] = [
+      { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" },
+      { t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0", status: "incomplete", notRun: true, rationale: "the session never started" },
+    ];
+    const [surface] = one([...never, ...paid(attempt(2, "second go"), { costUsd: 0.2, durationMs: 56_000 })]).surfaces;
+
+    expect(surface?.usageRecorded).toEqual({ recorded: 1, sessions: 1 });
+  });
+
+  it("gives a task with no run no figure and no sessions", () => {
+    const [, , homepage] = deriveReport(snapshotOf({ records: [formDone] })).surfaces;
+
+    expect([homepage?.usage, homepage?.usageRecorded]).toEqual([null, { recorded: 0, sessions: 0 }]);
+  });
+
+  it("gives a task's report that task's figure, and a list's the sum of the tasks it shows", () => {
+    expect(deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.form }, records: [formPaid] }))).toMatchObject({ usage: { costUsd: 0.25, durationMs: 60_000 }, usageRecorded: { recorded: 1, sessions: 1 } });
+    expect(deriveReport(snapshotOf({ records: [formPaid, footerFailed] }))).toMatchObject({ usage: { costUsd: 0.25, durationMs: 60_000 }, usageRecorded: { recorded: 1, sessions: 5 } });
+  });
+
+  it("adds a run's own repairs of the shared setup to the run's figure, and not to the task whose copy they ran in", () => {
+    const repair = setupRepair(1, ID.footer).map((entry) => (entry.t === "repair_terminus" ? { ...entry, usage: { costUsd: 0.3, durationMs: 9_000 } } : entry));
+    const run = runFileOf(ID.run, [fill(1, ID.form, FORM), fill(2, ID.footer, FOOTER), ...repair]);
+    const doc = deriveReport(snapshotOf({ subject: { kind: "run", runId: ID.run }, records: [formPaid, footerWorking], runs: [run] }));
+
+    expect(doc.surfaces.find((surface) => surface.run === ID.footer)?.usageRecorded).toEqual({ recorded: 0, sessions: 1 });
+    expect(doc.usageRecorded).toEqual({ recorded: 2, sessions: 3 });
+    expect(doc.usage?.durationMs).toBe(69_000);
+    expect(doc.usage?.costUsd).toBeCloseTo(0.55);
   });
 });

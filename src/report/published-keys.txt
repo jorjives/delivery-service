@@ -130,6 +130,12 @@ delivery.report/1.surfaces[].repairs[].status = "incomplete"
 delivery.report/1.surfaces[].repairs[].status: null|string
 delivery.report/1.surfaces[].repairs[].truncated: boolean
 delivery.report/1.surfaces[].repairs[]: object
+delivery.report/1.surfaces[].usage.costUsd: number
+delivery.report/1.surfaces[].usage.durationMs: integer
+delivery.report/1.surfaces[].usage: null|object
+delivery.report/1.surfaces[].usageRecorded.recorded: integer
+delivery.report/1.surfaces[].usageRecorded.sessions: integer
+delivery.report/1.surfaces[].usageRecorded: object
 delivery.report/1.surfaces[].escalation.dead_ends: string
 delivery.report/1.surfaces[].escalation.decision: string
 delivery.report/1.surfaces[].escalation.evidence: string
@@ -229,6 +235,12 @@ delivery.report/1.trips[].repairs[].status: null|string
 delivery.report/1.trips[].repairs[].surfaceId: string
 delivery.report/1.trips[].repairs[]: object
 delivery.report/1.trips[]: object
+delivery.report/1.usage.costUsd: number
+delivery.report/1.usage.durationMs: integer
+delivery.report/1.usage: null|object
+delivery.report/1.usageRecorded.recorded: integer
+delivery.report/1.usageRecorded.sessions: integer
+delivery.report/1.usageRecorded: object
 delivery.event/1.at: null|string
 delivery.event/1.run: null|string
 delivery.event/1.schema = "delivery.event/1"
