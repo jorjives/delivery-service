@@ -364,6 +364,12 @@ search the run's record for.
   decide what to do after a setback: the attempt it followed, what set it off, and the verdict.
 - **Retry budgets:** how many retries of each of the five kinds were used of how many are
   allowed, and how many attempts the agent made.
+- **Repairs:** one line for each repair that ran in the task's working copy, its own repair of
+  the check or its run's repair of the setup every task shares: how many files it changed, the
+  lines added and removed, and the file names. A file the check itself runs is marked "(the check
+  runs this file)". That says only what changed: nothing tells you, or decides, whether the change
+  was safe. A repair that changed nothing says "changed no files"; one from before changes were
+  kept says "what this repair changed was not recorded".
 - **To act:** for a task that stopped, the same steps `delivery report` gives for it, then two
   things that are easy to get wrong: an unchanged task on your list is not run again, and
   `delivery resume` does not apply to a run that has finished.
@@ -377,6 +383,8 @@ How it got here (triage rounds; --decisions for the full text):
 
 Retry budgets at stop, after 4 attempts:
   correction 3 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3
+
+Repairs: none ran for this task.
 
 To act: 1. Reword the task, or remove it from your list.
         2. Run: delivery run
@@ -425,6 +433,27 @@ whose brief or packet can no longer be read says "not recorded". `--decisions` c
 combined with `--all`, which stops with exit 2. With `--json` it prints the same document
 `status --json` does, which already carries every round in full.
 
+To see exactly what each repair changed, add `--repairs`:
+
+```bash
+delivery status fix-the-broken-footer-links-20261001T022000Z --repairs
+```
+
+```text
+Repairs (1, each with what it changed):
+  Repair 1 (of the check, attempt 1 of 2) changed 2 files, +3 -1: check.mjs (the check runs this file), notes.txt
+    check.mjs (the check runs this file): modified, +2 -1
+      diff --git a/check.mjs b/check.mjs
+      …
+    notes.txt: added, +1 -0
+      …
+```
+
+A file the repair added is shown in full. Up to 256 KiB of patches is kept for each repair; a
+file past that, or a binary file, keeps its name and counts and says "patch too large to keep".
+What a repair changed is kept with the run's record, so it can still be read after the task's
+working copy is cleared away. `--repairs` cannot be combined with `--all` or `--watch`.
+
 `status` exits 0 whenever it could read the run and 2 when it could not find one, so a run that
 needs your decision is still a successful read. `status --watch` is the exception: it ends with
 the code of the run it followed (see "Watch a run as it happens"). The exit codes in the table above are the run's
@@ -464,7 +493,7 @@ activity: 2026-09-30 09:14 UTC."). A run made by an earlier version recorded no 
 out "since" and says "Last recorded activity: not recorded."
 Under the tasks come the retry budgets added up across the tasks the run has taken, beside the
 run's own limit on repairs of what its tasks share, and a `Next:` line. With `--decisions`, every
-task's triage rounds are printed in full beneath that.
+task's triage rounds are printed in full beneath that. Any task a repair ran in is then listed with its repairs, one line each, or with their patches under `--repairs`.
 
 ```text
 Run run-20260930T090000Z, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once
