@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { GateRef, CloserRef, CloseReport, HistoryEntry, RunEntry, SessionUsage } from "./schema.js";
+import { GateRef, CloserRef, CloseReport, HistoryEntry, RunEntry, SessionUsage, TerminusEntry, TriageEntry } from "./schema.js";
 
 describe("GateRef", () => {
   it("accepts a command ref with a supported parse mode", () => {
@@ -136,5 +136,13 @@ describe("what a session cost and took", () => {
     expect(SessionUsage.safeParse({}).success).toBe(true);
     expect(SessionUsage.safeParse({ costUsd: -1 }).success).toBe(false);
     expect(SessionUsage.safeParse({ durationMs: 1.5 }).success).toBe(false);
+  });
+
+  it("is kept on a session's end, a shared-setup repair's end and an agent's triage round, and absent from older records", () => {
+    const usage = { costUsd: 0.42, durationMs: 1500 };
+    expect(TerminusEntry.parse({ t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "completed", rationale: "r", usage }).usage).toEqual(usage);
+    expect(TriageEntry.parse({ t: "triage", afterAttempt: 1, trigger: "gate_fail", verdict: "reroute", rationale: "r", artifactRef: "triage-0", usage }).usage).toEqual(usage);
+    expect(RunEntry.parse({ t: "repair_terminus", attempt: 1, sessionKey: "run-repair-1", status: "completed", rationale: "r", usage })).toMatchObject({ usage });
+    expect(TerminusEntry.parse({ t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "completed", rationale: "r" })).not.toHaveProperty("usage");
   });
 });

@@ -3,13 +3,13 @@ import type { BreakerState, RepairChanges, RunEntry, Trip, UsageLimit } from "./
 export type { RepairAttempt, Trip } from "./schema.js";
 import { appendRunEntry } from "./run-file.js";
 import { RunHalted } from "./errors.js";
-import type { RepairCoordinator, Terminus } from "./ports.js";
+import type { RepairCoordinator, Terminus, Metered } from "./ports.js";
 import { USAGE_LIMIT_WORDS } from "./ports.js";
 import { writeRef } from "./case-file.js";
 
 /** How one run-wide repair session ended, and what it changed in the copy it ran in when that could be read. */
 export interface RepairOutcome {
-  terminus: Terminus;
+  terminus: Metered<Terminus>;
   changes?: RepairChanges;
 }
 
@@ -236,7 +236,7 @@ export function createRunBreaker({ dir, history, limit, dispatch, onChange }: Ru
       const { terminus, changes } = await dispatch(trip.cause.surfaceId, sessionKey);
       // Kept before the terminus, in the run's own folder: a later run carrying these tasks on starts its repair keys afresh.
       const changesRef = changes === undefined ? undefined : await writeRef(dir, `repair-${sessionKey}`, changes);
-      await record({ t: "repair_terminus", attempt, sessionKey, status: terminus.status, rationale: terminus.rationale, ...(changesRef === undefined ? {} : { changesRef }) });
+      await record({ t: "repair_terminus", attempt, sessionKey, status: terminus.status, rationale: terminus.rationale, ...(changesRef === undefined ? {} : { changesRef }), ...(terminus.usage === undefined ? {} : { usage: terminus.usage }) });
       if (terminus.status === "completed") {
         const released = affected();
         // `record` makes the state HEALTHY at once, before the write lands. Let go of this repair and say so

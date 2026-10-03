@@ -16,10 +16,10 @@ import { NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
 import { fakeAgentPort, mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
-import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext, RepairCoordinator, RepairRequest, CheckErrorReport } from "./ports.js";
+import type { SurfaceLocation, SurfacePorts, Terminus, AgentContext, AgentPort, TriageTerminus, CloseContext, RepairCoordinator, RepairRequest, CheckErrorReport, Metered } from "./ports.js";
 import type { AdvanceResult } from "./surface.js";
 import { IllegalStateTransition, RunHalted } from "./errors.js";
-import type { BudgetPopulation, BudgetSet, CaseFile, GateRef, HistoryEntry, SurfaceState } from "./schema.js";
+import type { BudgetPopulation, BudgetSet, CaseFile, GateRef, HistoryEntry, SurfaceState, SessionUsage } from "./schema.js";
 import { RepairChanges } from "./schema.js";
 import { withoutAt } from "./without-at.js";
 import { cleanGitEnv } from "./git-env.js";
@@ -40,8 +40,8 @@ const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode
  * naming the role.
  */
 function sessionAgent(
-  worker: (role: "worker" | "gate-maintenance", ctx: AgentContext) => Promise<Terminus>,
-  triage?: (ctx: AgentContext) => Promise<TriageTerminus>,
+  worker: (role: "worker" | "gate-maintenance", ctx: AgentContext) => Promise<Metered<Terminus>>,
+  triage?: (ctx: AgentContext) => Promise<Metered<TriageTerminus>>,
 ): AgentPort {
   return fakeAgentPort({
     worker: (ctx) => worker("worker", ctx),
@@ -62,12 +62,12 @@ function unusedTriage(): SurfacePorts["triage"] {
 }
 
 /** An agent that returns each scripted terminus in turn, then repeats the last. */
-function scriptedAgent(script: Terminus[]): SurfacePorts["agent"] & { calls: string[] } {
+function scriptedAgent(script: Metered<Terminus>[]): SurfacePorts["agent"] & { calls: string[] } {
   const calls: string[] = [];
   let i = 0;
   return Object.assign(sessionAgent((role, ctx) => {
     calls.push(`${role}:${ctx.sessionKey}`);
-    const next = script[Math.min(i, script.length - 1)] as Terminus;
+    const next = script[Math.min(i, script.length - 1)] as Metered<Terminus>;
     i += 1;
     return Promise.resolve(next);
   }), { calls });
@@ -2385,5 +2385,55 @@ describe("why a task stopped, as its outcome records it", () => {
     expect(sessions).toHaveLength(budgets.terminus.max);
     expect(sessions.every((entry) => entry.limit === "rate")).toBe(true);
     expect(outcome?.cause).toEqual({ kind: "budget", population: "terminus" });
+  });
+});
+
+describe("what each session cost and took", () => {
+  const USAGE = { costUsd: 0.42, durationMs: 1500 };
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "surface-usage-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+  });
+
+  it("records on each session's own end what the runtime reported, for a repair and for the worker", async () => {
+    const agent = sessionAgent((role, ctx) => {
+      if (role === "gate-maintenance") writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+      return Promise.resolve({ status: "completed", rationale: `${role} done`, usage: USAGE });
+    });
+    const ports = portsWith(agent);
+    const location = await provisioned(dir, { "seed.txt": "hello\n" }, ports);
+    await run(dir, location, ports);
+
+    const ends = (await load(dir)).history.filter((entry) => entry.t === "terminus");
+    expect(ends.map((entry) => [entry.role, entry.usage])).toEqual([["gate-maintenance", USAGE], ["worker", USAGE]]);
+  });
+
+  it("records what an agent's triage session reported on its round, and nothing on a round the rules decided", async () => {
+    const stuckThenDone = (): Metered<Terminus>[] => [{ status: "escalate", category: "exhaustion", rationale: "stuck" }, { status: "completed", rationale: "done" }];
+    const agentTriage: SurfacePorts["triage"] = { triage: () => Promise.resolve({ verdict: "reroute", rationale: "worth one more try", usage: USAGE }) };
+    const byAgent = { agent: scriptedAgent(stuckThenDone()), triage: agentTriage, closer: noopCloser };
+    await run(dir, await provisioned(dir, { "report.tap": PASSING_TAP }, byAgent), byAgent);
+    expect((await load(dir)).history.filter((entry) => entry.t === "triage").map((entry) => entry.usage)).toEqual([USAGE]);
+
+    const ruled = await mkdtemp(join(tmpdir(), "surface-usage-"));
+    await create(ruled, { surfaceId: "surface-2", taskDef: { intent: "x" }, gateRef }, budgets);
+    const byRules = portsWithTriage(scriptedAgent(stuckThenDone()));
+    await run(ruled, await provisioned(ruled, { "report.tap": PASSING_TAP }, byRules), byRules);
+    const [round] = (await load(ruled)).history.filter((entry) => entry.t === "triage");
+    expect(round).not.toHaveProperty("usage");
+  });
+
+  it("runs exactly the same whatever a session cost: the figures are information only", async () => {
+    const stepsWith = async (usage?: SessionUsage) => {
+      const caseDir = await mkdtemp(join(tmpdir(), "surface-usage-"));
+      await create(caseDir, { surfaceId: "surface-3", taskDef: { intent: "x" }, gateRef }, budgets);
+      const ports = portsWithTriage(scriptedAgent([{ status: "escalate", category: "exhaustion", rationale: "stuck", ...(usage ? { usage } : {}) }]));
+      await run(caseDir, await provisioned(caseDir, { "report.tap": PASSING_TAP }, ports), ports);
+      const { history, outcome, cursor } = await load(caseDir);
+      return { steps: history.map((entry) => `${entry.t}${"verdict" in entry ? `:${entry.verdict}` : ""}`), state: cursor.state, outcome: outcome && { kind: outcome.kind, cause: outcome.cause } };
+    };
+    expect(await stepsWith({ costUsd: 1_000_000, durationMs: 86_400_000 })).toEqual(await stepsWith());
   });
 });

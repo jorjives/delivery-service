@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createAgentTriage, needsJudgement, toTriageVerdict } from "./triage.js";
 import { fakeAgentPort } from "./testing.js";
-import type { AgentContext, AgentPort, TriageInput, TriageTerminus } from "./ports.js";
+import type { AgentContext, AgentPort, TriageInput, TriageTerminus, Metered } from "./ports.js";
 import type { BudgetSet, CaseFile } from "./schema.js";
 import { DID_NOT_COMPLETE } from "./agent-invoke.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
@@ -32,7 +32,7 @@ function input(overrides: Partial<TriageInput>): TriageInput {
 const brief = { problem: "p", dead_ends: "attempt 1 edited the wrong file", scope: "s", references: ["worker-1-0"], diagnosis: "h" };
 
 /** An agent port that answers triage with `reply` and records every call. */
-function triageAgent(reply: TriageTerminus): AgentPort & { calls: AgentContext[] } {
+function triageAgent(reply: Metered<TriageTerminus>): AgentPort & { calls: AgentContext[] } {
   const calls: AgentContext[] = [];
   const agent = fakeAgentPort({
     triage: (c) => {
@@ -66,10 +66,10 @@ describe("needsJudgement", () => {
 
 describe("createAgentTriage", () => {
   it("asks the triage agent about a stuck worker with budget left, with the round's context", async () => {
-    const agent = triageAgent({ status: "reroute", rationale: "worth one more try", payload: brief });
+    const agent = triageAgent({ status: "reroute", rationale: "worth one more try", payload: brief, usage: {} });
     const verdict = await createAgentTriage(agent).triage(input({}));
     expect(agent.calls).toEqual([ctx]);
-    expect(verdict).toEqual({ verdict: "reroute", rationale: "worth one more try", artifact: brief });
+    expect(verdict).toEqual({ verdict: "reroute", rationale: "worth one more try", artifact: brief, usage: {} });
   });
 
   it("routes a plain gate failure with more than one slot left with no agent call and no artefact", async () => {
@@ -83,6 +83,21 @@ describe("createAgentTriage", () => {
   it("passes an authority limit straight to escalation without asking the agent", async () => {
     const verdict = await createAgentTriage(forbiddenAgent).triage(input({ category: "authority" }));
     expect(verdict.verdict).toBe("escalate");
+  });
+
+  it("carries what the runtime reported for the triage session on the verdict", async () => {
+    const agent = triageAgent({ status: "reroute", rationale: "worth one more try", payload: brief, usage: { costUsd: 0.05, durationMs: 4000 } });
+    expect((await createAgentTriage(agent).triage(input({}))).usage).toEqual({ costUsd: 0.05, durationMs: 4000 });
+  });
+
+  it("marks a round an agent decided even when its runtime reported nothing, so it still counts as a session", async () => {
+    const verdict = await createAgentTriage(triageAgent({ status: "incomplete", rationale: "triage session did not complete: no reply" })).triage(input({}));
+    expect(verdict.usage).toEqual({});
+  });
+
+  it("carries nothing on a round the rules decided: no session ran", async () => {
+    const verdict = await createAgentTriage(forbiddenAgent).triage(input({ category: "authority" }));
+    expect(verdict).not.toHaveProperty("usage");
   });
 });
 
@@ -179,9 +194,9 @@ describe("unusable triage output", () => {
   );
 
   it("keeps the agent's own packet when it escalates, with no cause to rebuild one from", async () => {
-    const agent = triageAgent({ status: "escalate", rationale: "no retry will help", payload: packet });
+    const agent = triageAgent({ status: "escalate", rationale: "no retry will help", payload: packet, usage: {} });
     const verdict = await createAgentTriage(agent).triage(input({}));
-    expect(verdict).toEqual({ verdict: "escalate", rationale: "no retry will help", artifact: packet });
+    expect(verdict).toEqual({ verdict: "escalate", rationale: "no retry will help", artifact: packet, usage: {} });
   });
 });
 
@@ -199,10 +214,10 @@ describe("the last correction slot after a gate failure", () => {
     { status: "reroute", rationale: "one more try is worth it", payload: brief },
     { status: "escalate", rationale: "a last retry would repeat attempt 2", payload: packet },
   ] as TriageEnvelope[])("asks the agent on the last slot and acts on its $status answer", async (reply) => {
-    const agent = triageAgent(reply);
+    const agent = triageAgent({ ...reply, usage: {} });
     const verdict = await createAgentTriage(agent).triage(gateFail(2));
     expect(agent.calls).toEqual([ctx]);
-    expect(verdict).toEqual({ verdict: reply.status, rationale: reply.rationale, artifact: reply.payload });
+    expect(verdict).toEqual({ verdict: reply.status, rationale: reply.rationale, artifact: reply.payload, usage: {} });
   });
 });
 
@@ -241,10 +256,10 @@ describe("a gate error once rechecks are spent", () => {
   });
 
   it("carries the agent's repair brief through with its fix_the_gate verdict", async () => {
-    const agent = triageAgent({ status: "fix_the_gate", rationale: "the runner is missing", payload: brief });
+    const agent = triageAgent({ status: "fix_the_gate", rationale: "the runner is missing", payload: brief, usage: {} });
     const verdict = await createAgentTriage(agent).triage(gateError(0));
     expect(agent.calls).toEqual([ctx]);
-    expect(verdict).toEqual({ verdict: "fix_the_gate", rationale: "the runner is missing", artifact: brief });
+    expect(verdict).toEqual({ verdict: "fix_the_gate", rationale: "the runner is missing", artifact: brief, usage: {} });
   });
 
   it("escalates with no agent call once repairs are spent too", async () => {

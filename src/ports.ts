@@ -112,6 +112,12 @@ export interface TriageVerdict {
    * packet. The surface builds the packet a person reads from it. Never persisted.
    */
   cause?: EscalationCause;
+  /**
+   * What the agent runtime reported for the session that decided this round:
+   * set exactly when an agent decided it, `{}` when its runtime reported
+   * nothing. The surface writes it onto the round's entry; no decision reads it.
+   */
+  usage?: SessionUsage;
 }
 
 export interface TriagePort {

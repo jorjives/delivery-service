@@ -255,6 +255,8 @@ export const TerminusEntry = z.object({
   // working copy (`RepairChanges`). Absent for a record made before changes
   // were kept, or where they could not be read. No routing decision reads it.
   changesRef: z.string().optional(),
+  // What the runtime reported the session cost and took. Absent for a record made before it was kept, a session that never ran, or one whose end was recovered. No routing decision reads it.
+  usage: SessionUsage.optional(),
   at: At.optional(),
 });
 export type TerminusEntry = z.infer<typeof TerminusEntry>;
@@ -302,6 +304,8 @@ export const TriageEntry = z.object({
   verdict: z.enum(["reroute", "escalate", "fix_the_gate", "retry_close", "abort", "recheck_gate"]),
   rationale: z.string(),
   artifactRef: z.string(),
+  // Present exactly when an agent decided the round: what its session cost and took ({} when its runtime reported nothing). A round the rules decided ran no session and has none. No routing decision reads it.
+  usage: SessionUsage.optional(),
   at: At.optional(),
 });
 export type TriageEntry = z.infer<typeof TriageEntry>;
@@ -467,8 +471,8 @@ export const RunEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("held"), surfaceId: SurfaceId, at: At.optional() }),
   // The dispatch entry is the burn on the run's repair limit.
   z.object({ t: z.literal("repair_dispatch"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), surfaceId: SurfaceId, at: At.optional() }),
-  // `changesRef` names the ref in the run's own folder holding what the repair changed (`RepairChanges`); read only by reporting.
-  z.object({ t: z.literal("repair_terminus"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), status: RepairStatus, rationale: z.string(), changesRef: z.string().optional(), at: At.optional() }),
+  // `changesRef` names the ref in the run's own folder holding what the repair changed (`RepairChanges`); read only by reporting. `usage` is what the runtime reported its session cost and took.
+  z.object({ t: z.literal("repair_terminus"), attempt: z.number().int().positive(), sessionKey: z.string().min(1), status: RepairStatus, rationale: z.string(), changesRef: z.string().optional(), usage: SessionUsage.optional(), at: At.optional() }),
   z.object({ t: z.literal("breaker_healthy"), at: At.optional() }),
   // `limit` is set when a usage limit, not the environment, is why the run stopped.
   z.object({ t: z.literal("run_escalated"), reason: z.string().min(1), limit: UsageLimit.optional(), at: At.optional() }),

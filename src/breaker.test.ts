@@ -7,7 +7,7 @@ import { breakerOf, nextBreaker, openDispatch, openTrip, repairsUsed, requestedI
 import { createRunFile, loadRunFile } from "./run-file.js";
 import { withoutAt } from "./without-at.js";
 import { RunHalted } from "./errors.js";
-import type { Terminus } from "./ports.js";
+import type { Terminus, Metered } from "./ports.js";
 import { readRef } from "./case-file.js";
 
 const degraded = (surfaceId: string, reason = "the shared helper is missing"): RunEntry => ({ t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId, reason } });
@@ -169,7 +169,7 @@ async function breakerOver(history: RunEntry[] = [], limit = 2) {
   });
   // Each answer waits for the next dispatch to exist, since every dispatch follows fsynced run-file writes.
   let answered = 0;
-  const answer = async (terminus: Terminus, changesData?: RepairChanges) => {
+  const answer = async (terminus: Metered<Terminus>, changesData?: RepairChanges) => {
     await vi.waitFor(() => expect(answers.length).toBeGreaterThan(answered));
     answers[answered++]?.resolve({ terminus, ...(changesData === undefined ? {} : { changes: changesData }) });
   };
@@ -356,6 +356,19 @@ describe("one repair of the shared environment for the whole run", () => {
 
     expect((await entries()).find((entry) => entry.t === "repair_terminus")).not.toHaveProperty("changesRef");
     expect((await entries()).map((entry) => entry.t)).toContain("breaker_healthy");
+  });
+
+  it("records on the repair's end what the runtime reported for its session", async () => {
+    const { breaker, answer, entries } = await breakerOver();
+    const asked = breaker.requestRepair({ surfaceId: "a", reason: "broken" });
+    await vi.waitFor(async () => {
+      const e = await entries();
+      expect(e.length).toBeGreaterThan(0);
+    });
+    await answer({ ...fixed, usage: { costUsd: 0.3, durationMs: 9000 } });
+    await asked;
+
+    expect((await entries()).find((entry) => entry.t === "repair_terminus")).toMatchObject({ usage: { costUsd: 0.3, durationMs: 9000 } });
   });
 });
 

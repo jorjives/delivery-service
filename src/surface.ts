@@ -423,6 +423,7 @@ async function dispatchSession(
     ...(terminus.status === "incomplete" && terminus.notRun ? { notRun: true as const } : {}),
     ...(terminus.status === "incomplete" && terminus.limit ? { limit: terminus.limit } : {}),
     ...(changesRef === undefined ? {} : { changesRef }),
+    ...(terminus.usage === undefined ? {} : { usage: terminus.usage }),
     rationale: terminus.rationale,
   };
   await appendEntry(dir, entry);
@@ -810,6 +811,7 @@ async function triage(
     verdict: verdict.verdict,
     rationale: verdict.rationale,
     artifactRef,
+    ...(verdict.usage === undefined ? {} : { usage: verdict.usage }),
   };
   await appendEntry(dir, entry);
 

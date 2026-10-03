@@ -74,7 +74,9 @@ export function createAgentTriage(agent: AgentPort): TriagePort {
         return deterministicRouter.triage(input);
       }
       if (!needsJudgement(input)) return deterministicRouter.triage(input);
-      return toTriageVerdict(await agent.invoke({ role: "triage" }, input.ctx), input);
+      const terminus = await agent.invoke({ role: "triage" }, input.ctx);
+      // An agent decided this round, so it was a session, recorded or not.
+      return { ...toTriageVerdict(terminus, input), usage: terminus.usage ?? {} };
     },
   };
 }
