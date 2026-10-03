@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import type { CaseFileOutcome, RepairChanges, RunEntry, SlotOutcome } from "../schema.js";
+import type { CaseFileOutcome, RunEntry, SlotOutcome } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { ESCALATION, delivery, PACKAGE, writeRunRecord, writeSupervisedRun } from "./command-fixtures.js";

@@ -270,7 +270,9 @@ describe("a task's repairs, as status says them", () => {
   it("takes control characters out of paths and patches", () => {
     const hostile = [{ path: "a\u001b[2Jb.txt", status: "added" as const, added: 1, removed: 0, touchesCheck: false, patch: "+\u001b]0;x\u0007ok" }];
 
-    expect(repairLines([{ ...base, recorded: true, files: hostile }], { patches: true }).join("\n")).not.toMatch(/\u001b|\u0007/);
+    const rendered = repairLines([{ ...base, recorded: true, files: hostile }], { patches: true }).join("\n");
+    expect(rendered).not.toContain("\u001b");
+    expect(rendered).not.toContain("\u0007");
   });
 });
 

@@ -464,7 +464,7 @@ describe("a repair that changed a file the check runs", () => {
 
   it("is not there when no repair changed a file the check runs, or none was recorded", () => {
     const harmless = { files: [{ path: "notes.txt", status: "added" as const, added: 1, removed: 0, touchesCheck: false }], truncated: false };
-    for (const refs of [{ [ID.footer]: { "repair-gate-maintenance-1-0": harmless } }, {}]) {
+    for (const refs of <Record<string, Record<string, unknown>>[]>[{ [ID.footer]: { "repair-gate-maintenance-1-0": harmless } }, {}]) {
       expect(renderText(deriveReport(snapshotOf({ records: [formDone, changed], refs })), { colour: false })).not.toContain("WORTH A LOOK");
     }
   });

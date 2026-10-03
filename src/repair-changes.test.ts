@@ -37,7 +37,7 @@ describe("capturing what a repair changed", () => {
 
     expect(result).toBe("done");
     expect(changes?.truncated).toBe(false);
-    expect(changes?.files.map(({ patch, ...file }) => file)).toEqual([
+    expect(changes?.files.map((file) => ({ ...file, patch: undefined }))).toEqual([
       { path: "check.mjs", status: "modified", added: 1, removed: 1, touchesCheck: true },
       { path: "shared/helper.json", status: "added", added: 1, removed: 0, touchesCheck: false },
     ]);
@@ -59,7 +59,7 @@ describe("capturing what a repair changed", () => {
 
     const { changes } = await captureRepair(repo, [], async () => rmSync(join(repo, "a.txt")));
 
-    expect(changes?.files.map(({ patch, ...file }) => file)).toEqual([{ path: "a.txt", status: "deleted", added: 0, removed: 2, touchesCheck: false }]);
+    expect(changes?.files.map((file) => ({ ...file, patch: undefined }))).toEqual([{ path: "a.txt", status: "deleted", added: 0, removed: 2, touchesCheck: false }]);
   });
 
   it("records a repair that changed nothing as no files", async () => {
