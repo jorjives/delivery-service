@@ -18,7 +18,7 @@ import { ReportDocument } from "../report/document.js";
 import { attempt, BRIEF, CHANGES_TOUCHING_CHECK, failedCheck, ownRepair, PACKET, setupRepair, stoppedAt, timed, writeRecord } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { plainReporter } from "./report.js";
-import { setRunOutcome } from "../run-file.js";
+import { appendRunEntry, setRunOutcome } from "../run-file.js";
 import { STOPPED_PART_WAY } from "./queue.js";
 import { takeRepoLock } from "../repo-lock.js";
 import { WAITING_FOR_A_SLOT } from "./status-command.js";
@@ -1177,6 +1177,22 @@ describe("delivery status for a run of several tasks at once", () => {
       "How it got here: no triage rounds.",
     ]);
     expect(lines.at(-1)).toBe(`Next: delivery report ${SUPERVISED} (this run in plain words)`);
+  });
+
+  it("lists the repairs of any task one ran in, one line each, and points at --repairs", async () => {
+    const repo = await workingSupervisedRun("status-supervised-repairs-");
+    for (const entry of setupRepair(1, IDS.hello, "repair-run-repair-1")) await appendRunEntry(supervisedPlace(repo, SUPERVISED), entry);
+    await writeRef(supervisedPlace(repo, SUPERVISED), "repair-run-repair-1", CHANGES_TOUCHING_CHECK);
+
+    const { stdout, exitCode } = await delivery(["status", SUPERVISED], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const lines = stdout.trimEnd().split("\n");
+    const at = lines.indexOf(`[1/3] ${HELLO} (${IDS.hello}):`);
+    expect(at).toBeGreaterThan(-1);
+    expect(lines[at + 1]).toBe("Repairs (--repairs for each patch):");
+    expect(lines[at + 2]).toContain("  Repair 1 (of the setup, attempt 1 of 2) changed 3 files");
+    expect(lines.at(-1)).toContain(`delivery status ${SUPERVISED} --repairs (each repair's patch)`);
   });
 
   it("reads one task of the run by its own id exactly as it reads any run", async () => {
