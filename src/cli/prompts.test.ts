@@ -46,4 +46,24 @@ describe("asking with @inquirer/prompts", () => {
 
     expect(await answer).toBe("something new");
   });
+
+  it("asks which of a list to pick, every one picked to start with, and answers with what is still picked", async () => {
+    const input = new PassThrough();
+    const output = new PassThrough();
+    let shown = "";
+    output.on("data", (chunk: Buffer) => (shown += chunk.toString()));
+
+    const answer = inquirerAsk(false, { input, output }).pick({
+      message: "Which problems would you like fixed?",
+      choices: [
+        { value: "1", name: "1. First", description: "one" },
+        { value: "2", name: "2. Second", description: "two" },
+      ],
+    });
+    await untilShown(() => shown, "Which problems would you like fixed?");
+    input.write(" "); // untick the first
+    input.write("\n");
+
+    expect(await answer).toEqual(["2"]);
+  });
 });

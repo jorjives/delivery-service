@@ -1,4 +1,4 @@
-import { confirm, input, select } from "@inquirer/prompts";
+import { checkbox, confirm, input, select } from "@inquirer/prompts";
 import type { Ask } from "./init.js";
 
 /**
@@ -44,5 +44,10 @@ export function inquirerAsk(colour: boolean, streams: PromptStreams = {}): Ask {
       ),
     choose: (question) => select({ message: question.message, choices: question.choices, default: question.default, theme }, streams),
     confirm: (question) => confirm({ message: question.message, default: question.default, theme }, streams),
+    pick: (question) =>
+      checkbox(
+        { message: question.message, choices: question.choices.map((choice) => ({ ...choice, checked: true })), theme },
+        streams,
+      ),
   };
 }

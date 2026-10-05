@@ -1,6 +1,6 @@
 import { Readable } from "node:stream";
 import type { CommandContext } from "./context.js";
-import type { Ask, ChoiceQuestion, ConfirmQuestion, TextQuestion } from "./init.js";
+import type { Ask, ChoiceQuestion, ConfirmQuestion, PickQuestion, TextQuestion } from "./init.js";
 import { plainReporter } from "./report.js";
 
 /** Test support: a command context with somebody at the terminal, unless the test says there is nobody. */
@@ -27,11 +27,13 @@ export function scriptedAsk({
   choice,
   confirm,
   confirms = [],
-}: { texts?: (string | undefined)[]; choice?: string; confirm?: boolean; confirms?: boolean[] } = {}) {
-  const asked: (TextQuestion | ChoiceQuestion | ConfirmQuestion)[] = [];
+  picks = [],
+}: { texts?: (string | undefined)[]; choice?: string; confirm?: boolean; confirms?: boolean[]; picks?: string[][] } = {}) {
+  const asked: (TextQuestion | ChoiceQuestion | ConfirmQuestion | PickQuestion)[] = [];
   const refused: string[] = [];
   const queue = [...texts];
   const yesOrNo = [...confirms];
+  const chosen = [...picks];
   const ask: Ask = {
     text(question) {
       asked.push(question);
@@ -51,6 +53,10 @@ export function scriptedAsk({
     confirm(question) {
       asked.push(question);
       return Promise.resolve(yesOrNo.shift() ?? confirm ?? question.default);
+    },
+    pick(question) {
+      asked.push(question);
+      return Promise.resolve(chosen.shift() ?? question.choices.map((c) => c.value));
     },
   };
   return { ask, asked, refused };

@@ -18,6 +18,8 @@ export interface CommandContext {
   colour: boolean;
   /** Whether this invocation asked for machine-readable output. */
   json: boolean;
+  /** Whether a person can be asked something: standard input and output are both a terminal, and `--json` was not given. Absent: no. */
+  interactive?: boolean;
   stdin: CliStdin;
   /** The answer this command was asked for, on standard output. */
   writeLine(line: string): void;

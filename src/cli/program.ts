@@ -54,6 +54,7 @@ function contextFor(io: CliIo, command: Command): CommandContext {
     env: io.env,
     colour,
     json,
+    interactive: !json && io.stdin.isTTY === true && io.stdout.isTTY === true,
     stdin: io.stdin,
     writeLine: (line) => io.stdout.write(`${line}\n`),
     report: reporterFor(io, { json, colour }),
@@ -176,6 +177,19 @@ export async function runCli(io: CliIo): Promise<number> {
     .action(async (options: InitOptions, command: Command) => {
       const ctx = contextFor(io, command);
       exitCode = await initCommand(options, ctx, inquirerAsk(ctx.colour));
+    });
+
+  program
+    .command("review")
+    .description(
+      "have an agent review your project, such as a code review, and list the problems it finds in plain words: it reads your last commit and changes nothing",
+    )
+    .argument("<pack>", "which review: a name from `delivery packs`, such as code, or the path to a review folder of your own")
+    .argument("[repo]", "the git repository to review (default: the current folder)")
+    .action(async (pack: string, repo: string | undefined, _options: unknown, command: Command) => {
+      const ctx = contextFor(io, command);
+      const { reviewCommand } = await import("./review-command.js");
+      exitCode = await reviewCommand(pack, repo, ctx, inquirerAsk(ctx.colour));
     });
 
   try {

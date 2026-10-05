@@ -40,6 +40,12 @@ export interface ConfirmQuestion {
   default: boolean;
 }
 
+/** A question answered by picking any number from a list. Every choice starts picked. */
+export interface PickQuestion {
+  message: string;
+  choices: Choice[];
+}
+
 /**
  * How this command asks a person something. The wizard is handed one rather
  * than importing a prompt library, because everything this slice promises is
@@ -51,6 +57,7 @@ export interface Ask {
   text(question: TextQuestion): Promise<string>;
   choose(question: ChoiceQuestion): Promise<string>;
   confirm(question: ConfirmQuestion): Promise<boolean>;
+  pick(question: PickQuestion): Promise<string[]>;
 }
 
 /** What `delivery init` was given on the command line. */
