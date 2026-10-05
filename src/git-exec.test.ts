@@ -32,6 +32,12 @@ describe("git", () => {
   it("rejects with git's output limit exceeded when told how much output to accept", async () => {
     await expect(git(repo, ["log", "-p"], { maxBuffer: 10 })).rejects.toMatchObject({ code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" });
   });
+
+  it("gives up on a call that runs past the time it is given", async () => {
+    const started = Date.now();
+    await expect(git(repo, ["-c", "alias.wait=!sleep 5", "wait"], { timeout: 200 })).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(4_000);
+  });
 });
 
 describe("tryGit", () => {

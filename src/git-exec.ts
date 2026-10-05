@@ -42,14 +42,21 @@ export function takeTurn<T>(cwd: string, work: () => Promise<T>): Promise<T> {
  * `env` is laid over the cleaned environment, for a caller that means to point
  * git somewhere on purpose (a private index); `maxBuffer` bounds the output
  * accepted, and past it the call rejects with ERR_CHILD_PROCESS_STDIO_MAXBUFFER.
+ * `timeout`, in milliseconds, ends the call and rejects when it runs longer;
+ * `raw` returns standard output exactly as git wrote it, for file contents.
  *
  * ponytail: no retry on an index.lock left by a person running git in the checkout at the same moment; add a bounded retry here if that is seen in practice (design §4).
  */
-export async function git(cwd: string, args: string[], options: { env?: NodeJS.ProcessEnv; maxBuffer?: number } = {}): Promise<string> {
+export async function git(cwd: string, args: string[], options: { env?: NodeJS.ProcessEnv; maxBuffer?: number; timeout?: number; raw?: boolean } = {}): Promise<string> {
   const { stdout } = await takeTurn(cwd, () =>
-    execFile("git", args, { cwd, env: { ...cleanGitEnv(), ...options.env }, ...(options.maxBuffer === undefined ? {} : { maxBuffer: options.maxBuffer }) }),
+    execFile("git", args, {
+      cwd,
+      env: { ...cleanGitEnv(), ...options.env },
+      ...(options.maxBuffer === undefined ? {} : { maxBuffer: options.maxBuffer }),
+      ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
+    }),
   );
-  return stdout.trim();
+  return options.raw === true ? stdout : stdout.trim();
 }
 
 /** Ran-and-succeeded as a boolean, for probes and best-effort clean-up. */
