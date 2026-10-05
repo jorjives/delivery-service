@@ -128,7 +128,7 @@ describe("the list a review offers", () => {
 
   it("keeps a pattern check that matches the code now", async () => {
     const repo = initTempRepo("confirm-", { "total.js": TOTAL });
-    const check = { kind: "pattern-absent" as const, pattern: "price - discount", paths: ["*.js"] };
+    const check = { kind: "pattern-absent" as const, pattern: "price - discount", paths: ["total.js"] };
     expect((await confirm(repo, envelope(problem({ check })))).findings[0]?.check).toEqual(check);
   });
 
