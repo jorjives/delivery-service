@@ -106,7 +106,7 @@ describe("AC: the package ships only its built output, readme and changelog, and
       ".": { default: "./dist/index.js" },
       "./testing": { default: "./dist/testing.js" },
     });
-    expect(pkg.files).toEqual(["dist", "README.md", "CHANGELOG.md"]);
+    expect(pkg.files).toEqual(["dist", "packs", "README.md", "CHANGELOG.md"]);
   });
 });
 
