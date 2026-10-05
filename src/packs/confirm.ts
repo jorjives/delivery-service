@@ -11,7 +11,7 @@ export const PATTERN_LIMIT = 500;
 /** The longest each kind of agent-written text is kept at. */
 export const TEXT_LIMITS = { title: 120, sentence: 600, detail: 2000, notes: 2000, path: 300 } as const;
 /** The largest file read to find flagged code in. */
-const FILE_LIMIT = 10 * 1024 * 1024;
+export const FILE_LIMIT = 10 * 1024 * 1024;
 /** Paths named to git as they are, never as patterns. */
 export const LITERAL = { GIT_LITERAL_PATHSPECS: "1" };
 

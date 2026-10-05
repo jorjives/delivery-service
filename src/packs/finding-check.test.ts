@@ -75,6 +75,35 @@ describe("whether a problem's code is still there, in a working copy", () => {
     expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
+  it("is never resolved when a folder on the flagged file's path has been swapped for a link", async () => {
+    const repo = exampleRepo("finding-check-");
+    const kept = join(repo, "..", `kept-${Date.now()}`);
+    mkdirSync(kept);
+    writeFileSync(join(kept, "checkout.js"), "export const total = () => 0;\n");
+    symlinkSync(kept, join(repo, "lib"));
+    const nested = sampleFinding({ where: { path: "lib/checkout.js", line: 1, endLine: 1 } });
+    expect(await checkFinding(nested, { worktreePath: repo })).toEqual({ error: expect.any(String) });
+  });
+
+  it("is never resolved, and never waits, when the flagged file has been swapped for a pipe", async () => {
+    const repo = exampleRepo("finding-check-");
+    rmSync(join(repo, "checkout.js"));
+    execFileSync("mkfifo", [join(repo, "checkout.js")]);
+    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
+  });
+
+  it("is resolved when a folder on the flagged file's path has been replaced by a file", async () => {
+    const repo = exampleRepo("finding-check-");
+    writeFileSync(join(repo, "lib"), "not a folder\n");
+    expect(await checkFinding(sampleFinding({ where: { path: "lib/checkout.js", line: 1, endLine: 1 } }), { worktreePath: repo })).toBe("resolved");
+  });
+
+  it("is never resolved when the flagged file is too large to read", async () => {
+    const repo = exampleRepo("finding-check-");
+    writeFileSync(join(repo, "checkout.js"), "x".repeat(10 * 1024 * 1024 + 1));
+    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
+  });
+
   it.each([
     ["a file the pattern names", "settings.js", ["settings.js"]],
     ["a file inside a folder the pattern names", "lib/settings.js", ["lib"]],

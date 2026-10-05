@@ -1,8 +1,9 @@
-import { lstat, readFile } from "node:fs/promises";
+import { constants } from "node:fs";
+import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 import { git } from "../git-exec.js";
 import { isEnoent } from "../journal.js";
-import { fileAt, LITERAL, locate, patternFound, projectPath } from "./confirm.js";
+import { FILE_LIMIT, fileAt, LITERAL, locate, patternFound, projectPath } from "./confirm.js";
 import type { Finding } from "./finding.js";
 
 /** Where a problem is checked: the main copy at a commit, or a working copy as an agent left it. */
@@ -36,11 +37,25 @@ async function textAt(where: Where, path: string): Promise<string | undefined | 
     if ("text" in file) return file.text;
     return file.reason === "no_such_file" ? undefined : NOT_A_FILE(path);
   }
-  const full = join(where.worktreePath, path);
+  // Folder by folder, as git's own tree is read: a link anywhere on the path could lead outside the working copy.
+  const parts = path.split("/");
   try {
-    if (!(await lstat(full)).isFile()) return NOT_A_FILE(path);
-    return await readFile(full, "utf-8");
+    for (let i = 1; i < parts.length; i++) {
+      const folder = await lstat(join(where.worktreePath, ...parts.slice(0, i)));
+      if (folder.isSymbolicLink()) return NOT_A_FILE(path);
+      if (!folder.isDirectory()) return undefined;
+    }
+    const file = await open(join(where.worktreePath, path), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile()) return NOT_A_FILE(path);
+      if (stat.size > FILE_LIMIT) return { error: `${path} is too large to read` };
+      return await file.readFile("utf-8");
+    } finally {
+      await file.close();
+    }
   } catch (err) {
+    if (err instanceof Error && "code" in err && err.code === "ELOOP") return NOT_A_FILE(path);
     if (isEnoent(err)) return undefined;
     throw err;
   }
