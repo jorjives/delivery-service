@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
 import { create, readRef } from "./case-file.js";
-import { invoke, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef, usageLimitOf, usageOf } from "./agent-invoke.js";
+import { invoke, runSession, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef, usageLimitOf, usageOf } from "./agent-invoke.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import { createToolAuthority } from "./tool-authority.js";
@@ -500,5 +500,39 @@ describe("telling a usage limit from any other error", () => {
     expect(usageLimitOf({ apiError: "overloaded", status: 529, text: "Overloaded" })).toBeUndefined();
     expect(usageLimitOf({ apiError: "server_error", status: 500, text: "we hit the rate limit of our patience" })).toBeUndefined();
     expect(usageLimitOf({ apiError: undefined, status: undefined, text: "" })).toBeUndefined();
+  });
+});
+
+describe("runSession: one session from a prompt the caller assembled, with no case file", () => {
+  it("sends the prompt it is given and returns the validated envelope", async () => {
+    const bare = await mkdtemp(join(tmpdir(), "run-session-"));
+    await script([{ json: { status: "completed", rationale: "read the files" } }]);
+
+    const terminus = await runSession(
+      workerRoleConfig,
+      { worktreePath, dir: bare, sessionKey: "scan-1" },
+      { systemPrompt: "You read.", prompt: "Review the project." },
+      useMock(),
+    );
+
+    expect(terminus).toEqual({ status: "completed", rationale: "read the files", usage: NO_COST });
+    expect(promptsSent(await readJournal(journalPath))).toEqual(["Review the project."]);
+  });
+
+  it("keeps a failed session's cause in the folder it is given, as invoke keeps it beside a case file", async () => {
+    const bare = await mkdtemp(join(tmpdir(), "run-session-"));
+    await script([{ fail: { message: "the session blew up" } }]);
+
+    const terminus = await runSession(workerRoleConfig, { worktreePath, dir: bare, sessionKey: "scan-1" }, { systemPrompt: "", prompt: "Review." }, useMock());
+
+    expect(terminus.status).toBe("incomplete");
+    expect(await readRef(bare, sessionErrorRef("scan-1"))).toMatchObject({ role: "worker", reason: DID_NOT_COMPLETE.errored });
+  });
+
+  it("refuses a malformed role before any session, as invoke does", async () => {
+    const bare = await mkdtemp(join(tmpdir(), "run-session-"));
+    await expect(
+      runSession({ ...workerRoleConfig, allowedTools: [] }, { worktreePath, dir: bare, sessionKey: "scan-1" }, { systemPrompt: "", prompt: "x" }, useMock()),
+    ).rejects.toBeInstanceOf(InvalidRoleConfig);
   });
 });

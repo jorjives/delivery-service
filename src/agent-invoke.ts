@@ -1,7 +1,7 @@
 import { query, type CanUseTool, type Options, type SDKAssistantMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { load, writeRef } from "./case-file.js";
-import { assemblePrompt, resolveEvidence } from "./prompt-assembly.js";
+import { assemblePrompt, resolveEvidence, type AssembledPrompt } from "./prompt-assembly.js";
 import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
 import type { AgentContext, AgentPort, RoleHandle, Incomplete, Metered } from "./ports.js";
@@ -205,18 +205,9 @@ export function buildSessionOptions(
 /**
  * One agent session in, exactly one result out.
  *
- * The primitive never retries and never branches on role: it assembles the
- * prompt, spawns one fresh session (no resume, no session id — sessions are
- * reconstructed from the case file, never continued), and validates whatever
- * came back. `session` exists so a test or demo can point the SDK at
- * `claude-mock` instead of the real CLI; it can name the binary and its
- * environment and nothing else, so a caller can never widen what the role may do.
- *
- * An out-of-role tool call outranks every other outcome. A session that reached
- * outside its authority is reported as that refusal even if it went on to emit a
- * clean envelope: the boundary event is the thing a reader must not miss, and a
- * "completed" that quietly swallowed a refusal would be the harness hiding its
- * own security boundary from the person relying on it.
+ * The primitive never retries and never branches on role: it loads a case file,
+ * assembles the prompt from it, then calls `runSession` to run the session and
+ * validate the result.
  *
  * Throws, before any session is spawned, for exactly two kinds of problem that
  * are the run's rather than the agent's:
@@ -236,15 +227,28 @@ export async function invoke<E>(
   ctx: AgentContext,
   session: SessionEnvironment = {},
 ): Promise<Metered<E | Incomplete>> {
+  // Validated before the case file is read, so a config typo is reported as itself, never as a missing record.
   validateRoleConfig(roleCfg);
-
   const caseFile = await load(ctx.dir);
-  const { systemPrompt, prompt } = assemblePrompt(
-    caseFile,
-    roleCfg,
-    await resolveEvidence(ctx.dir, caseFile),
-  );
+  const assembled = assemblePrompt(caseFile, roleCfg, await resolveEvidence(ctx.dir, caseFile));
+  return runSession(roleCfg, ctx, assembled, session);
+}
 
+/**
+ * One agent session from a prompt the caller has already assembled: `invoke`
+ * assembles it from a case file; a review, which has no case file, builds its
+ * own. Everything about the session itself lives here, so every role, with or
+ * without a case file, gets the same tool guard, the same structured-output
+ * enforcement and re-validation, and the same failure evidence, written to
+ * `ctx.dir`'s refs.
+ */
+export async function runSession<E>(
+  roleCfg: RoleConfig<E>,
+  ctx: AgentContext,
+  { systemPrompt, prompt }: AssembledPrompt,
+  session: SessionEnvironment = {},
+): Promise<Metered<E | Incomplete>> {
+  validateRoleConfig(roleCfg);
   const authority = createToolAuthority(roleCfg, ctx.worktreePath);
   const options = buildSessionOptions(roleCfg, ctx, session, authority.canUseTool, systemPrompt);
 
