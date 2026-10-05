@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
@@ -102,8 +102,25 @@ export interface SavedReview {
   result: ScanResult;
 }
 
+/** The configuration `delivery fix` writes beside a review. */
+export const PLAN_FILE = "plan.config.json";
+
 const STAMP = /(\d{8}T\d{6}Z)$/;
 const stampOf = (name: string): string => STAMP.exec(name)?.[1] ?? "";
+
+/** Review folder names, newest first by the time stamp each ends with. */
+export const newestFirst = (names: readonly string[]): string[] => names.toSorted((a, b) => stampOf(b).localeCompare(stampOf(a)) || b.localeCompare(a));
+
+/** The newest plan any review of this repository holds, for the commands that read a configuration when the project has none of its own. Synchronous, as finding a configuration is. */
+export function latestPlanFile(repoPath: string): string | undefined {
+  let names: string[];
+  try {
+    names = readdirSync(packsRoot(repoPath));
+  } catch {
+    return undefined;
+  }
+  return newestFirst(names).map((name) => join(packsRoot(repoPath), name, PLAN_FILE)).find((file) => existsSync(file));
+}
 
 async function entryOf(dir: string): Promise<ReviewEntry> {
   try {
@@ -127,9 +144,7 @@ export async function listReviews(repoPath: string): Promise<ReviewEntry[]> {
     if (isEnoent(err)) return [];
     throw err;
   }
-  const reviews = names
-    .filter((name) => existsSync(join(root, name, "review.json")))
-    .sort((a, b) => stampOf(b).localeCompare(stampOf(a)) || b.localeCompare(a));
+  const reviews = newestFirst(names.filter((name) => existsSync(join(root, name, "review.json"))));
   return Promise.all(reviews.map((name) => entryOf(join(root, name))));
 }
 
