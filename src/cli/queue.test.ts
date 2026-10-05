@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mkdtemp, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { Readable } from "node:stream";
 import { join } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { create, setOutcome } from "../case-file.js";
@@ -9,8 +10,12 @@ import { writeRunRecord } from "./command-fixtures.js";
 import { allRuns } from "./runs.js";
 import { runsRoot } from "../run-location.js";
 import { findQueueRun, queuePositionOf } from "../task-list.js";
-import { environmentGaveUp, listExitCode, listStandings, liveRunFound, nextQueueTask, queueTasks, runPickedUp, runShape, taskEnded } from "./queue.js";
+import { environmentGaveUp, listExitCode, listStandings, liveRunFound, nextQueueTask, queueTasks, runPickedUp, runShape, taskEnded, EVERY_TASK_DONE, listStopped, runQueue } from "./queue.js";
 import { EXIT } from "./failures.js";
+import { plainReporter } from "./report.js";
+import { DEFAULT_CLOSER } from "./settings.js";
+import { initTempRepo } from "../temp-repo.js";
+import type { CommandContext } from "./context.js";
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
 const PAGE = "add a page that shows who's on call today";
@@ -212,5 +217,67 @@ describe("what a run of several at once says when it gives up on its shared envi
     expect(environmentGaveUp(1, { waiting: 1, finished: 0, queued: 1 }, 2, "spend")).toBe(
       "The repair could not run because the spending limit has been reached. Stopping the run. 1 of 2 tasks was waiting on this and needs your attention; 0 had already finished, 1 is still queued.",
     );
+  });
+});
+
+describe("working down a list that carries on", () => {
+  const ESCALATED = { kind: "escalated", source: "worker", reason: "authority limit", at: "2026-09-17T09:05:00.000Z" } as const;
+  const contextIn = (cwd: string, lines: string[]): CommandContext => ({
+    cwd,
+    env: process.env,
+    colour: false,
+    json: false,
+    stdin: Readable.from([]),
+    writeLine: (line) => lines.push(line),
+    report: plainReporter((line) => lines.push(line), false),
+  });
+  const project = { gateRef: GATE, closerRef: DEFAULT_CLOSER, budgets: DEFAULT_BUDGETS, concurrency: 1 };
+
+  async function twoStopped(): Promise<string> {
+    const repo = initTempRepo("queue-carry-on-", { "a.js": "x\n" });
+    await writeRunRecord(repo, { runId: "add-a-page-20260917T090000Z", task: PAGE, outcome: ESCALATED });
+    await writeRunRecord(repo, { runId: "let-someone-swap-20260917T090100Z", task: SWAP, outcome: ESCALATED });
+    return repo;
+  }
+
+  it("stops one at a time at a task that needs a decision, as it always has", async () => {
+    const repo = await twoStopped();
+    const lines: string[] = [];
+    const exitCode = await runQueue([{ intent: PAGE }, { intent: SWAP }], project, { repoPath: repo }, contextIn(repo, lines));
+    expect(exitCode).toBe(EXIT.escalated);
+    expect(lines).toContain(listStopped({ task: 1, of: 2 }, EXIT.escalated));
+  });
+
+  it("goes on to the next task one at a time, and names each that was not delivered at the end", async () => {
+    const repo = await twoStopped();
+    const lines: string[] = [];
+    const exitCode = await runQueue([{ intent: PAGE }, { intent: SWAP }], project, { repoPath: repo, carryOn: true }, contextIn(repo, lines));
+    expect(exitCode).toBe(EXIT.escalated);
+    expect(lines).not.toContain(listStopped({ task: 1, of: 2 }, EXIT.escalated));
+    expect(lines.slice(-2)).toEqual([taskEnded({ task: 1, of: 2 }, "escalated"), taskEnded({ task: 2, of: 2 }, "escalated")]);
+  });
+
+  it("does not tell the owner to add tasks to a list it wrote itself", async () => {
+    const repo = initTempRepo("queue-carry-on-", { "a.js": "x\n" });
+    const lines: string[] = [];
+    await writeRun(repo, "add-a-page-20260917T090000Z", { intent: PAGE }, true);
+    expect(await runQueue([{ intent: PAGE }], project, { repoPath: repo, carryOn: true }, contextIn(repo, lines))).toBe(EXIT.ok);
+    expect(lines).not.toContain(EVERY_TASK_DONE);
+  });
+
+  it("asks, as each task is about to start, whether it still needs doing, and passes over one that does not", async () => {
+    const repo = initTempRepo("queue-skip-", { "a.js": "x\n" });
+    await writeRunRecord(repo, { runId: "let-someone-swap-20260917T090100Z", task: SWAP, outcome: ESCALATED });
+    const lines: string[] = [];
+    const asked: string[] = [];
+    const skip = async (task: TaskDef): Promise<boolean> => {
+      asked.push(task.intent);
+      return task.intent === PAGE;
+    };
+    const exitCode = await runQueue([{ intent: PAGE }, { intent: SWAP }], project, { repoPath: repo, carryOn: true, skip }, contextIn(repo, lines));
+    expect(asked).toEqual([PAGE]); // SWAP already has a run, so it is never asked about
+    expect((await allRuns(repo)).map((run) => run.runId)).toEqual(["let-someone-swap-20260917T090100Z"]); // PAGE was passed over: no run made
+    expect(exitCode).toBe(EXIT.escalated);
+    expect(lines.slice(-1)).toEqual([taskEnded({ task: 2, of: 2 }, "escalated")]);
   });
 });

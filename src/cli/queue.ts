@@ -186,11 +186,16 @@ async function stopForEnvironment(repoPath: string, dir: string, runId: string, 
  * for the whole list: a list with nothing left to do, or one stopped on a task
  * that is waiting for a person, is a complete answer on a machine that has
  * never signed in, and saying so is more use than asking for a credential.
+ *
+ * `carryOn` is for a list the harness wrote itself (`delivery fix`): a task that is not delivered
+ * never stops the rest, even one at a time, and the list ends without asking the owner to add to it.
+ * `skip` is the same list's precondition: asked as each not-yet-started task is about to start, so
+ * a task made pointless by an earlier one in the same pass is passed over without spending an agent session.
  */
 export async function runQueue(
   tasks: TaskDef[],
   project: ProjectSettings,
-  { repoPath }: { repoPath: string },
+  { repoPath, carryOn = false, skip }: { repoPath: string; carryOn?: boolean; skip?: (task: TaskDef) => Promise<boolean> },
   ctx: CommandContext,
 ): Promise<ExitCode> {
   // One promise, not one session: slots that start together share one check rather than racing to make two.
@@ -218,22 +223,31 @@ export async function runQueue(
     }
 
     let breaker: RunBreaker | undefined;
+    // Tasks the list's own precondition passed over in this invocation: never claimed, never asked about again.
+    const passedOver: TaskDef[] = [];
     const next = async (claimed: readonly QueueClaim[]): Promise<QueueClaim | undefined> => {
       if (breaker?.gaveUp !== undefined) return undefined;
-      const records = await allRuns(repoPath);
-      const position = nextQueueTask(records, tasks, claimed.map((claim) => claim.taskDef));
-      const taskDef = position === undefined ? undefined : tasks[position.task - 1];
-      if (position === undefined || taskDef === undefined) return undefined;
-      const existing = findQueueRun(records, taskDef);
-      // A run started a moment ago by another slot may not be on disk yet, so its id counts as taken too.
-      const taken = new Set([...records.map((record) => record.runId), ...claimed.map((claim) => claim.surfaceId)]);
-      return { taskDef, position, existing, surfaceId: existing?.runId ?? runIdFor(taskIntent(taskDef), new Date(), taken) };
+      for (;;) {
+        const records = await allRuns(repoPath);
+        const position = nextQueueTask(records, tasks, [...claimed.map((claim) => claim.taskDef), ...passedOver]);
+        const taskDef = position === undefined ? undefined : tasks[position.task - 1];
+        if (position === undefined || taskDef === undefined) return undefined;
+        const existing = findQueueRun(records, taskDef);
+        // A task with no run yet is asked, just before it would start, whether it still needs doing.
+        if (existing === undefined && (await skip?.(taskDef))) {
+          passedOver.push(taskDef);
+          continue;
+        }
+        // A run started a moment ago by another slot may not be on disk yet, so its id counts as taken too.
+        const taken = new Set([...records.map((record) => record.runId), ...claimed.map((claim) => claim.surfaceId)]);
+        return { taskDef, position, existing, surfaceId: existing?.runId ?? runIdFor(taskIntent(taskDef), new Date(), taken) };
+      }
     };
 
     if ((await next([])) === undefined) {
       // Every task a stopped run was still to take has been delivered since, so that run is over too.
       if (unfinished) await setRunOutcome(unfinished.dir, { kind: "drained", at: new Date().toISOString() });
-      ctx.report.note(EVERY_TASK_DONE);
+      if (!carryOn) ctx.report.note(EVERY_TASK_DONE);
       return EXIT.ok;
     }
 
@@ -280,7 +294,7 @@ export async function runQueue(
               await reportOutcome(existing.dir, existing.caseFile, taskCtx)
             : await resumeRun(existing, taskCtx, await agent());
 
-      if (runId === undefined && exitCode !== EXIT.ok) report.note(listStopped(position, exitCode));
+      if (runId === undefined && !carryOn && exitCode !== EXIT.ok) report.note(listStopped(position, exitCode));
       return slotOutcome(exitCode);
     };
 
@@ -292,7 +306,7 @@ export async function runQueue(
     const disarm = runId === undefined ? undefined : ctx.exitOnInterrupt?.(EXIT.aborted, STOPPED_PART_WAY);
     let settled: Settled<QueueClaim>[];
     try {
-      settled = await supervise({ slots: concurrency, next, drive, waitOnSetback: runId === undefined, record });
+      settled = await supervise({ slots: concurrency, next, drive, waitOnSetback: runId === undefined && !carryOn, record });
     } catch (err) {
       // A task stopped at its next check or hand-off because the run gave up on the shared environment.
       if (err instanceof RunHalted && record !== undefined && runId !== undefined) {
@@ -306,8 +320,8 @@ export async function runQueue(
     if (runId !== undefined) ctx.report.run({ runId, state: "DRAINED" });
     const exitCode = listExitCode(settled.map(({ outcome }) => outcome));
     if (exitCode === EXIT.ok) {
-      ctx.report.note(EVERY_TASK_DONE);
-    } else if (runId !== undefined) {
+      if (!carryOn) ctx.report.note(EVERY_TASK_DONE);
+    } else if (runId !== undefined || carryOn) {
       for (const { claim, outcome } of settled.toSorted((a, b) => a.claim.position.task - b.claim.position.task)) {
         if (outcome !== "closed") ctx.report.note(taskEnded(claim.position, outcome));
       }
