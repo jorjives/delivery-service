@@ -191,3 +191,27 @@ export class RunHalted extends Error {
     this.name = "RunHalted";
   }
 }
+
+/** A pack folder whose manifest or instructions cannot be used: the file, and what is wrong with it. */
+export class InvalidPack extends Error {
+  readonly code = "INVALID_PACK" as const;
+  constructor(
+    readonly filePath: string,
+    readonly detail: string,
+  ) {
+    super(`Invalid pack file ${filePath}: ${detail}`);
+    this.name = "InvalidPack";
+  }
+}
+
+/** A pack asked for by a name no built-in pack has; `available` is every name there is. */
+export class UnknownPack extends Error {
+  readonly code = "UNKNOWN_PACK" as const;
+  constructor(
+    readonly packName: string,
+    readonly available: readonly string[],
+  ) {
+    super(`No pack is called ${packName}`);
+    this.name = "UnknownPack";
+  }
+}

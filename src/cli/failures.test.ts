@@ -17,6 +17,8 @@ import {
   IllegalStateTransition,
   InvalidRoleConfig,
   MockNotInstalled,
+  InvalidPack,
+  UnknownPack,
 } from "../errors.js";
 import { EXIT, Refusal, renderFailure, UNEXPECTED_FOOTER } from "./failures.js";
 
@@ -89,5 +91,19 @@ describe("renderFailure", () => {
 
   it("renders a thrown non-Error the same honest way", () => {
     expect(renderFailure("boom")).toEqual({ message: `boom\n${UNEXPECTED_FOOTER}`, exitCode: EXIT.unexpected });
+  });
+
+  it("says which review does not exist and lists the ones that do", () => {
+    expect(renderFailure(new UnknownPack("nope", ["code"]))).toEqual({
+      message: 'There is no review called "nope". The reviews available are: code. To use a review from a folder of your own, give its path, such as ./my-review.',
+      exitCode: EXIT.configuration,
+    });
+  });
+
+  it("names the file and the field of a pack it cannot use", () => {
+    expect(renderFailure(new InvalidPack("/p/pack.json", '"version" must be a version such as 1.0.0'))).toEqual({
+      message: 'I can\'t use the review in /p/pack.json: "version" must be a version such as 1.0.0.',
+      exitCode: EXIT.configuration,
+    });
   });
 });

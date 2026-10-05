@@ -1,0 +1,24 @@
+{
+  "schema": "delivery.pack/1",
+  "name": "code",
+  "version": "1.0.0",
+  "title": "Code review",
+  "summary": "Looks for code that gives wrong results, code nothing uses, missing handling of things going wrong, the same job done different ways, and shortcuts the code admits to.",
+  "scan": {
+    "prompt": "scan.md",
+    "categories": [
+      { "id": "correctness", "title": "Wrong results", "description": "Code that gives the wrong answer or does the wrong thing for some input." },
+      { "id": "error-handling", "title": "Missing handling of things going wrong", "description": "Code that fails badly, or silently, when a file, a network call or an input is not what it expects." },
+      { "id": "dead-code", "title": "Code nothing uses", "description": "Files, functions or settings that nothing in the project calls or reads any more." },
+      { "id": "inconsistency", "title": "The same job done different ways", "description": "Code that solves a problem the project already solves elsewhere, in a different way." },
+      { "id": "debt", "title": "Shortcuts the code admits to", "description": "Shortcuts the code itself owns up to, such as TODO notes and temporary workarounds." }
+    ],
+    "maxFindings": 40
+  },
+  "severity": {
+    "low": "Untidy or confusing, but nothing goes wrong because of it.",
+    "medium": "Something goes wrong in an unusual case, or the next change here is likely to break something.",
+    "high": "Something goes wrong in normal use: wrong results, lost work or a crash.",
+    "critical": "Serious harm in normal use: lost or corrupted data, or money or trust lost."
+  }
+}
