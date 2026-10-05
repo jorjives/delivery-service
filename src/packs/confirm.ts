@@ -13,7 +13,7 @@ export const TEXT_LIMITS = { title: 120, sentence: 600, detail: 2000, notes: 200
 /** The largest file read to find flagged code in. */
 const FILE_LIMIT = 10 * 1024 * 1024;
 /** Paths named to git as they are, never as patterns. */
-const LITERAL = { GIT_LITERAL_PATHSPECS: "1" };
+export const LITERAL = { GIT_LITERAL_PATHSPECS: "1" };
 
 /** Flagged code as it is compared: every run of whitespace one space, none at either end. */
 export function normaliseAnchor(text: string): string {
@@ -64,7 +64,7 @@ function plain(text: string, limit: number): string {
 }
 
 /** A path inside the project, as git names it, or undefined for one that is absolute or leads out. */
-function projectPath(raw: string): string | undefined {
+export function projectPath(raw: string): string | undefined {
   if (raw.includes("\0") || raw.includes("\\") || raw.startsWith("/") || /^[A-Za-z]:/.test(raw)) return undefined;
   // Without a trailing slash, so git names the entry itself, never the contents of a folder.
   const normal = posix.normalize(raw).replace(/\/+$/, "");
@@ -78,7 +78,7 @@ function vague(anchor: string): boolean {
 }
 
 /** The file's text at `commit`, or why there is none. Reads git's own tree, so a link or a folder is never followed. */
-async function fileAt(repoPath: string, commit: string, path: string): Promise<{ text: string } | { reason: UnconfirmedReason }> {
+export async function fileAt(repoPath: string, commit: string, path: string): Promise<{ text: string } | { reason: UnconfirmedReason }> {
   const listing = await git(repoPath, ["ls-tree", commit, "--", path], { env: LITERAL });
   const entry = /^(\d+) (\w+) ([0-9a-f]+)\t/.exec(listing);
   if (entry === null) return { reason: "no_such_file" };
@@ -91,17 +91,30 @@ async function fileAt(repoPath: string, commit: string, path: string): Promise<{
   }
 }
 
+/**
+ * Whether an agent-written pattern matches in the paths it names: at `commit`,
+ * or in the working tree at `cwd` (new, untracked files included) when there is
+ * none. Run through git with a time limit; anything that is not a clean "matches"
+ * or "does not match" is an error, never an answer.
+ */
+export async function patternFound(cwd: string, check: Extract<CheckSpec, { kind: "pattern-absent" }>, commit?: string): Promise<boolean | { error: string }> {
+  const paths = check.paths.map(projectPath);
+  if (check.pattern.length > PATTERN_LIMIT) return { error: `the pattern is longer than ${PATTERN_LIMIT} characters` };
+  if (paths.some((path) => path === undefined)) return { error: "a path the check names leads outside the project" };
+  const scope = commit === undefined ? { options: ["--untracked"], revision: [] } : { options: [], revision: [commit] };
+  try {
+    await git(cwd, ["grep", "-q", "-E", ...scope.options, "-e", check.pattern, ...scope.revision, "--", ...(paths as string[])], { env: LITERAL, timeout: PATTERN_TIMEOUT_MS });
+    return true;
+  } catch (err) {
+    const { code, killed } = err as { code?: unknown; killed?: boolean };
+    if (code === 1 && killed !== true) return false;
+    return { error: killed === true ? `the pattern ran longer than ${PATTERN_TIMEOUT_MS / 1000} seconds` : "git could not run the pattern" };
+  }
+}
+
 /** Whether a pattern check can be used: it runs, through git, and matches the code as it stands. Anything else is not a check. */
 async function patternMatchesNow(repoPath: string, commit: string, check: Extract<CheckSpec, { kind: "pattern-absent" }>): Promise<boolean> {
-  const paths = check.paths.map(projectPath);
-  if (check.pattern.length > PATTERN_LIMIT || paths.some((path) => path === undefined)) return false;
-  try {
-    await git(repoPath, ["grep", "-q", "-E", "-e", check.pattern, commit, "--", ...(paths as string[])], { timeout: PATTERN_TIMEOUT_MS });
-    return true;
-  } catch {
-    // No match, a pattern git refuses, or one that ran too long: none of them can go from failing to passing honestly.
-    return false;
-  }
+  return (await patternFound(repoPath, check, commit)) === true;
 }
 
 const rank = (finding: Finding): number => SEVERITIES.indexOf(finding.severity);
