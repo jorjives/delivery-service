@@ -5,6 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, UNCONFIRMED_WHY } from "../src/packs/render.js";
+import { PR_OPENED, STATE_WORDS } from "../src/packs/render.js";
 import { REPO_ROOT } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/task-packs.md"), "utf-8");
@@ -33,5 +34,10 @@ describe("the task packs guide", () => {
   it("says where a review is kept and that an interrupted one is finished by running it again", () => {
     expect(guide).toContain(".delivery/packs/");
     expect(flat).toContain("run the same command again");
+  });
+
+  it("shows how to choose which problems to fix, and quotes where each can stand", () => {
+    for (const command of ["delivery findings approve 1 3", "delivery findings approve --all", "delivery findings skip 2"]) expect(guide).toContain(command);
+    for (const phrase of [...Object.values(STATE_WORDS), PR_OPENED]) expect(flat).toContain(phrase);
   });
 });

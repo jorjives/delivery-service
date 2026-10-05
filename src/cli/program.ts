@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { Command, CommanderError, Option } from "commander";
 import type { CommandContext, CliStdin, ExitOnInterrupt } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
-import { findingsCommand, type FindingsOptions } from "./findings-command.js";
+import { decideCommand, findingsCommand, type DecideOptions, type FindingsOptions } from "./findings-command.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
@@ -194,7 +194,7 @@ export async function runCli(io: CliIo): Promise<number> {
       exitCode = await reviewCommand(pack, repo, ctx, inquirerAsk(ctx.colour));
     });
 
-  program
+  const findings = program
     .command("findings")
     .description("list the problems your latest review found and where each stands, or show one in full with the detail for engineers; changes nothing")
     .argument("[number]", "show this problem in full, counted from 1 as the list numbers them")
@@ -202,6 +202,23 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
     .action(async (number: string | undefined, options: FindingsOptions, command: Command) => {
       exitCode = await findingsCommand(number, options, contextFor(io, command));
+    });
+
+  findings
+    .command("approve")
+    .description("approve problems from your latest review for fixing, by their numbers in the list; `delivery fix` then fixes them")
+    .argument("[numbers...]", "the problems to approve, as the list numbers them")
+    .option("--all", "approve every problem listed now that is not already being fixed")
+    .action(async (numbers: string[], _options: DecideOptions, command: Command) => {
+      exitCode = await decideCommand("approve", numbers, command.optsWithGlobals<DecideOptions>(), contextFor(io, command));
+    });
+
+  findings
+    .command("skip")
+    .description("skip problems from your latest review: nothing will be done about them")
+    .argument("[numbers...]", "the problems to skip, as the list numbers them")
+    .action(async (numbers: string[], _options: unknown, command: Command) => {
+      exitCode = await decideCommand("skip", numbers, command.optsWithGlobals<DecideOptions>(), contextFor(io, command));
     });
 
   program

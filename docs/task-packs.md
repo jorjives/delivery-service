@@ -37,10 +37,35 @@ The review is an agent's opinion, and it says so. "No problems" means none were 
 
 ## Reading it again
 
-- `delivery findings` lists the latest review's problems, each "not yet decided".
+- `delivery findings` lists the latest review's problems and where each stands.
 - `delivery findings 1` shows problem 1 in full, followed by a **FOR ENGINEERS** block: the category, the exact lines, the kind of check and what it looks for.
 - `delivery findings --unconfirmed` lists problems the review reported that the harness could not find in your project, so did not offer. The reason is one of: "that file is not in your last commit", "that path leads outside your project", "that path is not an ordinary file in your project", "the code it points at is not in that file", or "it did not say exactly which code it means".
 - `delivery packs` lists the reviews available. `delivery review ./my-review` runs one from a folder of your own, exactly as a built-in one.
+
+## Choosing what to fix
+
+Nothing is fixed until you say so. Choose by the numbers in the list:
+
+```bash
+delivery findings approve 1 3
+delivery findings skip 2
+delivery findings approve --all
+```
+
+`--all` approves every problem listed now, by name, so a later review never adds to it. If you
+change your mind, choose again: your latest choice counts, until fixing starts. Approving a
+problem that is tests only says so once, because only your existing tests can show it is fixed.
+
+`delivery findings` then shows each problem as one of:
+
+- "not yet decided": you have not chosen.
+- "skipped by you": nothing will be done about it.
+- "being fixed": approved, and fixed when you run `delivery fix`.
+- "fixed and merged": fixed, checked, and in your project. If your project opens a pull request
+  for finished work instead, this reads "fixed, pull request opened".
+- "already fixed": the code it points at had gone before its fix started, so nothing was done.
+- "could not be fixed": the agent could not fix it. The reason follows, with what the agent said.
+- "stopped by a setup problem": something in the setup stopped the fix, and an engineer is needed.
 
 ## Where a review is kept
 
