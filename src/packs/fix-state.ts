@@ -4,7 +4,7 @@ import { loadSnapshot } from "../report/snapshot.js";
 import { repoLocked } from "../repo-lock.js";
 import type { Finding } from "./finding.js";
 import { fixTaskFor, type FixTask } from "./fix-task.js";
-import { authorisedChecks, readLedger, type LedgerEntry } from "./ledger.js";
+import { authorisedChecks, readLedger, resolvedIds, type LedgerEntry } from "./ledger.js";
 import type { SavedReview } from "./review-record.js";
 
 /** Every state a problem can be in, internally. The owner reads them through `STATE_WORDS` (`render.ts`). */
@@ -38,7 +38,7 @@ function fromRun(fix: FixRun | undefined): FixState {
  * a fix's outcome is stored twice. Aligned with `findings`.
  */
 export function deriveFindings(findings: readonly Finding[], entries: readonly LedgerEntry[], fixes: ReadonlyMap<string, FixRun>): FindingState[] {
-  const gone = new Set(entries.flatMap((entry) => (entry.t === "fix_observed" ? [entry.id] : [])));
+  const gone = resolvedIds(entries);
   const authorised = authorisedChecks(entries);
   const choice = new Map<string, "approve" | "skip">();
   for (const entry of entries) if (entry.t === "decision") for (const id of entry.ids) choice.set(id, entry.choice);
@@ -58,7 +58,7 @@ export function deriveFindings(findings: readonly Finding[], entries: readonly L
  */
 export function fixTasks({ header, result }: SavedReview, entries: readonly LedgerEntry[]): FixTask[] {
   const authorised = authorisedChecks(entries);
-  const gone = new Set(entries.flatMap((entry) => (entry.t === "fix_observed" ? [entry.id] : [])));
+  const gone = resolvedIds(entries);
   return result.findings.flatMap((finding) => {
     const verify = authorised.get(finding.id);
     return verify === undefined || gone.has(finding.id) ? [] : [fixTaskFor(header.pack.name, finding, verify)];

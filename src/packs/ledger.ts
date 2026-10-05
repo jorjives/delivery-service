@@ -58,3 +58,8 @@ export function authorisedChecks(entries: readonly LedgerEntry[]): Map<string, G
   }
   return checks;
 }
+
+/** The problems found already fixed before their fix started. */
+export function resolvedIds(entries: readonly LedgerEntry[]): Set<string> {
+  return new Set(entries.flatMap((entry) => (entry.t === "fix_observed" ? [entry.id] : [])));
+}
