@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
 import { DamagedReview } from "../errors.js";
+import { readFindingStates } from "../packs/fix-state.js";
 import { findingLines, listLines, NO_REVIEW_YET, unconfirmedLines, unfinishedReview } from "../packs/render.js";
 import { listReviews, loadReview } from "../packs/review-record.js";
+import type { SavedReview } from "../packs/review-record.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
@@ -13,6 +15,15 @@ export interface FindingsOptions {
 
 export const noSuchProblem = (asked: string, count: number): string =>
   `There is no problem ${asked} in the latest review: it lists ${count}. See the list with: delivery findings`;
+
+/** The latest review, finished, for a command that acts on it: a refusal naming the command to run when there is none or it was stopped part way. */
+export async function finishedReview(repoPath: string): Promise<SavedReview> {
+  const [latest] = await listReviews(repoPath);
+  if (latest === undefined) throw new Refusal(NO_REVIEW_YET, EXIT.configuration);
+  if (latest.state === "damaged") throw new DamagedReview(latest.file);
+  if (latest.state === "unfinished") throw new Refusal(unfinishedReview(latest.header.pack.name), EXIT.configuration);
+  return loadReview(latest);
+}
 
 /**
  * `delivery findings [n]`: the latest review's problems, one of them in full,
@@ -37,7 +48,8 @@ export async function findingsCommand(number: string | undefined, options: Findi
     return EXIT.ok;
   }
   if (number === undefined) {
-    for (const line of listLines(review)) say(line);
+    const { states } = await readFindingStates(repoPath, review);
+    for (const line of listLines(review, states)) say(line);
     return EXIT.ok;
   }
   const count = review.result.findings.length;

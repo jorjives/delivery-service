@@ -1,6 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { appendLedger } from "../packs/ledger.js";
 import { NO_REVIEW_YET, unfinishedReview } from "../packs/render.js";
 import { sampleFinding, writeReview } from "../packs/review-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
@@ -66,5 +67,13 @@ describe("delivery findings", () => {
     expect(stderr).toContain(join(dir, "review.json"));
     expect(stderr).toContain("delivery review code");
     expect(stderr).not.toMatch(/^\s+at /m);
+  });
+
+  it("shows the owner's choices recorded for the latest review", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { findings: TWO });
+    await appendLedger(dir, { t: "decision", ids: [TWO[1]?.id ?? ""], choice: "skip" });
+    const { stdout } = await delivery(["findings"], { cwd: project });
+    expect(stdout).toContain("1. The price shown at checkout can be negative (high): not yet decided\n2. Old payment code (low): skipped by you\n");
   });
 });

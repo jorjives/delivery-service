@@ -3,9 +3,10 @@ import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
-  AGENT_OPINION, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, listLines, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, reviewLines, RECOVERED, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview,
+  AGENT_OPINION, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
+  opening, PR_OPENED, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview,
 } from "./render.js";
+import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
 import { PACK_FORBIDDEN, sampleFinding } from "./review-fixtures.js";
 
@@ -24,6 +25,8 @@ const PATTERN = sampleFinding({ id: "111111111111", title: "Settings errors are 
 const UNUSED = sampleFinding({ id: "222222222222", title: "Old payment code", severity: "low", check: { kind: "none" }, droppedCheck: { kind: "pattern-absent", pattern: "x", paths: ["a.js"] }, detail: "nothing imports it" });
 const unconfirmed = UNCONFIRMED_REASONS.map((reason): Unconfirmed => ({ title: "Rounding", severity: "medium", path: "pricing.js", problem: "Prices round down.", reason }));
 const review = (overrides: Partial<SavedReview["result"]> = {}): SavedReview => ({ dir: "/d", header: HEADER, result: { findings: [NEGATIVE, PATTERN, UNUSED], unconfirmed: [], notShown: 0, notes: "", ...overrides } });
+const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, ...fix } });
+const undecided = [at("proposed"), at("proposed"), at("proposed")];
 
 describe("a finished review, as the owner reads it", () => {
   it("says how long it took, how many it found, that it is an agent's opinion, then one numbered block per problem", () => {
@@ -67,7 +70,7 @@ describe("a finished review, as the owner reads it", () => {
 
 describe("the findings view", () => {
   it("lists each problem with how serious it is and that it is not yet decided", () => {
-    expect(listLines(review())).toEqual([
+    expect(listLines(review(), undecided)).toEqual([
       "Code review of shop, 5 Oct 10:19 UTC: 3 problems.",
       "1. The price shown at checkout can be negative (high): not yet decided",
       "2. Settings errors are unhelpful (medium): not yet decided",
@@ -107,6 +110,31 @@ describe("the findings view", () => {
     expect(lines).toContain('  The agent\'s notes: "nothing imports it"');
   });
 
+  it("says where each problem stands, and why one could not be fixed in the agent's own words", () => {
+    const stuck = at("unfixable", { standing: "escalated", plain: { group: "needs_your_decision", audience: "owner", sentence: "Needs your decision. The agent stopped and asked for a person to decide.", agentSaid: "The discount rules are not written down.", next: [] } });
+    expect(listLines(review(), [at("fixed"), at("skipped"), stuck]).slice(1, 6)).toEqual([
+      "1. The price shown at checkout can be negative (high): fixed and merged",
+      "2. Settings errors are unhelpful (medium): skipped by you",
+      "3. Old payment code (low): could not be fixed",
+      "    Why: Needs your decision. The agent stopped and asked for a person to decide.",
+      '    The agent said: "The discount rules are not written down."',
+    ]);
+  });
+
+  it("says a fix opened a pull request rather than merged when that is how the project lands work", () => {
+    expect(listLines(review(), [at("fixed", { closer: "open-pr" }), at("already_resolved"), at("stopped")]).slice(1, 4)).toEqual([
+      "1. The price shown at checkout can be negative (high): fixed, pull request opened",
+      "2. Settings errors are unhelpful (medium): already fixed",
+      "3. Old payment code (low): stopped by a setup problem",
+    ]);
+  });
+
+  it("says how many approved problems are waiting, and the command that starts fixing them", () => {
+    const lines = listLines(review(), [at("approved"), at("approved"), at("proposed")]);
+    expect(lines.slice(1, 3)).toEqual(["1. The price shown at checkout can be negative (high): being fixed", "2. Settings errors are unhelpful (medium): being fixed"]);
+    expect(lines).toContain("2 approved and not started yet. Start fixing them with: delivery fix");
+  });
+
   it("lists every problem it could not confirm, with why", () => {
     const lines = unconfirmedLines(review({ unconfirmed }));
     expect(lines[0]).toBe(`The review reported ${unconfirmed.length} problems that could not be confirmed, so they are not offered:`);
@@ -135,9 +163,9 @@ describe("the review's own words", () => {
     const everything = [
       ...opening("Code review"), RECOVERED, NOT_NOW, NO_REVIEW_YET, unfinishedReview("code"),
       ...reviewLines(review({ notShown: 1, unconfirmed })), ...reviewLines(review({ findings: [] })),
-      ...listLines(review({ unconfirmed })), ...unconfirmedLines(review({ unconfirmed })), ...fixNowLines([1, 3]),
+      ...listLines(review({ unconfirmed }), undecided), ...unconfirmedLines(review({ unconfirmed })), ...fixNowLines([1, 3]),
       ...findingLines(review(), 1).slice(0, findingLines(review(), 1).indexOf("FOR ENGINEERS")),
-      ...Object.values(CHECK_LEVEL), ...Object.values(UNCONFIRMED_WHY),
+      ...Object.values(CHECK_LEVEL), ...Object.values(UNCONFIRMED_WHY), ...Object.values(STATE_WORDS), PR_OPENED, fixWaiting(1), fixWaiting(2),
       failureSentence({ status: "incomplete", rationale: "x", limit: "rate" }, "code"),
       failureSentence({ status: "incomplete", rationale: "x" }, "code"),
     ].join("\n");

@@ -3,6 +3,7 @@ import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
 import type { CheckKind, CheckSpec, Finding, UnconfirmedReason } from "./finding.js";
+import type { FindingState, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
 
 /** How the harness will know each kind of check is met, as the owner reads it. Total over the closed set. */
@@ -28,6 +29,32 @@ export const RECOVERED = "Finishing the review that was interrupted: the agent h
 export const NOT_NOW = "Nothing has been changed. The list is saved: see it again with delivery findings";
 export const NO_REVIEW_YET = "No review found in this project. Start one with: delivery review code";
 export const NOT_YET_DECIDED = "not yet decided";
+
+/** Where a problem stands, as the owner reads it. Total over the closed set. */
+export const STATE_WORDS: Record<FixState, string> = {
+  proposed: NOT_YET_DECIDED,
+  approved: "being fixed",
+  fixing: "being fixed",
+  skipped: "skipped by you",
+  fixed: "fixed and merged",
+  already_resolved: "already fixed",
+  unfixable: "could not be fixed",
+  stopped: "stopped by a setup problem",
+};
+
+/** "Fixed and merged" where the project's way of landing work opens a pull request instead: nothing has merged. */
+export const PR_OPENED = "fixed, pull request opened";
+
+export const stateWords = ({ state, fix }: FindingState): string => (state === "fixed" && fix?.closer === "open-pr" ? PR_OPENED : STATE_WORDS[state]);
+
+export const fixWaiting = (count: number): string => `${count} approved and not started yet. Start fixing ${count === 1 ? "it" : "them"} with: delivery fix`;
+
+/** Why a problem's fix stopped: the harness's plain sentence, then the agent's own words, quoted. */
+function stopLines({ state, fix }: FindingState): string[] {
+  if ((state !== "unfixable" && state !== "stopped") || !fix?.plain) return [];
+  const { sentence, agentSaid } = fix.plain;
+  return [`    Why: ${sentence}`, ...(agentSaid === null ? [] : [`    The agent said: ${quoted(agentSaid, "      ")}`])];
+}
 
 export const opening = (title: string): string[] => [`${title} of your project.`, READS_ONLY];
 export const unfinishedReview = (packName: string): string => `The last review was stopped before it was saved. Run \`delivery review ${packName}\` to finish it.`;
@@ -76,12 +103,17 @@ export function reviewLines({ header, result }: SavedReview): string[] {
   ];
 }
 
-/** What `delivery findings` prints: the latest review's problems and where each stands. */
-export function listLines({ header, result }: SavedReview): string[] {
+/** What `delivery findings` prints: the latest review's problems and where each stands. `states` is aligned with the review's problems. */
+export function listLines({ header, result }: SavedReview, states: readonly FindingState[]): string[] {
+  const waiting = states.filter((at) => at.state === "approved").length;
   return [
     `${header.pack.title} of ${basename(header.repoPath)}, ${dayAndMinute(header.endedAt)} UTC: ${problems(result.findings.length)}.`,
-    ...result.findings.map((finding, index) => `${index + 1}. ${finding.title} (${finding.severity}): ${NOT_YET_DECIDED}`),
+    ...result.findings.flatMap((finding, index) => {
+      const at = states[index] ?? { state: "proposed", fix: undefined };
+      return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...stopLines(at)];
+    }),
     ...unconfirmedPointer(result.unconfirmed.length),
+    ...(waiting === 0 ? [] : ["", fixWaiting(waiting)]),
     ...(result.findings.length === 0 ? [] : ["", "See one in full: delivery findings 1"]),
   ];
 }
