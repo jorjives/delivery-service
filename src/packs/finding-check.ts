@@ -48,14 +48,17 @@ async function textAt(where: Where, path: string): Promise<string | undefined | 
 
 /**
  * A link, or anything else that is not an ordinary file, among the files a
- * pattern names in a working copy: git's search passes over those, so one
- * standing where code was would hide that code from the check.
+ * pattern names in a working copy, or a file git is told not to look at on
+ * disk (assume-unchanged, skip-worktree): git's search passes over the first
+ * and reads the staged copy of the second, so either could hide code from the check.
  */
 async function oddFileIn(worktreePath: string, paths: string[]): Promise<{ error: string } | undefined> {
   const named = paths.map(projectPath);
   if (named.some((path) => path === undefined)) return undefined;
-  const listed = await git(worktreePath, ["ls-files", "-z", "--cached", "--others", "--", ...(named as string[])], { env: LITERAL, raw: true });
-  for (const path of new Set(listed.split("\0").filter(Boolean))) {
+  const listed = await git(worktreePath, ["ls-files", "-z", "-v", "--cached", "--others", "--", ...(named as string[])], { env: LITERAL, raw: true });
+  for (const entry of new Set(listed.split("\0").filter(Boolean))) {
+    const [tag, path] = [entry.charAt(0), entry.slice(2)];
+    if (tag === "S" || tag !== tag.toUpperCase()) return { error: `git is told not to look at ${path} as it stands on disk` };
     try {
       if (!(await lstat(join(worktreePath, path))).isFile()) return NOT_A_FILE(path);
     } catch (err) {

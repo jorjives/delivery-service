@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -85,6 +86,12 @@ describe("whether a problem's code is still there, in a working copy", () => {
     symlinkSync(join(repo, "..", "kept-settings.js"), join(repo, link));
     const check = { kind: "pattern-absent" as const, pattern: "JSON\\.parse\\(readFileSync\\(", paths };
     expect(await checkFinding(sampleFinding({ check }), { worktreePath: repo })).toEqual({ error: expect.any(String) });
+  });
+
+  it.each([["--assume-unchanged"], ["--skip-worktree"]])("is never resolved when a file the pattern names is marked %s", async (flag) => {
+    const repo = exampleRepo("finding-check-");
+    execFileSync("git", ["update-index", flag, "settings.js"], { cwd: repo });
+    expect(await checkFinding(SETTINGS, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
   it("still finds a pattern in a file the project's ignore list covers", async () => {
