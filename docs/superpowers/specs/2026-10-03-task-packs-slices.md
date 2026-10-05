@@ -84,6 +84,8 @@ not sliced.
 
 ## Slice 2: Choose Which Problems to Fix and Have Them Fixed and Merged
 
+**Status:** ✅ Complete — 2026-10-05 — `4d7015b`
+
 **Delivers:** The owner approves some problems and skips others, types `delivery fix`, and each approved problem is fixed by an agent in its own working copy, checked by its own specific check plus the project's existing tests, and merged into the main copy, with problems the agent cannot fix explained rather than dropped.
 
 **Operational note:** `delivery fix` writes a generated configuration into the review's folder; it is a real project configuration, so `validate`, `preview` and `status` read it unchanged, and where a project has no configuration file of its own the reading commands fall back to it. Fix runs are ordinary runs in the usual runs folder. The report's per-task data gains an optional tags field, additive to the published report schema and its published-keys guard. The gate context passed to every gate gains the run's base branch, which existing gates ignore.
