@@ -1,4 +1,4 @@
-import { readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PATTERN_LIMIT } from "./confirm.js";
@@ -72,6 +72,27 @@ describe("whether a problem's code is still there, in a working copy", () => {
     rmSync(join(repo, "checkout.js"));
     symlinkSync("/dev/null", join(repo, "checkout.js"));
     expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
+  });
+
+  it.each([
+    ["a file the pattern names", "settings.js", ["settings.js"]],
+    ["a file inside a folder the pattern names", "lib/settings.js", ["lib"]],
+  ])("is never resolved when %s is a link to the same code", async (_, link, paths) => {
+    const repo = exampleRepo("finding-check-");
+    writeFileSync(join(repo, "..", "kept-settings.js"), readFileSync(join(repo, "settings.js")));
+    rmSync(join(repo, "settings.js"));
+    mkdirSync(join(repo, "lib"));
+    symlinkSync(join(repo, "..", "kept-settings.js"), join(repo, link));
+    const check = { kind: "pattern-absent" as const, pattern: "JSON\\.parse\\(readFileSync\\(", paths };
+    expect(await checkFinding(sampleFinding({ check }), { worktreePath: repo })).toEqual({ error: expect.any(String) });
+  });
+
+  it("still finds a pattern in a file the project's ignore list covers", async () => {
+    const repo = exampleRepo("finding-check-");
+    writeFileSync(join(repo, ".gitignore"), "new.js\n");
+    writeFileSync(join(repo, "new.js"), "JSON.parse(readFileSync(x));\n");
+    const check = { kind: "pattern-absent" as const, pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["new.js"] };
+    expect(await checkFinding(sampleFinding({ check }), { worktreePath: repo })).toBe("present");
   });
 });
 

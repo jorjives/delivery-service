@@ -1,7 +1,8 @@
 import { lstat, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { git } from "../git-exec.js";
 import { isEnoent } from "../journal.js";
-import { fileAt, locate, patternFound, projectPath } from "./confirm.js";
+import { fileAt, LITERAL, locate, patternFound, projectPath } from "./confirm.js";
 import type { Finding } from "./finding.js";
 
 /** Where a problem is checked: the main copy at a commit, or a working copy as an agent left it. */
@@ -46,6 +47,25 @@ async function textAt(where: Where, path: string): Promise<string | undefined | 
 }
 
 /**
+ * A link, or anything else that is not an ordinary file, among the files a
+ * pattern names in a working copy: git's search passes over those, so one
+ * standing where code was would hide that code from the check.
+ */
+async function oddFileIn(worktreePath: string, paths: string[]): Promise<{ error: string } | undefined> {
+  const named = paths.map(projectPath);
+  if (named.some((path) => path === undefined)) return undefined;
+  const listed = await git(worktreePath, ["ls-files", "-z", "--cached", "--others", "--", ...(named as string[])], { env: LITERAL, raw: true });
+  for (const path of new Set(listed.split("\0").filter(Boolean))) {
+    try {
+      if (!(await lstat(join(worktreePath, path))).isFile()) return NOT_A_FILE(path);
+    } catch (err) {
+      if (!isEnoent(err)) throw err;
+    }
+  }
+  return undefined;
+}
+
+/**
  * Whether a problem is still there: its pattern still matches, or its flagged
  * code is still in its file (commented out counts as still there). A problem
  * whose check is "tests only" is judged by its flagged code too, for the one
@@ -54,6 +74,10 @@ async function textAt(where: Where, path: string): Promise<string | undefined | 
 export async function checkFinding(finding: Finding, where: Where): Promise<CheckResult> {
   const { check } = finding;
   if (check.kind === "pattern-absent") {
+    if ("worktreePath" in where) {
+      const odd = await oddFileIn(where.worktreePath, check.paths);
+      if (odd !== undefined) return odd;
+    }
     const found = "commit" in where ? await patternFound(where.repoPath, check, where.commit) : await patternFound(where.worktreePath, check);
     return typeof found === "boolean" ? (found ? "present" : "resolved") : found;
   }

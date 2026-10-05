@@ -93,7 +93,7 @@ export async function fileAt(repoPath: string, commit: string, path: string): Pr
 
 /**
  * Whether an agent-written pattern matches in the paths it names: at `commit`,
- * or in the working tree at `cwd` (new, untracked files included) when there is
+ * or in the working tree at `cwd` (new and ignored files included) when there is
  * none. Run through git with a time limit; anything that is not a clean "matches"
  * or "does not match" is an error, never an answer.
  */
@@ -101,7 +101,7 @@ export async function patternFound(cwd: string, check: Extract<CheckSpec, { kind
   const paths = check.paths.map(projectPath);
   if (check.pattern.length > PATTERN_LIMIT) return { error: `the pattern is longer than ${PATTERN_LIMIT} characters` };
   if (paths.some((path) => path === undefined)) return { error: "a path the check names leads outside the project" };
-  const scope = commit === undefined ? { options: ["--untracked"], revision: [] } : { options: [], revision: [commit] };
+  const scope = commit === undefined ? { options: ["--untracked", "--no-exclude-standard"], revision: [] } : { options: [], revision: [commit] };
   try {
     await git(cwd, ["grep", "-q", "-E", ...scope.options, "-e", check.pattern, ...scope.revision, "--", ...(paths as string[])], { env: LITERAL, timeout: PATTERN_TIMEOUT_MS });
     return true;
