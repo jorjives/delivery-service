@@ -89,7 +89,10 @@ export async function readReply(dir: string, header: ReviewHeader): Promise<Scan
 /** Save the confirmed list: the step that finishes a review. */
 export const saveResult = (dir: string, result: ScanResult): Promise<void> => writePrivate(join(dir, "refs", "scan.json"), result);
 
-export type ReviewEntry = { dir: string; state: "done" | "unfinished"; header: ReviewHeader } | { dir: string; state: "damaged"; file: string };
+export type ReviewEntry =
+  | { dir: string; state: "done"; header: ReviewHeader }
+  | { dir: string; state: "unfinished"; header: ReviewHeader }
+  | { dir: string; state: "damaged"; file: string };
 
 export interface SavedReview {
   dir: string;
