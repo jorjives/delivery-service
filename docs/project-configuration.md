@@ -135,6 +135,11 @@ Each tick is one thing it read. If something is wrong it prints the one thing to
 instead, and nothing starts. It needs no sign-in and no network and changes nothing, so
 run it as often as you like, and in CI on every push. In CI, `delivery validate --json` lists every problem at once, each with the setting it concerns, as one JSON document a script can read.
 
+In a project with no `delivery.config.json` of its own, after `delivery fix` has run,
+`validate`, `preview`, `status` and `report` read the configuration `delivery fix` wrote
+beside the review instead (`.delivery/packs/<review>/plan.config.json`), so you can check and
+follow a fix like any other list. `delivery run` never uses it.
+
 ## 7. See what the agent will be told
 
 ```bash

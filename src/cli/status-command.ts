@@ -478,10 +478,10 @@ async function mostRecent(repoPath: string): Promise<RunRecord | SupervisedRecor
   return owner ?? task;
 }
 
-/** The project's list as written now, or none when there is no list or the file fails to load: status reads it only to annotate, never to gate. */
+/** The project's list as written now, or none when there is no list or the file fails to load: status reads it only to annotate, never to gate. With no configuration of the project's own, the list is the newest fix's plan. */
 export async function listTasks(startDir: string, repoPath: string, ctx: CommandContext): Promise<TaskDef[]> {
   try {
-    return queueTasks(await loadConfig({ startDir, repoPath, flag: undefined, env: ctx.env }));
+    return queueTasks(await loadConfig({ startDir, repoPath, flag: undefined, env: ctx.env, orPlan: true }));
   } catch (err) {
     if (err instanceof Refusal) return [];
     throw err;

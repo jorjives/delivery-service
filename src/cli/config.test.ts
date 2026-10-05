@@ -4,6 +4,11 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { checkConfig, configCandidates, configProblems, DeliveryConfig, findConfig, loadConfig, NO_SUCH_CONFIG, structureTask, unknownCloser, unknownGate } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
+import { planConfig, writePlan } from "../packs/plan.js";
+import { fixTaskFor } from "../packs/fix-task.js";
+import { sampleFinding, writeReview } from "../packs/review-fixtures.js";
+import { DEFAULT_BUDGETS } from "../budgets.js";
+import { initTempRepo } from "../temp-repo.js";
 
 const FILE = "delivery.config.json";
 
@@ -571,6 +576,25 @@ describe("which config file a command means", () => {
   it("refuses a named file that isn't there", () => {
     const { repo } = tree();
     expect(() => findConfig({ startDir: repo, repoPath: repo, flag: "missing.json", env: {} })).toThrow(NO_SUCH_CONFIG("missing.json"));
+  });
+});
+
+describe("a project with no configuration of its own, after delivery fix", () => {
+  const NPM = { type: "command", command: "npm test", parseMode: "exitcode" } as const;
+  const planned = async (repo: string): Promise<string> =>
+    writePlan(await writeReview(repo), planConfig([fixTaskFor("code", sampleFinding(), NPM)], { gateRef: NPM, closerRef: { type: "merge-back" }, budgets: DEFAULT_BUDGETS, concurrency: 1 }, {}, undefined));
+
+  it("is read from the fix's plan by the commands that only read", async () => {
+    const repo = initTempRepo("config-plan-", { "a.js": "x\n" });
+    const plan = await planned(repo);
+    expect(findConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {}, orPlan: true })).toBe(plan);
+    expect(findConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {} })).toBeUndefined();
+  });
+
+  it("is never read from the plan when the project has its own", async () => {
+    const repo = initTempRepo("config-plan-", { "a.js": "x\n", "delivery.config.json": "{}\n" });
+    await planned(repo);
+    expect(findConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {}, orPlan: true })).toBe(join(realpathSync(repo), "delivery.config.json"));
   });
 });
 

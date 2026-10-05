@@ -6,6 +6,7 @@ import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
 import { CloserRef, RoleOverrides, TaskDef, Written } from "../schema.js";
+import { latestPlanFile } from "../packs/review-record.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
 
@@ -379,6 +380,8 @@ export interface ConfigLookup {
   repoPath: string;
   flag: string | undefined;
   env: NodeJS.ProcessEnv;
+  /** For the commands that only read: with no configuration of the project's own, use the newest plan `delivery fix` wrote. Never for a command that starts work. */
+  orPlan?: boolean;
 }
 
 /**
@@ -389,11 +392,11 @@ export interface ConfigLookup {
  * A named file that isn't there is refused rather than quietly replaced by
  * discovery.
  */
-export function findConfig({ startDir, repoPath, flag, env }: ConfigLookup): string | undefined {
+export function findConfig({ startDir, repoPath, flag, env, orPlan }: ConfigLookup): string | undefined {
   // An empty DELIVERY_CONFIG is CI writing an input nobody filled in: not a
   // file called "", and not a reason to refuse before discovery has run.
   const named = flag ?? (env.DELIVERY_CONFIG || undefined);
-  if (named === undefined) return configCandidates(startDir, repoPath).find((candidate) => existsSync(candidate));
+  if (named === undefined) return configCandidates(startDir, repoPath).find((candidate) => existsSync(candidate)) ?? (orPlan === true ? latestPlanFile(repoPath) : undefined);
   const file = resolve(startDir, named);
   if (!existsSync(file)) throw new Refusal(NO_SUCH_CONFIG(named), EXIT.configuration);
   return file;

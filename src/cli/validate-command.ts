@@ -103,7 +103,7 @@ export function checkedLines(config: DeliveryConfig, project: ProjectSettings): 
 export async function locateConfig(options: ValidateOptions, ctx: CommandContext): Promise<{ repoPath: string; file: string }> {
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
-  const file = findConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
+  const file = findConfig({ startDir, repoPath, flag: options.config, env: ctx.env, orPlan: true });
   if (file === undefined) throw new Refusal(NO_CONFIG, EXIT.configuration);
   return { repoPath, file };
 }

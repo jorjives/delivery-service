@@ -30,6 +30,10 @@ import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeSupervisedRun } from "
 import { takeRepoLock } from "../repo-lock.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
 import { SCHEMA_AND_REPORT } from "./report-command.js";
+import { DEFAULT_BUDGETS } from "../budgets.js";
+import { planConfig, writePlan } from "../packs/plan.js";
+import { fixTaskFor } from "../packs/fix-task.js";
+import { exampleRepo, sampleFinding, writeReview } from "../packs/review-fixtures.js";
 
 const LIST = [FORM, FOOTER, HOMEPAGE, BANNER];
 
@@ -474,6 +478,19 @@ describe("delivery report --json", () => {
     expect(documentIn(stdout).kind).toBe("list");
     expect(stderr).toMatch(/^This report could not be saved to \.delivery\/last-report\.txt and \.delivery\/last-report\.json\. The system said: "E[A-Z]+: /);
     expect(exitCode).toBe(0);
+  });
+
+  it("reports a fix's plan as the task list when the project has no configuration of its own, with each fix's tags", async () => {
+    const repo = exampleRepo("report-plan-");
+    const npm = { type: "command", command: "npm test", parseMode: "exitcode" } as const;
+    const dir = await writeReview(repo, { findings: [sampleFinding()] });
+    await writePlan(dir, planConfig([fixTaskFor("code", sampleFinding(), npm)], { gateRef: npm, closerRef: { type: "merge-back" }, budgets: DEFAULT_BUDGETS, concurrency: 1 }, {}, undefined));
+    const { surfaces } = documentIn((await delivery(["report", "--json"], { cwd: repo })).stdout);
+    expect(surfaces[0]).toMatchObject({
+      task: "Fix: The price shown at checkout can be negative (checkout.js)",
+      standing: "not_started",
+      tags: { pack: "code", findingId: "0123456789ab", severity: "high", phase: "fix" },
+    });
   });
 });
 
