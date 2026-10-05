@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PATTERN_LIMIT } from "./confirm.js";
@@ -114,6 +114,19 @@ describe("whether a problem's code is still there, in a working copy", () => {
     mkdirSync(join(repo, "lib"));
     symlinkSync(join(repo, "..", "kept-settings.js"), join(repo, link));
     const check = { kind: "pattern-absent" as const, pattern: "JSON\\.parse\\(readFileSync\\(", paths };
+    expect(await checkFinding(sampleFinding({ check }), { worktreePath: repo })).toEqual({ error: expect.any(String) });
+  });
+
+  it("is never resolved when a folder on a pattern's path is swapped for a link to the same code", async () => {
+    const repo = exampleRepo("finding-check-");
+    mkdirSync(join(repo, "lib"));
+    writeFileSync(join(repo, "lib", "settings.js"), readFileSync(join(repo, "settings.js")));
+    execFileSync("git", ["add", "lib"], { cwd: repo });
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "lib"], { cwd: repo });
+    const kept = join(repo, "..", `kept-lib-${Date.now()}`);
+    renameSync(join(repo, "lib"), kept);
+    symlinkSync(kept, join(repo, "lib"));
+    const check = { kind: "pattern-absent" as const, pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["lib/settings.js"] };
     expect(await checkFinding(sampleFinding({ check }), { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 

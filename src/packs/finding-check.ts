@@ -29,6 +29,27 @@ export function commentBlind(text: string): string {
 }
 
 const NOT_A_FILE = (path: string): { error: string } => ({ error: `${path} is not an ordinary file` });
+const LINKED = (path: string): { error: string } => ({ error: `${path} sits in a folder that is a link` });
+
+/**
+ * The folders on a path in a working copy, read one by one as git's own tree
+ * is: all real folders, one of them a link (which could lead anywhere, outside
+ * the working copy included), or one missing or not a folder, so nothing can be there.
+ */
+async function foldersOn(root: string, path: string): Promise<"real" | "linked" | "missing"> {
+  const parts = path.split("/");
+  try {
+    for (let i = 1; i < parts.length; i++) {
+      const folder = await lstat(join(root, ...parts.slice(0, i)));
+      if (folder.isSymbolicLink()) return "linked";
+      if (!folder.isDirectory()) return "missing";
+    }
+  } catch (err) {
+    if (isEnoent(err)) return "missing";
+    throw err;
+  }
+  return "real";
+}
 
 /** The file's text, nothing when it is not there, or an error when something other than an ordinary file stands in its place. */
 async function textAt(where: Where, path: string): Promise<string | undefined | { error: string }> {
@@ -37,14 +58,10 @@ async function textAt(where: Where, path: string): Promise<string | undefined | 
     if ("text" in file) return file.text;
     return file.reason === "no_such_file" ? undefined : NOT_A_FILE(path);
   }
-  // Folder by folder, as git's own tree is read: a link anywhere on the path could lead outside the working copy.
-  const parts = path.split("/");
   try {
-    for (let i = 1; i < parts.length; i++) {
-      const folder = await lstat(join(where.worktreePath, ...parts.slice(0, i)));
-      if (folder.isSymbolicLink()) return NOT_A_FILE(path);
-      if (!folder.isDirectory()) return undefined;
-    }
+    const folders = await foldersOn(where.worktreePath, path);
+    if (folders === "linked") return LINKED(path);
+    if (folders === "missing") return undefined;
     const file = await open(join(where.worktreePath, path), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const stat = await file.stat();
@@ -63,9 +80,10 @@ async function textAt(where: Where, path: string): Promise<string | undefined | 
 
 /**
  * A link, or anything else that is not an ordinary file, among the files a
- * pattern names in a working copy, or a file git is told not to look at on
- * disk (assume-unchanged, skip-worktree): git's search passes over the first
- * and reads the staged copy of the second, so either could hide code from the check.
+ * pattern names in a working copy or the folders they sit in, or a file git is
+ * told not to look at on disk (assume-unchanged, skip-worktree): git's search
+ * passes over the first and reads the staged copy of the second, so either
+ * could hide code from the check.
  */
 async function oddFileIn(worktreePath: string, paths: string[]): Promise<{ error: string } | undefined> {
   const named = paths.map(projectPath);
@@ -74,6 +92,9 @@ async function oddFileIn(worktreePath: string, paths: string[]): Promise<{ error
   for (const entry of new Set(listed.split("\0").filter(Boolean))) {
     const [tag, path] = [entry.charAt(0), entry.slice(2)];
     if (tag === "S" || tag !== tag.toUpperCase()) return { error: `git is told not to look at ${path} as it stands on disk` };
+    const folders = await foldersOn(worktreePath, path);
+    if (folders === "linked") return LINKED(path);
+    if (folders === "missing") continue;
     try {
       if (!(await lstat(join(worktreePath, path))).isFile()) return NOT_A_FILE(path);
     } catch (err) {
