@@ -22,6 +22,8 @@ export const PinnedPack = z.object({
   hash: z.string(),
   maxFindings: z.int().min(1),
   categories: z.array(z.object({ id: z.string(), title: z.string() })).min(1),
+  /** The pack's own instructions for fixing, pinned with the review so a fix reads what the review's pack said. Absent for a pack with none, and for a review made before packs had them. */
+  fixInstructions: z.string().optional(),
 });
 
 /** A review's header, written once the agent has replied: its existence is what makes a folder a review. */

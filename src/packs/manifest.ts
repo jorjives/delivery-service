@@ -11,6 +11,7 @@ export const PACK_SCHEMA = "delivery.pack/1";
 
 const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lower-case letters, digits and dashes");
 const Sentence = z.string().trim().min(1, "must not be empty");
+const PackFile = z.string().refine((file) => file !== "" && basename(file) === file, "must be the name of a file in the pack folder");
 
 /**
  * A pack's manifest. Data only and strict: a key this format does not name is
@@ -24,13 +25,15 @@ export const PackManifest = z.strictObject({
   title: Sentence,
   summary: Sentence,
   scan: z.strictObject({
-    prompt: z.string().refine((file) => file !== "" && basename(file) === file, "must be the name of a file in the pack folder"),
+    prompt: PackFile,
     categories: z
       .array(z.strictObject({ id: Slug, title: Sentence, description: Sentence }))
       .min(1)
       .refine((categories) => new Set(categories.map((category) => category.id)).size === categories.length, "must not name the same category twice"),
     maxFindings: z.int().min(1).max(200).default(40),
   }),
+  /** What the agent fixing one of this pack's problems is told, beside the harness's own fixed instructions. Optional: the harness's alone are enough. */
+  fix: z.strictObject({ prompt: PackFile }).optional(),
   severity: z.strictObject({ low: Sentence, medium: Sentence, high: Sentence, critical: Sentence }),
 });
 export type PackManifest = z.infer<typeof PackManifest>;
@@ -40,6 +43,7 @@ export interface Pack {
   dir: string;
   manifest: PackManifest;
   scanInstructions: string;
+  fixInstructions?: string;
   hash: string;
 }
 
@@ -73,8 +77,11 @@ export async function loadPack(dir: string): Promise<Pack> {
     throw new InvalidPack(manifestFile, `${where} ${issue?.message ?? "is not a valid pack"}`);
   }
   const scanInstructions = await readPackFile(dir, parsed.data.scan.prompt);
-  const hash = createHash("sha256").update(raw).update("\0").update(scanInstructions).digest("hex");
-  return { dir, manifest: parsed.data, scanInstructions, hash };
+  const fixInstructions = parsed.data.fix === undefined ? undefined : await readPackFile(dir, parsed.data.fix.prompt);
+  const hasher = createHash("sha256").update(raw).update("\0").update(scanInstructions);
+  // A pack without fix instructions keeps the identity it had before they existed.
+  if (fixInstructions !== undefined) hasher.update("\0").update(fixInstructions);
+  return { dir, manifest: parsed.data, scanInstructions, ...(fixInstructions === undefined ? {} : { fixInstructions }), hash: hasher.digest("hex") };
 }
 
 /** Every pack shipped with the harness, in folder order. */

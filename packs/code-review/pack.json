@@ -15,6 +15,7 @@
     ],
     "maxFindings": 40
   },
+  "fix": { "prompt": "fix.md" },
   "severity": {
     "low": "Untidy or confusing, but nothing goes wrong because of it.",
     "medium": "Something goes wrong in an unusual case, or the next change here is likely to break something.",

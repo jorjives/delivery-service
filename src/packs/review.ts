@@ -37,13 +37,14 @@ export async function finishReview(repoPath: string, dir: string): Promise<Saved
   return { dir, header, result };
 }
 
-const pinned = ({ manifest, hash }: Pack): ReviewHeader["pack"] => ({
+const pinned = ({ manifest, hash, fixInstructions }: Pack): ReviewHeader["pack"] => ({
   name: manifest.name,
   version: manifest.version,
   title: manifest.title,
   hash,
   maxFindings: manifest.scan.maxFindings,
   categories: manifest.scan.categories.map(({ id, title }) => ({ id, title })),
+  ...(fixInstructions === undefined ? {} : { fixInstructions }),
 });
 
 async function takenIds(repoPath: string): Promise<Set<string>> {
