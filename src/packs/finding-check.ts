@@ -29,26 +29,26 @@ export function commentBlind(text: string): string {
 }
 
 const NOT_A_FILE = (path: string): { error: string } => ({ error: `${path} is not an ordinary file` });
-const LINKED = (path: string): { error: string } => ({ error: `${path} sits in a folder that is a link` });
-
 /**
- * The folders on a path in a working copy, read one by one as git's own tree
- * is: all real folders, one of them a link (which could lead anywhere, outside
- * the working copy included), or one missing or not a folder, so nothing can be there.
+ * Whether the folders on a path in a working copy, read one by one as git's
+ * own tree is, are all real folders (nothing), one of them a link (an error: it
+ * could lead anywhere, outside the working copy included), or one missing or
+ * not a folder, so nothing can be there.
  */
-async function foldersOn(root: string, path: string): Promise<"real" | "linked" | "missing"> {
-  const parts = path.split("/");
+async function foldersOn(root: string, path: string): Promise<{ error: string } | "missing" | undefined> {
+  let folder = root;
   try {
-    for (let i = 1; i < parts.length; i++) {
-      const folder = await lstat(join(root, ...parts.slice(0, i)));
-      if (folder.isSymbolicLink()) return "linked";
-      if (!folder.isDirectory()) return "missing";
+    for (const part of path.split("/").slice(0, -1)) {
+      folder = join(folder, part);
+      const stat = await lstat(folder);
+      if (stat.isSymbolicLink()) return { error: `${path} sits in a folder that is a link` };
+      if (!stat.isDirectory()) return "missing";
     }
   } catch (err) {
     if (isEnoent(err)) return "missing";
     throw err;
   }
-  return "real";
+  return undefined;
 }
 
 /** The file's text, nothing when it is not there, or an error when something other than an ordinary file stands in its place. */
@@ -60,8 +60,7 @@ async function textAt(where: Where, path: string): Promise<string | undefined | 
   }
   try {
     const folders = await foldersOn(where.worktreePath, path);
-    if (folders === "linked") return LINKED(path);
-    if (folders === "missing") return undefined;
+    if (folders !== undefined) return folders === "missing" ? undefined : folders;
     const file = await open(join(where.worktreePath, path), constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     try {
       const stat = await file.stat();
@@ -72,7 +71,7 @@ async function textAt(where: Where, path: string): Promise<string | undefined | 
       await file.close();
     }
   } catch (err) {
-    if (err instanceof Error && "code" in err && err.code === "ELOOP") return NOT_A_FILE(path);
+    if ((err as NodeJS.ErrnoException).code === "ELOOP") return NOT_A_FILE(path);
     if (isEnoent(err)) return undefined;
     throw err;
   }
@@ -93,8 +92,8 @@ async function oddFileIn(worktreePath: string, paths: string[]): Promise<{ error
     const [tag, path] = [entry.charAt(0), entry.slice(2)];
     if (tag === "S" || tag !== tag.toUpperCase()) return { error: `git is told not to look at ${path} as it stands on disk` };
     const folders = await foldersOn(worktreePath, path);
-    if (folders === "linked") return LINKED(path);
     if (folders === "missing") continue;
+    if (folders !== undefined) return folders;
     try {
       if (!(await lstat(join(worktreePath, path))).isFile()) return NOT_A_FILE(path);
     } catch (err) {

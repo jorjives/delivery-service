@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { PATTERN_LIMIT } from "./confirm.js";
+import { FILE_LIMIT, PATTERN_LIMIT } from "./confirm.js";
 import { checkFinding, commentBlind } from "./finding-check.js";
 import { exampleRepo, sampleFinding } from "./review-fixtures.js";
 
@@ -100,7 +100,7 @@ describe("whether a problem's code is still there, in a working copy", () => {
 
   it("is never resolved when the flagged file is too large to read", async () => {
     const repo = exampleRepo("finding-check-");
-    writeFileSync(join(repo, "checkout.js"), "x".repeat(10 * 1024 * 1024 + 1));
+    writeFileSync(join(repo, "checkout.js"), "x".repeat(FILE_LIMIT + 1));
     expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
