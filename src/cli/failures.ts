@@ -18,6 +18,7 @@ import {
   MockNotInstalled,
   InvalidPack,
   UnknownPack,
+  DamagedReview,
 } from "../errors.js";
 import { messageOf } from "../gate-support.js";
 
@@ -82,6 +83,7 @@ const KNOWN_ERRORS = [
   MockNotInstalled,
   InvalidPack,
   UnknownPack,
+  DamagedReview,
 ] as const;
 type KnownError = InstanceType<(typeof KNOWN_ERRORS)[number]>;
 
@@ -170,6 +172,13 @@ function renderKnown(err: KnownError): RenderedFailure {
           `There is no review called "${err.packName}". The reviews available are: ${err.available.join(", ")}. ` +
           "To use a review from a folder of your own, give its path, such as ./my-review.",
         exitCode: EXIT.configuration,
+      };
+    case "DAMAGED_REVIEW":
+      return {
+        message:
+          `The saved review in ${err.filePath} can't be read back, usually because the harness was stopped while writing it. ` +
+          "Run the review again to make a new one, for example: delivery review code",
+        exitCode: EXIT.unexpected,
       };
     case "IMMUTABILITY_VIOLATION":
     case "MISSING_BASELINE":

@@ -215,3 +215,12 @@ export class UnknownPack extends Error {
     this.name = "UnknownPack";
   }
 }
+
+/** A saved review that cannot be read back: the file that is damaged. */
+export class DamagedReview extends Error {
+  readonly code = "DAMAGED_REVIEW" as const;
+  constructor(readonly filePath: string) {
+    super(`Damaged review record ${filePath}`);
+    this.name = "DamagedReview";
+  }
+}

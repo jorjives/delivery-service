@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { MockExpectation, MockScript } from "../mock-script.js";
 import { initTempRepo } from "../temp-repo.js";
-import type { ScanEnvelope } from "./finding.js";
+import type { Finding, Unconfirmed, ScanEnvelope } from "./finding.js";
+import { saveResult, startReview, type ReviewHeader } from "./review-record.js";
 
 /** Test and demo support: the example project with planted flaws. */
 export const EXAMPLE_DIR = fileURLToPath(new URL("../../examples/code-review-example/", import.meta.url));
@@ -69,4 +70,41 @@ export const EXAMPLE_SCAN: ScanEnvelope = {
 /** A claude-mock script whose one session replies with `envelope`. */
 export function scanScript(envelope: unknown, extra: Partial<MockExpectation> = {}): MockScript {
   return { expectations: [{ json: envelope, ...extra }] };
+}
+
+/** Test support: one confirmed problem, as a finished review holds it. */
+export function sampleFinding(overrides: Partial<Finding> = {}): Finding {
+  return {
+    id: "0123456789ab",
+    title: "The price shown at checkout can be negative",
+    category: "correctness",
+    severity: "high",
+    where: { path: "checkout.js", line: 3, endLine: 3 },
+    problem: "A discount larger than the price makes the total negative.",
+    whyItMatters: "Wrong totals cost money and trust.",
+    fixedLooksLike: "A total never goes below zero.",
+    anchor: "return price - discount;",
+    check: { kind: "anchor-gone" },
+    source: "reviewer",
+    ...overrides,
+  };
+}
+
+/** Test support: a code review's record on disk, exactly as a review leaves it, without an agent. `finished: false` stops before the list is saved. */
+export async function writeReview(
+  repoPath: string,
+  { reviewId = "code-20261005T101500Z", findings = [], unconfirmed = [], notShown = 0, finished = true }: { reviewId?: string; findings?: Finding[]; unconfirmed?: Unconfirmed[]; notShown?: number; finished?: boolean } = {},
+): Promise<string> {
+  const header: ReviewHeader = {
+    reviewId,
+    pack: { name: reviewId.split("-")[0] ?? "code", version: "1.0.0", title: "Code review", hash: "0".repeat(64), maxFindings: 40, categories: [{ id: "correctness", title: "Wrong results" }, { id: "error-handling", title: "Missing handling of things going wrong" }, { id: "dead-code", title: "Code nothing uses" }] },
+    repoPath,
+    commit: "1".repeat(40),
+    fileCount: 4,
+    startedAt: "2026-10-05T10:15:00.000Z",
+    endedAt: "2026-10-05T10:19:12.000Z",
+  };
+  const dir = await startReview(repoPath, header, { envelope: { findings: [], notes: "" } });
+  if (finished) await saveResult(dir, { findings, unconfirmed, notShown, notes: "" });
+  return dir;
 }

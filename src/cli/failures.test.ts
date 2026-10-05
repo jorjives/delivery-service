@@ -19,6 +19,7 @@ import {
   MockNotInstalled,
   InvalidPack,
   UnknownPack,
+  DamagedReview,
 } from "../errors.js";
 import { EXIT, Refusal, renderFailure, UNEXPECTED_FOOTER } from "./failures.js";
 
@@ -104,6 +105,15 @@ describe("renderFailure", () => {
     expect(renderFailure(new InvalidPack("/p/pack.json", '"version" must be a version such as 1.0.0'))).toEqual({
       message: 'I can\'t use the review in /p/pack.json: "version" must be a version such as 1.0.0.',
       exitCode: EXIT.configuration,
+    });
+  });
+
+  it("names a damaged review and offers a fresh one, with no stack trace", () => {
+    expect(renderFailure(new DamagedReview("/p/.delivery/packs/code-x/review.json"))).toEqual({
+      message:
+        "The saved review in /p/.delivery/packs/code-x/review.json can't be read back, usually because the harness was stopped while writing it. " +
+        "Run the review again to make a new one, for example: delivery review code",
+      exitCode: EXIT.unexpected,
     });
   });
 });
