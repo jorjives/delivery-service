@@ -36,7 +36,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export const minuteOf = (iso: string): string => iso.slice(11, 16);
 
 /** "1 Oct 02:19", the same way. */
-const dayAndMinute = (iso: string): string => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1] ?? iso.slice(5, 7)} ${minuteOf(iso)}`;
+export const dayAndMinute = (iso: string): string => `${Number(iso.slice(8, 10))} ${MONTHS[Number(iso.slice(5, 7)) - 1] ?? iso.slice(5, 7)} ${minuteOf(iso)}`;
 
 /** How long it was between two recorded instants. Never measured against now. */
 function elapsed(from: string, to: string): string {

@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { FORBIDDEN } from "../report/report-fixtures.js";
 import type { MockExpectation, MockScript } from "../mock-script.js";
 import { initTempRepo } from "../temp-repo.js";
 import type { Finding, Unconfirmed, ScanEnvelope } from "./finding.js";
@@ -108,3 +109,9 @@ export async function writeReview(
   if (finished) await saveResult(dir, { findings, unconfirmed, notShown, notes: "" });
   return dir;
 }
+
+/** Words a review never says to its owner: the report's forbidden words, and the ones the task-packs vocabulary adds. Strip `delivery findings` (a command name) before matching. */
+export const PACK_FORBIDDEN = new RegExp(
+  `${FORBIDDEN.source}|\\b(findings?|assertions?|delta|anchors?|scanner|scan agent|lockfiles?|transitive|CVSS|CVEs?|exploits?|held|landed|closed)\\b`,
+  "i",
+);
