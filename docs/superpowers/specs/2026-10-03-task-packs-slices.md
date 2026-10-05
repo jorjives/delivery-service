@@ -29,6 +29,8 @@ not sliced.
 
 ## Slice 1: Ask for a Code Review and Read the Problems in Plain Words
 
+**Status:** ✅ Complete — 2026-10-05 — `a33c530`
+
 **Delivers:** A project owner with no configuration file types `delivery review code` and reads a numbered list of problems in her project, each with where it is, what is wrong, why it matters, what fixed looks like and how the harness will know it is fixed, without anything in her project being changed.
 
 **Operational note:** Introduces a review record kept inside the project's existing self-ignoring harness folder, written with the same crash-safe discipline as run records, so a review interrupted part-way is recovered by running the command again. Built-in packs ship inside the published package, so the package contents change. An example repository with planted flaws ships alongside the existing examples, and a scripted-agent demo of a review sits with the existing demos so the output can be seen with no agent and no sign-in. Introduces the owner guide for task packs. A behaviour-preserving extraction from the agent invocation primitive lets a session run without a case file; the existing invocation tests prove it unchanged.
