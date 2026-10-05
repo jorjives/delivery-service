@@ -1,0 +1,87 @@
+import { z } from "zod";
+
+/** How serious a problem is, most serious first: the order a review lists them in. Words a pack defines, never a number. */
+export const SEVERITIES = ["critical", "high", "medium", "low"] as const;
+export const Severity = z.enum(SEVERITIES);
+export type Severity = z.infer<typeof Severity>;
+
+/**
+ * How the harness will know a problem is fixed. Closed and harness-owned: a
+ * review's agent picks one, and the harness decides whether it can be used.
+ */
+export const CheckSpec = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("anchor-gone") }),
+  z.object({ kind: z.literal("pattern-absent"), pattern: z.string().min(1), paths: z.array(z.string().min(1)).min(1) }),
+  z.object({ kind: z.literal("none") }),
+]);
+export type CheckSpec = z.infer<typeof CheckSpec>;
+export type CheckKind = CheckSpec["kind"];
+
+const Text = z.string().min(1);
+
+/**
+ * The reply a review's agent must give, for one pack: only that pack's
+ * categories. It carries no id and no line: identity and position are the
+ * harness's, worked out from the repository, never taken on the agent's word.
+ */
+export function scanEnvelopeFor(categoryIds: readonly string[]) {
+  const [first, ...rest] = categoryIds;
+  if (first === undefined) throw new Error("a pack names at least one category");
+  const ScannedFinding = z.object({
+    title: Text,
+    category: z.enum([first, ...rest]),
+    severity: Severity,
+    where: z.object({ path: Text }),
+    problem: Text,
+    whyItMatters: Text,
+    fixedLooksLike: Text,
+    anchor: Text,
+    check: CheckSpec,
+    detail: z.string().optional(),
+  });
+  return z.object({ findings: z.array(ScannedFinding), notes: z.string() });
+}
+export type ScanEnvelope = z.infer<ReturnType<typeof scanEnvelopeFor>>;
+export type ScannedFinding = ScanEnvelope["findings"][number];
+
+/** Why a reported problem could not be confirmed, so is listed but not offered. Closed, so the words for it are total. */
+export const UNCONFIRMED_REASONS = ["no_such_file", "outside_project", "not_a_file", "text_not_found", "vague"] as const;
+export type UnconfirmedReason = (typeof UNCONFIRMED_REASONS)[number];
+
+/** A problem the harness confirmed in the repository at the review's commit. */
+export const Finding = z.object({
+  id: z.string().regex(/^[0-9a-f]{12}$/),
+  title: z.string(),
+  category: z.string(),
+  severity: Severity,
+  where: z.object({ path: z.string(), line: z.int().min(1), endLine: z.int().min(1) }),
+  problem: z.string(),
+  whyItMatters: z.string(),
+  fixedLooksLike: z.string(),
+  anchor: z.string(),
+  check: CheckSpec,
+  /** The check the agent suggested and the harness could not use, kept for engineers. */
+  droppedCheck: CheckSpec.optional(),
+  detail: z.string().optional(),
+  source: z.literal("reviewer"),
+});
+export type Finding = z.infer<typeof Finding>;
+
+/** A problem the agent reported that the harness could not place in the repository. */
+export const Unconfirmed = z.object({
+  title: z.string(),
+  severity: Severity,
+  path: z.string(),
+  problem: z.string(),
+  reason: z.enum(UNCONFIRMED_REASONS),
+});
+export type Unconfirmed = z.infer<typeof Unconfirmed>;
+
+/** What a finished review found: what it offers, what it could not confirm, how many it left out over the limit, and the agent's notes. */
+export const ScanResult = z.object({
+  findings: z.array(Finding),
+  unconfirmed: z.array(Unconfirmed),
+  notShown: z.int().min(0),
+  notes: z.string(),
+});
+export type ScanResult = z.infer<typeof ScanResult>;
