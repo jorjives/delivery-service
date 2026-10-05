@@ -53,6 +53,8 @@ it with a plain message, and it is deliberately left out of `--help`. `src/cli/r
 drives the command in-process this way; `runDelivery` in `tests/helpers.ts` drives the compiled
 binary.
 
+The built-in reviews `delivery review` runs are data-only folders under `packs/` (a `pack.json` manifest and the agent's `scan.md` instructions), shipped in the package; `src/packs/` is the engine. To see a review without an agent, run `npm run demo:packs-slice-1`: it reviews a copy of `examples/code-review-example` with the scripted reply `EXAMPLE_SCAN` from `src/packs/review-fixtures.ts`. Tests script a review the same way, with `scanScript(envelope)`, and write a review's record directly with `writeReview`. Every sentence a review prints comes from `src/packs/render.ts`; `src/packs/render.test.ts` holds them to the owner vocabulary.
+
 To prove a gate, a closer and role configurations work together, run one surface end to end
 against `claude-mock` with `runSurfaceAgainstMock` from `src/testing.ts`, in a scratch
 repository made with `initTempRepo`. It returns the run's result and the parsed journal:
