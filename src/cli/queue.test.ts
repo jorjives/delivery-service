@@ -271,8 +271,8 @@ describe("working down a list that carries on", () => {
     const lines: string[] = [];
     const asked: string[] = [];
     const skip = async (task: TaskDef): Promise<boolean> => {
-      asked.push(task.intent);
-      return task.intent === PAGE;
+      asked.push(task.intent as string);
+      return (task.intent as string) === PAGE;
     };
     const exitCode = await runQueue([{ intent: PAGE }, { intent: SWAP }], project, { repoPath: repo, carryOn: true, skip }, contextIn(repo, lines));
     expect(asked).toEqual([PAGE]); // SWAP already has a run, so it is never asked about
