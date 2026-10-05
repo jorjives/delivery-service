@@ -222,6 +222,18 @@ export async function runCli(io: CliIo): Promise<number> {
     });
 
   program
+    .command("fix")
+    .description(
+      "fix the problems you approved in your latest review: each is fixed by an agent in its own copy, checked by its own check and your tests, then merged",
+    )
+    .option("--concurrency <n>", "how many problems to fix at once (default: 1, or `concurrency` in delivery.config.json)")
+    .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
+    .action(async (options: { repo?: string; concurrency?: string }, command: Command) => {
+      const { fixCommand } = await import("./fix-command.js");
+      exitCode = await fixCommand(options, contextFor(io, command));
+    });
+
+  program
     .command("packs")
     .description("list the reviews available, each with a sentence saying what it looks for")
     .action(async (_options: unknown, command: Command) => {

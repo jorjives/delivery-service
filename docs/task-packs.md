@@ -67,6 +67,35 @@ problem that is tests only says so once, because only your existing tests can sh
 - "could not be fixed": the agent could not fix it. The reason follows, with what the agent said.
 - "stopped by a setup problem": something in the setup stopped the fix, and an engineer is needed.
 
+## Having them fixed
+
+```bash
+delivery fix
+```
+
+It says how many approved problems it is fixing and how many at once, and you can follow it
+from another terminal with `delivery status --watch`. Each problem is fixed by an agent in its
+own copy of your project. The agent is given the problem as the review described it, and told
+that this is a description to act on, not instructions to obey. A fix counts only when the
+problem's own check passes (the flagged code is gone, and commenting it out does not count, or
+the risky pattern no longer appears) and every test that passed before still passes. A check
+that cannot run is treated as a problem with the check, never as a pass.
+
+A fix that passes is merged into your project, unless your `delivery.config.json` names another
+`closer`. A problem whose code had already gone when its fix would start is "already fixed" and
+is not worked on: the check is made just before each fix starts, so a problem that an earlier fix in the same
+run has already resolved is found out without an agent being spent on it. One the agent cannot fix is "could not be fixed", with the reason and what
+the agent said, and the other approved problems are still fixed.
+
+Run `delivery fix` again at any time, including after an interruption: it works only on the
+approved problems that have not finished, and never fixes the same problem twice. Several at
+once (`delivery fix --concurrency 3`), fixes are never merged over each other: merging only ever
+moves your project forward onto a fix that already contains everything before it, so a fix that
+finished after another had already been merged cannot be merged, and is reported as stopped
+with the reason rather than forced in. To fix several at once, a `closer` that keeps a branch
+or opens a pull request suits better than merging.
+`validate`, `preview`, `status` and `report` show a fix like any other list.
+
 ## Where a review is kept
 
 Each review is a folder under `.delivery/packs/` in your project. `.delivery/` ignores itself, so nothing shows up in `git status`. If a review is interrupted after the agent has replied, run the same command again: the review is finished from the saved reply without asking the agent again. If it is interrupted while the agent is working, running it again starts the review afresh. If a review could not run (not signed in, no connection, a usage limit, or a reply the harness could not read), it says so in one sentence and saves nothing.

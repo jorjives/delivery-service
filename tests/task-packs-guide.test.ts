@@ -40,4 +40,10 @@ describe("the task packs guide", () => {
     for (const command of ["delivery findings approve 1 3", "delivery findings approve --all", "delivery findings skip 2"]) expect(guide).toContain(command);
     for (const phrase of [...Object.values(STATE_WORDS), PR_OPENED]) expect(flat).toContain(phrase);
   });
+
+  it("shows how to have the approved problems fixed, and where to watch", () => {
+    expect(guide).toContain("delivery fix");
+    expect(guide).toContain("delivery status --watch");
+    expect(flat).toContain("a description to act on, not instructions to obey");
+  });
 });

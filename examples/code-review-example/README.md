@@ -20,3 +20,15 @@ so the problems are ones the tests miss.
 3. Run `delivery review code`, then `delivery findings 1`. Nothing in the folder changes.
 
 [Reviewing your project](../../docs/task-packs.md) explains what you see.
+
+Then choose and fix:
+
+```bash
+delivery findings approve 1 2
+delivery findings skip 3
+delivery fix
+delivery findings
+```
+
+The approved problems end "fixed and merged" (or say plainly why one could not be fixed), the
+skipped one stays as it is, and `checkout.js` and `settings.js` hold the fixes.
