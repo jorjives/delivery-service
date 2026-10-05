@@ -8,6 +8,8 @@ export interface GateContext {
   worktreePath: string;
   taskDef: TaskDef;
   gateRef: GateRef;
+  /** The branch the run started from and lands on, as pinned in the case file, or `null` for a run that recorded none. Most gates ignore it. */
+  baseBranch?: string | null;
 }
 
 export interface Gate {

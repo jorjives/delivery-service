@@ -45,6 +45,7 @@ Each method receives a `GateContext`:
 | `worktreePath` | The absolute path of the worktree to measure. Measure this, and nothing else. |
 | `taskDef` | The surface's task definition, as pinned in the case file. Most gates ignore it. |
 | `gateRef` | The gate reference that selected this gate, as pinned in the case file. |
+| `baseBranch` | The branch the run started from and its work lands on, as pinned in the case file, or `null` for a run that recorded none. Most gates ignore it. |
 
 and must return a `GateReport`:
 

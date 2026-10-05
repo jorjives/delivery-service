@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { create, load, readRef } from "./case-file.js";
+import { create, load, readRef, setBaseBranch } from "./case-file.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
 import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
 import type { BudgetSet, GateRef } from "./schema.js";
@@ -230,5 +230,23 @@ describe("runCheck", () => {
       .toMatchObject({ id: "2 - beta" });
     expect(await readRef(surfaceDir, secondFailure.detailRef))
       .toMatchObject({ id: "1 - alpha" });
+  });
+});
+
+describe("what a gate is told", () => {
+  it("includes the branch the run started from, which a gate may use or ignore", async () => {
+    const repoPath = await mkdtemp(join(tmpdir(), "run-gate-repo-"));
+    await writeFile(
+      join(repoPath, "branch-gate.mjs"),
+      "const report = (ctx) => ({ status: 'PASS', assertions: [{ id: 'base', outcome: 'PASS', detail: String(ctx.baseBranch) }] });\n" +
+        "export default { baseline: async (ctx) => report(ctx), check: async (ctx) => report(ctx) };\n",
+    );
+    const dir = await mkdtemp(join(tmpdir(), "run-gate-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "fix bug" }, gateRef: { type: "custom", modulePath: "./branch-gate.mjs" } }, budgets);
+    await setBaseBranch(dir, "main");
+
+    const report = await recordBaseline(dir, { repoPath, worktreePath: await mkdtemp(join(tmpdir(), "run-gate-tree-")) });
+
+    expect(report.assertions[0]?.detail).toBe("main");
   });
 });
