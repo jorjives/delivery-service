@@ -3,7 +3,15 @@ import type { CloseRepairBrief, EscalationPacket, SharpenedBrief, TriageEnvelope
 
 // --- AgentPort (createAgentPort in agent-invoke.ts is the SDK-backed implementation) ---
 
-export type AgentRole = "worker" | "triage" | "gate-maintenance";
+/** The roles a surface dispatches through the agent port. */
+export type DispatchedRole = "worker" | "triage" | "gate-maintenance";
+
+/**
+ * Every role the harness configures: the three a surface dispatches, and the
+ * scanner, which a review runs on its own, with no case file, through
+ * `runSession`. The scanner is never dispatched through `AgentPort`.
+ */
+export type AgentRole = DispatchedRole | "scanner";
 
 /**
  * The driver's handle for "which role is being dispatched". The full pinned
@@ -73,7 +81,7 @@ export interface RoleTerminusMap {
 }
 
 export interface AgentPort {
-  invoke<R extends AgentRole>(roleCfg: RoleHandle & { role: R }, ctx: AgentContext): Promise<RoleTerminusMap[R]>;
+  invoke<R extends DispatchedRole>(roleCfg: RoleHandle & { role: R }, ctx: AgentContext): Promise<RoleTerminusMap[R]>;
 }
 
 // --- TriagePort (deterministicRouter in router.ts; createAgentTriage in triage.ts) ---

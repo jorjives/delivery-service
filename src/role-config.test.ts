@@ -143,3 +143,16 @@ describe("a triage config cannot be configured into editing the worktree", () =>
     ).not.toThrow();
   });
 });
+
+describe("the scanner role", () => {
+  const scanner = (allowedTools: string[]) => ({ role: "scanner" as const, systemPromptFragment: "You review.", envelopeSchema: z.object({}), allowedTools });
+
+  it("is accepted with the read-only tools", () => {
+    expect(() => validateRoleConfig(scanner([...READ_ONLY_TOOLS]))).not.toThrow();
+  });
+
+  it.each(["Edit", "Write", "Bash"])("is refused %s, because a review only reads", (tool) => {
+    expect(() => validateRoleConfig(scanner(["Read", tool]))).toThrow(InvalidRoleConfig);
+    expect(() => validateRoleConfig(scanner(["Read", tool]))).toThrow(`scanner is read-only by design and may use only Read, Glob, Grep, not ${tool}`);
+  });
+});

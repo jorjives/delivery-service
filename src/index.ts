@@ -18,6 +18,7 @@ export { deterministicRouter } from "./router.js";
 export type { AdvanceResult, RunResult } from "./surface.js";
 export type {
   AgentRole,
+  DispatchedRole,
   RoleHandle,
   AgentContext,
   Terminus,

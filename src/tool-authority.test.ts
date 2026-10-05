@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { z } from "zod";
 import {
   createToolAuthority,
   refusalSentence,
@@ -6,7 +7,7 @@ import {
   authorityRefusal,
 } from "./tool-authority.js";
 import type { RoleConfig } from "./role-config.js";
-import { WorkerEnvelope } from "./role-config.js";
+import { WorkerEnvelope, READ_ONLY_TOOLS } from "./role-config.js";
 
 const readOnlyWorker: RoleConfig = {
   role: "worker",
@@ -187,5 +188,22 @@ describe("classifying what a finished session refused", () => {
     const own = refusalSentence(readOnlyWorker, "Bash");
     const terminus = authorityRefusal(readOnlyWorker, [own], [{ tool_name: "Write" }]);
     expect(terminus?.rationale).toBe(`worker session did not complete: ${own}`);
+  });
+});
+
+describe("the scanner's guard", () => {
+  const scanner: RoleConfig<unknown> = { role: "scanner", systemPromptFragment: "You review.", envelopeSchema: z.object({}), allowedTools: [...READ_ONLY_TOOLS] };
+
+  it("refuses an edit, a command and a read outside the project, and allows a read inside it", async () => {
+    const authority = createToolAuthority(scanner, worktree);
+    expect((await authority.canUseTool("Edit", { file_path: `${worktree}/a.js` }, sdkCallOptions))?.behavior).toBe("deny");
+    expect((await authority.canUseTool("Bash", { command: "ls" }, sdkCallOptions))?.behavior).toBe("deny");
+    expect((await authority.canUseTool("Read", { file_path: "/etc/passwd" }, sdkCallOptions))?.behavior).toBe("deny");
+    expect((await authority.canUseTool("Read", { file_path: `${worktree}/a.js` }, sdkCallOptions))?.behavior).toBe("allow");
+    expect(authority.refusals).toEqual([
+      refusalSentence(scanner, "Edit"),
+      refusalSentence(scanner, "Bash"),
+      outsideWorktreeSentence(scanner, "Read", "/etc/passwd"),
+    ]);
   });
 });

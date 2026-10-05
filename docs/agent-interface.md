@@ -16,7 +16,7 @@ close interfaces). This is the seam claude-mock fakes.
 
 ## Core concepts
 
-- **Role**: worker, triage, or gate-maintenance. A role is a *configuration* of the
+- **Role**: worker, triage, gate-maintenance, or scanner. A role is a *configuration* of the
   one primitive, not a distinct interface. The closer and the deterministic router
   are not agents and never enter this seam.
 - **Invocation**: one call into the primitive. It spawns a fresh SDK session, feeds
@@ -78,6 +78,7 @@ config it is handed does.
 | **worker** | edits the worktree | completion note | `completed`, `escalate(category)` |
 | **triage** | read-only over the case file | `SharpenedBrief` / `EscalationPacket` | `reroute`, `escalate`, `fix_the_gate`, `retry_close`, `abort` |
 | **gate-maintenance** | edits environment/harness, never assertions | repair note | `completed`, `escalate` |
+| **scanner** | read-only over the project's last commit; no case file | `ScanEnvelope` (per pack) | none: a list of problems, never a status |
 
 Each row is one `role_cfg`. The divergence between them lives entirely in the four
 config fields; the primitive does not branch on role.

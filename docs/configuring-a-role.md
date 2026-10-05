@@ -1,8 +1,10 @@
 # Configuring a role
 
 This guide gets you from nothing to a first successful agent invocation for any
-of the three roles the harness ships: the **worker**, **gate-maintenance** and
-**triage**. You do not need to read any source to follow it.
+of the three roles a run dispatches: the **worker**, **gate-maintenance** and
+**triage**. You do not need to read any source to follow it. A fourth role, the
+**scanner**, reviews a project for `delivery review`; it is configured by the
+review, not by you, and is read-only exactly as triage is.
 
 ## What a role is
 
@@ -16,7 +18,7 @@ A role configuration has four fields:
 
 | Field | What it is | What happens if it is wrong |
 |---|---|---|
-| `role` | `"worker"`, `"gate-maintenance"` or `"triage"` | Rejected before any session starts |
+| `role` | `"worker"`, `"gate-maintenance"`, `"triage"` or `"scanner"`; `triage` and `scanner` may use only `Read`, `Glob` and `Grep` | Rejected before any session starts |
 | `systemPromptFragment` | Who the agent is and what it is for, in plain sentences. Must not be empty. | Rejected before any session starts |
 | `envelopeSchema` | The reply shape the agent must end with. Use `WorkerEnvelope` for the worker and gate-maintenance, and `TriageEnvelope` for triage. | Rejected before any session starts |
 | `allowedTools` | The tools the agent may use, e.g. `["Read", "Edit"]`. Must not be empty. This is the role's entire blast radius. | Rejected before any session starts |

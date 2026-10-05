@@ -1,11 +1,11 @@
-import type { AgentContext, AgentPort, AgentRole, RoleHandle, RoleTerminusMap } from "./ports.js";
+import type { AgentContext, AgentPort, DispatchedRole, RoleHandle, RoleTerminusMap } from "./ports.js";
 
 /**
  * One optional reply function per role, keyed the way `RoleConfigs` keys a
  * role's pinned configuration. Each function must return that role's own
  * terminus, so a worker reply shaped like a triage verdict does not compile.
  */
-export type RoleHandlers = { [R in AgentRole]?: (ctx: AgentContext) => Promise<RoleTerminusMap[R]> };
+export type RoleHandlers = { [R in DispatchedRole]?: (ctx: AgentContext) => Promise<RoleTerminusMap[R]> };
 
 /**
  * An in-process `AgentPort` for tests and demos, built from the replies a test
@@ -14,7 +14,7 @@ export type RoleHandlers = { [R in AgentRole]?: (ctx: AgentContext) => Promise<R
  * the role, so a test cannot pass by reaching a role it never scripted.
  */
 export function fakeAgentPort(handlers: RoleHandlers): AgentPort {
-  const run = (roleCfg: RoleHandle, ctx: AgentContext) => {
+  const run = (roleCfg: RoleHandle & { role: DispatchedRole }, ctx: AgentContext) => {
     const handler = handlers[roleCfg.role];
     if (!handler) {
       return Promise.reject(

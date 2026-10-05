@@ -4,7 +4,7 @@ import { load, writeRef } from "./case-file.js";
 import { assemblePrompt, resolveEvidence, type AssembledPrompt } from "./prompt-assembly.js";
 import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
-import type { AgentContext, AgentPort, RoleHandle, Incomplete, Metered } from "./ports.js";
+import type { AgentContext, AgentPort, DispatchedRole, RoleHandle, Incomplete, Metered } from "./ports.js";
 import { USAGE_LIMIT_WORDS } from "./ports.js";
 import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
 import { messageOf } from "./gate-support.js";
@@ -324,7 +324,7 @@ export interface RoleConfigs {
 export function createAgentPort(configs: RoleConfigs, session: SessionEnvironment = {}): AgentPort {
   // One cast: TypeScript cannot correlate `configs[role]`'s envelope type with
   // RoleTerminusMap[R] across a generic key. RoleConfigs pins that mapping.
-  const run = (roleCfg: RoleHandle, ctx: AgentContext) =>
+  const run = (roleCfg: RoleHandle & { role: DispatchedRole }, ctx: AgentContext) =>
     invoke(configs[roleCfg.role] as RoleConfig<unknown>, ctx, session);
   return { invoke: run as AgentPort["invoke"] };
 }

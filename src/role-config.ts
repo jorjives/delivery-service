@@ -52,9 +52,11 @@ export interface RoleConfig<E = Envelope> extends RoleHandle {
 }
 
 /**
- * The only tools a triage session may be granted. Triage is read-only until its
- * single case-file append; that is what makes a crash mid-triage safe to replay,
- * so the tool list is a property of the role, not a knob to widen.
+ * The only tools triage or the scanner may be granted. Triage is read-only until
+ * its single case-file append; that is what makes a crash mid-triage safe to
+ * replay, so the tool list is a property of the role, not a knob to widen. The
+ * scanner only describes what it reads; a pack cannot widen it, because the list
+ * is a property of the role.
  */
 export const READ_ONLY_TOOLS = ["Read", "Glob", "Grep"] as const;
 
@@ -98,9 +100,11 @@ export const gateMaintenanceRoleConfig: RoleConfig = {
   allowedTools: ["Read", "Glob", "Grep", "Edit", "Write"],
 };
 
+const READ_ONLY_ROLES: readonly AgentRole[] = ["triage", "scanner"];
+
 const RoleConfigShape = z
   .object({
-    role: z.enum(["worker", "triage", "gate-maintenance"] as const satisfies readonly AgentRole[]),
+    role: z.enum(["worker", "triage", "gate-maintenance", "scanner"] as const satisfies readonly AgentRole[]),
     systemPromptFragment: z.string().min(1),
     envelopeSchema: z.custom<z.ZodType<unknown>>((value) => value instanceof z.ZodType, {
       message: "must be a zod schema",
@@ -109,13 +113,13 @@ const RoleConfigShape = z
     budgets: z.record(z.string(), z.unknown()).optional(),
   })
   .superRefine((cfg, ctx) => {
-    if (cfg.role !== "triage") return;
+    if (!READ_ONLY_ROLES.includes(cfg.role)) return;
     const writable = cfg.allowedTools.find((tool) => !(READ_ONLY_TOOLS as readonly string[]).includes(tool));
     if (writable === undefined) return;
     ctx.addIssue({
       code: "custom",
       path: ["allowedTools"],
-      message: `triage is read-only by design and may use only ${READ_ONLY_TOOLS.join(", ")}, not ${writable}`,
+      message: `${cfg.role} is read-only by design and may use only ${READ_ONLY_TOOLS.join(", ")}, not ${writable}`,
     });
   });
 
