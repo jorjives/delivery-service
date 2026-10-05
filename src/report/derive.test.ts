@@ -598,3 +598,19 @@ describe("what the agent sessions behind a report took and cost", () => {
     expect(doc.usage?.costUsd).toBeCloseTo(0.55);
   });
 });
+
+describe("what a report says a task carries about itself", () => {
+  const TAGGED = { intent: "Fix: The price shown at checkout can be negative (checkout.js)", tags: { pack: "code", findingId: "0123456789ab", severity: "high", phase: "fix" }, finding: { id: "0123456789ab" } };
+
+  it("carries a task's tags, whether or not it has run", () => {
+    const record = recordOf({ runId: ID.form, task: FORM });
+    const ran = { ...record, caseFile: { ...record.caseFile, header: { ...record.caseFile.header, taskDef: TAGGED } } };
+    expect(deriveReport(snapshotOf({ list: [TAGGED], records: [ran] })).surfaces[0]?.tags).toEqual(TAGGED.tags);
+    expect(deriveReport(snapshotOf({ list: [TAGGED] })).surfaces[0]?.tags).toEqual(TAGGED.tags);
+  });
+
+  it("is null for a task with no tags, or with tags that are not plain values", () => {
+    expect(deriveReport(snapshotOf()).surfaces.map((surface) => surface.tags)).toEqual([null, null, null, null]);
+    expect(deriveReport(snapshotOf({ list: [{ intent: "x", tags: { nested: { a: 1 } } }] })).surfaces[0]?.tags).toBeNull();
+  });
+});

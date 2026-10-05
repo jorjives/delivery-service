@@ -204,6 +204,8 @@ delivery.report/1.surfaces[].states[].state = "PROVISIONING"
 delivery.report/1.surfaces[].states[].state = "TRIAGE"
 delivery.report/1.surfaces[].states[].state: string
 delivery.report/1.surfaces[].states[]: object
+delivery.report/1.surfaces[].tags: null|object
+delivery.report/1.surfaces[].tags.*: boolean|number|string
 delivery.report/1.surfaces[].task: string
 delivery.report/1.surfaces[]: object
 delivery.report/1.trips: array

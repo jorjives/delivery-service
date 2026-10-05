@@ -124,6 +124,8 @@ export const ReportSurface = z.object({
   run: z.string().nullable(),
   /** The task's wording. */
   task: z.string(),
+  /** What the task says of itself for a reader of the data, from its own `tags` when each is a string, number or true/false; null otherwise. A fix of a problem a review found carries `pack`, `findingId`, `severity` and `phase`. */
+  tags: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).nullable(),
   /** Its place in the project's list as written now. */
   queue: QueuePosition.nullable(),
   standing: Standing,

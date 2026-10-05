@@ -62,6 +62,7 @@ Each entry of `surfaces`:
 | Key | What it holds |
 |---|---|
 | `task`, `queue` | The task as it is written, and its place on the list (`task` of `of`), or `null` for a task the list does not ask for |
+| `tags` | What the task says of itself, copied from its own `tags` when each value is a string, number or true/false, otherwise `null`. A fix of a problem a review found carries `pack`, `findingId`, `severity` and `phase` (`"fix"`) |
 | `run` | The id of the task's own run, or `null` for a task with no run yet |
 | `standing` | Where the task stands, by the names `counts` uses |
 | `state`, `states` | The step the record is in, and every step it entered, oldest first, each with the time `at` it was entered |

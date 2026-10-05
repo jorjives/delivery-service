@@ -9,7 +9,7 @@ import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from ".
 import { BriefRef } from "../prompt-assembly.js";
 import { PacketRef } from "../surface.js";
 import { EscalationPacket } from "../triage-role-config.js";
-import { latestOf, REPORT_SCHEMA, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type ReportTrip, type StateVisit } from "./document.js";
+import { latestOf, REPORT_SCHEMA, ReportSurface, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRepair, type ReportRun, type ReportTrip, type StateVisit } from "./document.js";
 import { plainOf } from "./plain.js";
 import type { DamagedFile, RecordSnapshot, ReportSubject } from "./snapshot.js";
 
@@ -120,11 +120,16 @@ function runUsage(run: RunFile): UsagePart {
   );
 }
 
+const Tags = ReportSurface.shape.tags.unwrap();
+/** A task's tags as the document carries them: only plain values, so a reader can rely on them; anything else is null. */
+const tagsOf = (taskDef: TaskDef): ReportSurface["tags"] => Tags.safeParse(taskDef.tags).data ?? null;
+
 /** A task with no run of its own yet: every fact about a run is null. */
 function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Standing): ReportSurface {
   return {
     run: null,
     task: taskIntent(taskDef),
+    tags: tagsOf(taskDef),
     queue,
     standing,
     state: null,
@@ -228,6 +233,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
   return {
     run: record.runId,
     task: taskIntent(header.taskDef),
+    tags: tagsOf(header.taskDef),
     queue,
     standing,
     state: cursor.state,
