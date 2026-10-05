@@ -30,6 +30,7 @@ not sliced.
 ## Slice 1: Ask for a Code Review and Read the Problems in Plain Words
 
 **Status:** ✅ Complete — 2026-10-05 — `a33c530`
+**Tests:** ✅ Recorded — 2026-10-05 — `52256f8` — cli — 1 UAT + 5 AC, 0 skipped
 
 **Delivers:** A project owner with no configuration file types `delivery review code` and reads a numbered list of problems in her project, each with where it is, what is wrong, why it matters, what fixed looks like and how the harness will know it is fixed, without anything in her project being changed.
 
