@@ -767,6 +767,27 @@ check can't run. A project with a single `task` shows that one. Like `delivery v
 needs no agent, no sign-in and no network, changes nothing on disk, reports a problem with your
 configuration in the same words, and takes `--config` and `--repo`.
 
+## Review your project for problems
+
+With nothing configured, ask for a code review:
+
+```bash
+delivery review code
+```
+
+An agent reads your last commit (it cannot change files or run commands) and the harness prints a
+numbered list of problems, each with where it is, what is wrong, why it matters, what fixed looks
+like, and how the harness would know it was fixed. Every problem is checked against your project
+first: one whose code cannot be found is not offered, and `delivery findings --unconfirmed` lists
+it. Nothing in your project changes.
+
+- `delivery findings` lists the latest review's problems; `delivery findings 2` shows one in full,
+  with a part for engineers.
+- `delivery packs` lists the reviews available; `delivery review ./my-review` runs one from a folder.
+
+A review stopped part-way is finished by running the same command again. See
+[Reviewing your project](docs/task-packs.md), and try it on `examples/code-review-example`.
+
 ## Documentation
 
 - [Getting started](docs/getting-started.md): install the command and finish your first run
@@ -778,4 +799,5 @@ configuration in the same words, and takes `--config` and `--repo`.
 - [Writing a gate](docs/writing-a-gate.md): configure the command gate or write your own
 - [Writing a closer](docs/writing-a-closer.md): name a built-in closer or write your own
 - [Testing your delivery pipeline](docs/testing-your-pipeline.md): test your gate, closer and role configurations together against a scripted agent, one task at a time or several at once
+- [Reviewing your project](docs/task-packs.md): ask for a code review with no setup and read what it found
 - [Contributing](CONTRIBUTING.md)

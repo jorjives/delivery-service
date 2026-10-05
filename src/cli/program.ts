@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { Command, CommanderError, Option } from "commander";
 import type { CommandContext, CliStdin, ExitOnInterrupt } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
+import { findingsCommand, type FindingsOptions } from "./findings-command.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
@@ -13,6 +14,7 @@ import { runCommand, type RunOptions } from "./run-command.js";
 import { statusCommand, type StatusOptions } from "./status-command.js";
 import { validateCommand, type ValidateOptions } from "./validate-command.js";
 import { intervalSeconds, watchCommand } from "./watch-command.js";
+import { packsCommand } from "./packs-command.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
 export interface CliIo {
@@ -190,6 +192,23 @@ export async function runCli(io: CliIo): Promise<number> {
       const ctx = contextFor(io, command);
       const { reviewCommand } = await import("./review-command.js");
       exitCode = await reviewCommand(pack, repo, ctx, inquirerAsk(ctx.colour));
+    });
+
+  program
+    .command("findings")
+    .description("list the problems your latest review found and where each stands, or show one in full with the detail for engineers; changes nothing")
+    .argument("[number]", "show this problem in full, counted from 1 as the list numbers them")
+    .option("--unconfirmed", "list the problems the review reported that could not be found in your project, and why")
+    .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
+    .action(async (number: string | undefined, options: FindingsOptions, command: Command) => {
+      exitCode = await findingsCommand(number, options, contextFor(io, command));
+    });
+
+  program
+    .command("packs")
+    .description("list the reviews available, each with a sentence saying what it looks for")
+    .action(async (_options: unknown, command: Command) => {
+      exitCode = await packsCommand(contextFor(io, command));
     });
 
   try {
