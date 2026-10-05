@@ -22,4 +22,10 @@ describe("index", () => {
     expect(renderText(doc, { colour: false })[0]).toBe("Your task list: 1 of 2 tasks completed and merged; 1 not started.");
     expect(Object.keys(publishedSchema())).toEqual([REPORT_SCHEMA, EVENT_SCHEMA]);
   });
+
+  it("offers reviews: find a pack, run a review, and read reviews back", async () => {
+    const { builtInPacks, finishReview, listReviews, loadPack, loadReview, PACK_SCHEMA, resolvePack, runReview } = await import("./index.js");
+    expect([builtInPacks, finishReview, listReviews, loadPack, loadReview, resolvePack, runReview].every((fn) => typeof fn === "function")).toBe(true);
+    expect(PACK_SCHEMA).toBe("delivery.pack/1");
+  });
 });
