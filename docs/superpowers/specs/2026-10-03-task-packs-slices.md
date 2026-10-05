@@ -85,6 +85,7 @@ not sliced.
 ## Slice 2: Choose Which Problems to Fix and Have Them Fixed and Merged
 
 **Status:** ✅ Complete — 2026-10-05 — `4d7015b`
+**Tests:** ✅ Recorded — 2026-10-05 — `4d7015b` — cli — 1 UAT + 5 AC, 0 skipped
 
 **Delivers:** The owner approves some problems and skips others, types `delivery fix`, and each approved problem is fixed by an agent in its own working copy, checked by its own specific check plus the project's existing tests, and merged into the main copy, with problems the agent cannot fix explained rather than dropped.
 
