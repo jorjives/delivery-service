@@ -91,7 +91,7 @@ function checkLines(check: CheckSpec): string[] {
     case "anchor-gone":
       return ["  Check: anchor-gone (the flagged text must no longer be in the file)"];
     case "pattern-absent":
-      return [`  Check: pattern-absent, pattern ${check.pattern}`, `  Checked in: ${check.paths.join(", ")}`];
+      return [`  Check: pattern-absent, pattern ${pathName(check.pattern)}`, `  Checked in: ${check.paths.map(pathName).join(", ")}`];
     case "none":
       return ["  Check: none (the project's own tests only)"];
   }

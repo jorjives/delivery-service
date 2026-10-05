@@ -91,6 +91,15 @@ describe("the findings view", () => {
     ]);
   });
 
+  it("takes anything that could drive the terminal out of a check's pattern and paths", () => {
+    const hostile = sampleFinding({ check: { kind: "pattern-absent", pattern: "a\u001b[2Jb", paths: ["x\u001b]0;t\u0007.js"] } });
+    const saved = review();
+    const lines = findingLines({ ...saved, result: { ...saved.result, findings: [hostile] } }, 1);
+    expect(lines.join("\n")).not.toContain("\u001b");
+    expect(lines).toContain("  Check: pattern-absent, pattern ab");
+    expect(lines).toContain("  Checked in: x.js");
+  });
+
   it("tells engineers which check the review suggested and could not use, and the agent's own notes", () => {
     const lines = findingLines(review(), 3);
     expect(lines).toContain("  Check: none (the project's own tests only)");
