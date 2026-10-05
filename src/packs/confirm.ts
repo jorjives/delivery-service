@@ -66,7 +66,8 @@ function plain(text: string, limit: number): string {
 /** A path inside the project, as git names it, or undefined for one that is absolute or leads out. */
 function projectPath(raw: string): string | undefined {
   if (raw.includes("\0") || raw.includes("\\") || raw.startsWith("/") || /^[A-Za-z]:/.test(raw)) return undefined;
-  const normal = posix.normalize(raw);
+  // Without a trailing slash, so git names the entry itself, never the contents of a folder.
+  const normal = posix.normalize(raw).replace(/\/+$/, "");
   if (normal === "." || normal === ".." || normal.startsWith("../")) return undefined;
   return normal;
 }
@@ -127,7 +128,6 @@ export async function confirmFindings(
     }
     const id = findingId(pack, scanned.category, placed.path, scanned.anchor);
     if (confirmed.has(id)) continue;
-    const usable = scanned.check.kind !== "pattern-absent" || (await patternMatchesNow(repoPath, commit, scanned.check));
     confirmed.set(id, {
       id,
       title: plain(scanned.title, TEXT_LIMITS.title),
@@ -138,15 +138,20 @@ export async function confirmFindings(
       whyItMatters: plain(scanned.whyItMatters, TEXT_LIMITS.sentence),
       fixedLooksLike: plain(scanned.fixedLooksLike, TEXT_LIMITS.sentence),
       anchor: scanned.anchor,
-      check: usable ? scanned.check : { kind: "anchor-gone" },
-      ...(usable ? {} : { droppedCheck: scanned.check }),
+      check: scanned.check,
       ...(scanned.detail ? { detail: stripControl(scanned.detail).trim().slice(0, TEXT_LIMITS.detail) } : {}),
       source: "reviewer",
     });
   }
   const ordered = [...confirmed.values()].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
+  // Patterns are run only for the problems offered, so a reply with many problems costs no more git time than the limit allows.
+  const offered: Finding[] = [];
+  for (const finding of ordered.slice(0, maxFindings)) {
+    const { check } = finding;
+    offered.push(check.kind !== "pattern-absent" || (await patternMatchesNow(repoPath, commit, check)) ? finding : { ...finding, check: { kind: "anchor-gone" }, droppedCheck: check });
+  }
   return {
-    findings: ordered.slice(0, maxFindings),
+    findings: offered,
     unconfirmed,
     notShown: Math.max(0, ordered.length - maxFindings),
     notes: plain(envelope.notes, TEXT_LIMITS.notes),

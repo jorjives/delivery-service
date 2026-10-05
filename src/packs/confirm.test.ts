@@ -1,10 +1,23 @@
 import { mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { git } from "../../tests/helpers.js";
 import { initTempRepo } from "../temp-repo.js";
 import { confirmFindings, findingId, locate, normaliseAnchor, TEXT_LIMITS } from "./confirm.js";
 import type { ScanEnvelope, ScannedFinding } from "./finding.js";
+
+/** Every `git grep` confirming runs, so a test can see which checks were tried. */
+const greps: string[][] = [];
+vi.mock("../git-exec.js", async (actual) => {
+  const real = await actual<typeof import("../git-exec.js")>();
+  return {
+    ...real,
+    git: (repo: string, args: string[], options?: Parameters<typeof real.git>[2]) => {
+      if (args[0] === "grep") greps.push(args);
+      return real.git(repo, args, options);
+    },
+  };
+});
 
 const TOTAL = "export function total(price, discount) {\n  return price - discount;\n}\n";
 
@@ -81,6 +94,15 @@ describe("placing a reported problem in the project", () => {
     expect(unconfirmed).toEqual([expect.objectContaining({ title: "The total can go below zero", severity: "high", reason })]);
   });
 
+  it("does not place a problem at a folder named with a trailing slash, even when a file inside holds the flagged code", async () => {
+    const repo = initTempRepo("confirm-", { "total.js": TOTAL });
+    mkdirSync(join(repo, "lib"));
+    commit(repo, { "lib/total.js": TOTAL });
+    const { findings, unconfirmed } = await confirm(repo, envelope(problem({ where: { path: "lib/" } })));
+    expect(findings).toEqual([]);
+    expect(unconfirmed.map((u) => u.reason)).toEqual(["not_a_file"]);
+  });
+
   it("reads the commit it is given, not the working copy", async () => {
     const repo = initTempRepo("confirm-", { "total.js": TOTAL });
     writeFileSync(join(repo, "total.js"), "uncommitted\n");
@@ -120,6 +142,16 @@ describe("the list a review offers", () => {
     const [found] = (await confirm(repo, envelope(problem({ check })))).findings;
     expect(found?.check).toEqual({ kind: "anchor-gone" });
     expect(found?.droppedCheck).toEqual(check);
+  });
+
+  it("runs pattern checks only for the problems it offers, not for those cut by the limit", async () => {
+    const repo = initTempRepo("confirm-", { "total.js": TOTAL, "c.js": "// TODO remove this hack\n" });
+    const critical = problem({ severity: "critical", where: { path: "c.js" }, anchor: "// TODO remove this hack" });
+    const cut = problem({ severity: "low", check: { kind: "pattern-absent", pattern: "price - discount", paths: ["total.js"] } });
+    greps.length = 0;
+    const { notShown } = await confirm(repo, envelope(critical, cut), 1);
+    expect(notShown).toBe(1);
+    expect(greps).toEqual([]);
   });
 
   it("strips anything that could drive the terminal from the agent's words, and cuts them to size", async () => {
