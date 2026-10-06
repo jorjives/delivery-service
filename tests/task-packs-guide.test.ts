@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, UNCONFIRMED_WHY } from "../src/packs/render.js";
+import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY } from "../src/packs/render.js";
 import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS } from "../src/packs/render.js";
 import { REPO_ROOT } from "./helpers.js";
 
@@ -51,5 +51,12 @@ describe("the task packs guide", () => {
     for (const phrase of [REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS]) expect(flat).toContain(phrase);
     expect(guide).toContain("npm run demo:packs-slice-3");
     expect(existsSync(join(REPO_ROOT, "demos/task-packs-slice-3-cheating-fixes.ts"))).toBe(true);
+  });
+
+  it("explains the security review: what could happen, and what waits for sign-off", () => {
+    expect(flat).toContain("delivery review security");
+    expect(flat).toContain("What could happen");
+    expect(flat).toContain(REVIEWER_KNOWLEDGE);
+    expect(flat).toContain("One thing is left for you");
   });
 });

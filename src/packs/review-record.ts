@@ -5,7 +5,7 @@ import { z } from "zod";
 import { DamagedReview } from "../errors.js";
 import { atomicWrite, isEnoent } from "../journal.js";
 import { SessionUsage } from "../schema.js";
-import { scanEnvelopeFor, ScanResult, type ScanEnvelope } from "./finding.js";
+import { scanEnvelopeFor, ScanResult, Severity, type ScanEnvelope } from "./finding.js";
 import { GuardLists } from "./guards.js";
 
 /** Owner-only: these files hold the agent's words about the project, which can quote anything in it. */
@@ -15,6 +15,17 @@ const PRIVATE = 0o600;
 export const packsRoot = (repoPath: string): string => join(repoPath, ".delivery", "packs");
 export const reviewPlace = (repoPath: string, reviewId: string): string => join(packsRoot(repoPath), reviewId);
 
+/** What a review records of each category: what it is called and what it changes about the problems in it. */
+export const PinnedCategory = z.object({
+  id: z.string(),
+  title: z.string(),
+  changesTests: z.literal(true).optional(),
+  reviewerKnowledge: z.literal(true).optional(),
+  scope: z.literal("repo").optional(),
+  sensitive: z.literal(true).optional(),
+});
+export type PinnedCategory = z.infer<typeof PinnedCategory>;
+
 /** What a review records of the pack it ran, so the review reads back the same if the pack later changes or moves. */
 export const PinnedPack = z.object({
   name: z.string(),
@@ -22,12 +33,17 @@ export const PinnedPack = z.object({
   title: z.string(),
   hash: z.string(),
   maxFindings: z.int().min(1),
-  categories: z.array(z.object({ id: z.string(), title: z.string(), changesTests: z.literal(true).optional() })).min(1),
+  categories: z.array(PinnedCategory).min(1),
   /** The pack's own instructions for fixing, pinned with the review so a fix reads what the review's pack said. Absent for a pack with none, and for a review made before packs had them. */
   fixInstructions: z.string().optional(),
   /** What the pack adds to what a fix may not touch. Absent for a review made before packs could add to it. */
   guards: GuardLists.optional(),
+  /** How each problem's consequence is introduced. Absent for a review made before packs chose it: "why it matters". */
+  consequenceLabel: z.enum(["why-it-matters", "what-could-happen"]).optional(),
+  /** Fixes at or above this severity wait for sign-off. Absent or null: nothing waits. */
+  hold: Severity.nullable().optional(),
 });
+export type PinnedPack = z.infer<typeof PinnedPack>;
 
 /** A review's header, written once the agent has replied: its existence is what makes a folder a review. */
 export const ReviewHeader = z.object({

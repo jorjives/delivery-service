@@ -1,5 +1,6 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { z } from "zod";
 import { runSession, type SessionEnvironment } from "../agent-invoke.js";
 import { git, tryGit } from "../git-exec.js";
 import { isEnoent } from "../journal.js";
@@ -8,7 +9,7 @@ import { branchName, provisionWorktree } from "../provision.js";
 import { prepareDeliveryDir, runIdFor, runPlace } from "../run-location.js";
 import { confirmFindings } from "./confirm.js";
 import type { Pack } from "./manifest.js";
-import { listReviews, packsRoot, readHeader, readReply, saveResult, startReview, type ReviewHeader, type SavedReview } from "./review-record.js";
+import { listReviews, packsRoot, PinnedCategory, readHeader, readReply, saveResult, startReview, type ReviewHeader, type SavedReview } from "./review-record.js";
 import { scannerRoleConfig, scanSession } from "./scanner-role.js";
 
 /** Where a session that produced no usable list keeps why: beside the reviews, never inside one, so a failed review saves nothing that reads as a review. */
@@ -32,7 +33,7 @@ const scratchId = (packName: string): string => `review-${packName}`;
 export async function finishReview(repoPath: string, dir: string): Promise<SavedReview> {
   const header = await readHeader(dir);
   const { envelope } = await readReply(dir, header);
-  const result = await confirmFindings(repoPath, header.commit, { pack: header.pack.name, maxFindings: header.pack.maxFindings }, envelope);
+  const result = await confirmFindings(repoPath, header.commit, { pack: header.pack.name, maxFindings: header.pack.maxFindings, categories: header.pack.categories }, envelope);
   await saveResult(dir, result);
   return { dir, header, result };
 }
@@ -43,7 +44,10 @@ const pinned = ({ manifest, hash, fixInstructions }: Pack): ReviewHeader["pack"]
   title: manifest.title,
   hash,
   maxFindings: manifest.scan.maxFindings,
-  categories: manifest.scan.categories.map(({ id, title, changesTests }) => ({ id, title, ...(changesTests === undefined ? {} : { changesTests }) })),
+  // Parsed, not copied: the pinned shape keeps what a review needs of each category and drops its description.
+  categories: z.array(PinnedCategory).parse(manifest.scan.categories),
+  consequenceLabel: manifest.scan.consequenceLabel,
+  hold: manifest.hold.atOrAbove,
   guards: { testGlobs: manifest.fix?.testGlobs ?? [], protectedGlobs: manifest.fix?.protectedGlobs ?? [], skipMarkers: manifest.fix?.skipMarkers ?? [] },
   ...(fixInstructions === undefined ? {} : { fixInstructions }),
 });

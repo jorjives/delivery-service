@@ -45,7 +45,7 @@ export function scanPrompt(pack: Pack, files: readonly string[]): string {
     "- `where.path`: the file, relative to the project's top folder, exactly as it appears in the list below.",
     "- `anchor`: the offending code copied exactly from that file: one to five whole lines, with at least 8 characters that are not spaces. The harness finds the problem by this text, so a problem whose text is not in the file is not shown to the owner.",
     "- `check`: how the harness will know the problem is fixed. `anchor-gone`, the usual choice: fixed when the flagged text is gone. `pattern-absent`: fixed when an extended regular expression, as `git grep -E` reads it, which matches the problem's code now, matches nowhere in `paths`. `dependency-absent`: fixed when `package-lock.json` no longer installs `package` at `version`; use it for a library version you know to be unsafe, with `where.path` `package-lock.json` and the anchor copied from it. `none`: when nothing about the code itself can show the problem is fixed.",
-    "- `title`, `problem`, `whyItMatters`, `fixedLooksLike`: short plain sentences for the owner. `detail`: optional technical notes for an engineer.",
+    "- `title`, `problem`, `whyItMatters`, `fixedLooksLike`: short plain sentences for the owner. `detail`: optional technical notes for an engineer. `outsideStep`: optional. One plain sentence for what only a person can do once the code is fixed, such as changing a leaked password at its provider. Leave it out when the code fix is the whole fix.",
     `- Report at most ${manifest.scan.maxFindings} problems, the most serious first, and each problem once.`,
     "- `notes`: anything the owner should know about the review as a whole, or an empty string.",
     "",

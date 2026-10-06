@@ -5,7 +5,7 @@ import { FORBIDDEN } from "../report/report-fixtures.js";
 import type { MockExpectation, MockScript } from "../mock-script.js";
 import { initTempRepo } from "../temp-repo.js";
 import type { Finding, Unconfirmed, ScanEnvelope } from "./finding.js";
-import { saveResult, startReview, type ReviewHeader } from "./review-record.js";
+import { saveResult, startReview, type PinnedPack, type ReviewHeader } from "./review-record.js";
 
 /** Test and demo support: the example project with planted flaws. */
 export const EXAMPLE_DIR = fileURLToPath(new URL("../../examples/code-review-example/", import.meta.url));
@@ -68,6 +68,39 @@ export const EXAMPLE_SCAN: ScanEnvelope = {
   notes: "",
 };
 
+/** The password planted in the example's payments.js: what no output may ever show. */
+export const PAYMENTS_PASSWORD = "pay-live-7Hq2xV9rLm4K";
+
+/** A scripted security review of the example: a critical password in the code, and a library version with a known weakness. */
+export const EXAMPLE_SECURITY_SCAN: ScanEnvelope = {
+  findings: [
+    {
+      title: "A password for the payments service is written in the code",
+      category: "secrets",
+      severity: "critical",
+      where: { path: "payments.js" },
+      problem: "The password the shop uses to take payments is written into payments.js.",
+      whyItMatters: "Anyone who can read this code can use the payments service as you, including people who should not see it, such as past contractors.",
+      fixedLooksLike: "The password is not in the code, and the code reads it from somewhere private instead.",
+      anchor: `const PAYMENTS_PASSWORD = "${PAYMENTS_PASSWORD}";`,
+      check: { kind: "anchor-gone" },
+      outsideStep: "The password has already been seen by everyone with access to the project: change it at the payments provider. Only a person can do that.",
+    },
+    {
+      title: "An old version of the minimist library with a known weakness",
+      category: "dependencies",
+      severity: "medium",
+      where: { path: "package-lock.json" },
+      problem: "The project installs minimist 1.2.5, which lets specially made input change how every object in the program behaves.",
+      whyItMatters: "Someone who controls that input could make the shop misbehave in ways that are hard to spot. Nothing in the shop passes outside input to it today.",
+      fixedLooksLike: "minimist is at version 1.2.6 or later.",
+      anchor: '"node_modules/minimist": {',
+      check: { kind: "dependency-absent", package: "minimist", version: "1.2.5" },
+    },
+  ],
+  notes: "",
+};
+
 /** A claude-mock script whose one session replies with `envelope`. */
 export function scanScript(envelope: unknown, extra: Partial<MockExpectation> = {}): MockScript {
   return { expectations: [{ json: envelope, ...extra }] };
@@ -94,11 +127,26 @@ export function sampleFinding(overrides: Partial<Finding> = {}): Finding {
 /** Test support: a code review's record on disk, exactly as a review leaves it, without an agent. `finished: false` stops before the list is saved. */
 export async function writeReview(
   repoPath: string,
-  { reviewId = "code-20261005T101500Z", findings = [], unconfirmed = [], notShown = 0, finished = true }: { reviewId?: string; findings?: Finding[]; unconfirmed?: Unconfirmed[]; notShown?: number; finished?: boolean } = {},
+  {
+    reviewId = "code-20261005T101500Z",
+    findings = [],
+    unconfirmed = [],
+    notShown = 0,
+    finished = true,
+    pack = {},
+  }: { reviewId?: string; findings?: Finding[]; unconfirmed?: Unconfirmed[]; notShown?: number; finished?: boolean; pack?: Partial<PinnedPack> } = {},
 ): Promise<string> {
   const header: ReviewHeader = {
     reviewId,
-    pack: { name: reviewId.split("-")[0] ?? "code", version: "1.0.0", title: "Code review", hash: "0".repeat(64), maxFindings: 40, categories: [{ id: "correctness", title: "Wrong results" }, { id: "error-handling", title: "Missing handling of things going wrong" }, { id: "dead-code", title: "Code nothing uses" }] },
+    pack: {
+      name: reviewId.split("-")[0] ?? "code",
+      version: "1.0.0",
+      title: "Code review",
+      hash: "0".repeat(64),
+      maxFindings: 40,
+      categories: [{ id: "correctness", title: "Wrong results" }, { id: "error-handling", title: "Missing handling of things going wrong" }, { id: "dead-code", title: "Code nothing uses" }],
+      ...pack,
+    },
     repoPath,
     commit: "1".repeat(40),
     fileCount: 4,

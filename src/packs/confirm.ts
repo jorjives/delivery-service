@@ -4,6 +4,7 @@ import { git } from "../git-exec.js";
 import { stripControl } from "../report/text.js";
 import { SEVERITIES, type CheckSpec, type Finding, type ScanEnvelope, type ScannedFinding, type ScanResult, type Unconfirmed, type UnconfirmedReason } from "./finding.js";
 import { LOCKFILE, lockfileHas } from "./lockfile.js";
+import type { PinnedCategory } from "./review-record.js";
 
 /** How long git may spend on one agent-written pattern before the check is not used. */
 export const PATTERN_TIMEOUT_MS = 10_000;
@@ -135,9 +136,10 @@ const rank = (finding: Finding): number => SEVERITIES.indexOf(finding.severity);
 export async function confirmFindings(
   repoPath: string,
   commit: string,
-  { pack, maxFindings }: { pack: string; maxFindings: number },
+  { pack, maxFindings, categories = [] }: { pack: string; maxFindings: number; categories?: readonly PinnedCategory[] },
   envelope: ScanEnvelope,
 ): Promise<ScanResult> {
+  const flags = new Map(categories.map((category) => [category.id, category]));
   const confirmed = new Map<string, Finding>();
   const unconfirmed: Unconfirmed[] = [];
   for (const scanned of envelope.findings) {
@@ -160,6 +162,9 @@ export async function confirmFindings(
       anchor: scanned.anchor,
       check: scanned.check,
       ...(scanned.detail ? { detail: stripControl(scanned.detail).trim().slice(0, TEXT_LIMITS.detail) } : {}),
+      ...(scanned.outsideStep ? { outsideStep: plain(scanned.outsideStep, TEXT_LIMITS.sentence) } : {}),
+      ...(flags.get(scanned.category)?.scope === "repo" ? { scope: "repo" as const } : {}),
+      ...(flags.get(scanned.category)?.sensitive === true ? { sensitive: true as const } : {}),
       source: "reviewer",
     });
   }

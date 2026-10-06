@@ -33,7 +33,7 @@ describe("the package", () => {
   it("ships its built output, its built-in reviews, its readme and its changelog, and nothing else", () => {
     const packed = packFiles();
     const extras = packed.filter((path) => !path.startsWith("dist/"));
-    expect(extras.sort()).toEqual(["CHANGELOG.md", "README.md", "package.json", "packs/code-review/fix.md", "packs/code-review/pack.json", "packs/code-review/scan.md"]);
+    expect(extras.sort()).toEqual(["CHANGELOG.md", "README.md", "package.json", "packs/code-review/fix.md", "packs/code-review/pack.json", "packs/code-review/scan.md", "packs/security-review/fix.md", "packs/security-review/pack.json", "packs/security-review/scan.md"]);
     for (const file of ["dist/cli/main.js", "dist/index.js", "dist/index.d.ts", "dist/testing.js", "dist/testing.d.ts", "dist/packs/manifest.js"]) {
       expect(packed).toContain(file);
     }

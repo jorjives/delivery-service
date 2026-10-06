@@ -180,3 +180,24 @@ describe("a vulnerable-version check", () => {
     expect(findings[0]).toMatchObject({ check: { kind: "anchor-gone" }, droppedCheck: { kind: "dependency-absent", package: "minimist", version: "9.9.9" } });
   });
 });
+
+describe("what a pack's categories add to a confirmed problem", () => {
+  it("keeps the step left for a person, and stamps whole-project and sensitive categories", async () => {
+    const repo = initTempRepo("confirm-flags-", { "total.js": TOTAL });
+    const { findings } = await confirmFindings(
+      repo,
+      head(repo),
+      { pack: "security", maxFindings: 40, categories: [{ id: "correctness", title: "Wrong", scope: "repo", sensitive: true }] },
+      envelope(problem({ outsideStep: "Change the password at the provider." })),
+    );
+    expect(findings[0]).toMatchObject({ outsideStep: "Change the password at the provider.", scope: "repo", sensitive: true });
+  });
+
+  it("adds nothing for a category that says nothing", async () => {
+    const repo = initTempRepo("confirm-flags-", { "total.js": TOTAL });
+    const { findings } = await confirm(repo, envelope(problem()));
+    expect(findings[0]).not.toHaveProperty("scope");
+    expect(findings[0]).not.toHaveProperty("sensitive");
+    expect(findings[0]).not.toHaveProperty("outsideStep");
+  });
+});

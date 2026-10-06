@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 import { expectEnvelope } from "../src/mock-script.js";
 import { confirmFindings } from "../src/packs/confirm.js";
 import { resolvePack } from "../src/packs/manifest.js";
-import { EXAMPLE_DIR, EXAMPLE_SCAN, exampleRepo } from "../src/packs/review-fixtures.js";
+import { EXAMPLE_DIR, EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo } from "../src/packs/review-fixtures.js";
 import { scannerRoleConfig } from "../src/packs/scanner-role.js";
 import { git } from "./helpers.js";
 
@@ -19,7 +19,7 @@ describe("the code-review example", () => {
   });
 
   it("ships only its source and no configuration file, so a copy is ready for git init", () => {
-    expect(readdirSync(EXAMPLE_DIR).sort()).toEqual(["README.md", "checkout.js", "checkout.test.js", "legacy-gateway.js", "package.json", "settings.js"]);
+    expect(readdirSync(EXAMPLE_DIR).sort()).toEqual(["README.md", "checkout.js", "checkout.test.js", "legacy-gateway.js", "package-lock.json", "package.json", "payments.js", "settings.js"]);
   });
 
   it("has a scripted review the code pack accepts, whose three real problems are confirmed in it and whose fourth is not", async () => {
@@ -29,5 +29,14 @@ describe("the code-review example", () => {
     const result = await confirmFindings(repo, git(repo, ["rev-parse", "HEAD"]), { pack: "code", maxFindings: 40 }, EXAMPLE_SCAN);
     expect(result.findings.map((finding) => finding.check.kind).sort()).toEqual(["anchor-gone", "none", "pattern-absent"]);
     expect(result.unconfirmed.map((u) => u.reason)).toEqual(["no_such_file"]);
+  });
+
+  it("has a scripted security review the security pack accepts, both of whose problems are confirmed with their own checks", async () => {
+    const pack = await resolvePack("security", "/");
+    expectEnvelope(scannerRoleConfig(pack), EXAMPLE_SECURITY_SCAN);
+    const repo = exampleRepo();
+    const result = await confirmFindings(repo, git(repo, ["rev-parse", "HEAD"]), { pack: "security", maxFindings: 40 }, EXAMPLE_SECURITY_SCAN);
+    expect(result.findings.map((finding) => finding.check.kind)).toEqual(["anchor-gone", "dependency-absent"]);
+    expect(result.unconfirmed).toEqual([]);
   });
 });

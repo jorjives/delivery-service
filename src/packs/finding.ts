@@ -5,6 +5,10 @@ export const SEVERITIES = ["critical", "high", "medium", "low"] as const;
 export const Severity = z.enum(SEVERITIES);
 export type Severity = z.infer<typeof Severity>;
 
+/** Whether a problem is at or above a threshold on the closed order. A null threshold holds nothing. */
+export const atOrAbove = (severity: Severity, threshold: Severity | null): boolean =>
+  threshold !== null && SEVERITIES.indexOf(severity) <= SEVERITIES.indexOf(threshold);
+
 /**
  * How the harness will know a problem is fixed. Closed and harness-owned: a
  * review's agent picks one, and the harness decides whether it can be used.
@@ -44,6 +48,7 @@ export function scanEnvelopeFor(categoryIds: readonly string[]) {
     anchor: Text,
     check: CheckSpec,
     detail: z.string().optional(),
+    outsideStep: z.string().optional(),
   });
   return z.object({ findings: z.array(ScannedFinding), notes: z.string() });
 }
@@ -69,6 +74,12 @@ export const Finding = z.object({
   /** The check the agent suggested and the harness could not use, kept for engineers. */
   droppedCheck: CheckSpec.optional(),
   detail: z.string().optional(),
+  /** What only a person can do once the code is fixed, such as changing a leaked password at its provider. */
+  outsideStep: z.string().optional(),
+  /** The problem's category says a fix must clear the flagged text from the whole project, not only its file. */
+  scope: z.literal("repo").optional(),
+  /** The problem's category says its flagged text may hold a secret. */
+  sensitive: z.literal(true).optional(),
   source: z.literal("reviewer"),
 });
 export type Finding = z.infer<typeof Finding>;

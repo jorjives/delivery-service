@@ -4,7 +4,7 @@ import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
   AGENT_OPINION, CHANGES_TESTS, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, PR_OPENED, REFUSED_WEAKENING, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview,
+  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
@@ -192,6 +192,50 @@ describe("the vulnerable-version check, as the owner and an engineer read it", (
     const lines = findingLines(review({ findings: [DEPENDENCY] }), 1);
     expect(lines).toContain("    How we will know: checked: the vulnerable version is no longer installed.");
     expect(lines).toContain("  Check: dependency-absent, minimist 1.2.5 must no longer be in package-lock.json");
+  });
+});
+
+describe("a security review, as the owner reads it", () => {
+  const SECURITY: SavedReview["header"] = {
+    ...HEADER,
+    reviewId: "security-20261005T101500Z",
+    pack: {
+      ...HEADER.pack,
+      name: "security",
+      title: "Security review",
+      consequenceLabel: "what-could-happen",
+      hold: "high",
+      categories: [{ id: "secrets", title: "Passwords and keys", scope: "repo", sensitive: true }, { id: "dependencies", title: "Unsafe library versions", reviewerKnowledge: true }],
+    },
+  };
+  const SECRET = sampleFinding({ title: "A password is written in the code", category: "secrets", severity: "critical", outsideStep: "Change the password at the provider." });
+  const LIBRARY = sampleFinding({ id: "333333333333", title: "An old library", category: "dependencies", severity: "medium", check: { kind: "dependency-absent", package: "minimist", version: "1.2.5" } });
+  const security = (findings = [SECRET, LIBRARY]): SavedReview => ({ dir: "/d", header: SECURITY, result: { findings, unconfirmed: [], notShown: 0, notes: "" } });
+
+  it("opens with how many problems there are at each severity, and says which wait for sign-off", () => {
+    expect(reviewLines(security()).slice(0, 4)).toEqual([
+      "Review finished in 4 min 12 s. It found 2 problems.",
+      "By how serious they are: 1 critical, 0 high, 1 medium, 0 low.",
+      "Problems that are critical or high are fixed and checked, but wait for your sign-off before they reach your main copy.",
+      AGENT_OPINION,
+    ]);
+  });
+
+  it("says what could happen, labels the reviewer's own knowledge, and notes what is left for a person", () => {
+    const lines = reviewLines(security());
+    expect(lines).toContain("    What could happen: Wrong totals cost money and trust.");
+    expect(lines).not.toContain("    Why it matters: Wrong totals cost money and trust.");
+    expect(lines).toContain("    One thing is left for you: Change the password at the provider.");
+    expect(lines).toContain(`    Note: ${REVIEWER_KNOWLEDGE}`);
+    expect(lines.filter((line) => line.includes(REVIEWER_KNOWLEDGE))).toHaveLength(1);
+  });
+
+  it("uses no word an owner should not have to know", () => {
+    for (const line of reviewLines(security())) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
+  });
+
+  it("leaves a code review opening as it was", () => {
+    expect(reviewLines(review())[1]).toBe(AGENT_OPINION);
   });
 });
 

@@ -23,6 +23,7 @@ When it finishes, you get a numbered list. Each problem says how serious it is (
 
 - "checked: the flagged code is gone": the harness will check that exact code is no longer there.
 - "checked: the risky pattern no longer appears": the harness will check a pattern no longer matches anywhere it looked.
+- "checked: the vulnerable version is no longer installed": the harness will check a library version is no longer in the project.
 - "tests only: no check of this specific problem": only your existing tests will say whether a fix broke something. Nothing checks this problem itself.
 
 The list ends by saying how many problems have a specific check, then:
@@ -34,6 +35,24 @@ Nothing has been changed and nothing will be until you approve it.
 followed by the commands to run next. On a terminal you can also pick problems and choose "Fix now" or "Not now". "Not now" loses nothing.
 
 The review is an agent's opinion, and it says so. "No problems" means none were found, not that there are none.
+
+## A security review
+
+`delivery review security` reviews your project for weaknesses someone could take advantage of:
+passwords and keys written in the code, outside input reaching commands or queries, missing
+checks on who may do what, unsafe default settings, and library versions known to be unsafe. It
+needs no configuration, reads your last commit and changes nothing.
+
+It opens with how many problems there are at each level (critical, high, medium, low) and says
+that problems that are critical or high are fixed and checked, but wait for your sign-off before
+they reach your main copy. Each problem says "What could happen" in plain words.
+
+A problem about a library version says: "Note: this comes from the reviewer's knowledge, not an
+advisory database; it may be out of date or wrong." Its fix is checked by that version no
+longer being installed, read from your `package-lock.json`.
+
+A problem that leaves something only you can do, such as changing a leaked password where it was
+issued, says "One thing is left for you:" and what it is.
 
 ## Reading it again
 

@@ -8,7 +8,7 @@ import { provisionWorktree } from "../provision.js";
 import { runPlace } from "../run-location.js";
 import { resolvePack } from "./manifest.js";
 import { listReviews, packsRoot } from "./review-record.js";
-import { EXAMPLE_SCAN, exampleRepo, scanScript } from "./review-fixtures.js";
+import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, scanScript } from "./review-fixtures.js";
 import { runReview, scanErrorsDir } from "./review.js";
 
 /** A session pointed at claude-mock with `script`, and where its journal goes. */
@@ -33,7 +33,7 @@ describe("running a review", () => {
     expect(outcome.kind).toBe("done");
     if (outcome.kind !== "done") return;
     expect(outcome.recovered).toBe(false);
-    expect(outcome.review.header).toMatchObject({ pack: { name: "code", maxFindings: 40 }, commit: git(repo, ["rev-parse", "HEAD"]), fileCount: 6 });
+    expect(outcome.review.header).toMatchObject({ pack: { name: "code", maxFindings: 40 }, commit: git(repo, ["rev-parse", "HEAD"]), fileCount: 8 });
     expect(outcome.review.header.pack.fixInstructions).toBe((await resolvePack("code", "/")).fixInstructions);
     expect(outcome.review.header.pack.guards).toEqual({ testGlobs: [], protectedGlobs: [], skipMarkers: [] });
     expect(outcome.review.header.pack.categories.find((c) => c.id === "tests")).toEqual({ id: "tests", title: "Tests that do not check what they claim", changesTests: true });
@@ -78,6 +78,18 @@ describe("running a review", () => {
     const repo = exampleRepo();
     await expect(runReview(repo, await resolvePack("code", "/"), { session: NEVER, env: state() })).rejects.toThrow("no session should be started");
     expect(existsSync(packsRoot(repo))).toBe(false);
+  });
+
+  it("pins what the security pack says about holding, explaining and its categories", async () => {
+    const repo = exampleRepo("review-security-");
+    const { session } = await scripted(scanScript(EXAMPLE_SECURITY_SCAN));
+    const outcome = await runReview(repo, await resolvePack("security", "/"), { session, env: state() });
+    expect(outcome.kind === "done" && outcome.review.header.pack).toMatchObject({
+      name: "security",
+      hold: "high",
+      consequenceLabel: "what-could-happen",
+      categories: expect.arrayContaining([{ id: "secrets", title: expect.any(String), scope: "repo", sensitive: true }]),
+    });
   });
 });
 

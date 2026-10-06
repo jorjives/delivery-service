@@ -2,5 +2,6 @@
   "name": "code-review-example",
   "private": true,
   "type": "module",
-  "scripts": { "test": "node --test" }
+  "scripts": { "test": "node --test" },
+  "dependencies": { "minimist": "1.2.5" }
 }

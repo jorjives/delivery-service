@@ -2,9 +2,9 @@ import { basename } from "node:path";
 import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
-import type { CheckKind, CheckSpec, Finding, UnconfirmedReason } from "./finding.js";
+import { SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
 import type { FindingState, FixState } from "./fix-state.js";
-import { changesTests, type SavedReview } from "./review-record.js";
+import type { PinnedPack, SavedReview } from "./review-record.js";
 
 /** How the harness will know each kind of check is met, as the owner reads it. Total over the closed set. */
 export const CHECK_LEVEL: Record<CheckKind, string> = {
@@ -33,6 +33,28 @@ export const NOT_YET_DECIDED = "not yet decided";
 export const REFUSED_WEAKENING = "The agent's fix was rejected because it removed or skipped existing tests.";
 export const NEEDS_TEST_CHANGE = "needs a change to one of your tests, which this review does not let an agent do";
 export const CHANGES_TESTS = "this fix will change your tests";
+
+export const REVIEWER_KNOWLEDGE = "this comes from the reviewer's knowledge, not an advisory database; it may be out of date or wrong.";
+export const LEFT_FOR_YOU = "One thing is left for you";
+
+/** How a problem's consequence is introduced, as its pack chose. */
+const CONSEQUENCE_WORDS: Record<NonNullable<PinnedPack["consequenceLabel"]>, string> = {
+  "why-it-matters": "Why it matters",
+  "what-could-happen": "What could happen",
+};
+
+/** How many problems there are at each severity, every severity named, most serious first. */
+export const severityLine = (findings: readonly Finding[]): string =>
+  `By how serious they are: ${SEVERITIES.map((severity) => `${findings.filter((finding) => finding.severity === severity).length} ${severity}`).join(", ")}.`;
+
+/** Which problems wait for sign-off, by name: "critical or high" for a threshold of high. */
+export function holdSentence(threshold: Severity): string {
+  const held = SEVERITIES.slice(0, SEVERITIES.indexOf(threshold) + 1);
+  const words = held.length === 1 ? held[0] : `${held.slice(0, -1).join(", ")} or ${held.at(-1)}`;
+  return `Problems that are ${words} are fixed and checked, but wait for your sign-off before they reach your main copy.`;
+}
+
+const category = (pack: PinnedPack, id: string) => pack.categories.find((known) => known.id === id);
 
 /** Where a problem stands, as the owner reads it. Total over the closed set. */
 export const STATE_WORDS: Record<FixState, string> = {
@@ -74,16 +96,19 @@ export const noneFound = (fileCount: number): string =>
 const unconfirmedPointer = (count: number): string[] =>
   count === 0 ? [] : [`${count} more could not be confirmed: the code they point at could not be found, so they are not offered. See them with: delivery findings --unconfirmed`];
 
-/** One problem as a numbered block: title and severity, then one fact per line. */
-export function problemBlock(number: number, finding: Finding, changesTests = false): string[] {
+/** One problem as a numbered block: title and severity, then one fact per line, in the words its pack chose. */
+export function problemBlock(number: number, finding: Finding, pack: PinnedPack): string[] {
+  const kind = category(pack, finding.category);
   return [
     `${number}. ${finding.title} (${finding.severity})`,
     `    Where: ${pathName(finding.where.path)}, line ${finding.where.line}`,
     `    What is wrong: ${finding.problem}`,
-    `    Why it matters: ${finding.whyItMatters}`,
+    `    ${CONSEQUENCE_WORDS[pack.consequenceLabel ?? "why-it-matters"]}: ${finding.whyItMatters}`,
     `    Fixed looks like: ${finding.fixedLooksLike}`,
     `    How we will know: ${CHECK_LEVEL[finding.check.kind]}.`,
-    ...(changesTests ? [`    Note: ${CHANGES_TESTS}.`] : []),
+    ...(kind?.changesTests === true ? [`    Note: ${CHANGES_TESTS}.`] : []),
+    ...(kind?.reviewerKnowledge === true ? [`    Note: ${REVIEWER_KNOWLEDGE}`] : []),
+    ...(finding.outsideStep === undefined ? [] : [`    ${LEFT_FOR_YOU}: ${finding.outsideStep}`]),
   ];
 }
 
@@ -94,11 +119,14 @@ export function reviewLines({ header, result }: SavedReview): string[] {
   if (shown === 0) return [took, noneFound(header.fileCount), ...unconfirmedPointer(result.unconfirmed.length)];
   const checked = result.findings.filter((finding) => finding.check.kind !== "none").length;
   const testsOnly = shown - checked;
+  // A pack that holds fixes by severity opens with the severities, since they decide what waits for the owner.
+  const threshold = header.pack.hold ?? null;
   return [
     `${took} It found ${problems(shown + result.notShown)}.`,
+    ...(threshold === null ? [] : [severityLine(result.findings), holdSentence(threshold)]),
     AGENT_OPINION,
     "",
-    ...result.findings.flatMap((finding, index) => problemBlock(index + 1, finding, changesTests(header.pack, finding.category))),
+    ...result.findings.flatMap((finding, index) => problemBlock(index + 1, finding, header.pack)),
     ...(result.notShown > 0 ? [`${result.notShown} more not shown: this review lists at most ${header.pack.maxFindings} problems.`] : []),
     ...unconfirmedPointer(result.unconfirmed.length),
     "",
@@ -145,13 +173,13 @@ function checkLines(check: CheckSpec): string[] {
 export function findingLines({ header, result }: SavedReview, number: number): string[] {
   const finding = result.findings[number - 1];
   if (finding === undefined) return [];
-  const category = header.pack.categories.find((known) => known.id === finding.category);
+  const categoryInfo = header.pack.categories.find((known) => known.id === finding.category);
   const { line, endLine } = finding.where;
   return [
-    ...problemBlock(number, finding, changesTests(header.pack, finding.category)),
+    ...problemBlock(number, finding, header.pack),
     "",
     "FOR ENGINEERS",
-    `  Category: ${finding.category}${category === undefined ? "" : ` (${category.title})`}`,
+    `  Category: ${finding.category}${categoryInfo === undefined ? "" : ` (${categoryInfo.title})`}`,
     `  File: ${pathName(finding.where.path)}, ${line === endLine ? `line ${line}` : `lines ${line} to ${endLine}`}`,
     ...checkLines(finding.check),
     ...(finding.droppedCheck === undefined

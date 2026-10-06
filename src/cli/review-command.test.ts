@@ -6,7 +6,7 @@ import { git } from "../../tests/helpers.js";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
 import { AGENT_OPINION, fixNowLines, NOT_NOW, NOTHING_CHANGED, READS_ONLY } from "../packs/render.js";
 import { packsRoot } from "../packs/review-record.js";
-import { EXAMPLE_SCAN, exampleRepo, PACK_FORBIDDEN, scanScript } from "../packs/review-fixtures.js";
+import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript } from "../packs/review-fixtures.js";
 import { plainReporter } from "./report.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
@@ -68,8 +68,20 @@ describe("delivery review", () => {
     const repo = exampleRepo();
     const { exitCode, stdout } = await delivery(["review", "code"], { cwd: repo, env: await mocked(scanScript({ findings: [], notes: "" })) });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain("The review found no problems. That is not proof there are none: the review is an agent's opinion, it looked at 6 files, and it can miss things.");
+    expect(stdout).toContain("The review found no problems. That is not proof there are none: the review is an agent's opinion, it looked at 8 files, and it can miss things.");
   }, RUN_TIMEOUT);
+
+  it("reviews for security with nothing configured, opening by severity and never showing the password", async () => {
+    const repo = exampleRepo("review-security-");
+    const { exitCode, stdout } = await delivery(["review", "security"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(scanScript(EXAMPLE_SECURITY_SCAN)) } });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain("Security review of your project.");
+    expect(stdout).toContain("It found 2 problems.\nBy how serious they are: 1 critical, 0 high, 1 medium, 0 low.\nProblems that are critical or high are fixed and checked");
+    expect(stdout).toContain("    What could happen: Anyone who can read this code can use the payments service as you");
+    expect(stdout).toContain("    How we will know: checked: the vulnerable version is no longer installed.");
+    expect(stdout).toContain("    One thing is left for you: The password has already been seen");
+    expect(stdout).not.toContain(PAYMENTS_PASSWORD);
+  });
 
   it("says in one sentence that it could not run when the reply is not a list, saves nothing, and exits with the agent runtime code", async () => {
     const repo = exampleRepo();
@@ -101,7 +113,7 @@ describe("delivery review", () => {
   it("names the reviews there are when asked for one that does not exist", async () => {
     const { exitCode, stderr } = await delivery(["review", "nope"], { cwd: exampleRepo() });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stderr).toContain("The reviews available are: code.");
+    expect(stderr).toContain("The reviews available are: code, security.");
   });
 
   it("runs a pack from a folder exactly as a built-in one", async () => {

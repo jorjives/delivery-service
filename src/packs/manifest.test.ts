@@ -23,6 +23,7 @@ describe("the built-in packs", () => {
     expect(code?.manifest.scan.categories.map((category) => category.id)).toEqual(["correctness", "error-handling", "dead-code", "inconsistency", "debt", "tests"]);
     expect(code?.scanInstructions).toContain("# Code review");
     expect(code?.hash).toMatch(/^[0-9a-f]{64}$/);
+    expect((await builtInPacks()).map((pack) => pack.manifest.name)).toEqual(["code", "security"]);
   });
 
   it("are found by name", async () => {
@@ -32,7 +33,7 @@ describe("the built-in packs", () => {
   it("name the ones available when asked for one that does not exist", async () => {
     const err = await resolvePack("nope", "/anywhere").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UnknownPack);
-    expect(err).toMatchObject({ packName: "nope", available: ["code"] });
+    expect(err).toMatchObject({ packName: "nope", available: ["code", "security"] });
   });
 });
 
@@ -118,5 +119,26 @@ describe("the built-in code review pack", () => {
   it("has the expected categories", async () => {
     const code = await resolvePack("code", "/");
     expect(code.manifest.scan.categories.map((c) => c.id)).toEqual(["correctness", "error-handling", "dead-code", "inconsistency", "debt", "tests"]);
+  });
+});
+
+describe("the security pack", () => {
+  it("is built in as `security`, holds high and critical fixes, and explains problems by what could happen", async () => {
+    const pack = await resolvePack("security", "/");
+    expect(pack.manifest).toMatchObject({ name: "security", hold: { atOrAbove: "high" }, scan: { consequenceLabel: "what-could-happen" } });
+    const byId = new Map(pack.manifest.scan.categories.map((category) => [category.id, category]));
+    expect(byId.get("dependencies")).toMatchObject({ reviewerKnowledge: true });
+    expect(byId.get("secrets")).toMatchObject({ scope: "repo", sensitive: true });
+  });
+
+  it("leaves the code pack holding nothing and explaining by why it matters", async () => {
+    const pack = await resolvePack("code", "/");
+    expect(pack.manifest.hold).toEqual({ atOrAbove: null });
+    expect(pack.manifest.scan.consequenceLabel).toBe("why-it-matters");
+  });
+
+  it("refuses a hold threshold that is not a severity word", async () => {
+    const dir = editedPack((manifest) => (manifest.hold = { atOrAbove: "severe" }));
+    await expect(loadPack(dir)).rejects.toMatchObject({ detail: expect.stringContaining('"hold.atOrAbove"') });
   });
 });
