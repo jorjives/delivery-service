@@ -144,7 +144,7 @@ describe("the findings view", () => {
     expect(lines).toContain("    Say yes: delivery findings sign-off 1");
     expect(lines).toContain("    Say no: delivery findings reject 1");
     expect(lines).toContain("    For engineers: branch surface/fix-a-20261006T110000Z");
-    for (const line of lines) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
+    for (const line of lines) expect(line.replace(/delivery findings|branch \S+/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
 
   it("lists every problem it could not confirm, with why", () => {

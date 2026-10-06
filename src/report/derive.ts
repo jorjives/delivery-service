@@ -1,9 +1,10 @@
 import { isDeepStrictEqual } from "node:util";
+import { z } from "zod";
 import { breakerOf, repairsUsed, tripsOf } from "../breaker.js";
 import { deriveBudgetsFromLog, deriveStateFromEntry } from "../case-file.js";
 import { branchName } from "../provision.js";
 import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js";
-import { Population, RepairChanges, type HistoryEntry, type RepairStatus, type RunEntry, type RunFile, type SessionUsage, type TaskDef, type Trip } from "../schema.js";
+import { CloserRef, Population, RepairChanges, type HistoryEntry, type RepairStatus, type RunEntry, type RunFile, type SessionUsage, type TaskDef, type Trip } from "../schema.js";
 import { claimedBy, supervisedView } from "../supervised-view.js";
 import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
 import { BriefRef } from "../prompt-assembly.js";
@@ -12,6 +13,22 @@ import { EscalationPacket } from "../triage-role-config.js";
 import { latestOf, REPORT_SCHEMA, ReportSurface, Standing, type DamagedRecord, type Decision, type ReportDocument, type ReportRepair, type ReportRun, type ReportTrip, type StateVisit } from "./document.js";
 import { plainOf } from "./plain.js";
 import type { DamagedFile, RecordSnapshot, ReportSubject } from "./snapshot.js";
+
+/** What a review's fix pins about landing, read structurally so the report needs nothing from the packs module. */
+const PinnedRelease = z.object({ authorisation: z.object({ hold: z.boolean().optional(), landing: CloserRef.optional() }) });
+
+/**
+ * How a run's work landed. A review's fix runs through the harness's own
+ * finding closer, which keeps a held fix on its branch and lands the rest the
+ * project's way, so that delegated closer is what is reported.
+ */
+function landingOf(header: RunRecord["caseFile"]["header"]): NonNullable<ReportSurface["closer"]> {
+  // A run that pinned no closer predates closers being pinned, and was committed to its branch.
+  const closer = header.closerRef ?? { type: "commit-to-branch" as const };
+  if (closer.type !== "custom" || !/finding-closer\.[jt]s$/.test(closer.modulePath)) return closer.type;
+  const release = PinnedRelease.safeParse(header.taskDef).data?.authorisation;
+  return release === undefined || release.hold === true || release.landing === undefined ? "commit-to-branch" : release.landing.type;
+}
 
 /** A repair as the document tells it, from how it was set going, how it ended, and the refs of the folder it was recorded in. */
 function repairOf(
@@ -244,7 +261,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     reason: outcome?.reason ?? null,
     cause: cause === null ? null : { kind: cause.kind, role: cause.role ?? null, population: cause.population ?? null },
     // A run that pinned no closer predates closers being pinned, and was committed to its branch.
-    closer: header.closerRef?.type ?? "commit-to-branch",
+    closer: landingOf(header),
     branch: branchName(header.surfaceId),
     base: header.baseBranch ?? null,
     attempts,
