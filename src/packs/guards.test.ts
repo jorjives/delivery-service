@@ -66,7 +66,10 @@ describe("whether a change touched the tests", () => {
   it.each([["left uncommitted", false], ["committed", true]])("refuses a deleted test file, %s", async (_, committed) => {
     const repo = initTempRepo("guards-", PROJECT);
     rmSync(join(repo, "checkout.test.js"));
-    if (committed) commit(repo);
+    if (committed) {
+      execFileSync("git", ["checkout", "-qb", "fix"], { cwd: repo, env: cleanGitEnv() });
+      commit(repo);
+    }
     const [tests] = await guardAssertions(repo, "main", GUARDS, NPM);
     expect(tests).toMatchObject({ id: TESTS_GUARD, outcome: "FAIL", detail: expect.stringContaining("checkout.test.js") });
   });

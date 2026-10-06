@@ -220,27 +220,8 @@ export async function ignoredAssertions(worktreePath: string, guards: Guards): P
  * ponytail: the base is `merge-base HEAD <baseBranch>`, and a worker granted Bash can move HEAD (reset to an ancestor from before a test existed) so the base no longer holds the test; this is the documented Bash residual (docs/agent-interface.md). Pin the branch-point commit at provisioning and pass it on GateContext if that is seen.
  */
 export async function guardAssertions(worktreePath: string, baseBranch: string, guards: Guards, verify: GateRef): Promise<Assertion[]> {
-  let base = await git(worktreePath, ["merge-base", "HEAD", baseBranch]);
-  const head = await git(worktreePath, ["rev-parse", "HEAD"]);
+  const base = await git(worktreePath, ["merge-base", "HEAD", baseBranch]);
   const tree = await treeOf(worktreePath);
-
-  // If HEAD is the same as merge-base (i.e., we're on baseBranch) and the working tree
-  // matches HEAD's tree (no uncommitted changes), then compare against HEAD~1 to detect
-  // changes made by the current commit. Only do this if HEAD has a parent (it's not the
-  // root commit), otherwise the comparison would incorrectly treat the seeded files as changes.
-  if (base === head) {
-    const headTree = await git(worktreePath, ["rev-parse", "HEAD^{tree}"]);
-    if (tree === headTree) {
-      try {
-        // Check if HEAD has a parent by trying to resolve HEAD~1
-        await git(worktreePath, ["rev-parse", "HEAD~1"]);
-        // If that succeeds, HEAD has a parent, so use HEAD~1 as the base
-        base = await git(worktreePath, ["rev-parse", "HEAD~1"]);
-      } catch {
-        // HEAD is the root commit, so don't change base. We'll compare against the root commit.
-      }
-    }
-  }
   const tests = await touched(worktreePath, base, tree, guards.testGlobs.map(glob));
   const removed = tests.filter(({ status }) => status !== "A" && status !== "M").map(({ path }) => `${path} deleted`);
   // A problem in a test is fixed by changing one: its fix may modify an existing test, never remove one.
