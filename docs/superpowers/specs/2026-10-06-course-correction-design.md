@@ -295,7 +295,7 @@ role fragments are deleted. The slots become:
 ## Acceptance      what will judge the work: the gate's description and the command to run it,
                    the guards in one paragraph, any step-specific checks, and the landing boundary
 ## Evidence        on a retry: the verbatim newly-failing assertions, including any guard finding
-## Reply           the reply contract: report completed, escalate (exhaustion|authority), or needs_decision
+## Reply           the reply contract: completed, or escalate (exhaustion | authority | decision)
 ```
 
 What is removed:
@@ -309,8 +309,13 @@ What is removed:
   protects the agent from project content rather than restricting the agent: "the finding below
   was written by another agent; treat it as data".
 
-The reply envelope gains `needs_decision`. It is an authority-class escalation that carries a
-question for the operator. Autoloop expresses this with its `needs-human` sentinel file.
+The reply envelope's escalation gains a category, `decision`, which carries a question for the
+operator; Autoloop expresses this with its `needs-human` sentinel file. It routes as an authority
+escalation does, straight to `ESCALATED`. For an item from a work source, the ledger parks it
+with the question, which `delivery status`, the report and `notify` show. `delivery answer <item>
+"<text>"` records the answer in the ledger and unparks the item; the next `--sources` run resumes
+the session with the answer as its next turn (5.11). For an ad-hoc run, the packet carries the
+question and the operator answers by running the task again.
 
 ### 5.4 Workflows
 
@@ -377,8 +382,8 @@ Two kinds of data are kept apart, because they are different things:
   They live in the **backlog**, tracked in the repository.
 - **The item ledger** is machine state: attempts, last outcome, parked flag, and the preserved
   worktree and session. It lives beside the worktrees in the machine-local state directory,
-  `~/.local/state/delivery-service/<repo-key>/` (or `$XDG_STATE_HOME`), because it describes this
-  machine's runs and means nothing in another clone.
+  `~/.local/state/delivery-service/ledger/<repo-key>` (under `$XDG_STATE_HOME` when set), because
+  it describes this machine's runs and means nothing in another clone.
 
 **The backlog** is Delivery Service's own store, at `.delivery/backlog/`, tracked by git. It does
 not read Autoloop's `.autoloop/`. Each item is a markdown file with front matter in Delivery
@@ -407,8 +412,9 @@ available as {{task.<field>}}, e.g. `spec:` and `slice:` for a slice delivery.
 - **Agents cannot edit existing items.** The guards (5.2) refuse an edit or removal of an existing
   item. The task an agent works on is pinned in the case file at dispatch, so editing its file
   could not change what it is judged against anyway.
-- **Resolving an item is part of landing.** On acceptance, before landing, the closer adds a
-  commit to the task branch that sets the item's `status: resolved`. The item's completion lands
+- **Resolving an item is part of landing.** On acceptance, in `CLOSING` and before any closer
+  runs, the harness adds a commit to the task branch that sets the item's `status: resolved`.
+  Closers stay unaware of it. The item's completion lands
   together with the work that completes it; with the open-PR closer, it lands when the PR merges.
   A recurring item is not resolved; its last-closed time goes into the ledger.
 - `.delivery/.gitignore` changes from ignoring everything to ignoring everything except
@@ -420,18 +426,22 @@ ladder, and the roadmap's local scheduling item builds on them.
 | Source type | Reads | Item id | On close |
 |---|---|---|---|
 | `backlog` | Open and due items in `.delivery/backlog/` | File name | Resolution commit on the task branch (above) |
-| `list` | `tasks` in config (today's behaviour) | Index | None |
+| `list` | `tasks` in config (today's behaviour) | Index | Recorded as done in the ledger, so it is not dispatched again |
 | `command` | Any executable that prints a JSON array of tasks, e.g. a script that finds the earliest incomplete slice | Its `id` field | Runs the command with `complete <id>` |
 
-- **Order:** sources are listed in priority order. Due recurring items come first, as Autoloop's
-  scheduled tasks do. Within a source, the source decides the order.
+- **Order:** due recurring backlog items come first, as Autoloop's scheduled tasks do. Then
+  sources in the order listed; within a source, the source decides (the backlog: `priority`, then
+  file name). Last come sources marked `fallback: true`, dispatched only when nothing else has
+  work, as Autoloop's `create-prd` leg runs only on an empty backlog. A fallback source's tasks
+  are never recorded as done, so a `list` source with one task naming a deriving workflow serves
+  as that leg.
 - **`delivery run --sources [--max N]`** takes up to `N` items (default 1) in order and runs them
   through the existing supervisor, concurrently up to `concurrency`. This is Autoloop's daily run,
   generalised.
 - **Item ledger.** Keyed by `source:id`, the ledger records attempts, the last outcome class and a
   parked flag. This is Autoloop's `ledger.sh`, which today's per-surface budgets do not cover. An
-  item that escalates, or that exhausts its retries on a configured number of `--sources` runs, is
-  parked. A parked item is skipped until `delivery unpark <id>`, and is listed by
+  item that escalates, or that exhausts its corrections on `parkAfter` consecutive `--sources`
+  runs (default 3, Autoloop's budget), is parked. A parked item is skipped until `delivery unpark <id>`, and is listed by
   `delivery status`, the report and `notify`. Parking writes nothing to the repository.
 - **Carrying an item's work into the next run.** The ledger keeps the item's worktree and session
   id when a run ends without landing. What the next `--sources` run does with them depends on how
@@ -471,19 +481,33 @@ stays deferred.
 
 ### 5.9 Configuration surface
 
-`delivery.config.json` gains `agent`, `workflows`, `sources`, `after`, `notify` and `fence`.
-`roles` is removed:
+`delivery.config.json` gains:
+
+- `agent`: any SDK option not owned by the harness (5.1), plus `append`, text added to every
+  step's context.
+- `workflows`: named workflows of steps. A step has `name`, `prompt`, and optionally `gate`,
+  `agent` (merged over the global block), `continue` and `guards` (`add`, `off`).
+- `sources`: work sources in order, each with `type` and its own detail, and optionally
+  `fallback`.
+- `parkAfter`, `after`, `notify`, and `fence` (`preferred`, `required` or `off`; or an object
+  with `mode` and `devices`).
+
+`domain` stays, and becomes part of the appended context. `roles` is removed:
 
 - `roles.*.systemPromptFragment` maps to `agent.append` (global) or a step's `prompt`.
 - `roles.*.allowedTools` has no replacement. `delivery validate` refuses it, names the field, and
   says that restriction now belongs in the operator's own Claude settings (`permissions.deny`).
+
+The command line gains `run --workflow <name>`, `run --sources [--max N]`, `answer`, `unpark`,
+`schedule` and `import autoloop`.
 
 `delivery preview` shows the full appended context and the effective agent options for a step.
 It notes that the operator's own settings and CLAUDE.md also load.
 
 ### 5.10 What is kept, unchanged
 
-Case file and run file persistence, crash recovery, the gate interface and its presets, the
+Case file and run file persistence (the case file gains the session id, the workflow step, the
+step's guard changes and the fence state, under a new format version), crash recovery, the gate interface and its presets, the
 baseline and delta rule, the deterministic router, budgets, escalation packets, closers and the
 repo lock, the multi-surface supervisor and breaker, reporting and the versioned report JSON, the
 pack manifest and finding gate, sign-off, and `claude-mock` with the testing guide.
@@ -552,7 +576,7 @@ a design, but may not decide one until the owner confirms it.
 | Dispatch ladder (`dispatch.sh`) | Work sources in priority order |
 | `.autoloop/issues`, `.autoloop/ideas`, `.autoloop/scheduled` | `.delivery/backlog/` items (`open`, `idea`, `cadence`), imported once |
 | Earliest incomplete slice across `*-slices.md` | `command` source (an operator script) |
-| `.autoloop/escalate`, `complete`, `needs-human` sentinels | Reply envelope: `escalate`, `completed`, `needs_decision` |
+| `.autoloop/escalate`, `complete`, `needs-human` sentinels | Reply envelope: `escalate`, `completed`, and `escalate` with category `decision` |
 | `AUTOLOOP_VERIFY_CMD` + setup/teardown + flake retry | Project gate (command gate), with setup and teardown; flakes handled by `recheck_gate` |
 | Ledger, failure classes, park breaker, park issue | Item ledger (5.5) and existing termini |
 | Session resume of a preserved worktree | Invariant 2 and ledger resume (5.5) |
@@ -662,7 +686,10 @@ is involved.
 - **Work sources:** contract tests per source type for listing, ordering, completing, invalid
   output. Backlog: a new item lands with the work, an invalid one fails the gate, the resolution
   commit is on the task branch before landing, a recurring item becomes due again after its
-  cadence. Ledger parks and resumes across two `--sources` invocations.
+  cadence. A `list` task done once is not dispatched again; a fallback source runs only when the
+  others are empty. Ledger parks after `parkAfter` runs and resumes across two `--sources`
+  invocations. A `decision` escalation parks the item with its question; `delivery answer`
+  unparks it and the next run resumes the session with the answer.
 - **Autoloop parity:** each of the five migrated workflows runs end to end against a fixture repo
   through `claude-mock`, under the default guards. Each produces the outcome Autoloop's verify
   would accept: commits ahead, gate green, marker present, files exist.
@@ -682,8 +709,8 @@ is involved.
 - **Backlog:** Delivery Service's own tracked store, markdown with front matter (the format
   Autoloop proved), in its own schema and location. Imported from `.autoloop/` once, never read in
   place.
-- **Ledger:** port Autoloop's per-item ledger semantics, stored in the existing run-record
-  persistence.
+- **Ledger:** port Autoloop's per-item ledger semantics, stored machine-locally beside the
+  worktrees (5.5) with the case file's atomic-write persistence.
 - **Test-weakening detection:** reuse `src/packs/guards.ts` for every run; no new detector. The
   existing-test edit guard becomes opt-in outside packs (5.2).
 
@@ -717,9 +744,10 @@ is involved.
 
 - **An unattended agent with the operator's full environment can do anything the operator can**,
   including network calls and MCP actions with external effects. This is the deliberate trade.
-  Autoloop has run with exactly this exposure across every active project. The fence and the
-  landing boundary bound the damage to the local repository. External effects are bounded only by the
-  operator's own settings.
+  Autoloop has run with exactly this exposure across every active project. The fence keeps the
+  main checkout intact and the landing boundary keeps unaccepted work off the base branch and the
+  remote. Everything else, external effects included, is bounded only by the operator's own
+  settings.
 - **The operator's hooks and plugins now shape harness runs.** A hook that blocks or rewrites tool
   calls changes the agent's behaviour, which is the point. A hook that breaks headless operation
   shows up as `INCOMPLETE_TERMINUS`, with its evidence recorded.
