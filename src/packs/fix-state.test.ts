@@ -13,7 +13,7 @@ import { deriveFindings, fixTasks, readFindingStates, type FixRun, type FixState
 import { fixTaskFor } from "./fix-task.js";
 import { appendLedger, type LedgerEntry } from "./ledger.js";
 import { guardListsFor } from "./guards.js";
-import { loadReview, listReviews } from "./review-record.js";
+import { loadReview, listReviews, type SavedReview } from "./review-record.js";
 import { sampleFinding, writeReview } from "./review-fixtures.js";
 
 const AT = "2026-10-05T10:00:00.000Z";
@@ -145,16 +145,15 @@ describe("reading gate rounds and refusals", () => {
 describe("holding fixes for sign-off", () => {
   it("is waiting for sign-off when a held fix has passed, and fixed when one that is not held has", () => {
     const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main" };
-    const held = { t: "authorise" as const, at: AT, ids: [A.id], verify: NPM, threshold: "high" as const, hold: { [A.id]: true }, landing: { type: "merge-back" } };
-    expect(deriveFindings([A], [decide([A.id], "approve"), held as any], new Map([[A.id, closed]]))[0]?.state).toBe("held");
-    expect(deriveFindings([A], [decide([A.id], "approve"), { ...held, hold: { [A.id]: false } } as any], new Map([[A.id, closed]]))[0]?.state).toBe("fixed");
+    const held: LedgerEntry = { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high", hold: { [A.id]: true }, landing: { type: "merge-back" } };
+    expect(deriveFindings([A], [decide([A.id], "approve"), held], new Map([[A.id, closed]]))[0]?.state).toBe("held");
+    expect(deriveFindings([A], [decide([A.id], "approve"), { ...held, hold: { [A.id]: false } }], new Map([[A.id, closed]]))[0]?.state).toBe("fixed");
   });
 
   it("gives each fix task the release it was authorised with", () => {
-    const HEADER = { pack: { name: "security", categories: [] as any, guards: undefined } } as any;
-    const review = { header: HEADER, result: { findings: [A], unconfirmed: [], notShown: 0, notes: "" } } as any;
-    const entries: LedgerEntry[] = [decide([A.id], "approve"), { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high" as any, hold: { [A.id]: true }, landing: { type: "merge-back" } }];
-    expect(fixTasks(review, entries as any)[0]?.authorisation).toEqual({ verify: NPM, hold: true, landing: { type: "merge-back" } });
+    const review = { header: { pack: { name: "security", categories: [], guards: undefined } }, result: { findings: [A], unconfirmed: [], notShown: 0, notes: "" } } as unknown as SavedReview;
+    const entries: LedgerEntry[] = [decide([A.id], "approve"), { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high", hold: { [A.id]: true }, landing: { type: "merge-back" } }];
+    expect(fixTasks(review, entries)[0]?.authorisation).toEqual({ verify: NPM, hold: true, landing: { type: "merge-back" } });
   });
 
   it.each<[LedgerEntry[], FixState]>([
@@ -165,8 +164,8 @@ describe("holding fixes for sign-off", () => {
     [[{ t: "rejected", at: AT, id: A.id } as const], "rejected"],
   ])("a held fix after %j is %s", (after, state) => {
     const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main" };
-    const held = { t: "authorise" as const, at: AT, ids: [A.id], verify: NPM, threshold: "high" as const, hold: { [A.id]: true }, landing: { type: "merge-back" } as const } as const;
-    const [at] = deriveFindings([A], [decide([A.id], "approve"), held as any, ...(after as any)], new Map([[A.id, closed]]));
+    const held: LedgerEntry = { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high", hold: { [A.id]: true }, landing: { type: "merge-back" } };
+    const [at] = deriveFindings([A], [decide([A.id], "approve"), held, ...after], new Map([[A.id, closed]]));
     expect(at?.state).toBe(state);
     expect(at?.signOff).toEqual(after.find((entry) => entry.t !== "signed_off") ?? null);
   });

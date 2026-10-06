@@ -5,6 +5,7 @@ import type { CommandContext, CliStdin, ExitOnInterrupt } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
 import { secretMasker } from "../packs/secrets.js";
 import { decideCommand, findingsCommand, type DecideOptions, type FindingsOptions } from "./findings-command.js";
+import type { SignOffOptions } from "./sign-off-command.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
@@ -243,7 +244,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("<number>", "the problem whose fix to merge, as the list numbers it")
     .action(async (number: string, _options: unknown, command: Command) => {
       const { signOffCommand } = await import("./sign-off-command.js");
-      exitCode = await signOffCommand(number, command.optsWithGlobals<any>(), ctxFor(command));
+      exitCode = await signOffCommand(number, command.optsWithGlobals<SignOffOptions>(), ctxFor(command));
     });
 
   findings
@@ -252,7 +253,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("<number>", "the problem whose fix to decline, as the list numbers it")
     .action(async (number: string, _options: unknown, command: Command) => {
       const { rejectCommand } = await import("./sign-off-command.js");
-      exitCode = await rejectCommand(number, command.optsWithGlobals<any>(), ctxFor(command));
+      exitCode = await rejectCommand(number, command.optsWithGlobals<SignOffOptions>(), ctxFor(command));
     });
 
   program
