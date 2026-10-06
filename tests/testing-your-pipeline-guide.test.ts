@@ -19,6 +19,7 @@ import {
   triageRoleConfig,
   workerRoleConfig,
 } from "../src/index.js";
+import { withoutCredentials } from "../src/mock-session.js";
 import {
   assertFullyConsumed,
   expectEnvelope,
@@ -32,8 +33,7 @@ import {
 const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "utf-8");
 
 /** Credentials the guide promises its examples never need: stripped from the child, not trusted to be absent. */
-const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
-const env = Object.fromEntries(Object.entries(cleanGitEnv()).filter(([name]) => !CREDENTIALS.includes(name)));
+const env = withoutCredentials(cleanGitEnv());
 
 const snippet = (name: string) => snippetFrom(guide, name);
 

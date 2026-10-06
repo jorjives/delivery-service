@@ -1,4 +1,5 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SessionEnvironment } from "./agent-invoke.js";
 import { MockNotInstalled } from "./errors.js";
@@ -11,6 +12,24 @@ const INSTALLED_MOCK = join(import.meta.dirname, "..", "node_modules", ".bin", "
  * mock-backed test proves it runs without a key, even on a machine that has one.
  */
 const CREDENTIALS = new Set(["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"]);
+
+/** `env` without the credentials a scripted session never needs. */
+export function withoutCredentials(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(env).filter(([name]) => !CREDENTIALS.has(name)));
+}
+
+let emptyConfig: string | undefined;
+
+/**
+ * `env` with the real runtime signed out: no credentials, and an empty config
+ * folder (one per process) in place of the contributor's login. A command under
+ * test that forgets its scripted agent is then refused at preflight instead of
+ * spending that login.
+ */
+export function signedOut(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  emptyConfig ??= mkdtempSync(join(tmpdir(), "delivery-signed-out-"));
+  return { ...withoutCredentials(env), CLAUDE_CONFIG_DIR: emptyConfig };
+}
 
 /** Where a scripted session reads its expectations and writes its journal. */
 export interface MockSessionPaths {
@@ -35,9 +54,8 @@ export function resolveMockExecutable(path = INSTALLED_MOCK): string {
  */
 export function mockSessionEnvironment({ scriptPath, journalPath }: MockSessionPaths): SessionEnvironment {
   const pathToClaudeCodeExecutable = resolveMockExecutable();
-  const inherited = Object.fromEntries(Object.entries(process.env).filter(([name]) => !CREDENTIALS.has(name)));
   return {
     pathToClaudeCodeExecutable,
-    env: { ...inherited, CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: journalPath },
+    env: { ...withoutCredentials(process.env), CLAUDE_MOCK_SCRIPT: scriptPath, CLAUDE_MOCK_JOURNAL: journalPath },
   };
 }

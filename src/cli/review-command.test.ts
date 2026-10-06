@@ -15,8 +15,8 @@ import { scriptedAsk } from "./init-fixtures.js";
 import { UNCOMMITTED_NOTE } from "./project.js";
 import { pickQuestion, reviewCommand, WHEN_QUESTION } from "./review-command.js";
 import type { CommandContext } from "./context.js";
+import { withoutCredentials } from "../mock-session.js";
 
-const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 const mocked = async (script = scanScript(EXAMPLE_SCAN)) => ({ [TEST_MOCK_SCRIPT]: await scriptFile(script) });
 const reviewDirs = (repo: string) => (existsSync(packsRoot(repo)) ? readdirSync(packsRoot(repo)).filter((name) => name !== "scan-errors") : []);
 
@@ -103,7 +103,7 @@ describe("delivery review", () => {
   it("stops before setting anything up when nobody is signed in", async () => {
     const repo = exampleRepo();
     const home = mkdtempSync(join(tmpdir(), "review-home-"));
-    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !CREDENTIALS.includes(name) && name !== TEST_MOCK_SCRIPT));
+    const env = Object.fromEntries(Object.entries(withoutCredentials(process.env)).filter(([name]) => name !== TEST_MOCK_SCRIPT));
     const { exitCode, stderr } = await delivery(["review", "code"], { cwd: repo, env: { ...env, HOME: home, CLAUDE_CODE_DIR: join(home, ".claude") } });
     expect(exitCode).toBe(EXIT.agentRuntime);
     expect(stderr).toBe(`${NOT_SIGNED_IN}\n`);

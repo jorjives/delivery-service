@@ -18,9 +18,9 @@ import { TEST_MOCK_SCRIPT, NOT_SIGNED_IN } from "../../src/cli/agent-session.js"
 import { EXIT, UNEXPECTED_FOOTER } from "../../src/cli/failures.js";
 import { NOT_A_REPOSITORY, NO_CHECK, UNCOMMITTED_NOTE } from "../../src/cli/project.js";
 import { REPO_ROOT, runDelivery, git } from "../helpers.js";
+import { withoutCredentials } from "../../src/mock-session.js";
 
 const TASK = "add a function that says hello to a name, with a test";
-const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 
 async function scriptFile(script: MockScript): Promise<string> {
   const path = join(mkdtempSync(join(tmpdir(), "uat-slice-1-script-")), "mock.json");
@@ -162,7 +162,7 @@ describe("AC: a missing sign-in stops the command before anything is set up, wit
   it("names being signed out and how to fix it, and leaves nothing behind in the repository", () => {
     const repo = sampleProjectCopy();
     const home = mkdtempSync(join(tmpdir(), "uat-slice-1-home-"));
-    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !CREDENTIALS.includes(name)));
+    const env = withoutCredentials(process.env);
 
     const { stderr, status } = runDelivery(["run", "--task", TASK], {
       cwd: repo,

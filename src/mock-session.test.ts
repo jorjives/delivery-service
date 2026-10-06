@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -7,7 +7,7 @@ import { create } from "./case-file.js";
 import { invoke } from "./agent-invoke.js";
 import { workerRoleConfig } from "./role-config.js";
 import { MockNotInstalled } from "./errors.js";
-import { resolveMockExecutable } from "./mock-session.js";
+import { resolveMockExecutable, signedOut, withoutCredentials } from "./mock-session.js";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import type { BudgetSet } from "./schema.js";
 import type { MockScript } from "./mock-script.js";
@@ -52,6 +52,24 @@ describe("mockSessionEnvironment", () => {
     expect(env).not.toHaveProperty("ANTHROPIC_API_KEY");
     expect(env).not.toHaveProperty("ANTHROPIC_AUTH_TOKEN");
     expect(env).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
+  });
+});
+
+describe("an environment for a command under test", () => {
+  const signedIn = { PATH: "/bin", ANTHROPIC_API_KEY: "k", ANTHROPIC_AUTH_TOKEN: "t", CLAUDE_CODE_OAUTH_TOKEN: "o", CLAUDE_CONFIG_DIR: "/home/me/.claude" };
+
+  it("drops every credential and keeps the rest", () => {
+    expect(withoutCredentials(signedIn)).toEqual({ PATH: "/bin", CLAUDE_CONFIG_DIR: "/home/me/.claude" });
+  });
+
+  it("signs the real runtime out: no credentials, and an empty config folder in place of the contributor's login", () => {
+    const env = signedOut(signedIn);
+    expect(env).toMatchObject({ PATH: "/bin" });
+    expect(env).not.toHaveProperty("ANTHROPIC_API_KEY");
+    expect(env).not.toHaveProperty("ANTHROPIC_AUTH_TOKEN");
+    expect(env).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
+    expect(env.CLAUDE_CONFIG_DIR).not.toBe("/home/me/.claude");
+    expect(readdirSync(env.CLAUDE_CONFIG_DIR ?? "")).toEqual([]);
   });
 });
 

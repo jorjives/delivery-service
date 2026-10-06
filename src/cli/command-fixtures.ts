@@ -6,6 +6,7 @@ import { Readable } from "node:stream";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { create, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
 import { writeMockScript, type MockScript } from "../mock-script.js";
+import { signedOut } from "../mock-session.js";
 import { resolveCloser } from "../resolve-closer.js";
 import { deterministicRouter } from "../router.js";
 import { advance } from "../surface.js";
@@ -76,9 +77,8 @@ export async function delivery(args: string[], { cwd, env = {}, isTTY = false, a
     argv: args,
     cwd,
     env: {
-      ...process.env,
+      ...signedOut(process.env),
       XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "command-state-")),
-      CLAUDE_CONFIG_DIR: mkdtempSync(join(tmpdir(), "command-signed-out-")),
       ...env,
     },
     stdin: Object.assign(Readable.from(answers.map((answer) => `${answer}\n`)), { isTTY: answers.length > 0 || undefined }),

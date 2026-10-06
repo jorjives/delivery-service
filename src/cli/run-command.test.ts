@@ -23,8 +23,8 @@ import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import { supervisedPlace, supervisorLockPath } from "../run-location.js";
 import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
+import { withoutCredentials } from "../mock-session.js";
 
-const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
 const ESC = "[";
 
 const escalates: MockScript = {
@@ -184,7 +184,7 @@ describe("delivery run", () => {
   it("stops before setting anything up when the agent runtime is not signed in, with the agent runtime code", async () => {
     const repo = initTempRepo("run-command-signed-out-", { "package.json": PACKAGE });
     const home = mkdtempSync(join(tmpdir(), "run-command-home-"));
-    const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !CREDENTIALS.includes(name)));
+    const env = withoutCredentials(process.env);
 
     const { exitCode, stderr } = await delivery(["run", "--task", TASK], {
       cwd: repo,

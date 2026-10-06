@@ -149,9 +149,10 @@ describe("AC: delivery run --json prints one record per step with the same exit 
     git(repo, ["init", "-q", "-b", "main"]);
     writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "scratch", private: true, scripts: { test: "exit 0" } }));
 
+    // The run aborts before any session starts; the scripted agent only keeps the real runtime out of it.
     const { stdout, status } = runDelivery(["run", "--json", "--task", "add a function"], {
       cwd: repo,
-      env: { ...process.env, XDG_STATE_HOME: scratchState() },
+      env: { ...process.env, XDG_STATE_HOME: scratchState(), [TEST_MOCK_SCRIPT]: await scriptFile({ expectations: [] }) },
     });
     expect(status).toBe(EXIT.aborted);
     const records = stepRecords(stdout) as Array<{ state: string; done: boolean }>;

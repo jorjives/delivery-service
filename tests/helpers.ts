@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll } from "vitest";
 import { cleanGitEnv } from "../src/git-env.js";
+import { signedOut } from "../src/mock-session.js";
 import type { MockExpectation } from "../src/testing.js";
 
 export const REPO_ROOT = join(import.meta.dirname, "..");
@@ -79,7 +80,7 @@ export function snippetFrom(guide: string, name: string): string {
 /** The compiled `delivery` command, as `npm run build` leaves it. */
 export const DELIVERY_BIN = join(REPO_ROOT, "dist", "cli", "main.js");
 
-/** Run the compiled `delivery` command as a person would, capturing what it prints and how it exits. */
+/** Run the compiled `delivery` command as a person would, signed out of the real runtime, capturing what it prints and how it exits. */
 export function runDelivery(
   args: string[],
   { cwd = REPO_ROOT, env = process.env }: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
@@ -87,7 +88,7 @@ export function runDelivery(
   if (!existsSync(DELIVERY_BIN)) {
     throw new Error("dist/cli/main.js is missing: run `npm run build` (npm test does this for you)");
   }
-  const { stdout, stderr, status } = spawnSync(process.execPath, [DELIVERY_BIN, ...args], { cwd, env, encoding: "utf-8" });
+  const { stdout, stderr, status } = spawnSync(process.execPath, [DELIVERY_BIN, ...args], { cwd, env: signedOut(env), encoding: "utf-8" });
   return { stdout, stderr, status };
 }
 

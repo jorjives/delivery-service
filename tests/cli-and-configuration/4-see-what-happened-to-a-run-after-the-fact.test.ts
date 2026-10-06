@@ -178,14 +178,15 @@ describe("AC: an unfinished run's status says in plain language what resuming it
 });
 
 describe("AC: an aborted run's status prints the reason in plain language", () => {
-  it("says why the run stopped, with no stack trace", () => {
+  it("says why the run stopped, with no stack trace", async () => {
     const repo = mkdtempSync(join(tmpdir(), "uat-slice-4-no-commits-"));
     git(repo, ["init", "-q", "-b", "main"]);
     writeFileSync(join(repo, "package.json"), JSON.stringify({ name: "scratch", private: true, scripts: { test: "exit 0" } }));
 
+    // The run aborts before any session starts; the scripted agent only keeps the real runtime out of it.
     const finished = runDelivery(["run", "--task", "add a function"], {
       cwd: repo,
-      env: { ...process.env, XDG_STATE_HOME: scratchState() },
+      env: { ...process.env, XDG_STATE_HOME: scratchState(), [TEST_MOCK_SCRIPT]: await scriptFile({ expectations: [] }) },
     });
     expect(finished.status).toBe(EXIT.aborted);
 

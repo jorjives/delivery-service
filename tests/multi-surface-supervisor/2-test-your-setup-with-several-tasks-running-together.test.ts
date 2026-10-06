@@ -21,12 +21,12 @@ import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { cleanGitEnv } from "../../src/git-env.js";
 import { REPO_ROOT, runTsx, snippetFrom } from "../helpers.js";
+import { withoutCredentials } from "../../src/mock-session.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "utf-8");
 
 /** Credentials the guide promises its examples never need: stripped from the child, not trusted to be absent. */
-const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
-const env = Object.fromEntries(Object.entries(cleanGitEnv()).filter(([name]) => !CREDENTIALS.includes(name)));
+const env = withoutCredentials(cleanGitEnv());
 
 // A reader installs the package and imports it by name, so the snippet is staged in a
 // scratch folder where `delivery-service` resolves to this checkout through its own

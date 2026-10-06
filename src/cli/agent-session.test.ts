@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { chmodSync, existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { resolveMockExecutable } from "../mock-session.js";
+import { resolveMockExecutable, withoutCredentials } from "../mock-session.js";
 import { EXIT, Refusal } from "./failures.js";
 import {
   agentSession,
@@ -14,12 +14,10 @@ import {
   TEST_MOCK_SCRIPT,
 } from "./agent-session.js";
 
-const CREDENTIALS = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"];
-
 /** This process's environment with no credential and an empty Claude Code config folder: a machine nobody signed in on. */
 function signedOutEnv(): NodeJS.ProcessEnv {
   const home = mkdtempSync(join(tmpdir(), "agent-session-home-"));
-  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => !CREDENTIALS.includes(name)));
+  const env = withoutCredentials(process.env);
   return { ...env, HOME: home, CLAUDE_CONFIG_DIR: join(home, ".claude") };
 }
 
