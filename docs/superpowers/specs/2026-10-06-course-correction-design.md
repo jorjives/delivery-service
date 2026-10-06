@@ -39,11 +39,14 @@ The restrictions are not all late additions. The September interface note alread
 then hardened them into "the guard must be the only decision point, closed by construction. Pin
 `settingSources: []` ... accept no hooks or plugins". That argument is sound for one narrow risk
 (a side door widening permissions). It does not justify removing the operator's whole environment,
-because permissions were never the boundary that mattered. Later items built on that base. They
-also drew on personas (`docs/personas.md`) that an unattended design team invented and that no
-human confirmed. Those personas pushed the work towards a non-technical project owner who must be
-protected from the tool. The harness has never had that user. Its actual user is an expert
-operator with an established estate of skills and norms.
+because permissions were never the boundary that mattered. Later items built on that base.
+
+The roadmap's second audience, the non-technical project owner, is a deliberate and still-active
+goal. What drifted was what it was used for. Roadmap Item 9 has the harness "select appropriate
+tool authority from what the project owner describes": accessibility became a reason to narrow
+the agent, when it should only ever shape the harness's own surfaces. The three named personas in
+`docs/personas.md`, derived by an unattended design team and never confirmed, carried that
+reading forward.
 
 ## 2. Governing principle: check, don't constrain
 
@@ -84,7 +87,7 @@ The right-choice lens applied to every decision that shapes the agent's interact
 | 12 | Tasks only from a list in config | Easy | Pluggable work sources, Autoloop's backlog formats included |
 | 13 | Every attempt a fresh session, interrupted ones included (invariant 2) | Easy | Resume interrupted sessions; keep fresh sessions for judged attempts |
 | 14 | Scanner given a pre-built file list | Easy | Let the scanner explore |
-| 15 | Personas derived and adopted without human confirmation | Easy | Confirmed operator persona |
+| 15 | Personas derived and adopted without confirmation; accessibility read as narrowing the agent | Easy | Confirmed personas; accessibility scoped to the harness's surfaces |
 | 16 | Gate's pass/fail authoritative; no classifier overturns it (invariant 1) | Right | |
 | 17 | Baseline fingerprint and delta rule, ABSENT closes vanished assertions | Right | |
 | 18 | Task delivered by prompt, never written into the worktree | Right | |
@@ -469,12 +472,32 @@ continuing.
 
 ### 5.12 Personas
 
-`docs/personas.md` is replaced by one confirmed persona: **the operator**, an experienced engineer
-who runs agents unattended across several projects with an established estate of skills, plugins
-and norms. They want the harness to verify and land the agents' work, not to second-guess how the
-work was done. Plain-language reporting stays, because it is good writing. It is no longer a
-reason to narrow anything. *(Owner decision D2: whether the non-technical owner persona survives
-as a secondary audience.)*
+The harness serves people who can already get an agent to do the work. Today, a non-technical owner
+uses Claude Code with the full power of prompts and hopes for the best. The harness must not take
+away their ability to deliver. It gives them confidence that what they deliver is good and stable.
+The same is true for the engineer operator: the harness checks and lands the work, it does not
+second-guess how the work was done.
+
+`docs/personas.md` is rewritten on that basis:
+
+1. **The operator** (primary, confirmed). An experienced engineer running agents unattended
+   across several projects, with an established estate of skills, plugins and norms. Absorbs the
+   former on-call reader (Marcus): in practice the operator reads the escalations.
+2. **The non-technical project owner** (secondary, confirmed as a goal; Dana's details remain
+   assumed until confirmed). Uses Claude Code today without a safety net. Served by a fully
+   capable agent whose work is checked, plain-language reports and escalations, sensible
+   defaults, and setup without code.
+3. **The harness extender** (secondary, assumed; Priya). Authors packs, gates, closers and
+   workflows for others.
+
+One rule is written into the file and binds every later design:
+
+> Accessibility applies to the harness's own surfaces: setup, configuration, reports and
+> escalation packets. It means plain language, sensible defaults and no code required. It is
+> never a reason to change what the agent may do.
+
+Every persona and every goal extension is marked confirmed or assumed. An assumed one may inform
+a design, but may not decide one until the owner confirms it.
 
 ## 6. Replacing Autoloop
 
@@ -621,10 +644,11 @@ is involved.
 
 ### Owner decisions
 
+- **Personas (decided 2026-10-07).** The operator is primary; the non-technical owner and the
+  extender stay as secondary audiences. Accessibility shapes the harness's surfaces, never the
+  agent's capability (5.12).
 - **Session continuity (decided 2026-10-07).** Judged attempts get a new session in the same
   worktree; interrupted ones resume; across runs, exhausted corrections retry cold (5.11).
-- **D2: Personas.** Proposed: one confirmed operator persona. The alternative keeps the
-  non-technical owner as a secondary audience for reporting language only.
 - **D3: Fence default.** Proposed: `fence: preferred`, which records `absent` and continues. The
   alternative is `required` by default.
 - **Backlog store (decided 2026-10-07).** Delivery Service's own store, tracked in the repository at
