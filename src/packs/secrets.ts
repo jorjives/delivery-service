@@ -64,7 +64,6 @@ export function maskIn(text: string, literals: Iterable<string>): string {
   for (const literal of [...new Set(literals)].sort((a, b) => b.length - a.length)) {
     const plainMask = maskSecret(literal);
     const jsonForm = JSON.stringify(literal).slice(1, -1);
-    // For the JSON form, show the first 4 characters of the original literal, but escaped
     const jsonFirst4 = JSON.stringify(literal.slice(0, 4)).slice(1, -1);
     const jsonMask = `${jsonFirst4}… (${literal.length} characters)`;
 

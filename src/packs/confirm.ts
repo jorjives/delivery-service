@@ -115,7 +115,6 @@ export async function patternFound(cwd: string, check: Extract<CheckSpec, { kind
   }
 }
 
-/** Whether a pattern check can be used: it runs, through git, and matches the code as it stands. Anything else is not a check. */
 /** Whether a check can be used: it runs and the problem it looks for is there now, so it can go from red to green. Anything else is not a check. */
 async function holdsNow(repoPath: string, commit: string, check: CheckSpec): Promise<boolean> {
   if (check.kind === "pattern-absent") return (await patternFound(repoPath, check, commit)) === true;
