@@ -20,6 +20,8 @@ const FIXES_CHECKOUT = {
   effects: [{ edit: { path: "checkout.js", old: "return price - discount;", new: "return Math.max(0, price - discount);" } }],
   json: { status: "completed", rationale: "a total never goes below zero" },
 };
+/** A test of the project that holds only while a total can go below zero, so the fix no longer passes once it lands. */
+const REFUND_TEST = 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { total } from "./checkout.js";\n\ntest("a discount bigger than the price is a refund", () => {\n  assert.equal(total(5, 10), -5);\n});\n';
 const env = async (script: MockScript) => ({ [TEST_MOCK_SCRIPT]: await scriptFile(script) });
 const git = (repo: string, args: string[]): string => execFileSync("git", args, { cwd: repo, env: cleanGitEnv(), encoding: "utf-8" }).trim();
 const commit = (repo: string, files: Record<string, string>, message: string): void => {
@@ -30,11 +32,11 @@ const commit = (repo: string, files: Record<string, string>, message: string): v
 const branchOf = (repo: string): string => git(repo, ["branch", "--list", "surface/*", "--format=%(refname:short)"]);
 
 /** A security review whose one high problem was fixed and is waiting for sign-off. */
-async function waiting(): Promise<{ repo: string; dir: string }> {
+async function waiting(projectEnv: Record<string, string> = {}): Promise<{ repo: string; dir: string }> {
   const repo = exampleRepo("sign-off-");
   const dir = await writeReview(repo, { reviewId: "security-20261006T101500Z", findings: [NEGATIVE], pack: SECURITY });
   await delivery(["findings", "approve", "1"], { cwd: repo });
-  const { stdout } = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [FIXES_CHECKOUT] }) });
+  const { stdout } = await delivery(["fix"], { cwd: repo, env: { ...projectEnv, ...(await env({ expectations: [FIXES_CHECKOUT] })) } });
   expect(stdout).toContain("(high): waiting for your sign-off");
   return { repo, dir };
 }
@@ -114,7 +116,7 @@ describe("delivery findings sign-off", () => {
       const branch = branchOf(repo);
       commit(
         repo,
-        { "refund.test.js": 'import { test } from "node:test";\nimport assert from "node:assert/strict";\nimport { total } from "./checkout.js";\n\ntest("a discount bigger than the price is a refund", () => {\n  assert.equal(total(5, 10), -5);\n});\n' },
+        { "refund.test.js": REFUND_TEST },
         "Rely on negative totals",
       );
       const head = git(repo, ["rev-parse", "HEAD"]);
@@ -124,6 +126,22 @@ describe("delivery findings sign-off", () => {
       expect(stdout).toContain(notMergedLine(1, "check_failed", branch));
       expect(git(repo, ["rev-parse", "HEAD"])).toBe(head);
       expect(branchOf(repo)).toBe(branch);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "takes control text out of what it tells engineers",
+    async () => {
+      // The project's own check names the failing test, so its words reach the detail.
+      const { repo } = await waiting({ DELIVERY_GATE_COMMAND: "node --test # \u001b[31mred\u0007" });
+      commit(repo, { "refund.test.js": REFUND_TEST }, "Rely on negative totals");
+
+      const { exitCode, stdout } = await delivery(["findings", "sign-off", "1"], { cwd: repo });
+      expect(exitCode).toBe(EXIT.escalated);
+      expect(stdout).toContain("For engineers: newly failing: exit:node --test # red\n");
+      expect(stdout).not.toContain("\u001b");
+      expect(stdout).not.toContain("\u0007");
     },
     RUN_TIMEOUT * 2,
   );

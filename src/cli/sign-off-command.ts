@@ -3,6 +3,7 @@ import { keptFix, readFindingStates, type FindingState } from "../packs/fix-stat
 import { appendLedger, type NotLandedReason } from "../packs/ledger.js";
 import { CHECKING_SIGN_OFF, NOT_LANDED_WHY, PR_OPENED, STATE_WORDS, stateWords } from "../packs/render.js";
 import { signOff } from "../packs/sign-off.js";
+import { stripControl } from "../report/text.js";
 import type { SavedReview } from "../packs/review-record.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
@@ -53,7 +54,7 @@ export async function signOffCommand(number: string, options: SignOffOptions, ct
     return EXIT.ok;
   }
   say(notMergedLine(n, outcome.reason, fix.branch));
-  say(`For engineers: ${outcome.detail}`);
+  say(`For engineers: ${stripControl(outcome.detail)}`);
   return EXIT.escalated;
 }
 
