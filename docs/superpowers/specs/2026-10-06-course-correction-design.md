@@ -323,35 +323,73 @@ The harness ships **no workflow that names an operator's skill.** Autoloop's leg
 workflows, live in the operator's own estate (8.2). The harness stays unopinionated. The
 operator's workflows are as opinionated as the operator likes.
 
-### 5.5 Work sources
+### 5.5 The backlog, work sources and the item ledger
 
-A **work source** produces tasks. Each task names its workflow. This replaces Autoloop's dispatch
-ladder, and the roadmap's local scheduling item builds on it.
+Two kinds of data are kept apart, because they are different things:
+
+- **Work items** are content: what the operator wants done, written for people and agents to read.
+  They live in the **backlog**, tracked in the repository.
+- **The item ledger** is machine state: attempts, last outcome, parked flag, and the preserved
+  worktree and session. It lives beside the worktrees in the machine-local state directory,
+  `~/.local/state/delivery-service/<repo-key>/` (or `$XDG_STATE_HOME`), because it describes this
+  machine's runs and means nothing in another clone.
+
+**The backlog** is Delivery Service's own store, at `.delivery/backlog/`, tracked by git. It does
+not read Autoloop's `.autoloop/`. Each item is a markdown file with front matter in Delivery
+Service's own schema, named `<timestamp>-<slug>.md` so items added by concurrent tasks never
+collide:
+
+```markdown
+---
+status: open            # open | idea | resolved
+workflow: resolve-issue # the workflow that delivers it; ideas have none
+priority: 10            # lower first; ties by file name
+cadence: 7d             # optional: a recurring item, due when this long has passed since it last closed
+---
+The free-text brief the step prompts receive as {{task.body}}. Any other front matter field is
+available as {{task.<field>}}, e.g. `spec:` and `slice:` for a slice delivery.
+```
+
+- **Tracked, on purpose.** Items are versioned and reviewable like the design specs, which
+  already act as a backlog. Every agent sees the backlog in its worktree, so it can read related
+  items and ideas for context.
+- **Ideas** (`status: idea`) are never dispatched. They are material for workflows that derive
+  new work, as Autoloop's `create-prd` leg does.
+- **Raising follow-ups needs no special mechanism.** An agent adds a new item file on its branch.
+  The acceptance checks parse every new item against the schema; an invalid one fails the gate
+  like any other assertion. The closer lands new items with the rest of the work.
+- **Agents cannot edit existing items.** The guards (5.2) refuse an edit or removal of an existing
+  item. The task an agent works on is pinned in the case file at dispatch, so editing its file
+  could not change what it is judged against anyway.
+- **Resolving an item is part of landing.** On acceptance, before landing, the closer adds a
+  commit to the task branch that sets the item's `status: resolved`. The item's completion lands
+  together with the work that completes it; with the open-PR closer, it lands when the PR merges.
+  A recurring item is not resolved; its last-closed time goes into the ledger.
+- `.delivery/.gitignore` changes from ignoring everything to ignoring everything except
+  `backlog/`, so run records and locks stay untracked.
+
+**Work sources** produce tasks, and each task names its workflow. They replace Autoloop's dispatch
+ladder, and the roadmap's local scheduling item builds on them.
 
 | Source type | Reads | Item id | On close |
 |---|---|---|---|
+| `backlog` | Open and due items in `.delivery/backlog/` | File name | Resolution commit on the task branch (above) |
 | `list` | `tasks` in config (today's behaviour) | Index | None |
-| `directory` | Markdown files with front matter in a folder, e.g. `.autoloop/issues/` | File name | Moves the file to `done/`, sets `status: resolved` |
-| `command` | Any executable that prints a JSON array of tasks | Its `id` field | Runs the command with `complete <id>` |
-| `schedule` | A cadence (`7d`, `daily 02:00`) wrapping another task | Name | Stamps the last delivered time |
+| `command` | Any executable that prints a JSON array of tasks, e.g. a script that finds the earliest incomplete slice | Its `id` field | Runs the command with `complete <id>` |
 
-- **Order:** sources are listed in priority order. A due `schedule` item comes first, as in
-  Autoloop. Within a source, the source decides the order.
+- **Order:** sources are listed in priority order. Due recurring items come first, as Autoloop's
+  scheduled tasks do. Within a source, the source decides the order.
 - **`delivery run --sources [--max N]`** takes up to `N` items (default 1) in order and runs them
   through the existing supervisor, concurrently up to `concurrency`. This is Autoloop's daily run,
   generalised.
-- **Item ledger.** A cross-run ledger keyed by `source:id` records attempts, the last outcome
-  class and a parked flag. This is Autoloop's `ledger.sh`, which today's per-surface budgets do not
-  cover. An item that escalates, or exhausts its retries on `--sources` runs a configured number
-  of times, is parked. A parked item is skipped until `delivery unpark <id>`. A parked item raises
-  a directory-source issue if the project has one.
-- **Outbox.** A step may write new items into `.delivery/outbox/<source>/` in the worktree. The
-  harness validates them (non-empty, parseable by the source) and promotes them into the source on
-  close. It drops them, with a report line, on any other terminal. The agent raises follow-ups
-  without folding them into the work.
-- **Resuming a parked item's work.** When a run ends `ESCALATED` or `INCOMPLETE`, the item's
-  worktree and session id are kept in the ledger. The next `--sources` run resumes that worktree
-  and session rather than starting cold, as Autoloop's `resume` class does.
+- **Item ledger.** Keyed by `source:id`, the ledger records attempts, the last outcome class and a
+  parked flag. This is Autoloop's `ledger.sh`, which today's per-surface budgets do not cover. An
+  item that escalates, or that exhausts its retries on a configured number of `--sources` runs, is
+  parked. A parked item is skipped until `delivery unpark <id>`, and is listed by
+  `delivery status`, the report and `notify`. Parking writes nothing to the repository.
+- **Resuming an item's work.** When a run ends `ESCALATED` or `INCOMPLETE`, the item's worktree and
+  session id are kept in the ledger. The next `--sources` run resumes that worktree and session
+  rather than starting cold, as Autoloop's `resume` class does.
 
 ### 5.6 Triage and gate maintenance
 
@@ -421,13 +459,13 @@ as a secondary audience.)*
 | Leg (`resolve-issue`, `deliver-slice`, `write-slices`, `create-prd`, `scheduled-task`) | Workflow, defined by the operator |
 | `prompts/*.md` | Step prompts, minus the sentinel-file and "never merge" boilerplate the harness now enforces |
 | Dispatch ladder (`dispatch.sh`) | Work sources in priority order |
-| `.autoloop/issues`, `.autoloop/ideas`, `.autoloop/scheduled` | `directory` and `schedule` sources over the same folders, read in place |
+| `.autoloop/issues`, `.autoloop/ideas`, `.autoloop/scheduled` | `.delivery/backlog/` items (`open`, `idea`, `cadence`), imported once |
 | Earliest incomplete slice across `*-slices.md` | `command` source (an operator script) |
 | `.autoloop/escalate`, `complete`, `needs-human` sentinels | Reply envelope: `escalate`, `completed`, `needs_decision` |
 | `AUTOLOOP_VERIFY_CMD` + setup/teardown + flake retry | Project gate (command gate), with setup and teardown; flakes handled by `recheck_gate` |
 | Ledger, failure classes, park breaker, park issue | Item ledger (5.5) and existing termini |
 | Session resume of a preserved worktree | Invariant 2 and ledger resume (5.5) |
-| `close.sh` (close-prep agent, re-gate, ff merge, promote outbox) | A final workflow step if wanted, then the merge-back closer, then outbox promotion |
+| `close.sh` (close-prep agent, re-gate, ff merge, promote outbox) | A final workflow step if wanted, then the resolution commit and the merge-back closer; follow-ups land as ordinary new items |
 | `deploy.sh` | `after` commands |
 | `notify.sh`, health digest | `notify` command; `delivery report --json` across projects |
 | fsguard (bubblewrap) | The write fence (5.2) |
@@ -450,8 +488,9 @@ of them.
   a `delivery.config.json` from `~/.config/autoloop/<key>/config`. Verify command becomes gate,
   deploy becomes `after`, base branch becomes the closer's target, the `AUTOLOOP_ENABLE_*` toggles
   become the source list, and device bind-mounts become `fence.devices`.
-- **Backlog data stays where it is.** The directory sources read `.autoloop/` in place, and the
-  ledger imports Autoloop's parked items.
+- **Backlog import.** `delivery import autoloop` converts `.autoloop/issues`, `ideas` and
+  `scheduled` into `.delivery/backlog/` items, committed by the operator, and imports Autoloop's
+  ledger, parked items included. After that, nothing reads `.autoloop/`.
 - **Cutover per project:** disable the Autoloop timer, enable `delivery schedule`. Projects move
   one at a time, starting with this repository.
 
@@ -485,7 +524,8 @@ The same machinery covers work Autoloop cannot express:
   from the case file. Record it as such. This is not counted as a failure.
 - **Work source command fails or prints invalid JSON:** that source is skipped for the run with a
   report line. Other sources still dispatch.
-- **Outbox item invalid:** dropped with a report line. It never fails the task.
+- **New backlog item invalid, or an existing item edited:** a newly-failing assertion in the gate
+  result, routed through triage like any other `gate_fail`.
 - **`after` command fails:** recorded as pending delivery. The landing stands.
 
 ## 8. Testing
@@ -513,7 +553,9 @@ is involved.
   `continue: true` resumes the session id; the closer runs once; a gate failure in step 2 retries
   step 2 only.
 - **Work sources:** contract tests per source type for listing, ordering, completing, invalid
-  output and outbox promotion. Ledger parks and resumes across two `--sources` invocations.
+  output. Backlog: a new item lands with the work, an invalid one fails the gate, the resolution
+  commit is on the task branch before landing, a recurring item becomes due again after its
+  cadence. Ledger parks and resumes across two `--sources` invocations.
 - **Autoloop parity:** each of the five migrated workflows runs end to end against a fixture repo
   through `claude-mock`. Each produces the outcome Autoloop's verify would accept: commits ahead,
   gate green, marker present, files exist.
@@ -529,8 +571,9 @@ is involved.
 - **Write fence:** prior art. Port Autoloop's bubblewrap fence, unless slice 1 shows the SDK's
   native sandbox also covers file tools, in which case use that.
 - **Scheduling:** prior art. Use systemd user timers in Autoloop's shape, not a daemon of our own.
-- **Backlog formats:** reuse Autoloop's `.autoloop/` formats through generic directory sources;
-  no new format.
+- **Backlog:** Delivery Service's own tracked store, markdown with front matter (the format
+  Autoloop proved), in its own schema and location. Imported from `.autoloop/` once, never read in
+  place.
 - **Ledger:** port Autoloop's per-item ledger semantics, stored in the existing run-record
   persistence.
 - **Test-weakening detection:** reuse `src/packs/guards.ts` for every run; no new detector.
@@ -554,6 +597,8 @@ is involved.
   non-technical owner as a secondary audience for reporting language only.
 - **D3: Fence default.** Proposed: `fence: preferred`, which records `absent` and continues. The
   alternative is `required` by default.
+- **Backlog store (decided 2026-10-07).** Delivery Service's own store, tracked in the repository at
+  `.delivery/backlog/`; the ledger is machine-local state (5.5).
 - **Landing boundary (decided 2026-10-07).** Agents never merge, push or open PRs; landing is the
   closer's alone. Enforced by instruction, session-scoped git hooks, and PR detection (5.2).
   Acceptance-check failures go through triage; only landing outside the closer bypasses it.
