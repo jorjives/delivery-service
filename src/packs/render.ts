@@ -4,7 +4,7 @@ import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
 import type { CheckKind, CheckSpec, Finding, UnconfirmedReason } from "./finding.js";
 import type { FindingState, FixState } from "./fix-state.js";
-import type { SavedReview } from "./review-record.js";
+import { changesTests, type SavedReview } from "./review-record.js";
 
 /** How the harness will know each kind of check is met, as the owner reads it. Total over the closed set. */
 export const CHECK_LEVEL: Record<CheckKind, string> = {
@@ -29,6 +29,9 @@ export const RECOVERED = "Finishing the review that was interrupted: the agent h
 export const NOT_NOW = "Nothing has been changed. The list is saved: see it again with delivery findings";
 export const NO_REVIEW_YET = "No review found in this project. Start one with: delivery review code";
 export const NOT_YET_DECIDED = "not yet decided";
+export const REFUSED_WEAKENING = "The agent's fix was rejected because it removed or skipped existing tests.";
+export const NEEDS_TEST_CHANGE = "needs a change to one of your tests, which this review does not let an agent do";
+export const CHANGES_TESTS = "this fix will change your tests";
 
 /** Where a problem stands, as the owner reads it. Total over the closed set. */
 export const STATE_WORDS: Record<FixState, string> = {
@@ -49,23 +52,29 @@ export const stateWords = ({ state, fix }: FindingState): string => (state === "
 
 export const fixWaiting = (count: number): string => `${count} approved and not started yet. Start fixing ${count === 1 ? "it" : "them"} with: delivery fix`;
 
+const problems = (count: number): string => `${count} ${count === 1 ? "problem" : "problems"}`;
+
+export const needsTestChangeLine = (count: number): string => `${problems(count)} could not be fixed: ${count === 1 ? "it" : "each"} ${NEEDS_TEST_CHANGE}.`;
+
 /** Why a problem's fix stopped: the harness's plain sentence, then the agent's own words, quoted. */
-function stopLines({ state, fix }: FindingState): string[] {
+function stopLines({ state, fix, cause }: FindingState): string[] {
   if ((state !== "unfixable" && state !== "stopped") || !fix?.plain) return [];
   const { sentence, agentSaid } = fix.plain;
-  return [`    Why: ${sentence}`, ...(agentSaid === null ? [] : [`    The agent said: ${quoted(agentSaid, "      ")}`])];
+  const why = cause === "needs_test_change" ? `It ${NEEDS_TEST_CHANGE}.` : sentence;
+  return [`    Why: ${why}`, ...(agentSaid === null ? [] : [`    The agent said: ${quoted(agentSaid, "      ")}`])];
 }
 
 export const opening = (title: string): string[] => [`${title} of your project.`, READS_ONLY];
 export const unfinishedReview = (packName: string): string => `The last review was stopped before it was saved. Run \`delivery review ${packName}\` to finish it.`;
 
-const problems = (count: number): string => `${count} ${count === 1 ? "problem" : "problems"}`;
-
 export const noneFound = (fileCount: number): string =>
   `The review found no problems. That is not proof there are none: the review is an agent's opinion, it looked at ${fileCount} ${fileCount === 1 ? "file" : "files"}, and it can miss things.`;
 
+const unconfirmedPointer = (count: number): string[] =>
+  count === 0 ? [] : [`${count} more could not be confirmed: the code they point at could not be found, so they are not offered. See them with: delivery findings --unconfirmed`];
+
 /** One problem as a numbered block: title and severity, then one fact per line. */
-export function problemBlock(number: number, finding: Finding): string[] {
+export function problemBlock(number: number, finding: Finding, changesTests = false): string[] {
   return [
     `${number}. ${finding.title} (${finding.severity})`,
     `    Where: ${pathName(finding.where.path)}, line ${finding.where.line}`,
@@ -73,11 +82,9 @@ export function problemBlock(number: number, finding: Finding): string[] {
     `    Why it matters: ${finding.whyItMatters}`,
     `    Fixed looks like: ${finding.fixedLooksLike}`,
     `    How we will know: ${CHECK_LEVEL[finding.check.kind]}.`,
+    ...(changesTests ? [`    Note: ${CHANGES_TESTS}.`] : []),
   ];
 }
-
-const unconfirmedPointer = (count: number): string[] =>
-  count === 0 ? [] : [`${count} more could not be confirmed: the code they point at could not be found, so they are not offered. See them with: delivery findings --unconfirmed`];
 
 /** What `delivery review` prints once the review is saved. */
 export function reviewLines({ header, result }: SavedReview): string[] {
@@ -90,7 +97,7 @@ export function reviewLines({ header, result }: SavedReview): string[] {
     `${took} It found ${problems(shown + result.notShown)}.`,
     AGENT_OPINION,
     "",
-    ...result.findings.flatMap((finding, index) => problemBlock(index + 1, finding)),
+    ...result.findings.flatMap((finding, index) => problemBlock(index + 1, finding, changesTests(header.pack, finding.category))),
     ...(result.notShown > 0 ? [`${result.notShown} more not shown: this review lists at most ${header.pack.maxFindings} problems.`] : []),
     ...unconfirmedPointer(result.unconfirmed.length),
     "",
@@ -106,13 +113,15 @@ export function reviewLines({ header, result }: SavedReview): string[] {
 /** What `delivery findings` prints: the latest review's problems and where each stands. `states` is aligned with the review's problems. */
 export function listLines({ header, result }: SavedReview, states: readonly FindingState[]): string[] {
   const waiting = states.filter((at) => at.state === "approved").length;
+  const needsTest = states.filter((at) => at.cause === "needs_test_change").length;
   return [
     `${header.pack.title} of ${basename(header.repoPath)}, ${dayAndMinute(header.endedAt)} UTC: ${problems(result.findings.length)}.`,
     ...result.findings.flatMap((finding, index) => {
-      const at = states[index] ?? { state: "proposed", fix: undefined };
-      return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...stopLines(at)];
+      const at = states[index] ?? { state: "proposed", fix: undefined, refused: false, cause: null };
+      return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at)];
     }),
     ...unconfirmedPointer(result.unconfirmed.length),
+    ...(needsTest === 0 ? [] : ["", needsTestChangeLine(needsTest)]),
     ...(waiting === 0 ? [] : ["", fixWaiting(waiting)]),
     ...(result.findings.length === 0 ? [] : ["", "See one in full: delivery findings 1"]),
   ];
@@ -136,7 +145,7 @@ export function findingLines({ header, result }: SavedReview, number: number): s
   const category = header.pack.categories.find((known) => known.id === finding.category);
   const { line, endLine } = finding.where;
   return [
-    ...problemBlock(number, finding),
+    ...problemBlock(number, finding, changesTests(header.pack, finding.category)),
     "",
     "FOR ENGINEERS",
     `  Category: ${finding.category}${category === undefined ? "" : ` (${category.title})`}`,

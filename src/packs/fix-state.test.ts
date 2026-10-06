@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_BUDGETS } from "../budgets.js";
-import { create, setBaseBranch, setOutcome } from "../case-file.js";
+import { appendEntry, create, setBaseBranch, setOutcome } from "../case-file.js";
 import type { Plain } from "../report/document.js";
 import { closedAt, stoppedAt } from "../report/report-fixtures.js";
 import { runsRoot } from "../run-location.js";
@@ -23,7 +23,7 @@ const B = sampleFinding({ id: "111111111111", title: "Old payment code" });
 const decide = (ids: string[], choice: "approve" | "skip"): LedgerEntry => ({ t: "decision", at: AT, ids, choice });
 const authorise = (ids: string[]): LedgerEntry => ({ t: "authorise", at: AT, ids, verify: NPM });
 const plain = (audience: Plain["audience"]): Plain => ({ group: audience === "engineer" ? "needs_an_engineer" : "needs_your_decision", audience, sentence: "s", agentSaid: null, next: [] });
-const run = (over: Partial<FixRun>): FixRun => ({ run: "r", standing: "unfinished", closer: "merge-back", plain: null, ...over });
+const run = (over: Partial<FixRun>): FixRun => ({ run: "r", standing: "unfinished", closer: "merge-back", plain: null, rounds: [], ...over });
 
 describe("where each problem stands", () => {
   it("is not yet decided until the owner says, and the owner's latest choice wins", () => {
@@ -42,7 +42,7 @@ describe("where each problem stands", () => {
     [run({ standing: "aborted", plain: plain("engineer") }), "stopped"],
   ])("once authorised, follows its fix's run: %j is %s", (fix, state) => {
     const fixes = new Map(fix === undefined ? [] : [[A.id, fix]]);
-    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes)[0]).toEqual({ state, fix });
+    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes)[0]).toEqual({ state, fix, refused: false, cause: null });
   });
 
   it("is already fixed when its code was gone before its fix started, whatever else is recorded", () => {
@@ -102,5 +102,42 @@ describe("the fix tasks", () => {
     const [entry] = await listReviews(repo);
     if (entry?.state !== "done") throw new Error("no review");
     expect(fixTasks(await loadReview(entry), [decide([A.id], "approve"), authorise([A.id])])).toEqual([fixTaskFor("code", A, NPM)]);
+  });
+});
+
+describe("reading gate rounds and refusals", () => {
+  // The cause is the one deterministic signal: unfixable, and the last round refused only a modified existing test.
+  it.each([
+    [[["guard:tests-untouched"], []], "closed", true, null],
+    [[["guard:tests-unchanged"]], "escalated", true, "needs_test_change"],
+    [[["guard:tests-unchanged", "finding:0123456789ab:resolved"]], "escalated", true, "needs_test_change"],
+    [[["guard:tests-unchanged"], ["guard:tests-unchanged"]], "escalated", true, "needs_test_change"],
+    [[["guard:tests-untouched"]], "escalated", true, null], // deleted a test, then gave up: a cheat, not a need
+    [[["guard:tests-unchanged", "guard:no-skips"]], "escalated", true, null], // skipped a test, then gave up
+    [[["guard:tests-unchanged", "guard:check-untouched"]], "escalated", true, null],
+    [[["guard:tests-unchanged", "guard:ignored:vitest.config.ts"]], "escalated", true, null],
+    [[["guard:tests-unchanged"], ["finding:0123456789ab:resolved"]], "escalated", true, null], // the last round was something else
+    [[["guard:check-untouched"]], "escalated", true, null],
+    [[["finding:0123456789ab:resolved"]], "escalated", false, null],
+  ])("reads refusals from its fix's gate rounds: %j ending %s", (rounds, standing, refused, cause) => {
+    const fix = run({ standing: standing as FixRun["standing"], plain: standing === "closed" ? null : plain("owner"), rounds });
+    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], new Map([[A.id, fix]]))[0]).toMatchObject({ refused, cause });
+  });
+
+  it("appends a gate entry to the fix and reads the refusal", async () => {
+    const repo = initTempRepo("fix-state-", { "a.js": "x\n" });
+    const dir = await writeReview(repo, { findings: [A, B] });
+    await appendLedger(dir, { t: "decision", ids: [A.id, B.id], choice: "approve" });
+    await appendLedger(dir, { t: "authorise", ids: [A.id, B.id], verify: NPM });
+    await fixRun(repo, "fix-a-20261005T110000Z", fixTaskFor("code", A, NPM), closedAt("2026-10-05T11:05:00.000Z"));
+    await fixRun(repo, "fix-b-20261005T110100Z", fixTaskFor("code", B, NPM), stoppedAt("2026-10-05T11:06:00.000Z", undefined));
+    await appendEntry(join(runsRoot(repo), "fix-b-20261005T110100Z"), { t: "gate", attempt: 1, status: "FAIL", newFailures: [{ id: "guard:tests-unchanged", detailRef: "g1" }], class: "fail" });
+    const [entry] = await listReviews(repo);
+    if (entry?.state !== "done") throw new Error("no review");
+
+    const { states } = await readFindingStates(repo, await loadReview(entry));
+
+    expect(states[1]).toMatchObject({ refused: true, cause: "needs_test_change" });
+    expect(states[0]).toMatchObject({ refused: false, cause: null });
   });
 });

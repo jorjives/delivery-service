@@ -5,8 +5,9 @@ import { describe, expect, it } from "vitest";
 import { cleanGitEnv } from "../git-env.js";
 import { readLedger } from "../packs/ledger.js";
 import { guardListsFor } from "../packs/guards.js";
-import { NO_REVIEW_YET } from "../packs/render.js";
-import { exampleRepo, sampleFinding, writeReview } from "../packs/review-fixtures.js";
+import { needsTestChangeLine, NO_REVIEW_YET, REFUSED_WEAKENING } from "../packs/render.js";
+import { EXAMPLE_DIR, exampleRepo, sampleFinding, writeReview } from "../packs/review-fixtures.js";
+import { promptsSent, readJournal } from "../mock-script.js";
 import type { MockScript } from "../mock-script.js";
 import { runsRoot } from "../run-location.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
@@ -38,6 +39,39 @@ const GIVES_UP_ON_CHECKOUT = {
   when: { promptContains: NEGATIVE.id },
   json: { status: "escalate", category: "authority", rationale: "The discount rules are not written down anywhere." },
 };
+
+const ORIGINAL_TEST = readFileSync(join(EXAMPLE_DIR, "checkout.test.js"), "utf-8");
+const FIXES_THE_CODE = { edit: { path: "checkout.js", old: "return price - discount;", new: "return Math.max(0, price - discount);" } };
+const WEAKENS_THE_TEST = {
+  when: { promptContains: NEGATIVE.id },
+  effects: [FIXES_THE_CODE, { write: { path: "checkout.test.js", content: ORIGINAL_TEST.replace("test(", "test.skip(") } }],
+  json: { status: "completed", rationale: "fixed it" },
+};
+const PUTS_THE_TEST_BACK = {
+  when: { promptContains: "\n- guard:tests-unchanged" },
+  effects: [{ write: { path: "checkout.test.js", content: ORIGINAL_TEST } }],
+  json: { status: "completed", rationale: "put the test back" },
+};
+// What the instructions tell an honest agent to do when only a test change would fix the problem: make the smallest edit and finish; then stop when it is refused.
+const EDITS_THE_TEST_AS_THE_ONLY_WAY = {
+  when: { promptContains: NEGATIVE.id },
+  effects: [{ write: { path: "checkout.test.js", content: ORIGINAL_TEST.replace("7", "7 /* the test is what is wrong */") } }],
+  json: { status: "completed", rationale: "Only changing the test would fix this." },
+};
+const STOPS_WHEN_THE_TEST_EDIT_IS_REFUSED = {
+  when: { promptContains: "\n- guard:tests-unchanged" },
+  json: { status: "escalate", category: "authority", rationale: "Only changing the test would fix this." },
+};
+const DELETES_THE_TEST = {
+  when: { promptContains: NEGATIVE.id },
+  effects: [FIXES_THE_CODE, { delete: { path: "checkout.test.js" } }],
+  json: { status: "completed", rationale: "fixed it, and removed a test that no longer applied" },
+};
+const GIVES_UP_WHEN_THE_DELETION_IS_REFUSED = {
+  when: { promptContains: "\n- guard:tests-untouched" },
+  json: { status: "escalate", category: "authority", rationale: "The test would have to go for this to pass." },
+};
+
 const env = async (script: MockScript) => ({ [TEST_MOCK_SCRIPT]: await scriptFile(script) });
 const commitAll = (repo: string, message: string): void => {
   for (const args of [["add", "-A"], ["commit", "-m", message]]) execFileSync("git", args, { cwd: repo, env: cleanGitEnv(), stdio: "pipe" });
@@ -187,5 +221,51 @@ describe("delivery fix", () => {
       expect(doc.surfaces[0]).toMatchObject({ standing: "closed", tags: { pack: "code", findingId: NEGATIVE.id, severity: "high", phase: "fix" } });
     },
     RUN_TIMEOUT,
+  );
+
+  it(
+    "refuses a fix that skips a test, tells the agent why, and merges its corrected retry",
+    async () => {
+      const { repo } = await reviewed([NEGATIVE]);
+      await delivery(["findings", "approve", "1"], { cwd: repo });
+      const script = await scriptFile({ expectations: [PUTS_THE_TEST_BACK, WEAKENS_THE_TEST] });
+      const { stdout } = await delivery(["fix"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: script } });
+
+      expect(stdout).toContain(`1. The price shown at checkout can be negative (high): fixed and merged\n    ${REFUSED_WEAKENING}\n`);
+      expect(readFileSync(join(repo, "checkout.test.js"), "utf-8")).toBe(ORIGINAL_TEST);
+      expect(readFileSync(join(repo, "checkout.js"), "utf-8")).toContain("Math.max(0, price - discount)");
+      // the CLI's mock journal sits beside the script (src/cli/agent-session.ts)
+      expect(promptsSent(await readJournal(`${script}.journal.jsonl`)).some((prompt) => prompt.includes("Refused: this fix changed existing tests: checkout.test.js changed"))).toBe(true);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "ends a problem whose only way forward is a test edit as could not be fixed, counted on its own, with nothing merged",
+    async () => {
+      const { repo } = await reviewed([NEGATIVE]);
+      await delivery(["findings", "approve", "1"], { cwd: repo });
+      const { stdout } = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [STOPS_WHEN_THE_TEST_EDIT_IS_REFUSED, EDITS_THE_TEST_AS_THE_ONLY_WAY] }) });
+
+      expect(stdout).toContain(`: could not be fixed\n    ${REFUSED_WEAKENING}\n    Why: It needs a change to one of your tests, which this review does not let an agent do.`);
+      expect(stdout).toContain(needsTestChangeLine(1));
+      expect(readFileSync(join(repo, "checkout.test.js"), "utf-8")).toBe(ORIGINAL_TEST);
+      expect(readFileSync(join(repo, "checkout.js"), "utf-8")).toContain("return price - discount;");
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "does not count a fix that deleted a test and then gave up as needing a test change",
+    async () => {
+      const { repo } = await reviewed([NEGATIVE]);
+      await delivery(["findings", "approve", "1"], { cwd: repo });
+      const { stdout } = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [GIVES_UP_WHEN_THE_DELETION_IS_REFUSED, DELETES_THE_TEST] }) });
+
+      expect(stdout).toContain(`: could not be fixed\n    ${REFUSED_WEAKENING}\n`);
+      expect(stdout).not.toContain("needs a change to one of your tests");
+      expect(readFileSync(join(repo, "checkout.test.js"), "utf-8")).toBe(ORIGINAL_TEST);
+    },
+    RUN_TIMEOUT * 2,
   );
 });

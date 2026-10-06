@@ -3,8 +3,8 @@ import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
-  AGENT_OPINION, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, PR_OPENED, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview,
+  AGENT_OPINION, CHANGES_TESTS, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
+  opening, PR_OPENED, REFUSED_WEAKENING, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
@@ -25,7 +25,7 @@ const PATTERN = sampleFinding({ id: "111111111111", title: "Settings errors are 
 const UNUSED = sampleFinding({ id: "222222222222", title: "Old payment code", severity: "low", check: { kind: "none" }, droppedCheck: { kind: "pattern-absent", pattern: "x", paths: ["a.js"] }, detail: "nothing imports it" });
 const unconfirmed = UNCONFIRMED_REASONS.map((reason): Unconfirmed => ({ title: "Rounding", severity: "medium", path: "pricing.js", problem: "Prices round down.", reason }));
 const review = (overrides: Partial<SavedReview["result"]> = {}): SavedReview => ({ dir: "/d", header: HEADER, result: { findings: [NEGATIVE, PATTERN, UNUSED], unconfirmed: [], notShown: 0, notes: "", ...overrides } });
-const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, ...fix } });
+const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, rounds: [], ...fix }, refused: false, cause: null });
 const undecided = [at("proposed"), at("proposed"), at("proposed")];
 
 describe("a finished review, as the owner reads it", () => {
@@ -140,6 +140,33 @@ describe("the findings view", () => {
     expect(lines[0]).toBe(`The review reported ${unconfirmed.length} problems that could not be confirmed, so they are not offered:`);
     for (const reason of UNCONFIRMED_REASONS) expect(lines).toContain(`    Why it is not offered: ${UNCONFIRMED_WHY[reason]}.`);
   });
+
+  it("says in a problem's history when a fix was rejected for weakening the tests", () => {
+    const lines = listLines(review(), [{ ...at("fixed"), refused: true, cause: null }, at("skipped"), at("proposed")]);
+    expect(lines.slice(1, 3)).toEqual(["1. The price shown at checkout can be negative (high): fixed and merged", `    ${REFUSED_WEAKENING}`]);
+  });
+
+  it("says a problem needs a change to a test, and counts those separately", () => {
+    const stuck = (): FindingState => ({ ...at("unfixable", { standing: "escalated", plain: { group: "needs_your_decision", audience: "owner", sentence: "Needs your decision.", agentSaid: "Only the test is wrong.", next: [] } }), refused: true, cause: "needs_test_change" });
+    const lines = listLines(review(), [stuck(), stuck(), at("proposed")]);
+    expect(lines.slice(1, 5)).toEqual([
+      "1. The price shown at checkout can be negative (high): could not be fixed",
+      `    ${REFUSED_WEAKENING}`,
+      "    Why: It needs a change to one of your tests, which this review does not let an agent do.",
+      '    The agent said: "Only the test is wrong."',
+    ]);
+    expect(lines).toContain(needsTestChangeLine(2));
+    expect(needsTestChangeLine(2)).toBe("2 problems could not be fixed: each needs a change to one of your tests, which this review does not let an agent do.");
+  });
+
+  it("shows, before it is approved, that a problem's fix will change the tests", () => {
+    const header = { ...HEADER, pack: { ...HEADER.pack, categories: [...HEADER.pack.categories, { id: "tests", title: "Tests", changesTests: true as const }] } };
+    const weak = sampleFinding({ category: "tests" });
+    const saved: SavedReview = { dir: "/d", header, result: { findings: [weak], unconfirmed: [], notShown: 0, notes: "" } };
+    expect(reviewLines(saved)).toContain(`    Note: ${CHANGES_TESTS}.`);
+    expect(findingLines(saved, 1)).toContain(`    Note: ${CHANGES_TESTS}.`);
+    expect(reviewLines(review())).not.toContain(`    Note: ${CHANGES_TESTS}.`);
+  });
 });
 
 describe("what the review says when it could not run", () => {
@@ -168,6 +195,7 @@ describe("the review's own words", () => {
       ...Object.values(CHECK_LEVEL), ...Object.values(UNCONFIRMED_WHY), ...Object.values(STATE_WORDS), PR_OPENED, fixWaiting(1), fixWaiting(2),
       failureSentence({ status: "incomplete", rationale: "x", limit: "rate" }, "code"),
       failureSentence({ status: "incomplete", rationale: "x" }, "code"),
+      REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, needsTestChangeLine(1), needsTestChangeLine(2),
     ].join("\n");
     expect(everything.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
