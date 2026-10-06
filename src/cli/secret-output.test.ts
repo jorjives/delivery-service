@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_SECURITY_SCAN, exampleRepo, PAYMENTS_PASSWORD, scanScript } from "../packs/review-fixtures.js";
@@ -46,5 +47,15 @@ describe("a secret the review found, in every output", () => {
     const { stderr } = await delivery(["findings", PAYMENTS_PASSWORD], { cwd: repo });
     expect(stderr).not.toContain(PAYMENTS_PASSWORD);
     expect(stderr).toContain(MASK);
+  });
+});
+
+describe("a review of a repository other than the working folder", () => {
+  it("masks that repository's secrets", async () => {
+    const repo = exampleRepo("secret-output-other-");
+    const elsewhere = mkdtempSync(join(tmpdir(), "secret-output-cwd-"));
+    const { stdout, stderr } = await delivery(["review", "security", repo], { cwd: elsewhere, env: { [TEST_MOCK_SCRIPT]: await scriptFile(scanScript(QUOTES_IT)) } });
+    expect(stdout + stderr).not.toContain(PAYMENTS_PASSWORD);
+    expect(stdout).toContain(MASK);
   });
 });

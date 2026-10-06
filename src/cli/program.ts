@@ -204,7 +204,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("<pack>", "which review: a name from `delivery packs`, such as code, or the path to a review folder of your own")
     .argument("[repo]", "the git repository to review (default: the current folder)")
     .action(async (pack: string, repo: string | undefined, _options: unknown, command: Command) => {
-      const ctx = ctxFor(command);
+      const ctx = ctxFor(command, repo);
       const { reviewCommand } = await import("./review-command.js");
       exitCode = await reviewCommand(pack, repo, ctx, inquirerAsk(ctx.colour));
     });
