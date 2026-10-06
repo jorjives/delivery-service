@@ -79,6 +79,9 @@ describe("the getting-started guide", () => {
     const install = sectionOf(guide, "## 1. Install the command", "## 2.");
     expect(install).toContain("npm pack");
     expect(install).toContain("npm install -g ./delivery-service-");
+    // Where npm's global folder belongs to root, `-g` fails without sudo; the guide gives a
+    // route into the reader's own home instead (the packing CI test installs the same way).
+    expect(install).toContain("npm install -g --prefix ~/.local ./delivery-service-");
     expect(install).toContain("delivery --version");
     // The guide names no version number. package.json owns the version, so a guide that
     // pinned `0.1.0` would fail this test on the changesets version pull request, which

@@ -31,6 +31,16 @@ That writes `delivery-service-<version>.tgz` in the checkout. Install it:
 npm install -g ./delivery-service-*.tgz
 ```
 
+If that fails with a permission error, npm's global folder belongs to the system
+(common on Linux). Install into your own home instead, with no `sudo`:
+
+```bash
+npm install -g --prefix ~/.local ./delivery-service-*.tgz
+```
+
+This puts `delivery` in `~/.local/bin`; if your shell does not find it, add that
+folder to your `PATH`.
+
 Check that the command is there. It prints the version you just packed:
 
 ```bash
