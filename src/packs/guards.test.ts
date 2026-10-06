@@ -144,6 +144,13 @@ describe("whether a change touched the tests", () => {
     expect(skips).toMatchObject({ id: SKIP_GUARD, outcome: "FAIL", detail: expect.stringContaining("more.test.js") });
   });
 
+  it("refuses a skip marker in a file the change marks as binary, so git would not show its lines", async () => {
+    const repo = initTempRepo("guards-", PROJECT);
+    put(repo, ".gitattributes", "*.test.js -diff\n");
+    put(repo, "more.test.js", "import { test } from 'node:test';\ntest.only('another', () => {});\n");
+    expect((await outcomes(repo))[SKIP_GUARD]).toBe("FAIL");
+  });
+
   it("does not refuse removing a skip marker", async () => {
     const repo = initTempRepo("guards-", { ...PROJECT, "slow.js": "describe.skip('slow', () => {});\n" });
     put(repo, "slow.js", "describe('slow', () => {});\n");

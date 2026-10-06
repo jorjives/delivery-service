@@ -107,7 +107,7 @@ async function testCommandAt(cwd: string, rev: string): Promise<string> {
 async function addedSkips(cwd: string, base: string, tree: string, markers: string[]): Promise<string[]> {
   let patch: string;
   try {
-    patch = await git(cwd, ["diff-tree", "-r", "-p", "-U0", "--no-renames", "--no-ext-diff", "--no-textconv", "--no-color", base, tree], { raw: true, maxBuffer: PATCH_LIMIT });
+    patch = await git(cwd, ["diff-tree", "-r", "-p", "-U0", "--text", "--no-renames", "--no-ext-diff", "--no-textconv", "--no-color", base, tree], { raw: true, maxBuffer: PATCH_LIMIT });
   } catch (err) {
     if ((err as { code?: unknown }).code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") return ["the change is too large to check for skipped tests"];
     throw err;
