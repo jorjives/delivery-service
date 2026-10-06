@@ -179,6 +179,7 @@ not sliced.
 ## Slice 4: Run a Security Review and Sign Off Serious Fixes Before They Land
 
 **Status:** ✅ Complete — 2026-10-06 — `ab24493`
+**Tests:** ✅ Recorded — 2026-10-06 — `e67cdf0` — cli — 1 UAT + 7 AC, 1 skipped
 
 **Delivers:** The owner types `delivery review security`, reads problems grouped by how serious they are with what could happen in plain words, and serious fixes (high or critical) are fixed and checked but wait for her sign-off, which re-checks the fix on her current main copy before landing it.
 
