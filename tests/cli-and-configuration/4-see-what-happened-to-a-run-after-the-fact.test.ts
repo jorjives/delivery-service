@@ -94,9 +94,9 @@ describe("UAT: see what happened to an escalated run after the fact", () => {
       expect(deadEnds).toBeLessThan(whyNow);
       expect(whyNow).toBeGreaterThan(-1);
       expect(whyNow).toBeLessThan(whereToLook);
-      // Finally where the retained branch and working copy are.
+      // Finally where the work is: the agent changed nothing, so no empty branch was kept.
       expect(whereToLook).toBeGreaterThan(-1);
-      expect(stdout).toContain(`The branch surface/${runId} was kept.`);
+      expect(stdout).toContain("No branch was kept: the agent had changed nothing.");
     },
   );
 });

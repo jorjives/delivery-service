@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { mkdtemp, mkdir, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -41,12 +42,14 @@ async function context(): Promise<CommandContext> {
   };
 }
 
-/** A repository holding exactly one run's record, and the report that record makes. */
+/** A repository holding exactly one run's record, the branch its stopped task kept (unless told it kept none), and the report that record makes. */
 async function reportOn(
   record: { runId: string; task?: string; outcome?: CaseFileOutcome; packet?: EscalationPacket },
   ctx: CommandContext,
+  { keptBranch = true }: { keptBranch?: boolean } = {},
 ): Promise<{ repo: string; lines: string[] }> {
-  const repo = await mkdtemp(join(tmpdir(), "status-repo-"));
+  const repo = initTempRepo("status-repo-", { "seed.txt": "seed\n" });
+  if (keptBranch) execFileSync("git", ["branch", `surface/${record.runId}`], { cwd: repo });
   await writeRunRecord(repo, record);
   return { repo, lines: await statusReport(await readRun(repo, record.runId), ctx) };
 }
@@ -139,6 +142,18 @@ describe("what a run's record says about an escalated run", () => {
     expect(lines[1]).toBe("This needs your decision: authority limit");
     expect(lines).not.toContain("What had already been tried:");
     expect(lines).toContain("Where to look:");
+  });
+});
+
+describe("what a run's record says about a stopped run whose agent changed nothing", () => {
+  it("says no branch was kept, rather than naming one that is not there", async () => {
+    const { lines } = await reportOn(
+      { runId: RUN_ID, task: TASK, outcome: { kind: "aborted", source: "triage", reason: "the task cannot be done", at: AT } },
+      await context(),
+      { keptBranch: false },
+    );
+    expect(lines).toContain("  No branch was kept: the agent had changed nothing.");
+    expect(lines.join("\n")).not.toContain(`surface/${RUN_ID}`);
   });
 });
 

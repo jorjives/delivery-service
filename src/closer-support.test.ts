@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
@@ -22,24 +22,32 @@ describe("teardownWorktree", () => {
     ctx = { dir, repoPath: repo, worktreePath: tree, branch: "surface/surface-42", baseBranch };
   });
 
-  it("removes the scratch worktree and keeps the branch", async () => {
+  it("commits what the stopped worker left onto the branch and keeps it, so whoever takes over has the work", async () => {
+    writeFileSync(join(tree, "feature.txt"), "half the work\n");
+
     const report = await teardownWorktree(ctx, { kind: "escalated" });
 
     expect(report.status).toBe("DONE");
     expect(existsSync(tree)).toBe(false);
-    expect(git(repo, ["branch", "--list", "surface/surface-42"])).toContain("surface/surface-42");
-  });
-
-  it("says in plain prose which branch was kept and why", async () => {
-    const report = await teardownWorktree(ctx, { kind: "escalated" });
-
+    expect(git(repo, ["show", "surface/surface-42:feature.txt"])).toBe("half the work");
     expect(report.detail).toContain("surface/surface-42");
     expect(report.detail).toContain("escalated");
     // Plain prose, not a git transcript.
-    expect(report.detail).not.toMatch(/Preparing worktree|HEAD is now at/);
+    expect(report.detail).not.toMatch(/Preparing worktree|HEAD is now at|files? changed/);
   });
 
-  it("is harmless the second time, leaving the branch untouched", async () => {
+  it("removes the branch when the stopped worker changed nothing, so no empty branch is left behind", async () => {
+    const report = await teardownWorktree(ctx, { kind: "aborted" });
+
+    expect(report.status).toBe("DONE");
+    expect(existsSync(tree)).toBe(false);
+    expect(git(repo, ["branch", "--list", "surface/surface-42"])).toBe("");
+    expect(report.detail).toMatch(/no changes/i);
+    expect(report.detail).toContain("surface/surface-42");
+  });
+
+  it("is harmless the second time, leaving a kept branch untouched", async () => {
+    writeFileSync(join(tree, "feature.txt"), "half the work\n");
     const first = await teardownWorktree(ctx, { kind: "aborted" });
     const tip = git(repo, ["rev-parse", "surface/surface-42"]);
 
@@ -48,5 +56,14 @@ describe("teardownWorktree", () => {
     expect(first.status).toBe("DONE");
     expect(second.status).toBe("DONE");
     expect(git(repo, ["rev-parse", "surface/surface-42"])).toBe(tip);
+  });
+
+  it("is harmless the second time after removing an empty branch", async () => {
+    await teardownWorktree(ctx, { kind: "aborted" });
+
+    const second = await teardownWorktree(ctx, { kind: "aborted" });
+
+    expect(second.status).toBe("DONE");
+    expect(git(repo, ["branch", "--list", "surface/surface-42"])).toBe("");
   });
 });

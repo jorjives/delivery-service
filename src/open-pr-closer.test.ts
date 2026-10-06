@@ -125,8 +125,9 @@ describe("the open-pr closer", () => {
   });
 
   it.each(["escalated", "aborted"] as const)(
-    "tears down a surface that %s: worktree removed, branch kept, nothing pushed or opened",
+    "tears down a surface that %s: worktree removed, branch holding the work kept, nothing pushed or opened",
     async (kind) => {
+      writeFileSync(join(tree, "feature.txt"), "half the work\n");
       const report = await closer().close(ctx, { kind });
 
       expect(report.status).toBe("DONE");

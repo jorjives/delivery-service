@@ -1,5 +1,6 @@
+import { existsSync } from "node:fs";
 import { load } from "./case-file.js";
-import { ensureCommitted, tryGit } from "./git-exec.js";
+import { ensureCommitted, git, tryGit } from "./git-exec.js";
 import { messageOf } from "./gate-support.js";
 import type { CloserPort, CloseContext, CloseOutcome, CloseReport } from "./ports.js";
 import type { TaskDef } from "./schema.js";
@@ -53,22 +54,47 @@ export async function removeWorktree(ctx: CloseContext): Promise<void> {
 }
 
 /**
- * What every built-in closer does when the surface did not end accepted: clear
- * the scratch directory, keep the branch. The branch is what whoever takes over
- * an escalation inspects or continues from, so no built-in ever deletes it on a
- * stopped surface.
+ * Whether the surface's branch holds commits of its own beyond the base. A
+ * branch that is gone holds nothing; one whose base cannot be compared is
+ * assumed to hold work, so nothing is ever deleted on a guess.
+ */
+async function holdsWork(ctx: CloseContext): Promise<boolean> {
+  if (!(await tryGit(ctx.repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${ctx.branch}`]))) return false;
+  if (ctx.baseBranch === "") return true;
+  const ahead = await git(ctx.repoPath, ["rev-list", "--count", `${ctx.baseBranch}..${ctx.branch}`]).catch(() => "unknown");
+  return ahead !== "0";
+}
+
+/**
+ * What every built-in closer does when the surface did not end accepted:
+ * commit whatever the worker left onto the surface's branch, then clear the
+ * scratch directory. The branch is what whoever takes over an escalation
+ * inspects or continues from, so it is kept whenever it holds work; one the
+ * worker never changed is removed rather than left behind empty.
  *
- * Idempotent by construction — both calls tolerate an absent worktree — because
- * a teardown failure is only logged by the driver, so a later replay is the only
- * thing that will ever try again.
+ * Idempotent by construction — every step tolerates an absent worktree or
+ * branch — because a teardown failure is only logged by the driver, so a later
+ * replay is the only thing that will ever try again.
  */
 export async function teardownWorktree(ctx: CloseContext, outcome: CloseOutcome): Promise<CloseReport> {
+  if (existsSync(ctx.worktreePath)) {
+    await ensureCommitted(ctx.worktreePath, `Unfinished work from ${ctx.branch}, left when the task ${outcome.kind === "aborted" ? "was aborted" : "was escalated"}`);
+  }
   await removeWorktree(ctx);
+  if (await holdsWork(ctx)) {
+    return {
+      status: "DONE",
+      detail:
+        `The surface ended ${outcome.kind}, so nothing was landed. Committed what the worker left to branch ` +
+        `${ctx.branch} and kept it for whoever takes it over. Removed the scratch worktree.`,
+    };
+  }
+  await tryGit(ctx.repoPath, ["branch", "-D", "--", ctx.branch]);
   return {
     status: "DONE",
     detail:
-      `The surface ended ${outcome.kind}, so nothing was landed. Removed its scratch worktree and kept ` +
-      `branch ${ctx.branch}, where the work was left for whoever takes it over.`,
+      `The surface ended ${outcome.kind} with no changes, so nothing was landed and branch ${ctx.branch} was ` +
+      `removed rather than kept empty. Removed the scratch worktree.`,
   };
 }
 

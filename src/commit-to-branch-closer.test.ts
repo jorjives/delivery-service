@@ -113,7 +113,8 @@ describe("the commit-to-branch closer", () => {
     }
   });
 
-  it("tears the worktree down and keeps the branch when the surface escalated", async () => {
+  it("tears the worktree down and keeps the branch holding the work when the surface escalated", async () => {
+    writeFileSync(join(tree, "feature.txt"), "half the work\n");
     const report = await createCommitToBranchCloser().close(ctx, { kind: "escalated" });
 
     expect(report.status).toBe("DONE");

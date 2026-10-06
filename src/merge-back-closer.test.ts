@@ -196,7 +196,8 @@ describe("the merge-back closer", () => {
     expect(report.detail).toContain("surface/surface-42");
   });
 
-  it("removes the worktree and keeps the branch when the surface aborted", async () => {
+  it("removes the worktree and keeps the branch holding the work when the surface aborted", async () => {
+    writeFileSync(join(tree, "feature.txt"), "half the work\n");
     const report = await createMergeBackCloser().close(ctx, { kind: "aborted" });
 
     expect(report.status).toBe("DONE");
@@ -205,7 +206,8 @@ describe("the merge-back closer", () => {
   });
 
   it("keeps the branch on a stopped surface even when it would delete it on an accept", async () => {
-    // deleteBranch defaults to true; a stopped surface must be exempt from it.
+    // deleteBranch defaults to true; a stopped surface's work must be exempt from it.
+    writeFileSync(join(tree, "feature.txt"), "half the work\n");
     await createMergeBackCloser({ deleteBranch: true }).close(ctx, { kind: "escalated" });
 
     expect(git(repo, ["branch", "--list", "surface/surface-42"])).toContain("surface/surface-42");

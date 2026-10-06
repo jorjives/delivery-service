@@ -9,9 +9,9 @@ import { closerFromAcceptedHandler, commitAccepted, removeWorktree } from "./clo
  * With no merge to probe, the "have I already done this?" answer comes from the
  * cheapest git-adjacent signal there is: the scratch worktree's own existence.
  * Cleanup removes it last, so a worktree that is gone means a previous close ran
- * to completion. The branch is never deleted, on any outcome — it is the whole
- * point of this closer, and on a stopped surface it is what whoever takes over
- * continues from.
+ * to completion. The branch is never deleted on acceptance — it is the whole
+ * point of this closer — and on a stopped surface it is kept whenever it holds
+ * work for whoever takes over (see `teardownWorktree`).
  *
  * Nothing is pushed and the base branch is never touched.
  */

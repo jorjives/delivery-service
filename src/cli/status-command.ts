@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { logTail, resumeAction, type ResumeAction } from "../case-file.js";
 import { branchName } from "../provision.js";
+import { tryGit } from "../git-exec.js";
 import type { BreakerState, BreakerCause, RunOutcome, SurfaceState, TaskDef } from "../schema.js";
 import { repairsUsed, tripsOf, type Trip } from "../breaker.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
@@ -52,17 +53,19 @@ function packetLines(packet: EscalationPacket): string[] {
 
 /**
  * Where a stopped run's work is, checked rather than assumed. The built-in
- * closers keep the branch and clear the scratch working copy away on any
- * outcome that is not accepted, so naming a path that is not there would waste
- * the reader's time; a working copy that did survive is worth naming, and the
- * run's own record is always there.
+ * closers keep the branch only when the agent left work on it, and clear the
+ * scratch working copy away, on any outcome that is not accepted, so naming a
+ * branch or path that is not there would waste the reader's time; a working
+ * copy that did survive is worth naming, and the run's own record is always there.
  */
-function whereToLook(record: RunRecord, ctx: CommandContext): string[] {
+async function whereToLook(record: RunRecord, ctx: CommandContext): Promise<string[]> {
   const { location } = runPlace(record.repoPath, record.runId, ctx.env);
+  const branch = branchName(record.caseFile.header.surfaceId);
+  const kept = await tryGit(record.repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
   return [
     "",
     "Where to look:",
-    `  The branch ${branchName(record.caseFile.header.surfaceId)} was kept.`,
+    kept ? `  The branch ${branch} was kept.` : "  No branch was kept: the agent had changed nothing.",
     existsSync(location.worktreePath)
       ? `  The agent's working copy is still at ${location.worktreePath}.`
       : "  The agent's working copy has been cleared away.",
@@ -108,7 +111,7 @@ export async function statusBody(record: RunRecord, ctx: CommandContext): Promis
   // Not summary.details: that is the live run's short form, which quotes the
   // evidence alone. Whoever reads this later gets the whole packet instead.
   const packet = outcome.kind === "escalated" ? await packetOf(dir, outcome.packetRef) : undefined;
-  return [...finished, ...(packet ? packetLines(packet) : []), ...(outcome.kind === "aborted" ? summary.details : []), ...whereToLook(record, ctx)];
+  return [...finished, ...(packet ? packetLines(packet) : []), ...(outcome.kind === "aborted" ? summary.details : []), ...(await whereToLook(record, ctx))];
 }
 
 /** How a run ended, as one word a script can switch on. "unfinished" is the fourth: a run that is still resumable has not ended at all. */
