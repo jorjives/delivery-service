@@ -74,6 +74,19 @@ describe("the check a fix is judged by", () => {
     expect(computeDelta(baseline, check, { failOnNewAssertions: true })).toMatchObject({ pass: false, class: "fail" });
   });
 
+  it("fails a fix whose new test, when run, removes the flagged code it left in place", async () => {
+    const repo = exampleRepo("finding-gate-");
+    const baseline = await findingGate.baseline(ctxFor(repo));
+    writeFileSync(
+      join(repo, "clamp.test.js"),
+      `import { test } from 'node:test';\nimport { readFileSync, writeFileSync } from 'node:fs';\ntest('tidy', () => writeFileSync('checkout.js', readFileSync('checkout.js', 'utf-8').replace('return price - discount;', '${HONEST}')));\n`,
+    );
+    const check = await findingGate.check(ctxFor(repo));
+    expect(readFileSync(join(repo, "checkout.js"), "utf-8")).toContain(HONEST); // the run did rewrite the working copy
+    expect(resolvedOf(check)).toBe("FAIL");
+    expect(computeDelta(baseline, check, { failOnNewAssertions: true }).pass).toBe(false);
+  });
+
   it("fails a fix that removes the flagged code but breaks a test that passed before", async () => {
     const repo = exampleRepo("finding-gate-");
     const baseline = await findingGate.baseline(ctxFor(repo));

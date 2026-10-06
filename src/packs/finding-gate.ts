@@ -63,13 +63,15 @@ const findingGate: Gate = {
     if (!("gate" in resolved)) return resolved;
     const { task, gate } = resolved;
     if (!ctx.baseBranch) return errorReport("the branch this fix started from was not recorded, so changes to the project's tests cannot be checked");
-    // Judged before the tests run, so what is judged is the agent's change, not what a test run leaves behind.
+    // The guards and the problem are judged before the tests run, so what is judged is the agent's change, not what a test run leaves behind.
     let guards: Assertion[];
     try {
       guards = await guardAssertions(ctx.worktreePath, ctx.baseBranch, guardsOf(task), task.authorisation.verify);
     } catch (err) {
       return errorReport(`whether this fix changed the project's tests could not be checked: ${messageOf(err)}`);
     }
+    const found = await resolvedAssertion(task, ctx.worktreePath);
+    if ("error" in found) return errorReport(`the check of this problem could not run: ${found.error}`);
     const report = await gate.check(resolved.ctx);
     if (report.status === "ERROR") {
       // Even if the project's check can't run, return the guard assertions if any failed
@@ -78,8 +80,6 @@ const findingGate: Gate = {
       }
       return report;
     }
-    const found = await resolvedAssertion(task, ctx.worktreePath);
-    if ("error" in found) return errorReport(`the check of this problem could not run: ${found.error}`);
     const assertions = [...report.assertions, ...found, ...guards];
     return { ...report, status: assertions.some((a) => a.outcome === "FAIL") ? "FAIL" : report.status, assertions };
   },
