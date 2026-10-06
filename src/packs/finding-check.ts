@@ -5,6 +5,7 @@ import { git } from "../git-exec.js";
 import { isEnoent } from "../journal.js";
 import { FILE_LIMIT, fileAt, LITERAL, locate, patternFound, projectPath } from "./confirm.js";
 import type { Finding } from "./finding.js";
+import { LOCKFILE, lockfileHas } from "./lockfile.js";
 
 /** Where a problem is checked: the main copy at a commit, or a working copy as an agent left it. */
 export type Where = { repoPath: string; commit: string } | { worktreePath: string };
@@ -104,13 +105,22 @@ async function oddFileIn(worktreePath: string, paths: string[]): Promise<{ error
 }
 
 /**
- * Whether a problem is still there: its pattern still matches, or its flagged
- * code is still in its file (commented out counts as still there). A problem
- * whose check is "tests only" is judged by its flagged code too, for the one
- * caller that asks of it: whether its fix is needed at all.
+ * Whether a problem is still there: its pattern still matches, its vulnerable
+ * version is still in the lockfile, or its flagged code is still in its file
+ * (commented out counts as still there). A problem whose check is "tests only"
+ * is judged by its flagged code too, for the one caller that asks of it: whether
+ * its fix is needed at all.
  */
 export async function checkFinding(finding: Finding, where: Where): Promise<CheckResult> {
   const { check } = finding;
+  if (check.kind === "dependency-absent") {
+    const text = await textAt(where, LOCKFILE);
+    if (text === undefined) return { error: `${LOCKFILE} is not in the project, so which versions are installed cannot be read` };
+    if (typeof text !== "string") return text;
+    const installed = lockfileHas(text, check.package, check.version);
+    if (installed === undefined) return { error: `${LOCKFILE} could not be read as an npm lockfile` };
+    return installed ? "present" : "resolved";
+  }
   if (check.kind === "pattern-absent") {
     if ("worktreePath" in where) {
       const odd = await oddFileIn(where.worktreePath, check.paths);

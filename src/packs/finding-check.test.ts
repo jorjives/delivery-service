@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { FILE_LIMIT, PATTERN_LIMIT } from "./confirm.js";
 import { checkFinding, commentBlind } from "./finding-check.js";
 import { exampleRepo, sampleFinding } from "./review-fixtures.js";
+import { initTempRepo } from "../temp-repo.js";
 
 const NEGATIVE = sampleFinding();
 const SETTINGS = sampleFinding({
@@ -148,5 +149,34 @@ describe("whether a problem's code is still there, in a working copy", () => {
 describe("comparing code with comment markers set aside", () => {
   it("drops comment openers at the start of each line and closers at the end", () => {
     expect(commentBlind("  // a\n/* b */\n# c\n * d\n<!-- e -->")).toBe("a\nb\nc\nd\ne");
+  });
+});
+
+const LOCK = (version: string): string => JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/minimist": { version } } }, null, 2);
+const MINIMIST = sampleFinding({
+  id: "333333333333",
+  category: "dependencies",
+  where: { path: "package-lock.json", line: 1, endLine: 1 },
+  anchor: '"node_modules/minimist": {',
+  check: { kind: "dependency-absent", package: "minimist", version: "1.2.5" },
+});
+
+describe("whether a vulnerable library version is still installed", () => {
+  it("is present while the lockfile installs it, at a commit and in a working copy", async () => {
+    const repo = initTempRepo("dependency-check-", { "package-lock.json": LOCK("1.2.5") });
+    expect(await checkFinding(MINIMIST, { repoPath: repo, commit: "HEAD" })).toBe("present");
+    expect(await checkFinding(MINIMIST, { worktreePath: repo })).toBe("present");
+  });
+
+  it("is resolved once the lockfile installs another version", async () => {
+    const repo = initTempRepo("dependency-check-", { "package-lock.json": LOCK("1.2.6") });
+    expect(await checkFinding(MINIMIST, { worktreePath: repo })).toBe("resolved");
+  });
+
+  it("cannot say, never resolved, when the lockfile is missing or unreadable", async () => {
+    const missing = initTempRepo("dependency-check-", { "a.js": "x\n" });
+    expect(await checkFinding(MINIMIST, { worktreePath: missing })).toEqual({ error: "package-lock.json is not in the project, so which versions are installed cannot be read" });
+    const broken = initTempRepo("dependency-check-", { "package-lock.json": "not json" });
+    expect(await checkFinding(MINIMIST, { worktreePath: broken })).toEqual({ error: "package-lock.json could not be read as an npm lockfile" });
   });
 });

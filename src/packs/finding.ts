@@ -12,6 +12,12 @@ export type Severity = z.infer<typeof Severity>;
 export const CheckSpec = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("anchor-gone") }),
   z.object({ kind: z.literal("pattern-absent"), pattern: z.string().min(1), paths: z.array(z.string().min(1)).min(1) }),
+  z.object({
+    kind: z.literal("dependency-absent"),
+    /** An npm package name, scoped or not. */
+    package: z.string().regex(/^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/),
+    version: z.string().min(1),
+  }),
   z.object({ kind: z.literal("none") }),
 ]);
 export type CheckSpec = z.infer<typeof CheckSpec>;

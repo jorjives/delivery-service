@@ -3,6 +3,7 @@ import { posix } from "node:path";
 import { git } from "../git-exec.js";
 import { stripControl } from "../report/text.js";
 import { SEVERITIES, type CheckSpec, type Finding, type ScanEnvelope, type ScannedFinding, type ScanResult, type Unconfirmed, type UnconfirmedReason } from "./finding.js";
+import { LOCKFILE, lockfileHas } from "./lockfile.js";
 
 /** How long git may spend on one agent-written pattern before the check is not used. */
 export const PATTERN_TIMEOUT_MS = 10_000;
@@ -113,8 +114,14 @@ export async function patternFound(cwd: string, check: Extract<CheckSpec, { kind
 }
 
 /** Whether a pattern check can be used: it runs, through git, and matches the code as it stands. Anything else is not a check. */
-async function patternMatchesNow(repoPath: string, commit: string, check: Extract<CheckSpec, { kind: "pattern-absent" }>): Promise<boolean> {
-  return (await patternFound(repoPath, check, commit)) === true;
+/** Whether a check can be used: it runs and the problem it looks for is there now, so it can go from red to green. Anything else is not a check. */
+async function holdsNow(repoPath: string, commit: string, check: CheckSpec): Promise<boolean> {
+  if (check.kind === "pattern-absent") return (await patternFound(repoPath, check, commit)) === true;
+  if (check.kind === "dependency-absent") {
+    const file = await fileAt(repoPath, commit, LOCKFILE);
+    return "text" in file && lockfileHas(file.text, check.package, check.version) === true;
+  }
+  return true;
 }
 
 const rank = (finding: Finding): number => SEVERITIES.indexOf(finding.severity);
@@ -157,11 +164,11 @@ export async function confirmFindings(
     });
   }
   const ordered = [...confirmed.values()].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
-  // Patterns are run only for the problems offered, so a reply with many problems costs no more git time than the limit allows.
+  // Checks are tried only for the problems offered, so a reply with many problems costs no more git time than the limit allows.
   const offered: Finding[] = [];
   for (const finding of ordered.slice(0, maxFindings)) {
     const { check } = finding;
-    offered.push(check.kind !== "pattern-absent" || (await patternMatchesNow(repoPath, commit, check)) ? finding : { ...finding, check: { kind: "anchor-gone" }, droppedCheck: check });
+    offered.push((await holdsNow(repoPath, commit, check)) ? finding : { ...finding, check: { kind: "anchor-gone" }, droppedCheck: check });
   }
   return {
     findings: offered,

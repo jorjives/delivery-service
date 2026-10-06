@@ -41,4 +41,9 @@ describe("what the review's agent is asked", () => {
     expect(prompt).toContain(`f${FILE_LIST_LIMIT - 1}.js\n...and 3 more.`);
     expect(prompt).not.toContain(`f${FILE_LIST_LIMIT}.js`);
   });
+
+  it("offers the vulnerable-version check by its name", async () => {
+    const pack = await resolvePack("code", "/");
+    expect(scanPrompt(pack, ["a.js"])).toContain("`dependency-absent`: fixed when `package-lock.json` no longer installs `package` at `version`");
+  });
 });

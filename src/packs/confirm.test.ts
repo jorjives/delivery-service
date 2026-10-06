@@ -162,3 +162,21 @@ describe("the list a review offers", () => {
     expect(found?.problem.endsWith("…")).toBe(true);
   });
 });
+
+describe("a vulnerable-version check", () => {
+  const LOCKED = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/minimist": { version: "1.2.5" } } }, null, 2);
+  const dependency = (version: string): ScannedFinding =>
+    problem({ where: { path: "package-lock.json" }, anchor: '"node_modules/minimist": {', check: { kind: "dependency-absent", package: "minimist", version } });
+
+  it("is kept when the lockfile installs that version now", async () => {
+    const repo = initTempRepo("confirm-dependency-", { "package-lock.json": LOCKED });
+    const { findings } = await confirm(repo, envelope(dependency("1.2.5")));
+    expect(findings[0]?.check).toEqual({ kind: "dependency-absent", package: "minimist", version: "1.2.5" });
+  });
+
+  it("is not used when the lockfile does not install that version, and the review's suggestion is kept for engineers", async () => {
+    const repo = initTempRepo("confirm-dependency-", { "package-lock.json": LOCKED });
+    const { findings } = await confirm(repo, envelope(dependency("9.9.9")));
+    expect(findings[0]).toMatchObject({ check: { kind: "anchor-gone" }, droppedCheck: { kind: "dependency-absent", package: "minimist", version: "9.9.9" } });
+  });
+});

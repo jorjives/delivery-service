@@ -185,6 +185,16 @@ describe("what the review says when it could not run", () => {
   });
 });
 
+describe("the vulnerable-version check, as the owner and an engineer read it", () => {
+  const DEPENDENCY = sampleFinding({ id: "333333333333", check: { kind: "dependency-absent", package: "minimist", version: "1.2.5" } });
+
+  it("says what will show it is fixed, and names the package and version for engineers", () => {
+    const lines = findingLines(review({ findings: [DEPENDENCY] }), 1);
+    expect(lines).toContain("    How we will know: checked: the vulnerable version is no longer installed.");
+    expect(lines).toContain("  Check: dependency-absent, minimist 1.2.5 must no longer be in package-lock.json");
+  });
+});
+
 describe("the review's own words", () => {
   it("never use the harness's internal words", () => {
     const everything = [

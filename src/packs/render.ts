@@ -10,6 +10,7 @@ import { changesTests, type SavedReview } from "./review-record.js";
 export const CHECK_LEVEL: Record<CheckKind, string> = {
   "anchor-gone": "checked: the flagged code is gone",
   "pattern-absent": "checked: the risky pattern no longer appears",
+  "dependency-absent": "checked: the vulnerable version is no longer installed",
   none: "tests only: no check of this specific problem",
 };
 
@@ -133,6 +134,8 @@ function checkLines(check: CheckSpec): string[] {
       return ["  Check: anchor-gone (the flagged text must no longer be in the file)"];
     case "pattern-absent":
       return [`  Check: pattern-absent, pattern ${pathName(check.pattern)}`, `  Checked in: ${check.paths.map(pathName).join(", ")}`];
+    case "dependency-absent":
+      return [`  Check: dependency-absent, ${check.package} ${check.version} must no longer be in package-lock.json`];
     case "none":
       return ["  Check: none (the project's own tests only)"];
   }
