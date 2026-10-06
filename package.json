@@ -61,6 +61,7 @@
     "demo:report-slice-1": "npx tsx demos/observability-slice-1-report.ts",
     "demo:packs-slice-1": "npx tsx demos/task-packs-slice-1-code-review.ts",
     "demo:packs-slice-3": "npx tsx demos/task-packs-slice-3-cheating-fixes.ts",
+    "demo:packs-slice-4": "npx tsx demos/task-packs-slice-4-security-sign-off.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {

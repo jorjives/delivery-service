@@ -158,6 +158,28 @@ export async function writeReview(
   return dir;
 }
 
+const [SECRET, LIBRARY] = EXAMPLE_SECURITY_SCAN.findings;
+
+/** What an honest agent does with the example's security problems: reads the password from the environment, and moves minimist to a version without the weakness. */
+export const SECURITY_FIXES: MockScript = {
+  expectations: [
+    {
+      when: { promptContains: SECRET?.title ?? "" },
+      effects: [{ edit: { path: "payments.js", old: `const PAYMENTS_PASSWORD = "${PAYMENTS_PASSWORD}";`, new: "const PAYMENTS_PASSWORD = process.env.PAYMENTS_PASSWORD;" } }],
+      json: { status: "completed", rationale: "The password is read from PAYMENTS_PASSWORD in the environment." },
+    },
+    {
+      when: { promptContains: LIBRARY?.title ?? "" },
+      effects: [
+        { edit: { path: "package-lock.json", old: '"version": "1.2.5"', new: '"version": "1.2.6"' } },
+        { edit: { path: "package-lock.json", old: '"minimist": "1.2.5"', new: '"minimist": "1.2.6"' } },
+        { edit: { path: "package.json", old: '"minimist": "1.2.5"', new: '"minimist": "1.2.6"' } },
+      ],
+      json: { status: "completed", rationale: "minimist is at 1.2.6." },
+    },
+  ],
+};
+
 const [CHECKOUT, SETTINGS, GATEWAY] = EXAMPLE_SCAN.findings;
 const EXAMPLE_TEST = readFileSync(join(EXAMPLE_DIR, "checkout.test.js"), "utf-8");
 

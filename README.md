@@ -788,6 +788,12 @@ it. Nothing in your project changes.
   your tests, and merges it. One that cannot be fixed is explained, and the rest carry on.
 - `delivery packs` lists the reviews available; `delivery review ./my-review` runs one from a folder.
 
+`delivery review security` does the same for weaknesses someone could take advantage of. A fix of
+a critical or high problem is checked but waits for you: see what it changed with
+`delivery findings <n> --changes`, then `delivery findings sign-off <n>` to check it again on your
+main copy and merge it, or `delivery findings reject <n>`. A password or key it finds is never
+shown.
+
 A review stopped part-way is finished by running the same command again, and so is a fix. See
 [Reviewing your project](docs/task-packs.md), and try it on `examples/code-review-example`.
 

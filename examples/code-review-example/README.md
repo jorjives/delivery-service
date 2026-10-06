@@ -1,7 +1,6 @@
 # Code review example
 
-A tiny shop with three problems planted in it for a code review to find. Its own test passes,
-so the problems are ones the tests miss.
+A tiny shop with problems planted in it for a code review and a security review to find. Its own test passes, so the problems are ones the tests miss.
 
 ## Try a code review
 
@@ -33,4 +32,21 @@ delivery findings
 The approved problems end "fixed and merged" (or say plainly why one could not be fixed), the
 skipped one stays as it is, and `checkout.js` and `settings.js` hold the fixes.
 
-To watch a fix that deletes, skips or switches off a test being refused, and one that needs a test edit being counted, with a scripted agent, run `npm run demo:packs-slice-3` from a checkout of the harness.
+## Try a security review
+
+```bash
+delivery review security
+delivery findings approve --all
+delivery fix
+delivery findings
+delivery findings 1 --changes
+delivery findings sign-off 1
+delivery findings
+```
+
+The password in `payments.js` is never shown: it appears as `pay-… (21 characters)`. Its fix is
+checked and then waits for your sign-off; signing off checks it again on your main copy and
+merges it, and `delivery findings` then lists changing the password at the provider under NEEDS
+YOU. The old library version is fixed and merged without waiting.
+
+To watch all of this with a scripted agent, run `npm run demo:packs-slice-4` from a checkout of the harness.
