@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { cleanGitEnv } from "./git-env.js";
 
 /**
@@ -20,6 +20,7 @@ export function initTempRepo(prefix: string, files: Record<string, string>): str
   git(["config", "user.email", "harness@example.invalid"]);
   git(["config", "user.name", "Harness"]);
   for (const [name, contents] of Object.entries(files)) {
+    mkdirSync(dirname(join(repo, name)), { recursive: true });
     writeFileSync(join(repo, name), contents);
   }
   git(["add", "-A"]);

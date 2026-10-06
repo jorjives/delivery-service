@@ -33,7 +33,7 @@ export function checkFilesOf(gateRef: GateRef, { repoPath, worktreePath }: { rep
  * the working copy's own. Its own index, and so what is staged, is never
  * touched; the only lasting effect is unreferenced objects git tidies away.
  */
-async function treeOf(worktreePath: string): Promise<string> {
+export async function treeOf(worktreePath: string): Promise<string> {
   // A folder below the top would have git describe the whole copy it sits in.
   if ((await git(worktreePath, ["rev-parse", "--show-prefix"])) !== "") throw new Error(`${worktreePath} is not the top of a working copy`);
   const scratch = await mkdtemp(join(tmpdir(), "delivery-repair-"));
