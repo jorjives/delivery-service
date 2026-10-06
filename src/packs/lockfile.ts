@@ -6,7 +6,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => typeof va
 
 function inDependencies(deps: Record<string, unknown>, name: string, version: string): boolean {
   return Object.entries(deps).some(
-    ([key, entry]) => isRecord(entry) && ((key === name && entry.version === version) || (isRecord(entry.dependencies) && inDependencies(entry.dependencies, name, version))),
+    ([key, entry]) =>
+      isRecord(entry) && ((key === name && entry.version === version) || entry.version === `npm:${name}@${version}` || (isRecord(entry.dependencies) && inDependencies(entry.dependencies, name, version))),
   );
 }
 
@@ -25,7 +26,11 @@ export function lockfileHas(text: string, name: string, version: string): boolea
   }
   if (!isRecord(lock)) return undefined;
   if (isRecord(lock.packages)) {
-    return Object.entries(lock.packages).some(([key, entry]) => (key === `node_modules/${name}` || key.endsWith(`/node_modules/${name}`)) && isRecord(entry) && entry.version === version);
+    // An install under another name (an npm alias) keeps its real name in `name`; otherwise the folder is the name.
+    const folderName = (key: string): string => key.slice(key.lastIndexOf("node_modules/") + "node_modules/".length);
+    return Object.entries(lock.packages).some(
+      ([key, entry]) => key.includes("node_modules/") && isRecord(entry) && (typeof entry.name === "string" ? entry.name : folderName(key)) === name && entry.version === version,
+    );
   }
   if (isRecord(lock.dependencies)) return inDependencies(lock.dependencies, name, version);
   return undefined;

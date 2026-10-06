@@ -24,6 +24,14 @@ describe("whether an npm lockfile installs a version", () => {
     expect(lockfileHas(V3, "pad", "1.0.0")).toBe(false);
   });
 
+  it("finds a version installed under another name", () => {
+    const v3 = JSON.stringify({ lockfileVersion: 3, packages: { "node_modules/old": { name: "minimist", version: "1.2.5" } } });
+    const v1 = JSON.stringify({ lockfileVersion: 1, dependencies: { old: { version: "npm:minimist@1.2.5" } } });
+    expect(lockfileHas(v3, "minimist", "1.2.5")).toBe(true);
+    expect(lockfileHas(v1, "minimist", "1.2.5")).toBe(true);
+    expect(lockfileHas(v3, "old", "1.2.5")).toBe(false);
+  });
+
   it("reads a v1 lockfile's nested dependencies", () => {
     expect(lockfileHas(V1, "minimist", "0.0.8")).toBe(true);
     expect(lockfileHas(V1, "minimist", "1.2.5")).toBe(false);
