@@ -27,6 +27,12 @@ describe("what a review's agent may reply", () => {
     expect(Envelope.safeParse({ findings: [{ ...scanned, check: { kind: "page-contains" } }], notes: "" }).success).toBe(false);
   });
 
+  it("accepts a library version only in a version's shape, so no control text reaches the terminal", () => {
+    const dependency = (version: string) => ({ ...scanned, check: { kind: "dependency-absent", package: "minimist", version } });
+    expect(Envelope.safeParse({ findings: [dependency("1.2.5")], notes: "" }).success).toBe(true);
+    expect(Envelope.safeParse({ findings: [dependency("1.2.5\u001b[2J")], notes: "" }).success).toBe(false);
+  });
+
   it("leaves identity and the line to the harness: an id or a line the agent sends is dropped", () => {
     const parsed = Envelope.parse({ findings: [{ ...scanned, id: "abc", where: { path: "total.js", line: 9 } }], notes: "" });
     expect(parsed.findings[0]).not.toHaveProperty("id");

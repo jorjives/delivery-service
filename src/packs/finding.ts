@@ -20,7 +20,8 @@ export const CheckSpec = z.discriminatedUnion("kind", [
     kind: z.literal("dependency-absent"),
     /** An npm package name, scoped or not. */
     package: z.string().regex(/^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/),
-    version: z.string().min(1),
+    /** An exact version as npm writes it: no spaces or control text, so it prints safely. */
+    version: z.string().regex(/^[0-9A-Za-z.+_~-]+$/),
   }),
   z.object({ kind: z.literal("none") }),
 ]);
