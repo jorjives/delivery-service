@@ -250,19 +250,23 @@ forgets the difference.
    PR, even if a skill says to."
 2. **Prevention through git, for this session only.** The session's environment points git at a
    harness hooks folder (through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`, setting `core.hooksPath`):
-   - A `reference-transaction` hook refuses, in the `prepared` state, any update to a ref other
-     than the task branch and the pseudo-refs (`HEAD`, `ORIG_HEAD`, `FETCH_HEAD` and the like).
-     The refusal message is the instruction's sentence. `--no-verify` does not skip this hook.
+   - A `reference-transaction` hook refuses, in the `prepared` state, any update to a branch
+     (`refs/heads/*`) other than the task branch, and any update to a tag (`refs/tags/*`).
+     Everything else passes: the stash, bisect, notes, remote-tracking refs from a fetch, and the
+     pseudo-refs. The refusal message is the instruction's sentence. `--no-verify` does not skip
+     this hook.
    - A `pre-push` hook refuses every push. Each remote's `pushurl` is also overridden, for the
      session only, with an address that refuses the push, which covers `--no-verify`.
    - Both hooks, and every other hook the harness folder provides, chain to the project's own
      hooks (its `core.hooksPath`, or `.git/hooks`), so the project's hooks keep running.
 
+   Every agent session the harness starts carries this environment, triage and gate maintenance
+   included. Triage's disposable worktree has a detached HEAD, so it may move no branch at all.
    The operator's commits, other tasks' closers and any other tool do not run with this
    environment, so they are unaffected.
 3. **Detection as the backstop.** `gh pr create` goes through the GitHub API, not git. After each
-   session the harness asks whether a PR exists for the task branch. If one does, the session
-   ends in a new terminus, `LANDED_OUTSIDE_CLOSER`, which goes straight to `ESCALATED` with the
+   session the harness asks whether a PR exists for the task branch. If one does, the surface
+   goes straight to `ESCALATED` with a new escalation cause, `LANDED_OUTSIDE_CLOSER`, and the
    evidence. This is not a judgement about triage: a retry cannot undo a PR, a push or a merge,
    and once the base has moved under the harness, the baseline it judges against no longer holds.
 
@@ -595,8 +599,8 @@ The same machinery covers work Autoloop cannot express:
   through triage like any other `gate_fail`, with the finding verbatim in the next attempt's
   Evidence slot.
 - **Landing outside the closer:** a hook refuses the ref update or push, and the agent sees the
-  refusal sentence. A PR found for the task branch ends the session in `LANDED_OUTSIDE_CLOSER`,
-  then `ESCALATED`, with a packet naming the PR and the session that opened it.
+  refusal sentence. A PR found for the task branch escalates with the cause
+  `LANDED_OUTSIDE_CLOSER`, and a packet naming the PR and the session that opened it.
 - **Resumed session no longer exists:** fall back to a fresh session in the same worktree, primed
   from the case file. Record it as such. This is not counted as a failure.
 - **Work source command fails or prints invalid JSON:** that source is skipped for the run with a
@@ -625,10 +629,11 @@ is involved.
   existing work item fails the gate; one that adds a new item passes.
 - **Landing boundary:** in a temporary repository, with the session environment, `git merge` into
   the base, `git branch -f`, `git update-ref` on another ref, and `git push` (with and without
-  `--no-verify`) are each refused; commits, rebases and stashes on the task branch succeed; the
-  project's own hooks still run. Without the session environment, the same repository accepts
-  all of them. A scripted session followed by a PR on the task branch ends `ESCALATED` via
-  `LANDED_OUTSIDE_CLOSER`.
+  `--no-verify`), and creating a tag, are each refused; commits, rebases, stashes, a bisect and a
+  fetch succeed; the project's own hooks still run. Without the session environment, the same
+  repository accepts all of them. An operator `env` key that names the same git configuration is
+  overridden by the harness's. A scripted session followed by a PR on the task branch ends
+  `ESCALATED` with the cause `LANDED_OUTSIDE_CLOSER`.
 - **Workflows:** a scripted two-step workflow: step 2 baselines against step 1's accepted state;
   `continue: true` resumes the session id; the closer runs once; a gate failure in step 2 retries
   step 2 only.
