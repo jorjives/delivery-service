@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
-import type { MockScript } from "../mock-script.js";
+import { promptsSent, readJournal, type MockScript } from "../mock-script.js";
 import { SurfaceState, type RunEntry, type GateRef, RepairChanges } from "../schema.js";
 import { RECOVERED_REPAIR } from "../breaker.js";
 import { loadRunFile, setRunOutcome } from "../run-file.js";
@@ -1336,7 +1336,7 @@ describe("delivery run with several tasks at once", () => {
       RUN_TIMEOUT * 2,
     );
 
-    it("finishes a run picked up after it gave up but before it could say so, without starting anything", async () => {
+    it("ends a run that gave up but was stopped before it could say so, then starts its held task in a new run", async () => {
       const repo = brokenRepo("run-command-breaker-resume-gave-up-", BROKEN_GATE, [PAGE]);
       const taskId = "add-a-hello-function-20260930T090000Z";
       await writeRunRecord(repo, { runId: taskId, task: PAGE, gate: gateRef });
@@ -1346,11 +1346,12 @@ describe("delivery run with several tasks at once", () => {
         { t: "run_escalated", reason: "the shared environment could not be repaired after 2 attempts; no task caused this" },
       ]);
 
-      const { exitCode, stdout } = await delivery(["run"], { cwd: repo });
+      const script = await scriptFile({ expectations: [] });
+      const { stdout } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: script } });
 
-      expect(exitCode).toBe(EXIT.escalated);
       expect(stdout).toContain("Stopping the run.");
       expect((await loadRunFile(supervisedPlace(repo, RUN))).outcome).toMatchObject({ kind: "escalated", cause: "shared_environment" });
+      expect(promptsSent(await readJournal(`${script}.journal.jsonl`)).some((prompt) => prompt.includes(PAGE))).toBe(true);
     });
   });
 
