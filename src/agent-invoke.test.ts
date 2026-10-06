@@ -6,7 +6,8 @@ import { PassThrough } from "node:stream";
 import { join } from "node:path";
 import { create, readRef } from "./case-file.js";
 import { invoke, runSession, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef, usageLimitOf, usageOf } from "./agent-invoke.js";
-import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
+import { workerRoleConfig, gateMaintenanceRoleConfig, type RoleConfig } from "./role-config.js";
+import { Ajv } from "ajv";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import { createToolAuthority } from "./tool-authority.js";
 import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
@@ -337,6 +338,52 @@ describe("the session options the primitive builds", () => {
 
   it("still points the session at the run's worktree", () => {
     expect(options().cwd).toBe(worktreePath);
+  });
+
+  // The runtime hands the reply schema to the API as a tool's input schema. The API
+  // refuses a root not typed as an object, or one carrying oneOf, anyOf or allOf,
+  // failing every session at its first turn; the handshake test below stops before
+  // that turn, so the contract is pinned here.
+  const brief = { problem: "p", dead_ends: "d", scope: "s", references: [], diagnosis: "g" };
+  const replies = {
+    worker: [
+      { status: "completed", rationale: "done" },
+      { status: "escalate", category: "authority", rationale: "not mine to decide" },
+    ],
+    triage: [
+      { status: "reroute", rationale: "r", payload: brief },
+      { status: "escalate", rationale: "r", payload: { decision: "d", evidence: "e", dead_ends: "d", why_now: "w", references: [] } },
+      { status: "fix_the_gate", rationale: "r", payload: brief },
+      { status: "retry_close", rationale: "r", payload: brief },
+      { status: "abort", rationale: "r", payload: { reason: "gone" } },
+    ],
+  };
+  const apiSchemaCases = [
+    { roleCfg: workerRoleConfig, valid: replies.worker },
+    { roleCfg: gateMaintenanceRoleConfig, valid: replies.worker },
+    { roleCfg: triageRoleConfig, valid: replies.triage },
+  ];
+
+  function apiSchemaOf(roleCfg: RoleConfig<unknown>) {
+    const schema = buildSessionOptions(roleCfg, ctx, {}, createToolAuthority(roleCfg, worktreePath).canUseTool).outputFormat?.schema;
+    if (!schema) throw new Error(`no reply schema for ${roleCfg.role}`);
+    return schema;
+  }
+
+  it.each(apiSchemaCases)("gives the $roleCfg.role reply schema a root the API accepts", ({ roleCfg }) => {
+    const schema = apiSchemaOf(roleCfg);
+    expect(schema.type).toBe("object");
+    expect(schema).not.toHaveProperty("oneOf");
+    expect(schema).not.toHaveProperty("anyOf");
+    expect(schema).not.toHaveProperty("allOf");
+  });
+
+  it.each(apiSchemaCases)("still lets the API accept every reply the $roleCfg.role may give", ({ roleCfg, valid }) => {
+    const accepts = new Ajv({ strict: false }).compile(apiSchemaOf(roleCfg));
+    for (const reply of valid) {
+      expect(roleCfg.envelopeSchema.safeParse(reply).success).toBe(true);
+      expect(accepts(reply), JSON.stringify(accepts.errors)).toBe(true);
+    }
   });
 
   // claude-mock never reads --json-schema, but the real runtime validates it at

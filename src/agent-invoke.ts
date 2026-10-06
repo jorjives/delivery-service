@@ -166,6 +166,40 @@ export interface SessionEnvironment {
   env?: Record<string, string | undefined>;
 }
 
+type JsonSchema = Record<string, unknown>;
+
+/**
+ * The runtime hands the reply schema to the API as a tool's input schema, whose
+ * root must be typed as an object and carry no oneOf, anyOf or allOf. A union
+ * envelope converts to a root `oneOf` of objects, so its branches are merged into
+ * one object: each property takes its single schema, or an `anyOf` of the
+ * distinct ones, and is required only where every branch requires it. That is
+ * looser than the union, never stricter: the envelope schema still judges the
+ * reply exactly when it comes back, and a mismatch is an incomplete attempt.
+ */
+function asApiRoot(schema: JsonSchema): JsonSchema {
+  const branches = (schema.oneOf ?? schema.anyOf) as JsonSchema[] | undefined;
+  if (!branches) return schema;
+  const rest = { ...schema };
+  delete rest.oneOf;
+  delete rest.anyOf;
+  const variants = new Map<string, JsonSchema[]>();
+  for (const branch of branches) {
+    for (const [key, property] of Object.entries((branch.properties ?? {}) as Record<string, JsonSchema>)) {
+      const seen = variants.get(key) ?? [];
+      if (!seen.some((other) => JSON.stringify(other) === JSON.stringify(property))) seen.push(property);
+      variants.set(key, seen);
+    }
+  }
+  const properties = Object.fromEntries(
+    [...variants].map(([key, seen]) => [key, seen.length === 1 ? seen[0] : { anyOf: seen }]),
+  );
+  const required = [...variants.keys()].filter((key) =>
+    branches.every((branch) => ((branch.required ?? []) as string[]).includes(key)),
+  );
+  return { ...rest, type: "object", properties, required, additionalProperties: false };
+}
+
 /**
  * Assemble the session's options field by field.
  *
@@ -187,7 +221,7 @@ export function buildSessionOptions(
   // Zod stamps a `$schema` meta-schema URI on the root, which the Claude Code
   // binary cannot resolve and rejects outright, failing every session before
   // the model is reached. The schema itself is unchanged by dropping it.
-  const schema = z.toJSONSchema(roleCfg.envelopeSchema);
+  const schema = asApiRoot(z.toJSONSchema(roleCfg.envelopeSchema));
   delete schema.$schema;
   return {
     cwd: ctx.worktreePath,
