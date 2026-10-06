@@ -26,6 +26,8 @@ const budgets: BudgetSet = {
 
 const gateRef: GateRef = { type: "command", command: "cat report.tap", parseMode: "tap" };
 
+/** A sharpened brief, as a triage reply that sends the work round again carries it. */
+const brief = { problem: "p", dead_ends: "d", scope: "s", references: [], diagnosis: "g" };
 const NO_COST = { costUsd: 0, durationMs: 0 }; // what the scripted agent reports when the script sets no figure
 
 let dir: string;
@@ -344,7 +346,6 @@ describe("the session options the primitive builds", () => {
   // refuses a root not typed as an object, or one carrying oneOf, anyOf or allOf,
   // failing every session at its first turn; the handshake test below stops before
   // that turn, so the contract is pinned here.
-  const brief = { problem: "p", dead_ends: "d", scope: "s", references: [], diagnosis: "g" };
   const replies = {
     worker: [
       { status: "completed", rationale: "done" },
@@ -471,7 +472,7 @@ describe("createAgentPort against a scripted session", () => {
       { when: { promptContains: "\"reroute\"" }, json: {
         status: "reroute",
         rationale: "one more attempt is worth it",
-        payload: { problem: "p", dead_ends: "d", scope: "s", references: [], diagnosis: "h" },
+        payload: brief,
       } },
       { json: { status: "completed", rationale: "done" } },
     ]);

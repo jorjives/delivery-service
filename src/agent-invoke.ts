@@ -10,6 +10,7 @@ import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
 import { messageOf } from "./gate-support.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
 import type { UsageLimit, SessionUsage } from "./schema.js";
+import type { JsonSchema } from "./report/json-schema.js";
 
 /**
  * The four ways a session fails to produce a usable answer, and the one
@@ -166,8 +167,6 @@ export interface SessionEnvironment {
   env?: Record<string, string | undefined>;
 }
 
-type JsonSchema = Record<string, unknown>;
-
 /**
  * The runtime hands the reply schema to the API as a tool's input schema, whose
  * root must be typed as an object and carry no oneOf, anyOf or allOf. A union
@@ -178,11 +177,10 @@ type JsonSchema = Record<string, unknown>;
  * reply exactly when it comes back, and a mismatch is an incomplete attempt.
  */
 function asApiRoot(schema: JsonSchema): JsonSchema {
-  const branches = (schema.oneOf ?? schema.anyOf) as JsonSchema[] | undefined;
+  const branches = schema.oneOf as JsonSchema[] | undefined;
   if (!branches) return schema;
   const rest = { ...schema };
   delete rest.oneOf;
-  delete rest.anyOf;
   const variants = new Map<string, JsonSchema[]>();
   for (const branch of branches) {
     for (const [key, property] of Object.entries((branch.properties ?? {}) as Record<string, JsonSchema>)) {
