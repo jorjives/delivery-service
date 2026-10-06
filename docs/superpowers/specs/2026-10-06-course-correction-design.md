@@ -144,7 +144,7 @@ These replace the five invariants in `docs/single-surface-control-flow.md`.
 | `permissionMode` | `bypassPermissions` | Harness |
 | `outputFormat` | The step's reply schema | Harness |
 | `resume` / `sessionId` | From the case file (invariant 2) | Harness |
-| `model`, `effort`, `maxTurns`, `plugins`, `mcpServers`, `skills`, `settings`, `additionalDirectories`, `env` | From the `agent` block in config, if set; otherwise whatever the operator's settings say | Operator |
+| `model`, `effort`, `maxTurns`, `plugins`, `mcpServers`, `skills`, `settings`, `sandbox`, `additionalDirectories`, `env` | From the `agent` block in config, if set; otherwise whatever the operator's settings say | Operator |
 
 There is no `canUseTool` and no `allowedTools`. `src/tool-authority.ts` is deleted, along with the
 `allowedTools` field on `RoleConfig`, `READ_ONLY_TOOLS`, and the read-only refinement in
@@ -154,12 +154,12 @@ The founding PRD objected to passing caller options through: "the next SDK relea
 widening option and nothing fails". That objection no longer holds. Widening was never the risk;
 the acceptance checks are the boundary. The pass-through is therefore an explicit *denylist of
 harness-owned keys* (`cwd`, `systemPrompt`, `outputFormat`, `resume`, `sessionId`,
-`permissionMode`). `delivery validate` refuses each of those by name. Every other SDK option
-passes through unchanged, so a new SDK option is available on the day it ships. Two options are
-shared: the harness sets `sandbox.enabled` and adds the fence's deny rule to `settings` (5.2), and
-merges the operator's `sandbox` and `settings` around them. An operator value that would disable
-the sandbox or remove the deny rule is refused by name; `fence: off` is the way to turn the fence
-off.
+`permissionMode`, and `pathToClaudeCodeExecutable`, which the fence uses). `delivery validate`
+refuses each of those by name. Every other SDK option passes through unchanged, so a new SDK
+option is available on the day it ships. One option is shared: `env` is merged, with the
+operator's values passed through and the harness's own keys (the landing boundary's git
+configuration, 5.2) winning. `sandbox` and `settings` are the operator's alone; the harness sets
+neither.
 
 An operator who *wants* to restrict their agent does it the native way: `permissions.deny` in
 their own Claude settings, or `agent.settings` in the config. That is their norm, expressed in
@@ -188,30 +188,33 @@ no fence; the landing boundary below covers them from any directory. So without 
 damage is limited to one thing, an agent overwriting uncommitted work in the main checkout, which
 is no worse than the plain Claude Code the operator would otherwise use.
 
-*Mechanism: the runtime's own sandbox first.* The SDK's `sandbox` option runs shell commands in
-the runtime's sandbox (bubblewrap on Linux, Seatbelt on macOS), and filesystem restrictions for
-both the file tools and sandboxed shell commands come from the same `Edit` permission rules
-(`sdk.d.ts`, the `sandbox` option's documentation). The harness therefore sets
-`sandbox: { enabled: true, failIfUnavailable: false }` and adds a deny rule on
-`Edit(<main checkout>/**)` through the session's `settings`. This is the commodity choice and is
-cross-platform. It rests on one fact this spec could not verify: that deny rules still hold under
-`bypassPermissions`. The first slice proves it with a test against the real runtime. If it does
-not hold, the fallback is a port of Autoloop's bubblewrap fence (`lib/fsguard-run.sh`) on Linux,
-and the native sandbox is not used for the fence.
+*Mechanism: Autoloop's fence, ported.* The harness sets `pathToClaudeCodeExecutable` to a small
+wrapper that starts the Claude Code runtime inside bubblewrap, a port of Autoloop's
+`lib/fsguard-run.sh`: the filesystem bound as it is, the main checkout re-bound read-only, and its
+`.git` re-bound writable. Because the whole runtime runs inside, the file tools and every shell
+command are covered alike, and the network is untouched. Before a run's first session the harness
+probes the fence (a write to the main checkout must fail, a write to the worktree must succeed) and
+records the result in the run header, so the fence's presence is a recorded fact, not an
+assumption. Host devices pass through with `fence.devices`, as `AUTOLOOP_FSGUARD_DEV_BIND` does.
 
-*The default is `fence: preferred`.* The fence is applied wherever the platform supports it.
-Where it does not, the run goes ahead, and the harness says so at the start of the run in plain
-words, not only in the record: "Your main folder is not protected on this machine. Commit or save
-your work before the run starts." The run header records `fence: absent` and the report shows it.
-`fence: required` makes an absent fence a setup refusal (exit 2), for operators who want the
-guarantee. `fence: off` turns it off. The default follows the persona rule (5.12): a fence the
-platform cannot provide must not take away a non-technical owner's ability to deliver.
+*Why not the runtime's own sandbox.* The SDK's `sandbox` option was the first candidate, being
+bought rather than ported. It is the wrong tool: it is broad isolation, not a write fence.
+Network egress is confined to an allowlist; filesystem isolation applies beyond the rules the
+harness would set; a deny rule on the main checkout also covers its `.git`, and deny beats allow,
+so commits from the worktree would fail; `allowUnsandboxedCommands` (default on) lets the agent
+step outside it; and `failIfUnavailable` (default off) runs unsandboxed with only a warning
+(`sdk.d.ts`, the `sandbox` option). Each of those either hobbles the agent or leaves the fence
+unverified. An operator may still enable it through `agent.sandbox` as their own norm; the
+harness neither sets it nor relies on it.
 
-*Devices:* how the native sandbox exposes host devices is to be confirmed in the first slice.
-Autoloop's device passthrough (`AUTOLOOP_FSGUARD_DEV_BIND`, which mobile-web-console uses) was for
-its deploy to a phone, which here runs as an `after` command outside the agent session (5.7), so
-the agent session needs no device passthrough for parity. `fence.devices` exists only if the
-bubblewrap fallback is used.
+*The default is `fence: preferred`.* The fence is applied wherever bubblewrap is available and the
+probe passes. Where it is not, which includes every platform other than Linux, the run goes
+ahead, and the harness says so at the start of the run in plain words, not only in the record:
+"Your main folder is not protected on this machine. Commit or save your work before the run
+starts." The run header records `fence: absent` and the report shows it. `fence: required` makes
+an absent fence a setup refusal (exit 2), for operators who want the guarantee. `fence: off` turns
+it off. The default follows the persona rule (5.12): a fence the platform cannot provide must not
+take away a non-technical owner's ability to deliver.
 
 **Acceptance checks.** These join the gate result. A failure is a `gate_fail` like any other
 newly-failing assertion, and goes through the router and triage as today. This is the
@@ -539,7 +542,7 @@ a design, but may not decide one until the owner confirms it.
 | `close.sh` (close-prep agent, re-gate, ff merge, promote outbox) | A final workflow step if wanted, then the resolution commit and the merge-back closer; follow-ups land as ordinary new items |
 | `deploy.sh` | `after` commands |
 | `notify.sh`, health digest | `notify` command; `delivery report --json` across projects |
-| fsguard (bubblewrap) | The write fence (5.2): the runtime's sandbox, with fsguard as the fallback |
+| fsguard (bubblewrap) | The write fence (5.2): fsguard, ported |
 | systemd `autoloop@<key>.timer` | `delivery schedule` |
 | Wizard, console, web console | `delivery init`, `status`, `watch`, `report`. The fleet console stays an Autoloop-era tool and reads `report --json` |
 
@@ -558,7 +561,7 @@ of them.
 - **Config translation:** `autoloop migrate <key>` (in the Autoloop repo, its last feature) writes
   a `delivery.config.json` from `~/.config/autoloop/<key>/config`. Verify command becomes gate,
   deploy becomes `after`, base branch becomes the closer's target, the `AUTOLOOP_ENABLE_*` toggles
-  become the source list, and a deploy that needed device passthrough runs as an `after` command.
+  become the source list, and device bind-mounts become `fence.devices`.
 - **Backlog import.** `delivery import autoloop` converts `.autoloop/issues`, `ideas` and
   `scheduled` into `.delivery/backlog/` items, committed by the operator, and imports Autoloop's
   ledger, parked items included. After that, nothing reads `.autoloop/`.
@@ -584,8 +587,8 @@ The same machinery covers work Autoloop cannot express:
 ## 7. Error handling
 
 - **Harness-owned agent option in config:** setup refusal (exit 2) naming the key.
-- **Fence required but unavailable:** setup refusal (exit 2), saying which platform support is
-  missing and that `fence: preferred` runs without it.
+- **Fence required but unavailable:** setup refusal (exit 2), naming bubblewrap or the probe
+  that failed, and saying that `fence: preferred` runs without it.
 - **Fence preferred but unavailable:** the run goes ahead, with the plain-words warning at the
   start and `fence: absent` in the header and report.
 - **Gate integrity or guard check fails:** a newly-failing assertion in the gate result, routed
@@ -610,12 +613,12 @@ is involved.
 - **Session options:** a session is built with the `claude_code` preset and an append, with
   `settingSources` omitted, `bypassPermissions`, no `canUseTool`, and operator options passed
   through. Each harness-owned key in config is refused by validation.
-- **Fence:** against the real runtime (the one place `claude-mock` cannot stand in, since it models
-  no permissions): under `bypassPermissions` with the deny rule, an `Edit` and a shell write to the
-  main checkout are both refused, and the same writes to the worktree succeed. This test decides
-  between the native sandbox and the bubblewrap fallback. Offline: the session options carry the
-  sandbox and deny rule; an unsupported platform with `fence: required` gives exit 2; with the
-  default, the warning is printed first and the header records `fence: absent`.
+- **Fence:** with `bwrap` present, the probe passes, and a scripted session's `Edit` and shell
+  write to the main checkout both fail while its writes to the worktree, and a commit from the
+  worktree, succeed. One test runs the real Claude Code runtime through the wrapper, since
+  `claude-mock` cannot show that the runtime's own file tools are inside the fence. Without
+  `bwrap`, `fence: required` gives exit 2, and the default prints the warning first and records
+  `fence: absent`. A listed device is visible inside the fence.
 - **Acceptance checks:** a scripted run that changes the gate definition, and one that weakens a
   test, each fail the gate and are rerouted with the finding as evidence. A guard opt-out step
   changes a test and is accepted, and the opt-out appears in the report. A run that edits an
@@ -650,9 +653,9 @@ is involved.
 
 - **Operator environment:** bought. Use the SDK's own setting loading (`settingSources` default,
   `claude_code` preset, `skills`, `plugins`). Do not rebuild any of it.
-- **Write fence:** bought. The runtime's own sandbox and permission rules, cross-platform. Autoloop's
-  bubblewrap fence is the fallback only if the first slice shows deny rules do not hold under
-  `bypassPermissions`.
+- **Write fence:** prior art. Autoloop's bubblewrap fence, ported. The runtime's own sandbox was
+  assessed and rejected: it isolates the network and the filesystem far beyond a write fence, and
+  cannot leave the main checkout's `.git` writable (5.2).
 - **Scheduling:** prior art. Use systemd user timers in Autoloop's shape, not a daemon of our own.
 - **Backlog:** Delivery Service's own tracked store, markdown with front matter (the format
   Autoloop proved), in its own schema and location. Imported from `.autoloop/` once, never read in
@@ -679,7 +682,8 @@ is involved.
 - **Session continuity (decided 2026-10-07).** Judged attempts get a new session in the same
   worktree; interrupted ones resume; across runs, exhausted corrections retry cold (5.11).
 - **Fence default (decided 2026-10-07).** `fence: preferred`, loudly announced when absent;
-  `required` and `off` available. The runtime's sandbox first, bubblewrap as the fallback (5.2).
+  `required` and `off` available. Mechanism: Autoloop's bubblewrap fence, ported; the runtime's
+  own sandbox was rejected on review (5.2).
 - **Backlog store (decided 2026-10-07).** Delivery Service's own store, tracked in the repository at
   `.delivery/backlog/`; the ledger is machine-local state (5.5).
 - **Landing boundary (decided 2026-10-07).** Agents never merge, push or open PRs; landing is the
