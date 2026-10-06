@@ -18,6 +18,8 @@ const SHAPES: readonly RegExp[] = [
 ];
 /** A quoted value given to something named like a password, secret, token or API key. */
 const ASSIGNED = /(?:password|passwd|secret|token|api[_-]?key)\w*["']?\s*[:=]\s*(["'`])([^"'`\s]{8,})\1/gi;
+/** An unquoted value given to such a name, as an env file or settings file writes it. */
+const ASSIGNED_BARE = /(?:password|passwd|secret|token|api[_-]?key)\w*\s*[:=]\s*([^\s"'`,;]{8,})/gi;
 /** Any quoted value: a secret only in a category the pack marks sensitive. */
 const QUOTED = /(["'`])([^"'`\n]{8,})\1/g;
 /** A run of key-like characters long enough to be a generated token. */
@@ -46,6 +48,7 @@ export function secretLiterals(text: string, sensitive: boolean): string[] {
   const found = new Set<string>();
   for (const shape of SHAPES) for (const [match] of text.matchAll(shape)) found.add(match);
   for (const match of text.matchAll(ASSIGNED)) found.add(match[2] ?? "");
+  for (const match of text.matchAll(ASSIGNED_BARE)) found.add(match[1] ?? "");
   if (sensitive) for (const match of text.matchAll(QUOTED)) found.add(match[2] ?? "");
   for (const [match] of text.matchAll(TOKEN)) if (randomLooking(match)) found.add(match);
   return [...found].filter((literal) => literal.length >= SHORTEST);

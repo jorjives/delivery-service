@@ -15,6 +15,8 @@ describe("what looks like a secret", () => {
     ["a source-host token", "ghp_16C7e42F292c6912E7710c838347Ae178B4a", "ghp_16C7e42F292c6912E7710c838347Ae178B4a"],
     ["a signed web token", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"],
     ["a long random-looking token", "token=Zx81Qp0LmN4vB7tR2sKd9wYh", "Zx81Qp0LmN4vB7tR2sKd9wYh"],
+    ["an unquoted password in an env file", "DB_PASSWORD=hunter2hunter2", "hunter2hunter2"],
+    ["an unquoted password in settings", "password: hunter22xyz", "hunter22xyz"],
   ])("finds %s", (_, text, literal) => {
     expect(secretLiterals(text, false)).toContain(literal);
   });
