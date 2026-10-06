@@ -136,6 +136,7 @@ not sliced.
 ## Slice 3: A Fix That Weakens the Tests Is Refused
 
 **Status:** ✅ Complete — 2026-10-06 — `eea8ba1`
+**Tests:** ✅ Recorded — 2026-10-06 — `c70c237` — cli — 1 UAT + 7 AC, 3 skipped
 
 **Delivers:** A fix that "passes" by deleting, editing or skipping the project's tests, or by changing how the tests are run, is refused and the agent is told why, whatever kind of test output the project produces.
 
