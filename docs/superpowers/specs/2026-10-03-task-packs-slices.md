@@ -178,6 +178,8 @@ not sliced.
 
 ## Slice 4: Run a Security Review and Sign Off Serious Fixes Before They Land
 
+**Status:** ✅ Complete — 2026-10-06 — `ab24493`
+
 **Delivers:** The owner types `delivery review security`, reads problems grouped by how serious they are with what could happen in plain words, and serious fixes (high or critical) are fixed and checked but wait for her sign-off, which re-checks the fix on her current main copy before landing it.
 
 **Operational note:** Sign-off takes the same repository lock as runs of several tasks, so it is safe to run while a fix phase is going. Records that must hold a secret the review found are written readable only by the owner, under the self-ignoring harness folder, and never printed. The second built-in pack ships in the package.
