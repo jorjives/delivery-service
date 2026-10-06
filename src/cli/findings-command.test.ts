@@ -3,16 +3,26 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { appendLedger, readLedger } from "../packs/ledger.js";
-import { NO_REVIEW_YET, unfinishedReview } from "../packs/render.js";
-import { sampleFinding, writeReview } from "../packs/review-fixtures.js";
+import { CHANGES_NOTE, CHANGES_WHICH, NO_REVIEW_YET, noKeptFix, unfinishedReview } from "../packs/render.js";
+import { exampleRepo, sampleFinding, writeReview } from "../packs/review-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { withoutAt } from "../without-at.js";
-import { delivery } from "./command-fixtures.js";
+import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { alreadyTakenOn, approvedLine, noSuchProblem, skippedLine, testsOnlyApproved, NOTHING_CHOSEN } from "./findings-command.js";
+import { TEST_MOCK_SCRIPT } from "./agent-session.js";
+import type { MockScript } from "../mock-script.js";
 
 const repo = () => initTempRepo("findings-", { "a.js": "x\n" });
 const TWO = [sampleFinding(), sampleFinding({ id: "111111111111", title: "Old payment code", severity: "low", check: { kind: "none" } })];
+const NEGATIVE = sampleFinding();
+const SECURITY = { name: "security", title: "Security review", hold: "high" as const, consequenceLabel: "what-could-happen" as const };
+const FIXES_CHECKOUT = {
+  when: { promptContains: NEGATIVE.id },
+  effects: [{ edit: { path: "checkout.js", old: "return price - discount;", new: "return Math.max(0, price - discount);" } }],
+  json: { status: "completed", rationale: "a total never goes below zero" },
+};
+const env = async (script: MockScript) => ({ [TEST_MOCK_SCRIPT]: await scriptFile(script) });
 
 describe("delivery findings", () => {
   it("says there is no review yet and how to start one", async () => {
@@ -154,5 +164,42 @@ describe("choosing which problems to fix", () => {
   it("says each choice in the owner's words", () => {
     expect(approvedLine([1, 3, 4])).toBe("Approved 1, 3 and 4. Start fixing with: delivery fix");
     expect(skippedLine([2])).toBe("Skipped 2: nothing will be done about it.");
+  });
+});
+
+describe("delivery findings <n> --changes", () => {
+  it(
+    "shows a kept fix's changed files and the change, after saying it cannot say the change is safe",
+    async () => {
+      const repo = exampleRepo("findings-changes-");
+      await writeReview(repo, { reviewId: "security-20261006T101500Z", findings: [NEGATIVE], pack: SECURITY });
+      await delivery(["findings", "approve", "1"], { cwd: repo });
+      await delivery(["fix"], { cwd: repo, env: await env({ expectations: [FIXES_CHECKOUT] }) });
+
+      const { exitCode, stdout } = await delivery(["findings", "1", "--changes"], { cwd: repo });
+      expect(exitCode).toBe(EXIT.ok);
+      const lines = stdout.split("\n");
+      expect(lines[0]).toBe(CHANGES_NOTE);
+      expect(stdout).toMatch(/checkout\.js \| 2 \+-/);
+      expect(stdout).toContain("-  return price - discount;");
+      expect(stdout).toContain("+  return Math.max(0, price - discount);");
+    },
+    RUN_TIMEOUT,
+  );
+
+  it("refuses for a problem with no kept fix, saying where it stands", async () => {
+    const repo = exampleRepo("findings-changes-");
+    await writeReview(repo, { findings: [NEGATIVE] });
+    const { exitCode, stderr } = await delivery(["findings", "1", "--changes"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe(`${noKeptFix(1, "not yet decided")}\n`);
+  });
+
+  it("asks which problem when none is named", async () => {
+    const repo = exampleRepo("findings-changes-");
+    await writeReview(repo, { findings: [NEGATIVE] });
+    const { exitCode, stderr } = await delivery(["findings", "--changes"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe(`${CHANGES_WHICH}\n`);
   });
 });

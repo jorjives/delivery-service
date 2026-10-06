@@ -38,6 +38,10 @@ export const CHANGES_TESTS = "this fix will change your tests";
 export const REVIEWER_KNOWLEDGE = "this comes from the reviewer's knowledge, not an advisory database; it may be out of date or wrong.";
 export const LEFT_FOR_YOU = "One thing is left for you";
 
+export const CHANGES_NOTE = "The agent changed these files. This shows what changed; it cannot tell you it is safe.";
+export const CHANGES_WHICH = "Say which problem's changes to show, by its number in the list, for example: delivery findings 1 --changes";
+export const noKeptFix = (number: number, words: string): string => `Problem ${number} has no kept fix to show: it is ${words}. See where each stands with: delivery findings`;
+
 /** How a problem's consequence is introduced, as its pack chose. */
 const CONSEQUENCE_WORDS: Record<NonNullable<PinnedPack["consequenceLabel"]>, string> = {
   "why-it-matters": "Why it matters",

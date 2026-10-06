@@ -1,10 +1,13 @@
 import { resolve } from "node:path";
 import { DamagedReview } from "../errors.js";
 import { appendLedger, authorisations, readLedger } from "../packs/ledger.js";
-import { readFindingStates } from "../packs/fix-state.js";
-import { findingLines, listLines, NO_REVIEW_YET, unconfirmedLines, unfinishedReview } from "../packs/render.js";
+import { keptChanges } from "../packs/kept-changes.js";
+import { keptFix, readFindingStates } from "../packs/fix-state.js";
+import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords } from "../packs/render.js";
 import { listReviews, loadReview } from "../packs/review-record.js";
 import type { SavedReview } from "../packs/review-record.js";
+import { literalsOf, maskIn } from "../packs/secrets.js";
+import { stripControl } from "../report/text.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
@@ -12,6 +15,7 @@ import { findRepository } from "./project.js";
 export interface FindingsOptions {
   repo?: string;
   unconfirmed?: boolean;
+  changes?: boolean;
 }
 
 export interface DecideOptions {
@@ -21,6 +25,13 @@ export interface DecideOptions {
 
 export const noSuchProblem = (asked: string, count: number): string =>
   `There is no problem ${asked} in the latest review: it lists ${count}. See the list with: delivery findings`;
+
+/** The problem `asked` names, counted from 1, or a refusal naming how many the review lists. */
+export function problemNumber(asked: string, count: number): number {
+  const n = /^\d+$/.test(asked) ? Number(asked) : 0;
+  if (n < 1 || n > count) throw new Refusal(noSuchProblem(asked, count), EXIT.configuration);
+  return n;
+}
 
 /** Numbers as a sentence lists them: 1, 3 and 4. */
 export const numberList = (numbers: readonly number[]): string =>
@@ -65,14 +76,31 @@ export async function findingsCommand(number: string | undefined, options: Findi
     for (const line of unconfirmedLines(review)) say(line);
     return EXIT.ok;
   }
+  if (options.changes === true) {
+    if (number === undefined) throw new Refusal(CHANGES_WHICH, EXIT.configuration);
+    const n = problemNumber(number, review.result.findings.length);
+    const { states } = await readFindingStates(repoPath, review);
+    const at = states[n - 1];
+    const fix = at === undefined ? undefined : keptFix(at);
+    const kept = fix !== undefined && (at?.state === "held");
+    if (!kept || at === undefined) throw new Refusal(noKeptFix(n, stateWords(at ?? { state: "proposed", fix: undefined, refused: false, cause: null })), EXIT.configuration);
+    const finding = review.result.findings[n - 1];
+    const hide = (text: string): string => stripControl(finding === undefined ? text : maskIn(text, literalsOf(finding)));
+    const { stat, patch } = await keptChanges(repoPath, fix);
+    say(CHANGES_NOTE);
+    say("");
+    for (const line of hide(stat).split("\n")) say(line);
+    say("");
+    for (const line of hide(patch).trimEnd().split("\n")) say(line);
+    return EXIT.ok;
+  }
   if (number === undefined) {
     const { states } = await readFindingStates(repoPath, review);
     for (const line of listLines(review, states)) say(line);
     return EXIT.ok;
   }
   const count = review.result.findings.length;
-  const n = /^\d+$/.test(number) ? Number(number) : 0;
-  if (n < 1 || n > count) throw new Refusal(noSuchProblem(number, count), EXIT.configuration);
+  const n = problemNumber(number, count);
   for (const line of findingLines(review, n)) say(line);
   return EXIT.ok;
 }

@@ -214,6 +214,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .description("list the problems your latest review found and where each stands, or show one in full with the detail for engineers; changes nothing")
     .argument("[number]", "show this problem in full, counted from 1 as the list numbers them")
     .option("--unconfirmed", "list the problems the review reported that could not be found in your project, and why")
+    .option("--changes", "with a problem's number: show what its kept fix changed, file by file")
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
     .action(async (number: string | undefined, options: FindingsOptions, command: Command) => {
       exitCode = await findingsCommand(number, options, ctxFor(command));
