@@ -3,11 +3,9 @@ import { mkdtemp } from "node:fs/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { git } from "../tests/helpers.js";
+import { caseDir, git } from "../tests/helpers.js";
 import { resolveCloser } from "./resolve-closer.js";
 import { provisionWorktree } from "./provision.js";
-import { create } from "./case-file.js";
-import { DEFAULT_BUDGETS } from "./budgets.js";
 import { initTempRepo } from "./temp-repo.js";
 import type { CloserRef } from "./schema.js";
 import type { CloseContext } from "./ports.js";
@@ -20,8 +18,7 @@ describe("resolveCloser", () => {
   let tree: string;
 
   beforeEach(async () => {
-    const dir = await mkdtemp(join(tmpdir(), "resolve-closer-case-"));
-    await create(dir, { surfaceId: "surface-42", taskDef: { goal: "add the feature" }, gateRef: { type: "command", command: "true", parseMode: "exitcode" } }, DEFAULT_BUDGETS);
+    const dir = await caseDir("surface-42", { goal: "add the feature" });
     repo = initTempRepo("resolve-closer-repo-", { "seed.txt": "hello\n" });
     tree = join(await mkdtemp(join(tmpdir(), "resolve-closer-tree-")), "wt");
     const { baseBranch } = await provisionWorktree(dir, repo, tree, "surface-42");

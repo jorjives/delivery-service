@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
 import { readFileSync, statSync } from "node:fs";
 import { mkdtemp, mkdir, utimes } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -18,6 +17,7 @@ import { RESUME_DOES_NOT_APPLY, UNCHANGED_NOT_RUN_AGAIN } from "../report/detail
 import { ReportDocument } from "../report/document.js";
 import { attempt, BRIEF, CHANGES_TOUCHING_CHECK, failedCheck, ownRepair, PACKET, setupRepair, stoppedAt, timed, writeRecord } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
+import { git } from "../../tests/helpers.js";
 import { plainReporter } from "./report.js";
 import { appendRunEntry, setRunOutcome } from "../run-file.js";
 import { STOPPED_PART_WAY } from "./queue.js";
@@ -49,7 +49,7 @@ async function reportOn(
   { keptBranch = true }: { keptBranch?: boolean } = {},
 ): Promise<{ repo: string; lines: string[] }> {
   const repo = initTempRepo("status-repo-", { "seed.txt": "seed\n" });
-  if (keptBranch) execFileSync("git", ["branch", `surface/${record.runId}`], { cwd: repo });
+  if (keptBranch) git(repo, ["branch", `surface/${record.runId}`]);
   await writeRunRecord(repo, record);
   return { repo, lines: await statusReport(await readRun(repo, record.runId), ctx) };
 }

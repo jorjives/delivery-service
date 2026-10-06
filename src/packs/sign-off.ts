@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname } from "node:path";
 import { load } from "../case-file.js";
 import { computeDelta } from "../delta-rule.js";
-import { git, tryGit } from "../git-exec.js";
+import { branchExists, git, tryGit } from "../git-exec.js";
 import { takeRepoLock } from "../repo-lock.js";
 import { resolveCloser } from "../resolve-closer.js";
 import { resolveGate } from "../resolve-gate.js";
@@ -43,7 +43,7 @@ async function land(repoPath: string, fix: KeptFix, replay: boolean, env: NodeJS
   const ctx = { worktreePath: scratch, dir: runDir, repoPath, branch: fix.branch, baseBranch: fix.base };
   const landed = async (): Promise<Settled> => ({ kind: "landed", commit: await git(repoPath, ["rev-parse", fix.base]), closer: landing });
 
-  if (!(await tryGit(repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${fix.branch}`]))) {
+  if (!(await branchExists(repoPath, fix.branch))) {
     if (!replay) return notLanded("branch_gone", `branch ${fix.branch} is not in the repository`);
     // An earlier sign-off merged and was stopped before it was recorded: the landing closer's own replay says so.
     const report = await closer.close(ctx, { kind: "accepted" });

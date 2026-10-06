@@ -3,9 +3,13 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll } from "vitest";
+import { mkdtemp } from "node:fs/promises";
+import { DEFAULT_BUDGETS } from "../src/budgets.js";
+import { create } from "../src/case-file.js";
 import { cleanGitEnv } from "../src/git-env.js";
 import { signedOut } from "../src/mock-session.js";
 import type { MockExpectation } from "../src/testing.js";
+import type { TaskDef } from "../src/schema.js";
 
 export const REPO_ROOT = join(import.meta.dirname, "..");
 
@@ -75,6 +79,13 @@ export function snippetFrom(guide: string, name: string): string {
   if (start === -1) throw new Error(`the guide has no \`\`\`ts block starting with // ${name}`);
   const body = start + "```ts\n".length;
   return guide.slice(body, guide.indexOf("```", body));
+}
+
+/** A fresh case file directory for one surface asked to do `taskDef`, as a closer is handed it. */
+export async function caseDir(surfaceId: string, taskDef: TaskDef): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "case-"));
+  await create(dir, { surfaceId, taskDef, gateRef: { type: "command", command: "true", parseMode: "exitcode" } }, DEFAULT_BUDGETS);
+  return dir;
 }
 
 /** The compiled `delivery` command, as `npm run build` leaves it. */

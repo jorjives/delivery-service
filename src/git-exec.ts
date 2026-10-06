@@ -60,6 +60,10 @@ export async function git(cwd: string, args: string[], options: { env?: NodeJS.P
 }
 
 /** Ran-and-succeeded as a boolean, for probes and best-effort clean-up. */
+/** Whether `branch` is a local branch of the repository at `repoPath`. */
+export const branchExists = (repoPath: string, branch: string): Promise<boolean> =>
+  tryGit(repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+
 export async function tryGit(cwd: string, args: string[]): Promise<boolean> {
   try {
     await git(cwd, args);

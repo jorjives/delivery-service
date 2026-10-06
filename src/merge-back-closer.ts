@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import type { CloseContext, CloseReport, CloserPort } from "./ports.js";
-import { git, tryGit } from "./git-exec.js";
+import { branchExists, git, tryGit } from "./git-exec.js";
 import { closerFromAcceptedHandler, commitAccepted, removeWorktree } from "./closer-support.js";
 
 /**
@@ -42,8 +42,8 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
       return { status: "ERROR", detail: "This surface has no pinned base branch, so there is nothing to merge into." };
     }
 
-    const branchExists = await tryGit(ctx.repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${ctx.branch}`]);
-    if (!branchExists) {
+    const branchIsThere = await branchExists(ctx.repoPath, ctx.branch);
+    if (!branchIsThere) {
       return {
         status: "DONE",
         detail: `Already closed: branch ${ctx.branch} no longer exists, so an earlier close merged the work and cleaned up.`,

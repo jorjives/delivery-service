@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { load } from "./case-file.js";
-import { ensureCommitted, git, tryGit } from "./git-exec.js";
+import { branchExists, ensureCommitted, git, tryGit } from "./git-exec.js";
 import { messageOf } from "./gate-support.js";
 import type { CloserPort, CloseContext, CloseOutcome, CloseReport } from "./ports.js";
 import type { TaskDef } from "./schema.js";
@@ -59,7 +59,7 @@ export async function removeWorktree(ctx: CloseContext): Promise<void> {
  * assumed to hold work, so nothing is ever deleted on a guess.
  */
 async function holdsWork(ctx: CloseContext): Promise<boolean> {
-  if (!(await tryGit(ctx.repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${ctx.branch}`]))) return false;
+  if (!(await branchExists(ctx.repoPath, ctx.branch))) return false;
   if (ctx.baseBranch === "") return true;
   const ahead = await git(ctx.repoPath, ["rev-list", "--count", `${ctx.baseBranch}..${ctx.branch}`]).catch(() => "unknown");
   return ahead !== "0";

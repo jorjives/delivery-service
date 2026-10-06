@@ -3,10 +3,8 @@ import { mkdtemp } from "node:fs/promises";
 import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { git } from "../tests/helpers.js";
+import { caseDir, git } from "../tests/helpers.js";
 import { createMergeBackCloser } from "./merge-back-closer.js";
-import { create } from "./case-file.js";
-import { DEFAULT_BUDGETS } from "./budgets.js";
 import { provisionWorktree } from "./provision.js";
 import { initTempRepo } from "./temp-repo.js";
 import type { CloseContext } from "./ports.js";
@@ -20,8 +18,7 @@ describe("the merge-back closer", () => {
   let ctx: CloseContext;
 
   beforeEach(async () => {
-    dir = await mkdtemp(join(tmpdir(), "merge-back-case-"));
-    await create(dir, { surfaceId: "surface-42", taskDef: { goal: "Fines must never exceed the maximum\n\nCap the fine at MAX_FINE." }, gateRef: { type: "command", command: "true", parseMode: "exitcode" } }, DEFAULT_BUDGETS);
+    dir = await caseDir("surface-42", { goal: "Fines must never exceed the maximum\n\nCap the fine at MAX_FINE." });
     repo = initTempRepo("merge-back-repo-", { "seed.txt": "hello\n" });
     tree = join(await mkdtemp(join(tmpdir(), "merge-back-tree-")), "wt");
     const { baseBranch } = await provisionWorktree(dir, repo, tree, "surface-42");

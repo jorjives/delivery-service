@@ -256,6 +256,7 @@ async function land(ctx) {
   if (existsSync(ctx.worktreePath)) {
     await git(ctx.worktreePath, ["add", "-A"]);
     if ((await git(ctx.worktreePath, ["status", "--porcelain"])) !== "") {
+      // The built-in closers title this commit with the task instead (see `dir` above).
       await git(ctx.worktreePath, ["commit", "-m", `Accepted work from ${ctx.branch}`]);
     }
   }

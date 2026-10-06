@@ -4,21 +4,12 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCommitToBranchCloser } from "./commit-to-branch-closer.js";
-import { create } from "./case-file.js";
-import { DEFAULT_BUDGETS } from "./budgets.js";
 import { provisionWorktree } from "./provision.js";
 import { initTempRepo } from "./temp-repo.js";
-import { git } from "../tests/helpers.js";
+import { caseDir, git } from "../tests/helpers.js";
 import type { CloseContext } from "./ports.js";
-import type { TaskDef } from "./schema.js";
 
 const accepted = { kind: "accepted" } as const;
-
-async function caseDir(taskDef: TaskDef): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), "commit-branch-case-"));
-  await create(dir, { surfaceId: "surface-42", taskDef, gateRef: { type: "command", command: "true", parseMode: "exitcode" } }, DEFAULT_BUDGETS);
-  return dir;
-}
 
 describe("the commit-to-branch closer", () => {
   let repo: string;
@@ -26,7 +17,7 @@ describe("the commit-to-branch closer", () => {
   let ctx: CloseContext;
 
   beforeEach(async () => {
-    const dir = await caseDir({ goal: "Fines must never exceed the maximum\n\nCap the fine at MAX_FINE." });
+    const dir = await caseDir("surface-42", { goal: "Fines must never exceed the maximum\n\nCap the fine at MAX_FINE." });
     repo = initTempRepo("commit-branch-repo-", { "seed.txt": "hello\n" });
     tree = join(await mkdtemp(join(tmpdir(), "commit-branch-tree-")), "wt");
     const { baseBranch } = await provisionWorktree(dir, repo, tree, "surface-42");
@@ -55,7 +46,7 @@ describe("the commit-to-branch closer", () => {
   });
 
   it("falls back to naming the branch when the task has no text to title the commit with", async () => {
-    const dir = await caseDir({ priority: 3 });
+    const dir = await caseDir("surface-42", { priority: 3 });
     const bare = { ...ctx, dir };
     writeFileSync(join(tree, "feature.txt"), "the work\n");
 

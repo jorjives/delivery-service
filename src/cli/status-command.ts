@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { logTail, resumeAction, type ResumeAction } from "../case-file.js";
 import { branchName } from "../provision.js";
-import { tryGit } from "../git-exec.js";
+import { branchExists } from "../git-exec.js";
 import type { BreakerState, BreakerCause, RunOutcome, SurfaceState, TaskDef } from "../schema.js";
 import { repairsUsed, tripsOf, type Trip } from "../breaker.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
@@ -61,7 +61,7 @@ function packetLines(packet: EscalationPacket): string[] {
 async function whereToLook(record: RunRecord, ctx: CommandContext): Promise<string[]> {
   const { location } = runPlace(record.repoPath, record.runId, ctx.env);
   const branch = branchName(record.caseFile.header.surfaceId);
-  const kept = await tryGit(record.repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
+  const kept = await branchExists(record.repoPath, branch);
   return [
     "",
     "Where to look:",
