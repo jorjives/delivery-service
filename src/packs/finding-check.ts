@@ -3,9 +3,10 @@ import { lstat, open } from "node:fs/promises";
 import { join } from "node:path";
 import { git } from "../git-exec.js";
 import { isEnoent } from "../journal.js";
-import { FILE_LIMIT, fileAt, LITERAL, locate, patternFound, projectPath } from "./confirm.js";
+import { FILE_LIMIT, fileAt, LITERAL, locate, PATTERN_TIMEOUT_MS, patternFound, projectPath } from "./confirm.js";
 import type { Finding } from "./finding.js";
 import { LOCKFILE, lockfileHas } from "./lockfile.js";
+import { literalsOf } from "./secrets.js";
 
 /** Where a problem is checked: the main copy at a commit, or a working copy as an agent left it. */
 export type Where = { repoPath: string; commit: string } | { worktreePath: string };
@@ -105,6 +106,26 @@ async function oddFileIn(worktreePath: string, paths: string[]): Promise<{ error
 }
 
 /**
+ * Whether any of `literals` is anywhere in the project: at the commit, or in
+ * the working copy's tracked and new files (files git ignores aside, which is
+ * where a secret moved out of the code belongs). Searched as fixed text by git,
+ * so nothing an agent wrote is run as a pattern.
+ */
+async function anywhere(where: Where, literals: string[]): Promise<boolean | { error: string }> {
+  const search = literals.flatMap((literal) => ["-e", literal]);
+  const [cwd, args] =
+    "commit" in where ? [where.repoPath, ["grep", "-q", "-F", ...search, where.commit]] : [where.worktreePath, ["grep", "-q", "-F", "--untracked", ...search]];
+  try {
+    await git(cwd, args, { env: LITERAL, timeout: PATTERN_TIMEOUT_MS });
+    return true;
+  } catch (err) {
+    const { code, killed } = err as { code?: unknown; killed?: boolean };
+    if (code === 1 && killed !== true) return false;
+    return { error: "the project could not be searched for the secret" };
+  }
+}
+
+/**
  * Whether a problem is still there: its pattern still matches, its vulnerable
  * version is still in the lockfile, or its flagged code is still in its file
  * (commented out counts as still there). A problem whose check is "tests only"
@@ -113,6 +134,15 @@ async function oddFileIn(worktreePath: string, paths: string[]): Promise<{ error
  */
 export async function checkFinding(finding: Finding, where: Where): Promise<CheckResult> {
   const { check } = finding;
+  // A problem whose category says so is still there while its secret is anywhere in the project: moving it is not fixing it.
+  // ponytail: a whole-project problem with no secret-shaped text falls back to its own file; widen to the anchor if a pack needs that.
+  if (finding.scope === "repo") {
+    const literals = literalsOf(finding);
+    if (literals.length > 0) {
+      const found = await anywhere(where, literals);
+      if (found !== false) return found === true ? "present" : found;
+    }
+  }
   if (check.kind === "dependency-absent") {
     const text = await textAt(where, LOCKFILE);
     if (text === undefined) return { error: `${LOCKFILE} is not in the project, so which versions are installed cannot be read` };

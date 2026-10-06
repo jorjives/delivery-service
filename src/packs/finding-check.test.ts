@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { FILE_LIMIT, PATTERN_LIMIT } from "./confirm.js";
 import { checkFinding, commentBlind } from "./finding-check.js";
-import { exampleRepo, sampleFinding } from "./review-fixtures.js";
+import { exampleRepo, PAYMENTS_PASSWORD, sampleFinding } from "./review-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
+import { cleanGitEnv } from "../git-env.js";
 
 const NEGATIVE = sampleFinding();
 const SETTINGS = sampleFinding({
@@ -178,5 +179,41 @@ describe("whether a vulnerable library version is still installed", () => {
     expect(await checkFinding(MINIMIST, { worktreePath: missing })).toEqual({ error: "package-lock.json is not in the project, so which versions are installed cannot be read" });
     const broken = initTempRepo("dependency-check-", { "package-lock.json": "not json" });
     expect(await checkFinding(MINIMIST, { worktreePath: broken })).toEqual({ error: "package-lock.json could not be read as an npm lockfile" });
+  });
+});
+
+describe("a secret's check looks across the whole project", () => {
+  const LINE = `const PAYMENTS_PASSWORD = "${PAYMENTS_PASSWORD}";`;
+  const SECRET = sampleFinding({ id: "444444444444", category: "secrets", severity: "critical", where: { path: "payments.js", line: 2, endLine: 2 }, anchor: LINE, scope: "repo", sensitive: true });
+
+  it("is present while the secret is in its file", async () => {
+    const repo = exampleRepo("secret-check-");
+    expect(await checkFinding(SECRET, { repoPath: repo, commit: "HEAD" })).toBe("present");
+    expect(await checkFinding(SECRET, { worktreePath: repo })).toBe("present");
+  });
+
+  it("is still present when the secret is moved to another file, committed or not", async () => {
+    const repo = exampleRepo("secret-check-");
+    edit(repo, "payments.js", LINE, "import { PAYMENTS_PASSWORD } from \"./config.js\";");
+    writeFileSync(join(repo, "config.js"), `export const PAYMENTS_PASSWORD = "${PAYMENTS_PASSWORD}";\n`);
+    expect(await checkFinding(SECRET, { worktreePath: repo })).toBe("present");
+    execFileSync("git", ["add", "-A"], { cwd: repo, env: cleanGitEnv() });
+    execFileSync("git", ["commit", "-m", "move it"], { cwd: repo, env: cleanGitEnv() });
+    expect(await checkFinding(SECRET, { repoPath: repo, commit: "HEAD" })).toBe("present");
+  });
+
+  it("is resolved once the secret is nowhere in the project, a file git ignores aside", async () => {
+    const repo = exampleRepo("secret-check-");
+    edit(repo, "payments.js", LINE, "const PAYMENTS_PASSWORD = process.env.PAYMENTS_PASSWORD;");
+    writeFileSync(join(repo, ".gitignore"), ".env\n");
+    writeFileSync(join(repo, ".env"), `PAYMENTS_PASSWORD=${PAYMENTS_PASSWORD}\n`);
+    expect(await checkFinding(SECRET, { worktreePath: repo })).toBe("resolved");
+  });
+
+  it("leaves a problem in an ordinary category judged by its own file", async () => {
+    const repo = exampleRepo("secret-check-");
+    writeFileSync(join(repo, "copy.js"), "return price - discount;\n");
+    edit(repo, "checkout.js", "return price - discount;", "return Math.max(0, price - discount);");
+    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toBe("resolved");
   });
 });
