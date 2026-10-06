@@ -1,10 +1,34 @@
-import { tryGit } from "./git-exec.js";
+import { load } from "./case-file.js";
+import { ensureCommitted, tryGit } from "./git-exec.js";
 import { messageOf } from "./gate-support.js";
 import type { CloserPort, CloseContext, CloseOutcome, CloseReport } from "./ports.js";
+import type { TaskDef } from "./schema.js";
 
 /** An ERROR close report: the one shape every "could not close" reaches the driver in. */
 export function closeError(detail: string): CloseReport {
   return { status: "ERROR", detail };
+}
+
+/** The first line of the task's first text field: what was asked for, in the words it was asked in. */
+export function taskSummary(taskDef: TaskDef): string | undefined {
+  return Object.values(taskDef)
+    .find((value): value is string => typeof value === "string")
+    ?.split("\n")[0]
+    ?.trim() || undefined;
+}
+
+/**
+ * Commit whatever the worker left in the worktree, titled with the task it
+ * delivers so the branch's history says what was asked for. A task with no
+ * text to title it with is named by its branch instead.
+ */
+export async function commitAccepted(ctx: CloseContext): Promise<void> {
+  const { header } = await load(ctx.dir);
+  const summary = taskSummary(header.taskDef);
+  const message = summary
+    ? `${summary.slice(0, 72)}\n\nDelivered by delivery-service for ${header.surfaceId} on ${ctx.branch}.`
+    : `Accepted work from ${ctx.branch}`;
+  await ensureCommitted(ctx.worktreePath, message);
 }
 
 /**

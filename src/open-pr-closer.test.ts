@@ -49,6 +49,14 @@ describe("the open-pr closer", () => {
     standIn = createGhStandIn();
   });
 
+  it("titles the commit it pushes with the task it delivers", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+
+    await closer().close(ctx, accepted);
+
+    expect(git(origin, ["log", "-1", "--format=%s", BRANCH])).toBe("add the feature");
+  });
+
   it("commits the work, pushes the branch and opens a pull request against the base branch", async () => {
     writeFileSync(join(tree, "feature.txt"), "the work\n");
 

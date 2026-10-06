@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import type { CloseContext, CloseReport, CloserPort } from "./ports.js";
-import { ensureCommitted, git, tryGit } from "./git-exec.js";
-import { closerFromAcceptedHandler, removeWorktree } from "./closer-support.js";
+import { git, tryGit } from "./git-exec.js";
+import { closerFromAcceptedHandler, commitAccepted, removeWorktree } from "./closer-support.js";
 
 /**
  * Land the accepted work on the branch the surface was started from.
@@ -11,7 +11,7 @@ import { closerFromAcceptedHandler, removeWorktree } from "./closer-support.js";
  * the surface recording the close replays this same function.
  *
  * The order is load-bearing: branch existence is checked, then (guarded by the
- * worktree still existing) `ensureCommitted`, and only then the ancestry probe
+ * worktree still existing) `commitAccepted`, and only then the ancestry probe
  * — never the reverse. The worker's changes are uncommitted at the start of a
  * first close, so an ancestry probe run before committing sees the surface
  * branch sitting exactly at the base tip and reports "already merged",
@@ -56,7 +56,7 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
     // be touched once it is gone. Run before the ancestry probe below — the
     // probe can only see committed work.
     if (existsSync(ctx.worktreePath)) {
-      await ensureCommitted(ctx.worktreePath, `Accepted work from ${ctx.branch}`);
+      await commitAccepted(ctx);
     }
 
     const nothingToLand = await tryGit(ctx.repoPath, ["merge-base", "--is-ancestor", ctx.branch, ctx.baseBranch]);

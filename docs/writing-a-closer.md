@@ -109,7 +109,7 @@ interface Closer {
 | Field | What it is | When it is set |
 |---|---|---|
 | `worktreePath` | The surface's scratch worktree, holding the accepted work. It may already be gone on a replay (see below). | Always |
-| `dir` | The surface's case file directory. Most closers ignore it. | Always |
+| `dir` | The surface's case file directory. `load(dir)` gives its header, whose `taskDef` is what was asked for; the built-in closers title their commit with it. | Always |
 | `repoPath` | The repository checkout the worktree was created from. It is shared with the people using that checkout: act on it, but never switch its checked-out branch. | Always |
 | `branch` | The surface's own branch, for example `surface/surface-7`. The worktree has it checked out. | Always |
 | `baseBranch` | The local branch the surface was started from, pinned when it was provisioned, for example `main`. The branch to merge into or open a pull request against. | Always; the empty string only if provisioning never completed, which a closer should report as `"ERROR"` |

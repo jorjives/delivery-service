@@ -4,12 +4,21 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCommitToBranchCloser } from "./commit-to-branch-closer.js";
+import { create } from "./case-file.js";
+import { DEFAULT_BUDGETS } from "./budgets.js";
 import { provisionWorktree } from "./provision.js";
 import { initTempRepo } from "./temp-repo.js";
 import { git } from "../tests/helpers.js";
 import type { CloseContext } from "./ports.js";
+import type { TaskDef } from "./schema.js";
 
 const accepted = { kind: "accepted" } as const;
+
+async function caseDir(taskDef: TaskDef): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "commit-branch-case-"));
+  await create(dir, { surfaceId: "surface-42", taskDef, gateRef: { type: "command", command: "true", parseMode: "exitcode" } }, DEFAULT_BUDGETS);
+  return dir;
+}
 
 describe("the commit-to-branch closer", () => {
   let repo: string;
@@ -17,7 +26,7 @@ describe("the commit-to-branch closer", () => {
   let ctx: CloseContext;
 
   beforeEach(async () => {
-    const dir = await mkdtemp(join(tmpdir(), "commit-branch-case-"));
+    const dir = await caseDir({ goal: "Fines must never exceed the maximum\n\nCap the fine at MAX_FINE." });
     repo = initTempRepo("commit-branch-repo-", { "seed.txt": "hello\n" });
     tree = join(await mkdtemp(join(tmpdir(), "commit-branch-tree-")), "wt");
     const { baseBranch } = await provisionWorktree(dir, repo, tree, "surface-42");
@@ -34,6 +43,25 @@ describe("the commit-to-branch closer", () => {
     expect(git(repo, ["show", "surface/surface-42:feature.txt"])).toBe("the work");
     expect(git(repo, ["rev-parse", "main"])).toBe(mainTip);
     expect(() => git(repo, ["show", "main:feature.txt"])).toThrow();
+  });
+
+  it("titles the commit with the task it delivers, so the branch's history says what was asked for", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+
+    await createCommitToBranchCloser().close(ctx, accepted);
+
+    expect(git(repo, ["log", "-1", "--format=%s", "surface/surface-42"])).toBe("Fines must never exceed the maximum");
+    expect(git(repo, ["log", "-1", "--format=%b", "surface/surface-42"])).toContain("surface-42");
+  });
+
+  it("falls back to naming the branch when the task has no text to title the commit with", async () => {
+    const dir = await caseDir({ priority: 3 });
+    const bare = { ...ctx, dir };
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+
+    await createCommitToBranchCloser().close(bare, accepted);
+
+    expect(git(repo, ["log", "-1", "--format=%s", "surface/surface-42"])).toBe("Accepted work from surface/surface-42");
   });
 
   it("names the branch holding the work, in plain prose", async () => {

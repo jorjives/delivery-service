@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import type { CloseContext, CloseReport, CloserPort } from "./ports.js";
-import { closerFromAcceptedHandler, removeWorktree } from "./closer-support.js";
-import { ensureCommitted } from "./git-exec.js";
+import { closerFromAcceptedHandler, commitAccepted, removeWorktree } from "./closer-support.js";
 
 /**
  * Leave the accepted work committed on the surface's own branch, for a project
@@ -27,7 +26,7 @@ export function createCommitToBranchCloser(): CloserPort {
       };
     }
 
-    await ensureCommitted(ctx.worktreePath, `Accepted work from ${ctx.branch}`);
+    await commitAccepted(ctx);
     await removeWorktree(ctx);
 
     return {

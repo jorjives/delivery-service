@@ -3,9 +3,9 @@ import { existsSync } from "node:fs";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { load } from "./case-file.js";
-import { closeError, closerFromAcceptedHandler } from "./closer-support.js";
+import { closeError, closerFromAcceptedHandler, commitAccepted, taskSummary } from "./closer-support.js";
 import { cleanGitEnv } from "./git-env.js";
-import { ensureCommitted, tryGit } from "./git-exec.js";
+import { tryGit } from "./git-exec.js";
 import type { CloseContext, CloseReport, CloserPort } from "./ports.js";
 import type { TaskDef } from "./schema.js";
 
@@ -79,10 +79,7 @@ function accessProblem(failure: GhFailure): CloseReport | null {
  * carries the whole task definition. Both reach gh as single argv entries.
  */
 function describePullRequest(surfaceId: string, taskDef: TaskDef, ctx: CloseContext): { title: string; body: string } {
-  const summary = Object.values(taskDef)
-    .find((value): value is string => typeof value === "string")
-    ?.split("\n")[0]
-    ?.trim();
+  const summary = taskSummary(taskDef);
   const title = summary ? `${summary.slice(0, 100)} (${surfaceId})` : `Accepted work from ${ctx.branch}`;
   const body = [
     `The delivery harness accepted this work for surface ${surfaceId} and opened this pull request from ${ctx.branch} into ${ctx.baseBranch}.`,
@@ -126,7 +123,7 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
     }
 
     if (existsSync(ctx.worktreePath)) {
-      await ensureCommitted(ctx.worktreePath, `Accepted work from ${ctx.branch}`);
+      await commitAccepted(ctx);
     }
 
     if (!(await tryGit(ctx.repoPath, ["remote", "get-url", "origin"]))) {

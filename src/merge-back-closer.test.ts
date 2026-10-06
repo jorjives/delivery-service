@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
 import { createMergeBackCloser } from "./merge-back-closer.js";
+import { create } from "./case-file.js";
+import { DEFAULT_BUDGETS } from "./budgets.js";
 import { provisionWorktree } from "./provision.js";
 import { initTempRepo } from "./temp-repo.js";
 import type { CloseContext } from "./ports.js";
@@ -19,6 +21,7 @@ describe("the merge-back closer", () => {
 
   beforeEach(async () => {
     dir = await mkdtemp(join(tmpdir(), "merge-back-case-"));
+    await create(dir, { surfaceId: "surface-42", taskDef: { goal: "Fines must never exceed the maximum\n\nCap the fine at MAX_FINE." }, gateRef: { type: "command", command: "true", parseMode: "exitcode" } }, DEFAULT_BUDGETS);
     repo = initTempRepo("merge-back-repo-", { "seed.txt": "hello\n" });
     tree = join(await mkdtemp(join(tmpdir(), "merge-back-tree-")), "wt");
     const { baseBranch } = await provisionWorktree(dir, repo, tree, "surface-42");
@@ -32,6 +35,14 @@ describe("the merge-back closer", () => {
 
     expect(report.status).toBe("DONE");
     expect(git(repo, ["show", "main:feature.txt"])).toBe("the work");
+  });
+
+  it("titles the commit it lands with the task it delivers", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+
+    await createMergeBackCloser().close(ctx, accepted);
+
+    expect(git(repo, ["log", "-1", "--format=%s", "main"])).toBe("Fines must never exceed the maximum");
   });
 
   it("says in plain prose which branch was updated and to which commit", async () => {

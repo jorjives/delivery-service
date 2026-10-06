@@ -81,6 +81,6 @@ describe("UAT: a close that cannot complete is retried, then handed to a person 
     expect(s).toContain("main is still at");
     expect(s).toContain("the harness added nothing to it.");
     expect(s).toContain("Branches now: main | surface/surface-61");
-    expect(s).toMatch(/The accepted work, still on surface\/surface-61: [0-9a-f]{7,} Accepted work from surface\/surface-61/);
+    expect(s).toMatch(/The accepted work, still on surface\/surface-61: [0-9a-f]{7,} add the feature/);
   });
 });
