@@ -9,7 +9,7 @@ import { runsRoot } from "../run-location.js";
 import type { CaseFileOutcome, GateRef, TaskDef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { FINDING_GATE_REF } from "./finding-gate.js";
-import { deriveFindings, fixTasks, readFindingStates, type FixRun } from "./fix-state.js";
+import { deriveFindings, fixTasks, readFindingStates, type FixRun, type FixState } from "./fix-state.js";
 import { fixTaskFor } from "./fix-task.js";
 import { appendLedger, type LedgerEntry } from "./ledger.js";
 import { guardListsFor } from "./guards.js";
@@ -42,7 +42,7 @@ describe("where each problem stands", () => {
     [run({ standing: "aborted", plain: plain("engineer") }), "stopped"],
   ])("once authorised, follows its fix's run: %j is %s", (fix, state) => {
     const fixes = new Map(fix === undefined ? [] : [[A.id, fix]]);
-    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes)[0]).toEqual({ state, fix, refused: false, cause: null });
+    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes)[0]).toEqual({ state, fix, refused: false, cause: null, signOff: null });
   });
 
   it("is already fixed when its code was gone before its fix started, whatever else is recorded", () => {
@@ -155,5 +155,19 @@ describe("holding fixes for sign-off", () => {
     const review = { header: HEADER, result: { findings: [A], unconfirmed: [], notShown: 0, notes: "" } } as any;
     const entries: LedgerEntry[] = [decide([A.id], "approve"), { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high" as any, hold: { [A.id]: true }, landing: { type: "merge-back" } }];
     expect(fixTasks(review, entries as any)[0]?.authorisation).toEqual({ verify: NPM, hold: true, landing: { type: "merge-back" } });
+  });
+
+  it.each<[LedgerEntry[], FixState]>([
+    [[], "held"],
+    [[{ t: "signed_off", at: AT, id: A.id } as const], "held"],
+    [[{ t: "landed", at: AT, id: A.id, commit: "abc", closer: { type: "merge-back" } as const } as const], "signed_off_landed"],
+    [[{ t: "not_landed", at: AT, id: A.id, reason: "check_failed" as const, detail: "npm test" } as const], "signed_off_failed"],
+    [[{ t: "rejected", at: AT, id: A.id } as const], "rejected"],
+  ])("a held fix after %j is %s", (after, state) => {
+    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main" };
+    const held = { t: "authorise" as const, at: AT, ids: [A.id], verify: NPM, threshold: "high" as const, hold: { [A.id]: true }, landing: { type: "merge-back" } as const } as const;
+    const [at] = deriveFindings([A], [decide([A.id], "approve"), held as any, ...(after as any)], new Map([[A.id, closed]]));
+    expect(at?.state).toBe(state);
+    expect(at?.signOff).toEqual(after.find((entry) => entry.t !== "signed_off") ?? null);
   });
 });

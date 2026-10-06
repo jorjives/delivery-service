@@ -82,8 +82,8 @@ export async function findingsCommand(number: string | undefined, options: Findi
     const { states } = await readFindingStates(repoPath, review);
     const at = states[n - 1];
     const fix = at === undefined ? undefined : keptFix(at);
-    const kept = fix !== undefined && (at?.state === "held");
-    if (!kept || at === undefined) throw new Refusal(noKeptFix(n, stateWords(at ?? { state: "proposed", fix: undefined, refused: false, cause: null })), EXIT.configuration);
+    const kept = fix !== undefined && (at?.state === "held" || at?.state === "signed_off_failed" || at?.state === "rejected");
+    if (!kept || at === undefined) throw new Refusal(noKeptFix(n, stateWords(at ?? { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null })), EXIT.configuration);
     const finding = review.result.findings[n - 1];
     const hide = (text: string): string => stripControl(finding === undefined ? text : maskIn(text, literalsOf(finding)));
     const { stat, patch } = await keptChanges(repoPath, fix);

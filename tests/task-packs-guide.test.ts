@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY } from "../src/packs/render.js";
-import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS } from "../src/packs/render.js";
+import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU } from "../src/packs/render.js";
 import { REPO_ROOT } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/task-packs.md"), "utf-8");
@@ -62,5 +62,9 @@ describe("the task packs guide", () => {
 
   it("says a secret the review finds is never shown, and how it is shown instead", () => {
     expect(flat).toContain("first four characters, an ellipsis and its length");
+  });
+
+  it("explains signing off and declining a kept fix", () => {
+    for (const phrase of ["delivery findings sign-off", "delivery findings reject", CHECKING_SIGN_OFF, NEEDS_YOU]) expect(flat).toContain(phrase);
   });
 });

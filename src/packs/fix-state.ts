@@ -5,12 +5,12 @@ import { loadSnapshot } from "../report/snapshot.js";
 import { repoLocked } from "../repo-lock.js";
 import type { Finding } from "./finding.js";
 import { fixTaskFor, type FixTask } from "./fix-task.js";
-import { authorisations, readLedger, resolvedIds, type LedgerEntry } from "./ledger.js";
+import { authorisations, readLedger, resolvedIds, signOffResults, type LedgerEntry, type SignOffResult } from "./ledger.js";
 import { changesTests, type SavedReview } from "./review-record.js";
 import { isGuard, needsTestChange } from "./guards.js";
 
 /** Every state a problem can be in, internally. The owner reads them through `STATE_WORDS` (`render.ts`). */
-export const FIX_STATES = ["proposed", "approved", "skipped", "fixing", "fixed", "held", "already_resolved", "unfixable", "stopped"] as const;
+export const FIX_STATES = ["proposed", "approved", "skipped", "fixing", "fixed", "held", "signed_off_landed", "signed_off_failed", "rejected", "already_resolved", "unfixable", "stopped"] as const;
 export type FixState = (typeof FIX_STATES)[number];
 
 /** What the report says of a problem's fix, and what each of its check rounds newly failed, oldest first. */
@@ -25,6 +25,8 @@ export interface FindingState {
   /** Whether a check of its fix ever refused it for removing, changing or skipping tests. */
   refused: boolean;
   cause: UnfixableCause | null;
+  /** What came of the owner's sign-off of a kept fix, or null when there is none yet. */
+  signOff: SignOffResult | null;
 }
 
 /** An authorised problem's state from its fix's run: waiting for sign-off if held, delivered if fixed; a stop someone must act on is "could not be fixed", unless only an engineer can act, which is a setup problem. */
@@ -43,12 +45,26 @@ function fromRun(fix: FixRun | undefined, held: boolean): FixState {
 /** The ids each check round of a run newly failed, oldest first. */
 export const gateRounds = (history: CaseFile["history"]): string[][] => history.flatMap((entry) => (entry.t === "gate" ? [entry.newFailures.map((failure) => failure.id)] : []));
 
+/** A held fix's state from what came of its sign-off. Total over the results. */
+function afterSignOff(result: SignOffResult | undefined): FixState {
+  switch (result?.t) {
+    case undefined:
+      return "held";
+    case "rejected":
+      return "rejected";
+    case "landed":
+      return "signed_off_landed";
+    case "not_landed":
+      return "signed_off_failed";
+  }
+}
+
 /** A state with what its fix's rounds say: refused if any round refused it; a test change needed if it could not be fixed and its last round refused a modified existing test and nothing else (never a deletion, a skip, a settings change or an ignored file). */
-function stateOf(state: FixState, fix: FixRun | undefined): FindingState {
+function stateOf(state: FixState, fix: FixRun | undefined, signOff: SignOffResult | null = null): FindingState {
   const rounds = fix?.rounds ?? [];
   const refused = rounds.some((round) => round.some(isGuard));
   const cause = state === "unfixable" && needsTestChange(rounds.at(-1) ?? []) ? "needs_test_change" : null;
-  return { state, fix, refused, cause };
+  return { state, fix, refused, cause, signOff };
 }
 
 /**
@@ -61,11 +77,17 @@ export function deriveFindings(findings: readonly Finding[], entries: readonly L
   const authorised = authorisations(entries);
   const choice = new Map<string, "approve" | "skip">();
   for (const entry of entries) if (entry.t === "decision") for (const id of entry.ids) choice.set(id, entry.choice);
+  const results = signOffResults(entries);
   return findings.map((finding) => {
     const fix = fixes.get(finding.id);
     if (gone.has(finding.id)) return stateOf("already_resolved", fix);
     const auth = authorised.get(finding.id);
-    if (auth !== undefined) return stateOf(fromRun(fix, auth.hold === true), fix);
+    if (auth !== undefined) {
+      const state = fromRun(fix, auth.hold === true);
+      if (state !== "held") return stateOf(state, fix);
+      const result = results.get(finding.id);
+      return stateOf(afterSignOff(result), fix, result ?? null);
+    }
     const chosen = choice.get(finding.id);
     return stateOf(chosen === "approve" ? "approved" : chosen === "skip" ? "skipped" : "proposed", fix);
   });

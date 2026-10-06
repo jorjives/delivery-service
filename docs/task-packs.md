@@ -125,6 +125,29 @@ On a code review nothing waits: severity only orders the list.
 `delivery findings 1 --changes` shows what the fix changed, file by file, after a note: "The agent
 changed these files. This shows what changed; it cannot tell you it is safe."
 
+To say yes:
+
+```bash
+delivery findings sign-off 1
+```
+
+It says "Checking the fix still works on your current main copy...", brings the fix up to date
+with your main copy, checks it again exactly as it was checked when it was made, and only then
+merges it: "Passed. Problem 1: fixed and merged." This works when other fixes have been merged
+since. If your main copy changed the same lines, or the fix no longer passes there, nothing is
+merged, the fix is kept on its branch, and the problem reads "signed off but could not be merged"
+with the reason. Running it again once the fix is merged changes nothing. Nothing serious reaches
+your main copy without your sign-off being recorded.
+
+To say no, `delivery findings reject 1`: nothing is merged, the fix is kept on its branch for an
+engineer, and the problem reads "declined at sign-off".
+
+Once a problem with something left for you is fixed, `delivery findings` lists that step under
+NEEDS YOU, such as changing a leaked password where it was issued.
+
+Sign-off waits for nothing: while fixes are being made several at a time it says so and changes
+nothing; run it again once they have finished.
+
 ## Where a review is kept
 
 Each review is a folder under `.delivery/packs/` in your project. `.delivery/` ignores itself, so nothing shows up in `git status`. If a review is interrupted after the agent has replied, run the same command again: the review is finished from the saved reply without asking the agent again. If it is interrupted while the agent is working, running it again starts the review afresh. If a review could not run (not signed in, no connection, a usage limit, or a reply the harness could not read), it says so in one sentence and saves nothing.

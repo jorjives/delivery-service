@@ -11,10 +11,15 @@ import { Severity } from "./finding.js";
 const Id = z.string().regex(/^[0-9a-f]{12}$/);
 const At = z.string().datetime();
 
+/** Why a signed-off fix could not be merged. Closed, so the words for it are total. */
+export const NOT_LANDED_REASONS = ["conflict", "check_failed", "check_error", "not_merged", "branch_gone"] as const;
+export type NotLandedReason = (typeof NOT_LANDED_REASONS)[number];
+
 /**
  * What was decided about a review's problems, one line each, oldest first: the
  * owner's choices, `delivery fix` authorising the approved ones against the
- * project's check, and problems found already fixed before their fix started.
+ * project's check, problems found already fixed before their fix started, and
+ * the owner's sign-off or refusal of a kept fix and what came of it.
  * Each names concrete problem identities, so `--all` is expanded when it is
  * written and a later review can never widen it. Kept in the review's own
  * folder, outside every working copy, so no agent can write it.
@@ -34,9 +39,16 @@ export const LedgerEntry = z.discriminatedUnion("t", [
     landing: CloserRef.optional(),
   }),
   z.object({ t: z.literal("fix_observed"), at: At, id: Id, outcome: z.literal("already_resolved"), commit: z.string().min(1) }),
+  z.object({ t: z.literal("signed_off"), at: At, id: Id }),
+  z.object({ t: z.literal("rejected"), at: At, id: Id }),
+  z.object({ t: z.literal("landed"), at: At, id: Id, commit: z.string().min(1), closer: CloserRef }),
+  z.object({ t: z.literal("not_landed"), at: At, id: Id, reason: z.enum(NOT_LANDED_REASONS), detail: z.string() }),
 ]);
 export type LedgerEntry = z.infer<typeof LedgerEntry>;
 export type NewLedgerEntry = WithoutAt<LedgerEntry>;
+
+/** What came of a kept fix, as the owner decided it: declined, merged, or signed off and not merged. */
+export type SignOffResult = Extract<LedgerEntry, { t: "rejected" | "landed" | "not_landed" }>;
 
 const ledgerFile = (reviewDir: string): string => join(reviewDir, "log.jsonl");
 
@@ -92,4 +104,11 @@ export function authorisations(entries: readonly LedgerEntry[]): Map<string, Aut
 /** The problems found already fixed before their fix started. */
 export function resolvedIds(entries: readonly LedgerEntry[]): Set<string> {
   return new Set(entries.flatMap((entry) => (entry.t === "fix_observed" ? [entry.id] : [])));
+}
+
+/** Each problem's latest sign-off result: a later sign-off after a failed one replaces it. */
+export function signOffResults(entries: readonly LedgerEntry[]): Map<string, SignOffResult> {
+  const found = new Map<string, SignOffResult>();
+  for (const entry of entries) if (entry.t === "rejected" || entry.t === "landed" || entry.t === "not_landed") found.set(entry.id, entry);
+  return found;
 }

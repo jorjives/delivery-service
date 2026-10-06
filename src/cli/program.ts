@@ -237,6 +237,24 @@ export async function runCli(io: CliIo): Promise<number> {
       exitCode = await decideCommand("skip", numbers, command.optsWithGlobals<DecideOptions>(), ctxFor(command));
     });
 
+  findings
+    .command("sign-off")
+    .description("merge a serious fix waiting for your sign-off: it is checked again on your current main copy first, and nothing is merged if it no longer passes")
+    .argument("<number>", "the problem whose fix to merge, as the list numbers it")
+    .action(async (number: string, _options: unknown, command: Command) => {
+      const { signOffCommand } = await import("./sign-off-command.js");
+      exitCode = await signOffCommand(number, command.optsWithGlobals<any>(), ctxFor(command));
+    });
+
+  findings
+    .command("reject")
+    .description("decline a serious fix waiting for your sign-off: nothing is merged, and the fix is kept on its branch for an engineer")
+    .argument("<number>", "the problem whose fix to decline, as the list numbers it")
+    .action(async (number: string, _options: unknown, command: Command) => {
+      const { rejectCommand } = await import("./sign-off-command.js");
+      exitCode = await rejectCommand(number, command.optsWithGlobals<any>(), ctxFor(command));
+    });
+
   program
     .command("fix")
     .description(

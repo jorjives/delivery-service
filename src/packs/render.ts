@@ -4,8 +4,12 @@ import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
 import { SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
 import type { FindingState, FixState } from "./fix-state.js";
+import { NOT_LANDED_REASONS, type NotLandedReason } from "./ledger.js";
 import type { PinnedPack, SavedReview } from "./review-record.js";
 import { literalsOf, maskIn } from "./secrets.js";
+
+// Re-export for the test to use.
+export { NOT_LANDED_REASONS };
 
 /** How the harness will know each kind of check is met, as the owner reads it. Total over the closed set. */
 export const CHECK_LEVEL: Record<CheckKind, string> = {
@@ -61,6 +65,18 @@ export function holdSentence(threshold: Severity): string {
 
 const category = (pack: PinnedPack, id: string) => pack.categories.find((known) => known.id === id);
 
+/** Why a signed-off fix was not merged, as the owner reads it. Total over the closed set. */
+export const NOT_LANDED_WHY: Record<NotLandedReason, string> = {
+  conflict: "your main copy has changed in the same lines since the fix was made",
+  check_failed: "the fix no longer passes its check on your current main copy",
+  check_error: "its check could not be run on your current main copy",
+  not_merged: "it could not be merged into your main copy",
+  branch_gone: "the branch holding the fix is no longer there",
+};
+
+export const CHECKING_SIGN_OFF = "Checking the fix still works on your current main copy...";
+export const NEEDS_YOU = "NEEDS YOU";
+
 /** Where a problem stands, as the owner reads it. Total over the closed set. */
 export const STATE_WORDS: Record<FixState, string> = {
   proposed: NOT_YET_DECIDED,
@@ -69,6 +85,9 @@ export const STATE_WORDS: Record<FixState, string> = {
   skipped: "skipped by you",
   fixed: "fixed and merged",
   held: "waiting for your sign-off",
+  signed_off_landed: "fixed and merged",
+  signed_off_failed: "signed off but could not be merged",
+  rejected: "declined at sign-off",
   already_resolved: "already fixed",
   unfixable: "could not be fixed",
   stopped: "stopped by a setup problem",
@@ -77,7 +96,8 @@ export const STATE_WORDS: Record<FixState, string> = {
 /** "Fixed and merged" where the project's way of landing work opens a pull request instead: nothing has merged. */
 export const PR_OPENED = "fixed, pull request opened";
 
-export const stateWords = ({ state, fix }: FindingState): string => (state === "fixed" && fix?.closer === "open-pr" ? PR_OPENED : STATE_WORDS[state]);
+export const stateWords = ({ state, fix, signOff }: FindingState): string =>
+  (state === "fixed" && fix?.closer === "open-pr") || (state === "signed_off_landed" && signOff?.t === "landed" && signOff.closer.type === "open-pr") ? PR_OPENED : STATE_WORDS[state];
 
 export const fixWaiting = (count: number): string => `${count} approved and not started yet. Start fixing ${count === 1 ? "it" : "them"} with: delivery fix`;
 
@@ -93,16 +113,27 @@ function stopLines({ state, fix, cause }: FindingState): string[] {
   return [`    Why: ${why}`, ...(agentSaid === null ? [] : [`    The agent said: ${quoted(agentSaid, "      ")}`])];
 }
 
-/** What to do about a fix waiting for sign-off, and where an engineer finds it. */
-function signOffLines(number: number, { state, fix }: FindingState): string[] {
-  if (state !== "held") return [];
-  return [
-    "    Why this needs you: it is a serious problem, and you should see what changed before it reaches your main copy.",
-    `    Look at what changed: delivery findings ${number} --changes`,
-    `    Say yes: delivery findings sign-off ${number}`,
-    `    Say no: delivery findings reject ${number}`,
-    `    For engineers: branch ${fix?.branch ?? "not recorded"}`,
-  ];
+function signOffLines(number: number, { state, fix, signOff }: FindingState): string[] {
+  const branch = fix?.branch ?? "not recorded";
+  switch (state) {
+    case "held":
+      return [
+        "    Why this needs you: it is a serious problem, and you should see what changed before it reaches your main copy.",
+        `    Look at what changed: delivery findings ${number} --changes`,
+        `    Say yes: delivery findings sign-off ${number}`,
+        `    Say no: delivery findings reject ${number}`,
+        `    For engineers: branch ${branch}`,
+      ];
+    case "signed_off_failed":
+      return [
+        `    Why: ${signOff?.t === "not_landed" ? NOT_LANDED_WHY[signOff.reason] : NOT_LANDED_WHY.not_merged}. The fix is kept on branch ${branch}.`,
+        `    Try again: delivery findings sign-off ${number}, or decline it: delivery findings reject ${number}`,
+      ];
+    case "rejected":
+      return [`    The fix is kept on branch ${branch} for an engineer.`];
+    default:
+      return [];
+  }
 }
 
 export const opening = (title: string): string[] => [`${title} of your project.`, READS_ONLY];
@@ -161,13 +192,19 @@ export function reviewLines({ header, result }: SavedReview): string[] {
 export function listLines({ header, result }: SavedReview, states: readonly FindingState[]): string[] {
   const waiting = states.filter((at) => at.state === "approved").length;
   const needsTest = states.filter((at) => at.cause === "needs_test_change").length;
+  const problemLines = result.findings.flatMap((finding, index) => {
+    const at = states[index] ?? { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null };
+    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...signOffLines(index + 1, at)];
+  });
+  // What only a person can do, once the code part is done.
+  const needsYou = result.findings.flatMap((finding, index) =>
+    finding.outsideStep !== undefined && (states[index]?.state === "fixed" || states[index]?.state === "signed_off_landed") ? [`  Problem ${index + 1}: ${finding.outsideStep}`] : [],
+  );
   return [
     `${header.pack.title} of ${basename(header.repoPath)}, ${dayAndMinute(header.endedAt)} UTC: ${problems(result.findings.length)}.`,
-    ...result.findings.flatMap((finding, index) => {
-      const at = states[index] ?? { state: "proposed", fix: undefined, refused: false, cause: null };
-      return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...signOffLines(index + 1, at)];
-    }),
+    ...problemLines,
     ...unconfirmedPointer(result.unconfirmed.length),
+    ...(needsYou.length === 0 ? [] : ["", NEEDS_YOU, ...needsYou]),
     ...(needsTest === 0 ? [] : ["", needsTestChangeLine(needsTest)]),
     ...(waiting === 0 ? [] : ["", fixWaiting(waiting)]),
     ...(result.findings.length === 0 ? [] : ["", "See one in full: delivery findings 1"]),

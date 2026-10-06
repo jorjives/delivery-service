@@ -4,7 +4,7 @@ import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
   AGENT_OPINION, CHANGES_TESTS, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview,
+  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
@@ -25,7 +25,7 @@ const PATTERN = sampleFinding({ id: "111111111111", title: "Settings errors are 
 const UNUSED = sampleFinding({ id: "222222222222", title: "Old payment code", severity: "low", check: { kind: "none" }, droppedCheck: { kind: "pattern-absent", pattern: "x", paths: ["a.js"] }, detail: "nothing imports it" });
 const unconfirmed = UNCONFIRMED_REASONS.map((reason): Unconfirmed => ({ title: "Rounding", severity: "medium", path: "pricing.js", problem: "Prices round down.", reason }));
 const review = (overrides: Partial<SavedReview["result"]> = {}): SavedReview => ({ dir: "/d", header: HEADER, result: { findings: [NEGATIVE, PATTERN, UNUSED], unconfirmed: [], notShown: 0, notes: "", ...overrides } });
-const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, ...fix }, refused: false, cause: null });
+const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, ...fix }, refused: false, cause: null, signOff: null });
 const undecided = [at("proposed"), at("proposed"), at("proposed")];
 
 describe("a finished review, as the owner reads it", () => {
@@ -251,6 +251,45 @@ describe("a security review, as the owner reads it", () => {
   });
 });
 
+describe("after sign-off, as the owner reads it", () => {
+  const kept = { closer: "commit-to-branch" as const, branch: "surface/fix-a-20261006T110000Z", base: "main" };
+  const signed = (state: FixState, signOff: FindingState["signOff"]): FindingState => ({ ...at(state, kept), signOff });
+
+  it("says a signed-off fix is fixed and merged", () => {
+    expect(listLines(review(), [signed("signed_off_landed", { t: "landed", at: "x", id: NEGATIVE.id, commit: "abc", closer: { type: "merge-back" } }), at("proposed"), at("proposed")])).toContain(
+      "1. The price shown at checkout can be negative (high): fixed and merged",
+    );
+  });
+
+  it("says why a signed-off fix could not be merged, and that it is kept", () => {
+    const lines = listLines(review(), [signed("signed_off_failed", { t: "not_landed", at: "x", id: NEGATIVE.id, reason: "conflict", detail: "rebase stopped" }), at("proposed"), at("proposed")]);
+    expect(lines).toContain("1. The price shown at checkout can be negative (high): signed off but could not be merged");
+    expect(lines).toContain(`    Why: ${NOT_LANDED_WHY.conflict}. The fix is kept on branch surface/fix-a-20261006T110000Z.`);
+    expect(lines).toContain("    Try again: delivery findings sign-off 1, or decline it: delivery findings reject 1");
+  });
+
+  it("says a declined fix is kept for an engineer", () => {
+    const lines = listLines(review(), [signed("rejected", { t: "rejected", at: "x", id: NEGATIVE.id }), at("proposed"), at("proposed")]);
+    expect(lines).toContain("1. The price shown at checkout can be negative (high): declined at sign-off");
+    expect(lines).toContain("    The fix is kept on branch surface/fix-a-20261006T110000Z for an engineer.");
+  });
+
+  it("lists what is left for you once a problem is fixed, under NEEDS YOU", () => {
+    const left = sampleFinding({ outsideStep: "Change the password at the provider." });
+    const lines = listLines(review({ findings: [left, PATTERN, UNUSED] }), [signed("signed_off_landed", { t: "landed", at: "x", id: left.id, commit: "abc", closer: { type: "merge-back" } }), at("proposed"), at("proposed")]);
+    expect(lines.slice(lines.indexOf(NEEDS_YOU))).toEqual(expect.arrayContaining([NEEDS_YOU, "  Problem 1: Change the password at the provider."]));
+  });
+
+  it("does not list what is left for you before the problem is fixed", () => {
+    const left = sampleFinding({ outsideStep: "Change the password at the provider." });
+    expect(listLines(review({ findings: [left, PATTERN, UNUSED] }), undecided)).not.toContain("NEEDS YOU");
+  });
+
+  it("uses no word an owner should not have to know", () => {
+    for (const reason of NOT_LANDED_REASONS) expect(NOT_LANDED_WHY[reason]).not.toMatch(PACK_FORBIDDEN);
+  });
+});
+
 describe("the review's own words", () => {
   it("never use the harness's internal words", () => {
     const everything = [
@@ -258,7 +297,7 @@ describe("the review's own words", () => {
       ...reviewLines(review({ notShown: 1, unconfirmed })), ...reviewLines(review({ findings: [] })),
       ...listLines(review({ unconfirmed }), undecided), ...unconfirmedLines(review({ unconfirmed })), ...fixNowLines([1, 3]),
       ...findingLines(review(), 1).slice(0, findingLines(review(), 1).indexOf("FOR ENGINEERS")),
-      ...Object.values(CHECK_LEVEL), ...Object.values(UNCONFIRMED_WHY), ...Object.values(STATE_WORDS), PR_OPENED, fixWaiting(1), fixWaiting(2),
+      ...Object.values(CHECK_LEVEL), ...Object.values(UNCONFIRMED_WHY), ...Object.values(STATE_WORDS), ...Object.values(NOT_LANDED_WHY), PR_OPENED, fixWaiting(1), fixWaiting(2), NEEDS_YOU,
       failureSentence({ status: "incomplete", rationale: "x", limit: "rate" }, "code"),
       failureSentence({ status: "incomplete", rationale: "x" }, "code"),
       REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, needsTestChangeLine(1), needsTestChangeLine(2),
