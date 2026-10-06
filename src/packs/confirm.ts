@@ -5,6 +5,7 @@ import { stripControl } from "../report/text.js";
 import { SEVERITIES, type CheckSpec, type Finding, type ScanEnvelope, type ScannedFinding, type ScanResult, type Unconfirmed, type UnconfirmedReason } from "./finding.js";
 import { LOCKFILE, lockfileHas } from "./lockfile.js";
 import type { PinnedCategory } from "./review-record.js";
+import { literalsOf, maskIn, secretLiterals } from "./secrets.js";
 
 /** How long git may spend on one agent-written pattern before the check is not used. */
 export const PATTERN_TIMEOUT_MS = 10_000;
@@ -140,29 +141,33 @@ export async function confirmFindings(
   envelope: ScanEnvelope,
 ): Promise<ScanResult> {
   const flags = new Map(categories.map((category) => [category.id, category]));
+  // The flagged text and pattern are the only places a secret is kept: they are how the problem is found and checked.
+  // Everywhere else the agent's words are masked before they are saved, with any secret-shaped text they hold themselves.
+  const secrets = envelope.findings.flatMap((scanned) => literalsOf({ anchor: scanned.anchor, check: scanned.check, sensitive: flags.get(scanned.category)?.sensitive }));
+  const words = (text: string, limit: number): string => plain(maskIn(text, [...secrets, ...secretLiterals(text, false)]), limit);
   const confirmed = new Map<string, Finding>();
   const unconfirmed: Unconfirmed[] = [];
   for (const scanned of envelope.findings) {
     const placed = await place(repoPath, commit, scanned);
     if ("reason" in placed) {
-      unconfirmed.push({ title: plain(scanned.title, TEXT_LIMITS.title), severity: scanned.severity, path: plain(scanned.where.path, TEXT_LIMITS.path), problem: plain(scanned.problem, TEXT_LIMITS.sentence), reason: placed.reason });
+      unconfirmed.push({ title: words(scanned.title, TEXT_LIMITS.title), severity: scanned.severity, path: plain(scanned.where.path, TEXT_LIMITS.path), problem: words(scanned.problem, TEXT_LIMITS.sentence), reason: placed.reason });
       continue;
     }
     const id = findingId(pack, scanned.category, placed.path, scanned.anchor);
     if (confirmed.has(id)) continue;
     confirmed.set(id, {
       id,
-      title: plain(scanned.title, TEXT_LIMITS.title),
+      title: words(scanned.title, TEXT_LIMITS.title),
       category: scanned.category,
       severity: scanned.severity,
       where: { path: placed.path, line: placed.line, endLine: placed.endLine },
-      problem: plain(scanned.problem, TEXT_LIMITS.sentence),
-      whyItMatters: plain(scanned.whyItMatters, TEXT_LIMITS.sentence),
-      fixedLooksLike: plain(scanned.fixedLooksLike, TEXT_LIMITS.sentence),
+      problem: words(scanned.problem, TEXT_LIMITS.sentence),
+      whyItMatters: words(scanned.whyItMatters, TEXT_LIMITS.sentence),
+      fixedLooksLike: words(scanned.fixedLooksLike, TEXT_LIMITS.sentence),
       anchor: scanned.anchor,
       check: scanned.check,
-      ...(scanned.detail ? { detail: stripControl(scanned.detail).trim().slice(0, TEXT_LIMITS.detail) } : {}),
-      ...(scanned.outsideStep ? { outsideStep: plain(scanned.outsideStep, TEXT_LIMITS.sentence) } : {}),
+      ...(scanned.detail ? { detail: maskIn(stripControl(scanned.detail), [...secrets, ...secretLiterals(scanned.detail, false)]).trim().slice(0, TEXT_LIMITS.detail) } : {}),
+      ...(scanned.outsideStep ? { outsideStep: words(scanned.outsideStep, TEXT_LIMITS.sentence) } : {}),
       ...(flags.get(scanned.category)?.scope === "repo" ? { scope: "repo" as const } : {}),
       ...(flags.get(scanned.category)?.sensitive === true ? { sensitive: true as const } : {}),
       source: "reviewer",
@@ -179,7 +184,7 @@ export async function confirmFindings(
     findings: offered,
     unconfirmed,
     notShown: Math.max(0, ordered.length - maxFindings),
-    notes: plain(envelope.notes, TEXT_LIMITS.notes),
+    notes: words(envelope.notes, TEXT_LIMITS.notes),
   };
 }
 

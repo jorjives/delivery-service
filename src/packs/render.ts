@@ -5,6 +5,7 @@ import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js
 import { SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
 import type { FindingState, FixState } from "./fix-state.js";
 import type { PinnedPack, SavedReview } from "./review-record.js";
+import { literalsOf, maskIn } from "./secrets.js";
 
 /** How the harness will know each kind of check is met, as the owner reads it. Total over the closed set. */
 export const CHECK_LEVEL: Record<CheckKind, string> = {
@@ -175,18 +176,19 @@ export function findingLines({ header, result }: SavedReview, number: number): s
   if (finding === undefined) return [];
   const categoryInfo = header.pack.categories.find((known) => known.id === finding.category);
   const { line, endLine } = finding.where;
+  const hide = (text: string): string => maskIn(text, literalsOf(finding));
   return [
     ...problemBlock(number, finding, header.pack),
     "",
     "FOR ENGINEERS",
     `  Category: ${finding.category}${categoryInfo === undefined ? "" : ` (${categoryInfo.title})`}`,
     `  File: ${pathName(finding.where.path)}, ${line === endLine ? `line ${line}` : `lines ${line} to ${endLine}`}`,
-    ...checkLines(finding.check),
+    ...checkLines(finding.check).map(hide),
     ...(finding.droppedCheck === undefined
       ? []
-      : ["  The review suggested this check, which does not match the code as it stands, so it is not used:", ...checkLines(finding.droppedCheck).map((text) => `  ${text}`)]),
-    `  Flagged text: ${quoted(finding.anchor, "    ")}`,
-    ...(finding.detail === undefined ? [] : [`  The agent's notes: ${quoted(finding.detail, "    ")}`]),
+      : ["  The review suggested this check, which does not match the code as it stands, so it is not used:", ...checkLines(finding.droppedCheck).map((text) => `  ${hide(text)}`)]),
+    `  Flagged text: ${quoted(hide(finding.anchor), "    ")}`,
+    ...(finding.detail === undefined ? [] : [`  The agent's notes: ${quoted(hide(finding.detail), "    ")}`]),
     `  Identity: ${finding.id}, from review ${header.reviewId} of commit ${header.commit.slice(0, 12)}`,
   ];
 }

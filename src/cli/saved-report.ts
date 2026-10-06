@@ -5,6 +5,7 @@ import { atomicWrite } from "../journal.js";
 import type { ReportDocument } from "../report/document.js";
 import { quoted } from "../report/text.js";
 import { prepareDeliveryDir } from "../run-location.js";
+import { secretMasker } from "../packs/secrets.js";
 
 /** Where the report of the last run is kept, as the owner would find it: relative to the repository. One fixed pair, replaced by the next run. */
 export const SAVED_TEXT = ".delivery/last-report.txt";
@@ -33,14 +34,16 @@ export async function saveReport(repoPath: string, doc: ReportDocument, lines: r
   await prepareDeliveryDir(repoPath);
   // ponytail: two renames, so a failure between them leaves new data beside old text. Write both temporary files
   // before either rename if a half-replaced pair is ever seen.
-  await atomicWrite(join(repoPath, SAVED_DATA), asFile([JSON.stringify(doc, null, 2)]), OWNER_ONLY);
-  await atomicWrite(join(repoPath, SAVED_TEXT), asFile(lines), OWNER_ONLY);
+  const mask = secretMasker(repoPath);
+  await atomicWrite(join(repoPath, SAVED_DATA), mask(asFile([JSON.stringify(doc, null, 2)])), OWNER_ONLY);
+  await atomicWrite(join(repoPath, SAVED_TEXT), mask(asFile(lines)), OWNER_ONLY);
 }
 
 /** Whether the saved text is exactly `lines`: the copy on disk is this very report. A check of a copy, never a reading of one: the report itself always comes from the record. */
 export async function isSaved(repoPath: string, lines: readonly string[]): Promise<boolean> {
+  const mask = secretMasker(repoPath);
   return readFile(join(repoPath, SAVED_TEXT), "utf-8").then(
-    (text) => text === asFile(lines),
+    (text) => text === mask(asFile(lines)),
     () => false,
   );
 }

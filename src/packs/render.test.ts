@@ -254,3 +254,13 @@ describe("the review's own words", () => {
     expect(everything.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
 });
+
+describe("a secret in a problem's text", () => {
+  it("is masked in the flagged text and the pattern an engineer sees", () => {
+    const secret = "pay-live-7Hq2xV9rLm4K";
+    const finding = sampleFinding({ anchor: `const PAYMENTS_PASSWORD = "${secret}";`, sensitive: true, check: { kind: "pattern-absent", pattern: secret, paths: ["payments.js"] } });
+    const text = findingLines(review({ findings: [finding] }), 1).join("\n");
+    expect(text).not.toContain(secret);
+    expect(text).toContain("pay-… (21 characters)");
+  });
+});

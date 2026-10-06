@@ -59,4 +59,8 @@ describe("the task packs guide", () => {
     expect(flat).toContain(REVIEWER_KNOWLEDGE);
     expect(flat).toContain("One thing is left for you");
   });
+
+  it("says a secret the review finds is never shown, and how it is shown instead", () => {
+    expect(flat).toContain("first four characters, an ellipsis and its length");
+  });
 });

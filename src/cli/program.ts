@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { Command, CommanderError, Option } from "commander";
 import type { CommandContext, CliStdin, ExitOnInterrupt } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
+import { secretMasker } from "../packs/secrets.js";
 import { decideCommand, findingsCommand, type DecideOptions, type FindingsOptions } from "./findings-command.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
@@ -73,6 +75,19 @@ function contextFor(io: CliIo, command: Command): CommandContext {
 export async function runCli(io: CliIo): Promise<number> {
   let exitCode: number = EXIT.ok;
 
+  // One choke point for everything this process prints, `--json`, errors and agent text included: a secret any review
+  // of the repository flagged is masked on its way out. Set per command, from the repository that command reads.
+  let mask = secretMasker(io.cwd);
+  const out: CliIo = {
+    ...io,
+    stdout: { write: (text: string) => io.stdout.write(mask(text)), isTTY: io.stdout.isTTY },
+    stderr: { write: (text: string) => io.stderr.write(mask(text)) },
+  };
+  const ctxFor = (command: Command, repo?: string): CommandContext => {
+    mask = secretMasker(resolve(io.cwd, repo ?? command.optsWithGlobals<{ repo?: string }>().repo ?? "."));
+    return contextFor(out, command);
+  };
+
   const program = new Command("delivery")
     .description(
       "Hand an AI agent a task in plain English. It works on a copy of your repository, your own tests check the result, and the work is left on a branch for you.",
@@ -82,7 +97,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report and validate, and one JSON event per line from status --watch")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
-    .configureOutput({ writeOut: (text) => io.stdout.write(text), writeErr: (text) => io.stderr.write(text) });
+    .configureOutput({ writeOut: (text) => out.stdout.write(text), writeErr: (text) => out.stderr.write(text) });
 
   program
     .command("run")
@@ -97,7 +112,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--fresh", "start a new run even though one didn't finish, leaving that one to pick up later")
     .action(async (options: RunOptions, command: Command) => {
       // A throw here rejects parseAsync with the original error, rendered once below.
-      exitCode = await runCommand(options, contextFor(io, command));
+      exitCode = await runCommand(options, ctxFor(command));
     });
 
   program
@@ -107,7 +122,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--last", "pick up the run touched most recently, without asking")
     .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
     .action(async (runId: string | undefined, options: ResumeOptions, command: Command) => {
-      exitCode = await resumeCommand(runId, options, contextFor(io, command));
+      exitCode = await resumeCommand(runId, options, ctxFor(command));
     });
 
   program
@@ -125,7 +140,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--interval <seconds>", "with --watch, how often to look at the record (default: every 2 seconds)", intervalSeconds)
     .option("--repo <path>", "the git repository the run belongs to (default: the current folder)")
     .action(async (runId: string | undefined, options: StatusOptions, command: Command) => {
-      const ctx = contextFor(io, command);
+      const ctx = ctxFor(command);
       exitCode = options.watch || options.interval !== undefined ? await watchCommand(runId, options, ctx) : await statusCommand(runId, options, ctx);
     });
 
@@ -139,7 +154,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--schema", "print the published JSON Schema of the report document and of the events `status --watch --json` prints, instead of a report")
     .option("--repo <path>", "the git repository the runs belong to (default: the current folder)")
     .action(async (runId: string | undefined, options: ReportOptions, command: Command) => {
-      exitCode = await reportCommand(runId, options, contextFor(io, command));
+      exitCode = await reportCommand(runId, options, ctxFor(command));
     });
 
   program
@@ -150,7 +165,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--config <path>", "check this config file instead of looking for a delivery.config.json")
     .option("--repo <path>", "the git repository to check (default: the current folder)")
     .action(async (options: ValidateOptions, command: Command) => {
-      exitCode = await validateCommand(options, contextFor(io, command));
+      exitCode = await validateCommand(options, ctxFor(command));
     });
 
   program
@@ -167,7 +182,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--config <path>", "read this config file instead of looking for a delivery.config.json")
     .option("--repo <path>", "the git repository to read (default: the current folder)")
     .action(async (options: PreviewOptions, command: Command) => {
-      exitCode = await previewCommand(options, contextFor(io, command));
+      exitCode = await previewCommand(options, ctxFor(command));
     });
 
   program
@@ -177,7 +192,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .option("--repo <path>", "the git repository to set up (default: the current folder)")
     .action(async (options: InitOptions, command: Command) => {
-      const ctx = contextFor(io, command);
+      const ctx = ctxFor(command);
       exitCode = await initCommand(options, ctx, inquirerAsk(ctx.colour));
     });
 
@@ -189,7 +204,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("<pack>", "which review: a name from `delivery packs`, such as code, or the path to a review folder of your own")
     .argument("[repo]", "the git repository to review (default: the current folder)")
     .action(async (pack: string, repo: string | undefined, _options: unknown, command: Command) => {
-      const ctx = contextFor(io, command);
+      const ctx = ctxFor(command);
       const { reviewCommand } = await import("./review-command.js");
       exitCode = await reviewCommand(pack, repo, ctx, inquirerAsk(ctx.colour));
     });
@@ -201,7 +216,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--unconfirmed", "list the problems the review reported that could not be found in your project, and why")
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
     .action(async (number: string | undefined, options: FindingsOptions, command: Command) => {
-      exitCode = await findingsCommand(number, options, contextFor(io, command));
+      exitCode = await findingsCommand(number, options, ctxFor(command));
     });
 
   findings
@@ -210,7 +225,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("[numbers...]", "the problems to approve, as the list numbers them")
     .option("--all", "approve every problem listed now that is not already being fixed")
     .action(async (numbers: string[], _options: DecideOptions, command: Command) => {
-      exitCode = await decideCommand("approve", numbers, command.optsWithGlobals<DecideOptions>(), contextFor(io, command));
+      exitCode = await decideCommand("approve", numbers, command.optsWithGlobals<DecideOptions>(), ctxFor(command));
     });
 
   findings
@@ -218,7 +233,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .description("skip problems from your latest review: nothing will be done about them")
     .argument("[numbers...]", "the problems to skip, as the list numbers them")
     .action(async (numbers: string[], _options: unknown, command: Command) => {
-      exitCode = await decideCommand("skip", numbers, command.optsWithGlobals<DecideOptions>(), contextFor(io, command));
+      exitCode = await decideCommand("skip", numbers, command.optsWithGlobals<DecideOptions>(), ctxFor(command));
     });
 
   program
@@ -230,14 +245,14 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
     .action(async (options: { repo?: string; concurrency?: string }, command: Command) => {
       const { fixCommand } = await import("./fix-command.js");
-      exitCode = await fixCommand(options, contextFor(io, command));
+      exitCode = await fixCommand(options, ctxFor(command));
     });
 
   program
     .command("packs")
     .description("list the reviews available, each with a sentence saying what it looks for")
     .action(async (_options: unknown, command: Command) => {
-      exitCode = await packsCommand(contextFor(io, command));
+      exitCode = await packsCommand(ctxFor(command));
     });
 
   try {
@@ -246,7 +261,7 @@ export async function runCli(io: CliIo): Promise<number> {
   } catch (err) {
     if (err instanceof CommanderError) return err.exitCode === 0 ? EXIT.ok : EXIT.configuration;
     const failure = renderFailure(err);
-    io.stderr.write(`${failure.message}\n`);
+    out.stderr.write(`${failure.message}\n`);
     return failure.exitCode;
   }
 }

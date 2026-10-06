@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { cleanGitEnv } from "./git-env.js";
@@ -116,5 +116,14 @@ describe("a run of several tasks at once", () => {
   it("keeps its record beside the tasks' records, not among them", () => {
     expect(supervisedPlace("/repo", "run-20260914T210309Z")).toBe(join("/repo", ".delivery", "supervised", "run-20260914T210309Z"));
     expect(supervisedPlace("/repo", "run-x").startsWith(runsRoot("/repo"))).toBe(false);
+  });
+});
+
+describe("a run record's folder permissions", () => {
+  it("makes a run's record folder readable by its owner only, since it can hold a secret a review found", async () => {
+    const repo = initTempRepo("run-dir-", { "a.js": "x\n" });
+    const dir = join(runsRoot(repo), "fix-a-20261006T110000Z");
+    await prepareRunDir(repo, dir);
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
   });
 });

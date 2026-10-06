@@ -5,6 +5,7 @@ import { git } from "../../tests/helpers.js";
 import { initTempRepo } from "../temp-repo.js";
 import { confirmFindings, findingId, locate, normaliseAnchor, TEXT_LIMITS } from "./confirm.js";
 import type { ScanEnvelope, ScannedFinding } from "./finding.js";
+import { maskSecret } from "./secrets.js";
 
 /** Every `git grep` confirming runs, so a test can see which checks were tried. */
 const greps: string[][] = [];
@@ -199,5 +200,28 @@ describe("what a pack's categories add to a confirmed problem", () => {
     expect(findings[0]).not.toHaveProperty("scope");
     expect(findings[0]).not.toHaveProperty("sensitive");
     expect(findings[0]).not.toHaveProperty("outsideStep");
+  });
+});
+
+describe("a secret the review repeats in its own words", () => {
+  const SECRET = "pay-live-7Hq2xV9rLm4K";
+  const FILE = `const PAYMENTS_PASSWORD = "${SECRET}";\n`;
+
+  it("is masked everywhere but the flagged text, which is how the problem is found", async () => {
+    const repo = initTempRepo("confirm-secret-", { "payments.js": FILE });
+    const result = await confirmFindings(
+      repo,
+      head(repo),
+      { pack: "security", maxFindings: 40, categories: [{ id: "correctness", title: "Secrets", sensitive: true }] },
+      {
+        findings: [problem({ where: { path: "payments.js" }, anchor: FILE.trim(), title: `Password ${SECRET} in code`, problem: `It is ${SECRET}.`, detail: `value ${SECRET}`, outsideStep: `Change ${SECRET}.` }), problem({ where: { path: "nowhere.js" }, problem: `Also ${SECRET}.` })],
+        notes: `Saw ${SECRET}.`,
+      },
+    );
+    const [finding] = result.findings;
+    expect(finding?.anchor).toContain(SECRET);
+    const shown = JSON.stringify({ ...finding, anchor: "" }) + JSON.stringify(result.unconfirmed) + result.notes;
+    expect(shown).not.toContain(SECRET);
+    expect(shown).toContain(maskSecret(SECRET));
   });
 });

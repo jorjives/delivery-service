@@ -107,8 +107,12 @@ export function runPlace(repoPath: string, runId: string, env: NodeJS.ProcessEnv
  * so starting a run leaves `git status` exactly as it was. Fails if the folder
  * already exists, rather than write over another run's record.
  */
+/**
+ * Prepare a run's record folder. Owner-only, since a fix's record can hold a
+ * secret a review found.
+ */
 export async function prepareRunDir(repoPath: string, dir: string): Promise<void> {
   await prepareDeliveryDir(repoPath);
   await mkdir(dirname(dir), { recursive: true });
-  await mkdir(dir);
+  await mkdir(dir, { mode: 0o700 });
 }
