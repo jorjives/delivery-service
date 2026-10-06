@@ -150,10 +150,10 @@ describe("holding fixes for sign-off", () => {
     expect(deriveFindings([A], [decide([A.id], "approve"), { ...held, hold: { [A.id]: false } } as any], new Map([[A.id, closed]]))[0]?.state).toBe("fixed");
   });
 
-  it("gives each fix task the release it was authorised with", async () => {
-    const repo = initTempRepo("fix-state-", { "a.js": "x\n" });
-    const entry = await writeReview(repo, { findings: [A] });
+  it("gives each fix task the release it was authorised with", () => {
+    const HEADER = { pack: { name: "security", categories: [] as any, guards: undefined } } as any;
+    const review = { header: HEADER, result: { findings: [A], unconfirmed: [], notShown: 0, notes: "" } } as any;
     const entries: LedgerEntry[] = [decide([A.id], "approve"), { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high" as any, hold: { [A.id]: true }, landing: { type: "merge-back" } }];
-    expect(fixTasks(await loadReview(entry), entries as any)[0]?.authorisation).toEqual({ verify: NPM, hold: true, landing: { type: "merge-back" } });
+    expect(fixTasks(review, entries as any)[0]?.authorisation).toEqual({ verify: NPM, hold: true, landing: { type: "merge-back" } });
   });
 });
