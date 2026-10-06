@@ -1,3 +1,10 @@
+import { readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { git } from "../git-exec.js";
+import { isEnoent } from "../journal.js";
+import { checkFilesOf, treeOf } from "../repair-changes.js";
+import type { Assertion, GateRef } from "../schema.js";
+import { FILE_LIMIT } from "./confirm.js";
 import { z } from "zod";
 
 /**
@@ -40,14 +47,6 @@ export function guardListsFor(additions: GuardLists | undefined): GuardLists {
     skipMarkers: merged(DEFAULT_GUARDS.skipMarkers, additions?.skipMarkers),
   };
 }
-
-import { readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
-import { git } from "../git-exec.js";
-import { isEnoent } from "../journal.js";
-import { checkFilesOf, treeOf } from "../repair-changes.js";
-import type { Assertion, GateRef } from "../schema.js";
-import { FILE_LIMIT } from "./confirm.js";
 
 export const TESTS_GUARD = "guard:tests-untouched"; // a test deleted, renamed or type-changed
 export const EDIT_GUARD = "guard:tests-unchanged"; // an existing test modified
@@ -228,7 +227,8 @@ export async function guardAssertions(worktreePath: string, baseBranch: string, 
   const edited = guards.testsCategory ? [] : tests.filter(({ status }) => status === "M").map(({ path }) => `${path} changed`);
   const runs = checkFilesOf(verify, { repoPath: worktreePath, worktreePath }).map((path) => `:(literal)${path}`);
   const settings = [...(await hiddenFiles(worktreePath)), ...(await touched(worktreePath, base, tree, [...guards.protectedGlobs.map(glob), ...runs])).map(({ path }) => path)];
-  if ((await testCommandAt(worktreePath, base)) !== (await testCommandAt(worktreePath, tree))) settings.push("package.json (how tests are run)");
+  const [commandBefore, commandAfter] = await Promise.all([testCommandAt(worktreePath, base), testCommandAt(worktreePath, tree)]);
+  if (commandBefore !== commandAfter) settings.push("package.json (how tests are run)");
   return [
     assertion(TESTS_GUARD, removed, "removed existing tests"),
     assertion(EDIT_GUARD, edited, "changed existing tests", `${PUT_BACK} If only a change to an existing test would fix the problem, stop and say so.`),
