@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -70,6 +70,16 @@ describe("an environment for a command under test", () => {
     expect(env).not.toHaveProperty("CLAUDE_CODE_OAUTH_TOKEN");
     expect(env.CLAUDE_CONFIG_DIR).not.toBe("/home/me/.claude");
     expect(readdirSync(env.CLAUDE_CONFIG_DIR ?? "")).toEqual([]);
+  });
+});
+
+describe("the installed claude-mock", () => {
+  // npm keeps an old copy when vendor/claude-mock changes but its version does not, and every
+  // scripted test then fails in ways that point nowhere near the cause; this test names it.
+  it.each(["cli.js", "mock.js"])("runs the vendored %s, not a stale copy (if not, run npm ci)", (file) => {
+    const vendored = readFileSync(join(REPO_ROOT, "vendor/claude-mock/dist", file), "utf-8");
+    const installed = readFileSync(join(REPO_ROOT, "node_modules/@jorj/claude-mock/dist", file), "utf-8");
+    expect(installed === vendored, "node_modules holds an older claude-mock than vendor/claude-mock: run npm ci").toBe(true);
   });
 });
 
