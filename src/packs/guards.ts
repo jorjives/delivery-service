@@ -176,8 +176,8 @@ async function hiddenSkipsIn(worktreePath: string, path: string, markers: string
 
 /**
  * The git-ignored files that would change what the tests do, unseen by every
- * other guard because `treeOf` leaves ignored files out while the project's test
- * command reads the disk. Judged as a new tracked file would be, so build and
+ * other guard because `treeOf` leaves untracked ignored files out while the
+ * project's test command reads the disk. Judged as a new tracked file would be, so build and
  * cache output is never judged a cheat: a file under the protected paths (a
  * test-runner config or `conftest.py` that git ignores) is refused, as a new
  * setting is; a file under the test paths is refused only when it holds a skip

@@ -29,9 +29,10 @@ export function checkFilesOf(gateRef: GateRef, { repoPath, worktreePath }: { rep
 
 /**
  * The whole working copy, tracked and untracked files alike (ignored ones
- * excepted, unless tracked), written as a tree through a private index built afresh (so every
- * file is hashed from its content, not trusted from the working copy's stat cache). Its own index, and so what is staged, is never
- * touched; the only lasting effect is unreferenced objects git tidies away.
+ * excepted, unless tracked), written as a tree through a private index built
+ * afresh (so every file is hashed from its content, not trusted from the working
+ * copy's stat cache). Its own index, and so what is staged, is never touched;
+ * the only lasting effect is unreferenced objects git tidies away.
  */
 export async function treeOf(worktreePath: string): Promise<string> {
   // A folder below the top would have git describe the whole copy it sits in.
