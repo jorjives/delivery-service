@@ -63,6 +63,13 @@ describe("whether a change touched the tests", () => {
     expect(await outcomes(repo)).toEqual({ [TESTS_GUARD]: "PASS", [EDIT_GUARD]: "PASS", [CHECK_GUARD]: "PASS", [SKIP_GUARD]: "PASS" });
   });
 
+  it("passes a change to the code alone where an ignore rule matches a tracked test file", async () => {
+    const repo = initTempRepo("guards-", PROJECT);
+    exclude(repo, "*.test.js");
+    put(repo, "checkout.js", "export const total = (p, d) => Math.max(0, p - d);\n");
+    expect(await outcomes(repo)).toEqual({ [TESTS_GUARD]: "PASS", [EDIT_GUARD]: "PASS", [CHECK_GUARD]: "PASS", [SKIP_GUARD]: "PASS" });
+  });
+
   it.each([["left uncommitted", false], ["committed", true]])("refuses a deleted test file, %s", async (_, committed) => {
     const repo = initTempRepo("guards-", PROJECT);
     rmSync(join(repo, "checkout.test.js"));

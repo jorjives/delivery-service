@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "./git-exec.js";
-import { captureRepair, checkFilesOf, PATCH_CAP_BYTES } from "./repair-changes.js";
+import { captureRepair, checkFilesOf, PATCH_CAP_BYTES, treeOf } from "./repair-changes.js";
 import { initTempRepo } from "./temp-repo.js";
 
 const where = (repoPath: string) => ({ repoPath, worktreePath: repoPath });
@@ -89,6 +89,18 @@ describe("capturing what a repair changed", () => {
     expect(changes?.files[0]).toMatchObject({ path: "a-big.txt", status: "added", added: big.split("\n").length - 1 });
     expect(changes?.files[0]?.patch).toBeUndefined();
     expect(changes?.files[1]?.patch).toContain("+small");
+  });
+
+  it("keeps a tracked file that .gitignore matches: it is still the project's file, edited or not", async () => {
+    const repo = initTempRepo("capture-ignored-", { ".gitignore": "*.local.test.ts\n", "a.txt": "one\n" });
+    writeFileSync(join(repo, "kept.local.test.ts"), "old\n");
+    writeFileSync(join(repo, "edited.local.test.ts"), "old\n");
+    await git(repo, ["add", "-f", "kept.local.test.ts", "edited.local.test.ts"]);
+    await git(repo, ["commit", "-m", "track ignored tests"]);
+
+    expect(await treeOf(repo)).toBe(await git(repo, ["rev-parse", "HEAD^{tree}"]));
+    const { changes } = await captureRepair(repo, [], async () => writeFileSync(join(repo, "edited.local.test.ts"), "new\n"));
+    expect(changes?.files.map(({ path, status }) => ({ path, status }))).toEqual([{ path: "edited.local.test.ts", status: "modified" }]);
   });
 
   it("stages and commits nothing: the working copy is exactly as the repair left it", async () => {
