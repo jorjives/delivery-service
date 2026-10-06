@@ -68,6 +68,9 @@ async function land(repoPath: string, fix: KeptFix, replay: boolean, env: NodeJS
     if (check.status === "ERROR") return notLanded("check_error", check.detail ?? "the check could not run on the fix");
     const delta = computeDelta(baseline, check, { failOnNewAssertions: true });
     if (!delta.pass) return notLanded("check_failed", `newly failing: ${delta.newFailures.map((failure) => failure.id).join(", ")}`);
+    // Only the fix the owner saw lands: whatever the project's own tests wrote while judging it is put back first.
+    await git(scratch, ["reset", "--hard"]);
+    await git(scratch, ["clean", "-fd"]);
     const report = await closer.close(ctx, { kind: "accepted" });
     return report.status === "DONE" ? landed() : notLanded("not_merged", report.detail);
   } finally {

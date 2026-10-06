@@ -93,6 +93,21 @@ describe("delivery findings sign-off", () => {
   );
 
   it(
+    "merges only the fix the owner saw, never what the project's own tests wrote while it was checked",
+    async () => {
+      const { repo } = await waiting();
+      const pkg = readFileSync(join(repo, "package.json"), "utf-8").replace('"test": "node --test"', '"test": "node --test && echo touched-by-tests >> settings.js"');
+      commit(repo, { "package.json": pkg }, "Tests that rewrite a tracked file");
+
+      const { exitCode } = await delivery(["findings", "sign-off", "1"], { cwd: repo });
+      expect(exitCode).toBe(EXIT.ok);
+      expect(readFileSync(join(repo, "checkout.js"), "utf-8")).toContain("Math.max(0, price - discount)");
+      expect(git(repo, ["show", "HEAD:settings.js"])).not.toContain("touched-by-tests");
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
     "merges nothing when the fix no longer passes its check on the current main copy",
     async () => {
       const { repo } = await waiting();
