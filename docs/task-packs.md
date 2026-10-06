@@ -100,10 +100,47 @@ or opens a pull request suits better than merging.
 
 Each review is a folder under `.delivery/packs/` in your project. `.delivery/` ignores itself, so nothing shows up in `git status`. If a review is interrupted after the agent has replied, run the same command again: the review is finished from the saved reply without asking the agent again. If it is interrupted while the agent is working, running it again starts the review afresh. If a review could not run (not signed in, no connection, a usage limit, or a reply the harness could not read), it says so in one sentence and saves nothing.
 
+## A fix may not weaken your tests
+
+A fix that passes by removing, changing or switching off the tests that judge it is refused. Each
+fix is compared with your project as it was when the fix started, and it is refused if it:
+
+- deletes or changes an existing test file (adding a new test is welcome);
+- adds a marker that skips a test, such as `.skip(`, `xit(`, `@Ignore` or `pytest.mark.skip`;
+- changes how the tests are run: test-runner settings, CI files, the ignore rules, or the test scripts in `package.json`;
+- leaves a test-runner setting, or a test file that skips or singles out tests, where git ignores
+  it (however it was ignored), because the tests would still read it. Output your build or test run
+  writes, such as compiled tests or caches, is fine.
+
+This holds whether your tests report each test's result or only pass or fail as a whole. The agent
+is told why its fix was refused and tries again, within the usual number of attempts. The
+problem's history in `delivery findings` then says:
+
+```
+The agent's fix was rejected because it removed or skipped existing tests.
+```
+
+When the only way forward is to edit one of your existing tests, the agent is told to make the
+smallest such edit and say so. The edit is refused, the agent stops, and the problem ends "could not
+be fixed"; the list counts these on their own: it needs a change to one of your tests, which this
+review does not let an agent do. A fix refused for deleting or skipping a test, or for changing how
+tests run, is shown as rejected but is not counted this way.
+
+A review may mark a problem as being in a test itself (the code review's "Tests that do not check
+what they claim"). Such a problem says "Note: this fix will change your tests." before you approve
+it: its fix may change an existing test, but still never delete or skip one.
+
 ## Try it without an agent
 
 `examples/code-review-example` is a tiny shop with three planted problems. Its README shows how to review it for real. To see the whole review with a scripted agent instead (no agent, no sign-in, no network), run from a checkout of the harness:
 
 ```bash
 npm run demo:packs-slice-1
+```
+
+To watch the harness refuse fixes that cheat (one deletes a test, one skips a test and changes the
+test command) and one that honestly needs a test change, run:
+
+```bash
+npm run demo:packs-slice-3
 ```

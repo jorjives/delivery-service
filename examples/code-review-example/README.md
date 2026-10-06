@@ -32,3 +32,5 @@ delivery findings
 
 The approved problems end "fixed and merged" (or say plainly why one could not be fixed), the
 skipped one stays as it is, and `checkout.js` and `settings.js` hold the fixes.
+
+To watch a fix that deletes, skips or switches off a test being refused, and one that needs a test edit being counted, with a scripted agent, run `npm run demo:packs-slice-3` from a checkout of the harness.

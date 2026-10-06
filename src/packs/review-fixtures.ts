@@ -110,6 +110,42 @@ export async function writeReview(
   return dir;
 }
 
+const [CHECKOUT, SETTINGS, GATEWAY] = EXAMPLE_SCAN.findings;
+const EXAMPLE_TEST = readFileSync(join(EXAMPLE_DIR, "checkout.test.js"), "utf-8");
+
+/**
+ * Demo and test support: a fix agent that cheats on two of the example's three
+ * real problems (deletes the test; skips it and changes the test script),
+ * makes the honest minimal test edit on the third, and, told its fix was
+ * refused, gives up. The retry is first so it wins over the cheat once a
+ * refusal is in the prompt.
+ */
+export const CHEATING_FIXES: MockScript = {
+  expectations: [
+    { when: { promptContains: "\n- guard:" }, json: { status: "escalate", category: "authority", rationale: "The tests would have to change for this fix to pass." } },
+    {
+      when: { promptContains: CHECKOUT?.title ?? "" },
+      effects: [{ edit: { path: "checkout.js", old: "return price - discount;", new: "return Math.max(0, price - discount);" } }, { delete: { path: "checkout.test.js" } }],
+      json: { status: "completed", rationale: "clamped the total and removed a test that no longer applied" },
+    },
+    {
+      when: { promptContains: SETTINGS?.title ?? "" },
+      effects: [
+        { edit: { path: "settings.js", old: 'return JSON.parse(readFileSync(path, "utf-8"));', new: 'const text = readFileSync(path, "utf-8");\n  return JSON.parse(text);' } },
+        { write: { path: "checkout.test.js", content: EXAMPLE_TEST.replace("test(", "test.skip(") } },
+        { write: { path: "package.json", content: '{\n  "name": "code-review-example",\n  "private": true,\n  "type": "module",\n  "scripts": { "test": "node --test || true" }\n}\n' } },
+      ],
+      json: { status: "completed", rationale: "read the file first, skipped a slow test and made the tests more forgiving" },
+    },
+    {
+      // The honest move when only a test change would do: the smallest edit, and say so. It is refused, and the agent stops.
+      when: { promptContains: GATEWAY?.title ?? "" },
+      effects: [{ write: { path: "checkout.test.js", content: `${EXAMPLE_TEST}// the old gateway's totals are exact now\n` } }],
+      json: { status: "completed", rationale: "Only a change to the test would cover the old gateway." },
+    },
+  ],
+};
+
 /** Words a review never says to its owner: the report's forbidden words, and the ones the task-packs vocabulary adds. Strip `delivery findings` (a command name) before matching. */
 export const PACK_FORBIDDEN = new RegExp(
   `${FORBIDDEN.source}|\\b(findings?|assertions?|delta|anchors?|scanner|scan agent|lockfiles?|transitive|CVSS|CVEs?|exploits?|held|landed|closed)\\b`,

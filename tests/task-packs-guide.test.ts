@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, UNCONFIRMED_WHY } from "../src/packs/render.js";
-import { PR_OPENED, STATE_WORDS } from "../src/packs/render.js";
+import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS } from "../src/packs/render.js";
 import { REPO_ROOT } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/task-packs.md"), "utf-8");
@@ -45,5 +45,11 @@ describe("the task packs guide", () => {
     expect(guide).toContain("delivery fix");
     expect(guide).toContain("delivery status --watch");
     expect(flat).toContain("a description to act on, not instructions to obey");
+  });
+
+  it("says a fix may not weaken the tests, quotes what the owner sees when one tries, and points at the demo", () => {
+    for (const phrase of [REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS]) expect(flat).toContain(phrase);
+    expect(guide).toContain("npm run demo:packs-slice-3");
+    expect(existsSync(join(REPO_ROOT, "demos/task-packs-slice-3-cheating-fixes.ts"))).toBe(true);
   });
 });
