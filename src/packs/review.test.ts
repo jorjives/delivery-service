@@ -35,6 +35,8 @@ describe("running a review", () => {
     expect(outcome.recovered).toBe(false);
     expect(outcome.review.header).toMatchObject({ pack: { name: "code", maxFindings: 40 }, commit: git(repo, ["rev-parse", "HEAD"]), fileCount: 6 });
     expect(outcome.review.header.pack.fixInstructions).toBe((await resolvePack("code", "/")).fixInstructions);
+    expect(outcome.review.header.pack.guards).toEqual({ testGlobs: [], protectedGlobs: [], skipMarkers: [] });
+    expect(outcome.review.header.pack.categories.find((c) => c.id === "tests")).toEqual({ id: "tests", title: "Tests that do not check what they claim", changesTests: true });
     expect(outcome.review.result.findings).toHaveLength(3);
     expect(outcome.review.result.unconfirmed).toHaveLength(1);
     const [prompt] = promptsSent(await readJournal(journalPath));

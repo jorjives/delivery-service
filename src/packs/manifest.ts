@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { InvalidPack, UnknownPack } from "../errors.js";
 import { isEnoent } from "../journal.js";
+import { GuardGlob } from "./guards.js";
 
 /** The version of the pack format this build reads. Additive-only within the major. */
 export const PACK_SCHEMA = "delivery.pack/1";
@@ -27,13 +28,15 @@ export const PackManifest = z.strictObject({
   scan: z.strictObject({
     prompt: PackFile,
     categories: z
-      .array(z.strictObject({ id: Slug, title: Sentence, description: Sentence }))
+      .array(z.strictObject({ id: Slug, title: Sentence, description: Sentence, /** Problems of this kind are fixed by changing a test: the fix may change an existing test, never delete or skip one. */ changesTests: z.literal(true).optional() }))
       .min(1)
       .refine((categories) => new Set(categories.map((category) => category.id)).size === categories.length, "must not name the same category twice"),
     maxFindings: z.int().min(1).max(200).default(40),
   }),
-  /** What the agent fixing one of this pack's problems is told, beside the harness's own fixed instructions. Optional: the harness's alone are enough. */
-  fix: z.strictObject({ prompt: PackFile }).optional(),
+  /** What the agent fixing one of this pack's problems is told, beside the harness's own fixed instructions, and what the pack adds to the paths and markers a fix may not touch. Optional: the harness's own are enough. */
+  fix: z
+    .strictObject({ prompt: PackFile, testGlobs: z.array(GuardGlob).optional(), protectedGlobs: z.array(GuardGlob).optional(), skipMarkers: z.array(z.string().min(1)).optional() })
+    .optional(),
   severity: z.strictObject({ low: Sentence, medium: Sentence, high: Sentence, critical: Sentence }),
 });
 export type PackManifest = z.infer<typeof PackManifest>;

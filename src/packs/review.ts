@@ -43,7 +43,8 @@ const pinned = ({ manifest, hash, fixInstructions }: Pack): ReviewHeader["pack"]
   title: manifest.title,
   hash,
   maxFindings: manifest.scan.maxFindings,
-  categories: manifest.scan.categories.map(({ id, title }) => ({ id, title })),
+  categories: manifest.scan.categories.map(({ id, title, changesTests }) => ({ id, title, ...(changesTests === undefined ? {} : { changesTests }) })),
+  guards: { testGlobs: manifest.fix?.testGlobs ?? [], protectedGlobs: manifest.fix?.protectedGlobs ?? [], skipMarkers: manifest.fix?.skipMarkers ?? [] },
   ...(fixInstructions === undefined ? {} : { fixInstructions }),
 });
 

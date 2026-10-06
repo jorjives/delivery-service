@@ -11,7 +11,8 @@
       { "id": "error-handling", "title": "Missing handling of things going wrong", "description": "Code that fails badly, or silently, when a file, a network call or an input is not what it expects." },
       { "id": "dead-code", "title": "Code nothing uses", "description": "Files, functions or settings that nothing in the project calls or reads any more." },
       { "id": "inconsistency", "title": "The same job done different ways", "description": "Code that solves a problem the project already solves elsewhere, in a different way." },
-      { "id": "debt", "title": "Shortcuts the code admits to", "description": "Shortcuts the code itself owns up to, such as TODO notes and temporary workarounds." }
+      { "id": "debt", "title": "Shortcuts the code admits to", "description": "Shortcuts the code itself owns up to, such as TODO notes and temporary workarounds." },
+      { "id": "tests", "title": "Tests that do not check what they claim", "description": "A test that passes whatever the code does, or checks the wrong thing.", "changesTests": true }
     ],
     "maxFindings": 40
   },

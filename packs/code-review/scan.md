@@ -12,6 +12,9 @@ Look for problems a person would want fixed, not matters of taste.
 - **The same job done different ways**: a second, different solution to something the project
   already solves elsewhere.
 - **Shortcuts the code admits to**: TODO and FIXME notes, and temporary workarounds left in.
+- **Tests that do not check what they claim**: a test that would pass whatever the code did,
+  or that checks something other than what its name says. Report these only under this
+  category: fixing one means changing that test.
 
 Do not report style, formatting, naming preferences or missing comments. Do not report anything
 in test files unless the test itself is wrong. Prefer fewer, certain problems to many guesses.

@@ -20,7 +20,7 @@ describe("the built-in packs", () => {
   it("ship a code review that reads as delivery.pack/1, with its instructions", async () => {
     const [code] = await builtInPacks();
     expect(code?.manifest).toMatchObject({ schema: PACK_SCHEMA, name: "code", title: "Code review", scan: { maxFindings: 40 } });
-    expect(code?.manifest.scan.categories.map((category) => category.id)).toEqual(["correctness", "error-handling", "dead-code", "inconsistency", "debt"]);
+    expect(code?.manifest.scan.categories.map((category) => category.id)).toEqual(["correctness", "error-handling", "dead-code", "inconsistency", "debt", "tests"]);
     expect(code?.scanInstructions).toContain("# Code review");
     expect(code?.hash).toMatch(/^[0-9a-f]{64}$/);
   });
@@ -59,6 +59,8 @@ describe("a pack from a folder", () => {
     ["the same category twice", (m: Record<string, unknown>) => ((m.scan as { categories: unknown[] }).categories = [{ id: "a", title: "x", description: "y" }, { id: "a", title: "x", description: "y" }]), "scan.categories"],
     ["instructions outside the folder", (m: Record<string, unknown>) => ((m.scan as { prompt: string }).prompt = "../scan.md"), "scan.prompt"],
     ["a version that is not one", (m: Record<string, unknown>) => (m.version = "one"), "version"],
+    ["a guarded path with git's own prefix, which could take paths out of what is guarded", (m: Record<string, unknown>) => (m.fix = { prompt: "fix.md", protectedGlobs: [":(exclude)**"] }), "fix.protectedGlobs.0"],
+    ["an empty skip marker", (m: Record<string, unknown>) => (m.fix = { prompt: "fix.md", skipMarkers: [""] }), "fix.skipMarkers.0"],
   ])("is refused for %s, naming the file and the field", async (_, edit, field) => {
     const dir = editedPack(edit);
     const err = await loadPack(dir).catch((e: unknown) => e);
@@ -97,5 +99,24 @@ describe("a pack's instructions for fixing", () => {
   it("are refused when the file they name is missing", async () => {
     const dir = editedPack((manifest) => (manifest.fix = { prompt: "nope.md" }));
     await expect(loadPack(dir)).rejects.toMatchObject({ filePath: join(dir, "nope.md"), detail: "is missing" });
+  });
+});
+
+describe("what a pack adds to what a fix may not touch", () => {
+  it("reads test, protected and skip-marker lists under fix", async () => {
+    const dir = editedPack((m) => (m.fix = { prompt: "fix.md", testGlobs: ["e2e/**"], protectedGlobs: ["deno.json"], skipMarkers: ["@pending"] }));
+    expect((await loadPack(dir)).manifest.fix).toEqual({ prompt: "fix.md", testGlobs: ["e2e/**"], protectedGlobs: ["deno.json"], skipMarkers: ["@pending"] });
+  });
+
+  it("lets a category say its fixes change tests", async () => {
+    const code = await resolvePack("code", "/");
+    expect(code.manifest.scan.categories.find((c) => c.id === "tests")).toMatchObject({ changesTests: true });
+  });
+});
+
+describe("the built-in code review pack", () => {
+  it("has the expected categories", async () => {
+    const code = await resolvePack("code", "/");
+    expect(code.manifest.scan.categories.map((c) => c.id)).toEqual(["correctness", "error-handling", "dead-code", "inconsistency", "debt", "tests"]);
   });
 });
