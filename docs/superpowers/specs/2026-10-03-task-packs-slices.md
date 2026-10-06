@@ -135,6 +135,8 @@ not sliced.
 
 ## Slice 3: A Fix That Weakens the Tests Is Refused
 
+**Status:** ✅ Complete — 2026-10-06 — `eea8ba1`
+
 **Delivers:** A fix that "passes" by deleting, editing or skipping the project's tests, or by changing how the tests are run, is refused and the agent is told why, whatever kind of test output the project produces.
 
 **Operational note:** The pack format gains the test, protected and skip-marker lists each pack adds to the harness's defaults; they travel with each fix task so the check can read them. The adversarial scripted tests that prove this guarantee become part of the suite every change runs, and a scripted demo of cheating fixes against the example project ships with the existing demos so the guarantee can be watched with no agent and no sign-in.
