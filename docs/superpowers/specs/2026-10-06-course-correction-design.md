@@ -27,7 +27,7 @@ An agent is valuable because it is flexible and does not need programming. **A h
 add a deterministic check around that flexibility, not to subtract from it.** Every place this
 codebase reduces what the agent can do, it made the easy choice: it treated the agent's
 capability as the risk, when the actual risk is unverified output. The right place for the trust
-boundary is acceptance (gate, guards, tamper checks), not the agent's inputs.
+boundary is acceptance (gate, guards, integrity checks), not the agent's inputs.
 
 This spec corrects course fully. When it is done, Delivery Service replaces Autoloop on every
 active project, and it also runs work Autoloop cannot express.
@@ -49,8 +49,9 @@ operator with an established estate of skills and norms.
 
 The harness owns four things, and only four:
 
-1. **Acceptance:** whether work is accepted (gates, guards, tamper checks). Deterministic.
-2. **Landing:** what happens to accepted work (closers). Deterministic.
+1. **Acceptance:** whether work is accepted (gates, guards, integrity checks). Deterministic.
+2. **Landing:** what happens to accepted work (closers). Deterministic, and the closer's alone:
+   the one constraint the harness places on the agent is that it does not land its own work (5.2).
 3. **Memory:** what happened, durably (case file, run file, item ledger). Deterministic.
 4. **Sequence:** what runs next (workflows, work sources, budgets, router). Deterministic, with
    triage for genuine judgement calls.
@@ -160,49 +161,86 @@ their tool. The harness does not supply one.
 harness-side; a malformed or absent reply is `INCOMPLETE_TERMINUS`; usage-limit and not-run
 classification; usage metering; failure evidence written beside the case file.
 
-### 5.2 Containment: a fence and tamper checks
+### 5.2 Containment: the fence, acceptance checks and the landing boundary
 
-Removing the tool guard leaves two real hazards. Neither is "the agent has too many tools".
+Removing the tool guard leaves three real hazards. None of them is "the agent has too many tools".
 
-- **Collateral damage:** an unattended session writes to the operator's main checkout, or moves
-  refs it does not own.
-- **Gaming acceptance:** the session alters what the gate checks.
+- **Collateral damage:** an unattended session writes to the operator's main checkout.
+- **Gaming acceptance:** the session alters what the gate checks, or weakens the tests.
+- **Landing outside the closer:** the session merges, pushes or opens a PR itself.
 
-The harness handles both. It prevents the first at the OS level and *detects* both afterwards.
-
-**The write fence (prevention).** Every agent session runs under a bubblewrap fence. This is the
-prior art in Autoloop's `lib/fsguard-run.sh`. The whole filesystem is readable and writable
-except the main checkout, which is bound read-only. The step's worktree and the repository's
-shared `.git` are re-bound writable. Network is not fenced. Host devices are hidden unless listed in `fence.devices` (Autoloop's
-`AUTOLOOP_FSGUARD_DEV_BIND`, which mobile-web-console uses to deploy to a phone). The fence covers every process the
-session spawns, which a tool-level guard never could (the old guard's own documented residual was
-"a role granted `Bash` can write wherever its shell can"). Where `bwrap` is unavailable, the run
-records `fence: absent` in its header and relies on the tamper checks alone.
-`fence: required` in config makes an absent fence a setup refusal (exit 2) instead. *(Owner
-decision D3: the default.)*
+**The write fence.** Every agent session runs under a bubblewrap fence. This is the prior art in
+Autoloop's `lib/fsguard-run.sh`. The whole filesystem is readable and writable except the main
+checkout, which is bound read-only. The step's worktree and the repository's shared `.git` are
+re-bound writable. Network is not fenced. Host devices are hidden unless listed in
+`fence.devices` (Autoloop's `AUTOLOOP_FSGUARD_DEV_BIND`, which mobile-web-console uses to deploy
+to a phone). The fence covers every process the session spawns, which a tool-level guard never
+could (the old guard's own documented residual was "a role granted `Bash` can write wherever its
+shell can"). The main checkout is protected by the fence alone, not by an after-the-fact check:
+the operator edits the main checkout during runs, so a status diff cannot tell their changes from
+the agent's. Where `bwrap` is unavailable, the run records `fence: absent` in its header and the
+main checkout is unprotected; the report says so. `fence: required` in config makes an absent
+fence a setup refusal (exit 2) instead. *(Owner decision D3: the default.)*
 
 *Buy-vs-build:* the SDK's native `sandbox` setting was considered. As far as this spec could
 establish, it fences shell commands, not the file tools, so it would not cover an `Edit` aimed at
 the main checkout. The first slice must confirm this against the runtime. If the native sandbox
 covers file tools too, it is the commodity choice and replaces bubblewrap.
 
-**Tamper checks (detection).** These are deterministic, run after every agent session and again
-before closing, and work the same with or without a fence:
+**Acceptance checks.** These join the gate result. A failure is a `gate_fail` like any other
+newly-failing assertion, and goes through the router and triage as today. This is the
+intentional triage design: a retry with the evidence is the correction triage exists for, and a
+retry can never be accepted unless every check passes (invariant 1). The correction budget caps
+repeated attempts.
 
 1. **Gate integrity:** the gate definition pinned in the header (command, custom gate module, its
    hash) is unchanged. For a command gate, the resolved command is unchanged too, for example the
    `test` script in `package.json` at the task branch head.
 2. **Test-weakening guards:** `src/packs/guards.ts` moves out of packs and applies to every run.
    It catches deleted or skipped tests, changed test configuration, CI files, and hidden or
-   ignored test files. Packs keep their additions. A workflow step may opt out by name for steps
-   whose job is to change tests. The opt-out is recorded in the case file and shown in the report.
-3. **Ref integrity:** only the task's own branch moved. The base branch, other local branches,
-   tags and remote-tracking refs match the snapshot taken at provisioning. A moved
-   remote-tracking ref is how a local push shows up.
-4. **Main checkout:** its `HEAD` and status are unchanged.
+   ignored test files. It also protects existing work items (5.5): new items may be added, but
+   existing ones may not be edited or removed. Packs keep their additions. A workflow step may opt
+   out of the test guards by name, for steps whose job is to change tests. The opt-out is recorded
+   in the case file and shown in the report.
 
-A failed tamper check is a new terminus, `TAMPERED`. It goes straight to `ESCALATED` with the
-evidence, never to triage. A classifier must not be able to talk a tamper back into a retry.
+**The landing boundary.** This is the one deliberate constraint on the agent, and it is named as
+the exception to "check, don't constrain". It does not limit how the work is done; it marks where
+the work ends. The branch is the deliverable. Merging and opening PRs belong to the closer, never
+to the agent, as in Autoloop. Inside its branch the agent keeps full git: it can commit, rebase,
+cherry-pick, stash and read history.
+
+The realistic way this boundary is crossed is not an adversarial agent. It is an operator-authored
+workflow invoking a skill that goes on to land the work itself. `deliver-next-slice`, which
+"handles the runtime merge-or-PR decision", is the live example; Autoloop avoids it by invoking
+`deliver-slice` instead. Autoloop's instruction has a clean record under the same conditions, since
+its sessions load every skill too. The layers below are insurance for the day a workflow author
+forgets the difference.
+
+1. **Instruction.** The Acceptance slot carries Autoloop's proven wording: "Your branch is the
+   deliverable. The harness merges or opens a PR after acceptance. Do not merge, push, or open a
+   PR, even if a skill says to."
+2. **Prevention through git, for this session only.** The session's environment points git at a
+   harness hooks folder (through `GIT_CONFIG_COUNT`/`GIT_CONFIG_KEY_n`, setting `core.hooksPath`):
+   - A `reference-transaction` hook refuses, in the `prepared` state, any update to a ref other
+     than the task branch and the pseudo-refs (`HEAD`, `ORIG_HEAD`, `FETCH_HEAD` and the like).
+     The refusal message is the instruction's sentence. `--no-verify` does not skip this hook.
+   - A `pre-push` hook refuses every push. Each remote's `pushurl` is also overridden, for the
+     session only, with an address that refuses the push, which covers `--no-verify`.
+   - Both hooks, and every other hook the harness folder provides, chain to the project's own
+     hooks (its `core.hooksPath`, or `.git/hooks`), so the project's hooks keep running.
+
+   The operator's commits, other tasks' closers and any other tool do not run with this
+   environment, so they are unaffected.
+3. **Detection as the backstop.** `gh pr create` goes through the GitHub API, not git. After each
+   session the harness asks whether a PR exists for the task branch. If one does, the session
+   ends in a new terminus, `LANDED_OUTSIDE_CLOSER`, which goes straight to `ESCALATED` with the
+   evidence. This is not a judgement about triage: a retry cannot undo a PR, a push or a merge,
+   and once the base has moved under the harness, the baseline it judges against no longer holds.
+
+*Ceilings:* deliberate circumvention, for example resetting the environment and pushing to an
+explicit URL, is not covered. That takes intent, not skill-following; tighten the fence if it is
+ever seen. Git gained config-based hooks only after 2.43, the version on the operator's machine,
+so chaining through `core.hooksPath` is the mechanism; `reference-transaction` exists from 2.28.
 
 ### 5.3 What the agent is told
 
@@ -214,8 +252,8 @@ role fragments are deleted. The slots become:
 ## Task            the task as written, plus any files it references (by path, readable in the worktree)
 ## Step            the workflow step's instruction, operator-authored (e.g. "Use the deliver-slice skill on ...")
 ## Acceptance      what will judge the work: the gate's description and the command to run it,
-                   the tamper checks in one paragraph, and any step-specific checks
-## Evidence        on a retry: the verbatim newly-failing assertions and the guard or tamper finding
+                   the guards in one paragraph, any step-specific checks, and the landing boundary
+## Evidence        on a retry: the verbatim newly-failing assertions, including any guard finding
 ## Reply           the reply contract: report completed, escalate (exhaustion|authority), or needs_decision
 ```
 
@@ -437,8 +475,12 @@ The same machinery covers work Autoloop cannot express:
 
 - **Harness-owned agent option in config:** setup refusal (exit 2) naming the key.
 - **Fence required but unavailable:** setup refusal (exit 2) naming `bwrap`.
-- **Tamper check fails:** `TAMPERED` terminus, then `ESCALATED`, with a packet naming the check,
-  the before and after values, and the session that caused it.
+- **Gate integrity or guard check fails:** a newly-failing assertion in the gate result, routed
+  through triage like any other `gate_fail`, with the finding verbatim in the next attempt's
+  Evidence slot.
+- **Landing outside the closer:** a hook refuses the ref update or push, and the agent sees the
+  refusal sentence. A PR found for the task branch ends the session in `LANDED_OUTSIDE_CLOSER`,
+  then `ESCALATED`, with a packet naming the PR and the session that opened it.
 - **Resumed session no longer exists:** fall back to a fresh session in the same worktree, primed
   from the case file. Record it as such. This is not counted as a failure.
 - **Work source command fails or prints invalid JSON:** that source is skipped for the run with a
@@ -457,9 +499,16 @@ is involved.
 - **Fence:** with `bwrap` present, a scripted session's write to the main checkout fails and its
   write to the worktree succeeds. Absent with `fence: required`, the result is exit 2. Absent by
   default, the header records `fence: absent`.
-- **Tamper checks:** each of the four checks has a scripted run that trips it and ends
-  `ESCALATED` via `TAMPERED`, and a clean run passes all four. A guard opt-out step changes a test
-  and is accepted, and the opt-out appears in the report.
+- **Acceptance checks:** a scripted run that changes the gate definition, and one that weakens a
+  test, each fail the gate and are rerouted with the finding as evidence. A guard opt-out step
+  changes a test and is accepted, and the opt-out appears in the report. A run that edits an
+  existing work item fails the gate; one that adds a new item passes.
+- **Landing boundary:** in a temporary repository, with the session environment, `git merge` into
+  the base, `git branch -f`, `git update-ref` on another ref, and `git push` (with and without
+  `--no-verify`) are each refused; commits, rebases and stashes on the task branch succeed; the
+  project's own hooks still run. Without the session environment, the same repository accepts
+  all of them. A scripted session followed by a PR on the task branch ends `ESCALATED` via
+  `LANDED_OUTSIDE_CLOSER`.
 - **Workflows:** a scripted two-step workflow: step 2 baselines against step 1's accepted state;
   `continue: true` resumes the session id; the closer runs once; a gate failure in step 2 retries
   step 2 only.
@@ -491,7 +540,7 @@ is involved.
 - **Develop:** unchanged (`npm test`, `claude-mock`, CI).
 - **Run:** `delivery run` and `delivery schedule` per project. `delivery preview --step <name>`
   shows exactly what a step's agent receives.
-- **Verify:** every outcome is in `delivery report`. `TAMPERED`, `fence: absent` and guard
+- **Verify:** every outcome is in `delivery report`. `LANDED_OUTSIDE_CLOSER`, `fence: absent` and guard
   opt-outs are always shown, never only logged.
 - **Deploy:** the package is installed from a local pack, as today. Projects migrate one at a
   time with Autoloop still installed, so rolling back means re-enabling one timer.
@@ -505,16 +554,16 @@ is involved.
   non-technical owner as a secondary audience for reporting language only.
 - **D3: Fence default.** Proposed: `fence: preferred`, which records `absent` and continues. The
   alternative is `required` by default.
-- **D4: Pushes.** Proposed: detect a push through the ref check and escalate. The alternative
-  blocks the network for `git push` inside the fence, which is a constraint and so needs your
-  explicit call.
+- **Landing boundary (decided 2026-10-07).** Agents never merge, push or open PRs; landing is the
+  closer's alone. Enforced by instruction, session-scoped git hooks, and PR detection (5.2).
+  Acceptance-check failures go through triage; only landing outside the closer bypasses it.
 
 ## 10. Risks
 
 - **An unattended agent with the operator's full environment can do anything the operator can**,
   including network calls and MCP actions with external effects. This is the deliberate trade.
-  Autoloop has run with exactly this exposure across every active project. The fence and tamper
-  checks bound the damage to the local repository. External effects are bounded only by the
+  Autoloop has run with exactly this exposure across every active project. The fence and the
+  landing boundary bound the damage to the local repository. External effects are bounded only by the
   operator's own settings.
 - **The operator's hooks and plugins now shape harness runs.** A hook that blocks or rewrites tool
   calls changes the agent's behaviour, which is the point. A hook that breaks headless operation
