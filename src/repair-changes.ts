@@ -1,4 +1,4 @@
-import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { git } from "./git-exec.js";
@@ -29,8 +29,8 @@ export function checkFilesOf(gateRef: GateRef, { repoPath, worktreePath }: { rep
 
 /**
  * The whole working copy, tracked and untracked files alike (ignored ones
- * excepted), written as a tree through a private index started from a copy of
- * the working copy's own. Its own index, and so what is staged, is never
+ * excepted), written as a tree through a private index built afresh (so every
+ * file is hashed from its content, not trusted from the working copy's stat cache). Its own index, and so what is staged, is never
  * touched; the only lasting effect is unreferenced objects git tidies away.
  */
 export async function treeOf(worktreePath: string): Promise<string> {
@@ -39,8 +39,7 @@ export async function treeOf(worktreePath: string): Promise<string> {
   const scratch = await mkdtemp(join(tmpdir(), "delivery-repair-"));
   const env = { GIT_INDEX_FILE: join(scratch, "index") };
   try {
-    // Copied rather than built afresh, so git rehashes only what changed.
-    await copyFile(resolve(worktreePath, await git(worktreePath, ["rev-parse", "--git-path", "index"])), env.GIT_INDEX_FILE);
+    // Built from an empty index, never a copy: a copy would let git trust its stat cache and miss a same-size edit made within one timestamp tick.
     await git(worktreePath, ["add", "-A"], { env });
     return await git(worktreePath, ["write-tree"], { env });
   } finally {
