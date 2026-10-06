@@ -226,11 +226,19 @@ repeated attempts.
    hash) is unchanged. For a command gate, the resolved command is unchanged too, for example the
    `test` script in `package.json` at the task branch head.
 2. **Test-weakening guards:** `src/packs/guards.ts` moves out of packs and applies to every run.
-   It catches deleted or skipped tests, changed test configuration, CI files, and hidden or
-   ignored test files. It also protects existing work items (5.5): new items may be added, but
-   existing ones may not be edited or removed. Packs keep their additions. A workflow step may opt
-   out of the test guards by name, for steps whose job is to change tests. The opt-out is recorded
-   in the case file and shown in the report.
+   Every step gets, by default, the guards that catch weakening and never block honest work: a
+   test deleted or renamed (`guard:tests-untouched`), changed test configuration or CI files
+   (`guard:check-untouched`), new skip markers (`guard:no-skips`), and hidden or ignored test
+   files. The guard against modifying an existing test (`guard:tests-unchanged`) is off by
+   default, because test-first delivery and refactoring change existing tests as a matter of
+   course; a step turns it on with `guards.add`, and packs' fix steps keep it on. A step may turn
+   a default guard off with `guards.off`, for steps whose job is to change tests. Every change to
+   the defaults is recorded in the case file and shown in the report.
+3. **Backlog items:** a further default guard parses every new work item (5.5) against the schema
+   and refuses an edit or removal of an existing one.
+
+Guards diff against the commit the step started from, not the base branch, so each step of a
+workflow is judged only on what it changed.
 
 **The landing boundary.** This is the one deliberate constraint on the agent, and it is named as
 the exception to "check, don't constrain". It does not limit how the work is done; it marks where
@@ -314,21 +322,20 @@ the config references:
   "workflows": {
     "resolve-issue": {
       "steps": [
-        { "name": "fix", "prompt": "Diagnose and fix the issue in the task. Use the systematic-debugging skill.",
-          "gate": "project" }
+        { "name": "fix", "prompt": "Diagnose and fix the issue in the task. Use the systematic-debugging skill." }
       ]
     },
     "deliver-slice": {
       "steps": [
         { "name": "deliver", "prompt": "Use the deliver-slice skill on {{task.spec}} slice {{task.slice}}.",
-          "gate": "project", "agent": { "model": "opus", "effort": "high" } },
+          "agent": { "model": "opus", "effort": "high" } },
         { "name": "close-prep", "prompt": "Use the close-worktree-auto skill's merge-up and simplify phases only.",
-          "gate": "project", "continue": true }
+          "continue": true }
       ]
     },
     "write-slices": {
       "steps": [ { "name": "slice", "prompt": "Use the writing-slice-scope skill on {{task.spec}}.",
-                   "gate": { "type": "files-exist", "paths": ["{{task.slicesPath}}"] } } ]
+                   "gate": { "type": "file-exists", "path": "{{task.slicesPath}}" } } ]
     }
   }
 }
@@ -342,15 +349,21 @@ the config references:
 - **The closer runs once**, after the last step is accepted.
 - **`{{task.*}}`** interpolates fields of the task (5.5). Interpolation is pure, and the rendered
   prompt is what goes into the case file, so determinism holds.
-- **A step's gate** is any existing gate reference (`project`, a preset, a custom gate). A step
-  with no gate is not allowed: the harness's whole value is that every step is checked. The
-  `files-exist` and `commits-ahead` presets cover document-producing steps, which are what
-  Autoloop's docs-only legs check.
+- **A step's gate** is the project's gate unless the step names another: a preset or a
+  written-out gate, in the same shapes `gate` takes today. There is no way to leave a step
+  unchecked; the harness's whole value is that every step is checked. Interpolated fields are
+  rendered before the gate is pinned. `file-exists` and a new preset, `commits-ahead` (the step
+  added at least one commit), cover document-producing steps, which are what Autoloop's
+  docs-only legs check.
+- **Setup and teardown.** The command gate gains optional `setup` and `teardown` commands, run
+  around every gate run; teardown runs whatever the result. A failing setup is a gate error,
+  handled as gate errors are today. This is what Autoloop's `AUTOLOOP_VERIFY_SETUP_CMD` and
+  `_TEARDOWN_CMD` do, for example bringing a project's containers up and down.
 - **The default workflow** is one step, with the task as the prompt and the project gate. So
   `delivery run --task "..."` behaves as it does today, minus the restrictions.
-- **Packs become workflows.** Scan then fix is a two-phase workflow with a human authorisation
-  between the phases. The pack format keeps its manifest. Its scanner and fixer become steps with
-  ordinary agent sessions.
+- **Packs keep their shape.** Scan, authorisation and fix stay as they are; the scanner and
+  fixer get ordinary, fully capable agent sessions (5.1). Expressing a pack as a workflow would
+  need an authorisation step, which workflows do not have, and is not part of this spec.
 
 The harness ships **no workflow that names an operator's skill.** Autoloop's legs, translated into
 workflows, live in the operator's own estate (8.2). The harness stays unopinionated. The
@@ -624,9 +637,11 @@ is involved.
   `bwrap`, `fence: required` gives exit 2, and the default prints the warning first and records
   `fence: absent`. A listed device is visible inside the fence.
 - **Acceptance checks:** a scripted run that changes the gate definition, and one that weakens a
-  test, each fail the gate and are rerouted with the finding as evidence. A guard opt-out step
-  changes a test and is accepted, and the opt-out appears in the report. A run that edits an
-  existing work item fails the gate; one that adds a new item passes.
+  test (deletes it, or adds a skip), each fail the gate and are rerouted with the finding as
+  evidence. Under the default guards, a step that edits an existing test is accepted; with
+  `guards.add` naming `tests-unchanged` it fails; with `guards.off` naming `tests-untouched`, a
+  step that deletes a test is accepted. Both changes to the defaults appear in the report. A run
+  that edits an existing work item fails the gate; one that adds a new item passes.
 - **Landing boundary:** in a temporary repository, with the session environment, `git merge` into
   the base, `git branch -f`, `git update-ref` on another ref, and `git push` (with and without
   `--no-verify`), and creating a tag, are each refused; commits, rebases, stashes, a bisect and a
@@ -636,7 +651,9 @@ is involved.
   `ESCALATED` with the cause `LANDED_OUTSIDE_CLOSER`.
 - **Workflows:** a scripted two-step workflow: step 2 baselines against step 1's accepted state;
   `continue: true` resumes the session id; the closer runs once; a gate failure in step 2 retries
-  step 2 only.
+  step 2 only; step 2's guards ignore a test step 1 changed; a step with no `gate` runs the
+  project's. `commits-ahead` fails a step that committed nothing. A command gate's teardown runs
+  after a failing gate, and a failing setup is a gate error.
 - **Sessions and worktrees (5.11):** one scripted case per row of the table. An interrupted
   attempt resumes the same session id in the same worktree; a rejected attempt gets a new session
   id in the same worktree, with the brief in its prompt; a run ended with corrections exhausted
@@ -647,8 +664,8 @@ is involved.
   commit is on the task branch before landing, a recurring item becomes due again after its
   cadence. Ledger parks and resumes across two `--sources` invocations.
 - **Autoloop parity:** each of the five migrated workflows runs end to end against a fixture repo
-  through `claude-mock`. Each produces the outcome Autoloop's verify would accept: commits ahead,
-  gate green, marker present, files exist.
+  through `claude-mock`, under the default guards. Each produces the outcome Autoloop's verify
+  would accept: commits ahead, gate green, marker present, files exist.
 - **Prompt:** the Acceptance slot names the gate command. No prompt contains the removed
   prohibitions. The same case file still yields a byte-identical prompt.
 
@@ -667,15 +684,16 @@ is involved.
   place.
 - **Ledger:** port Autoloop's per-item ledger semantics, stored in the existing run-record
   persistence.
-- **Test-weakening detection:** reuse `src/packs/guards.ts` for every run; no new detector.
+- **Test-weakening detection:** reuse `src/packs/guards.ts` for every run; no new detector. The
+  existing-test edit guard becomes opt-in outside packs (5.2).
 
 ### Operability and DX
 
 - **Develop:** unchanged (`npm test`, `claude-mock`, CI).
 - **Run:** `delivery run` and `delivery schedule` per project. `delivery preview --step <name>`
   shows exactly what a step's agent receives.
-- **Verify:** every outcome is in `delivery report`. `LANDED_OUTSIDE_CLOSER`, `fence: absent` and guard
-  opt-outs are always shown, never only logged.
+- **Verify:** every outcome is in `delivery report`. `LANDED_OUTSIDE_CLOSER`, `fence: absent` and changes
+  to the default guards are always shown, never only logged.
 - **Deploy:** the package is installed from a local pack, as today. Projects migrate one at a
   time with Autoloop still installed, so rolling back means re-enabling one timer.
 
