@@ -60,10 +60,11 @@ copy in `node_modules`, because the package version does not change between sync
 
 ### Local change ahead of upstream
 
-`costUsd` and `durationMs` on an expectation (`src/mock.ts`, `src/cli.ts`, `test/sdk.test.ts`,
-and the rebuilt `dist/`) were added here for the harness's time-and-cost reporting, and are not
-yet in the sibling project. Port them upstream, then re-vendor as above and update the upstream
-commit; until then a re-vendor would drop them, and `src/mock-script.test.ts` would fail to compile.
+`costUsd` and `durationMs` on an expectation, and the `delete` effect (`src/mock.ts`, `test/sdk.test.ts`, `README.md`,
+and the rebuilt `dist/`) were added here: the first two for the harness's time-and-cost reporting, the second so a
+scripted fix can delete a test file. Neither is yet in the sibling project. Port them upstream, then re-vendor as
+above and update the upstream commit; until then a re-vendor would drop them, and `src/mock-script.test.ts` would fail
+to compile.
 
 ### Licence
 

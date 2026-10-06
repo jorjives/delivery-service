@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve, sep } from 'node:path';
 
 export type Effect =
   | { write: { path: string; content: string } }
-  | { edit: { path: string; old: string; new: string } };
+  | { edit: { path: string; old: string; new: string } }
+  | { delete: { path: string } };
 
 export type Expectation = {
   /** Omit to match any prompt at this position in the queue. */
@@ -69,6 +70,11 @@ export function applyEffect(root: string, effect: Effect): { name: string; input
     mkdirSync(dirname(full), { recursive: true });
     writeFileSync(full, content);
     return { name: 'Write', input: { file_path: full, content }, result: `Wrote ${content.length} bytes to ${full}` };
+  }
+  if ('delete' in effect) {
+    const full = safePath(root, effect.delete.path);
+    rmSync(full); // a missing file throws, as a real `rm` fails: an effect that cannot be applied
+    return { name: 'Bash', input: { command: `rm -- ${full}` }, result: `Removed ${full}` };
   }
   const { path, old, new: replacement } = effect.edit;
   const full = safePath(root, path);
@@ -171,7 +177,7 @@ export class Emitter {
       try {
         outcome = applyEffect(root, effect);
       } catch (err) {
-        const name = 'write' in effect ? 'Write' : 'Edit';
+        const name = 'write' in effect ? 'Write' : 'delete' in effect ? 'Bash' : 'Edit';
         this.assistant([{ type: 'tool_use', id, name, input: effect }]);
         this.toolResult(id, String(err), true);
         throw err;

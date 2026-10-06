@@ -245,7 +245,7 @@ correspondence is exact:
 
 - **One `invoke`** ↔ the mock's single scripted turn loop.
 - **Envelope** ↔ the expectation's `json` field (structured output on the result).
-- **Worktree edits** ↔ the expectation's `effects` (`write` / `edit`, applied for
+- **Worktree edits** ↔ the expectation's `effects` (`write` / `edit` / `delete`, applied for
   real inside `cwd`).
 - **`usage`** ↔ the expectation's `costUsd` and `durationMs` (each `0` when not scripted).
 - **Terminus mapping** ↔ what the harness does with the mock's reply. A prompt no

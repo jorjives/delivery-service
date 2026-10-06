@@ -63,7 +63,7 @@ put the nudged response behind a `when`, and the unconditional one after it.
 |---|---|
 | `when.promptContains` | Substring match on the prompt text |
 | `when.promptMatches` | Regular expression (source string) |
-| `effects` | `{"write": {path, content}}` or `{"edit": {path, old, new}}`, applied for real |
+| `effects` | `{"write": {path, content}}`, `{"edit": {path, old, new}}` or `{"delete": {path}}`, applied for real |
 | `reply` | Assistant text, and the result message's `result` |
 | `json` | Sets `structured_output` on the result message |
 | `fail.message` | Result with `is_error: true` carrying that text |

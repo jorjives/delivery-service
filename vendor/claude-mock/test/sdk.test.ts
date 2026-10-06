@@ -76,6 +76,30 @@ describe('fake CLI', () => {
     expect(toolResult.message.content[0].is_error).toBe(false);
   });
 
+  it('applies a file delete as a real side effect and emits the tool transcript', async () => {
+    writeFileSync(join(dir, 'doomed.txt'), 'x');
+    const messages = await collect(
+      'clean up',
+      script([
+        {
+          when: { promptContains: 'clean' },
+          effects: [{ delete: { path: 'doomed.txt' } }],
+          reply: 'Deleted.',
+        },
+      ]),
+    );
+    expect(existsSync(join(dir, 'doomed.txt'))).toBe(false);
+
+    const toolUse: any = messages.find(
+      (m: any) => m.type === 'assistant' && m.message.content.some((c: any) => c.type === 'tool_use'),
+    );
+    expect(toolUse.message.content[0]).toMatchObject({ type: 'tool_use', name: 'Bash' });
+    const toolResult: any = messages.find(
+      (m: any) => m.type === 'user' && m.message.content?.[0]?.type === 'tool_result',
+    );
+    expect(toolResult.message.content[0].is_error).toBe(false);
+  });
+
   it('returns structured output', async () => {
     const messages = await collect('JSON only', script([{ json: { status: 'ok', files: 3 } }]));
     expect((messages.at(-1) as any).structured_output).toEqual({ status: 'ok', files: 3 });

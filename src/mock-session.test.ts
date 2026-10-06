@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { existsSync } from "node:fs";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
@@ -9,6 +10,7 @@ import { MockNotInstalled } from "./errors.js";
 import { resolveMockExecutable } from "./mock-session.js";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
 import type { BudgetSet } from "./schema.js";
+import type { MockScript } from "./mock-script.js";
 
 const REPO_ROOT = join(import.meta.dirname, "..");
 
@@ -85,5 +87,23 @@ describe("a session driven through the helper", () => {
 
     expect(terminus).toEqual({ status: "completed", rationale: "added the greeting", usage: NO_COST });
     expect(promptsSent(await readJournal(journalPath))[0]).toContain("add a greeting");
+  });
+
+  it("deletes a file for real when the script says so", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "mock-session-case-"));
+    const worktreePath = await mkdtemp(join(tmpdir(), "mock-session-tree-"));
+    await writeFile(join(worktreePath, "doomed.test.js"), "test('x', () => {});\n", "utf-8");
+    const scriptPath = join(dir, "mock.json");
+    await create(
+      dir,
+      { surfaceId: "s-1", taskDef: { intent: "tidy up" }, gateRef: { type: "command", command: "true", parseMode: "exitcode" } },
+      budgets,
+    );
+    const script: MockScript = { expectations: [{ effects: [{ delete: { path: "doomed.test.js" } }], json: { status: "completed", rationale: "removed it" } }] };
+    await writeFile(scriptPath, JSON.stringify(script), "utf-8");
+
+    await invoke(workerRoleConfig, { worktreePath, dir, sessionKey: "worker-1-0" }, mockSessionEnvironment({ scriptPath, journalPath: join(dir, "journal.jsonl") }));
+
+    expect(existsSync(join(worktreePath, "doomed.test.js"))).toBe(false);
   });
 });

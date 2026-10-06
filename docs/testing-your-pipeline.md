@@ -203,7 +203,7 @@ per line it recorded, across every session in the run, in order.
 |---|---|---|
 | `"matched"` | `prompt`, `expectation` (its position in the script) | a prompt used an expectation |
 | `"unmatched"` | `prompt` | a prompt matched no expectation |
-| `"effect_failed"` | `prompt`, `expectation`, `error` | a scripted `write` or `edit` could not be applied |
+| `"effect_failed"` | `prompt`, `expectation`, `error` | a scripted `write`, `edit` or `delete` could not be applied |
 | `"finished"` | `turns`, `unconsumed` | a session ended |
 
 **What the harness sent.** `promptsSent(journal)` lists every prompt, matched or

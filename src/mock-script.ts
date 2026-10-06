@@ -14,7 +14,7 @@ export interface MockExpectation {
   /** Omit to match any prompt. When both are given, both must hold. */
   when?: { promptContains?: string; promptMatches?: string };
   /** Applied for real inside the session's working directory, before the reply. */
-  effects?: Array<{ write: { path: string; content: string } } | { edit: { path: string; old: string; new: string } }>;
+  effects?: Array<{ write: { path: string; content: string } } | { edit: { path: string; old: string; new: string } } | { delete: { path: string } }>;
   /** Assistant text, and the result's text. */
   reply?: string;
   /** The structured result: for a harness role, its envelope. */
