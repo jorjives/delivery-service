@@ -9,9 +9,10 @@ import { runsRoot } from "../run-location.js";
 import type { CaseFileOutcome, GateRef, TaskDef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { FINDING_GATE_REF } from "./finding-gate.js";
-import { deriveFindings, readFindingStates, type FixRun } from "./fix-state.js";
+import { deriveFindings, fixTasks, readFindingStates, type FixRun } from "./fix-state.js";
 import { fixTaskFor } from "./fix-task.js";
 import { appendLedger, type LedgerEntry } from "./ledger.js";
+import { guardListsFor } from "./guards.js";
 import { loadReview, listReviews } from "./review-record.js";
 import { sampleFinding, writeReview } from "./review-fixtures.js";
 
@@ -74,5 +75,32 @@ describe("where each problem stands, read from the project", () => {
     expect(tasks).toEqual([fixTaskFor("code", A, NPM), fixTaskFor("code", B, NPM)]);
     expect(states.map((s) => s.state)).toEqual(["fixed", "unfixable"]);
     expect(states[0]?.fix).toMatchObject({ run: "fix-a-20261005T110000Z", closer: "merge-back" });
+  });
+});
+
+describe("the fix tasks", () => {
+  it("carry the guards pinned with their authorisation, and whether the problem's fix changes tests", async () => {
+    const repo = initTempRepo("fix-state-", { "a.js": "x\n" });
+    const TESTS_PROBLEM = sampleFinding({ id: "333333333333", category: "tests" });
+    await writeReview(repo, { findings: [A, TESTS_PROBLEM] });
+    const guards = guardListsFor(undefined);
+    const entries: LedgerEntry[] = [decide([A.id, TESTS_PROBLEM.id], "approve"), { t: "authorise", at: AT, ids: [A.id, TESTS_PROBLEM.id], verify: NPM, guards }];
+    const [entry] = await listReviews(repo);
+    if (entry?.state !== "done") throw new Error("no review");
+    const review = await loadReview(entry);
+    const withTests = { ...review, header: { ...review.header, pack: { ...review.header.pack, categories: [...review.header.pack.categories, { id: "tests", title: "Tests", changesTests: true as const }] } } };
+
+    expect(fixTasks(withTests, entries)).toEqual([
+      fixTaskFor("code", A, NPM, { ...guards, testsCategory: false }),
+      fixTaskFor("code", TESTS_PROBLEM, NPM, { ...guards, testsCategory: true }),
+    ]);
+  });
+
+  it("carry no guards when the authorisation predates them, so the earlier fix's run is still recognised", async () => {
+    const repo = initTempRepo("fix-state-", { "a.js": "x\n" });
+    await writeReview(repo, { findings: [A] });
+    const [entry] = await listReviews(repo);
+    if (entry?.state !== "done") throw new Error("no review");
+    expect(fixTasks(await loadReview(entry), [decide([A.id], "approve"), authorise([A.id])])).toEqual([fixTaskFor("code", A, NPM)]);
   });
 });

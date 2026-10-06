@@ -4,8 +4,8 @@ import { loadSnapshot } from "../report/snapshot.js";
 import { repoLocked } from "../repo-lock.js";
 import type { Finding } from "./finding.js";
 import { fixTaskFor, type FixTask } from "./fix-task.js";
-import { authorisedChecks, readLedger, resolvedIds, type LedgerEntry } from "./ledger.js";
-import type { SavedReview } from "./review-record.js";
+import { authorisations, readLedger, resolvedIds, type LedgerEntry } from "./ledger.js";
+import { changesTests, type SavedReview } from "./review-record.js";
 
 /** Every state a problem can be in, internally. The owner reads them through `STATE_WORDS` (`render.ts`). */
 export const FIX_STATES = ["proposed", "approved", "skipped", "fixing", "fixed", "already_resolved", "unfixable", "stopped"] as const;
@@ -39,7 +39,7 @@ function fromRun(fix: FixRun | undefined): FixState {
  */
 export function deriveFindings(findings: readonly Finding[], entries: readonly LedgerEntry[], fixes: ReadonlyMap<string, FixRun>): FindingState[] {
   const gone = resolvedIds(entries);
-  const authorised = authorisedChecks(entries);
+  const authorised = authorisations(entries);
   const choice = new Map<string, "approve" | "skip">();
   for (const entry of entries) if (entry.t === "decision") for (const id of entry.ids) choice.set(id, entry.choice);
   return findings.map((finding) => {
@@ -57,11 +57,13 @@ export function deriveFindings(findings: readonly Finding[], entries: readonly L
  * the plan the reading commands show must not list it as waiting to start.
  */
 export function fixTasks({ header, result }: SavedReview, entries: readonly LedgerEntry[]): FixTask[] {
-  const authorised = authorisedChecks(entries);
+  const authorised = authorisations(entries);
   const gone = resolvedIds(entries);
   return result.findings.flatMap((finding) => {
-    const verify = authorised.get(finding.id);
-    return verify === undefined || gone.has(finding.id) ? [] : [fixTaskFor(header.pack.name, finding, verify)];
+    const auth = authorised.get(finding.id);
+    if (auth === undefined || gone.has(finding.id)) return [];
+    const guards = auth.guards === undefined ? undefined : { ...auth.guards, testsCategory: changesTests(header.pack, finding.category) };
+    return [fixTaskFor(header.pack.name, finding, auth.verify, guards)];
   });
 }
 

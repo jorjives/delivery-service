@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { DamagedReview } from "../errors.js";
-import { appendLedger, authorisedChecks, readLedger } from "../packs/ledger.js";
+import { appendLedger, authorisations, readLedger } from "../packs/ledger.js";
 import { readFindingStates } from "../packs/fix-state.js";
 import { findingLines, listLines, NO_REVIEW_YET, unconfirmedLines, unfinishedReview } from "../packs/render.js";
 import { listReviews, loadReview } from "../packs/review-record.js";
@@ -87,7 +87,7 @@ export async function decideCommand(choice: "approve" | "skip", numbers: string[
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
   const review = await finishedReview(repoPath);
   const { findings } = review.result;
-  const takenOn = authorisedChecks(await readLedger(review.dir));
+  const takenOn = authorisations(await readLedger(review.dir));
   const open = (n: number): boolean => !takenOn.has(findings[n - 1]?.id ?? "");
   let chosen: number[];
   if (options.all === true) {

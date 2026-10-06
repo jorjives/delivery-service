@@ -38,6 +38,13 @@ describe("the plan a fix runs from", () => {
     });
   });
 
+  it("tells the agent it may not delete or skip a test or change how tests run, and what to do when only a test change would fix the problem", () => {
+    expect(FIX_INSTRUCTIONS).toContain("Do not delete or skip an existing test");
+    // The deterministic signal for "needs a change to one of your tests" is a refused edit, so the honest agent is told to make that edit, not to stop silently.
+    expect(FIX_INSTRUCTIONS).toContain("make the smallest change to that test that the fix needs and finish as usual");
+    expect(FIX_INSTRUCTIONS).toContain("If your change to a test is refused, stop");
+  });
+
   it("is written owner-only beside its review, and the newest written is the one found", async () => {
     const repo = initTempRepo("plan-", { "a.js": "x\n" });
     const older = await writeReview(repo, { reviewId: "code-20261001T000000Z" });

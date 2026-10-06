@@ -5,6 +5,7 @@ import { FINDING_GATE_REF } from "../packs/finding-gate.js";
 import type { FixTask } from "../packs/fix-task.js";
 import { readFindingStates } from "../packs/fix-state.js";
 import { appendLedger } from "../packs/ledger.js";
+import { guardListsFor } from "../packs/guards.js";
 import { planConfig, writePlan } from "../packs/plan.js";
 import { listLines } from "../packs/render.js";
 import type { CloserRef, GateRef, TaskDef } from "../schema.js";
@@ -74,7 +75,7 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
   }
 
   const { config, project } = await fixSettings(options, startDir, repoPath, ctx);
-  if (fresh.length > 0) await appendLedger(review.dir, { t: "authorise", ids: fresh.map((finding) => finding.id), verify: pinned(project.gateRef, repoPath) });
+  if (fresh.length > 0) await appendLedger(review.dir, { t: "authorise", ids: fresh.map((finding) => finding.id), verify: pinned(project.gateRef, repoPath), guards: guardListsFor(review.header.pack.guards) });
 
   // Every problem now "fixing": new ones, and any an interrupted run left under way (those resume, and are never skipped).
   const now = await readFindingStates(repoPath, review);

@@ -5,6 +5,7 @@ import { DamagedReview } from "../errors.js";
 import { appendLine, isEnoent, MalformedLine, parseLines } from "../journal.js";
 import { GateRef } from "../schema.js";
 import type { WithoutAt } from "../without-at.js";
+import { GuardLists } from "./guards.js";
 
 const Id = z.string().regex(/^[0-9a-f]{12}$/);
 const At = z.string().datetime();
@@ -19,7 +20,7 @@ const At = z.string().datetime();
  */
 export const LedgerEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("decision"), at: At, ids: z.array(Id).min(1), choice: z.enum(["approve", "skip"]) }),
-  z.object({ t: z.literal("authorise"), at: At, ids: z.array(Id).min(1), verify: GateRef }),
+  z.object({ t: z.literal("authorise"), at: At, ids: z.array(Id).min(1), verify: GateRef, guards: GuardLists.optional() }),
   z.object({ t: z.literal("fix_observed"), at: At, id: Id, outcome: z.literal("already_resolved"), commit: z.string().min(1) }),
 ]);
 export type LedgerEntry = z.infer<typeof LedgerEntry>;
@@ -49,14 +50,20 @@ export async function readLedger(reviewDir: string): Promise<LedgerEntry[]> {
   }
 }
 
-/** The problems `delivery fix` has taken on, each with the project check it was first authorised against: that check is part of the fix's identity. */
-export function authorisedChecks(entries: readonly LedgerEntry[]): Map<string, GateRef> {
-  const checks = new Map<string, GateRef>();
+/** What `delivery fix` was authorised to do for a problem: the project check it is judged by and what it may not touch. Part of the fix's identity. */
+export interface Authorised {
+  verify: GateRef;
+  guards?: GuardLists;
+}
+
+/** The problems `delivery fix` has taken on, each as it was first authorised. */
+export function authorisations(entries: readonly LedgerEntry[]): Map<string, Authorised> {
+  const found = new Map<string, Authorised>();
   for (const entry of entries) {
     if (entry.t !== "authorise") continue;
-    for (const id of entry.ids) if (!checks.has(id)) checks.set(id, entry.verify);
+    for (const id of entry.ids) if (!found.has(id)) found.set(id, { verify: entry.verify, ...(entry.guards === undefined ? {} : { guards: entry.guards }) });
   }
-  return checks;
+  return found;
 }
 
 /** The problems found already fixed before their fix started. */

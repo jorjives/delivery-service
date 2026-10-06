@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import { DamagedReview } from "../errors.js";
 import type { GateRef } from "../schema.js";
 import { withoutAt } from "../without-at.js";
-import { appendLedger, authorisedChecks, readLedger } from "./ledger.js";
+import { appendLedger, authorisations, readLedger } from "./ledger.js";
+import { guardListsFor } from "./guards.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "ledger-"));
 const NPM_TEST: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
@@ -51,6 +52,13 @@ describe("a review's record of what was decided", () => {
     const d = dir();
     await appendLedger(d, { t: "authorise", ids: [ID], verify: NPM_TEST });
     await appendLedger(d, { t: "authorise", ids: [ID, "111111111111"], verify: OTHER });
-    expect(authorisedChecks(await readLedger(d))).toEqual(new Map([[ID, NPM_TEST], ["111111111111", OTHER]]));
+    expect(authorisations(await readLedger(d))).toEqual(new Map([[ID, { verify: NPM_TEST }], ["111111111111", { verify: OTHER }]]));
+  });
+
+  it("pins what a fix may not touch with its authorisation, and reads back an authorisation from before it did", async () => {
+    const d = dir();
+    const guards = guardListsFor(undefined);
+    await appendLedger(d, { t: "authorise", ids: [ID], verify: NPM_TEST, guards });
+    expect(authorisations(await readLedger(d)).get(ID)).toEqual({ verify: NPM_TEST, guards });
   });
 });
