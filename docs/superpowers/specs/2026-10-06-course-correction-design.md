@@ -82,7 +82,7 @@ The right-choice lens applied to every decision that shapes the agent's interact
 | 10 | Operator config limited to replacing `systemPromptFragment` and `allowedTools` | Easy | Pass through agent options (model, effort, plugins, MCP, settings) |
 | 11 | One fixed worker step per task | Easy | Operator-defined workflows of steps |
 | 12 | Tasks only from a list in config | Easy | Pluggable work sources, Autoloop's backlog formats included |
-| 13 | Every attempt a fresh session (invariant 2) | Easy | Continue by default; reconstruct when triage judges context is the problem |
+| 13 | Every attempt a fresh session, interrupted ones included (invariant 2) | Easy | Resume interrupted sessions; keep fresh sessions for judged attempts |
 | 14 | Scanner given a pre-built file list | Easy | Let the scanner explore |
 | 15 | Personas derived and adopted without human confirmation | Easy | Confirmed operator persona |
 | 16 | Gate's pass/fail authoritative; no classifier overturns it (invariant 1) | Right | |
@@ -107,11 +107,12 @@ there. The correction keeps rows 16 to 26 and replaces rows 1 to 15.
 These replace the five invariants in `docs/single-surface-control-flow.md`.
 
 1. **The gate's pass/fail is authoritative.** Unchanged.
-2. **Sessions continue by default and are reconstructed by decision.** A retry resumes the
-   attempt's session with the new evidence as the next turn. Triage may instead choose
-   `reroute_fresh`, which starts a new session from a sharpened brief, when it judges the
-   context itself is the problem. The session id is serialised, so a crash still resumes from
-   disk alone. *(Owner decision D1.)*
+2. **Judged attempts are reconstructed; interrupted ones are resumed.** An attempt the gate or
+   guards rejected gets a new session, primed with triage's brief, in the same worktree: it
+   corrects the existing work without inheriting the reasoning that just failed. An attempt that
+   was interrupted (usage limit, crash, timeout, a reply in the wrong shape) resumes its own
+   session, because nothing judged its work wrong. The session id is serialised, so a crash still
+   recovers from disk alone. The full table is in 5.11.
 3. **All state is serialised; there is no warm-memory dependency.** Unchanged, and session
    ids are now part of that state.
 4. **Every state transition is a commit point.** Unchanged.
@@ -387,9 +388,10 @@ ladder, and the roadmap's local scheduling item builds on them.
   item that escalates, or that exhausts its retries on a configured number of `--sources` runs, is
   parked. A parked item is skipped until `delivery unpark <id>`, and is listed by
   `delivery status`, the report and `notify`. Parking writes nothing to the repository.
-- **Resuming an item's work.** When a run ends `ESCALATED` or `INCOMPLETE`, the item's worktree and
-  session id are kept in the ledger. The next `--sources` run resumes that worktree and session
-  rather than starting cold, as Autoloop's `resume` class does.
+- **Carrying an item's work into the next run.** The ledger keeps the item's worktree and session
+  id when a run ends without landing. What the next `--sources` run does with them depends on how
+  that run ended (5.11): an interrupted run is resumed, a run that exhausted its corrections is
+  retried cold, and a run that ended needing the operator's decision is resumed once they answer.
 
 ### 5.6 Triage and gate maintenance
 
@@ -398,7 +400,7 @@ Both become ordinary agent sessions with full capability and a fence:
 - **Triage** runs in a disposable worktree at the task branch's head, removed afterwards. It can
   run the tests, bisect or reproduce. Nothing it writes can reach the work. It still emits a typed
   verdict and is still bounded by `legalVerdicts`. Replay safety comes from the disposable copy,
-  not from a read-only tool list. New verdict: `reroute_fresh` (invariant 2).
+  not from a read-only tool list. Its verdicts are unchanged.
 - **Gate maintenance** gets every tool, `Bash` included, so it can install dependencies. The gate
   integrity check (5.2) replaces "not given Bash" and "the checks live outside the worktree" as
   the enforcement of "repair the environment, never the checks".
@@ -441,7 +443,31 @@ baseline and delta rule, the deterministic router, budgets, escalation packets, 
 repo lock, the multi-surface supervisor and breaker, reporting and the versioned report JSON, the
 pack manifest and finding gate, sign-off, and `claude-mock` with the testing guide.
 
-### 5.11 Personas
+### 5.11 Sessions and worktrees across attempts and runs
+
+Two levels of retry exist. Within a run, the surface's budgeted correction loop retries; across
+runs, the item ledger carries the item to the next `--sources` run. Invariant 2 governs both.
+
+| Situation | Worktree | Session |
+|---|---|---|
+| **Within a run** | | |
+| Interrupted: usage limit, crash, timeout, idle, no reply, reply in the wrong shape | Same | Resumed, with a turn saying why (for a wrong shape, the expected shape) |
+| Rejected by the gate or guards, budget remaining | Same | New, primed with triage's brief and the gate evidence: it corrects the existing work |
+| Next workflow step | Same | New, or resumed with `continue: true` |
+| **Across runs** | | |
+| Run ended interrupted | Same | Resumed |
+| Run ended with corrections exhausted | Fresh | Fresh: the in-run loop already tried correcting that state, and resuming would re-ship it. The old branch is kept for inspection. |
+| Run ended needing the operator's decision, and they have answered | Same | Resumed, with the answer as the next turn |
+
+A session that cannot be resumed, because its transcript is gone, falls back to a new session in
+the same worktree, primed from the case file. That is recorded, and not counted as a failure. A
+session the runtime never started (`notRun`) is escalated after one attempt, as today.
+
+A triage verdict that continues a rejected attempt's session (`reroute_continue`) is deliberately
+not added. It is the place to start if evidence shows rejected attempts would do better by
+continuing.
+
+### 5.12 Personas
 
 `docs/personas.md` is replaced by one confirmed persona: **the operator**, an experienced engineer
 who runs agents unattended across several projects with an established estate of skills, plugins
@@ -552,6 +578,11 @@ is involved.
 - **Workflows:** a scripted two-step workflow: step 2 baselines against step 1's accepted state;
   `continue: true` resumes the session id; the closer runs once; a gate failure in step 2 retries
   step 2 only.
+- **Sessions and worktrees (5.11):** one scripted case per row of the table. An interrupted
+  attempt resumes the same session id in the same worktree; a rejected attempt gets a new session
+  id in the same worktree, with the brief in its prompt; a run ended with corrections exhausted
+  starts the next run in a fresh worktree, with the old branch still present; a vanished
+  transcript falls back to a new session and is recorded.
 - **Work sources:** contract tests per source type for listing, ordering, completing, invalid
   output. Backlog: a new item lands with the work, an invalid one fails the gate, the resolution
   commit is on the task branch before landing, a recurring item becomes due again after its
@@ -590,9 +621,8 @@ is involved.
 
 ### Owner decisions
 
-- **D1: Session continuity.** Proposed: continue by default, with `reroute_fresh` as a triage
-  verdict. This reverses invariant 2, which you wrote. The alternative keeps fresh sessions as
-  the default and adds `continue` only within workflows.
+- **Session continuity (decided 2026-10-07).** Judged attempts get a new session in the same
+  worktree; interrupted ones resume; across runs, exhausted corrections retry cold (5.11).
 - **D2: Personas.** Proposed: one confirmed operator persona. The alternative keeps the
   non-technical owner as a secondary audience for reporting language only.
 - **D3: Fence default.** Proposed: `fence: preferred`, which records `absent` and continues. The
@@ -613,7 +643,8 @@ is involved.
 - **The operator's hooks and plugins now shape harness runs.** A hook that blocks or rewrites tool
   calls changes the agent's behaviour, which is the point. A hook that breaks headless operation
   shows up as `INCOMPLETE_TERMINUS`, with its evidence recorded.
-- **Session continuation can carry a bad line of reasoning forward.** `reroute_fresh` is the
-  remedy, and triage can see the history to judge when to use it.
+- **A resumed interrupted session can carry a bad line of reasoning forward.** It is bounded:
+  only interrupted sessions resume, and once the gate judges their work, the next attempt is a
+  new session.
 - **Unattended self-modification.** Autoloop is still delivering this repository's roadmap. This
   spec must not be sliced or delivered by Autoloop before you approve it.
