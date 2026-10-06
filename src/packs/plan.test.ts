@@ -8,6 +8,7 @@ import { workerRoleConfig } from "../role-config.js";
 import type { GateRef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { FINDING_GATE_REF } from "./finding-gate.js";
+import { FINDING_CLOSER_REF } from "./finding-closer.js";
 import { fixTaskFor } from "./fix-task.js";
 import { FIX_INSTRUCTIONS, planConfig, writePlan } from "./plan.js";
 import { latestPlanFile } from "./review-record.js";
@@ -22,7 +23,7 @@ describe("the plan a fix runs from", () => {
     const plan = planConfig([task], project, { domain: "A shop.", budgets: { correction: 2 } }, "Fix it well.");
     const onDisk = JSON.parse(JSON.stringify(plan)) as unknown;
     expect(DeliveryConfig.parse(onDisk)).toEqual(onDisk);
-    expect(plan).toMatchObject({ tasks: [task], domain: "A shop.", gate: FINDING_GATE_REF, closer: { type: "merge-back" }, budgets: { correction: 2 }, concurrency: 2 });
+    expect(plan).toMatchObject({ tasks: [task], domain: "A shop.", gate: FINDING_GATE_REF, closer: FINDING_CLOSER_REF, budgets: { correction: 2 }, concurrency: 2 });
   });
 
   it("tells the agent the problem is a description to act on, after its usual instructions and before the pack's", () => {

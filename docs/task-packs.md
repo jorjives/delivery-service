@@ -115,6 +115,13 @@ with the reason rather than forced in. To fix several at once, a `closer` that k
 or opens a pull request suits better than merging.
 `validate`, `preview`, `status` and `report` show a fix like any other list.
 
+## Serious fixes wait for your sign-off
+
+On a security review, a problem that is critical or high is fixed and checked like any other,
+but its fix does not reach your main copy. It is kept on its own branch and `delivery findings`
+says it is "waiting for your sign-off", with how to look at what changed, say yes or say no.
+On a code review nothing waits: severity only orders the list.
+
 ## Where a review is kept
 
 Each review is a folder under `.delivery/packs/` in your project. `.delivery/` ignores itself, so nothing shows up in `git status`. If a review is interrupted after the agent has replied, run the same command again: the review is finished from the saved reply without asking the agent again. If it is interrupted while the agent is working, running it again starts the review afresh. If a review could not run (not signed in, no connection, a usage limit, or a reply the harness could not read), it says so in one sentence and saves nothing.

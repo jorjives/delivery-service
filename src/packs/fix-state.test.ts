@@ -23,7 +23,7 @@ const B = sampleFinding({ id: "111111111111", title: "Old payment code" });
 const decide = (ids: string[], choice: "approve" | "skip"): LedgerEntry => ({ t: "decision", at: AT, ids, choice });
 const authorise = (ids: string[]): LedgerEntry => ({ t: "authorise", at: AT, ids, verify: NPM });
 const plain = (audience: Plain["audience"]): Plain => ({ group: audience === "engineer" ? "needs_an_engineer" : "needs_your_decision", audience, sentence: "s", agentSaid: null, next: [] });
-const run = (over: Partial<FixRun>): FixRun => ({ run: "r", standing: "unfinished", closer: "merge-back", plain: null, rounds: [], ...over });
+const run = (over: Partial<FixRun>): FixRun => ({ run: "r", standing: "unfinished", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, ...over });
 
 describe("where each problem stands", () => {
   it("is not yet decided until the owner says, and the owner's latest choice wins", () => {
@@ -139,5 +139,21 @@ describe("reading gate rounds and refusals", () => {
 
     expect(states[1]).toMatchObject({ refused: true, cause: "needs_test_change" });
     expect(states[0]).toMatchObject({ refused: false, cause: null });
+  });
+});
+
+describe("holding fixes for sign-off", () => {
+  it("is waiting for sign-off when a held fix has passed, and fixed when one that is not held has", () => {
+    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main" };
+    const held = { t: "authorise" as const, at: AT, ids: [A.id], verify: NPM, threshold: "high" as const, hold: { [A.id]: true }, landing: { type: "merge-back" } };
+    expect(deriveFindings([A], [decide([A.id], "approve"), held as any], new Map([[A.id, closed]]))[0]?.state).toBe("held");
+    expect(deriveFindings([A], [decide([A.id], "approve"), { ...held, hold: { [A.id]: false } } as any], new Map([[A.id, closed]]))[0]?.state).toBe("fixed");
+  });
+
+  it("gives each fix task the release it was authorised with", async () => {
+    const repo = initTempRepo("fix-state-", { "a.js": "x\n" });
+    const entry = await writeReview(repo, { findings: [A] });
+    const entries: LedgerEntry[] = [decide([A.id], "approve"), { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high" as any, hold: { [A.id]: true }, landing: { type: "merge-back" } }];
+    expect(fixTasks(await loadReview(entry), entries as any)[0]?.authorisation).toEqual({ verify: NPM, hold: true, landing: { type: "merge-back" } });
   });
 });

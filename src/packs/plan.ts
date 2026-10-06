@@ -4,6 +4,7 @@ import type { ProjectSettings } from "../cli/settings.js";
 import { atomicWrite } from "../journal.js";
 import { workerRoleConfig } from "../role-config.js";
 import { FINDING_GATE_REF } from "./finding-gate.js";
+import { FINDING_CLOSER_REF } from "./finding-closer.js";
 import type { FixTask } from "./fix-task.js";
 import { PLAN_FILE } from "./review-record.js";
 
@@ -40,7 +41,8 @@ export function planConfig(tasks: FixTask[], project: ProjectSettings, config: D
     ...(config.domain === undefined ? {} : { domain: config.domain }),
     roles: { ...config.roles, worker: { ...worker, systemPromptFragment: fragment } },
     gate: FINDING_GATE_REF,
-    closer: project.closerRef,
+    // Its closer the harness's own, which keeps a fix waiting for sign-off on its branch and lands the rest the project's way.
+    closer: FINDING_CLOSER_REF,
     ...(config.budgets === undefined ? {} : { budgets: config.budgets }),
     concurrency: project.concurrency,
   };

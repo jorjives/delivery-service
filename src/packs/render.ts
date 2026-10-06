@@ -64,6 +64,7 @@ export const STATE_WORDS: Record<FixState, string> = {
   fixing: "being fixed",
   skipped: "skipped by you",
   fixed: "fixed and merged",
+  held: "waiting for your sign-off",
   already_resolved: "already fixed",
   unfixable: "could not be fixed",
   stopped: "stopped by a setup problem",
@@ -86,6 +87,18 @@ function stopLines({ state, fix, cause }: FindingState): string[] {
   const { sentence, agentSaid } = fix.plain;
   const why = cause === "needs_test_change" ? `It ${NEEDS_TEST_CHANGE}.` : sentence;
   return [`    Why: ${why}`, ...(agentSaid === null ? [] : [`    The agent said: ${quoted(agentSaid, "      ")}`])];
+}
+
+/** What to do about a fix waiting for sign-off, and where an engineer finds it. */
+function signOffLines(number: number, { state, fix }: FindingState): string[] {
+  if (state !== "held") return [];
+  return [
+    "    Why this needs you: it is a serious problem, and you should see what changed before it reaches your main copy.",
+    `    Look at what changed: delivery findings ${number} --changes`,
+    `    Say yes: delivery findings sign-off ${number}`,
+    `    Say no: delivery findings reject ${number}`,
+    `    For engineers: branch ${fix?.branch ?? "not recorded"}`,
+  ];
 }
 
 export const opening = (title: string): string[] => [`${title} of your project.`, READS_ONLY];
@@ -148,7 +161,7 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
     `${header.pack.title} of ${basename(header.repoPath)}, ${dayAndMinute(header.endedAt)} UTC: ${problems(result.findings.length)}.`,
     ...result.findings.flatMap((finding, index) => {
       const at = states[index] ?? { state: "proposed", fix: undefined, refused: false, cause: null };
-      return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at)];
+      return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...signOffLines(index + 1, at)];
     }),
     ...unconfirmedPointer(result.unconfirmed.length),
     ...(needsTest === 0 ? [] : ["", needsTestChangeLine(needsTest)]),

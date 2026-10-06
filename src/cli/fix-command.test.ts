@@ -6,10 +6,12 @@ import { cleanGitEnv } from "../git-env.js";
 import { readLedger } from "../packs/ledger.js";
 import { guardListsFor } from "../packs/guards.js";
 import { needsTestChangeLine, NO_REVIEW_YET, REFUSED_WEAKENING } from "../packs/render.js";
+import { readFindingStates } from "../packs/fix-state.js";
 import { EXAMPLE_DIR, exampleRepo, sampleFinding, writeReview } from "../packs/review-fixtures.js";
 import { promptsSent, readJournal } from "../mock-script.js";
 import type { MockScript } from "../mock-script.js";
 import { runsRoot } from "../run-location.js";
+import { finishedReview } from "./findings-command.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
@@ -25,6 +27,7 @@ const SETTINGS = sampleFinding({
   anchor: 'return JSON.parse(readFileSync(path, "utf-8"));',
   check: { kind: "pattern-absent", pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["settings.js"] },
 });
+const SECURITY = { name: "security", title: "Security review", hold: "high" as const, consequenceLabel: "what-could-happen" as const };
 const FIXES_CHECKOUT = {
   when: { promptContains: NEGATIVE.id },
   effects: [{ edit: { path: "checkout.js", old: "return price - discount;", new: "return Math.max(0, price - discount);" } }],
@@ -267,5 +270,40 @@ describe("delivery fix", () => {
       expect(readFileSync(join(repo, "checkout.test.js"), "utf-8")).toBe(ORIGINAL_TEST);
     },
     RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "fixes and checks a serious problem, then keeps it on its branch, waiting for sign-off, with the main copy untouched",
+    async () => {
+      const repo = exampleRepo("fix-held-");
+      const dir = await writeReview(repo, { reviewId: "security-20261006T101500Z", findings: [NEGATIVE, SETTINGS], pack: SECURITY });
+      await delivery(["findings", "approve", "--all"], { cwd: repo });
+      const before = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf-8" }).trim();
+      const { exitCode, stdout } = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [FIXES_CHECKOUT, FIXES_SETTINGS] }) });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain("1. The price shown at checkout can be negative (high): waiting for your sign-off");
+      expect(stdout).toContain("2. Settings errors are unhelpful (medium): fixed and merged");
+      expect(readFileSync(join(repo, "checkout.js"), "utf-8")).toContain("return price - discount;");
+      expect(execFileSync("git", ["rev-list", "--count", `${before}..HEAD`, "--", "checkout.js"], { cwd: repo, encoding: "utf-8" }).trim()).toBe("0");
+      const authorised = (await readLedger(dir)).find((entry) => entry.t === "authorise");
+      expect(authorised).toMatchObject({ threshold: "high", hold: { [NEGATIVE.id]: true, [SETTINGS.id]: false }, landing: { type: "merge-back" } });
+      const { states } = await readFindingStates(repo, await finishedReview(repo));
+      expect(states.map((at) => at.fix?.closer)).toEqual(["commit-to-branch", "merge-back"]);
+      expect(execFileSync("git", ["show", `${states[0]?.fix?.branch}:checkout.js`], { cwd: repo, encoding: "utf-8" })).toContain("Math.max(0, price - discount)");
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "holds nothing on the code review, whatever its severity",
+    async () => {
+      const { repo, dir } = await reviewed([NEGATIVE]);
+      await delivery(["findings", "approve", "1"], { cwd: repo });
+      const { stdout } = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [FIXES_CHECKOUT] }) });
+      expect(stdout).toContain("1. The price shown at checkout can be negative (high): fixed and merged");
+      expect((await readLedger(dir)).find((entry) => entry.t === "authorise")).toMatchObject({ threshold: null, hold: { [NEGATIVE.id]: false } });
+    },
+    RUN_TIMEOUT,
   );
 });

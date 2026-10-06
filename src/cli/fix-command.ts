@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
 import { git } from "../git-exec.js";
+import { atOrAbove } from "../packs/finding.js";
 import { checkFinding } from "../packs/finding-check.js";
 import { FINDING_GATE_REF } from "../packs/finding-gate.js";
+import { FINDING_CLOSER_REF } from "../packs/finding-closer.js";
 import type { FixTask } from "../packs/fix-task.js";
 import { readFindingStates } from "../packs/fix-state.js";
 import { appendLedger } from "../packs/ledger.js";
@@ -36,6 +38,9 @@ const MERGE_BACK: CloserRef = { type: "merge-back" };
 
 /** The project's check as a fix pins it: a module of the project's own by its full path, since a fix's check is loaded from the harness, not the project. */
 const pinned = (gate: GateRef, repoPath: string): GateRef => (gate.type === "custom" ? { ...gate, modulePath: resolve(repoPath, gate.modulePath) } : gate);
+
+/** The project's closer as a fix pins it: a module of the project's own by its full path, since a fix's closer is loaded from the harness. */
+const pinnedCloser = (closer: CloserRef, repoPath: string): CloserRef => (closer.type === "custom" ? { ...closer, modulePath: resolve(repoPath, closer.modulePath) } : closer);
 
 /** The project's settings for its fixes: its own configuration only (never a plan), merging back unless it names another closer. */
 async function fixSettings(options: FixOptions, startDir: string, repoPath: string, ctx: CommandContext) {
@@ -75,7 +80,18 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
   }
 
   const { config, project } = await fixSettings(options, startDir, repoPath, ctx);
-  if (fresh.length > 0) await appendLedger(review.dir, { t: "authorise", ids: fresh.map((finding) => finding.id), verify: pinned(project.gateRef, repoPath), guards: guardListsFor(review.header.pack.guards) });
+  if (fresh.length > 0) {
+    const threshold = review.header.pack.hold ?? null;
+    await appendLedger(review.dir, {
+      t: "authorise",
+      ids: fresh.map((finding) => finding.id),
+      verify: pinned(project.gateRef, repoPath),
+      guards: guardListsFor(review.header.pack.guards),
+      threshold,
+      hold: Object.fromEntries(fresh.map((finding) => [finding.id, atOrAbove(finding.severity, threshold)])),
+      landing: pinnedCloser(project.closerRef, repoPath),
+    });
+  }
 
   // Every problem now "fixing": new ones, and any an interrupted run left under way (those resume, and are never skipped).
   const now = await readFindingStates(repoPath, review);
@@ -101,7 +117,7 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
       gone += 1;
       return true;
     };
-    exitCode = await runQueue(pending, { ...project, gateRef: FINDING_GATE_REF, roleOverrides: plan.roles }, { repoPath, carryOn: true, skip }, ctx);
+    exitCode = await runQueue(pending, { ...project, gateRef: FINDING_GATE_REF, closerRef: FINDING_CLOSER_REF, roleOverrides: plan.roles }, { repoPath, carryOn: true, skip }, ctx);
     if (gone > 0) {
       say(alreadyFixedLine(gone));
       // Problems passed over have no task any more (`fixTasks`), so the plan the reading commands show drops them.

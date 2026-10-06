@@ -3,9 +3,10 @@ import { join } from "node:path";
 import { z } from "zod";
 import { DamagedReview } from "../errors.js";
 import { appendLine, isEnoent, MalformedLine, parseLines } from "../journal.js";
-import { GateRef } from "../schema.js";
+import { CloserRef, GateRef } from "../schema.js";
 import type { WithoutAt } from "../without-at.js";
 import { GuardLists } from "./guards.js";
+import { Severity } from "./finding.js";
 
 const Id = z.string().regex(/^[0-9a-f]{12}$/);
 const At = z.string().datetime();
@@ -20,7 +21,18 @@ const At = z.string().datetime();
  */
 export const LedgerEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("decision"), at: At, ids: z.array(Id).min(1), choice: z.enum(["approve", "skip"]) }),
-  z.object({ t: z.literal("authorise"), at: At, ids: z.array(Id).min(1), verify: GateRef, guards: GuardLists.optional() }),
+  z.object({
+    t: z.literal("authorise"),
+    at: At,
+    ids: z.array(Id).min(1),
+    verify: GateRef,
+    guards: GuardLists.optional(),
+    /** The pack's threshold when this was written, and what it decided for each problem: computed once, never again. */
+    threshold: Severity.nullable().optional(),
+    hold: z.record(Id, z.boolean()).optional(),
+    /** How a fix lands once it may: the project's closer, pinned. */
+    landing: CloserRef.optional(),
+  }),
   z.object({ t: z.literal("fix_observed"), at: At, id: Id, outcome: z.literal("already_resolved"), commit: z.string().min(1) }),
 ]);
 export type LedgerEntry = z.infer<typeof LedgerEntry>;
@@ -54,6 +66,8 @@ export async function readLedger(reviewDir: string): Promise<LedgerEntry[]> {
 export interface Authorised {
   verify: GateRef;
   guards?: GuardLists;
+  hold?: boolean;
+  landing?: CloserRef;
 }
 
 /** The problems `delivery fix` has taken on, each as it was first authorised. */
@@ -61,7 +75,16 @@ export function authorisations(entries: readonly LedgerEntry[]): Map<string, Aut
   const found = new Map<string, Authorised>();
   for (const entry of entries) {
     if (entry.t !== "authorise") continue;
-    for (const id of entry.ids) if (!found.has(id)) found.set(id, { verify: entry.verify, ...(entry.guards === undefined ? {} : { guards: entry.guards }) });
+    for (const id of entry.ids) {
+      if (found.has(id)) continue;
+      const hold = entry.hold?.[id];
+      found.set(id, {
+        verify: entry.verify,
+        ...(entry.guards === undefined ? {} : { guards: entry.guards }),
+        ...(hold === undefined ? {} : { hold }),
+        ...(entry.landing === undefined ? {} : { landing: entry.landing }),
+      });
+    }
   }
   return found;
 }

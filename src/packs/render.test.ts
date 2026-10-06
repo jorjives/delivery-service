@@ -25,7 +25,7 @@ const PATTERN = sampleFinding({ id: "111111111111", title: "Settings errors are 
 const UNUSED = sampleFinding({ id: "222222222222", title: "Old payment code", severity: "low", check: { kind: "none" }, droppedCheck: { kind: "pattern-absent", pattern: "x", paths: ["a.js"] }, detail: "nothing imports it" });
 const unconfirmed = UNCONFIRMED_REASONS.map((reason): Unconfirmed => ({ title: "Rounding", severity: "medium", path: "pricing.js", problem: "Prices round down.", reason }));
 const review = (overrides: Partial<SavedReview["result"]> = {}): SavedReview => ({ dir: "/d", header: HEADER, result: { findings: [NEGATIVE, PATTERN, UNUSED], unconfirmed: [], notShown: 0, notes: "", ...overrides } });
-const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, rounds: [], ...fix }, refused: false, cause: null });
+const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, ...fix }, refused: false, cause: null });
 const undecided = [at("proposed"), at("proposed"), at("proposed")];
 
 describe("a finished review, as the owner reads it", () => {
@@ -133,6 +133,18 @@ describe("the findings view", () => {
     const lines = listLines(review(), [at("approved"), at("approved"), at("proposed")]);
     expect(lines.slice(1, 3)).toEqual(["1. The price shown at checkout can be negative (high): being fixed", "2. Settings errors are unhelpful (medium): being fixed"]);
     expect(lines).toContain("2 approved and not started yet. Start fixing them with: delivery fix");
+  });
+
+  it("says a fix waiting for sign-off is waiting, and how to look, say yes or say no", () => {
+    const held = at("held", { closer: "commit-to-branch", branch: "surface/fix-a-20261006T110000Z", base: "main" });
+    const lines = listLines(review(), [held, at("proposed"), at("proposed")]);
+    expect(lines).toContain("1. The price shown at checkout can be negative (high): waiting for your sign-off");
+    expect(lines).toContain("    Why this needs you: it is a serious problem, and you should see what changed before it reaches your main copy.");
+    expect(lines).toContain("    Look at what changed: delivery findings 1 --changes");
+    expect(lines).toContain("    Say yes: delivery findings sign-off 1");
+    expect(lines).toContain("    Say no: delivery findings reject 1");
+    expect(lines).toContain("    For engineers: branch surface/fix-a-20261006T110000Z");
+    for (const line of lines) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
 
   it("lists every problem it could not confirm, with why", () => {

@@ -10,11 +10,11 @@ import { changesTests, type SavedReview } from "./review-record.js";
 import { isGuard, needsTestChange } from "./guards.js";
 
 /** Every state a problem can be in, internally. The owner reads them through `STATE_WORDS` (`render.ts`). */
-export const FIX_STATES = ["proposed", "approved", "skipped", "fixing", "fixed", "already_resolved", "unfixable", "stopped"] as const;
+export const FIX_STATES = ["proposed", "approved", "skipped", "fixing", "fixed", "held", "already_resolved", "unfixable", "stopped"] as const;
 export type FixState = (typeof FIX_STATES)[number];
 
 /** What the report says of a problem's fix, and what each of its check rounds newly failed, oldest first. */
-export type FixRun = Pick<ReportSurface, "run" | "standing" | "closer" | "plain"> & { rounds: string[][] };
+export type FixRun = Pick<ReportSurface, "run" | "standing" | "closer" | "plain" | "branch" | "base"> & { rounds: string[][] };
 
 /** Why a problem could not be fixed, where the harness can say so itself. */
 export type UnfixableCause = "needs_test_change";
@@ -27,11 +27,11 @@ export interface FindingState {
   cause: UnfixableCause | null;
 }
 
-/** An authorised problem's state from its fix's run: delivered is fixed; a stop someone must act on is "could not be fixed", unless only an engineer can act, which is a setup problem. */
-function fromRun(fix: FixRun | undefined): FixState {
+/** An authorised problem's state from its fix's run: waiting for sign-off if held, delivered if fixed; a stop someone must act on is "could not be fixed", unless only an engineer can act, which is a setup problem. */
+function fromRun(fix: FixRun | undefined, held: boolean): FixState {
   switch (fix?.standing) {
     case "closed":
-      return "fixed";
+      return held ? "held" : "fixed";
     case "escalated":
     case "aborted":
       return fix?.plain?.audience === "engineer" ? "stopped" : "unfixable";
@@ -64,7 +64,8 @@ export function deriveFindings(findings: readonly Finding[], entries: readonly L
   return findings.map((finding) => {
     const fix = fixes.get(finding.id);
     if (gone.has(finding.id)) return stateOf("already_resolved", fix);
-    if (authorised.has(finding.id)) return stateOf(fromRun(fix), fix);
+    const auth = authorised.get(finding.id);
+    if (auth !== undefined) return stateOf(fromRun(fix, auth.hold === true), fix);
     const chosen = choice.get(finding.id);
     return stateOf(chosen === "approve" ? "approved" : chosen === "skip" ? "skipped" : "proposed", fix);
   });
@@ -82,7 +83,8 @@ export function fixTasks({ header, result }: SavedReview, entries: readonly Ledg
     const auth = authorised.get(finding.id);
     if (auth === undefined || gone.has(finding.id)) return [];
     const guards = auth.guards === undefined ? undefined : { ...auth.guards, testsCategory: changesTests(header.pack, finding.category) };
-    return [fixTaskFor(header.pack.name, finding, auth.verify, guards)];
+    const release = auth.landing === undefined ? undefined : { hold: auth.hold ?? false, landing: auth.landing };
+    return [fixTaskFor(header.pack.name, finding, auth.verify, guards, release)];
   });
 }
 
@@ -99,4 +101,17 @@ export async function readFindingStates(repoPath: string, review: SavedReview): 
     ),
   );
   return { entries, tasks, states: deriveFindings(review.result.findings, entries, fixes) };
+}
+
+/** Where a kept fix is: its run, its branch and the branch it is to land on. */
+export interface KeptFix {
+  runId: string;
+  branch: string;
+  base: string;
+}
+
+/** A problem's kept fix, when its run recorded where it is. */
+export function keptFix({ fix }: FindingState): KeptFix | undefined {
+  if (fix?.run == null || fix.branch === null || fix.base === null) return undefined;
+  return { runId: fix.run, branch: fix.branch, base: fix.base };
 }

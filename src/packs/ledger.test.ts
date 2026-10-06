@@ -61,4 +61,13 @@ describe("a review's record of what was decided", () => {
     await appendLedger(d, { t: "authorise", ids: [ID], verify: NPM_TEST, guards });
     expect(authorisations(await readLedger(d)).get(ID)).toEqual({ verify: NPM_TEST, guards });
   });
+
+  it("reads what was decided about holding each problem and how fixes land", () => {
+    const AT = "2026-10-06T11:00:00.000Z";
+    const entries = [
+      { t: "authorise" as const, at: AT, ids: ["aaaaaaaaaaaa", "bbbbbbbbbbbb"], verify: NPM_TEST, threshold: "high" as const, hold: { aaaaaaaaaaaa: true, bbbbbbbbbbbb: false }, landing: { type: "merge-back" } },
+    ];
+    expect(authorisations(entries as any).get("aaaaaaaaaaaa")).toEqual({ verify: NPM_TEST, hold: true, landing: { type: "merge-back" } });
+    expect(authorisations(entries as any).get("bbbbbbbbbbbb")).toEqual({ verify: NPM_TEST, hold: false, landing: { type: "merge-back" } });
+  });
 });
