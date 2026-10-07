@@ -111,12 +111,10 @@ there. The correction keeps rows 16 to 26 and replaces rows 1 to 15.
 These replace the five invariants in `docs/single-surface-control-flow.md`.
 
 1. **The gate's pass/fail is authoritative.** Unchanged.
-2. **Judged attempts are reconstructed; interrupted ones are resumed.** An attempt the gate or
-   guards rejected gets a new session, primed with triage's brief, in the same worktree: it
-   corrects the existing work without inheriting the reasoning that just failed. An attempt that
-   was interrupted (usage limit, crash, timeout, a reply in the wrong shape) resumes its own
-   session, because nothing judged its work wrong. The session id is serialised, so a crash still
-   recovers from disk alone. The full table is in 5.11.
+2. **Judged attempts are reconstructed; interrupted ones are resumed.** A rejected attempt's
+   reasoning is not carried forward; an interrupted attempt's is, because nothing judged it
+   wrong. The session id is serialised, so a crash still recovers from disk alone. The rule in
+   full is 5.11.
 3. **All state is serialised; there is no warm-memory dependency.** Unchanged, and session
    ids are now part of that state.
 4. **Every state transition is a commit point.** Unchanged.
@@ -223,9 +221,10 @@ intentional triage design: a retry with the evidence is the correction triage ex
 retry can never be accepted unless every check passes (invariant 1). The correction budget caps
 repeated attempts.
 
-1. **Gate integrity:** the gate definition pinned in the header (command, custom gate module, its
-   hash) is unchanged. For a command gate, the resolved command is unchanged too, for example the
-   `test` script in `package.json` at the task branch head.
+1. **Gate integrity:** the gate reference already pinned in the header (`gateRef`) is verified
+   unchanged, with a hash of a custom gate's module added to it. The command a command gate
+   resolves to, such as the `test` script in `package.json`, is already compared by
+   `guard:check-untouched`, so it is not checked twice.
 2. **Test-weakening guards:** `src/packs/guards.ts` moves out of packs and applies to every run.
    Every step gets, by default, the guards that catch weakening and never block honest work: a
    test deleted or renamed (`guard:tests-untouched`), changed test configuration or CI files
@@ -431,7 +430,7 @@ ladder, and the roadmap's local scheduling item builds on them.
 | Source type | Reads | Item id | On close |
 |---|---|---|---|
 | `backlog` | Open and due items in `.delivery/backlog/` | File name | Resolution commit on the task branch (above) |
-| `list` | `tasks` in config (today's behaviour) | Index | Recorded as done in the ledger, so it is not dispatched again |
+| `list` | `tasks` in config (today's behaviour) | Index | None: a delivered task is found in the run records, as `task-list.ts` does today |
 | `command` | Any executable: `<command> list` prints a JSON array of tasks, e.g. a script that finds the earliest incomplete slice | Its `id` field | `<command> complete <id>` |
 | `github` | Open issues carrying the source's label, through the `gh` CLI (below) | Issue number | Closes the issue, or `Closes #<n>` in the PR |
 
@@ -439,10 +438,10 @@ ladder, and the roadmap's local scheduling item builds on them.
   sources in the order listed; within a source, the source decides (the backlog: `priority`, then
   file name). Last come sources marked `fallback: true`, dispatched only when nothing else has
   work, as Autoloop's `create-prd` leg runs only on an empty backlog. A fallback source's tasks
-  are never recorded as done, so a `list` source with one task naming a deriving workflow serves
-  as that leg.
-- **`delivery run --sources [--max N]`** takes up to `N` items (default 1) in order and runs them
-  through the existing supervisor, concurrently up to `concurrency`. This is Autoloop's daily run,
+  are never treated as delivered, so a `list` source with one task naming a deriving workflow
+  serves as that leg.
+- **`delivery run --sources [--max N]`** takes up to `N` items (default 1) in order, reading no
+  further source once it has them, and runs them through the existing supervisor, concurrently up to `concurrency`. This is Autoloop's daily run,
   generalised.
 - **Item ledger.** Keyed by `source:id`, the ledger records attempts, the last outcome class and a
   parked flag. This is Autoloop's `ledger.sh`, which today's per-surface budgets do not cover. An
@@ -458,12 +457,13 @@ ladder, and the roadmap's local scheduling item builds on them.
 uses the tracker as its backlog instead of `.delivery/backlog/`. Agents work the same way on
 every project:
 
-- **Follow-ups go through a drop folder.** An agent always raises a follow-up as a new item file
-  in `.delivery/backlog/` on its branch, checked by the backlog guard (5.2). On a tracker-backed
-  project the folder is only a drop folder, empty on the base branch. In `CLOSING`, with the
-  resolution commit, the harness removes the new item files from the branch and holds them in
-  the case file. After the closer succeeds, the source raises each one as the first `after` step
-  (5.7), and the ledger records the raised id, so a retried raise never duplicates. An attempt
+- **One rule for follow-ups.** An agent always raises a follow-up as a new item file in
+  `.delivery/backlog/` on its branch, checked by the backlog guard (5.2), and the source that
+  delivered the task decides what happens to it in `CLOSING`. The `backlog` source leaves it on
+  the branch, to land with the work. A tracker source takes it off the branch, alongside the
+  resolution commit, and holds it in the case file, so on a tracker-backed project the folder is
+  only a drop folder, empty on the base branch. After the closer succeeds, the source raises each
+  held item as the first `after` step (5.7), and the ledger records the raised id, so a retried raise never duplicates. An attempt
   that is rejected or does not land raises nothing.
 - **The source contract gains `raise`.** A `command` source is run as `<command> raise` with the
   item as JSON on stdin, and prints the new id. Bitbucket, Jira or any other tracker is a short
@@ -656,9 +656,10 @@ ordinary backlog.
   (`anchor-gone`, `pattern-absent`, `dependency-absent`). The harness adds it to every step's
   gate as `item:<id>:resolved`, so "the problem is gone" is a requirement. This is today's
   finding gate, generalised to every item.
-- **Sign-off.** A workflow's `hold` names a severity. An item at or above it lands through the
-  commit-to-branch closer and waits; `delivery sign-off <id>` lands it as the project's closer
-  would, and `delivery reject <id>` declines it, as today.
+- **Sign-off.** A workflow's `hold` names a severity. For an item at or above it, `CLOSING`
+  pauses before the project's closer, whichever it is: the work waits on its branch.
+  `delivery sign-off <id>` runs that closer, and `delivery reject <id>` declines the item, as
+  today.
 - **What the owner reads.** `delivery backlog` lists ideas, open, held and parked items in the
   plain-language form today's review uses, and `delivery backlog <id>` shows one in full with its
   FOR ENGINEERS block. What a non-technical owner sees and does is unchanged: review, choose, read
