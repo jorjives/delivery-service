@@ -498,13 +498,28 @@ Both become ordinary agent sessions with full capability and a fence:
   integrity check (5.2) replaces "not given Bash" and "the checks live outside the worktree" as
   the enforcement of "repair the environment, never the checks".
 
-### 5.7 Landing, deploy and notification
+### 5.7 Landing, after steps and notification
 
 - **Closers** are unchanged (merge-back, open-PR, commit-to-branch, custom), and the finding closer
   still holds serious fixes for sign-off.
-- **`after` commands** run after a successful close: `{ "after": [{ "run": "make deploy", "in": "base" | "worktree" }] }`.
-  A failing `after` command is recorded as pending delivery and does not undo the landing, as in
-  Autoloop's `deploy.sh`.
+- **`after` steps** run in order after a successful close. Each is one of:
+  - a command: `{ "run": "make deploy", "in": "base" | "worktree" }`, as Autoloop's `deploy.sh`;
+  - an agent pass: `{ "prompt": "Write release notes for the landed commits and post them to the
+    project's discussion." }`, a session with full capability (5.1);
+  - built in: the source's `raise` (5.5), first, whenever there are follow-ups to raise.
+
+  Either kind may carry `check`, a command whose success confirms the step, such as
+  `curl -f https://…/health` after a deploy. `after` is set for the project and may be replaced
+  per workflow, so a scan workflow (5.13) need not deploy.
+- **An after step cannot change what landed.** Nothing after landing is gated, so an agent pass
+  runs in a disposable worktree at the landed commit, carries the landing boundary like any
+  session, and its commits are discarded with the worktree. Its one repository output is new
+  backlog items: the harness checks them with the backlog guards and handles them as any run's
+  follow-ups. After steps are for effects outside the repository: deploying, announcing,
+  triaging, checking a deployed service.
+- **Failure:** steps stop at the first failing step or check. It and the steps after it are
+  recorded as pending delivery and reported; the landing stands. The next `--sources` run retries
+  pending steps first, from the one that failed.
 - **`notify`** is one command run with the run's report JSON on stdin at every terminal outcome.
   The operator points it at whatever they use. Agent-messenger is the operator's choice, not the
   harness's.
@@ -527,7 +542,9 @@ stays deferred.
   `agent` (merged over the global block), `continue` and `guards` (`add`, `off`).
 - `sources`: work sources in order, each with `type` and its own detail (`github`: `label`,
   default `workflow`), and optionally `fallback`.
-- `parkAfter`, `after`, `notify`, and `fence` (`preferred`, `required` or `off`; or an object
+- `after`: the after steps (5.7); a workflow may carry its own `after`, which replaces the
+  project's for that workflow.
+- `parkAfter`, `notify`, and `fence` (`preferred`, `required` or `off`; or an object
   with `mode` and `devices`).
 
 `domain` stays, and becomes part of the appended context. `roles` is removed:
@@ -619,7 +636,7 @@ a design, but may not decide one until the owner confirms it.
 | Ledger, failure classes, park breaker, park issue | Item ledger (5.5) and existing termini |
 | Session resume of a preserved worktree | Invariant 2 and ledger resume (5.5) |
 | `close.sh` (close-prep agent, re-gate, ff merge, promote outbox) | A final workflow step if wanted, then the resolution commit and the merge-back closer; follow-ups land as ordinary new items |
-| `deploy.sh` | `after` commands |
+| `deploy.sh` | `after` steps (a command, with an optional `check`) |
 | `notify.sh`, health digest | `notify` command; `delivery report --json` across projects |
 | fsguard (bubblewrap) | The write fence (5.2): fsguard, ported |
 | systemd `autoloop@<key>.timer` | `delivery schedule` |
@@ -686,7 +703,10 @@ The same machinery covers work Autoloop cannot express:
   prevents a duplicate.
 - **New backlog item invalid, or an existing item edited:** a newly-failing assertion in the gate
   result, routed through triage like any other `gate_fail`.
-- **`after` command fails:** recorded as pending delivery. The landing stands.
+- **`after` step or its check fails:** that step and the rest are recorded as pending delivery
+  and retried first on the next `--sources` run. The landing stands.
+- **An agent after step commits anything but new backlog items:** those commits are discarded
+  with its worktree, and the report says so.
 
 ## 8. Testing
 
@@ -720,6 +740,10 @@ is involved.
   step 2 only; step 2's guards ignore a test step 1 changed; a step with no `gate` runs the
   project's. `commits-ahead` fails a step that committed nothing. A command gate's teardown runs
   after a failing gate, and a failing setup is a gate error.
+- **After steps:** a command, an agent pass and a failing `check` each in order; a failure stops
+  the rest and records them pending, and the next run retries from the failed step. An agent
+  pass's code commit never reaches the base branch, while a new item it writes is raised or
+  landed as a follow-up. A workflow's own `after` replaces the project's.
 - **Sessions and worktrees (5.11):** one scripted case per row of the table. An interrupted
   attempt resumes the same session id in the same worktree; a rejected attempt gets a new session
   id in the same worktree, with the brief in its prompt; a run ended with corrections exhausted
