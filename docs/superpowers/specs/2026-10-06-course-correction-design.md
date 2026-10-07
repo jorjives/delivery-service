@@ -4,7 +4,8 @@
 > **Created:** 2026-10-06
 > **Supersedes, in part:** `docs/agent-interface.md` (Tool authority, Prompt assembly),
 > `docs/single-surface-control-flow.md` (invariants 2 and 5), `docs/configuring-a-role.md`,
-> roadmap Items 13 and 14 (folded in here as work sources and scheduling).
+> `docs/task-packs.md` (findings, approval and fix), roadmap Items 13 and 14 (folded in here as
+> work sources and scheduling).
 
 ## 1. Why
 
