@@ -231,7 +231,7 @@ repeated attempts.
    (`guard:check-untouched`), new skip markers (`guard:no-skips`), and hidden or ignored test
    files. The guard against modifying an existing test (`guard:tests-unchanged`) is off by
    default, because test-first delivery and refactoring change existing tests as a matter of
-   course; a step turns it on with `guards.add`, and packs' fix steps keep it on. A step may turn
+   course; a step turns it on with `guards.add`, and a pack's fix workflow keeps it on (5.13). A step may turn
    a default guard off with `guards.off`, for steps whose job is to change tests. Every change to
    the defaults is recorded in the case file and shown in the report.
 3. **Backlog items:** a further default guard parses every new work item (5.5) against the schema
@@ -366,9 +366,7 @@ the config references:
   `_TEARDOWN_CMD` do, for example bringing a project's containers up and down.
 - **The default workflow** is one step, with the task as the prompt and the project gate. So
   `delivery run --task "..."` behaves as it does today, minus the restrictions.
-- **Packs keep their shape.** Scan, authorisation and fix stay as they are; the scanner and
-  fixer get ordinary, fully capable agent sessions (5.1). Expressing a pack as a workflow would
-  need an authorisation step, which workflows do not have, and is not part of this spec.
+- **Packs are bundles of workflows** that feed the backlog (5.13).
 
 The harness ships **no workflow that names an operator's skill.** Autoloop's legs, translated into
 workflows, live in the operator's own estate (8.2). The harness stays unopinionated. The
@@ -392,10 +390,15 @@ collide:
 
 ```markdown
 ---
-status: open            # open | idea | resolved
+status: open            # open | idea | resolved | declined
 workflow: resolve-issue # the workflow that delivers it; ideas have none
 priority: 10            # lower first; ties by file name
 cadence: 7d             # optional: a recurring item, due when this long has passed since it last closed
+severity: high          # optional: critical | high | medium | low, for holding fixes (5.13)
+check:                  # optional: how the harness knows the item is done (5.13)
+  kind: pattern-absent
+  pattern: "eval\\("
+  paths: [src/run.ts]
 ---
 The free-text brief the step prompts receive as {{task.body}}. Any other front matter field is
 available as {{task.<field>}}, e.g. `spec:` and `slice:` for a slice delivery.
@@ -500,8 +503,8 @@ Both become ordinary agent sessions with full capability and a fence:
 
 ### 5.7 Landing, after steps and notification
 
-- **Closers** are unchanged (merge-back, open-PR, commit-to-branch, custom), and the finding closer
-  still holds serious fixes for sign-off.
+- **Closers** are unchanged (merge-back, open-PR, commit-to-branch, custom). Holding serious
+  fixes for sign-off becomes a workflow's `hold` (5.13).
 - **`after` steps** run in order after a successful close. Each is one of:
   - a command: `{ "run": "make deploy", "in": "base" | "worktree" }`, as Autoloop's `deploy.sh`;
   - an agent pass: `{ "prompt": "Write release notes for the landed commits and post them to the
@@ -538,8 +541,9 @@ stays deferred.
 
 - `agent`: any SDK option not owned by the harness (5.1), plus `append`, text added to every
   step's context.
-- `workflows`: named workflows of steps. A step has `name`, `prompt`, and optionally `gate`,
-  `agent` (merged over the global block), `continue` and `guards` (`add`, `off`).
+- `workflows`: named workflows of steps, each optionally with `hold` (5.13) and `after`. A step
+  has `name`, `prompt`, and optionally `gate`, `agent` (merged over the global block), `continue`
+  and `guards` (`add`, `off`).
 - `sources`: work sources in order, each with `type` and its own detail (`github`: `label`,
   default `workflow`), and optionally `fallback`.
 - `after`: the after steps (5.7); a workflow may carry its own `after`, which replaces the
@@ -553,8 +557,9 @@ stays deferred.
 - `roles.*.allowedTools` has no replacement. `delivery validate` refuses it, names the field, and
   says that restriction now belongs in the operator's own Claude settings (`permissions.deny`).
 
-The command line gains `run --workflow <name>`, `run --sources [--max N]`, `answer`, `unpark`,
-`schedule` and `import autoloop`.
+The command line gains `run --workflow <name>`, `run --sources [--max N]`, `backlog`,
+`approve`, `decline`, `answer`, `unpark`, `schedule` and `import autoloop`. `review`, `sign-off`
+and `reject` keep their meaning (5.13); `findings` and `fix` are replaced.
 
 `delivery preview` shows the full appended context and the effective agent options for a step.
 It notes that the operator's own settings and CLAUDE.md also load.
@@ -564,8 +569,8 @@ It notes that the operator's own settings and CLAUDE.md also load.
 Case file and run file persistence (the case file gains the session id, the workflow step, the
 step's guard changes and the fence state, under a new format version), crash recovery, the gate interface and its presets, the
 baseline and delta rule, the deterministic router, budgets, escalation packets, closers and the
-repo lock, the multi-surface supervisor and breaker, reporting and the versioned report JSON, the
-pack manifest and finding gate, sign-off, and `claude-mock` with the testing guide.
+repo lock, the multi-surface supervisor and breaker, reporting and the versioned report JSON,
+sign-off, and `claude-mock` with the testing guide.
 
 ### 5.11 Sessions and worktrees across attempts and runs
 
@@ -619,6 +624,47 @@ One rule is written into the file and binds every later design:
 
 Every persona and every goal extension is marked confirmed or assumed. An assumed one may inform
 a design, but may not decide one until the owner confirms it.
+
+### 5.13 Packs converge on the backlog
+
+Today a pack is a parallel system: its own findings records, approval commands, fix tasks and
+ledger, beside the backlog. With workflows, the backlog and tracker sources, none of that needs
+to be separate. A pack becomes a distributable bundle of workflows that reads and writes the
+ordinary backlog.
+
+- **The pack format** (`delivery.pack/2`) keeps its name, version, title and summary, and carries
+  a scan workflow, a fix workflow, guard additions and a `hold` threshold. Installing a pack makes
+  its workflows available by name. It stays small, versioned and refused in the author's terms
+  when malformed. The built-in code and security reviews are rewritten in this format.
+- **Scan.** `delivery review <pack>` runs the pack's scan workflow. Its output is new backlog
+  items with `status: idea`, one per finding, each with a `severity`, a `check` and a
+  plain-language body. Its gate is the project gate, a `backlog-only` guard (new items and
+  nothing else), and one assertion per new item that its `check` finds the problem present, which
+  replaces today's confirmation of findings. A finding the harness cannot confirm fails the gate
+  with its reason and goes back to the scanner through triage. The scan lands like any work: the
+  items are committed, or raised as unlabelled issues.
+- **Approval is the owner's.** `delivery approve <ids>` (or `--all`) sets the chosen ideas to
+  `open` with the pack's fix workflow, and `delivery decline <ids>` sets them `declined`; each
+  commits only those item files on the current branch, and refuses if they hold uncommitted
+  changes. On GitHub, adding the label is approval. Agents cannot approve, since they cannot edit
+  existing items.
+- **Fix** is ordinary delivery: each open item is a task through the pack's fix workflow, run by
+  `delivery run --sources`, concurrently up to `concurrency`. The fan-out comes from the work
+  source, so workflows need no fan-out of their own.
+- **Item checks.** Any backlog item may carry a `check`, from the closed set findings use today
+  (`anchor-gone`, `pattern-absent`, `dependency-absent`). The harness adds it to every step's
+  gate as `item:<id>:resolved`, so "the problem is gone" is a requirement. This is today's
+  finding gate, generalised to every item.
+- **Sign-off.** A workflow's `hold` names a severity. An item at or above it lands through the
+  commit-to-branch closer and waits; `delivery sign-off <id>` lands it as the project's closer
+  would, and `delivery reject <id>` declines it, as today.
+- **What the owner reads.** `delivery backlog` lists ideas, open, held and parked items in the
+  plain-language form today's review uses, and `delivery backlog <id>` shows one in full with its
+  FOR ENGINEERS block. What a non-technical owner sees and does is unchanged: review, choose, read
+  what was fixed and what waits for them.
+- **Deleted:** the pack's own findings and review records, fix state, pack ledger, finding gate
+  and finding closer, and the `findings` and `fix` commands. The backlog, item checks, `hold`,
+  the item ledger and the report replace them.
 
 ## 6. Replacing Autoloop
 
@@ -764,6 +810,11 @@ is involved.
 - **Autoloop parity:** each of the five migrated workflows runs end to end against a fixture repo
   through `claude-mock`, under the default guards. Each produces the outcome Autoloop's verify
   would accept: commits ahead, gate green, marker present, files exist.
+- **Packs:** a scripted scan lands confirmed ideas; one with an unconfirmable finding, or one
+  that changes code, fails its gate and is rerouted; `approve` and `decline` commit only the named
+  items and refuse dirty ones; an approved item is delivered with `item:<id>:resolved` in its gate
+  and fails while the problem remains; an item at or above `hold` waits on its branch until
+  `sign-off`. Each built-in pack, rewritten, passes its existing scripted review fixtures.
 - **Prompt:** the Acceptance slot names the gate command. No prompt contains the removed
   prohibitions. The same case file still yields a byte-identical prompt.
 
@@ -784,6 +835,8 @@ is involved.
   the `command` source contract, so the harness carries no tracker API clients.
 - **Ledger:** port Autoloop's per-item ledger semantics, stored machine-locally beside the
   worktrees (5.5) with the case file's atomic-write persistence.
+- **Packs:** reuse, not rebuild. Findings' checks and confirmation become item checks; the
+  findings system itself is deleted in favour of the backlog (5.13).
 - **Test-weakening detection:** reuse `src/packs/guards.ts` for every run; no new detector. The
   existing-test edit guard becomes opt-in outside packs (5.2).
 
@@ -809,6 +862,8 @@ is involved.
   own sandbox was rejected on review (5.2).
 - **Backlog store (decided 2026-10-07).** Delivery Service's own store, tracked in the repository at
   `.delivery/backlog/`; the ledger is machine-local state (5.5).
+- **Packs converge (decided 2026-10-07).** Packs become bundles of workflows over the backlog;
+  their parallel findings system is deleted (5.13).
 - **Tracker backlogs (decided 2026-10-07).** A tracker may be the backlog. Agents raise follow-ups
   through the drop folder; the harness raises them only after landing (5.5).
 - **Landing boundary (decided 2026-10-07).** Agents never merge, push or open PRs; landing is the
