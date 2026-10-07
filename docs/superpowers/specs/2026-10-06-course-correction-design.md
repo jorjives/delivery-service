@@ -408,7 +408,8 @@ available as {{task.<field>}}, e.g. `spec:` and `slice:` for a slice delivery.
   new work, as Autoloop's `create-prd` leg does.
 - **Raising follow-ups needs no special mechanism.** An agent adds a new item file on its branch.
   The acceptance checks parse every new item against the schema; an invalid one fails the gate
-  like any other assertion. The closer lands new items with the rest of the work.
+  like any other assertion. The closer lands new items with the rest of the work; on a
+  tracker-backed project they are raised in the tracker instead (below).
 - **Agents cannot edit existing items.** The guards (5.2) refuse an edit or removal of an existing
   item. The task an agent works on is pinned in the case file at dispatch, so editing its file
   could not change what it is judged against anyway.
@@ -427,7 +428,8 @@ ladder, and the roadmap's local scheduling item builds on them.
 |---|---|---|---|
 | `backlog` | Open and due items in `.delivery/backlog/` | File name | Resolution commit on the task branch (above) |
 | `list` | `tasks` in config (today's behaviour) | Index | Recorded as done in the ledger, so it is not dispatched again |
-| `command` | Any executable that prints a JSON array of tasks, e.g. a script that finds the earliest incomplete slice | Its `id` field | Runs the command with `complete <id>` |
+| `command` | Any executable: `<command> list` prints a JSON array of tasks, e.g. a script that finds the earliest incomplete slice | Its `id` field | `<command> complete <id>` |
+| `github` | Open issues carrying the source's label, through the `gh` CLI (below) | Issue number | Closes the issue, or `Closes #<n>` in the PR |
 
 - **Order:** due recurring backlog items come first, as Autoloop's scheduled tasks do. Then
   sources in the order listed; within a source, the source decides (the backlog: `priority`, then
@@ -447,6 +449,42 @@ ladder, and the roadmap's local scheduling item builds on them.
   id when a run ends without landing. What the next `--sources` run does with them depends on how
   that run ended (5.11): an interrupted run is resumed, a run that exhausted its corrections is
   retried cold, and a run that ended needing the operator's decision is resumed once they answer.
+
+**Tracker-backed backlogs.** A project that tracks its work in GitHub, Bitbucket, Jira or similar
+uses the tracker as its backlog instead of `.delivery/backlog/`. Agents work the same way on
+every project:
+
+- **Follow-ups go through a drop folder.** An agent always raises a follow-up as a new item file
+  in `.delivery/backlog/` on its branch, checked by the backlog guard (5.2). On a tracker-backed
+  project the folder is only a drop folder, empty on the base branch. In `CLOSING`, with the
+  resolution commit, the harness removes the new item files from the branch and holds them in
+  the case file. After the closer succeeds, the source raises each one as the first `after` step
+  (5.7), and the ledger records the raised id, so a retried raise never duplicates. An attempt
+  that is rejected or does not land raises nothing.
+- **The source contract gains `raise`.** A `command` source is run as `<command> raise` with the
+  item as JSON on stdin, and prints the new id. Bitbucket, Jira or any other tracker is a short
+  script.
+- **`github` is built in,** a thin layer over the `gh` CLI, so a non-technical owner names a
+  label instead of writing a script:
+  - *Listing:* open issues with the source's label (default `delivery`). The title and body
+    become `{{task.body}}`. A `workflow:<name>` label picks the workflow, else the source's
+    default; a `priority:<n>` label orders, else oldest first. An issue without the label is an
+    idea; adding the label is approval.
+  - *Machine fields* with no GitHub equivalent, such as an item's `check` and `severity` (5.13),
+    travel in a fenced `delivery` block at the end of the issue body, written by `raise` and read
+    by listing.
+  - *Completing:* with the merge-back closer, the issue is closed with a comment linking the
+    commit. With the open-PR closer, the PR body carries `Closes #<n>`, so the issue closes when
+    the PR merges and completion lands with the work.
+  - *Mirroring:* a parked item gets a `delivery:parked` label, and a `decision` escalation's
+    question is posted as a comment. The ledger stays the record; the issue shows its state
+    where the owner already works.
+  - *Edited after approval:* an issue whose body changed after the label was added is skipped,
+    with a report line, until the label is added again. On a public repository the body may be
+    written by anyone, and the label, which only people with triage rights can add, is the trust
+    boundary. The body reaches the agent framed as data, as findings do.
+- **Recurring work** has no tracker equivalent. It stays in a repository backlog or a config
+  `list`; sources combine.
 
 ### 5.6 Triage and gate maintenance
 
@@ -487,8 +525,8 @@ stays deferred.
   step's context.
 - `workflows`: named workflows of steps. A step has `name`, `prompt`, and optionally `gate`,
   `agent` (merged over the global block), `continue` and `guards` (`add`, `off`).
-- `sources`: work sources in order, each with `type` and its own detail, and optionally
-  `fallback`.
+- `sources`: work sources in order, each with `type` and its own detail (`github`: `label`,
+  default `workflow`), and optionally `fallback`.
 - `parkAfter`, `after`, `notify`, and `fence` (`preferred`, `required` or `off`; or an object
   with `mode` and `devices`).
 
@@ -622,6 +660,7 @@ The same machinery covers work Autoloop cannot express:
 - Workflows of any shape, such as design, plan, implement and review, each step gated and each
   free to use any skill.
 - Several items per run, concurrently, through the existing supervisor.
+- A GitHub issue tracker as the backlog: label an issue to have it delivered.
 - Non-code work, wherever a command can judge it: documentation builds, link checks, schema
   validation, or a report that must exist and parse.
 
@@ -640,8 +679,11 @@ The same machinery covers work Autoloop cannot express:
   `LANDED_OUTSIDE_CLOSER`, and a packet naming the PR and the session that opened it.
 - **Resumed session no longer exists:** fall back to a fresh session in the same worktree, primed
   from the case file. Record it as such. This is not counted as a failure.
-- **Work source command fails or prints invalid JSON:** that source is skipped for the run with a
-  report line. Other sources still dispatch.
+- **Work source command fails or prints invalid JSON, or `gh` is missing or signed out:** that
+  source is skipped for the run with a report line. Other sources still dispatch.
+- **Issue edited after its label was added:** skipped with a report line until relabelled.
+- **Raising a follow-up fails:** recorded as a pending `after` step and retried (5.7); the ledger
+  prevents a duplicate.
 - **New backlog item invalid, or an existing item edited:** a newly-failing assertion in the gate
   result, routed through triage like any other `gate_fail`.
 - **`after` command fails:** recorded as pending delivery. The landing stands.
@@ -687,7 +729,12 @@ is involved.
   output. Backlog: a new item lands with the work, an invalid one fails the gate, the resolution
   commit is on the task branch before landing, a recurring item becomes due again after its
   cadence. A `list` task done once is not dispatched again; a fallback source runs only when the
-  others are empty. Ledger parks after `parkAfter` runs and resumes across two `--sources`
+  others are empty. `github`, against a fake `gh` on the path: listing by label, workflow and
+  priority labels, the machine-fields block read and written, closing by comment or `Closes #<n>`,
+  mirroring a park, and skipping an issue edited after labelling. Drop folder: on a
+  tracker-backed project the new item files are gone from the landed commit, each is raised once
+  after the closer, a failed raise is retried without a duplicate, and a rejected attempt raises
+  nothing. Ledger parks after `parkAfter` runs and resumes across two `--sources`
   invocations. A `decision` escalation parks the item with its question; `delivery answer`
   unparks it and the next run resumes the session with the answer.
 - **Autoloop parity:** each of the five migrated workflows runs end to end against a fixture repo
@@ -709,6 +756,8 @@ is involved.
 - **Backlog:** Delivery Service's own tracked store, markdown with front matter (the format
   Autoloop proved), in its own schema and location. Imported from `.autoloop/` once, never read in
   place.
+- **Trackers:** bought. The `gh` CLI for the built-in `github` source; any other tracker through
+  the `command` source contract, so the harness carries no tracker API clients.
 - **Ledger:** port Autoloop's per-item ledger semantics, stored machine-locally beside the
   worktrees (5.5) with the case file's atomic-write persistence.
 - **Test-weakening detection:** reuse `src/packs/guards.ts` for every run; no new detector. The
@@ -736,6 +785,8 @@ is involved.
   own sandbox was rejected on review (5.2).
 - **Backlog store (decided 2026-10-07).** Delivery Service's own store, tracked in the repository at
   `.delivery/backlog/`; the ledger is machine-local state (5.5).
+- **Tracker backlogs (decided 2026-10-07).** A tracker may be the backlog. Agents raise follow-ups
+  through the drop folder; the harness raises them only after landing (5.5).
 - **Landing boundary (decided 2026-10-07).** Agents never merge, push or open PRs; landing is the
   closer's alone. Enforced by instruction, session-scoped git hooks, and PR detection (5.2).
   Acceptance-check failures go through triage; only landing outside the closer bypasses it.
@@ -748,6 +799,10 @@ is involved.
   main checkout intact and the landing boundary keeps unaccepted work off the base branch and the
   remote. Everything else, external effects included, is bounded only by the operator's own
   settings.
+- **Issue text on a public repository comes from anyone.** The label is the trust boundary, an
+  issue edited after labelling is skipped, and the body is framed as data. A maintainer who labels
+  a hostile issue still hands it to an agent with full capability; the acceptance checks and the
+  landing boundary still apply to what it produces.
 - **The operator's hooks and plugins now shape harness runs.** A hook that blocks or rewrites tool
   calls changes the agent's behaviour, which is the point. A hook that breaks headless operation
   shows up as `INCOMPLETE_TERMINUS`, with its evidence recorded.
