@@ -103,6 +103,7 @@ export const NEEDS_YOU = "NEEDS YOU";
 /** Where a problem stands, as the owner reads it. Total over the closed set. */
 export const STATE_WORDS: Record<FixState, string> = {
   proposed: NOT_YET_DECIDED,
+  needs_decision: "needs your decision",
   approved: "being fixed",
   fixing: "being fixed",
   skipped: "skipped by you",

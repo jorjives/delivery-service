@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DamagedReview } from "../errors.js";
 import { initTempRepo } from "../temp-repo.js";
-import { listReviews, loadReview, packsRoot, readReply, reviewOfPlan, PLAN_FILE } from "./review-record.js";
+import { listReviews, loadReview, packsRoot, readReply, reviewOfPlan, PLAN_FILE, uncheckable } from "./review-record.js";
 import { sampleFinding, writeReview } from "./review-fixtures.js";
 
 const repo = () => initTempRepo("review-record-", { "a.js": "x\n" });
@@ -84,5 +84,20 @@ describe("the review a plan belongs to", () => {
 
     expect(await reviewOfPlan(repo_, join(repo_, "delivery.config.json"))).toBeUndefined();
     expect(await reviewOfPlan(repo_, join(unfinished, PLAN_FILE))).toBeUndefined();
+  });
+});
+
+describe("whether a problem can be checked", () => {
+  const pack = { name: "code", version: "1.0.0", title: "Code review", hash: "0".repeat(64), maxFindings: 40, categories: [{ id: "correctness", title: "Wrong results" }] };
+  const none = sampleFinding({ check: { kind: "none" } });
+  const specific = sampleFinding();
+
+  it.each([
+    ["a problem with no check, in a project with no tests", { pack, noTests: true as const }, none, true],
+    ["a problem with no check, from a pack that requires one", { pack: { ...pack, requireCheck: true as const } }, none, true],
+    ["a problem with no check, in a project with tests and a pack that does not require one", { pack }, none, false],
+    ["a problem with a specific check, in a project with no tests", { pack, noTests: true as const }, specific, false],
+  ])("%s: %s", (_, header, finding, expected) => {
+    expect(uncheckable(header, finding)).toBe(expected);
   });
 });

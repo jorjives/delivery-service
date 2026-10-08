@@ -48,6 +48,8 @@ export const PackManifest = z.strictObject({
       .refine((categories) => new Set(categories.map((category) => category.id)).size === categories.length, "must not name the same category twice"),
     maxFindings: z.int().min(1).max(200).default(40),
     consequenceLabel: z.enum(["why-it-matters", "what-could-happen"]).default("why-it-matters"),
+    /** Every problem must have a specific check: one with none is set aside for the owner's decision, in any project. */
+    requireCheck: z.literal(true).optional(),
   }),
   /** What the agent fixing one of this pack's problems is told, beside the harness's own fixed instructions, and what the pack adds to the paths and markers a fix may not touch. Optional: the harness's own are enough. */
   fix: z

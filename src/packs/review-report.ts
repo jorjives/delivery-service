@@ -33,6 +33,7 @@ const ORDER: readonly Outcome[] = [...ALWAYS, "pr", "not_merged", "stopped", "de
 export function outcomeOf(at: FindingState): Outcome | null {
   switch (at.state) {
     case "proposed":
+    case "needs_decision":
     case "skipped":
       return null;
     case "approved":
@@ -138,6 +139,7 @@ function sectionOf(at: FindingState): ProblemSection {
     case "held":
       return "waiting";
     case "unfixable":
+    case "needs_decision":
     case "signed_off_failed":
       return "needs_you";
     case "stopped":

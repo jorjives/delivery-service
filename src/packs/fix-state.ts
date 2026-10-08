@@ -6,11 +6,11 @@ import { repoLocked } from "../repo-lock.js";
 import type { Finding } from "./finding.js";
 import { fixTaskFor, type FixTask } from "./fix-task.js";
 import { authorisations, readLedger, resolvedIds, signOffResults, type LedgerEntry, type SignOffResult } from "./ledger.js";
-import { changesTests, type SavedReview } from "./review-record.js";
+import { changesTests, uncheckable, type SavedReview } from "./review-record.js";
 import { isGuard, needsTestChange } from "./guards.js";
 
 /** Every state a problem can be in, internally. The owner reads them through `STATE_WORDS` (`render.ts`). */
-export const FIX_STATES = ["proposed", "approved", "skipped", "fixing", "fixed", "held", "signed_off_landed", "signed_off_failed", "rejected", "already_resolved", "unfixable", "stopped"] as const;
+export const FIX_STATES = ["proposed", "needs_decision", "approved", "skipped", "fixing", "fixed", "held", "signed_off_landed", "signed_off_failed", "rejected", "already_resolved", "unfixable", "stopped"] as const;
 export type FixState = (typeof FIX_STATES)[number];
 
 /** What the report says of a problem's fix, what each of its check rounds newly failed, oldest first, and the agent's own last account of it. */
@@ -94,9 +94,10 @@ function stateOf(state: FixState, fix: FixRun | undefined, signOff: SignOffResul
 /**
  * Where each problem stands, as a fold: the ledger says what the owner chose and
  * what `delivery fix` took on, and the runs say how each fix went. Nothing about
- * a fix's outcome is stored twice. Aligned with `findings`.
+ * a fix's outcome is stored twice. A problem that cannot be checked needs the owner's decision unless skipped.
+ * Aligned with `findings`.
  */
-export function deriveFindings(findings: readonly Finding[], entries: readonly LedgerEntry[], fixes: ReadonlyMap<string, FixRun>): FindingState[] {
+export function deriveFindings(findings: readonly Finding[], entries: readonly LedgerEntry[], fixes: ReadonlyMap<string, FixRun>, isUncheckable: (finding: Finding) => boolean): FindingState[] {
   const gone = resolvedIds(entries);
   const authorised = authorisations(entries);
   const choice = new Map<string, "approve" | "skip">();
@@ -113,7 +114,9 @@ export function deriveFindings(findings: readonly Finding[], entries: readonly L
       return stateOf(afterSignOff(result), fix, result ?? null);
     }
     const chosen = choice.get(finding.id);
-    return stateOf(chosen === "approve" ? "approved" : chosen === "skip" ? "skipped" : "proposed", fix);
+    if (chosen === "skip") return stateOf("skipped", fix);
+    if (isUncheckable(finding)) return stateOf("needs_decision", fix);
+    return stateOf(chosen === "approve" ? "approved" : "proposed", fix);
   });
 }
 
@@ -140,7 +143,7 @@ export async function readFindingStates(repoPath: string, review: SavedReview): 
   const tasks = fixTasks(review, entries);
   const snapshot = await loadSnapshot(repoPath, { kind: "list" }, { live: await repoLocked(repoPath), list: tasks });
   const doc = deriveReport(snapshot);
-  return { entries, tasks, states: deriveFindings(review.result.findings, entries, fixRunsOf(snapshot, doc)) };
+  return { entries, tasks, states: deriveFindings(review.result.findings, entries, fixRunsOf(snapshot, doc), (finding) => uncheckable(review.header, finding)) };
 }
 
 /** Where a kept fix is: its run, its branch and the branch it is to land on. */

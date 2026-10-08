@@ -5,7 +5,7 @@ import { z } from "zod";
 import { DamagedReview } from "../errors.js";
 import { atomicWrite, isEnoent } from "../journal.js";
 import { SessionUsage } from "../schema.js";
-import { scanEnvelopeFor, ScanResult, Severity, type ScanEnvelope } from "./finding.js";
+import { scanEnvelopeFor, ScanResult, Severity, type Finding, type ScanEnvelope } from "./finding.js";
 import { GuardLists } from "./guards.js";
 
 /** Owner-only: these files hold the agent's words about the project, which can quote anything in it. */
@@ -42,6 +42,8 @@ export const PinnedPack = z.object({
   consequenceLabel: z.enum(["why-it-matters", "what-could-happen"]).optional(),
   /** Fixes at or above this severity wait for sign-off. Absent or null: nothing waits. */
   hold: Severity.nullable().optional(),
+  /** The pack requires a specific check for every problem. Absent: it does not, or the review predates this. */
+  requireCheck: z.literal(true).optional(),
 });
 export type PinnedPack = z.infer<typeof PinnedPack>;
 
@@ -62,6 +64,10 @@ export type ReviewHeader = z.infer<typeof ReviewHeader>;
 /** Whether a problem in `category` is one the review's pack says is fixed by changing a test. */
 export const changesTests = (pack: Pick<z.infer<typeof PinnedPack>, "categories">, category: string): boolean =>
   pack.categories.some((known) => known.id === category && known.changesTests === true);
+
+/** Whether a problem cannot be checked: it has no specific check, and either the project has no tests or the pack requires one. Such a problem is not offered; it needs the owner's decision. */
+export const uncheckable = (header: Pick<ReviewHeader, "noTests" | "pack">, finding: Pick<Finding, "check">): boolean =>
+  finding.check.kind === "none" && (header.noTests === true || header.pack.requireCheck === true);
 
 const StoredReply = z.object({ envelope: z.unknown(), usage: SessionUsage.optional() });
 

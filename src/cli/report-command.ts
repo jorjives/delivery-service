@@ -16,7 +16,7 @@ import { listTasks } from "./status-command.js";
 import { findConfig } from "./config.js";
 import { deriveFindings, fixRunsOf } from "../packs/fix-state.js";
 import { readLedger } from "../packs/ledger.js";
-import { reviewOfPlan, type SavedReview } from "../packs/review-record.js";
+import { reviewOfPlan, uncheckable, type SavedReview } from "../packs/review-record.js";
 import { reviewPart } from "../packs/review-report.js";
 
 /** What `delivery report` was given on the command line besides the run id. */
@@ -69,7 +69,7 @@ export async function readReport(repoPath: string, named: ReportSubject | undefi
   // A review's plan is told by its problems even when no fix is left to run, never swapped for the most recent run.
   const recent = named === undefined && list.length === 0 && told === undefined ? mostRecentSubject(snapshot) : undefined;
   const doc = deriveReport(recent ? { ...snapshot, subject: recent } : snapshot);
-  const states = told === undefined ? undefined : deriveFindings(told.result.findings, await readLedger(told.dir), fixRunsOf(snapshot, doc));
+  const states = told === undefined ? undefined : deriveFindings(told.result.findings, await readLedger(told.dir), fixRunsOf(snapshot, doc), (finding) => uncheckable(told.header, finding));
   return {
     doc,
     empty: told === undefined && holdsNoRun(snapshot),

@@ -142,3 +142,13 @@ describe("the security pack", () => {
     await expect(loadPack(dir)).rejects.toMatchObject({ detail: expect.stringContaining('"hold.atOrAbove"') });
   });
 });
+
+describe("a pack that requires a check", () => {
+  it("may say every problem must have a specific check", async () => {
+    expect((await loadPack(editedPack((m) => ((m.scan as Record<string, unknown>).requireCheck = true)))).manifest.scan.requireCheck).toBe(true);
+  });
+
+  it("is refused, naming the field, when it says so in any other way", async () => {
+    await expect(loadPack(editedPack((m) => ((m.scan as Record<string, unknown>).requireCheck = "yes")))).rejects.toThrow(/scan\.requireCheck/);
+  });
+});
