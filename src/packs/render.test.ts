@@ -4,7 +4,7 @@ import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
   AGENT_OPINION, CHANGES_TESTS, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU,
+  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
@@ -287,6 +287,31 @@ describe("after sign-off, as the owner reads it", () => {
 
   it("uses no word an owner should not have to know", () => {
     for (const reason of NOT_LANDED_REASONS) expect(NOT_LANDED_WHY[reason]).not.toMatch(PACK_FORBIDDEN);
+  });
+});
+
+describe("a review of a project with no tests", () => {
+  const noTests = (findings = [NEGATIVE, PATTERN, UNUSED]): SavedReview => ({ dir: "/d", header: { ...HEADER, noTests: true as const }, result: { findings, unconfirmed: [], notShown: 0, notes: "" } });
+
+  it("says at the top that the project has no tests, that nothing checks a fix broke nothing else, and that every fix waits", () => {
+    expect(reviewLines(noTests()).slice(0, 2)).toEqual(["Review finished in 4 min 12 s. It found 3 problems.", NO_TESTS_WARNING]);
+    expect(NO_TESTS_WARNING).toBe("Your project has no tests, so nothing will check that a fix has not broken something else. Every fix will wait for your sign-off before it reaches your main copy.");
+  });
+
+  it("says each specific check is the problem's own check only, and that a problem with none cannot be checked", () => {
+    const lines = reviewLines(noTests());
+    expect(lines).toContain(`    How we will know: ${CHECK_LEVEL["anchor-gone"]}; ${NO_TESTS_LEVEL}.`);
+    expect(lines).toContain(`    How we will know: ${CANNOT_BE_CHECKED}.`);
+  });
+
+  it("says a fix waits because the project has no tests, not because it is serious", () => {
+    const low = sampleFinding({ severity: "low" });
+    const lines = listLines(noTests([low]), [at("held", { closer: "commit-to-branch", branch: "surface/fix-1", base: "main" })]);
+    expect(lines).toContain(`    Why this needs you: ${HOLD_WHY.noTests}`);
+  });
+
+  it("never uses the harness's internal words", () => {
+    for (const line of [...reviewLines(noTests()), ...listLines(noTests(), [at("held"), at("proposed"), at("proposed")])]) expect(line.replace(/delivery findings|branch \S+/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
 });
 

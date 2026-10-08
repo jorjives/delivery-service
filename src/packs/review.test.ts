@@ -91,6 +91,14 @@ describe("running a review", () => {
       categories: expect.arrayContaining([{ id: "secrets", title: expect.any(String), scope: "repo", sensitive: true }]),
     });
   });
+
+  it("records in the review that the project has no tests when told so, and nothing when not", async () => {
+    const pack = await resolvePack("code", "/");
+    const told = await runReview(exampleRepo(), pack, { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state(), noTests: true });
+    const untold = await runReview(exampleRepo(), pack, { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state() });
+    expect(told.kind === "done" && told.review.header.noTests).toBe(true);
+    expect(untold.kind === "done" && "noTests" in untold.review.header).toBe(false);
+  });
 });
 
 describe("a review that was interrupted", () => {

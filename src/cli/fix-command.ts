@@ -88,8 +88,8 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
   const { config, project, verify } = await fixSettings(options, startDir, repoPath, ctx);
   if (fresh.length > 0) {
     const threshold = review.header.pack.hold ?? null;
-    // With nothing to check a fix broke nothing else, the owner is the final check of every fix.
-    const noTests = verify === null;
+    // With nothing to check a fix broke nothing else, now or when the review was made, the owner is the final check of every fix.
+    const noTests = verify === null || review.header.noTests === true;
     await appendLedger(review.dir, {
       t: "authorise",
       ids: fresh.map((finding) => finding.id),

@@ -6,7 +6,7 @@ import type { SavedReview } from "./review-record.js";
 import { PACK_FORBIDDEN } from "./review-fixtures.js";
 import { sampleFinding } from "./review-fixtures.js";
 import { AGENT_DID, REVIEW_NEXT, outcomeOf, OUTCOME_WORDS, reviewPart, reviewSections, UNFIXABLE_ACTION, reviewOpening } from "./review-report.js";
-import { CHECK_LEVEL } from "./render.js";
+import { CHECK_LEVEL, NO_TESTS_LEVEL } from "./render.js";
 
 const HEADER: SavedReview["header"] = {
   reviewId: "security-20261005T101500Z",
@@ -180,6 +180,20 @@ describe("a review's report, problem by problem", () => {
     const part = reviewPart(reviewOf([problem(1)]), [at("fixed")], false);
     expect(part).toMatchObject({ carryOn: "delivery fix", next: REVIEW_NEXT });
     expect(part.opening[0]).toBe("Security review of shop: 1 problem found; you approved 1 and skipped 0.");
+  });
+});
+
+describe("a review of a project with no tests, as the report tells it", () => {
+  const noTestsOf = (findings: Finding[]): SavedReview => ({ ...reviewOf(findings), header: { ...HEADER, noTests: true as const } });
+
+  it("says a waiting fix passed its own check only, and why it needs the owner", () => {
+    const lines = reviewSections(noTestsOf([problem(1, { severity: "low" })]), [at("held")], false);
+    expect(lines).toContain(`    How we know: the check passed (${CHECK_LEVEL["anchor-gone"]}); ${NO_TESTS_LEVEL}.`);
+    expect(lines).toContain("    Why this needs you: your project has no tests, so nothing has checked that this fix did not break something else.");
+  });
+
+  it("names the level on a fixed line, so it never reads as proved by tests", () => {
+    expect(reviewSections(noTestsOf([problem(1)]), [at("fixed")], false).join("\n")).toContain(`${CHECK_LEVEL["anchor-gone"]}; ${NO_TESTS_LEVEL}`);
   });
 });
 

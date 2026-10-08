@@ -2,7 +2,7 @@ import { z } from "zod";
 import { openSchema, type JsonSchema } from "../report/json-schema.js";
 import { Severity, type CheckKind } from "./finding.js";
 import { FIX_STATES, UNDECIDED, UNFIXABLE_CAUSES, type FindingState } from "./fix-state.js";
-import { CHECK_LEVEL, stateWords } from "./render.js";
+import { CHECK_LEVEL, stateWords, checkLevel } from "./render.js";
 import type { SavedReview } from "./review-record.js";
 
 /** The version every findings document names itself by. A later version adds keys; it never renames or removes one. */
@@ -59,7 +59,7 @@ export function findingsDocument({ header, result }: SavedReview, states: readon
         where: { path: finding.where.path, line: finding.where.line, endLine: finding.where.endLine },
         state: at.state,
         words: stateWords(at),
-        check: { kind: finding.check.kind, level: CHECK_LEVEL[finding.check.kind] },
+        check: { kind: finding.check.kind, level: checkLevel(header, finding.check.kind) },
         refused: at.refused,
         cause: at.cause,
         fix: at.fix === undefined ? null : { run: at.fix.run, branch: at.fix.branch, base: at.fix.base, closer: at.fix.closer },

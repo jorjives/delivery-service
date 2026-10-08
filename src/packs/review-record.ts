@@ -54,6 +54,8 @@ export const ReviewHeader = z.object({
   fileCount: z.int().min(0),
   startedAt: z.string().datetime(),
   endedAt: z.string().datetime(),
+  /** No test command could be found when the review ran: nothing checks a fix broke nothing else, so every fix waits for sign-off. Absent: the project had one, or the review predates this. */
+  noTests: z.literal(true).optional(),
 });
 export type ReviewHeader = z.infer<typeof ReviewHeader>;
 

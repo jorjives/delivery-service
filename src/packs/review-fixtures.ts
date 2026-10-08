@@ -219,7 +219,8 @@ export async function writeReview(
     notShown = 0,
     finished = true,
     pack = {},
-  }: { reviewId?: string; findings?: Finding[]; unconfirmed?: Unconfirmed[]; notShown?: number; finished?: boolean; pack?: Partial<PinnedPack> } = {},
+    noTests = false,
+  }: { reviewId?: string; findings?: Finding[]; unconfirmed?: Unconfirmed[]; notShown?: number; finished?: boolean; pack?: Partial<PinnedPack>; noTests?: boolean } = {},
 ): Promise<string> {
   const header: ReviewHeader = {
     reviewId,
@@ -237,6 +238,7 @@ export async function writeReview(
     fileCount: 4,
     startedAt: "2026-10-05T10:15:00.000Z",
     endedAt: "2026-10-05T10:19:12.000Z",
+    ...(noTests ? { noTests: true as const } : {}),
   };
   const dir = await startReview(repoPath, header, { envelope: { findings: [], notes: "" } });
   if (finished) await saveResult(dir, { findings, unconfirmed, notShown, notes: "" });

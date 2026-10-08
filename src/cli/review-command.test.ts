@@ -4,9 +4,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { git } from "../../tests/helpers.js";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
-import { AGENT_OPINION, fixNowLines, NOT_NOW, NOTHING_CHANGED, READS_ONLY } from "../packs/render.js";
+import { AGENT_OPINION, fixNowLines, NOT_NOW, NOTHING_CHANGED, READS_ONLY, CANNOT_BE_CHECKED, NO_TESTS_LEVEL, NO_TESTS_WARNING } from "../packs/render.js";
 import { packsRoot } from "../packs/review-record.js";
-import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript } from "../packs/review-fixtures.js";
+import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript, NO_TESTS_DIR, NO_TESTS_SCAN } from "../packs/review-fixtures.js";
 import { plainReporter } from "./report.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
@@ -153,6 +153,20 @@ describe("delivery review", () => {
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain("Finishing the review that was interrupted");
     expect(readFileSync(journal, "utf-8")).toBe(sessionsBefore);
+  }, RUN_TIMEOUT);
+
+  it("warns at the top of a review of a project with no tests, and tells each problem's level honestly", async () => {
+    const repo = exampleRepo("review-no-tests-", NO_TESTS_DIR);
+    const { exitCode, stdout } = await delivery(["review", "code"], { cwd: repo, env: await mocked(scanScript(NO_TESTS_SCAN)) });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toMatch(new RegExp(`It found 3 problems\\.\\n${NO_TESTS_WARNING.replace(/[.]/g, "\\.")}\\n`));
+    expect(stdout).toContain(`    How we will know: checked: the flagged code is gone; ${NO_TESTS_LEVEL}.`);
+    expect(stdout).toContain(`    How we will know: ${CANNOT_BE_CHECKED}.`);
+  }, RUN_TIMEOUT);
+
+  it("says nothing about tests for a project that has them", async () => {
+    const { stdout } = await delivery(["review", "code"], { cwd: exampleRepo(), env: await mocked() });
+    expect(stdout).not.toContain(NO_TESTS_WARNING);
   }, RUN_TIMEOUT);
 });
 

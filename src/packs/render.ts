@@ -2,10 +2,10 @@ import { basename } from "node:path";
 import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
-import { SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
+import { atOrAbove, SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
 import { UNDECIDED, type FindingState, type FixState } from "./fix-state.js";
 import { NOT_LANDED_REASONS, type NotLandedReason } from "./ledger.js";
-import type { PinnedPack, SavedReview } from "./review-record.js";
+import type { PinnedPack, ReviewHeader, SavedReview } from "./review-record.js";
 import { literalsOf, maskIn } from "./secrets.js";
 
 // Re-export for the test to use.
@@ -18,6 +18,29 @@ export const CHECK_LEVEL: Record<CheckKind, string> = {
   "dependency-absent": "checked: the vulnerable version is no longer installed",
   none: "tests only: no check of this specific problem",
 };
+
+export const NO_TESTS_WARNING =
+  "Your project has no tests, so nothing will check that a fix has not broken something else. Every fix will wait for your sign-off before it reaches your main copy.";
+/** What "checked" means where the project has no tests: the problem's own check and nothing else. */
+export const NO_TESTS_LEVEL = "this problem's own check only, no regression tests";
+export const CANNOT_BE_CHECKED = "cannot be checked";
+
+/** How the harness will know a problem is fixed, as the owner of this project reads it: with no tests, a specific check is all there is, and a problem with none cannot be checked. */
+export function checkLevel(header: Pick<ReviewHeader, "noTests">, kind: CheckKind): string {
+  if (header.noTests !== true) return CHECK_LEVEL[kind];
+  return kind === "none" ? CANNOT_BE_CHECKED : `${CHECK_LEVEL[kind]}; ${NO_TESTS_LEVEL}`;
+}
+
+/** Why a fix waits for the owner. */
+export const HOLD_WHY = {
+  serious: "it is a serious problem, and you should see what changed before it reaches your main copy.",
+  noTests: "your project has no tests, so nothing has checked that this fix did not break something else.",
+};
+
+/** Why this problem's fix waits: its severity where that alone would hold it, else the project's missing tests. */
+export function holdWhy(header: Pick<ReviewHeader, "noTests" | "pack">, finding: Finding): string {
+  return header.noTests === true && !atOrAbove(finding.severity, header.pack.hold ?? null) ? HOLD_WHY.noTests : HOLD_WHY.serious;
+}
 
 /** Why a reported problem is not offered. Total over the closed set. */
 export const UNCONFIRMED_WHY: Record<UnconfirmedReason, string> = {
@@ -113,12 +136,12 @@ function stopLines({ state, fix, cause }: FindingState): string[] {
   return [`    Why: ${why}`, ...(agentSaid === null ? [] : [`    The agent said: ${quoted(agentSaid, "      ")}`])];
 }
 
-export function signOffLines(number: number, { state, fix, signOff }: FindingState): string[] {
+export function signOffLines(number: number, { state, fix, signOff }: FindingState, why: string): string[] {
   const branch = fix?.branch ?? "not recorded";
   switch (state) {
     case "held":
       return [
-        "    Why this needs you: it is a serious problem, and you should see what changed before it reaches your main copy.",
+        `    Why this needs you: ${why}`,
         `    Look at what changed: delivery findings ${number} --changes`,
         `    Say yes: delivery findings sign-off ${number}`,
         `    Say no: delivery findings reject ${number}`,
@@ -146,7 +169,8 @@ const unconfirmedPointer = (count: number): string[] =>
   count === 0 ? [] : [`${count} more could not be confirmed: the code they point at could not be found, so they are not offered. See them with: delivery findings --unconfirmed`];
 
 /** One problem as a numbered block: title and severity, then one fact per line, in the words its pack chose. */
-export function problemBlock(number: number, finding: Finding, pack: PinnedPack): string[] {
+export function problemBlock(number: number, finding: Finding, header: ReviewHeader): string[] {
+  const pack = header.pack;
   const kind = category(pack, finding.category);
   return [
     `${number}. ${finding.title} (${finding.severity})`,
@@ -154,7 +178,7 @@ export function problemBlock(number: number, finding: Finding, pack: PinnedPack)
     `    What is wrong: ${finding.problem}`,
     `    ${CONSEQUENCE_WORDS[pack.consequenceLabel ?? "why-it-matters"]}: ${finding.whyItMatters}`,
     `    Fixed looks like: ${finding.fixedLooksLike}`,
-    `    How we will know: ${CHECK_LEVEL[finding.check.kind]}.`,
+    `    How we will know: ${checkLevel(header, finding.check.kind)}.`,
     ...(kind?.changesTests === true ? [`    Note: ${CHANGES_TESTS}.`] : []),
     ...(kind?.reviewerKnowledge === true ? [`    Note: ${REVIEWER_KNOWLEDGE}`] : []),
     ...(finding.outsideStep === undefined ? [] : [`    ${LEFT_FOR_YOU}: ${finding.outsideStep}`]),
@@ -172,10 +196,11 @@ export function reviewLines({ header, result }: SavedReview): string[] {
   const threshold = header.pack.hold ?? null;
   return [
     `${took} It found ${problems(shown + result.notShown)}.`,
+    ...(header.noTests === true ? [NO_TESTS_WARNING] : []),
     ...(threshold === null ? [] : [severityLine(result.findings), holdSentence(threshold)]),
     AGENT_OPINION,
     "",
-    ...result.findings.flatMap((finding, index) => problemBlock(index + 1, finding, header.pack)),
+    ...result.findings.flatMap((finding, index) => problemBlock(index + 1, finding, header)),
     ...(result.notShown > 0 ? [`${result.notShown} more not shown: this review lists at most ${header.pack.maxFindings} problems.`] : []),
     ...unconfirmedPointer(result.unconfirmed.length),
     "",
@@ -194,7 +219,7 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
   const needsTest = states.filter((at) => at.cause === "needs_test_change").length;
   const problemLines = result.findings.flatMap((finding, index) => {
     const at = states[index] ?? UNDECIDED;
-    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...signOffLines(index + 1, at)];
+    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...signOffLines(index + 1, at, holdWhy(header, finding))];
   });
   // What only a person can do, once the code part is done.
   const needsYou = result.findings.flatMap((finding, index) =>
@@ -232,7 +257,7 @@ export function findingLines({ header, result }: SavedReview, number: number): s
   const { line, endLine } = finding.where;
   const hide = (text: string): string => maskIn(text, literalsOf(finding));
   return [
-    ...problemBlock(number, finding, header.pack),
+    ...problemBlock(number, finding, header),
     "",
     "FOR ENGINEERS",
     `  Category: ${finding.category}${categoryInfo === undefined ? "" : ` (${categoryInfo.title})`}`,

@@ -120,7 +120,7 @@ or opens a pull request suits better than merging.
 On a security review, a problem that is critical or high is fixed and checked like any other,
 but its fix does not reach your main copy. It is kept on its own branch and `delivery findings`
 says it is "waiting for your sign-off", with how to look at what changed, say yes or say no.
-On a code review nothing waits: severity only orders the list.
+On a code review nothing waits for its severity: severity only orders the list. In a project with no tests every fix waits (see below).
 
 `delivery findings 1 --changes` shows what the fix changed, file by file, after a note: "The agent
 changed these files. This shows what changed; it cannot tell you it is safe."
@@ -237,6 +237,21 @@ tests run, is shown as rejected but is not counted this way.
 A review may mark a problem as being in a test itself (the code review's "Tests that do not check
 what they claim"). Such a problem says "Note: this fix will change your tests." before you approve
 it: its fix may change an existing test, but still never delete or skip one.
+
+## A project with no tests
+
+If no test command can be found (no `test` script in `package.json`, and no `gate` in
+`delivery.config.json`), the review says so at the top:
+
+```
+Your project has no tests, so nothing will check that a fix has not broken something else. Every fix will wait for your sign-off before it reaches your main copy.
+```
+
+A problem with a specific check can still be approved and fixed. Its "How we will know" line adds
+"this problem's own check only, no regression tests": the fix is checked by that check and by the
+rules that keep a fix from weakening tests, and nothing else. Every fix then waits for your
+sign-off, whatever its severity and whichever review it came from. `examples/no-tests-example` is a
+small project to try this on.
 
 ## Try it without an agent
 

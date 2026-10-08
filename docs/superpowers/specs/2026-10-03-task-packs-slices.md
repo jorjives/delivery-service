@@ -282,7 +282,7 @@ not sliced.
 ### Acceptance Criteria
 
 - [ ] In a project where no test command can be found, the review says the project has no tests, that nothing will check a fix has not broken something else, and that every fix will wait for sign-off
-- [ ] A problem with a specific check can be approved and is shown as "finding check only, no regression tests"
+- [ ] A problem with a specific check can be approved and is shown as "this problem's own check only, no regression tests" (spec Assembly resolution 6)
 - [ ] Every fix in such a project is held for sign-off whatever its severity, including on the code review pack
 - [ ] A problem with no specific check is not offered: it reads "needs your decision" with "cannot be checked"
 - [ ] `delivery findings approve <n> --allow-unchecked` approves such a problem, is recorded, prints a one-line warning that nothing will check this fix except you, and its fix is always held

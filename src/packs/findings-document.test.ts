@@ -6,6 +6,7 @@ import { FINDINGS_SCHEMA, findingsDocument, findingsSchema } from "./findings-do
 import { UNDECIDED, type FindingState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
 import { sampleFinding } from "./review-fixtures.js";
+import { CANNOT_BE_CHECKED, CHECK_LEVEL, NO_TESTS_LEVEL } from "./render.js";
 
 const review: SavedReview = {
   dir: "/d",
@@ -73,6 +74,12 @@ describe("the findings document", () => {
     const schema = findingsSchema();
     expect(Object.keys(schema)).toEqual([FINDINGS_SCHEMA]);
     expect(z.fromJSONSchema(schema[FINDINGS_SCHEMA]).safeParse(overTheWire(findingsDocument(review, [fixed, UNDECIDED]))).error).toBeUndefined();
+  });
+
+  it("gives each problem's level as the owner reads it in a project with no tests", () => {
+    const header = { ...review.header, noTests: true as const };
+    const saved: SavedReview = { dir: "/d", header, result: { findings: [sampleFinding(), sampleFinding({ id: "222222222222", check: { kind: "none" } })], unconfirmed: [], notShown: 0, notes: "" } };
+    expect(findingsDocument(saved, [UNDECIDED, UNDECIDED]).problems.map((p) => p.check.level)).toEqual([`${CHECK_LEVEL["anchor-gone"]}; ${NO_TESTS_LEVEL}`, CANNOT_BE_CHECKED]);
   });
 });
 

@@ -23,6 +23,8 @@ export interface ReviewOptions {
   /** Where the scratch working copy goes (`XDG_STATE_HOME`). */
   env: NodeJS.ProcessEnv;
   now?: () => Date;
+  /** The project has no tests: recorded with the review, so every reading of it tells the owner so. */
+  noTests?: boolean;
 }
 
 /** The scratch working copy's id, fixed per pack, so one left by an interrupted review is cleared by the next. */
@@ -68,7 +70,7 @@ async function takenIds(repoPath: string): Promise<Set<string>> {
  * and saves the list. The owner's files, branches and working copy are never
  * touched: the scratch copy and its branch are removed however the session ends.
  */
-export async function runReview(repoPath: string, pack: Pack, { session, env, now = () => new Date() }: ReviewOptions): Promise<ReviewOutcome> {
+export async function runReview(repoPath: string, pack: Pack, { session, env, now = () => new Date(), noTests = false }: ReviewOptions): Promise<ReviewOutcome> {
   const pending = (await listReviews(repoPath)).find((entry) => entry.state === "unfinished" && entry.header.pack.name === pack.manifest.name);
   if (pending !== undefined) return { kind: "done", review: await finishReview(repoPath, pending.dir), recovered: true };
 
@@ -86,7 +88,7 @@ export async function runReview(repoPath: string, pack: Pack, { session, env, no
     const terminus = await runSession(scannerRoleConfig(pack), { worktreePath, dir: errors, sessionKey: `scanner-${reviewId}` }, scanSession(pack, files), sessionEnv);
     if ("status" in terminus) return { kind: "failed", terminus };
     const { usage, ...envelope } = terminus;
-    const header: ReviewHeader = { reviewId, pack: pinned(pack), repoPath, commit, fileCount: files.length, startedAt: started.toISOString(), endedAt: now().toISOString() };
+    const header: ReviewHeader = { reviewId, pack: pinned(pack), repoPath, commit, fileCount: files.length, startedAt: started.toISOString(), endedAt: now().toISOString(), ...(noTests ? { noTests: true as const } : {}) };
     const dir = await startReview(repoPath, header, { envelope, ...(usage === undefined ? {} : { usage }) });
     return { kind: "done", review: await finishReview(repoPath, dir), recovered: false };
   } finally {

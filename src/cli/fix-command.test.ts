@@ -350,4 +350,17 @@ describe("delivery fix in a project with no tests", () => {
     },
     RUN_TIMEOUT * 2,
   );
+
+  it(
+    "keeps a fix waiting when the review found no tests, even if a test command has appeared since",
+    async () => {
+      const repo = exampleRepo("fix-no-tests-then-", EXAMPLE_DIR);
+      const dir = await writeReview(repo, { findings: [NEGATIVE], noTests: true });
+      await delivery(["findings", "approve", "1"], { cwd: repo });
+      const { stdout } = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [FIXES_CHECKOUT] }) });
+      expect(stdout).toContain("1. The price shown at checkout can be negative (high): waiting for your sign-off");
+      expect((await readLedger(dir)).find((entry) => entry.t === "authorise")).toMatchObject({ verify: { type: "command", command: "npm test" }, hold: { [NEGATIVE.id]: true } });
+    },
+    RUN_TIMEOUT,
+  );
 });

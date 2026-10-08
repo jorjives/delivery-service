@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { resolvePack } from "../packs/manifest.js";
-import { fixNowLines, NOT_NOW, opening, RECOVERED, reviewLines, failureSentence, CHECK_LEVEL } from "../packs/render.js";
+import { fixNowLines, NOT_NOW, opening, RECOVERED, reviewLines, failureSentence, checkLevel } from "../packs/render.js";
 import type { SavedReview } from "../packs/review-record.js";
 import { runReview } from "../packs/review.js";
 import { agentSession } from "./agent-session.js";
@@ -8,14 +8,15 @@ import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import type { Ask, ChoiceQuestion, PickQuestion } from "./init.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
+import { fixSettings } from "./fix-command.js";
 
 /** Which problems to fix: every one listed, every one picked to start with. */
-export const pickQuestion = ({ result }: SavedReview): PickQuestion => ({
+export const pickQuestion = ({ header, result }: SavedReview): PickQuestion => ({
   message: "Which problems would you like fixed?",
   choices: result.findings.map((finding, index) => ({
     value: String(index + 1),
     name: `${index + 1}. ${finding.title} (${finding.severity})`,
-    description: `How we will know: ${CHECK_LEVEL[finding.check.kind]}.`,
+    description: `How we will know: ${checkLevel(header, finding.check.kind)}.`,
   })),
 });
 
@@ -42,7 +43,9 @@ export async function reviewCommand(packArg: string, repoArg: string | undefined
   for (const line of opening(pack.manifest.title)) say(line);
   if (await hasUncommittedChanges(repoPath)) say(UNCOMMITTED_NOTE);
 
-  const outcome = await runReview(repoPath, pack, { session: () => agentSession(ctx.env), env: ctx.env });
+  // The same question `delivery fix` asks, so what the review promises is what the fix does.
+  const { verify } = await fixSettings({}, resolve(ctx.cwd, repoArg ?? "."), repoPath, ctx);
+  const outcome = await runReview(repoPath, pack, { session: () => agentSession(ctx.env), env: ctx.env, noTests: verify === null });
   if (outcome.kind === "failed") throw new Refusal(failureSentence(outcome.terminus, packArg), EXIT.agentRuntime);
 
   say("");

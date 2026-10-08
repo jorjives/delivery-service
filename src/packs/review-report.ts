@@ -6,8 +6,8 @@ import { dayAndMinute, pathName } from "../report/text.js";
 import type { CheckKind, Finding } from "./finding.js";
 import { UNDECIDED, type UnfixableCause } from "./fix-state.js";
 import type { FindingState } from "./fix-state.js";
-import { CHECK_LEVEL, CONSEQUENCE_WORDS, fixWaiting, LEFT_FOR_YOU, NEEDS_TEST_CHANGE, PR_OPENED, problems, signOffLines, stateWords } from "./render.js";
-import type { SavedReview } from "./review-record.js";
+import { CHECK_LEVEL, CONSEQUENCE_WORDS, fixWaiting, LEFT_FOR_YOU, NEEDS_TEST_CHANGE, PR_OPENED, problems, signOffLines, stateWords, checkLevel, holdWhy, NO_TESTS_LEVEL, CANNOT_BE_CHECKED } from "./render.js";
+import type { ReviewHeader, SavedReview } from "./review-record.js";
 
 /** What a review's opening counts a problem under once the owner has approved it. Closed, so the words for each are total. */
 export type Outcome = "merged" | "pr" | "waiting" | "unfixable" | "not_merged" | "stopped" | "declined" | "already" | "fixing";
@@ -106,11 +106,13 @@ export const AGENT_DID: Record<CheckKind, string> = {
   none: "The agent changed your code; nothing checks this specific problem, so look at what changed.",
 };
 
-/** How the harness knows a fix passed, naming the check's level, so a fix checked only by the tests never reads as proved. */
-const howWeKnow = (kind: CheckKind): string =>
-  kind === "none"
+/** How the harness knows a fix passed, naming the check's level, so a fix checked only by the tests, or only by its own check, never reads as proved. */
+const howWeKnow = (header: Pick<ReviewHeader, "noTests">, kind: CheckKind): string => {
+  if (header.noTests === true) return kind === "none" ? `How we know: it ${CANNOT_BE_CHECKED}; look at what changed.` : `How we know: the check passed (${CHECK_LEVEL[kind]}); ${NO_TESTS_LEVEL}.`;
+  return kind === "none"
     ? `How we know: ${CHECK_LEVEL.none}; every test that passed before still passes.`
     : `How we know: the check passed (${CHECK_LEVEL[kind]}), and every test that passed before still passes.`;
+};
 
 /** Who must act on a problem that could not be fixed, and what to do, by why it stopped. Total over the kinds of stop and the harness's own causes. */
 export const UNFIXABLE_ACTION: Record<PlainGroup | UnfixableCause, { who: string; what: (number: number) => string }> = {
@@ -166,9 +168,9 @@ function itemLines(review: SavedReview, number: number, finding: Finding, at: Fi
         `    ${CONSEQUENCE_WORDS[review.header.pack.consequenceLabel ?? "why-it-matters"]}: ${quoted(finding.whyItMatters, "      ")}`,
         `    ${AGENT_DID[finding.check.kind]}`,
         ...saidLine(at.fix?.said),
-        `    ${howWeKnow(finding.check.kind)}`,
+        `    ${howWeKnow(review.header, finding.check.kind)}`,
         ...leftLine(finding),
-        ...signOffLines(number, at),
+        ...signOffLines(number, at, holdWhy(review.header, finding)),
       ];
     case "unfixable": {
       const action = UNFIXABLE_ACTION[at.cause ?? at.fix?.plain?.group ?? "stopped"];
@@ -178,12 +180,12 @@ function itemLines(review: SavedReview, number: number, finding: Finding, at: Fi
     case "stopped":
       return [title, `    Stopped by a setup problem. ${at.fix?.plain?.sentence ?? NOT_RECORDED}`, ...saidLine(at.fix?.plain?.agentSaid), ...toAct(at.fix?.plain?.next ?? [])];
     case "signed_off_failed":
-      return [title, "    Signed off but could not be merged.", ...signOffLines(number, at)];
+      return [title, "    Signed off but could not be merged.", ...signOffLines(number, at, holdWhy(review.header, finding))];
     case "rejected":
-      return [title, "    Declined at sign-off.", ...signOffLines(number, at)];
+      return [title, "    Declined at sign-off.", ...signOffLines(number, at, holdWhy(review.header, finding))];
     case "fixed":
     case "signed_off_landed":
-      return [`${title}: ${stateWords(at)}; ${CHECK_LEVEL[finding.check.kind]}`];
+      return [`${title}: ${stateWords(at)}; ${checkLevel(review.header, finding.check.kind)}`];
     default:
       return [`${title}: ${stateWords(at)}`];
   }
