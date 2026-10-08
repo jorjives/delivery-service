@@ -213,13 +213,13 @@ describe("delivery fix", () => {
   );
 
   it(
-    "shows each fix by the problem's name and file, and gives each its tags in the report's data",
+    "shows each fix by the problem's name, and gives each its tags in the report's data",
     async () => {
       const { repo } = await reviewed([NEGATIVE]);
       await delivery(["findings", "approve", "1"], { cwd: repo });
       await delivery(["fix"], { cwd: repo, env: await env({ expectations: [FIXES_CHECKOUT] }) });
 
-      expect((await delivery(["report"], { cwd: repo })).stdout).toContain("Fix: The price shown at checkout can be negative (checkout.js)");
+      expect((await delivery(["report"], { cwd: repo })).stdout).toContain('Problem 1 of 1: "The price shown at checkout can be negative" (high): fixed and merged');
       const doc = JSON.parse((await delivery(["report", "--json"], { cwd: repo })).stdout) as { surfaces: { tags: unknown; standing: string }[] };
       expect(doc.surfaces[0]).toMatchObject({ standing: "closed", tags: { pack: "code", findingId: NEGATIVE.id, severity: "high", phase: "fix" } });
     },
