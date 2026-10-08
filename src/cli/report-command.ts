@@ -13,6 +13,11 @@ import { findRepository } from "./project.js";
 import { repoLocked } from "../repo-lock.js";
 import { isSaved, notSaved, SAVED_TO, saveReport } from "./saved-report.js";
 import { listTasks } from "./status-command.js";
+import { findConfig } from "./config.js";
+import { deriveFindings, fixRunsOf } from "../packs/fix-state.js";
+import { readLedger } from "../packs/ledger.js";
+import { reviewOfPlan, type SavedReview } from "../packs/review-record.js";
+import { reviewPart } from "../packs/review-report.js";
 
 /** What `delivery report` was given on the command line besides the run id. */
 export interface ReportOptions {
@@ -39,25 +44,45 @@ export function namedSubject(repoPath: string, runId: string): ReportSubject {
 }
 
 /**
- * Read the report on `named`, or with none on the project's task list, falling
- * back to the most recent run where the project has no list. The one reading
- * behind what `delivery report` prints, as text or as data, and what is saved,
- * so they cannot differ.
+ * The review whose plan is the task list a report is on, when it is one. Looked up the way `listTasks` finds the list,
+ * so the two agree; a configuration that cannot be found means no review, as it means no list.
  */
-export async function readReport(repoPath: string, named: ReportSubject | undefined, list: TaskDef[]): Promise<Report> {
+async function listReview(startDir: string, repoPath: string, ctx: CommandContext): Promise<SavedReview | undefined> {
+  try {
+    const file = findConfig({ startDir, repoPath, flag: undefined, env: ctx.env, orPlan: true });
+    return file === undefined ? undefined : await reviewOfPlan(repoPath, file);
+  } catch (err) {
+    if (err instanceof Refusal) return undefined;
+    throw err;
+  }
+}
+
+/**
+ * Read the report on `named`, or with none on the project's task list, falling back to the most recent run where the
+ * project has no list. When the list is `review`'s plan, it is told by the review's problems, read from the same
+ * snapshot, so the two cannot differ. The one reading behind what `delivery report` prints, as text or as data, and
+ * what is saved.
+ */
+export async function readReport(repoPath: string, named: ReportSubject | undefined, list: TaskDef[], review?: SavedReview): Promise<Report> {
   const snapshot = await loadSnapshot(repoPath, named ?? { kind: "list" }, { live: await repoLocked(repoPath), list });
-  const recent = named === undefined && list.length === 0 ? mostRecentSubject(snapshot) : undefined;
+  const told = named === undefined ? review : undefined;
+  // A review's plan is told by its problems even when no fix is left to run, never swapped for the most recent run.
+  const recent = named === undefined && list.length === 0 && told === undefined ? mostRecentSubject(snapshot) : undefined;
   const doc = deriveReport(recent ? { ...snapshot, subject: recent } : snapshot);
+  const states = told === undefined ? undefined : deriveFindings(told.result.findings, await readLedger(told.dir), fixRunsOf(snapshot, doc));
   return {
     doc,
-    empty: holdsNoRun(snapshot),
-    lines: (options) => [...(recent ? [NO_TASK_LIST] : []), ...renderText(doc, options)],
+    empty: told === undefined && holdsNoRun(snapshot),
+    lines: (options) => [
+      ...(recent ? [NO_TASK_LIST] : []),
+      ...renderText(doc, { ...options, ...(told !== undefined && states !== undefined ? { review: reviewPart(told, states, options.colour) } : {}) }),
+    ],
   };
 }
 
 /**
  * `delivery report`: what happened and what to do about it, in the owner's
- * words. With no id, the project's task list; with one, that task or that run
+ * words. With no id, the project's task list, told by its problems when the list is a review's plan; with one, that task or that run
  * of several tasks; and where the project has no list, its most recent run.
  * It reads the records and nothing else, takes no lock and changes no run, so
  * it is safe while a run is going. The exit code says whether a report could
@@ -77,7 +102,9 @@ export async function reportCommand(runId: string | undefined, options: ReportOp
   }
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
-  const report = await readReport(repoPath, runId === undefined ? undefined : namedSubject(repoPath, runId), await listTasks(startDir, repoPath, ctx));
+  const list = await listTasks(startDir, repoPath, ctx);
+  const review = runId === undefined ? await listReview(startDir, repoPath, ctx) : undefined;
+  const report = await readReport(repoPath, runId === undefined ? undefined : namedSubject(repoPath, runId), list, review);
   // The saved text names itself, so what is on disk is what is printed, line for line.
   const asSaved = report.lines({ colour: false, saved: SAVED_TO });
 

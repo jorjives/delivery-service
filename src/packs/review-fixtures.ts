@@ -1,11 +1,22 @@
+import { mkdir, readFile } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_BUDGETS } from "../budgets.js";
+import { appendEntry, create, setBaseBranch, setOutcome } from "../case-file.js";
+import { runsRoot } from "../run-location.js";
+import { attempt, closedAt, failedCheck, stoppedAt } from "../report/report-fixtures.js";
 import { FORBIDDEN } from "../report/report-fixtures.js";
+import type { CaseFileOutcome, GateRef, HistoryEntry, TaskDef } from "../schema.js";
 import type { MockExpectation, MockScript } from "../mock-script.js";
 import { initTempRepo } from "../temp-repo.js";
 import type { Finding, Unconfirmed, ScanEnvelope } from "./finding.js";
-import { saveResult, startReview, type PinnedPack, type ReviewHeader } from "./review-record.js";
+import { FINDING_GATE_REF } from "./finding-gate.js";
+import { FINDING_CLOSER_REF } from "./finding-closer.js";
+import { fixTasks } from "./fix-state.js";
+import { appendLedger, readLedger } from "./ledger.js";
+import { planConfig, writePlan } from "./plan.js";
+import { listReviews, loadReview, saveResult, startReview, type PinnedPack, type ReviewHeader } from "./review-record.js";
 
 /** Test and demo support: the example project with planted flaws. */
 export const EXAMPLE_DIR = fileURLToPath(new URL("../../examples/code-review-example/", import.meta.url));
@@ -221,3 +232,56 @@ export const PACK_FORBIDDEN = new RegExp(
   `${FORBIDDEN.source}|\\b(findings?|assertions?|delta|anchors?|scanner|scan agent|lockfiles?|transitive|CVSS|CVEs?|exploits?|held|landed|closed)\\b`,
   "i",
 );
+
+const NPM_TEST: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
+
+/** Test support: a security review's six problems, most serious first, as a fix phase leaves them. */
+export const FIX_PHASE_FINDINGS: Finding[] = [
+  sampleFinding({ id: "f00000000001", title: "A password for the payments service is written in the code", severity: "critical", whyItMatters: "Anyone who can read this code can use the payments service as you.", outsideStep: "Change the payments password at the provider." }),
+  sampleFinding({ id: "f00000000002", title: "Settings errors are unhelpful", severity: "medium", check: { kind: "pattern-absent", pattern: "JSON\\.parse\\(readFileSync", paths: ["settings.js"] } }),
+  sampleFinding({ id: "f00000000003", title: "Old payment code nothing uses", severity: "medium", check: { kind: "none" } }),
+  sampleFinding({ id: "f00000000004", title: "The price shown at checkout can be negative", severity: "low" }),
+  sampleFinding({ id: "f00000000005", title: "Totals are rounded the wrong way", severity: "low" }),
+  sampleFinding({ id: "f00000000006", title: "Debug logging is left on", severity: "low" }),
+];
+
+/** One fix's run record, exactly as `delivery fix` leaves it: the fix task as its task, the harness's own check and closer pinned. */
+async function writeFixRun(repo: string, runId: string, taskDef: TaskDef, history: HistoryEntry[], outcome: CaseFileOutcome | undefined): Promise<void> {
+  const dir = join(runsRoot(repo), runId);
+  await mkdir(dir, { recursive: true });
+  await create(dir, { surfaceId: runId, taskDef, gateRef: NPM_TEST, closerRef: FINDING_CLOSER_REF }, DEFAULT_BUDGETS);
+  await setBaseBranch(dir, "main");
+  for (const entry of history) await appendEntry(dir, entry);
+  if (outcome !== undefined) await setOutcome(dir, outcome);
+}
+
+/**
+ * Test support: the security review after its fix phase, as the records leave it, with no agent: problem 1 is fixed
+ * and waiting for sign-off, 2 and 3 are merged, 4 could not be fixed, 5 was stopped by a check that could not run, and
+ * 6 was skipped. `interrupted` leaves problem 5's fix with no outcome, as a fix phase stopped part way does. Returns the
+ * review's folder.
+ */
+export async function writeFixPhase(repo: string, { interrupted = false }: { interrupted?: boolean } = {}): Promise<string> {
+  const dir = await writeReview(repo, { reviewId: "security-20261005T101500Z", findings: FIX_PHASE_FINDINGS, pack: { title: "Security review", hold: "high", consequenceLabel: "what-could-happen" } });
+  const ids = FIX_PHASE_FINDINGS.map((finding) => finding.id);
+  const approved = ids.slice(0, 5);
+  await appendLedger(dir, { t: "decision", ids: approved, choice: "approve" });
+  await appendLedger(dir, { t: "decision", ids: ids.slice(5), choice: "skip" });
+  await appendLedger(dir, { t: "authorise", ids: approved, verify: NPM_TEST, threshold: "high", hold: Object.fromEntries(approved.map((id, index) => [id, index === 0])), landing: { type: "merge-back" } });
+  const [entry] = await listReviews(repo);
+  if (entry?.state !== "done") throw new Error("the review was not written");
+  const tasks = fixTasks(await loadReview(entry), await readLedger(dir));
+  await writePlan(dir, planConfig(tasks, { gateRef: NPM_TEST, closerRef: { type: "merge-back" }, budgets: DEFAULT_BUDGETS, concurrency: 1 }, {}, undefined));
+  const runs: [HistoryEntry[], CaseFileOutcome | undefined][] = [
+    [attempt(1, "Read the key from PAYMENTS_KEY."), closedAt("2026-10-05T11:05:00.000Z")],
+    [attempt(1, "Wrapped the settings read with a clear message."), closedAt("2026-10-05T11:08:00.000Z")],
+    [attempt(1, "Removed the unused payment code."), closedAt("2026-10-05T11:11:00.000Z")],
+    [[...attempt(1, "I could not find where the total is worked out."), ...failedCheck(1, "escalate")], stoppedAt("2026-10-05T11:15:00.000Z", { kind: "budget", population: "correction" })],
+    [attempt(1, "Rounded half up."), interrupted ? undefined : stoppedAt("2026-10-05T11:19:00.000Z", { kind: "budget", population: "gateError" })],
+  ];
+  for (const [index, task] of tasks.entries()) {
+    const [history, outcome] = runs[index] ?? [[], undefined];
+    await writeFixRun(repo, `fix-${index + 1}-20261005T11${String(index).padStart(2, "0")}00Z`, task, history, outcome);
+  }
+  return dir;
+}

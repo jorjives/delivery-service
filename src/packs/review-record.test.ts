@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DamagedReview } from "../errors.js";
 import { initTempRepo } from "../temp-repo.js";
-import { listReviews, loadReview, packsRoot, readReply } from "./review-record.js";
+import { listReviews, loadReview, packsRoot, readReply, reviewOfPlan, PLAN_FILE } from "./review-record.js";
 import { sampleFinding, writeReview } from "./review-fixtures.js";
 
 const repo = () => initTempRepo("review-record-", { "a.js": "x\n" });
@@ -67,5 +67,22 @@ describe("the review record", () => {
     const [entry] = await listReviews(project);
     if (entry?.state !== "unfinished") throw new Error("expected an unfinished review");
     expect((await readReply(dir, entry.header)).envelope).toEqual({ findings: [], notes: "" });
+  });
+});
+
+describe("the review a plan belongs to", () => {
+  it("is the finished review whose folder the plan sits in", async () => {
+    const repo_ = initTempRepo("plan-review-", { "a.js": "x\n" });
+    const dir = await writeReview(repo_, { findings: [] });
+
+    expect((await reviewOfPlan(repo_, join(dir, PLAN_FILE)))?.dir).toBe(dir);
+  });
+
+  it("is none for the project's own configuration, and for a review that was never finished", async () => {
+    const repo_ = initTempRepo("plan-review-", { "a.js": "x\n" });
+    const unfinished = await writeReview(repo_, { finished: false });
+
+    expect(await reviewOfPlan(repo_, join(repo_, "delivery.config.json"))).toBeUndefined();
+    expect(await reviewOfPlan(repo_, join(unfinished, PLAN_FILE))).toBeUndefined();
   });
 });

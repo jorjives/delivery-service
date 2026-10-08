@@ -1,6 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { DamagedReview } from "../errors.js";
 import { atomicWrite, isEnoent } from "../journal.js";
@@ -173,4 +173,17 @@ export async function listReviews(repoPath: string): Promise<ReviewEntry[]> {
 
 export async function loadReview(entry: Extract<ReviewEntry, { state: "done" }>): Promise<SavedReview> {
   return { dir: entry.dir, header: entry.header, result: await readJson(join(entry.dir, "refs", "scan.json"), ScanResult) };
+}
+
+/** The finished review a plan file belongs to, when `file` is one: `delivery fix` writes a plan into its review's own folder. */
+export async function reviewOfPlan(repoPath: string, file: string): Promise<SavedReview | undefined> {
+  const dir = dirname(file);
+  if (basename(file) !== PLAN_FILE || resolve(dirname(dir)) !== resolve(packsRoot(repoPath))) return undefined;
+  const entry = await entryOf(dir);
+  if (entry.state !== "done") return undefined;
+  // A damaged list leaves the report told task by task, as before, rather than failing it: `delivery findings` names the damage.
+  return loadReview(entry).catch((err: unknown) => {
+    if (err instanceof DamagedReview) return undefined;
+    throw err;
+  });
 }
