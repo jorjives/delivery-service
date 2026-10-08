@@ -101,7 +101,7 @@ export const stateWords = ({ state, fix, signOff }: FindingState): string =>
 
 export const fixWaiting = (count: number): string => `${count} approved and not started yet. Start fixing ${count === 1 ? "it" : "them"} with: delivery fix`;
 
-const problems = (count: number): string => `${count} ${count === 1 ? "problem" : "problems"}`;
+export const problems = (count: number): string => `${count} ${count === 1 ? "problem" : "problems"}`;
 
 export const needsTestChangeLine = (count: number): string => `${problems(count)} could not be fixed: ${count === 1 ? "it" : "each"} ${NEEDS_TEST_CHANGE}.`;
 
