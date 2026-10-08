@@ -20,9 +20,9 @@ import { listReviews, loadReview, saveResult, startReview, type PinnedPack, type
 /** Test and demo support: the example project with planted flaws. */
 export const EXAMPLE_DIR = fileURLToPath(new URL("../../examples/code-review-example/", import.meta.url));
 
-/** A fresh git repository holding the example's files in one commit on `main`. */
-export function exampleRepo(prefix = "code-review-example-"): string {
-  const files = Object.fromEntries(readdirSync(EXAMPLE_DIR).map((name) => [name, readFileSync(join(EXAMPLE_DIR, name), "utf-8")]));
+/** A fresh git repository holding an example's files in one commit on `main`: the code-review example unless `dir` names another. */
+export function exampleRepo(prefix = "code-review-example-", dir = EXAMPLE_DIR): string {
+  const files = Object.fromEntries(readdirSync(dir).map((name) => [name, readFileSync(join(dir, name), "utf-8")]));
   return initTempRepo(prefix, files);
 }
 
@@ -76,6 +76,81 @@ export const EXAMPLE_SCAN: ScanEnvelope = {
     },
   ],
   notes: "",
+};
+
+/** Test and demo support: the example project with planted flaws and no tests. */
+export const NO_TESTS_DIR = fileURLToPath(new URL("../../examples/no-tests-example/", import.meta.url));
+
+/** What a code review of the no-tests example finds: two problems with a specific check, and one with none. */
+export const NO_TESTS_SCAN: ScanEnvelope = {
+  findings: [
+    {
+      title: "A discount is taken off a hundred times over",
+      category: "correctness",
+      severity: "high",
+      where: { path: "invoice.js" },
+      problem: "The discount is a percentage, but it is subtracted as if it were a fraction, so a 10% discount takes off ten times the total.",
+      whyItMatters: "Invoices come out wrong, and can go below zero.",
+      fixedLooksLike: "A 10% discount takes off a tenth of the total.",
+      anchor: "return total - total * discountPercent;",
+      check: { kind: "anchor-gone" },
+    },
+    {
+      title: "A missing or broken settings file stops the program with an unhelpful error",
+      category: "error-handling",
+      severity: "medium",
+      where: { path: "settings.js" },
+      problem: "If the settings file is missing or not valid, the program stops with a technical error instead of saying which file is wrong.",
+      whyItMatters: "Whoever runs it cannot tell what to fix.",
+      fixedLooksLike: "A missing or broken settings file gives a clear message naming the file.",
+      anchor: 'return JSON.parse(readFileSync(path, "utf-8"));',
+      check: { kind: "pattern-absent", pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["settings.js"] },
+    },
+    {
+      title: "Old export code nothing uses",
+      category: "dead-code",
+      severity: "low",
+      where: { path: "csv-export.js" },
+      problem: "Nothing calls this file any more.",
+      whyItMatters: "It is extra code to look after, and it could confuse the next person.",
+      fixedLooksLike: "The file is removed and everything still works.",
+      anchor: "export function invoiceToCsv(lines) {",
+      check: { kind: "none" },
+    },
+  ],
+  notes: "",
+};
+
+const [DISCOUNT, NO_TESTS_SETTINGS, CSV_EXPORT] = NO_TESTS_SCAN.findings;
+
+/** What an honest agent does with the no-tests example's problems. */
+export const NO_TESTS_FIXES: MockScript = {
+  expectations: [
+    {
+      when: { promptContains: DISCOUNT?.title ?? "" },
+      effects: [{ edit: { path: "invoice.js", old: "return total - total * discountPercent;", new: "return total - (total * discountPercent) / 100;" } }],
+      json: { status: "completed", rationale: "The discount is divided by a hundred, like the tax." },
+    },
+    {
+      when: { promptContains: NO_TESTS_SETTINGS?.title ?? "" },
+      // Honest: it does what "fixed looks like" says (a message naming the file), not merely enough to clear the pattern.
+      effects: [
+        {
+          edit: {
+            path: "settings.js",
+            old: 'return JSON.parse(readFileSync(path, "utf-8"));',
+            new: 'try {\n    const text = readFileSync(path, "utf-8");\n    return JSON.parse(text);\n  } catch (err) {\n    throw new Error(`The settings file ${path} is missing or not valid: ${err.message}`);\n  }',
+          },
+        },
+      ],
+      json: { status: "completed", rationale: "A missing or broken settings file now gives a message naming the file." },
+    },
+    {
+      when: { promptContains: CSV_EXPORT?.title ?? "" },
+      effects: [{ delete: { path: "csv-export.js" } }],
+      json: { status: "completed", rationale: "Removed the unused export." },
+    },
+  ],
 };
 
 /** The password planted in the example's payments.js: what no output may ever show. */
