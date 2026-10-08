@@ -6,7 +6,7 @@ import { dayAndMinute, pathName } from "../report/text.js";
 import type { CheckKind, Finding } from "./finding.js";
 import { UNDECIDED, type UnfixableCause } from "./fix-state.js";
 import type { FindingState } from "./fix-state.js";
-import { CHECK_LEVEL, CONSEQUENCE_WORDS, fixWaiting, LEFT_FOR_YOU, NEEDS_TEST_CHANGE, PR_OPENED, problems, signOffLines, stateWords, checkLevel, holdWhy, NO_TESTS_LEVEL, CANNOT_BE_CHECKED } from "./render.js";
+import { CHECK_LEVEL, CONSEQUENCE_WORDS, fixWaiting, LEFT_FOR_YOU, NEEDS_TEST_CHANGE, PR_OPENED, problems, signOffLines, stateWords, checkLevel, holdWhy, NO_TESTS_LEVEL, CANNOT_BE_CHECKED, UNCHECKABLE_WHY } from "./render.js";
 import type { ReviewHeader, SavedReview } from "./review-record.js";
 
 /** What a review's opening counts a problem under once the owner has approved it. Closed, so the words for each are total. */
@@ -68,6 +68,7 @@ export function reviewOpening({ header, result }: SavedReview, states: readonly 
   if (found === 0) return [`${head}: no problems found.`, when];
   const skipped = states.filter((at) => at.state === "skipped").length;
   const undecided = states.filter((at) => at.state === "proposed").length;
+  const deciding = states.filter((at) => at.state === "needs_decision").length;
   const counts = new Map<Outcome, number>();
   for (const at of states) {
     const outcome = outcomeOf(at);
@@ -78,7 +79,7 @@ export function reviewOpening({ header, result }: SavedReview, states: readonly 
     return count === 0 && !ALWAYS.includes(outcome) ? [] : [`${count} ${OUTCOME_WORDS[outcome][count === 1 ? 0 : 1]}`];
   });
   return [
-    `${head}: ${problems(found)} found; you approved ${found - skipped - undecided} and skipped ${skipped}${undecided === 0 ? "" : `; ${undecided} not yet decided`}.`,
+    `${head}: ${problems(found)} found; you approved ${found - skipped - undecided - deciding} and skipped ${skipped}${undecided === 0 ? "" : `; ${undecided} not yet decided`}${deciding === 0 ? "" : `; ${deciding} ${deciding === 1 ? "needs" : "need"} your decision`}.`,
     `${parts.join("; ")}.`,
     when,
   ];
@@ -188,6 +189,8 @@ function itemLines(review: SavedReview, number: number, finding: Finding, at: Fi
     case "fixed":
     case "signed_off_landed":
       return [`${title}: ${stateWords(at)}; ${checkLevel(review.header, finding.check.kind)}`];
+    case "needs_decision":
+      return [title, `    Needs your decision: ${UNCHECKABLE_WHY}`, ...toAct([`Fix it yourself, skip it with delivery findings skip ${number}, or approve it anyway with delivery findings approve ${number} --allow-unchecked`])];
     default:
       return [`${title}: ${stateWords(at)}`];
   }

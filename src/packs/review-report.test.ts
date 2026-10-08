@@ -6,7 +6,7 @@ import type { SavedReview } from "./review-record.js";
 import { PACK_FORBIDDEN } from "./review-fixtures.js";
 import { sampleFinding } from "./review-fixtures.js";
 import { AGENT_DID, REVIEW_NEXT, outcomeOf, OUTCOME_WORDS, reviewPart, reviewSections, UNFIXABLE_ACTION, reviewOpening } from "./review-report.js";
-import { CHECK_LEVEL, NO_TESTS_LEVEL } from "./render.js";
+import { CHECK_LEVEL, NO_TESTS_LEVEL, UNCHECKABLE_WHY } from "./render.js";
 
 const HEADER: SavedReview["header"] = {
   reviewId: "security-20261005T101500Z",
@@ -73,7 +73,7 @@ describe("the sentence a review's report opens with", () => {
   it("counts every state a fix can reach under exactly one outcome, and none the owner has not acted on", () => {
     for (const state of FIX_STATES) {
       const outcome = outcomeOf(at(state));
-      expect(outcome === null).toBe(state === "proposed" || state === "skipped");
+      expect(outcome === null).toBe(state === "proposed" || state === "needs_decision" || state === "skipped");
       if (outcome !== null) expect(OUTCOME_WORDS[outcome]).toHaveLength(2);
     }
   });
@@ -194,6 +194,18 @@ describe("a review of a project with no tests, as the report tells it", () => {
 
   it("names the level on a fixed line, so it never reads as proved by tests", () => {
     expect(reviewSections(noTestsOf([problem(1)]), [at("fixed")], false).join("\n")).toContain(`${CHECK_LEVEL["anchor-gone"]}; ${NO_TESTS_LEVEL}`);
+  });
+});
+
+describe("a problem that needs the owner's decision, as the report tells it", () => {
+  it("is under NEEDS YOU, says why, and how to approve it anyway", () => {
+    const lines = reviewSections(reviewOf([problem(1, { check: { kind: "none" } })]), [at("needs_decision")], false);
+    expect(lines.join("\n")).toContain("NEEDS YOU (1)");
+    expect(lines).toContain(`    Needs your decision: ${UNCHECKABLE_WHY}`);
+  });
+
+  it("is counted on its own in the opening, never as approved", () => {
+    expect(reviewOpening(reviewOf([problem(1), problem(2)]), [at("fixed"), at("needs_decision")])[0]).toBe("Security review of shop: 2 problems found; you approved 1 and skipped 0; 1 needs your decision.");
   });
 });
 
