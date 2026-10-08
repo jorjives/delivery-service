@@ -184,6 +184,7 @@ export function problemBlock(number: number, finding: Finding, header: ReviewHea
     `    ${CONSEQUENCE_WORDS[pack.consequenceLabel ?? "why-it-matters"]}: ${finding.whyItMatters}`,
     `    Fixed looks like: ${finding.fixedLooksLike}`,
     `    How we will know: ${checkLevel(header, finding.check.kind)}.`,
+    ...(uncheckable(header, finding) ? [`    ${approveAnyway(number)}`] : []),
     ...(kind?.changesTests === true ? [`    Note: ${CHANGES_TESTS}.`] : []),
     ...(kind?.reviewerKnowledge === true ? [`    Note: ${REVIEWER_KNOWLEDGE}`] : []),
     ...(finding.outsideStep === undefined ? [] : [`    ${LEFT_FOR_YOU}: ${finding.outsideStep}`]),
@@ -217,7 +218,6 @@ export function reviewLines({ header, result }: SavedReview): string[] {
     "What next?",
     ...(offered === 0 ? [] : [`  Fix all ${offered}: delivery findings approve --all, then delivery fix`]),
     "  Choose: delivery findings",
-    ...(deciding === 0 ? [] : result.findings.flatMap((finding, index) => uncheckable(header, finding) ? [`    ${approveAnyway(index + 1)}`] : [])),
   ];
 }
 
