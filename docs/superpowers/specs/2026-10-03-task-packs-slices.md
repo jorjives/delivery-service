@@ -271,7 +271,7 @@ not sliced.
 ## Slice 6: Review a Project That Has No Tests, Safely
 
 **Status:** ✅ Complete — 2026-10-08 — `ecb876e`
-**Tests:** ✅ Recorded — 2026-10-08 — `a7d3502` — cli (vitest) — 1 UAT + 3 AC, 1 skipped
+**Tests:** ✅ Recorded — 2026-10-08 — `a7d3502` — cli (vitest) — 1 UAT + 4 AC, 0 skipped
 
 **Delivers:** An owner whose project has no tests is told so at review time, can still approve problems that have a specific check, and every fix waits for her sign-off, so nothing is merged that only an agent has vouched for.
 

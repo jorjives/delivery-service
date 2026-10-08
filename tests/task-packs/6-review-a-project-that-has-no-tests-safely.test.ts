@@ -4,16 +4,17 @@
 //
 // Drives the compiled `delivery` command as a person would, against a git copy of
 // examples/no-tests-example, the agent routed to the vendored scripted agent
-// (no network, no sign-in). Skipped below, each with its reason: the pack-level
-// requireCheck rule (no built-in pack sets it, so it needs a custom pack on disk).
+// (no network, no sign-in). The pack-level requireCheck rule is driven with a copy
+// of the built-in code review pack that sets it, against the example with tests.
 
-import { mkdtempSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { writeMockScript, type MockScript } from "../../src/mock-script.js";
-import { exampleRepo, NO_TESTS_DIR, NO_TESTS_FIXES, NO_TESTS_SCAN, scanScript } from "../../src/packs/review-fixtures.js";
+import { BUILT_IN_PACKS } from "../../src/packs/manifest.js";
+import { EXAMPLE_SCAN, exampleRepo, NO_TESTS_DIR, NO_TESTS_FIXES, NO_TESTS_SCAN, scanScript } from "../../src/packs/review-fixtures.js";
 import { runDelivery } from "../helpers.js";
 
 const RUN_TIMEOUT = 120_000;
@@ -94,5 +95,16 @@ describe("AC: problems with and without a specific check", () => {
 });
 
 describe("AC: a pack that requires a check", () => {
-  it.skip("makes a problem without one 'needs your decision' in any project (no built-in pack sets requireCheck; needs a custom pack on disk)", () => {});
+  it("makes a problem without one 'needs your decision' even in a project with tests", async () => {
+    const pack = join(mkdtempSync(join(tmpdir(), "uat-packs-6-pack-")), "strict");
+    cpSync(join(BUILT_IN_PACKS, "code-review"), pack, { recursive: true });
+    const manifest = JSON.parse(readFileSync(join(pack, "pack.json"), "utf-8")) as { scan: object };
+    writeFileSync(join(pack, "pack.json"), JSON.stringify({ ...manifest, name: "strict", scan: { ...manifest.scan, requireCheck: true } }));
+    const repo = exampleRepo("uat-packs-6-strict-");
+    const review = deliver(repo, ["review", pack], await envFor(scanScript(EXAMPLE_SCAN)));
+    expect(review.status).toBe(0);
+    expect(review.stdout).not.toContain("no tests");
+    expect(review.stdout).toContain("1 cannot be checked, so it waits for your decision.");
+    expect(deliver(repo, ["findings"]).stdout).toContain("needs your decision");
+  }, RUN_TIMEOUT);
 });
