@@ -229,6 +229,8 @@ not sliced.
 
 ## Slice 5: Come Back to the Report and See What the Review Fixed and What Needs You
 
+**Status:** ✅ Complete — 2026-10-08 — `183dbf0`
+
 **Delivers:** After a review and fix phase, `delivery report` opens with one sentence about the whole review (found, approved, skipped, fixed, waiting, could not be fixed) and lists each problem by its plain title under who must act.
 
 **Build note:** The report is the existing report, not a new report type: its sections and headline gain the pack's states from a pure reading of the review record alongside the existing reading of the runs, with no second record of what happened. Wording comes from closed phrase tables, and the forbidden-word test that guards the report covers every new phrase.
