@@ -1,7 +1,7 @@
-import type { CaseFile } from "../schema.js";
+import type { CaseFile, TerminusEntry } from "../schema.js";
+import type { ReportDocument, ReportSurface } from "../report/document.js";
 import { deriveReport } from "../report/derive.js";
-import type { ReportSurface } from "../report/document.js";
-import { loadSnapshot } from "../report/snapshot.js";
+import { loadSnapshot, type RecordSnapshot } from "../report/snapshot.js";
 import { repoLocked } from "../repo-lock.js";
 import type { Finding } from "./finding.js";
 import { fixTaskFor, type FixTask } from "./fix-task.js";
@@ -13,11 +13,12 @@ import { isGuard, needsTestChange } from "./guards.js";
 export const FIX_STATES = ["proposed", "approved", "skipped", "fixing", "fixed", "held", "signed_off_landed", "signed_off_failed", "rejected", "already_resolved", "unfixable", "stopped"] as const;
 export type FixState = (typeof FIX_STATES)[number];
 
-/** What the report says of a problem's fix, and what each of its check rounds newly failed, oldest first. */
-export type FixRun = Pick<ReportSurface, "run" | "standing" | "closer" | "plain" | "branch" | "base"> & { rounds: string[][] };
+/** What the report says of a problem's fix, what each of its check rounds newly failed, oldest first, and the agent's own last account of it. */
+export type FixRun = Pick<ReportSurface, "run" | "standing" | "closer" | "plain" | "branch" | "base"> & { rounds: string[][]; said: string | null };
 
-/** Why a problem could not be fixed, where the harness can say so itself. */
-export type UnfixableCause = "needs_test_change";
+/** Why a problem could not be fixed, where the harness can say so itself. Closed, so the words for each are total. */
+export const UNFIXABLE_CAUSES = ["needs_test_change"] as const;
+export type UnfixableCause = (typeof UNFIXABLE_CAUSES)[number];
 
 export interface FindingState {
   state: FixState;
@@ -27,6 +28,29 @@ export interface FindingState {
   cause: UnfixableCause | null;
   /** What came of the owner's sign-off of a kept fix, or null when there is none yet. */
   signOff: SignOffResult | null;
+}
+
+/** A problem the owner has not decided on yet. */
+export const UNDECIDED: FindingState = { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null };
+
+/** The agent's own account of its last finished attempt at a fix, verbatim; null when no attempt of it finished. A repair's words are not the fix's. */
+export const lastWords = (history: CaseFile["history"]): string | null =>
+  history.findLast((entry): entry is TerminusEntry => entry.t === "terminus" && (entry.role ?? "worker") === "worker" && entry.status === "completed")?.rationale ?? null;
+
+/**
+ * Each problem's fix as the report tells it, by the problem it fixes, read from one snapshot and the report derived
+ * from it: the same reading a report is made from, so the two can never disagree. Tasks that fix no problem are left out.
+ */
+export function fixRunsOf(snapshot: RecordSnapshot, doc: ReportDocument): Map<string, FixRun> {
+  const histories = new Map(snapshot.records.map((record) => [record.runId, record.caseFile.history]));
+  return new Map(
+    doc.surfaces.flatMap((surface) => {
+      const id = surface.tags?.findingId;
+      if (typeof id !== "string") return [];
+      const history = surface.run === null ? [] : (histories.get(surface.run) ?? []);
+      return [[id, { ...surface, rounds: gateRounds(history), said: lastWords(history) }] as const];
+    }),
+  );
 }
 
 /** An authorised problem's state from its fix's run: waiting for sign-off if held, delivered if fixed; a stop someone must act on is "could not be fixed", unless only an engineer can act, which is a setup problem. */
@@ -116,13 +140,7 @@ export async function readFindingStates(repoPath: string, review: SavedReview): 
   const tasks = fixTasks(review, entries);
   const snapshot = await loadSnapshot(repoPath, { kind: "list" }, { live: await repoLocked(repoPath), list: tasks });
   const doc = deriveReport(snapshot);
-  const rounds = new Map(snapshot.records.map((record) => [record.runId, gateRounds(record.caseFile.history)]));
-  const fixes = new Map(
-    doc.surfaces.flatMap((surface) =>
-      typeof surface.tags?.findingId === "string" ? [[surface.tags.findingId, { ...surface, rounds: (surface.run === null ? undefined : rounds.get(surface.run)) ?? [] }] as const] : [],
-    ),
-  );
-  return { entries, tasks, states: deriveFindings(review.result.findings, entries, fixes) };
+  return { entries, tasks, states: deriveFindings(review.result.findings, entries, fixRunsOf(snapshot, doc)) };
 }
 
 /** Where a kept fix is: its run, its branch and the branch it is to land on. */

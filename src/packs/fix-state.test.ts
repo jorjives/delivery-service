@@ -4,17 +4,19 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { appendEntry, create, setBaseBranch, setOutcome } from "../case-file.js";
 import type { Plain } from "../report/document.js";
-import { closedAt, stoppedAt } from "../report/report-fixtures.js";
+import { attempt, closedAt, recordOf, snapshotOf, stoppedAt } from "../report/report-fixtures.js";
+import { deriveReport } from "../report/derive.js";
 import { runsRoot } from "../run-location.js";
 import type { CaseFileOutcome, GateRef, TaskDef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { FINDING_GATE_REF } from "./finding-gate.js";
-import { deriveFindings, fixTasks, readFindingStates, type FixRun, type FixState } from "./fix-state.js";
+import { deriveFindings, fixTasks, readFindingStates, fixRunsOf, lastWords, UNDECIDED, type FixRun, type FixState } from "./fix-state.js";
 import { fixTaskFor } from "./fix-task.js";
 import { appendLedger, type LedgerEntry } from "./ledger.js";
 import { guardListsFor } from "./guards.js";
 import { loadReview, listReviews, type SavedReview } from "./review-record.js";
 import { sampleFinding, writeReview } from "./review-fixtures.js";
+import type { RunRecord } from "../run-records.js";
 
 const AT = "2026-10-05T10:00:00.000Z";
 const NPM: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
@@ -23,7 +25,7 @@ const B = sampleFinding({ id: "111111111111", title: "Old payment code" });
 const decide = (ids: string[], choice: "approve" | "skip"): LedgerEntry => ({ t: "decision", at: AT, ids, choice });
 const authorise = (ids: string[]): LedgerEntry => ({ t: "authorise", at: AT, ids, verify: NPM });
 const plain = (audience: Plain["audience"]): Plain => ({ group: audience === "engineer" ? "needs_an_engineer" : "needs_your_decision", audience, sentence: "s", agentSaid: null, next: [] });
-const run = (over: Partial<FixRun>): FixRun => ({ run: "r", standing: "unfinished", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, ...over });
+const run = (over: Partial<FixRun>): FixRun => ({ run: "r", standing: "unfinished", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, said: null, ...over });
 
 describe("where each problem stands", () => {
   it("is not yet decided until the owner says, and the owner's latest choice wins", () => {
@@ -144,7 +146,7 @@ describe("reading gate rounds and refusals", () => {
 
 describe("holding fixes for sign-off", () => {
   it("is waiting for sign-off when a held fix has passed, and fixed when one that is not held has", () => {
-    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main" };
+    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main", said: null };
     const held: LedgerEntry = { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high", hold: { [A.id]: true }, landing: { type: "merge-back" } };
     expect(deriveFindings([A], [decide([A.id], "approve"), held], new Map([[A.id, closed]]))[0]?.state).toBe("held");
     expect(deriveFindings([A], [decide([A.id], "approve"), { ...held, hold: { [A.id]: false } }], new Map([[A.id, closed]]))[0]?.state).toBe("fixed");
@@ -163,10 +165,62 @@ describe("holding fixes for sign-off", () => {
     [[{ t: "not_landed", at: AT, id: A.id, reason: "check_failed" as const, detail: "npm test" } as const], "signed_off_failed"],
     [[{ t: "rejected", at: AT, id: A.id } as const], "rejected"],
   ])("a held fix after %j is %s", (after, state) => {
-    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main" };
+    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main", said: null };
     const held: LedgerEntry = { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high", hold: { [A.id]: true }, landing: { type: "merge-back" } };
     const [at] = deriveFindings([A], [decide([A.id], "approve"), held, ...after], new Map([[A.id, closed]]));
     expect(at?.state).toBe(state);
     expect(at?.signOff).toEqual(after.find((entry) => entry.t !== "signed_off") ?? null);
+  });
+});
+
+/** A fix's run record as a report reads it: the task it ran is the fix task itself, tags and all. */
+const fixRecord = (task: TaskDef, over: Parameters<typeof recordOf>[0]): RunRecord => {
+  const record = recordOf(over);
+  return { ...record, caseFile: { ...record.caseFile, header: { ...record.caseFile.header, taskDef: task } } };
+};
+
+describe("each problem's fix, read from one snapshot", () => {
+  const task = fixTaskFor("code", A, NPM);
+
+  it("is the report's telling of its task, with what each check round newly failed and the agent's last finished words", () => {
+    const record = fixRecord(task, {
+      runId: "fix-a-20261005T110000Z",
+      task: task.intent,
+      history: [
+        ...attempt(1, "first go"),
+        { t: "gate", attempt: 1, status: "FAIL", newFailures: [{ id: "finding:0123456789ab:resolved", detailRef: "g1" }] },
+        ...attempt(2, "Clamped the total at zero."),
+      ],
+      outcome: closedAt("2026-10-05T11:05:00.000Z"),
+    });
+    const snapshot = snapshotOf({ list: [task], records: [record] });
+
+    const fixes = fixRunsOf(snapshot, deriveReport(snapshot));
+
+    expect(fixes.get(A.id)).toMatchObject({ run: "fix-a-20261005T110000Z", standing: "closed", rounds: [["finding:0123456789ab:resolved"]], said: "Clamped the total at zero." });
+  });
+
+  it("is waiting to start, with no rounds and no words, before its run exists", () => {
+    const snapshot = snapshotOf({ list: [task] });
+    expect(fixRunsOf(snapshot, deriveReport(snapshot)).get(A.id)).toMatchObject({ run: null, standing: "not_started", rounds: [], said: null });
+  });
+
+  it("leaves out a task that is not a problem's fix", () => {
+    const snapshot = snapshotOf({ list: [{ intent: "Add a contact form" }] });
+    expect(fixRunsOf(snapshot, deriveReport(snapshot)).size).toBe(0);
+  });
+});
+
+describe("the agent's last words on a fix", () => {
+  it("are its last finished attempt's, never a repair's or an attempt that gave up", () => {
+    expect(lastWords([...attempt(1, "Moved the key."), ...attempt(2, "I cannot go on.", "exhaustion")])).toBe("Moved the key.");
+    expect(lastWords(attempt(1, "I cannot go on.", "exhaustion"))).toBeNull();
+    expect(lastWords([{ t: "terminus", role: "gate-maintenance", attempt: 1, sessionKey: "g", status: "completed", rationale: "put the helper back" }])).toBeNull();
+  });
+});
+
+describe("a problem nobody has decided on", () => {
+  it("is not yet decided, with no fix", () => {
+    expect(UNDECIDED).toEqual({ state: "proposed", fix: undefined, refused: false, cause: null, signOff: null });
   });
 });

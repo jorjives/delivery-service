@@ -3,7 +3,7 @@ import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
 import { SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
-import type { FindingState, FixState } from "./fix-state.js";
+import { UNDECIDED, type FindingState, type FixState } from "./fix-state.js";
 import { NOT_LANDED_REASONS, type NotLandedReason } from "./ledger.js";
 import type { PinnedPack, SavedReview } from "./review-record.js";
 import { literalsOf, maskIn } from "./secrets.js";
@@ -193,7 +193,7 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
   const waiting = states.filter((at) => at.state === "approved").length;
   const needsTest = states.filter((at) => at.cause === "needs_test_change").length;
   const problemLines = result.findings.flatMap((finding, index) => {
-    const at = states[index] ?? { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null };
+    const at = states[index] ?? UNDECIDED;
     return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...signOffLines(index + 1, at)];
   });
   // What only a person can do, once the code part is done.

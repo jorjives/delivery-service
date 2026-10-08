@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { DamagedReview } from "../errors.js";
 import { appendLedger, authorisations, readLedger } from "../packs/ledger.js";
 import { keptChanges } from "../packs/kept-changes.js";
-import { keptFix, readFindingStates } from "../packs/fix-state.js";
+import { UNDECIDED, keptFix, readFindingStates } from "../packs/fix-state.js";
 import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords } from "../packs/render.js";
 import { listReviews, loadReview } from "../packs/review-record.js";
 import type { SavedReview } from "../packs/review-record.js";
@@ -83,7 +83,7 @@ export async function findingsCommand(number: string | undefined, options: Findi
     const at = states[n - 1];
     const fix = at === undefined ? undefined : keptFix(at);
     const kept = fix !== undefined && (at?.state === "held" || at?.state === "signed_off_failed" || at?.state === "rejected");
-    if (!kept || at === undefined) throw new Refusal(noKeptFix(n, stateWords(at ?? { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null })), EXIT.configuration);
+    if (!kept || at === undefined) throw new Refusal(noKeptFix(n, stateWords(at ?? UNDECIDED)), EXIT.configuration);
     const finding = review.result.findings[n - 1];
     const hide = (text: string): string => stripControl(finding === undefined ? text : maskIn(text, literalsOf(finding)));
     const { stat, patch } = await keptChanges(repoPath, fix);
