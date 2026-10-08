@@ -10,6 +10,7 @@ import { appendLedger } from "../packs/ledger.js";
 import { guardListsFor } from "../packs/guards.js";
 import { planConfig, writePlan } from "../packs/plan.js";
 import { listLines } from "../packs/render.js";
+import { uncheckable } from "../packs/review-record.js";
 import type { CloserRef, GateRef, TaskDef } from "../schema.js";
 import { loadConfig, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
@@ -88,15 +89,14 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
   const { config, project, verify } = await fixSettings(options, startDir, repoPath, ctx);
   if (fresh.length > 0) {
     const threshold = review.header.pack.hold ?? null;
-    // With nothing to check a fix broke nothing else, now or when the review was made, the owner is the final check of every fix.
-    const noTests = verify === null || review.header.noTests === true;
+    // With nothing to check a fix broke nothing else, now or when the review was made, or when the owner approved it without a check, the owner is the final check of every fix.
     await appendLedger(review.dir, {
       t: "authorise",
       ids: fresh.map((finding) => finding.id),
       verify,
       guards: guardListsFor(review.header.pack.guards),
       threshold,
-      hold: Object.fromEntries(fresh.map((finding) => [finding.id, noTests || atOrAbove(finding.severity, threshold)])),
+      hold: Object.fromEntries(fresh.map((finding) => [finding.id, verify === null || review.header.noTests === true || uncheckable(review.header, finding) || atOrAbove(finding.severity, threshold)])),
       landing: pinnedCloser(project.closerRef, repoPath),
     });
   }

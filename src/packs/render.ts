@@ -28,6 +28,7 @@ export const CANNOT_BE_CHECKED = "cannot be checked";
 export const UNCHECKABLE_WHY = "It cannot be checked, so nothing would check its fix except you.";
 export const approveAnyway = (number: number): string => `To approve it anyway: delivery findings approve ${number} --allow-unchecked`;
 export const uncheckedRefused = (number: number): string => `Problem ${number} cannot be checked: nothing would check its fix except you. ${approveAnyway(number)}`;
+export const uncheckedApproved = (number: number): string => `Problem ${number}: nothing will check this fix except you, so it will wait for your sign-off.`;
 
 /** How the harness will know a problem is fixed, as the owner of this project reads it: with no tests, a specific check is all there is, and a problem with none cannot be checked. */
 export function checkLevel(header: Pick<ReviewHeader, "noTests">, kind: CheckKind): string {
@@ -39,10 +40,12 @@ export function checkLevel(header: Pick<ReviewHeader, "noTests">, kind: CheckKin
 export const HOLD_WHY = {
   serious: "it is a serious problem, and you should see what changed before it reaches your main copy.",
   noTests: "your project has no tests, so nothing has checked that this fix did not break something else.",
+  unchecked: "nothing checks this fix except you, so you should see what changed before it reaches your main copy.",
 };
 
-/** Why this problem's fix waits: its severity where that alone would hold it, else the project's missing tests. */
+/** Why this problem's fix waits: the owner approved it without a check, the project's missing tests, or its severity. */
 export function holdWhy(header: Pick<ReviewHeader, "noTests" | "pack">, finding: Finding): string {
+  if (uncheckable(header, finding)) return HOLD_WHY.unchecked;
   return header.noTests === true && !atOrAbove(finding.severity, header.pack.hold ?? null) ? HOLD_WHY.noTests : HOLD_WHY.serious;
 }
 

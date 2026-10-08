@@ -4,7 +4,7 @@ import { appendLedger, authorisations, readLedger } from "../packs/ledger.js";
 import { keptChanges } from "../packs/kept-changes.js";
 import { UNDECIDED, keptFix, readFindingStates } from "../packs/fix-state.js";
 import { findingsDocument, findingsSchema } from "../packs/findings-document.js";
-import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords, uncheckedRefused } from "../packs/render.js";
+import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords, uncheckedRefused, uncheckedApproved } from "../packs/render.js";
 import { listReviews, loadReview, uncheckable } from "../packs/review-record.js";
 import type { SavedReview } from "../packs/review-record.js";
 import { literalsOf, maskIn } from "../packs/secrets.js";
@@ -26,6 +26,7 @@ export const SCHEMA_ALONE = "Use `--schema` on its own: it prints the schema of 
 export interface DecideOptions {
   repo?: string;
   all?: boolean;
+  allowUnchecked?: boolean;
 }
 
 export const noSuchProblem = (asked: string, count: number): string =>
@@ -49,6 +50,7 @@ export const alreadyTakenOn = (number: number): string => `Problem ${number} is 
 export const NOTHING_CHOSEN = "Say which problems, by their numbers in the list, for example: delivery findings approve 1 3, or delivery findings approve --all";
 export const ALL_AND_NUMBERS = "Give either problem numbers or --all, not both.";
 export const NOTHING_LEFT = "Every problem in the list is already being fixed or has finished. See where each stands with: delivery findings";
+export const ALL_UNCHECKED = "Name each problem to approve without a check by its number: --allow-unchecked does not go with --all.";
 
 /** The latest review, finished, for a command that acts on it: a refusal naming the command to run when there is none or it was stopped part way. */
 export async function finishedReview(repoPath: string): Promise<SavedReview> {
@@ -139,6 +141,7 @@ export async function decideCommand(choice: "approve" | "skip", numbers: string[
   };
   let chosen: number[];
   if (options.all === true) {
+    if (options.allowUnchecked === true) throw new Refusal(ALL_UNCHECKED, EXIT.configuration);
     if (numbers.length > 0) throw new Refusal(ALL_AND_NUMBERS, EXIT.configuration);
     chosen = findings.map((_, index) => index + 1).filter((n) => open(n) && (choice === "skip" || !blocked(n)));
     if (chosen.length === 0) {
@@ -158,15 +161,18 @@ export async function decideCommand(choice: "approve" | "skip", numbers: string[
     ];
     const taken = chosen.find((n) => !open(n));
     if (taken !== undefined) throw new Refusal(alreadyTakenOn(taken), EXIT.configuration);
-    const unchecked = choice === "approve" ? chosen.find(blocked) : undefined;
+    const unchecked = choice === "approve" && options.allowUnchecked !== true ? chosen.find(blocked) : undefined;
     if (unchecked !== undefined) throw new Refusal(uncheckedRefused(unchecked), EXIT.configuration);
   }
-  await appendLedger(review.dir, { t: "decision", ids: chosen.map((n) => findings[n - 1]?.id ?? ""), choice });
+  await appendLedger(review.dir, { t: "decision", ids: chosen.map((n) => findings[n - 1]?.id ?? ""), choice, ...(options.allowUnchecked === true ? { allowUnchecked: true as const } : {}) });
   if (choice === "skip") {
     ctx.report.note(skippedLine(chosen));
     return EXIT.ok;
   }
-  for (const n of chosen) if (findings[n - 1]?.check.kind === "none") ctx.report.note(testsOnlyApproved(n));
+  for (const n of chosen) {
+    if (blocked(n)) ctx.report.note(uncheckedApproved(n));
+    else if (findings[n - 1]?.check.kind === "none") ctx.report.note(testsOnlyApproved(n));
+  }
   ctx.report.note(approvedLine(chosen));
   return EXIT.ok;
 }

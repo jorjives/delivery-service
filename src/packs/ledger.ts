@@ -25,7 +25,14 @@ export type NotLandedReason = (typeof NOT_LANDED_REASONS)[number];
  * folder, outside every working copy, so no agent can write it.
  */
 export const LedgerEntry = z.discriminatedUnion("t", [
-  z.object({ t: z.literal("decision"), at: At, ids: z.array(Id).min(1), choice: z.enum(["approve", "skip"]) }),
+  z.object({
+    t: z.literal("decision"),
+    at: At,
+    ids: z.array(Id).min(1),
+    choice: z.enum(["approve", "skip"]),
+    /** The owner approved these knowing nothing checks their fixes except them: each fix waits for sign-off. */
+    allowUnchecked: z.literal(true).optional(),
+  }),
   z.object({
     t: z.literal("authorise"),
     at: At,
@@ -112,4 +119,17 @@ export function signOffResults(entries: readonly LedgerEntry[]): Map<string, Sig
   const found = new Map<string, SignOffResult>();
   for (const entry of entries) if (entry.t === "rejected" || entry.t === "landed" || entry.t === "not_landed") found.set(entry.id, entry);
   return found;
+}
+
+/** The problems whose latest choice is approval without a check. */
+export function allowedUnchecked(entries: readonly LedgerEntry[]): Set<string> {
+  const allowed = new Set<string>();
+  for (const entry of entries) {
+    if (entry.t !== "decision") continue;
+    for (const id of entry.ids) {
+      if (entry.choice === "approve" && entry.allowUnchecked === true) allowed.add(id);
+      else allowed.delete(id);
+    }
+  }
+  return allowed;
 }

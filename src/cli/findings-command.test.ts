@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { appendLedger, readLedger } from "../packs/ledger.js";
-import { CHANGES_NOTE, CHANGES_WHICH, NO_REVIEW_YET, noKeptFix, unfinishedReview, uncheckedRefused } from "../packs/render.js";
+import { CHANGES_NOTE, CHANGES_WHICH, NO_REVIEW_YET, noKeptFix, unfinishedReview, uncheckedRefused, uncheckedApproved } from "../packs/render.js";
 import { exampleRepo, sampleFinding, writeReview, writeFixPhase, FIX_PHASE_FINDINGS } from "../packs/review-fixtures.js";
 import { FindingsDocument } from "../packs/findings-document.js";
 import { initTempRepo } from "../temp-repo.js";
 import { withoutAt } from "../without-at.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { alreadyTakenOn, approvedLine, noSuchProblem, skippedLine, testsOnlyApproved, NOTHING_CHOSEN, SCHEMA_ALONE } from "./findings-command.js";
+import { alreadyTakenOn, approvedLine, noSuchProblem, skippedLine, testsOnlyApproved, NOTHING_CHOSEN, SCHEMA_ALONE, ALL_UNCHECKED } from "./findings-command.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import type { MockScript } from "../mock-script.js";
 
@@ -110,6 +110,24 @@ describe("choosing which problems to fix", () => {
     await writeReview(project, { findings: TWO, pack: { requireCheck: true } });
     const { stdout } = await delivery(["findings"], { cwd: project });
     expect(stdout).toContain("2. Old payment code (low): needs your decision; cannot be checked");
+  });
+
+  it("approves a problem that cannot be checked when told to anyway, records it, and warns in one line", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { findings: TWO, noTests: true });
+    const { exitCode, stdout } = await delivery(["findings", "approve", "2", "--allow-unchecked"], { cwd: project });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(`${uncheckedApproved(2)}\n`);
+    expect(withoutAt(await readLedger(dir))).toEqual([{ t: "decision", ids: [TWO[1]?.id], choice: "approve", allowUnchecked: true }]);
+    expect((await delivery(["findings"], { cwd: project })).stdout).toContain("2. Old payment code (low): being fixed");
+  });
+
+  it("refuses --allow-unchecked with --all: the owner names each problem", async () => {
+    const project = repo();
+    await writeReview(project, { findings: TWO, noTests: true });
+    const { exitCode, stderr } = await delivery(["findings", "approve", "--all", "--allow-unchecked"], { cwd: project });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe(`${ALL_UNCHECKED}\n`);
   });
 
   const THREE = [...TWO, sampleFinding({ id: "222222222222", title: "Settings errors are unhelpful", severity: "medium" })];

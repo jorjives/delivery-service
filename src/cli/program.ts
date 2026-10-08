@@ -227,6 +227,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .description("approve problems from your latest review for fixing, by their numbers in the list; `delivery fix` then fixes them")
     .argument("[numbers...]", "the problems to approve, as the list numbers them")
     .option("--all", "approve every problem listed now that is not already being fixed")
+    .option("--allow-unchecked", "approve problems that cannot be checked: nothing will check their fixes except you, so each waits for your sign-off")
     .action(async (numbers: string[], _options: DecideOptions, command: Command) => {
       exitCode = await decideCommand("approve", numbers, command.optsWithGlobals<DecideOptions>(), ctxFor(command));
     });

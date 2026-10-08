@@ -256,6 +256,16 @@ small project to try this on.
 
 A problem with no specific check is not offered: it reads "needs your decision; cannot be checked", `delivery findings approve --all` leaves it out, and approving it by number is refused with how to approve it anyway. A review whose pack sets `"requireCheck": true` in its `scan` settings treats such a problem the same way in any project.
 
+If you will check such a fix yourself, approve it by number anyway:
+
+```bash
+delivery findings approve 3 --allow-unchecked
+```
+
+It is recorded, and it says "nothing will check this fix except you, so it will wait for your
+sign-off". Its fix always waits for your sign-off, in any project. `--allow-unchecked` does not go
+with `--all`: name each problem.
+
 ## Try it without an agent
 
 `examples/code-review-example` is a tiny shop with three planted problems. Its README shows how to review it for real. To see the whole review with a scripted agent instead (no agent, no sign-in, no network), run from a checkout of the harness:

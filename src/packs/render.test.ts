@@ -4,7 +4,7 @@ import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
   AGENT_OPINION, CHANGES_TESTS, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway,
+  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
@@ -325,10 +325,20 @@ describe("a review of a project with no tests", () => {
 
   it("puts the way to approve an uncheckable problem in its own block, once", () => {
     const { header, result } = noTests();
-    const block = problemBlock(3, result.findings[2]!, header);
+    const unused = result.findings[2];
+    const negative = result.findings[0];
+    if (unused === undefined || negative === undefined) throw new Error("missing findings");
+    const block = problemBlock(3, unused, header);
     expect(block[block.indexOf(`    How we will know: ${CANNOT_BE_CHECKED}.`) + 1]).toBe(`    ${approveAnyway(3)}`);
     expect(reviewLines(noTests()).filter((line) => line === `    ${approveAnyway(3)}`)).toHaveLength(1);
-    expect(problemBlock(1, result.findings[0]!, header).join("\n")).not.toContain("approve");
+    expect(problemBlock(1, negative, header).join("\n")).not.toContain("approve");
+  });
+
+  it("says an approved problem with no check waits because nothing checks it except the owner", () => {
+    const lines = listLines(noTests([UNUSED]), [at("held")]);
+    expect(lines).toContain(`    Why this needs you: ${HOLD_WHY.unchecked}`);
+    expect(uncheckedApproved(3)).toBe("Problem 3: nothing will check this fix except you, so it will wait for your sign-off.");
+    for (const line of [HOLD_WHY.unchecked, uncheckedApproved(3)]) expect(line).not.toMatch(PACK_FORBIDDEN);
   });
 
   it("never uses the harness's internal words", () => {

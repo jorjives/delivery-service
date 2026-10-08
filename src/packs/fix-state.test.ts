@@ -238,4 +238,10 @@ describe("a problem with no specific check where one is needed", () => {
   it("is skipped when the owner skips it", () => {
     expect(deriveFindings([B], [decide([B.id], "skip")], new Map(), blocked).map((at) => at.state)).toEqual(["skipped"]);
   });
+
+  it("is approved once the owner approves it without a check", () => {
+    const blocked = (finding: Finding): boolean => finding.id === B.id;
+    const anyway: LedgerEntry = { t: "decision", at: AT, ids: [B.id], choice: "approve", allowUnchecked: true };
+    expect(deriveFindings([B], [anyway], new Map(), blocked).map((at) => at.state)).toEqual(["approved"]);
+  });
 });

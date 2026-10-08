@@ -5,7 +5,7 @@ import { loadSnapshot, type RecordSnapshot } from "../report/snapshot.js";
 import { repoLocked } from "../repo-lock.js";
 import type { Finding } from "./finding.js";
 import { fixTaskFor, type FixTask } from "./fix-task.js";
-import { authorisations, readLedger, resolvedIds, signOffResults, type LedgerEntry, type SignOffResult } from "./ledger.js";
+import { authorisations, readLedger, resolvedIds, signOffResults, allowedUnchecked, type LedgerEntry, type SignOffResult } from "./ledger.js";
 import { changesTests, uncheckable, type SavedReview } from "./review-record.js";
 import { isGuard, needsTestChange } from "./guards.js";
 
@@ -102,6 +102,7 @@ export function deriveFindings(findings: readonly Finding[], entries: readonly L
   const authorised = authorisations(entries);
   const choice = new Map<string, "approve" | "skip">();
   for (const entry of entries) if (entry.t === "decision") for (const id of entry.ids) choice.set(id, entry.choice);
+  const allowed = allowedUnchecked(entries);
   const results = signOffResults(entries);
   return findings.map((finding) => {
     const fix = fixes.get(finding.id);
@@ -115,7 +116,7 @@ export function deriveFindings(findings: readonly Finding[], entries: readonly L
     }
     const chosen = choice.get(finding.id);
     if (chosen === "skip") return stateOf("skipped", fix);
-    if (isUncheckable(finding)) return stateOf("needs_decision", fix);
+    if (isUncheckable(finding) && !(chosen === "approve" && allowed.has(finding.id))) return stateOf("needs_decision", fix);
     return stateOf(chosen === "approve" ? "approved" : "proposed", fix);
   });
 }

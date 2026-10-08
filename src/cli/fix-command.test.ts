@@ -371,4 +371,29 @@ describe("delivery fix in a project with no tests", () => {
     },
     RUN_TIMEOUT,
   );
+
+  const UNUSED_GATEWAY = sampleFinding({
+    id: "222222222222",
+    title: "Old code for a payment provider you no longer use",
+    category: "dead-code",
+    severity: "low",
+    where: { path: "legacy-gateway.js", line: 1, endLine: 1 },
+    anchor: "export function chargeWithLegacyGateway(card, amount) {",
+    check: { kind: "none" },
+  });
+  const REMOVES_THE_GATEWAY = { when: { promptContains: UNUSED_GATEWAY.id }, effects: [{ delete: { path: "legacy-gateway.js" } }], json: { status: "completed", rationale: "removed the unused file" } };
+
+  it(
+    "keeps a fix approved without a check waiting for sign-off, even in a project with tests",
+    async () => {
+      const repo = exampleRepo("fix-unchecked-");
+      const dir = await writeReview(repo, { findings: [UNUSED_GATEWAY], pack: { requireCheck: true } });
+      await delivery(["findings", "approve", "1", "--allow-unchecked"], { cwd: repo });
+      const { stdout } = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [REMOVES_THE_GATEWAY] }) });
+      expect(stdout).toContain("1. Old code for a payment provider you no longer use (low): waiting for your sign-off");
+      expect(existsSync(join(repo, "legacy-gateway.js"))).toBe(true);
+      expect((await readLedger(dir)).find((entry) => entry.t === "authorise")).toMatchObject({ hold: { [UNUSED_GATEWAY.id]: true } });
+    },
+    RUN_TIMEOUT,
+  );
 });

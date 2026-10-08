@@ -89,5 +89,7 @@ describe("the task packs guide", () => {
   it("explains a project with no tests: the warning, the level, and that every fix waits, and points at its example", () => {
     for (const phrase of [NO_TESTS_WARNING, NO_TESTS_LEVEL, CANNOT_BE_CHECKED, "requireCheck"]) expect(flat).toContain(phrase);
     expect(guide).toContain("examples/no-tests-example");
+    expect(guide).toContain("--allow-unchecked");
+    expect(flat).toContain("nothing will check this fix except you");
   });
 });
