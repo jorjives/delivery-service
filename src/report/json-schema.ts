@@ -13,7 +13,7 @@ export type JsonSchema = { [key: string]: unknown };
  * names known today as examples: a release may add a key or a name, and never
  * removes or re-types one.
  */
-function open(schema: z.ZodType): JsonSchema {
+export function openSchema(schema: z.ZodType): JsonSchema {
   return z.toJSONSchema(schema, {
     // The shape before parsing: zod's own output shape forbids every key it does not name.
     io: "input",
@@ -33,7 +33,7 @@ function open(schema: z.ZodType): JsonSchema {
 
 /** The published schema of both formats, each under the version it names itself by: what `delivery report --schema` prints. */
 export function publishedSchema(): Record<typeof REPORT_SCHEMA | typeof EVENT_SCHEMA, JsonSchema> {
-  return { [REPORT_SCHEMA]: open(ReportDocument), [EVENT_SCHEMA]: open(z.union([ReportEvent, UnknownEvent])) };
+  return { [REPORT_SCHEMA]: openSchema(ReportDocument), [EVENT_SCHEMA]: openSchema(z.union([ReportEvent, UnknownEvent])) };
 }
 
 const isObject = (value: unknown): value is JsonSchema => typeof value === "object" && value !== null && !Array.isArray(value);

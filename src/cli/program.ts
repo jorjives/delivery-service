@@ -95,7 +95,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .version(version, "-V, --version", "print the harness version")
     .option("--no-color", "print without colour")
-    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report and validate, and one JSON event per line from status --watch")
+    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate and findings, and one JSON event per line from status --watch")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
     .configureOutput({ writeOut: (text) => out.stdout.write(text), writeErr: (text) => out.stderr.write(text) });
@@ -216,6 +216,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("[number]", "show this problem in full, counted from 1 as the list numbers them")
     .option("--unconfirmed", "list the problems the review reported that could not be found in your project, and why")
     .option("--changes", "with a problem's number: show what its kept fix changed, file by file")
+    .option("--schema", "print the published JSON Schema of the document `delivery findings --json` prints, instead of the problems")
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
     .action(async (number: string | undefined, options: FindingsOptions, command: Command) => {
       exitCode = await findingsCommand(number, options, ctxFor(command));

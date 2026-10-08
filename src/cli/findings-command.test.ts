@@ -1,15 +1,17 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { mkdtempSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { appendLedger, readLedger } from "../packs/ledger.js";
 import { CHANGES_NOTE, CHANGES_WHICH, NO_REVIEW_YET, noKeptFix, unfinishedReview } from "../packs/render.js";
-import { exampleRepo, sampleFinding, writeReview } from "../packs/review-fixtures.js";
+import { exampleRepo, sampleFinding, writeReview, writeFixPhase, FIX_PHASE_FINDINGS } from "../packs/review-fixtures.js";
+import { FindingsDocument } from "../packs/findings-document.js";
 import { initTempRepo } from "../temp-repo.js";
 import { withoutAt } from "../without-at.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { alreadyTakenOn, approvedLine, noSuchProblem, skippedLine, testsOnlyApproved, NOTHING_CHOSEN } from "./findings-command.js";
+import { alreadyTakenOn, approvedLine, noSuchProblem, skippedLine, testsOnlyApproved, NOTHING_CHOSEN, SCHEMA_ALONE } from "./findings-command.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import type { MockScript } from "../mock-script.js";
 
@@ -201,5 +203,38 @@ describe("delivery findings <n> --changes", () => {
     const { exitCode, stderr } = await delivery(["findings", "--changes"], { cwd: repo });
     expect(exitCode).toBe(EXIT.configuration);
     expect(stderr).toBe(`${CHANGES_WHICH}\n`);
+  });
+});
+
+describe("delivery findings as data", () => {
+  it("prints one versioned document with every problem, its state, its check and its fix's run", async () => {
+    const project = exampleRepo("findings-json-");
+    await writeFixPhase(project);
+
+    const { exitCode, stdout } = await delivery(["findings", "--json"], { cwd: project });
+    const doc = FindingsDocument.parse(JSON.parse(stdout));
+
+    expect(doc.schema).toBe("delivery.findings/1");
+    expect(doc.problems.map((problem) => problem.state)).toEqual(["held", "fixed", "fixed", "unfixable", "stopped", "skipped"]);
+    expect(doc.problems[2]?.check).toEqual({ kind: "none", level: "tests only: no check of this specific problem" });
+    expect(doc.problems[0]?.fix?.run).toBe("fix-1-20261005T110000Z");
+    expect(doc.problems[5]?.fix).toBeNull();
+    expect(doc.problems.map((problem) => problem.id)).toEqual(FIX_PHASE_FINDINGS.map((finding) => finding.id));
+    expect(exitCode).toBe(0);
+  });
+
+  it("prints its JSON Schema anywhere, needing no project", async () => {
+    const nowhere = mkdtempSync(join(tmpdir(), "findings-schema-"));
+
+    const { exitCode, stdout } = await delivery(["findings", "--schema"], { cwd: nowhere });
+
+    expect(Object.keys(JSON.parse(stdout))).toEqual(["delivery.findings/1"]);
+    expect(exitCode).toBe(0);
+  });
+
+  it("refuses --schema with anything it would otherwise show", async () => {
+    const { exitCode, stderr } = await delivery(["findings", "1", "--schema"], { cwd: repo() });
+    expect(stderr).toContain(SCHEMA_ALONE);
+    expect(exitCode).toBe(EXIT.configuration);
   });
 });

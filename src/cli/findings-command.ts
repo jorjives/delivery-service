@@ -3,6 +3,7 @@ import { DamagedReview } from "../errors.js";
 import { appendLedger, authorisations, readLedger } from "../packs/ledger.js";
 import { keptChanges } from "../packs/kept-changes.js";
 import { UNDECIDED, keptFix, readFindingStates } from "../packs/fix-state.js";
+import { findingsDocument, findingsSchema } from "../packs/findings-document.js";
 import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords } from "../packs/render.js";
 import { listReviews, loadReview } from "../packs/review-record.js";
 import type { SavedReview } from "../packs/review-record.js";
@@ -16,7 +17,11 @@ export interface FindingsOptions {
   repo?: string;
   unconfirmed?: boolean;
   changes?: boolean;
+  /** Print the published schema of `--json`'s document instead of any problems. */
+  schema?: boolean;
 }
+
+export const SCHEMA_ALONE = "Use `--schema` on its own: it prints the schema of the data, not the problems, so it takes no number and no other option.";
 
 export interface DecideOptions {
   repo?: string;
@@ -56,9 +61,16 @@ export async function finishedReview(repoPath: string): Promise<SavedReview> {
 
 /**
  * `delivery findings [n]`: the latest review's problems, one of them in full,
- * or the ones that could not be confirmed. Only reads.
+ * or the ones that could not be confirmed; with `--json`, the whole list as one `delivery.findings/1` document. Only reads.
  */
 export async function findingsCommand(number: string | undefined, options: FindingsOptions, ctx: CommandContext): Promise<ExitCode> {
+  // The schema is the same wherever it is asked for.
+  if (options.schema === true) {
+    if (number !== undefined || options.unconfirmed === true || options.changes === true) throw new Refusal(SCHEMA_ALONE, EXIT.configuration);
+    ctx.writeLine(JSON.stringify(findingsSchema(), null, 2));
+    return EXIT.ok;
+  }
+
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
   const say = (line: string): void => ctx.report.note(line);
   const [latest] = await listReviews(repoPath);
@@ -96,6 +108,10 @@ export async function findingsCommand(number: string | undefined, options: Findi
   }
   if (number === undefined) {
     const { states } = await readFindingStates(repoPath, review);
+    if (ctx.json) {
+      ctx.writeLine(JSON.stringify(findingsDocument(review, states), null, 2));
+      return EXIT.ok;
+    }
     for (const line of listLines(review, states)) say(line);
     return EXIT.ok;
   }
