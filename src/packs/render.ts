@@ -47,7 +47,7 @@ export const CHANGES_WHICH = "Say which problem's changes to show, by its number
 export const noKeptFix = (number: number, words: string): string => `Problem ${number} has no kept fix to show: it is ${words}. See where each stands with: delivery findings`;
 
 /** How a problem's consequence is introduced, as its pack chose. */
-const CONSEQUENCE_WORDS: Record<NonNullable<PinnedPack["consequenceLabel"]>, string> = {
+export const CONSEQUENCE_WORDS: Record<NonNullable<PinnedPack["consequenceLabel"]>, string> = {
   "why-it-matters": "Why it matters",
   "what-could-happen": "What could happen",
 };
@@ -113,7 +113,7 @@ function stopLines({ state, fix, cause }: FindingState): string[] {
   return [`    Why: ${why}`, ...(agentSaid === null ? [] : [`    The agent said: ${quoted(agentSaid, "      ")}`])];
 }
 
-function signOffLines(number: number, { state, fix, signOff }: FindingState): string[] {
+export function signOffLines(number: number, { state, fix, signOff }: FindingState): string[] {
   const branch = fix?.branch ?? "not recorded";
   switch (state) {
     case "held":
