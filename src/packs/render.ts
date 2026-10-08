@@ -5,7 +5,7 @@ import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js
 import { atOrAbove, SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
 import { UNDECIDED, type FindingState, type FixState } from "./fix-state.js";
 import { NOT_LANDED_REASONS, type NotLandedReason } from "./ledger.js";
-import type { PinnedPack, ReviewHeader, SavedReview } from "./review-record.js";
+import { uncheckable, type PinnedPack, type ReviewHeader, type SavedReview } from "./review-record.js";
 import { literalsOf, maskIn } from "./secrets.js";
 
 // Re-export for the test to use.
@@ -24,6 +24,10 @@ export const NO_TESTS_WARNING =
 /** What "checked" means where the project has no tests: the problem's own check and nothing else. */
 export const NO_TESTS_LEVEL = "this problem's own check only, no regression tests";
 export const CANNOT_BE_CHECKED = "cannot be checked";
+
+export const UNCHECKABLE_WHY = "It cannot be checked, so nothing would check its fix except you.";
+export const approveAnyway = (number: number): string => `To approve it anyway: delivery findings approve ${number} --allow-unchecked`;
+export const uncheckedRefused = (number: number): string => `Problem ${number} cannot be checked: nothing would check its fix except you. ${approveAnyway(number)}`;
 
 /** How the harness will know a problem is fixed, as the owner of this project reads it: with no tests, a specific check is all there is, and a problem with none cannot be checked. */
 export function checkLevel(header: Pick<ReviewHeader, "noTests">, kind: CheckKind): string {
@@ -192,7 +196,9 @@ export function reviewLines({ header, result }: SavedReview): string[] {
   const took = `Review finished in ${durationWords(Date.parse(header.endedAt) - Date.parse(header.startedAt))}.`;
   if (shown === 0) return [took, noneFound(header.fileCount), ...unconfirmedPointer(result.unconfirmed.length)];
   const checked = result.findings.filter((finding) => finding.check.kind !== "none").length;
-  const testsOnly = shown - checked;
+  const deciding = result.findings.filter((finding) => uncheckable(header, finding)).length;
+  const testsOnly = shown - checked - deciding;
+  const offered = shown - deciding;
   // A pack that holds fixes by severity opens with the severities, since they decide what waits for the owner.
   const threshold = header.pack.hold ?? null;
   return [
@@ -205,12 +211,13 @@ export function reviewLines({ header, result }: SavedReview): string[] {
     ...(result.notShown > 0 ? [`${result.notShown} more not shown: this review lists at most ${header.pack.maxFindings} problems.`] : []),
     ...unconfirmedPointer(result.unconfirmed.length),
     "",
-    `${checked} of ${shown} ${shown === 1 ? "has" : "have"} a specific check; ${testsOnly} ${testsOnly === 1 ? "is" : "are"} tests only.`,
+    `${checked} of ${shown} ${shown === 1 ? "has" : "have"} a specific check; ${deciding === 0 ? `${testsOnly} ${testsOnly === 1 ? "is" : "are"} tests only.` : `${deciding} cannot be checked, so ${deciding === 1 ? "it waits" : "they wait"} for your decision.`}`,
     NOTHING_CHANGED,
     "",
     "What next?",
-    `  Fix all ${shown}: delivery findings approve --all, then delivery fix`,
+    ...(offered === 0 ? [] : [`  Fix all ${offered}: delivery findings approve --all, then delivery fix`]),
     "  Choose: delivery findings",
+    ...(deciding === 0 ? [] : result.findings.flatMap((finding, index) => uncheckable(header, finding) ? [`    ${approveAnyway(index + 1)}`] : [])),
   ];
 }
 
@@ -220,7 +227,7 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
   const needsTest = states.filter((at) => at.cause === "needs_test_change").length;
   const problemLines = result.findings.flatMap((finding, index) => {
     const at = states[index] ?? UNDECIDED;
-    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...signOffLines(index + 1, at, holdWhy(header, finding))];
+    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}${at.state === "needs_decision" ? `; ${CANNOT_BE_CHECKED}` : ""}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...(at.state === "needs_decision" ? [`    ${UNCHECKABLE_WHY} ${approveAnyway(index + 1)}`] : []), ...signOffLines(index + 1, at, holdWhy(header, finding))];
   });
   // What only a person can do, once the code part is done.
   const needsYou = result.findings.flatMap((finding, index) =>

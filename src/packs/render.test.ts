@@ -4,7 +4,7 @@ import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
   AGENT_OPINION, CHANGES_TESTS, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING,
+  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
@@ -310,8 +310,21 @@ describe("a review of a project with no tests", () => {
     expect(lines).toContain(`    Why this needs you: ${HOLD_WHY.noTests}`);
   });
 
+  it("sets a problem with no check aside as needing a decision, and says how to approve it anyway", () => {
+    const lines = listLines(noTests(), [at("proposed"), at("proposed"), at("needs_decision")]);
+    expect(lines).toContain("3. Old payment code (low): needs your decision; cannot be checked");
+    expect(lines).toContain(`    ${UNCHECKABLE_WHY} ${approveAnyway(3)}`);
+  });
+
+  it("counts problems that cannot be checked, and offers to fix all the others", () => {
+    const lines = reviewLines(noTests());
+    expect(lines).toContain("2 of 3 have a specific check; 1 cannot be checked, so it waits for your decision.");
+    expect(lines).toContain("  Fix all 2: delivery findings approve --all, then delivery fix");
+    expect(lines).toContain(`    ${approveAnyway(3)}`);
+  });
+
   it("never uses the harness's internal words", () => {
-    for (const line of [...reviewLines(noTests()), ...listLines(noTests(), [at("held"), at("proposed"), at("proposed")])]) expect(line.replace(/delivery findings|branch \S+/g, "")).not.toMatch(PACK_FORBIDDEN);
+    for (const line of [...reviewLines(noTests()), ...listLines(noTests(), [at("held"), at("proposed"), at("proposed")]), ...listLines(noTests(), [at("proposed"), at("proposed"), at("needs_decision")])]) expect(line.replace(/delivery findings|branch \S+/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
 });
 
