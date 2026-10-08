@@ -62,6 +62,7 @@
     "demo:packs-slice-1": "npx tsx demos/task-packs-slice-1-code-review.ts",
     "demo:packs-slice-3": "npx tsx demos/task-packs-slice-3-cheating-fixes.ts",
     "demo:packs-slice-4": "npx tsx demos/task-packs-slice-4-security-sign-off.ts",
+    "demo:packs-slice-6": "npx tsx demos/task-packs-slice-6-no-tests.ts",
     "prepare": "git config core.hooksPath .githooks"
   },
   "engines": {

@@ -798,7 +798,7 @@ main copy and merge it, or `delivery findings reject <n>`. A password or key it 
 shown.
 
 A review stopped part-way is finished by running the same command again, and so is a fix. See
-[Reviewing your project](docs/task-packs.md), and try it on `examples/code-review-example`.
+[Reviewing your project](docs/task-packs.md), and try it on `examples/code-review-example`, or on `examples/no-tests-example` to see a project with no tests, where every fix waits for your sign-off.
 
 ## Documentation
 

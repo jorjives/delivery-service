@@ -280,3 +280,10 @@ test command) and one that honestly needs a test change, run:
 ```bash
 npm run demo:packs-slice-3
 ```
+
+To watch a review of a project with no tests (`examples/no-tests-example`): the warning, a problem
+set aside as needing your decision, and every fix waiting for your sign-off, run:
+
+```bash
+npm run demo:packs-slice-6
+```

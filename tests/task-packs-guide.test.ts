@@ -92,4 +92,9 @@ describe("the task packs guide", () => {
     expect(guide).toContain("--allow-unchecked");
     expect(flat).toContain("nothing will check this fix except you");
   });
+
+  it("points at the scripted demo of a project with no tests, which exists", () => {
+    expect(guide).toContain("npm run demo:packs-slice-6");
+    expect(existsSync(join(REPO_ROOT, "demos/task-packs-slice-6-no-tests.ts"))).toBe(true);
+  });
 });
