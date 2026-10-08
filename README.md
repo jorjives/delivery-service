@@ -786,6 +786,8 @@ it. Nothing in your project changes.
 - `delivery findings approve 1 3` (or `--all`) and `delivery findings skip 2` choose what is fixed.
 - `delivery fix` fixes each approved problem in its own copy, checks it against its own check and
   your tests, and merges it. One that cannot be fixed is explained, and the rest carry on.
+- `delivery report` then tells you, problem by problem, what was fixed, what is waiting for your
+  sign-off and what could not be fixed, under who must act.
 - `delivery packs` lists the reviews available; `delivery review ./my-review` runs one from a folder.
 
 `delivery review security` does the same for weaknesses someone could take advantage of. A fix of

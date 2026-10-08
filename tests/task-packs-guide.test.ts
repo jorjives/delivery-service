@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY } from "../src/packs/render.js";
 import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU } from "../src/packs/render.js";
+import { OUTCOME_WORDS } from "../src/packs/review-report.js";
 import { REPO_ROOT } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/task-packs.md"), "utf-8");
@@ -66,5 +67,13 @@ describe("the task packs guide", () => {
 
   it("explains signing off and declining a kept fix", () => {
     for (const phrase of ["delivery findings sign-off", "delivery findings reject", CHECKING_SIGN_OFF, NEEDS_YOU]) expect(flat).toContain(phrase);
+  });
+
+  it("shows coming back to the report after a fix phase: the opening sentence and each section by who must act", () => {
+    expect(guide).toContain("delivery report");
+    for (const heading of ["WAITING FOR YOUR SIGN-OFF", "NEEDS YOU", "STOPPED, FOR YOUR ENGINEERS", "DONE", "SKIPPED BY YOU"]) expect(guide).toContain(heading);
+    expect(flat).toContain("Problem 1 of 6");
+    expect(flat).toContain(OUTCOME_WORDS.waiting[0]);
+    expect(flat).toContain("carry on with: delivery fix");
   });
 });

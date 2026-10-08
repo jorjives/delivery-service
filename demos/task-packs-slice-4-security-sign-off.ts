@@ -6,8 +6,9 @@
  *    the code and an old library version. The password is never shown.
  * 2. Approves both and runs `delivery fix`: the library fix is merged at once;
  *    the password fix is checked and kept on its branch, waiting for sign-off.
- * 3. Shows what the kept fix changed, signs it off (it is checked again on the
- *    current main copy, then merged), and lists what is still left for the owner.
+ * 3. Reads the report while the password fix still waits, then shows what the
+ *    kept fix changed, signs it off (it is checked again on the current main
+ *    copy, then merged), and lists what is still left for the owner.
  *
  * Runs against claude-mock, vendored in vendor/claude-mock and installed by
  * npm install: no agent, no sign-in, no network.
@@ -33,6 +34,7 @@ await show(repo, { [TEST_MOCK_SCRIPT]: await scriptFile(scanScript(EXAMPLE_SECUR
 await show(repo, {}, ["findings", "approve", "--all"]);
 await show(repo, { [TEST_MOCK_SCRIPT]: await scriptFile(SECURITY_FIXES) }, ["fix"]);
 await show(repo, {}, ["findings"]);
+await show(repo, {}, ["report"]);
 await show(repo, {}, ["findings", "1", "--changes"]);
 await show(repo, {}, ["findings", "sign-off", "1"]);
 await show(repo, {}, ["findings"]);

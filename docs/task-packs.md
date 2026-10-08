@@ -148,6 +148,39 @@ NEEDS YOU, such as changing a leaked password where it was issued.
 Sign-off waits for nothing: while fixes are being made several at a time it says so and changes
 nothing; run it again once they have finished.
 
+## Come back to the report
+
+After a fix phase, `delivery report` tells you what happened in one place. It opens with which
+review it was and one sentence about the whole of it, then lists each problem by its title and how
+serious it is, under who must act:
+
+```
+Security review of shop: 6 problems found; you approved 5 and skipped 1.
+2 are fixed and merged; 1 is waiting for your sign-off; 1 could not be fixed; 1 was stopped by a setup problem.
+Review 5 Oct 10:19 UTC.
+
+WAITING FOR YOUR SIGN-OFF (1)
+  Problem 1 of 6: "A password for the payments service is written in the code" (critical)
+    What could happen: "Anyone who can read this code can use the payments service as you."
+    The agent changed your code so the code the review flagged is gone.
+    The agent said: "Read the key from PAYMENTS_KEY."
+    How we know: the check passed (checked: the flagged code is gone), and every test that passed before still passes.
+    Why this needs you: it is a serious problem, and you should see what changed before it reaches your main copy.
+    Look at what changed: delivery findings 1 --changes
+    Say yes: delivery findings sign-off 1
+    Say no: delivery findings reject 1
+```
+
+The sections are WAITING FOR YOUR SIGN-OFF, NEEDS YOU (problems that could not be fixed, with why,
+what the agent said, who acts and what to do, and anything only you can do once a fix is merged),
+STOPPED, FOR YOUR ENGINEERS (a problem stopped by a setup problem, such as a check that could not
+run, and a fix you declined), DONE (each fixed line says how it was checked, so a fix checked only
+by your tests never reads as proved), and SKIPPED BY YOU. Problems still being fixed, or not yet
+decided, have sections of their own.
+
+It reads only the records, so it works from another terminal while `delivery fix` is going, and
+after an interruption it says to carry on with: delivery fix.
+
 ## Where a review is kept
 
 Each review is a folder under `.delivery/packs/` in your project. `.delivery/` ignores itself, so nothing shows up in `git status`. If a review is interrupted after the agent has replied, run the same command again: the review is finished from the saved reply without asking the agent again. If it is interrupted while the agent is working, running it again starts the review afresh. If a review could not run (not signed in, no connection, a usage limit, or a reply the harness could not read), it says so in one sentence and saves nothing.
