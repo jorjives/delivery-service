@@ -270,6 +270,8 @@ not sliced.
 
 ## Slice 6: Review a Project That Has No Tests, Safely
 
+**Status:** ✅ Complete — 2026-10-08 — `ecb876e`
+
 **Delivers:** An owner whose project has no tests is told so at review time, can still approve problems that have a specific check, and every fix waits for her sign-off, so nothing is merged that only an agent has vouched for.
 
 **Operational note:** A second example project, with planted flaws and no tests, ships alongside the first so this case can be demonstrated.
