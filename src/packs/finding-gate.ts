@@ -19,6 +19,9 @@ export const findingAssertion = (id: string): string => `finding:${id}:resolved`
 /** What a fix may not touch: as authorised, or the harness's own lists for a fix authorised before guards travelled with it. */
 const guardsOf = (task: FixTask): Guards => task.guards ?? { ...DEFAULT_GUARDS, testsCategory: false };
 
+/** What a project with no tests adds to a fix's check: nothing, so the problem's own check and the guards are the whole of it. */
+const NO_TESTS: GateReport = { status: "PASS", assertions: [] };
+
 /** Whether the problem is gone, as one more result; nothing for a problem that is tests only; an error when its check cannot run. */
 async function resolvedAssertion(task: FixTask, worktreePath: string): Promise<Assertion[] | { error: string }> {
   if (task.finding.check.kind === "none") return [];
@@ -28,11 +31,13 @@ async function resolvedAssertion(task: FixTask, worktreePath: string): Promise<A
   return [{ id: findingAssertion(task.finding.id), outcome: gone ? "PASS" : "FAIL", detail: gone ? "the problem is gone" : "the problem is still there" }];
 }
 
-/** The fix this run is for and the project's own check it wraps, or why it cannot be judged. */
-function regressionCheck(ctx: GateContext): { task: FixTask; gate: Gate; ctx: GateContext } | GateReport {
+/** The fix this run is for and the project's own check it wraps (none when the project has no tests), or why it cannot be judged. */
+function regressionCheck(ctx: GateContext): { task: FixTask; gate: Gate | null; ctx: GateContext } | GateReport {
   const parsed = FixTask.safeParse(ctx.taskDef);
   if (!parsed.success) return errorReport("this check judges only the fix of a problem a review found, and this task is not one");
   const { verify } = parsed.data.authorisation;
+  // Nothing checks the fix broke nothing else: which is why such a fix always waits for the owner's sign-off.
+  if (verify === null) return { task: parsed.data, gate: null, ctx };
   if (verify.type === "custom" && !isAbsolute(verify.modulePath)) return errorReport(`the project's own check ${verify.modulePath} was not pinned by its full path`);
   return { task: parsed.data, gate: resolveGate(verify, ctx.worktreePath), ctx: { ...ctx, gateRef: verify } };
 }
@@ -44,12 +49,13 @@ function regressionCheck(ctx: GateContext): { task: FixTask; gate: Gate; ctx: Ga
  * count and a PASS harmless. The guard results join the check, absent at
  * baseline except the ignored-file ones already there, which `baseline`
  * records. A check of the problem that cannot run is an error, never a pass.
+ * In a project with no tests there is no project check: only the problem's own result and the guards are judged.
  */
 const findingGate: Gate = {
   async baseline(ctx) {
     const resolved = regressionCheck(ctx);
     if (!("gate" in resolved)) return resolved;
-    const report = await resolved.gate.baseline(resolved.ctx);
+    const report = resolved.gate === null ? NO_TESTS : await resolved.gate.baseline(resolved.ctx);
     if (report.status === "ERROR") return report;
     // After the project's own run, so what that run leaves behind is part of the baseline, not a new failure.
     try {
@@ -72,7 +78,7 @@ const findingGate: Gate = {
     }
     const found = await resolvedAssertion(task, ctx.worktreePath);
     if ("error" in found) return errorReport(`the check of this problem could not run: ${found.error}`);
-    const report = await gate.check(resolved.ctx);
+    const report = gate === null ? NO_TESTS : await gate.check(resolved.ctx);
     if (report.status === "ERROR") {
       // Even if the project's check can't run, return the guard assertions if any failed
       if (guards.some((a) => a.outcome === "FAIL")) {
