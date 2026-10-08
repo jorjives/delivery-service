@@ -260,7 +260,7 @@ export async function runCli(io: CliIo): Promise<number> {
   program
     .command("fix")
     .description(
-      "fix the problems you approved in your latest review: each is fixed by an agent in its own copy, checked by its own check and your tests, then merged",
+      "fix the problems you approved in your latest review: each is fixed by an agent in its own copy, checked by its own check and your tests (if you have any), then merged or kept for your sign-off",
     )
     .option("--concurrency <n>", "how many problems to fix at once (default: 1, or `concurrency` in delivery.config.json)")
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")

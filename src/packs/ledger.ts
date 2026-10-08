@@ -30,7 +30,8 @@ export const LedgerEntry = z.discriminatedUnion("t", [
     t: z.literal("authorise"),
     at: At,
     ids: z.array(Id).min(1),
-    verify: GateRef,
+    /** The project's check of each fix, pinned; null when the project has no tests. */
+    verify: GateRef.nullable(),
     guards: GuardLists.optional(),
     /** The pack's threshold when this was written, and what it decided for each problem: computed once, never again. */
     threshold: Severity.nullable().optional(),
@@ -76,7 +77,7 @@ export async function readLedger(reviewDir: string): Promise<LedgerEntry[]> {
 
 /** What `delivery fix` was authorised to do for a problem: the project check it is judged by and what it may not touch. Part of the fix's identity. */
 export interface Authorised {
-  verify: GateRef;
+  verify: GateRef | null;
   guards?: GuardLists;
   hold?: boolean;
   landing?: CloserRef;
