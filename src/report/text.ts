@@ -50,17 +50,35 @@ function elapsed(from: string, to: string): string {
 export const tasksWord = (count: number): string => `${count} ${count === 1 ? "task" : "tasks"}`;
 
 /** The part of the report a task is told in. */
-type Section = "needs_you" | "engineers" | "done" | "not_finished" | "not_started";
+export type Section = "needs_you" | "engineers" | "done" | "not_finished" | "not_started";
 
 const SECTIONS: readonly Section[] = ["needs_you", "engineers", "done", "not_finished", "not_started"];
 
-const HEADING: Record<Section, { title: string; tone: Tone }> = {
+export const HEADING: Record<Section, { title: string; tone: Tone }> = {
   needs_you: { title: "NEEDS YOU", tone: "attention" },
   engineers: { title: "STOPPED, FOR YOUR ENGINEERS", tone: "stopped" },
   done: { title: "DONE", tone: "done" },
   not_finished: { title: "NOT FINISHED", tone: "quiet" },
   not_started: { title: "NOT STARTED", tone: "quiet" },
 };
+
+/**
+ * A review's fix phase told by its problems rather than its tasks. The report keeps every line about the work as a
+ * whole and takes from this only what it would otherwise say task by task. Built by the packs module, so the report
+ * needs nothing from it.
+ */
+export interface ReviewPart {
+  /** The review's own opening lines: what it found and what came of it. */
+  opening: string[];
+  /** The review's sections, already painted, each starting with a blank line. */
+  sections: string[];
+  /** The last line: where to go from here. */
+  next: string;
+  /** The command that carries the review's work on, said wherever the report would say how to carry on. */
+  carryOn: string;
+}
+
+const RUN_AGAIN = "delivery run";
 
 /** Total over the standings, so a new one does not compile until it has a section. */
 function sectionOf(surface: ReportSurface): Section {
@@ -148,8 +166,8 @@ const SUBJECT: Record<ReportDocument["kind"], { final: string; going: string; pa
 };
 
 /** That the work stopped part way, and how to carry it on. A run that records why it stopped says how in its own line instead. */
-export function stoppedPartWay(doc: ReportDocument): string {
-  return `${SUBJECT[doc.kind].partWay} (${tally(doc)}).${doc.run?.cause == null ? " To carry on: delivery run" : ""}`;
+export function stoppedPartWay(doc: ReportDocument, carryOn = RUN_AGAIN): string {
+  return `${SUBJECT[doc.kind].partWay} (${tally(doc)}).${doc.run?.cause == null ? ` To carry on: ${carryOn}` : ""}`;
 }
 
 /** How to follow what the report is about as it happens: the list by default, anything else by its id. */
@@ -159,15 +177,14 @@ function followIt(doc: ReportDocument): string {
 }
 
 /** The first lines: what happened, counted. Never final-sounding while a task is still to finish. */
-function opening(doc: ReportDocument): string[] {
+function opening(doc: ReportDocument, carryOn?: string): string[] {
   const words = SUBJECT[doc.kind];
   if (waitingIn(doc) === 0) return doc.surfaces.length === 0 ? [] : [`${words.final}: ${headline(doc)}.`];
   if (doc.live === true) return [`${words.going} (${tally(doc)}). ${followIt(doc)}`];
-  if (doc.live === false) return [stoppedPartWay(doc)];
+  if (doc.live === false) return [stoppedPartWay(doc, carryOn)];
   const unfinished = doc.surfaces.find((surface) => surface.standing === "unfinished");
-  return [
-    `${words.unknown} (${tally(doc)}); nothing records whether it is still going.${unfinished?.run ? ` If it is not, carry on with: delivery resume ${unfinished.run}` : ""}`,
-  ];
+  const resume = carryOn ?? (unfinished?.run ? `delivery resume ${unfinished.run}` : undefined);
+  return [`${words.unknown} (${tally(doc)}); nothing records whether it is still going.${resume ? ` If it is not, carry on with: ${resume}` : ""}`];
 }
 
 export function incompleteLines(doc: ReportDocument): string[] {
@@ -202,16 +219,16 @@ function whenLines(doc: ReportDocument): string[] {
 }
 
 /** Why a run of several at once stopped when no task caused it. Total over the causes a run records. */
-function runStopLines(run: ReportRun | null): string[] {
+function runStopLines(run: ReportRun | null, carryOn = RUN_AGAIN): string[] {
   switch (run?.cause) {
     case undefined:
     case null:
       return [];
     case "shared_environment":
-      return ["The run stopped because the setup every task shares could not be repaired; no task caused this. Once it is fixed, carry on with: delivery run"];
+      return [`The run stopped because the setup every task shares could not be repaired; no task caused this. Once it is fixed, carry on with: ${carryOn}`];
     case "usage_limit":
       return [
-        `The run stopped because a usage limit was reached${run.limit === null ? "" : `: ${USAGE_LIMIT_WORDS[run.limit]}`}; no task caused this. Once the limit no longer applies, carry on with: delivery run`,
+        `The run stopped because a usage limit was reached${run.limit === null ? "" : `: ${USAGE_LIMIT_WORDS[run.limit]}`}; no task caused this. Once the limit no longer applies, carry on with: ${carryOn}`,
       ];
   }
 }
@@ -403,17 +420,21 @@ function nextLine(doc: ReportDocument): string {
  * alert when a repair changed a file the check runs, retries and time used, and next
  * steps. `saved` is one sentence about the copy of this report kept on disk: where it
  * was saved, or that it could not be. Left out, the report says nothing of one.
+ * With `review`, a review's fix phase is told by its problems: its opening and sections
+ * replace the report's headline and task sections, and its command is the one to carry on with.
  */
-export function renderText(doc: ReportDocument, { colour, saved }: { colour: boolean; saved?: string }): string[] {
+export function renderText(doc: ReportDocument, { colour, saved, review }: { colour: boolean; saved?: string; review?: ReviewPart }): string[] {
+  // A review's own opening says what came of it; the report adds only whether the work is still going.
+  const start = review === undefined ? opening(doc) : [...review.opening, ...(waitingIn(doc) === 0 ? [] : opening(doc, review.carryOn))];
   return [
     ...incompleteLines(doc),
-    ...opening(doc),
+    ...start,
     ...whenLines(doc),
-    ...runStopLines(doc.run),
-    ...SECTIONS.flatMap((section) => sectionLines(doc, section, colour)),
+    ...runStopLines(doc.run, review?.carryOn),
+    ...(review === undefined ? SECTIONS.flatMap((section) => sectionLines(doc, section, colour)) : review.sections),
     ...worthALookLines(doc, colour),
     ...tuningLines(doc, colour, saved),
     "",
-    nextLine(doc),
+    review?.next ?? nextLine(doc),
   ];
 }

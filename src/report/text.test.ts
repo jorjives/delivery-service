@@ -25,7 +25,7 @@ import {
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 import type { HistoryEntry } from "../schema.js";
-import { closingSentence, durationWords, renderText, reportPointer, stripControl, usageSentence } from "./text.js";
+import { closingSentence, durationWords, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
 
 const report = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false });
 
@@ -532,5 +532,55 @@ describe("a task waiting on a repair of the setup every task shares", () => {
     expect(lines[0]).toContain("1 paused");
     expect(lines).toContain(`  Task 2 of 4: "${FOOTER}": paused while the setup every task shares is repaired`);
     expect(lines.join("\n")).not.toMatch(/\bheld\b/);
+  });
+});
+
+describe("a report told by a review's problems", () => {
+  const part: ReviewPart = {
+    opening: ["Code review of shop: 2 problems found; you approved 2 and skipped 0."],
+    sections: ["", "DONE (1)", '  Problem 1 of 2: "Totals can be negative" (high): fixed and merged'],
+    next: "Next: delivery findings (every problem and where it stands), delivery status --all (every run)",
+    carryOn: "delivery fix",
+  };
+  const told = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false, review: part });
+
+  it("opens with the review's lines and tells its sections and next step in place of the tasks'", () => {
+    const lines = told(snapshotOf({ records: [formDone, footerFailed] }));
+
+    expect(lines[0]).toBe(part.opening[0]);
+    expect(lines.some((line) => line.startsWith("Your task list:"))).toBe(false);
+    expect(lines).toEqual(expect.arrayContaining(part.sections.slice(1)));
+    expect(lines.some((line) => line.startsWith("NEEDS YOU") || line.startsWith("  Task "))).toBe(false);
+    expect(lines.at(-1)).toBe(part.next);
+  });
+
+  it("still says the work is going, as from another terminal, after the review's opening", () => {
+    const lines = told(snapshotOf({ live: true, records: [formDone, footerWorking], runs: [going] }));
+
+    expect(lines.slice(0, 2)).toEqual([part.opening[0], "Your task list is still being worked on (4 tasks: 1 done, 1 working, 2 waiting to start). Follow it: delivery status --watch"]);
+  });
+
+  it("says how to carry on with the review's own command once the work stopped part way", () => {
+    const lines = told(snapshotOf({ live: false, records: [formDone, footerWorking], runs: [going] }));
+
+    expect(lines[1]).toBe("Work on your task list stopped part way (4 tasks: 1 done, 1 not finished, 2 waiting to start). To carry on: delivery fix");
+  });
+
+  it("says how to carry on with the review's own command when nothing records whether the work is going", () => {
+    const lines = told(snapshotOf({ records: [formDone, footerWorking] }));
+
+    expect(lines[1]).toBe("Your task list has not finished (4 tasks: 1 done, 1 not finished, 2 not started); nothing records whether it is still going. If it is not, carry on with: delivery fix");
+  });
+
+  it("names the review's own command when a run stopped for the shared setup", () => {
+    const broken = runFileOf(ID.run, [fill(1, ID.form, FORM), fill(2, ID.footer, FOOTER)], { kind: "escalated", cause: "shared_environment", reason: "the setup could not be repaired", at: "2026-10-01T03:00:00.000Z" });
+    const lines = told(snapshotOf({ live: false, records: [formDone, footerWorking], runs: [broken] }));
+
+    expect(lines).toContain("The run stopped because the setup every task shares could not be repaired; no task caused this. Once it is fixed, carry on with: delivery fix");
+  });
+
+  it("says nothing different without a review part", () => {
+    const snapshot = snapshotOf({ live: false, records: [formDone, footerWorking], runs: [going] });
+    expect(renderText(deriveReport(snapshot), { colour: false })[0]).toBe("Work on your task list stopped part way (4 tasks: 1 done, 1 not finished, 2 waiting to start). To carry on: delivery run");
   });
 });
