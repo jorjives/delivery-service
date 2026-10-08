@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { resolvePack } from "../packs/manifest.js";
 import { fixNowLines, NOT_NOW, opening, RECOVERED, reviewLines, failureSentence, checkLevel } from "../packs/render.js";
-import type { SavedReview } from "../packs/review-record.js";
+import { uncheckable, type SavedReview } from "../packs/review-record.js";
 import { runReview } from "../packs/review.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
@@ -10,14 +10,12 @@ import type { Ask, ChoiceQuestion, PickQuestion } from "./init.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
 import { fixSettings } from "./fix-command.js";
 
-/** Which problems to fix: every one listed, every one picked to start with. */
+/** Which problems to fix: every one that can be checked, each picked to start with. */
 export const pickQuestion = ({ header, result }: SavedReview): PickQuestion => ({
   message: "Which problems would you like fixed?",
-  choices: result.findings.map((finding, index) => ({
-    value: String(index + 1),
-    name: `${index + 1}. ${finding.title} (${finding.severity})`,
-    description: `How we will know: ${checkLevel(header, finding.check.kind)}.`,
-  })),
+  choices: result.findings.flatMap((finding, index) =>
+    uncheckable(header, finding) ? [] : [{ value: String(index + 1), name: `${index + 1}. ${finding.title} (${finding.severity})`, description: `How we will know: ${checkLevel(header, finding.check.kind)}.` }],
+  ),
 });
 
 export const WHEN_QUESTION: ChoiceQuestion = {
@@ -52,7 +50,7 @@ export async function reviewCommand(packArg: string, repoArg: string | undefined
   if (outcome.recovered) say(RECOVERED);
   for (const line of reviewLines(outcome.review)) say(line);
 
-  if (ctx.interactive === true && outcome.review.result.findings.length > 0) {
+  if (ctx.interactive === true && pickQuestion(outcome.review).choices.length > 0) {
     say("");
     const picked = await ask.pick(pickQuestion(outcome.review));
     const when = picked.length === 0 ? "later" : await ask.choose(WHEN_QUESTION);

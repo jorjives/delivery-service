@@ -46,6 +46,7 @@ const pinned = ({ manifest, hash, fixInstructions }: Pack): ReviewHeader["pack"]
   title: manifest.title,
   hash,
   maxFindings: manifest.scan.maxFindings,
+  ...(manifest.scan.requireCheck === true ? { requireCheck: true as const } : {}),
   // Parsed, not copied: the pinned shape keeps what a review needs of each category and drops its description.
   categories: z.array(PinnedCategory).parse(manifest.scan.categories),
   consequenceLabel: manifest.scan.consequenceLabel,

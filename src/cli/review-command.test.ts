@@ -6,7 +6,7 @@ import { git } from "../../tests/helpers.js";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
 import { AGENT_OPINION, fixNowLines, NOT_NOW, NOTHING_CHANGED, READS_ONLY, CANNOT_BE_CHECKED, NO_TESTS_LEVEL, NO_TESTS_WARNING } from "../packs/render.js";
 import { packsRoot } from "../packs/review-record.js";
-import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript, NO_TESTS_DIR, NO_TESTS_SCAN } from "../packs/review-fixtures.js";
+import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, sampleFinding, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript, NO_TESTS_DIR, NO_TESTS_SCAN } from "../packs/review-fixtures.js";
 import { plainReporter } from "./report.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
@@ -185,6 +185,12 @@ describe("delivery review at a terminal", () => {
     const { lines } = await atTerminal(exampleRepo(), scriptedAsk({ choice: "later" }).ask);
     expect(lines.at(-1)).toBe(NOT_NOW);
   }, RUN_TIMEOUT);
+
+  it("offers in the interactive choice only the problems that can be checked", () => {
+    const header = { reviewId: "code-1", pack: { name: "code", version: "1.0.0", title: "Code review", hash: "0".repeat(64), maxFindings: 40, categories: [{ id: "correctness", title: "Wrong results" }] }, repoPath: "/r", commit: "1".repeat(40), fileCount: 1, startedAt: "2026-10-05T10:15:00.000Z", endedAt: "2026-10-05T10:19:12.000Z", noTests: true as const };
+    const findings = [sampleFinding(), sampleFinding({ id: "222222222222", check: { kind: "none" } })];
+    expect(pickQuestion({ dir: "/d", header, result: { findings, unconfirmed: [], notShown: 0, notes: "" } }).choices.map((choice) => choice.value)).toEqual(["1"]);
+  });
 
   it("asks in the owner's words", () => {
     const review = { dir: "/d", header: {} as never, result: { findings: [], unconfirmed: [], notShown: 0, notes: "" } };

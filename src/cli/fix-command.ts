@@ -78,7 +78,7 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
   const { states } = await readFindingStates(repoPath, review);
   const fresh = findings.filter((_, index) => states[index]?.state === "approved");
   if (fresh.length === 0 && !states.some((at) => at.state === "fixing")) {
-    if (states.some((at) => at.state !== "proposed" && at.state !== "skipped")) {
+    if (states.some((at) => at.state !== "proposed" && at.state !== "skipped" && at.state !== "needs_decision")) {
       say(ALL_FINISHED);
       return EXIT.ok;
     }

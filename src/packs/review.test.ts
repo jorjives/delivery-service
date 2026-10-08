@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -6,7 +6,7 @@ import { git } from "../../tests/helpers.js";
 import { mockSessionEnvironment, promptsSent, readJournal, writeMockScript, type MockScript } from "../testing.js";
 import { provisionWorktree } from "../provision.js";
 import { runPlace } from "../run-location.js";
-import { resolvePack } from "./manifest.js";
+import { BUILT_IN_PACKS, loadPack, resolvePack } from "./manifest.js";
 import { listReviews, packsRoot } from "./review-record.js";
 import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, scanScript } from "./review-fixtures.js";
 import { runReview, scanErrorsDir } from "./review.js";
@@ -98,6 +98,16 @@ describe("running a review", () => {
     const untold = await runReview(exampleRepo(), pack, { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state() });
     expect(told.kind === "done" && told.review.header.noTests).toBe(true);
     expect(untold.kind === "done" && "noTests" in untold.review.header).toBe(false);
+  });
+
+  it("pins a pack's requirement that every problem has a check", async () => {
+    const dir = join(mkdtempSync(join(tmpdir(), "pack-")), "strict");
+    cpSync(join(BUILT_IN_PACKS, "code-review"), dir, { recursive: true });
+    const manifest = JSON.parse(readFileSync(join(dir, "pack.json"), "utf-8")) as { scan: Record<string, unknown> };
+    manifest.scan.requireCheck = true;
+    writeFileSync(join(dir, "pack.json"), JSON.stringify(manifest));
+    const outcome = await runReview(exampleRepo(), await loadPack(dir), { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state() });
+    expect(outcome.kind === "done" && outcome.review.header.pack.requireCheck).toBe(true);
   });
 });
 

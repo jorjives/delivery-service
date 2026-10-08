@@ -4,8 +4,8 @@ import { appendLedger, authorisations, readLedger } from "../packs/ledger.js";
 import { keptChanges } from "../packs/kept-changes.js";
 import { UNDECIDED, keptFix, readFindingStates } from "../packs/fix-state.js";
 import { findingsDocument, findingsSchema } from "../packs/findings-document.js";
-import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords } from "../packs/render.js";
-import { listReviews, loadReview } from "../packs/review-record.js";
+import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords, uncheckedRefused } from "../packs/render.js";
+import { listReviews, loadReview, uncheckable } from "../packs/review-record.js";
 import type { SavedReview } from "../packs/review-record.js";
 import { literalsOf, maskIn } from "../packs/secrets.js";
 import { stripControl } from "../report/text.js";
@@ -133,10 +133,14 @@ export async function decideCommand(choice: "approve" | "skip", numbers: string[
   const { findings } = review.result;
   const takenOn = authorisations(await readLedger(review.dir));
   const open = (n: number): boolean => !takenOn.has(findings[n - 1]?.id ?? "");
+  const blocked = (n: number): boolean => {
+    const finding = findings[n - 1];
+    return finding !== undefined && uncheckable(review.header, finding);
+  };
   let chosen: number[];
   if (options.all === true) {
     if (numbers.length > 0) throw new Refusal(ALL_AND_NUMBERS, EXIT.configuration);
-    chosen = findings.map((_, index) => index + 1).filter(open);
+    chosen = findings.map((_, index) => index + 1).filter((n) => open(n) && (choice === "skip" || !blocked(n)));
     if (chosen.length === 0) {
       ctx.report.note(NOTHING_LEFT);
       return EXIT.ok;
@@ -154,6 +158,8 @@ export async function decideCommand(choice: "approve" | "skip", numbers: string[
     ];
     const taken = chosen.find((n) => !open(n));
     if (taken !== undefined) throw new Refusal(alreadyTakenOn(taken), EXIT.configuration);
+    const unchecked = choice === "approve" ? chosen.find(blocked) : undefined;
+    if (unchecked !== undefined) throw new Refusal(uncheckedRefused(unchecked), EXIT.configuration);
   }
   await appendLedger(review.dir, { t: "decision", ids: chosen.map((n) => findings[n - 1]?.id ?? ""), choice });
   if (choice === "skip") {

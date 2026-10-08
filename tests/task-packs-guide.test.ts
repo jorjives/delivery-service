@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY, NO_TESTS_WARNING, NO_TESTS_LEVEL } from "../src/packs/render.js";
+import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY, NO_TESTS_WARNING, NO_TESTS_LEVEL, CANNOT_BE_CHECKED } from "../src/packs/render.js";
 import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU } from "../src/packs/render.js";
 import { OUTCOME_WORDS } from "../src/packs/review-report.js";
 import { FindingsDocument, FindingsProblem } from "../src/packs/findings-document.js";
@@ -87,7 +87,7 @@ describe("the task packs guide", () => {
   });
 
   it("explains a project with no tests: the warning, the level, and that every fix waits, and points at its example", () => {
-    for (const phrase of [NO_TESTS_WARNING, NO_TESTS_LEVEL]) expect(flat).toContain(phrase);
+    for (const phrase of [NO_TESTS_WARNING, NO_TESTS_LEVEL, CANNOT_BE_CHECKED, "requireCheck"]) expect(flat).toContain(phrase);
     expect(guide).toContain("examples/no-tests-example");
   });
 });

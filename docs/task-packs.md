@@ -78,6 +78,7 @@ problem that is tests only says so once, because only your existing tests can sh
 `delivery findings` then shows each problem as one of:
 
 - "not yet decided": you have not chosen.
+- "needs your decision": it cannot be checked (it has no specific check, and either your project has no tests or the review requires one), so it is not offered. See "A project with no tests".
 - "skipped by you": nothing will be done about it.
 - "being fixed": approved, and fixed when you run `delivery fix`.
 - "fixed and merged": fixed, checked, and in your project. If your project opens a pull request
@@ -252,6 +253,8 @@ A problem with a specific check can still be approved and fixed. Its "How we wil
 rules that keep a fix from weakening tests, and nothing else. Every fix then waits for your
 sign-off, whatever its severity and whichever review it came from. `examples/no-tests-example` is a
 small project to try this on.
+
+A problem with no specific check is not offered: it reads "needs your decision; cannot be checked", `delivery findings approve --all` leaves it out, and approving it by number is refused with how to approve it anyway. A review whose pack sets `"requireCheck": true` in its `scan` settings treats such a problem the same way in any project.
 
 ## Try it without an agent
 

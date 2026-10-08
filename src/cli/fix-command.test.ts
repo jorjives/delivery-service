@@ -351,6 +351,14 @@ describe("delivery fix in a project with no tests", () => {
     RUN_TIMEOUT * 2,
   );
 
+  it("says nothing is approved when the only problems left need the owner's decision", async () => {
+    const repo = exampleRepo("fix-undecided-", NO_TESTS_DIR);
+    await writeReview(repo, { findings: [sampleFinding({ check: { kind: "none" } })], noTests: true });
+    const { exitCode, stderr } = await delivery(["fix"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe(`${NOTHING_APPROVED}\n`);
+  });
+
   it(
     "keeps a fix waiting when the review found no tests, even if a test command has appeared since",
     async () => {

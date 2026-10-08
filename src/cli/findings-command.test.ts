@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { appendLedger, readLedger } from "../packs/ledger.js";
-import { CHANGES_NOTE, CHANGES_WHICH, NO_REVIEW_YET, noKeptFix, unfinishedReview } from "../packs/render.js";
+import { CHANGES_NOTE, CHANGES_WHICH, NO_REVIEW_YET, noKeptFix, unfinishedReview, uncheckedRefused } from "../packs/render.js";
 import { exampleRepo, sampleFinding, writeReview, writeFixPhase, FIX_PHASE_FINDINGS } from "../packs/review-fixtures.js";
 import { FindingsDocument } from "../packs/findings-document.js";
 import { initTempRepo } from "../temp-repo.js";
@@ -93,6 +93,25 @@ describe("delivery findings", () => {
 });
 
 describe("choosing which problems to fix", () => {
+  it("does not offer a problem that cannot be checked: approving it is refused, and --all leaves it out", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { findings: TWO, noTests: true });
+    const refused = await delivery(["findings", "approve", "2"], { cwd: project });
+    expect(refused.exitCode).toBe(EXIT.configuration);
+    expect(refused.stderr).toBe(`${uncheckedRefused(2)}\n`);
+    await delivery(["findings", "approve", "--all"], { cwd: project });
+    expect(withoutAt(await readLedger(dir))).toEqual([{ t: "decision", ids: [TWO[0]?.id], choice: "approve" }]);
+    const { stdout } = await delivery(["findings"], { cwd: project });
+    expect(stdout).toContain("2. Old payment code (low): needs your decision; cannot be checked");
+  });
+
+  it("sets a problem with no check aside in a project with tests when the review's pack requires a check", async () => {
+    const project = repo();
+    await writeReview(project, { findings: TWO, pack: { requireCheck: true } });
+    const { stdout } = await delivery(["findings"], { cwd: project });
+    expect(stdout).toContain("2. Old payment code (low): needs your decision; cannot be checked");
+  });
+
   const THREE = [...TWO, sampleFinding({ id: "222222222222", title: "Settings errors are unhelpful", severity: "medium" })];
 
   it("records approvals and skips for exactly the problems named, and the latest choice wins", async () => {
