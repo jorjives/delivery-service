@@ -1,4 +1,4 @@
-import { mkdir, readFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,7 +11,6 @@ import type { CaseFileOutcome, GateRef, HistoryEntry, TaskDef } from "../schema.
 import type { MockExpectation, MockScript } from "../mock-script.js";
 import { initTempRepo } from "../temp-repo.js";
 import type { Finding, Unconfirmed, ScanEnvelope } from "./finding.js";
-import { FINDING_GATE_REF } from "./finding-gate.js";
 import { FINDING_CLOSER_REF } from "./finding-closer.js";
 import { fixTasks } from "./fix-state.js";
 import { appendLedger, readLedger } from "./ledger.js";
