@@ -230,6 +230,7 @@ not sliced.
 ## Slice 5: Come Back to the Report and See What the Review Fixed and What Needs You
 
 **Status:** ✅ Complete — 2026-10-08 — `183dbf0`
+**Tests:** ✅ Recorded — 2026-10-08 — `57a0787` — cli — 1 UAT + 10 AC, 0 skipped
 
 **Delivers:** After a review and fix phase, `delivery report` opens with one sentence about the whole review (found, approved, skipped, fixed, waiting, could not be fixed) and lists each problem by its plain title under who must act.
 
