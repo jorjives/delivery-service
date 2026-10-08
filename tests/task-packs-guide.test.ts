@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY } from "../src/packs/render.js";
 import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU } from "../src/packs/render.js";
 import { OUTCOME_WORDS } from "../src/packs/review-report.js";
+import { FindingsDocument, FindingsProblem } from "../src/packs/findings-document.js";
 import { REPO_ROOT } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/task-packs.md"), "utf-8");
@@ -75,5 +76,13 @@ describe("the task packs guide", () => {
     expect(flat).toContain("Problem 1 of 6");
     expect(flat).toContain(OUTCOME_WORDS.waiting[0]);
     expect(flat).toContain("carry on with: delivery fix");
+  });
+
+  it("explains reading a review as data, naming every key of the findings document", () => {
+    expect(guide).toContain("delivery findings --json");
+    expect(guide).toContain("delivery findings --schema");
+    expect(guide).toContain("delivery.findings/1");
+    const keys = [FindingsDocument, FindingsProblem, FindingsDocument.shape.review, FindingsProblem.shape.where, FindingsProblem.shape.check, FindingsProblem.shape.fix.unwrap()].flatMap((schema) => Object.keys(schema.shape));
+    expect([...new Set(keys)].filter((key) => !guide.includes(`\`${key}\``))).toEqual([]);
   });
 });

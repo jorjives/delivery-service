@@ -181,6 +181,27 @@ decided, have sections of their own.
 It reads only the records, so it works from another terminal while `delivery fix` is going, and
 after an interruption it says to carry on with: delivery fix.
 
+## Read a review as data
+
+`delivery findings --json` prints the latest review as one document, versioned
+`delivery.findings/1`, and `delivery findings --schema` prints its JSON Schema. A later release may
+add keys and names; it never removes or changes one.
+
+- `schema`: always `delivery.findings/1`.
+- `review`: the review's `id`, its `pack` name and `title`, the `commit` it read, and when it
+  `startedAt` and `endedAt`.
+- `problems`: every problem, in the order `delivery findings` numbers them. Each has its `number`,
+  its `id` (the same for the same problem found again), `title`, `category`, `severity`, `where`
+  (`path`, `line`, `endLine`), its `state` from the closed set and the `words` you read for it, its
+  `check` (`kind`, and the `level` you read), whether a check ever `refused` its fix for weakening
+  your tests, the `cause` when the harness knows why it could not be fixed, and its `fix`: the
+  `run` (see it with `delivery status <run>`), `branch`, `base` and `closer`, or null before
+  `delivery fix` took it on.
+- `unconfirmed`: how many the review reported that could not be found in your project.
+- `notShown`: how many it found beyond the review's limit.
+
+The flagged code and a check's pattern are never in it: either may hold a secret.
+
 ## Where a review is kept
 
 Each review is a folder under `.delivery/packs/` in your project. `.delivery/` ignores itself, so nothing shows up in `git status`. If a review is interrupted after the agent has replied, run the same command again: the review is finished from the saved reply without asking the agent again. If it is interrupted while the agent is working, running it again starts the review afresh. If a review could not run (not signed in, no connection, a usage limit, or a reply the harness could not read), it says so in one sentence and saves nothing.

@@ -782,7 +782,8 @@ first: one whose code cannot be found is not offered, and `delivery findings --u
 it. Nothing in your project changes.
 
 - `delivery findings` lists the latest review's problems and where each stands;
-  `delivery findings 2` shows one in full, with a part for engineers.
+  `delivery findings 2` shows one in full, with a part for engineers. With `--json`, it gives the
+  whole list as data.
 - `delivery findings approve 1 3` (or `--all`) and `delivery findings skip 2` choose what is fixed.
 - `delivery fix` fixes each approved problem in its own copy, checks it against its own check and
   your tests, and merges it. One that cannot be fixed is explained, and the rest carry on.
