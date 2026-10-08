@@ -517,3 +517,20 @@ describe("time and cost", () => {
     expect([0, 45_400, 59_600, 60_000, 125_000, 3_600_000, 7_380_000].map(durationWords)).toEqual(["0 s", "45 s", "1 min", "1 min", "2 min 5 s", "1 h", "2 h 3 min"]);
   });
 });
+
+describe("a task waiting on a repair of the setup every task shares", () => {
+  const tripped = runFileOf(ID.run, [
+    fill(1, ID.form, FORM),
+    fill(2, ID.footer, FOOTER),
+    { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: ID.footer, reason: "the check could not run" } },
+    { t: "held", surfaceId: ID.footer },
+  ]);
+
+  it("is said to be paused, never held", () => {
+    const lines = report(snapshotOf({ live: true, records: [formDone, footerWorking], runs: [tripped] }));
+
+    expect(lines[0]).toContain("1 paused");
+    expect(lines).toContain(`  Task 2 of 4: "${FOOTER}": paused while the setup every task shares is repaired`);
+    expect(lines.join("\n")).not.toMatch(/\bheld\b/);
+  });
+});

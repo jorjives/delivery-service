@@ -9,6 +9,9 @@ export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery
 /** Said above a report of the most recent run when the project has no task list to report on. */
 export const NO_TASK_LIST = "This project has no task list, so this is its most recent run.";
 
+/** A task the run set aside while the setup every task shares is repaired. "Paused", never "held": the owner's word. */
+export const PAUSED_FOR_REPAIR = "paused while the setup every task shares is repaired";
+
 /**
  * Text from a record with everything that could drive the terminal taken out:
  * escape sequences whole, then any other control character. Line breaks and
@@ -119,7 +122,7 @@ function tally(doc: ReportDocument): string {
     ...part(count("needs_you"), count("needs_you") === 1 ? "needs you" : "need you"),
     ...part(count("engineers"), "stopped for your engineers"),
     ...part(doc.counts.unfinished, doc.live === true ? "working" : "not finished"),
-    ...part(doc.counts.paused, "held"),
+    ...part(doc.counts.paused, "paused"),
     ...part(doc.counts.queued, "waiting to start"),
     ...part(doc.counts.not_started, "not started"),
   ].join(", ")}`;
@@ -246,7 +249,7 @@ function unfinishedItem(surface: ReportSurface, live: boolean | null): string[] 
     surface.standing === "queued"
       ? "waiting to start"
       : surface.standing === "paused"
-        ? "held while the setup every task shares is repaired"
+        ? PAUSED_FOR_REPAIR
         : live === true
           ? "working"
           : "not finished";
