@@ -382,6 +382,8 @@ export interface ConfigLookup {
   env: NodeJS.ProcessEnv;
   /** For the commands that only read: with no configuration of the project's own, use the newest plan `delivery fix` wrote. Never for a command that starts work. */
   orPlan?: boolean;
+  /** For a command that promises only to read: a JSON file alone, never a JavaScript one, which would run the project's own code. */
+  dataOnly?: boolean;
 }
 
 /**
@@ -392,14 +394,14 @@ export interface ConfigLookup {
  * A named file that isn't there is refused rather than quietly replaced by
  * discovery.
  */
-export function findConfig({ startDir, repoPath, flag, env, orPlan }: ConfigLookup): string | undefined {
+export function findConfig({ startDir, repoPath, flag, env, orPlan, dataOnly }: ConfigLookup): string | undefined {
   // An empty DELIVERY_CONFIG is CI writing an input nobody filled in: not a
   // file called "", and not a reason to refuse before discovery has run.
   const named = flag ?? (env.DELIVERY_CONFIG || undefined);
-  if (named === undefined) return configCandidates(startDir, repoPath).find((candidate) => existsSync(candidate)) ?? (orPlan === true ? latestPlanFile(repoPath) : undefined);
-  const file = resolve(startDir, named);
-  if (!existsSync(file)) throw new Refusal(NO_SUCH_CONFIG(named), EXIT.configuration);
-  return file;
+  const found = named === undefined ? configCandidates(startDir, repoPath).find((candidate) => existsSync(candidate)) : resolve(startDir, named);
+  if (named !== undefined && found !== undefined && !existsSync(found)) throw new Refusal(NO_SUCH_CONFIG(named), EXIT.configuration);
+  if (dataOnly === true && found !== undefined && !found.endsWith(".json")) return undefined;
+  return found ?? (orPlan === true ? latestPlanFile(repoPath) : undefined);
 }
 
 /** What a config file holds: its settings, or every problem with its shape. A file that is not valid JSON is still refused outright. */

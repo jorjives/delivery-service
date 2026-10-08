@@ -164,6 +164,15 @@ describe("delivery review", () => {
     expect(stdout).toContain(`    How we will know: ${CANNOT_BE_CHECKED}.`);
   }, RUN_TIMEOUT);
 
+  it("never runs the project's own code to learn whether it has tests", async () => {
+    const repo = exampleRepo("review-js-config-", NO_TESTS_DIR);
+    const marker = join(mkdtempSync(join(tmpdir(), "review-marker-")), "ran");
+    writeFileSync(join(repo, "delivery.config.mjs"), `import { writeFileSync } from "node:fs";\nwriteFileSync(${JSON.stringify(marker)}, "");\nexport default {};\n`);
+    const { exitCode } = await delivery(["review", "code"], { cwd: repo, env: await mocked(scanScript(NO_TESTS_SCAN)) });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(existsSync(marker)).toBe(false);
+  }, RUN_TIMEOUT);
+
   it("says nothing about tests for a project that has them", async () => {
     const { stdout } = await delivery(["review", "code"], { cwd: exampleRepo(), env: await mocked() });
     expect(stdout).not.toContain(NO_TESTS_WARNING);

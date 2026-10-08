@@ -47,8 +47,8 @@ const pinnedCloser = (closer: CloserRef, repoPath: string): CloserRef => (closer
  * be found. With none, a fix is judged by its own check alone (the finding gate needs no project check) and always
  * waits for sign-off.
  */
-export async function fixSettings(options: FixOptions, startDir: string, repoPath: string, ctx: CommandContext): Promise<{ config: DeliveryConfig; project: ProjectSettings; verify: GateRef | null }> {
-  const config = await loadConfig({ startDir, repoPath, flag: undefined, env: ctx.env });
+export async function fixSettings(options: FixOptions, startDir: string, repoPath: string, ctx: CommandContext, dataOnly = false): Promise<{ config: DeliveryConfig; project: ProjectSettings; verify: GateRef | null }> {
+  const config = await loadConfig({ startDir, repoPath, flag: undefined, env: ctx.env, dataOnly });
   const landing = { ...config, closer: config.closer ?? MERGE_BACK };
   const settle = (from: DeliveryConfig): Promise<ProjectSettings> => resolveProject({ concurrency: options.concurrency }, { env: ctx.env, repoPath, config: from });
   try {

@@ -41,8 +41,10 @@ export async function reviewCommand(packArg: string, repoArg: string | undefined
   for (const line of opening(pack.manifest.title)) say(line);
   if (await hasUncommittedChanges(repoPath)) say(UNCOMMITTED_NOTE);
 
-  // The same question `delivery fix` asks, so what the review promises is what the fix does.
-  const { verify } = await fixSettings({}, resolve(ctx.cwd, repoArg ?? "."), repoPath, ctx);
+  // The same question `delivery fix` asks, so what the review promises is what the fix does; but a review only reads,
+  // so a JavaScript config is never run. ponytail: such a project may be warned it has no tests when its config
+  // names a check; `delivery fix` asks again with the whole config, and a wrong warning only holds more fixes.
+  const { verify } = await fixSettings({}, resolve(ctx.cwd, repoArg ?? "."), repoPath, ctx, true);
   const outcome = await runReview(repoPath, pack, { session: () => agentSession(ctx.env), env: ctx.env, noTests: verify === null });
   if (outcome.kind === "failed") throw new Refusal(failureSentence(outcome.terminus, packArg), EXIT.agentRuntime);
 
