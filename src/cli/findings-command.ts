@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { DamagedReview } from "../errors.js";
 import { appendLedger, authorisations, readLedger } from "../packs/ledger.js";
 import { keptChanges } from "../packs/kept-changes.js";
-import { UNDECIDED, keptFix, readFindingStates } from "../packs/fix-state.js";
+import { UNDECIDED, hiddenByDefault, keptFix, readFindingStates, recommended, type FindingState } from "../packs/fix-state.js";
 import { findingsDocument, findingsSchema } from "../packs/findings-document.js";
 import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords, uncheckedRefused, uncheckedApproved } from "../packs/render.js";
 import { listReviews, loadReview, uncheckable } from "../packs/review-record.js";
@@ -29,7 +29,14 @@ export interface DecideOptions {
   repo?: string;
   all?: boolean;
   allowUnchecked?: boolean;
+  /** Approve the problems still to decide that have a check of their own and are not serious enough to wait for your sign-off; says which it chose. */
+  recommended?: boolean;
 }
+
+export const RECOMMENDED_ALONE = "Use --recommended on its own: it chooses the problems itself, so it takes no numbers and no other choice.";
+export const NONE_RECOMMENDED = "None to recommend: no problem still to decide has a check of its own and is mild enough to be fixed without your sign-off. Choose by number: delivery findings";
+export const recommendedLine = (numbers: readonly number[]): string =>
+  `Approved ${numberList(numbers)}, the recommended ${numbers.length === 1 ? "one: it has" : "ones: each has"} a check of its own and is not serious enough to wait for your sign-off. Start fixing with: delivery fix`;
 
 export const noSuchProblem = (asked: string, count: number): string =>
   `There is no problem ${asked} in the latest review: it lists ${count}. See the list with: delivery findings`;
@@ -131,21 +138,38 @@ export async function findingsCommand(number: string | undefined, options: Findi
  * number is checked before anything is written. A problem `delivery fix` has
  * already taken on keeps its choice.
  */
+/**
+ * `delivery findings approve|skip [numbers]`: approve or skip the problems named, or `--all` (the ones listed, not those an
+ * earlier review settled), or `--recommended` (the problems with a check that will not wait for sign-off).
+ */
 export async function decideCommand(choice: "approve" | "skip", numbers: string[], options: DecideOptions, ctx: CommandContext): Promise<ExitCode> {
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
   const review = await finishedReview(repoPath);
   const { findings } = review.result;
-  const takenOn = authorisations(await readLedger(review.dir));
+  const { entries, states } = await readFindingStates(repoPath, review);
+  const takenOn = authorisations(entries);
+  const stateAt = (n: number): FindingState => states[n - 1] ?? UNDECIDED;
   const open = (n: number): boolean => !takenOn.has(findings[n - 1]?.id ?? "");
   const blocked = (n: number): boolean => {
     const finding = findings[n - 1];
     return finding !== undefined && uncheckable(review.header, finding);
   };
   let chosen: number[];
+  if (options.recommended === true) {
+    if (options.all === true || options.allowUnchecked === true || numbers.length > 0) throw new Refusal(RECOMMENDED_ALONE, EXIT.configuration);
+    const picked = findings.flatMap((finding, index) => (recommended(review.header, finding, states[index] ?? UNDECIDED) ? [index + 1] : []));
+    if (picked.length === 0) {
+      ctx.report.note(NONE_RECOMMENDED);
+      return EXIT.ok;
+    }
+    await appendLedger(review.dir, { t: "decision", ids: picked.map((n) => findings[n - 1]?.id ?? ""), choice: "approve" });
+    ctx.report.note(recommendedLine(picked));
+    return EXIT.ok;
+  }
   if (options.all === true) {
     if (options.allowUnchecked === true) throw new Refusal(ALL_UNCHECKED, EXIT.configuration);
     if (numbers.length > 0) throw new Refusal(ALL_AND_NUMBERS, EXIT.configuration);
-    chosen = findings.map((_, index) => index + 1).filter((n) => open(n) && (choice === "skip" || !blocked(n)));
+    chosen = findings.map((_, index) => index + 1).filter((n) => open(n) && !hiddenByDefault(stateAt(n)) && (choice === "skip" || !blocked(n)));
     if (chosen.length === 0) {
       ctx.report.note(NOTHING_LEFT);
       return EXIT.ok;

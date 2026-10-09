@@ -5,10 +5,10 @@ import { deriveReport } from "../report/derive.js";
 import { loadSnapshot, type RecordSnapshot } from "../report/snapshot.js";
 import { repoLocked } from "../repo-lock.js";
 import { DamagedReview } from "../errors.js";
-import type { Finding } from "./finding.js";
+import { atOrAbove, type Finding } from "./finding.js";
 import { fixTaskFor, type FixTask } from "./fix-task.js";
 import { authorisations, readLedger, resolvedIds, signOffResults, allowedUnchecked, type LedgerEntry, type SignOffResult } from "./ledger.js";
-import { changesTests, listReviews, loadReview, uncheckable, type SavedReview } from "./review-record.js";
+import { changesTests, listReviews, loadReview, uncheckable, type ReviewHeader, type SavedReview } from "./review-record.js";
 import { isGuard, needsTestChange } from "./guards.js";
 
 /** Every state a problem can be in, internally. The owner reads them through `STATE_WORDS` (`render.ts`). */
@@ -173,6 +173,14 @@ export function carryOver(reviews: readonly { findings: readonly Finding[]; stat
 
 /** A problem skipped because of an earlier review and not chosen again here: left out of lists unless asked for. */
 export const hiddenByDefault = (at: FindingState): boolean => at.state === "skipped" && at.earlier !== null;
+
+/**
+ * Whether a problem is recommended: still to decide (one that came back included), with a check of its own, and
+ * mild enough that its fix lands without the owner's sign-off. Every specific check is the strongest level there is;
+ * "tests only" is the weaker one. With no tests every fix waits for sign-off, so nothing is recommended.
+ */
+export const recommended = (header: Pick<ReviewHeader, "noTests" | "pack">, finding: Finding, at: FindingState): boolean =>
+  at.state === "proposed" && finding.check.kind !== "none" && header.noTests !== true && !atOrAbove(finding.severity, header.pack.hold ?? null);
 
 /**
  * One fix task per authorised problem still wanting a fix, in the review's order, each exactly as it was

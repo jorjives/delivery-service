@@ -11,11 +11,11 @@ import type { CaseFileOutcome, GateRef, TaskDef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { FINDING_GATE_REF } from "./finding-gate.js";
 import type { Finding } from "./finding.js";
-import { carryOver, deriveFindings, fixTasks, hiddenByDefault, readFindingStates, fixRunsOf, lastWords, UNDECIDED, type EarlierChoice, type FindingState, type FixRun, type FixState } from "./fix-state.js";
+import { carryOver, deriveFindings, fixTasks, hiddenByDefault, readFindingStates, fixRunsOf, lastWords, recommended, UNDECIDED, type EarlierChoice, type FindingState, type FixRun, type FixState } from "./fix-state.js";
 import { fixTaskFor } from "./fix-task.js";
 import { appendLedger, type LedgerEntry } from "./ledger.js";
 import { guardListsFor } from "./guards.js";
-import { loadReview, listReviews, type ReviewEntry, type SavedReview } from "./review-record.js";
+import { loadReview, listReviews, type ReviewEntry, type ReviewHeader, type SavedReview } from "./review-record.js";
 import { FIX_PHASE_FINDINGS, sampleFinding, writeFixPhase, writeReview } from "./review-fixtures.js";
 import type { RunRecord } from "../run-records.js";
 
@@ -336,5 +336,27 @@ describe("what earlier reviews carry", () => {
       ["proposed", null],
       ["skipped", "skipped"],
     ]);
+  });
+});
+
+describe("the recommended problems", () => {
+  const header = (hold: ReviewHeader["pack"]["hold"], noTests = false): Pick<ReviewHeader, "noTests" | "pack"> =>
+    ({ pack: { hold }, ...(noTests ? { noTests: true as const } : {}) }) as Pick<ReviewHeader, "noTests" | "pack">;
+  const HIGH = sampleFinding();
+  const MEDIUM_PATTERN = sampleFinding({ id: "222222222222", severity: "medium", check: { kind: "pattern-absent", pattern: "x", paths: ["a.js"] } });
+  const LOW_TESTS_ONLY = sampleFinding({ id: "333333333333", severity: "low", check: { kind: "none" } });
+
+  it("are the problems still to decide with a check of their own whose fixes land without sign-off", () => {
+    const pick = (h: Pick<ReviewHeader, "noTests" | "pack">) => [HIGH, MEDIUM_PATTERN, LOW_TESTS_ONLY].filter((finding) => recommended(h, finding, UNDECIDED)).map((finding) => finding.id);
+    expect(pick(header(null))).toEqual([HIGH.id, MEDIUM_PATTERN.id]);
+    expect(pick(header("high"))).toEqual([MEDIUM_PATTERN.id]);
+    expect(pick(header(null, true))).toEqual([]);
+  });
+
+  it("never include a problem already decided, here or in an earlier review, and do include one that came back", () => {
+    expect(recommended(header(null), HIGH, { ...UNDECIDED, state: "skipped" })).toBe(false);
+    expect(recommended(header(null), HIGH, { ...UNDECIDED, state: "skipped", earlier: "skipped" })).toBe(false);
+    expect(recommended(header(null), HIGH, { ...UNDECIDED, state: "approved" })).toBe(false);
+    expect(recommended(header(null), HIGH, { ...UNDECIDED, earlier: "fixed" })).toBe(true);
   });
 });
