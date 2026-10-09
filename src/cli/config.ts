@@ -9,6 +9,7 @@ import { CloserRef, RoleOverrides, TaskDef, Written } from "../schema.js";
 import { latestPlanFile } from "../packs/review-record.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
+import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 
 /** The one filename family a project uses, and the forms it may take. A `.js` or `.mjs` file exports the same object, for a project that computes a value. */
 export const CONFIG_BASENAME = "delivery.config";
@@ -148,16 +149,6 @@ export const DeliveryConfig = z
   });
 export type DeliveryConfig = z.infer<typeof DeliveryConfig>;
 
-/** The value the file actually held at an issue's path, so a complaint can quote it back. */
-function valueAt(raw: unknown, path: readonly PropertyKey[]): unknown {
-  let here: unknown = raw;
-  for (const step of path) {
-    if (typeof here !== "object" || here === null) return undefined;
-    here = (here as Record<PropertyKey, unknown>)[step];
-  }
-  return here;
-}
-
 /**
  * What each setting takes, said as the fix for a value of the wrong kind.
  * Keyed on the schema's own keys, so a new setting does not compile until it
@@ -179,8 +170,6 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
   budgets: 'It is a set of limits, each a whole number of attempts, for example `{ "correction": 5 }`.',
   concurrency: "It says how many tasks from your list may run at once: a whole number, 1 or more, such as `3`.",
 };
-
-type Issue = z.ZodError["issues"][number];
 
 /** Who each changeable role is, as the person reading a refusal knows it. */
 const WHO_FOR: Record<keyof RoleOverrides, string> = {
@@ -238,12 +227,6 @@ export interface ConfigProblem {
   /** The setting's path as written in the file, dot-joined, array positions from 0; null when the problem is with the file as a whole. */
   field: string | null;
   message: string;
-}
-
-/** Where an issue sits in the file: an unknown key is named at its own place, not at the object that holds it. */
-function fieldOf(issue: Issue): string | null {
-  const path = issue.code === "unrecognized_keys" ? [...issue.path, issue.keys[0] ?? ""] : issue.path;
-  return path.length === 0 ? null : path.join(".");
 }
 
 /**
@@ -330,9 +313,7 @@ function describeIssue(file: string, issue: Issue, raw: unknown): string {
  * one issue; each is its own problem here, so each is named.
  */
 export function configProblems(file: string, error: z.ZodError, raw: unknown): ConfigProblem[] {
-  return error.issues
-    .flatMap((issue): Issue[] => (issue.code === "unrecognized_keys" ? issue.keys.map((key) => ({ ...issue, keys: [key] })) : [issue]))
-    .map((issue) => ({ field: fieldOf(issue), message: describeIssue(file, issue, raw) }));
+  return eachIssue(error).map((issue) => ({ field: fieldOf(issue), message: describeIssue(file, issue, raw) }));
 }
 
 export const NO_SUCH_CONFIG = (file: string): string =>
