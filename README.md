@@ -790,6 +790,8 @@ it. Nothing in your project changes.
   it); a fixed problem whose code is back is marked "came back".
 - `delivery fix` fixes each approved problem in its own copy, checks it against its own check and
   your tests, and merges it. One that cannot be fixed is explained, and the rest carry on.
+  `--sign-off-threshold medium` (or critical, high, low, none) chooses which fixes wait for your
+  sign-off instead of the review's default.
 - `delivery report` then tells you, problem by problem, what was fixed, what is waiting for your
   sign-off and what could not be fixed, under who must act.
 - `delivery packs` lists the reviews available (`--json` for a script); `delivery review ./my-review` runs one from a folder, and `delivery packs --schema` prints the JSON Schema of its `pack.json` for your editor.

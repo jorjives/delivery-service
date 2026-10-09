@@ -172,6 +172,21 @@ NEEDS YOU, such as changing a leaked password where it was issued.
 Sign-off waits for nothing: while fixes are being made several at a time it says so and changes
 nothing; run it again once they have finished.
 
+### Choose what waits
+
+Each review has its own default: on a security review critical and high fixes wait, on a code
+review nothing waits for its severity. To choose for one `delivery fix`, give a sign-off threshold
+of critical, high, medium, low or none:
+
+```bash
+delivery fix --sign-off-threshold medium
+```
+
+Fixes of medium, high and critical problems then wait for your sign-off; the rest are merged once
+they pass their checks. With `none` it says "No fix waits for your sign-off because of how serious
+its problem is." Your choice is recorded with the fixes it applies to, and a fix already made keeps
+the choice it was made under. In a project with no tests every fix still waits, whatever you choose.
+
 ## Come back to the report
 
 After a fix phase, `delivery report` tells you what happened in one place. It opens with which
