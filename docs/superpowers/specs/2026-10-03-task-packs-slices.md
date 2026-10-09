@@ -309,6 +309,8 @@ not sliced.
 
 ## Slice 7: Write Your Own Pack and Prove It Without a Real Agent
 
+**Status:** ✅ Complete — 2026-10-09 — `bb82e1e`
+
 **Delivers:** An extender copies a built-in pack, changes it for her own domain, and runs `delivery packs check` to have any mistake named by file and field and the pack run end to end against a scripted agent, with no real agent and no API key.
 
 **Operational note:** The pack conformance suite is exported from the package's testing entry point, and both built-in packs run it as part of the suite every change runs, so a broken built-in pack fails the build. The pack manifest's JSON Schema is published so an editor can validate a pack as it is typed. Introduces the guide to writing a pack, alongside the guides to writing a gate and a closer.
