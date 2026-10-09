@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { DamagedReview } from "../errors.js";
-import { appendLedger, authorisations, readLedger } from "../packs/ledger.js";
+import { appendLedger, authorisations } from "../packs/ledger.js";
 import { keptChanges } from "../packs/kept-changes.js";
 import { UNDECIDED, hiddenByDefault, keptFix, readFindingStates, recommended, type FindingState } from "../packs/fix-state.js";
 import { findingsDocument, findingsSchema } from "../packs/findings-document.js";
