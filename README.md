@@ -790,6 +790,7 @@ it. Nothing in your project changes.
 - `delivery report` then tells you, problem by problem, what was fixed, what is waiting for your
   sign-off and what could not be fixed, under who must act.
 - `delivery packs` lists the reviews available (`--json` for a script); `delivery review ./my-review` runs one from a folder, and `delivery packs --schema` prints the JSON Schema of its `pack.json` for your editor.
+- `delivery packs check ./my-review` checks a review folder of your own and runs its fixtures against a scripted agent: see [Writing a pack](docs/writing-a-pack.md).
 
 `delivery review security` does the same for weaknesses someone could take advantage of. A fix of
 a critical or high problem is checked but waits for you: see what it changed with
@@ -810,6 +811,7 @@ A review stopped part-way is finished by running the same command again, and so 
 - [Configuring a role](docs/configuring-a-role.md): set up a worker or gate-maintenance agent
 - [Writing a gate](docs/writing-a-gate.md): configure the command gate or write your own
 - [Writing a closer](docs/writing-a-closer.md): name a built-in closer or write your own
+- [Writing a pack](docs/writing-a-pack.md): write a review of your own and prove it with `delivery packs check`, no real agent needed
 - [Testing your delivery pipeline](docs/testing-your-pipeline.md): test your gate, closer and role configurations together against a scripted agent, one task at a time or several at once
 - [Reviewing your project](docs/task-packs.md): ask for a code review with no setup and read what it found
 - [Contributing](CONTRIBUTING.md)
