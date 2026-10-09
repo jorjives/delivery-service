@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { posix } from "node:path";
 import { git } from "../git-exec.js";
 import { stripControl } from "../report/text.js";
-import { SEVERITIES, type CheckSpec, type Finding, type ScanEnvelope, type ScannedFinding, type ScanResult, type Unconfirmed, type UnconfirmedReason } from "./finding.js";
+import { SEVERITIES, type CheckKind, type CheckSpec, type Finding, type ScanEnvelope, type ScannedFinding, type ScanResult, type Unconfirmed, type UnconfirmedReason } from "./finding.js";
 import { LOCKFILE, lockfileHas } from "./lockfile.js";
 import type { PinnedCategory } from "./review-record.js";
 import { literalsOf, maskIn, secretLiterals } from "./secrets.js";
