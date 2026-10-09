@@ -121,3 +121,4 @@ export { finishReview, runReview } from "./packs/review.js";
 export type { ReviewOutcome } from "./packs/review.js";
 export { listReviews, loadReview } from "./packs/review-record.js";
 export type { SavedReview } from "./packs/review-record.js";
+export { FINDINGS_SCHEMA, FindingsDocument, findingsSchema } from "./packs/findings-document.js";

@@ -17,8 +17,9 @@ export const NOT_SIGNED_IN =
  * Contributor-only test seam: the path of a claude-mock script. When set, every
  * agent session in the run is routed to the vendored scripted agent and the
  * runtime preflight is skipped. Documented in CONTRIBUTING.md and deliberately
- * absent from `--help`: claude-mock is a dev dependency, so the seam cannot
- * work in an installed copy.
+ * absent from `--help`: this seam stays undocumented in `--help` because it
+ * routes a whole run to a script. claude-mock ships inside the package for
+ * `delivery packs check`.
  */
 export const TEST_MOCK_SCRIPT = "DELIVERY_TEST_MOCK_SCRIPT";
 

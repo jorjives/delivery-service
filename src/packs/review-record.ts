@@ -1,11 +1,11 @@
 import { existsSync, readdirSync } from "node:fs";
 import { mkdir, readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import { DamagedReview } from "../errors.js";
 import { atomicWrite, isEnoent } from "../journal.js";
 import { SessionUsage } from "../schema.js";
-import { scanEnvelopeFor, ScanResult, Severity, type ScanEnvelope } from "./finding.js";
+import { scanEnvelopeFor, ScanResult, Severity, SPECIFIC_CHECKS, type Finding, type ScanEnvelope } from "./finding.js";
 import { GuardLists } from "./guards.js";
 
 /** Owner-only: these files hold the agent's words about the project, which can quote anything in it. */
@@ -42,6 +42,10 @@ export const PinnedPack = z.object({
   consequenceLabel: z.enum(["why-it-matters", "what-could-happen"]).optional(),
   /** Fixes at or above this severity wait for sign-off. Absent or null: nothing waits. */
   hold: Severity.nullable().optional(),
+  /** The pack requires a specific check for every problem. Absent: it does not, or the review predates this. */
+  requireCheck: z.literal(true).optional(),
+  /** The checks the pack offers. Absent for a review made before packs listed them: every check. */
+  checks: z.array(z.enum(SPECIFIC_CHECKS)).optional(),
 });
 export type PinnedPack = z.infer<typeof PinnedPack>;
 
@@ -54,12 +58,18 @@ export const ReviewHeader = z.object({
   fileCount: z.int().min(0),
   startedAt: z.string().datetime(),
   endedAt: z.string().datetime(),
+  /** No test command could be found when the review ran: nothing checks a fix broke nothing else, so every fix waits for sign-off. Absent: the project had one, or the review predates this. */
+  noTests: z.literal(true).optional(),
 });
 export type ReviewHeader = z.infer<typeof ReviewHeader>;
 
 /** Whether a problem in `category` is one the review's pack says is fixed by changing a test. */
 export const changesTests = (pack: Pick<z.infer<typeof PinnedPack>, "categories">, category: string): boolean =>
   pack.categories.some((known) => known.id === category && known.changesTests === true);
+
+/** Whether a problem cannot be checked: it has no specific check, and either the project has no tests or the pack requires one. Such a problem is not offered; it needs the owner's decision. */
+export const uncheckable = (header: Pick<ReviewHeader, "noTests" | "pack">, finding: Pick<Finding, "check">): boolean =>
+  finding.check.kind === "none" && (header.noTests === true || header.pack.requireCheck === true);
 
 const StoredReply = z.object({ envelope: z.unknown(), usage: SessionUsage.optional() });
 
@@ -131,8 +141,12 @@ export const PLAN_FILE = "plan.config.json";
 const STAMP = /(\d{8}T\d{6}Z)$/;
 const stampOf = (name: string): string => STAMP.exec(name)?.[1] ?? "";
 
-/** Review folder names, newest first by the time stamp each ends with. */
-export const newestFirst = (names: readonly string[]): string[] => names.toSorted((a, b) => stampOf(b).localeCompare(stampOf(a)) || b.localeCompare(a));
+/**
+ * Review folder names, newest first by the time stamp each ends with. In the same second `runIdFor` numbers a later
+ * review (`code-2-…` after `code-…`, `code-10-…` after `code-9-…`), so the longer name is the later one.
+ */
+export const newestFirst = (names: readonly string[]): string[] =>
+  names.toSorted((a, b) => stampOf(b).localeCompare(stampOf(a)) || b.length - a.length || (a < b ? 1 : a > b ? -1 : 0));
 
 /** The newest plan any review of this repository holds, for the commands that read a configuration when the project has none of its own. Synchronous, as finding a configuration is. */
 export function latestPlanFile(repoPath: string): string | undefined {
@@ -173,4 +187,17 @@ export async function listReviews(repoPath: string): Promise<ReviewEntry[]> {
 
 export async function loadReview(entry: Extract<ReviewEntry, { state: "done" }>): Promise<SavedReview> {
   return { dir: entry.dir, header: entry.header, result: await readJson(join(entry.dir, "refs", "scan.json"), ScanResult) };
+}
+
+/** The finished review a plan file belongs to, when `file` is one: `delivery fix` writes a plan into its review's own folder. */
+export async function reviewOfPlan(repoPath: string, file: string): Promise<SavedReview | undefined> {
+  const dir = dirname(file);
+  if (basename(file) !== PLAN_FILE || resolve(dirname(dir)) !== resolve(packsRoot(repoPath))) return undefined;
+  const entry = await entryOf(dir);
+  if (entry.state !== "done") return undefined;
+  // A damaged list leaves the report told task by task, as before, rather than failing it: `delivery findings` names the damage.
+  return loadReview(entry).catch((err: unknown) => {
+    if (err instanceof DamagedReview) return undefined;
+    throw err;
+  });
 }

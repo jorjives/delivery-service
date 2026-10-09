@@ -1,0 +1,5 @@
+{
+  "found": ["The total can go below zero", "A missing or broken settings file gives an unhelpful error"],
+  "fixed": ["The total can go below zero"],
+  "refused": ["A missing or broken settings file gives an unhelpful error"]
+}

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { cleanGitEnv } from "./git-env.js";
 
 /**
- * Test and demo support: create a throwaway git repository seeded with `files`
+ * Test, demo and pack-check support: create a throwaway git repository seeded with `files`
  * and a single commit on `main`. Identity is written into the repository's own
  * config so the seed commit, and any commit made in a worktree of this repo,
  * works on a machine with no global git identity.

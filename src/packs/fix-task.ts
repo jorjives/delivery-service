@@ -15,19 +15,19 @@ export type Release = z.infer<typeof Release>;
  */
 export const FixTask = z.object({
   intent: z.string(),
-  tags: z.object({ pack: z.string(), findingId: z.string(), severity: Severity, phase: z.literal("fix") }),
+  tags: z.object({ pack: z.string(), findingId: z.string(), severity: Severity, phase: z.literal("fix"), review: z.string().optional() }),
   finding: Finding,
   /** What the fix may not touch, pinned when it was authorised. Absent on a task authorised before guards travelled with it. */
   guards: Guards.optional(),
-  /** Absent `hold` and `landing`: a fix authorised before fixes could wait for sign-off. */
-  authorisation: z.object({ verify: GateRef, hold: z.boolean().optional(), landing: CloserRef.optional() }),
+  /** Absent `hold` and `landing`: a fix authorised before fixes could wait for sign-off. `verify` null: the project has no tests, so the problem's own check is all there is, and the fix always waits for sign-off. */
+  authorisation: z.object({ verify: GateRef.nullable(), hold: z.boolean().optional(), landing: CloserRef.optional() }),
 });
 export type FixTask = z.infer<typeof FixTask>;
 
-export function fixTaskFor(pack: string, finding: Finding, verify: GateRef, guards?: Guards, release?: Release): FixTask {
+export function fixTaskFor(pack: string, finding: Finding, verify: GateRef | null, guards?: Guards, release?: Release, review?: string): FixTask {
   return {
     intent: `Fix: ${finding.title} (${finding.where.path})`,
-    tags: { pack, findingId: finding.id, severity: finding.severity, phase: "fix" },
+    tags: { pack, findingId: finding.id, severity: finding.severity, phase: "fix", ...(review === undefined ? {} : { review }) },
     finding,
     ...(guards === undefined ? {} : { guards }),
     authorisation: { verify, ...release },

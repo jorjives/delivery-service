@@ -33,7 +33,7 @@ import { SCHEMA_AND_REPORT } from "./report-command.js";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { planConfig, writePlan } from "../packs/plan.js";
 import { fixTaskFor } from "../packs/fix-task.js";
-import { exampleRepo, sampleFinding, writeReview } from "../packs/review-fixtures.js";
+import { exampleRepo, sampleFinding, writeReview, writeFixPhase, PACK_FORBIDDEN } from "../packs/review-fixtures.js";
 
 const LIST = [FORM, FOOTER, HOMEPAGE, BANNER];
 
@@ -354,6 +354,79 @@ describe("delivery report", () => {
     expect(stdout).toBe("No runs yet in this folder. Start one with: delivery run\n\nNext: delivery run\n");
     expect(existsSync(join(repo, ".delivery"))).toBe(false);
     expect(exitCode).toBe(0);
+  });
+
+  describe("delivery report after a review's fix phase", () => {
+    /** The report's own words: quoted record words, the command name, run ids and branches are data. */
+    const ownWords = (text: string): string =>
+      text
+        .replace(/"[^"]*"/g, "")
+        .replace(/delivery findings/g, "")
+        .replace(/\b(surface\/\S+|\S+-\d{8}T\d{6}Z)/g, "");
+
+    it("opens with which review it was and what came of it, then lists each problem under who must act", async () => {
+      const repo = exampleRepo("report-review-");
+      await writeFixPhase(repo);
+
+      const { exitCode, stdout } = await delivery(["report"], { cwd: repo });
+      const lines = stdout.split("\n");
+
+      expect(lines[0]).toMatch(/^Security review of \S+: 6 problems found; you approved 5 and skipped 1\.$/);
+      expect(lines[1]).toBe("2 are fixed and merged; 1 is waiting for your sign-off; 1 could not be fixed; 1 was stopped by a setup problem.");
+      expect(lines).toEqual(
+        expect.arrayContaining([
+          "WAITING FOR YOUR SIGN-OFF (1)",
+          '  Problem 1 of 6: "A password for the payments service is written in the code" (critical)',
+          "    Say yes: delivery findings sign-off 1",
+          "NEEDS YOU (1)",
+          '  Problem 4 of 6: "The price shown at checkout can be negative" (low)',
+          '    The agent said: "I could not find where the total is worked out."',
+          "STOPPED, FOR YOUR ENGINEERS (1)",
+          '  Problem 5 of 6: "Totals are rounded the wrong way" (low)',
+          "DONE (2)",
+          '  Problem 3 of 6: "Old payment code nothing uses" (medium): fixed and merged; tests only: no check of this specific problem',
+          "SKIPPED BY YOU (1)",
+        ]),
+      );
+      expect(stdout).not.toContain("  Task ");
+      expect(ownWords(stdout)).not.toMatch(PACK_FORBIDDEN);
+      expect(exitCode).toBe(0);
+    });
+
+    it("reads the same from another terminal during the fix phase as after an interruption", async () => {
+      const repo = exampleRepo("report-review-live-");
+      await writeFixPhase(repo, { interrupted: true });
+      const release = await takeRepoLock(repo);
+      let during: string;
+      try {
+        during = (await delivery(["report"], { cwd: repo })).stdout;
+      } finally {
+        await release?.();
+      }
+      const after = (await delivery(["report"], { cwd: repo })).stdout;
+
+      expect(during.split("\n")[1]).toContain("1 is being fixed");
+      expect(during).toBe(after);
+    });
+
+    it("says to carry on with delivery fix after an interruption", async () => {
+      const repo = exampleRepo("report-review-stopped-");
+      await writeFixPhase(repo, { interrupted: true });
+
+      const lines = (await delivery(["report"], { cwd: repo })).stdout.split("\n");
+
+      expect(lines[3]).toMatch(/nothing records whether it is still going\. If it is not, carry on with: delivery fix$/);
+      expect(lines).toEqual(expect.arrayContaining(["BEING FIXED (1)"]));
+    });
+
+    it("tells a run of one fix by its id as a task, as before", async () => {
+      const repo = exampleRepo("report-review-one-");
+      await writeFixPhase(repo);
+
+      const { stdout } = await delivery(["report", "fix-2-20261005T110100Z"], { cwd: repo });
+
+      expect(stdout).toMatch(/^This run: /);
+    });
   });
 });
 

@@ -17,7 +17,7 @@ import { runCommand, type RunOptions } from "./run-command.js";
 import { statusCommand, type StatusOptions } from "./status-command.js";
 import { validateCommand, type ValidateOptions } from "./validate-command.js";
 import { intervalSeconds, watchCommand } from "./watch-command.js";
-import { packsCommand } from "./packs-command.js";
+import { packsCommand, type PacksOptions } from "./packs-command.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
 export interface CliIo {
@@ -95,7 +95,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .version(version, "-V, --version", "print the harness version")
     .option("--no-color", "print without colour")
-    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report and validate, and one JSON event per line from status --watch")
+    .option("--json", "print machine-readable output: one JSON object per step while a run or a fix happens, one JSON document from status, report, validate, review, findings and packs, and one JSON event per line from status --watch")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
     .configureOutput({ writeOut: (text) => out.stdout.write(text), writeErr: (text) => out.stderr.write(text) });
@@ -216,6 +216,8 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("[number]", "show this problem in full, counted from 1 as the list numbers them")
     .option("--unconfirmed", "list the problems the review reported that could not be found in your project, and why")
     .option("--changes", "with a problem's number: show what its kept fix changed, file by file")
+    .option("--include-skipped", "also list problems you skipped or declined in an earlier review of the same kind, which are left out by default")
+    .option("--schema", "print the published JSON Schema of the document `delivery findings --json` prints, instead of the problems")
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
     .action(async (number: string | undefined, options: FindingsOptions, command: Command) => {
       exitCode = await findingsCommand(number, options, ctxFor(command));
@@ -225,7 +227,9 @@ export async function runCli(io: CliIo): Promise<number> {
     .command("approve")
     .description("approve problems from your latest review for fixing, by their numbers in the list; `delivery fix` then fixes them")
     .argument("[numbers...]", "the problems to approve, as the list numbers them")
-    .option("--all", "approve every problem listed now that is not already being fixed")
+    .option("--all", "approve every problem listed now that is not already being fixed (not those you settled in an earlier review)")
+    .option("--allow-unchecked", "approve problems that cannot be checked: nothing will check their fixes except you, so each waits for your sign-off")
+    .option("--recommended", "approve the problems still to decide that have a check of their own and are not serious enough to wait for your sign-off; says which it chose")
     .action(async (numbers: string[], _options: DecideOptions, command: Command) => {
       exitCode = await decideCommand("approve", numbers, command.optsWithGlobals<DecideOptions>(), ctxFor(command));
     });
@@ -259,7 +263,7 @@ export async function runCli(io: CliIo): Promise<number> {
   program
     .command("fix")
     .description(
-      "fix the problems you approved in your latest review: each is fixed by an agent in its own copy, checked by its own check and your tests, then merged",
+      "fix the problems you approved in your latest review: each is fixed by an agent in its own copy, checked by its own check and your tests (if you have any), then merged or kept for your sign-off",
     )
     .option("--concurrency <n>", "how many problems to fix at once (default: 1, or `concurrency` in delivery.config.json)")
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
@@ -268,11 +272,23 @@ export async function runCli(io: CliIo): Promise<number> {
       exitCode = await fixCommand(options, ctxFor(command));
     });
 
-  program
+  const packs = program
     .command("packs")
     .description("list the reviews available, each with a sentence saying what it looks for")
-    .action(async (_options: unknown, command: Command) => {
-      exitCode = await packsCommand(ctxFor(command));
+    .option("--schema", "print the JSON Schema of a review folder's pack.json, so your editor can check one as you write it")
+    .action(async (options: PacksOptions, command: Command) => {
+      exitCode = await packsCommand(options, ctxFor(command));
+    });
+
+  packs
+    .command("check")
+    .description(
+      "check a review folder of your own before you use it: every mistake is named by file and field, then its fixtures run against a scripted agent, with nothing sent to a real agent",
+    )
+    .argument("<path>", "the review folder to check, such as ./my-review")
+    .action(async (path: string, _options: unknown, command: Command) => {
+      const { packsCheckCommand } = await import("./packs-check-command.js");
+      exitCode = await packsCheckCommand(path, ctxFor(command));
     });
 
   try {

@@ -63,6 +63,8 @@ export interface RenderedFailure {
 
 export const UNEXPECTED_FOOTER = "This is unexpected, please file an issue.";
 
+export const MOCK_MISSING_REMEDY = "The scripted agent comes with the harness: reinstall it, or run npm install in a checkout.";
+
 const KNOWN_ERRORS = [
   FileNotFound,
   CorruptCaseFile,
@@ -160,10 +162,7 @@ function renderKnown(err: KnownError): RenderedFailure {
         exitCode: EXIT.configuration,
       };
     case "MOCK_NOT_INSTALLED":
-      return {
-        message: `${err.message} Scripted test runs only work inside a development checkout of the harness.`,
-        exitCode: EXIT.configuration,
-      };
+      return { message: `${err.message} ${MOCK_MISSING_REMEDY}`, exitCode: EXIT.configuration };
     case "INVALID_PACK":
       return { message: `I can't use the review in ${err.filePath}: ${err.detail}.`, exitCode: EXIT.configuration };
     case "UNKNOWN_PACK":

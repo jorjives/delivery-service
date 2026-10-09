@@ -23,6 +23,8 @@ export interface ReviewOptions {
   /** Where the scratch working copy goes (`XDG_STATE_HOME`). */
   env: NodeJS.ProcessEnv;
   now?: () => Date;
+  /** The project has no tests: recorded with the review, so every reading of it tells the owner so. */
+  noTests?: boolean;
 }
 
 /** The scratch working copy's id, fixed per pack, so one left by an interrupted review is cleared by the next. */
@@ -33,7 +35,7 @@ const scratchId = (packName: string): string => `review-${packName}`;
 export async function finishReview(repoPath: string, dir: string): Promise<SavedReview> {
   const header = await readHeader(dir);
   const { envelope } = await readReply(dir, header);
-  const result = await confirmFindings(repoPath, header.commit, { pack: header.pack.name, maxFindings: header.pack.maxFindings, categories: header.pack.categories }, envelope);
+  const result = await confirmFindings(repoPath, header.commit, { pack: header.pack.name, maxFindings: header.pack.maxFindings, categories: header.pack.categories, checks: header.pack.checks }, envelope);
   await saveResult(dir, result);
   return { dir, header, result };
 }
@@ -44,11 +46,13 @@ const pinned = ({ manifest, hash, fixInstructions }: Pack): ReviewHeader["pack"]
   title: manifest.title,
   hash,
   maxFindings: manifest.scan.maxFindings,
+  ...(manifest.scan.requireCheck === true ? { requireCheck: true as const } : {}),
   // Parsed, not copied: the pinned shape keeps what a review needs of each category and drops its description.
   categories: z.array(PinnedCategory).parse(manifest.scan.categories),
   consequenceLabel: manifest.scan.consequenceLabel,
   hold: manifest.hold.atOrAbove,
   guards: { testGlobs: manifest.fix?.testGlobs ?? [], protectedGlobs: manifest.fix?.protectedGlobs ?? [], skipMarkers: manifest.fix?.skipMarkers ?? [] },
+  checks: manifest.scan.checks,
   ...(fixInstructions === undefined ? {} : { fixInstructions }),
 });
 
@@ -68,7 +72,7 @@ async function takenIds(repoPath: string): Promise<Set<string>> {
  * and saves the list. The owner's files, branches and working copy are never
  * touched: the scratch copy and its branch are removed however the session ends.
  */
-export async function runReview(repoPath: string, pack: Pack, { session, env, now = () => new Date() }: ReviewOptions): Promise<ReviewOutcome> {
+export async function runReview(repoPath: string, pack: Pack, { session, env, now = () => new Date(), noTests = false }: ReviewOptions): Promise<ReviewOutcome> {
   const pending = (await listReviews(repoPath)).find((entry) => entry.state === "unfinished" && entry.header.pack.name === pack.manifest.name);
   if (pending !== undefined) return { kind: "done", review: await finishReview(repoPath, pending.dir), recovered: true };
 
@@ -86,7 +90,7 @@ export async function runReview(repoPath: string, pack: Pack, { session, env, no
     const terminus = await runSession(scannerRoleConfig(pack), { worktreePath, dir: errors, sessionKey: `scanner-${reviewId}` }, scanSession(pack, files), sessionEnv);
     if ("status" in terminus) return { kind: "failed", terminus };
     const { usage, ...envelope } = terminus;
-    const header: ReviewHeader = { reviewId, pack: pinned(pack), repoPath, commit, fileCount: files.length, startedAt: started.toISOString(), endedAt: now().toISOString() };
+    const header: ReviewHeader = { reviewId, pack: pinned(pack), repoPath, commit, fileCount: files.length, startedAt: started.toISOString(), endedAt: now().toISOString(), ...(noTests ? { noTests: true as const } : {}) };
     const dir = await startReview(repoPath, header, { envelope, ...(usage === undefined ? {} : { usage }) });
     return { kind: "done", review: await finishReview(repoPath, dir), recovered: false };
   } finally {

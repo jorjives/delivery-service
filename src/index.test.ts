@@ -28,4 +28,9 @@ describe("index", () => {
     expect([builtInPacks, finishReview, listReviews, loadPack, loadReview, resolvePack, runReview].every((fn) => typeof fn === "function")).toBe(true);
     expect(PACK_SCHEMA).toBe("delivery.pack/1");
   });
+
+  it("offers findings: the document schema, how to build it, and its published schema", async () => {
+    const { FINDINGS_SCHEMA, findingsSchema } = await import("./index.js");
+    expect(Object.keys(findingsSchema())).toEqual([FINDINGS_SCHEMA]);
+  });
 });

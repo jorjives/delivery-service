@@ -3,7 +3,7 @@ import { lastActivity, stepOf, type PlainGroup, type ReportDocument, type Report
 import { eventsOf, sourceOf, streamEnded, streamStarted, type ReportEvent, type StreamEnding } from "../report/events.js";
 import { attemptsWord, landedWords, RETRY_WORDS } from "../report/plain.js";
 import type { RecordSnapshot } from "../report/snapshot.js";
-import { doneItem, headlineCounts, incompleteLines, label, minuteOf, quoted, reportPointer, stoppedPartWay, tasksWord } from "../report/text.js";
+import { doneItem, headlineCounts, incompleteLines, label, minuteOf, PAUSED_FOR_REPAIR, quoted, reportPointer, stoppedPartWay, tasksWord } from "../report/text.js";
 import type { SurfaceState } from "../schema.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import { STEP_PHRASES } from "./output.js";
@@ -78,7 +78,7 @@ function pictureLine(surface: ReportSurface, live: boolean | null): string {
     case "aborted":
       return `  ${label(surface)}: ${stoppedWords(surface)}`;
     case "paused":
-      return `  ${label(surface)}: held while the setup every task shares is repaired`;
+      return `  ${label(surface)}: ${PAUSED_FOR_REPAIR}`;
     case "queued":
       return `  ${label(surface)}: waiting to start`;
     case "not_started":

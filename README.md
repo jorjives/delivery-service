@@ -75,7 +75,7 @@ id. Every key is present, `null` where it does not apply. A run of several at on
 `HEALTHY`, and `ESCALATED` when it gives up), with `affected` listing the task run ids it
 concerns (`null` on the run starting and finishing).
 
-`--json` works on `delivery resume`, `delivery status`, `delivery report` and `delivery validate` too. Without it the output is
+`--json` works on `delivery resume`, `delivery status`, `delivery report`, `delivery validate`, `delivery review`, `delivery findings`, `delivery fix` and `delivery packs` too. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
 The lines above are the running command's own account of itself and carry no version. To build
 on what a run did, use the versioned data described in [Reports as data](docs/reporting.md).
@@ -782,11 +782,18 @@ first: one whose code cannot be found is not offered, and `delivery findings --u
 it. Nothing in your project changes.
 
 - `delivery findings` lists the latest review's problems and where each stands;
-  `delivery findings 2` shows one in full, with a part for engineers.
-- `delivery findings approve 1 3` (or `--all`) and `delivery findings skip 2` choose what is fixed.
+  `delivery findings 2` shows one in full, with a part for engineers. With `--json`, it gives the
+  whole list as data.
+- `delivery findings approve 1 3` (or `--all`, or `--recommended` for the checked ones that need no
+  sign-off) and `delivery findings skip 2` choose what is fixed. Run the review again later and
+  what you skipped or declined is not asked again (`delivery findings --include-skipped` shows
+  it); a fixed problem whose code is back is marked "came back".
 - `delivery fix` fixes each approved problem in its own copy, checks it against its own check and
   your tests, and merges it. One that cannot be fixed is explained, and the rest carry on.
-- `delivery packs` lists the reviews available; `delivery review ./my-review` runs one from a folder.
+- `delivery report` then tells you, problem by problem, what was fixed, what is waiting for your
+  sign-off and what could not be fixed, under who must act.
+- `delivery packs` lists the reviews available (`--json` for a script); `delivery review ./my-review` runs one from a folder, and `delivery packs --schema` prints the JSON Schema of its `pack.json` for your editor.
+- `delivery packs check ./my-review` checks a review folder of your own and runs its fixtures against a scripted agent: see [Writing a pack](docs/writing-a-pack.md).
 
 `delivery review security` does the same for weaknesses someone could take advantage of. A fix of
 a critical or high problem is checked but waits for you: see what it changed with
@@ -795,7 +802,7 @@ main copy and merge it, or `delivery findings reject <n>`. A password or key it 
 shown.
 
 A review stopped part-way is finished by running the same command again, and so is a fix. See
-[Reviewing your project](docs/task-packs.md), and try it on `examples/code-review-example`.
+[Reviewing your project](docs/task-packs.md), and try it on `examples/code-review-example`, or on `examples/no-tests-example` to see a project with no tests, where every fix waits for your sign-off.
 
 ## Documentation
 
@@ -807,6 +814,7 @@ A review stopped part-way is finished by running the same command again, and so 
 - [Configuring a role](docs/configuring-a-role.md): set up a worker or gate-maintenance agent
 - [Writing a gate](docs/writing-a-gate.md): configure the command gate or write your own
 - [Writing a closer](docs/writing-a-closer.md): name a built-in closer or write your own
+- [Writing a pack](docs/writing-a-pack.md): write a review of your own and prove it with `delivery packs check`, no real agent needed
 - [Testing your delivery pipeline](docs/testing-your-pipeline.md): test your gate, closer and role configurations together against a scripted agent, one task at a time or several at once
 - [Reviewing your project](docs/task-packs.md): ask for a code review with no setup and read what it found
 - [Contributing](CONTRIBUTING.md)

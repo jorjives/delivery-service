@@ -19,9 +19,8 @@ snippets with `npx tsx`.
 - Node.js 22 or later, and `git`.
 - The harness installed in your project with `npm install`, as
   [Getting started](getting-started.md) describes. The scripted agent,
-  `claude-mock`, is vendored in the harness checkout and installed with
-  everything else there, so the sections that use it need that checkout:
-  `fakeAgentPort` works from an installed copy alone.
+  `claude-mock`, is vendored in the harness and installed with it, in a checkout
+  and in an installed copy alike.
 
 Nothing else: no global setup, no project-local setup beyond the install above, no
 network and no API key. Every session the testing API starts runs the scripted
@@ -630,7 +629,7 @@ npm run demo:agent-slice-2
 
 | What went wrong | What you see |
 |---|---|
-| The scripted agent is not installed | `runSurfaceAgainstMock` and `mockSessionEnvironment` throw `claude-mock was not found at <path>. Run npm install in the harness checkout: it installs claude-mock from vendor/claude-mock.` |
+| The scripted agent is not installed | `runSurfaceAgainstMock` and `mockSessionEnvironment` throw `claude-mock was not found at <path>.` |
 | A scripted envelope is malformed by mistake | `expectEnvelope` throws `The scripted envelope is not a valid worker result:`, then one line per problem, naming the field |
 | An expectation was never used | `assertFullyConsumed` throws, as above |
 | A `fakeAgentPort` is asked for a role it has no reply for | the call rejects with `fakeAgentPort was given no reply for the triage role: the test must supply a "triage" handler` |

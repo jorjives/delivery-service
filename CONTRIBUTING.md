@@ -48,10 +48,9 @@ to the script as `<script>.journal.jsonl`:
 DELIVERY_TEST_MOCK_SCRIPT=/tmp/scratch/mock.json delivery run --task "add a hello function"
 ```
 
-This seam is for contributors only: it needs the dev dependency, so an installed copy refuses
-it with a plain message, and it is deliberately left out of `--help`. `src/cli/run-command.test.ts`
-drives the command in-process this way; `runDelivery` in `tests/helpers.ts` drives the compiled
-binary.
+This seam is for contributors and stays out of `--help`; an installed copy carries the scripted agent too,
+for `delivery packs check`. `src/cli/run-command.test.ts` drives the command in-process this way;
+`runDelivery` in `tests/helpers.ts` drives the compiled binary.
 
 The built-in reviews `delivery review` runs are data-only folders under `packs/` (a `pack.json` manifest, the agent's `scan.md` instructions and, optionally, its `fix.md` instructions for fixing a problem), shipped in the package; `src/packs/` is the engine. To see a review without an agent, run `npm run demo:packs-slice-1`: it reviews a copy of `examples/code-review-example` with the scripted reply `EXAMPLE_SCAN` from `src/packs/review-fixtures.ts`. Tests script a review the same way, with `scanScript(envelope)`, and write a review's record directly with `writeReview`. Every sentence a review prints comes from `src/packs/render.ts`; `src/packs/render.test.ts` holds them to the owner vocabulary.
 

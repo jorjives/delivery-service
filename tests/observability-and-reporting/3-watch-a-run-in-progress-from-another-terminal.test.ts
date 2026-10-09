@@ -94,7 +94,8 @@ describe("UAT: keep an eye on a run from a second terminal and see each task's p
       const first = terminal(["status", "--watch", "--interval", "0.5"], repo, env);
 
       // Step 3: it names what it watches and how to stop, then the "Right now" picture of every task.
-      await until("the opening picture", () => first.out().includes("Right now"));
+      // The watch writes the picture a line at a time, so it can arrive in pieces: wait for the blank line that closes it.
+      await until("the whole opening picture", () => /^Right now .*\n(?:.+\n)*\n/m.test(first.out()));
       const opening = first.out();
       expect(opening).toMatch(/^Watching run run-\S+: 4 tasks, up to 2 at once\. Ctrl-C stops watching; the run is not affected\.$/m);
       expect(opening).toMatch(/^Right now \(last activity [\d:]+ UTC\): 4 tasks: /m);

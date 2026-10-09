@@ -229,6 +229,9 @@ not sliced.
 
 ## Slice 5: Come Back to the Report and See What the Review Fixed and What Needs You
 
+**Status:** ✅ Complete — 2026-10-08 — `183dbf0`
+**Tests:** ✅ Recorded — 2026-10-08 — `57a0787` — cli — 1 UAT + 10 AC, 0 skipped
+
 **Delivers:** After a review and fix phase, `delivery report` opens with one sentence about the whole review (found, approved, skipped, fixed, waiting, could not be fixed) and lists each problem by its plain title under who must act.
 
 **Build note:** The report is the existing report, not a new report type: its sections and headline gain the pack's states from a pure reading of the review record alongside the existing reading of the runs, with no second record of what happened. Wording comes from closed phrase tables, and the forbidden-word test that guards the report covers every new phrase.
@@ -267,6 +270,9 @@ not sliced.
 
 ## Slice 6: Review a Project That Has No Tests, Safely
 
+**Status:** ✅ Complete — 2026-10-08 — `ecb876e`
+**Tests:** ✅ Recorded — 2026-10-08 — `a7d3502` — cli (vitest) — 1 UAT + 4 AC, 0 skipped
+
 **Delivers:** An owner whose project has no tests is told so at review time, can still approve problems that have a specific check, and every fix waits for her sign-off, so nothing is merged that only an agent has vouched for.
 
 **Operational note:** A second example project, with planted flaws and no tests, ships alongside the first so this case can be demonstrated.
@@ -279,7 +285,7 @@ not sliced.
 ### Acceptance Criteria
 
 - [ ] In a project where no test command can be found, the review says the project has no tests, that nothing will check a fix has not broken something else, and that every fix will wait for sign-off
-- [ ] A problem with a specific check can be approved and is shown as "finding check only, no regression tests"
+- [ ] A problem with a specific check can be approved and is shown as "this problem's own check only, no regression tests" (spec Assembly resolution 6)
 - [ ] Every fix in such a project is held for sign-off whatever its severity, including on the code review pack
 - [ ] A problem with no specific check is not offered: it reads "needs your decision" with "cannot be checked"
 - [ ] `delivery findings approve <n> --allow-unchecked` approves such a problem, is recorded, prints a one-line warning that nothing will check this fix except you, and its fix is always held
@@ -302,6 +308,9 @@ not sliced.
 ---
 
 ## Slice 7: Write Your Own Pack and Prove It Without a Real Agent
+
+**Status:** ✅ Complete — 2026-10-09 — `bb82e1e`
+**Tests:** ✅ Recorded — 2026-10-09 — `d0c7e34` — cli (vitest) — 1 UAT + 8 AC, 0 skipped
 
 **Delivers:** An extender copies a built-in pack, changes it for her own domain, and runs `delivery packs check` to have any mistake named by file and field and the pack run end to end against a scripted agent, with no real agent and no API key.
 
@@ -342,6 +351,9 @@ not sliced.
 ---
 
 ## Slice 8: Keep Your Choices Between Reviews
+
+**Status:** ✅ Complete — 2026-10-09 — `31554f5`
+**Tests:** ✅ Recorded — 2026-10-09 — `31dc3b9` — cli — 1 UAT + 4 AC, 0 skipped
 
 **Delivers:** Running the same review again does not re-propose problems the owner already skipped, declined or had fixed, and points out any fixed problem that has come back; the owner can approve the recommended problems in one step.
 

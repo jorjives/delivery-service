@@ -18,10 +18,11 @@ sibling project, unchanged except for the local change recorded below, so that a
 ### How the harness reaches it
 
 `package.json` declares `"@jorj/claude-mock": "file:vendor/claude-mock"` as a
-devDependency. `.npmrc` sets `install-links=true`, so npm copies it into
-`node_modules/@jorj/claude-mock` and links its command to `node_modules/.bin/claude-mock`.
-Without that setting npm symlinks the directory and also installs claude-mock's own
-devDependencies (TypeScript 5, Vitest 4, a second Agent SDK) beside the harness's.
+runtime dependency and lists it in `"bundleDependencies"`. This means `npm pack` carries the copy
+inside the tarball, and an installed harness finds it at its own `node_modules/.bin/claude-mock`.
+`.npmrc` sets `install-links=true`, so npm copies it into `node_modules/@jorj/claude-mock` and
+links its command, keeping the development copy a copy. Without that setting npm symlinks the
+directory and also installs claude-mock's own devDependencies (TypeScript 5, Vitest 4, a second Agent SDK) beside the harness's.
 
 Tests and demos never name the command: they call `mockSessionEnvironment` from
 `src/testing.ts`, which resolves the installed copy by absolute path.

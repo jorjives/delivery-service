@@ -59,7 +59,7 @@ issued, says "One thing is left for you:" and what it is.
 - `delivery findings` lists the latest review's problems and where each stands.
 - `delivery findings 1` shows problem 1 in full, followed by a **FOR ENGINEERS** block: the category, the exact lines, the kind of check and what it looks for.
 - `delivery findings --unconfirmed` lists problems the review reported that the harness could not find in your project, so did not offer. The reason is one of: "that file is not in your last commit", "that path leads outside your project", "that path is not an ordinary file in your project", "the code it points at is not in that file", or "it did not say exactly which code it means".
-- `delivery packs` lists the reviews available. `delivery review ./my-review` runs one from a folder of your own, exactly as a built-in one.
+- `delivery packs` lists the reviews available. `delivery review ./my-review` runs one from a folder of your own, exactly as a built-in one. `delivery packs --schema` prints the JSON Schema of a review folder's `pack.json`. To write one, see [Writing a pack](writing-a-pack.md).
 
 ## Choosing what to fix
 
@@ -75,9 +75,15 @@ delivery findings approve --all
 change your mind, choose again: your latest choice counts, until fixing starts. Approving a
 problem that is tests only says so once, because only your existing tests can show it is fixed.
 
+`delivery findings approve --recommended` approves, in one step, the problems still to decide that
+have a check of their own and are not serious enough to wait for your sign-off, and says which it
+chose. It never picks a problem you skipped, and in a project with no tests it picks none, since
+every fix there waits for you.
+
 `delivery findings` then shows each problem as one of:
 
 - "not yet decided": you have not chosen.
+- "needs your decision": it cannot be checked (it has no specific check, and either your project has no tests or the review requires one), so it is not offered. See "A project with no tests".
 - "skipped by you": nothing will be done about it.
 - "being fixed": approved, and fixed when you run `delivery fix`.
 - "fixed and merged": fixed, checked, and in your project. If your project opens a pull request
@@ -85,6 +91,24 @@ problem that is tests only says so once, because only your existing tests can sh
 - "already fixed": the code it points at had gone before its fix started, so nothing was done.
 - "could not be fixed": the agent could not fix it. The reason follows, with what the agent said.
 - "stopped by a setup problem": something in the setup stopped the fix, and an engineer is needed.
+
+## Running a review again
+
+Run the same review again whenever you like, for example every week. Each problem is known by
+what it is and the code it points at, so the same problem found again is recognised, and what you
+decided about it in an earlier review of the same kind carries over until you choose again:
+
+- A problem you skipped, or whose fix you declined at sign-off, is not offered again. The review
+  says how many it left out, for example "2 problems skipped or declined in an earlier review, not
+  shown". `delivery findings --include-skipped` lists them, as "skipped by you in an earlier
+  review" or "declined at sign-off in an earlier review". To change your mind, approve one by its
+  number.
+- A problem that was fixed and whose code is still gone is not offered again.
+- A problem that was fixed but whose flagged code is back is offered again, marked "came back: it
+  was fixed in an earlier review, and the flagged code is back".
+
+`delivery findings approve --all` approves only the problems listed, never those an earlier
+review settled.
 
 ## Having them fixed
 
@@ -120,7 +144,7 @@ or opens a pull request suits better than merging.
 On a security review, a problem that is critical or high is fixed and checked like any other,
 but its fix does not reach your main copy. It is kept on its own branch and `delivery findings`
 says it is "waiting for your sign-off", with how to look at what changed, say yes or say no.
-On a code review nothing waits: severity only orders the list.
+On a code review nothing waits for its severity: severity only orders the list. In a project with no tests every fix waits (see below).
 
 `delivery findings 1 --changes` shows what the fix changed, file by file, after a note: "The agent
 changed these files. This shows what changed; it cannot tell you it is safe."
@@ -147,6 +171,63 @@ NEEDS YOU, such as changing a leaked password where it was issued.
 
 Sign-off waits for nothing: while fixes are being made several at a time it says so and changes
 nothing; run it again once they have finished.
+
+## Come back to the report
+
+After a fix phase, `delivery report` tells you what happened in one place. It opens with which
+review it was and one sentence about the whole of it, then lists each problem by its title and how
+serious it is, under who must act:
+
+```
+Security review of shop: 6 problems found; you approved 5 and skipped 1.
+2 are fixed and merged; 1 is waiting for your sign-off; 1 could not be fixed; 1 was stopped by a setup problem.
+Review 5 Oct 10:19 UTC.
+
+WAITING FOR YOUR SIGN-OFF (1)
+  Problem 1 of 6: "A password for the payments service is written in the code" (critical)
+    What could happen: "Anyone who can read this code can use the payments service as you."
+    The agent changed your code so the code the review flagged is gone.
+    The agent said: "Read the key from PAYMENTS_KEY."
+    How we know: the check passed (checked: the flagged code is gone), and every test that passed before still passes.
+    Why this needs you: it is a serious problem, and you should see what changed before it reaches your main copy.
+    Look at what changed: delivery findings 1 --changes
+    Say yes: delivery findings sign-off 1
+    Say no: delivery findings reject 1
+```
+
+The sections are WAITING FOR YOUR SIGN-OFF, NEEDS YOU (problems that could not be fixed, with why,
+what the agent said, who acts and what to do, and anything only you can do once a fix is merged),
+STOPPED, FOR YOUR ENGINEERS (a problem stopped by a setup problem, such as a check that could not
+run, and a fix you declined), DONE (each fixed line says how it was checked, so a fix checked only
+by your tests never reads as proved), and SKIPPED BY YOU. Problems still being fixed, or not yet
+decided, have sections of their own.
+
+It reads only the records, so it works from another terminal while `delivery fix` is going, and
+after an interruption it says to carry on with: delivery fix.
+
+## Read a review as data
+
+`delivery findings --json` prints the latest review as one document, versioned
+`delivery.findings/1`, and `delivery findings --schema` prints its JSON Schema. A later release may
+add keys and names; it never removes or changes one.
+
+- `schema`: always `delivery.findings/1`.
+- `review`: the review's `id`, its `pack` name and `title`, the `commit` it read, and when it
+  `startedAt` and `endedAt`, plus the `packVersion` of the pack that made it and a `packHash`
+  fingerprint of its manifest and instructions (a changed pack shows as a changed fingerprint).
+- `problems`: every problem, in the order `delivery findings` numbers them. Each has its `number`,
+  its `id` (the same for the same problem found again), `title`, `category`, `severity`, `where`
+  (`path`, `line`, `endLine`), its `state` from the closed set and the `words` you read for it, its
+  `check` (`kind`, and the `level` you read), whether a check ever `refused` its fix for weakening
+  your tests, the `cause` when the harness knows why it could not be fixed, `earlier`: what an earlier review of the same kind decided where this one has not (`skipped`, `declined`, or `fixed` for a problem that came back), or null, and its `fix`: the
+  `run` (see it with `delivery status <run>`), `branch`, `base` and `closer`, or null before
+  `delivery fix` took it on.
+- `unconfirmed`: how many the review reported that could not be found in your project.
+- `notShown`: how many it found beyond the review's limit.
+
+`delivery review <pack> --json` prints the same document as soon as the review is saved, and `delivery fix --json` ends its step records with it as one last line.
+
+The flagged code and a check's pattern are never in it: either may hold a secret.
 
 ## Where a review is kept
 
@@ -184,6 +265,33 @@ A review may mark a problem as being in a test itself (the code review's "Tests 
 what they claim"). Such a problem says "Note: this fix will change your tests." before you approve
 it: its fix may change an existing test, but still never delete or skip one.
 
+## A project with no tests
+
+If no test command can be found (no `test` script in `package.json`, and no `gate` in
+`delivery.config.json`), the review says so at the top:
+
+```
+Your project has no tests, so nothing will check that a fix has not broken something else. Every fix will wait for your sign-off before it reaches your main copy.
+```
+
+A problem with a specific check can still be approved and fixed. Its "How we will know" line adds
+"this problem's own check only, no regression tests": the fix is checked by that check and by the
+rules that keep a fix from weakening tests, and nothing else. Every fix then waits for your
+sign-off, whatever its severity and whichever review it came from. `examples/no-tests-example` is a
+small project to try this on.
+
+A problem with no specific check is not offered: it reads "needs your decision; cannot be checked", `delivery findings approve --all` leaves it out, and approving it by number is refused with how to approve it anyway. A review whose pack sets `"requireCheck": true` in its `scan` settings treats such a problem the same way in any project.
+
+If you will check such a fix yourself, approve it by number anyway:
+
+```bash
+delivery findings approve 3 --allow-unchecked
+```
+
+It is recorded, and it says "nothing will check this fix except you, so it will wait for your
+sign-off". Its fix always waits for your sign-off, in any project. `--allow-unchecked` does not go
+with `--all`: name each problem.
+
 ## Try it without an agent
 
 `examples/code-review-example` is a tiny shop with three planted problems. Its README shows how to review it for real. To see the whole review with a scripted agent instead (no agent, no sign-in, no network), run from a checkout of the harness:
@@ -197,4 +305,11 @@ test command) and one that honestly needs a test change, run:
 
 ```bash
 npm run demo:packs-slice-3
+```
+
+To watch a review of a project with no tests (`examples/no-tests-example`): the warning, a problem
+set aside as needing your decision, and every fix waiting for your sign-off, run:
+
+```bash
+npm run demo:packs-slice-6
 ```

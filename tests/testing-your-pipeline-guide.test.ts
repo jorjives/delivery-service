@@ -124,7 +124,7 @@ describe("the 'testing your delivery pipeline' guide", () => {
 
   it("quotes each authoring mistake's message exactly as the testing API words it", async () => {
     const wrong = sectionOf(guide, "## When the test itself is wrong", "## Watch it run");
-    expect(wrong).toContain(new MockNotInstalled("<path>").message);
+    expect(wrong).toContain(`throw \`${new MockNotInstalled("<path>").message}\``);
 
     const missingRole = await fakeAgentPort({})
       .invoke({ role: "triage" }, { worktreePath: "/w", dir: "/d", sessionKey: "k" })

@@ -53,7 +53,7 @@ describe("renderFailure", () => {
     [new InvalidCloserExport("./closers/c.js", "default", "no close()"), EXIT.configuration, "docs/writing-a-closer.md"],
     [new ProvisioningFailure("/r/.delivery/runs/x", "fatal: invalid reference: main"), EXIT.configuration, "at least one commit"],
     [new InvalidRoleConfig("allowedTools", "must not be empty"), EXIT.configuration, "docs/configuring-a-role.md"],
-    [new MockNotInstalled("/h/node_modules/.bin/claude-mock"), EXIT.configuration, "development checkout"],
+    [new MockNotInstalled("/h/node_modules/.bin/claude-mock"), EXIT.configuration, "The scripted agent comes with the harness: reinstall it, or run npm install in a checkout."],
     [new ImmutabilityViolation("/r/.delivery/runs/x", "baseline"), EXIT.unexpected, "This is a bug"],
     [new MissingBaseline("/r/.delivery/runs/x"), EXIT.unexpected, "This is a bug"],
     [new IllegalStateTransition("/r/.delivery/runs/x", "TRIAGE", "triage"), EXIT.unexpected, "This is a bug"],

@@ -51,4 +51,12 @@ describe.skipIf(!process.env.DELIVERY_PACK_TESTS)("the packed tarball", () => {
     });
     expect(stdout.trim()).toBe(pkg.version);
   }, INSTALL_TIMEOUT);
+
+  it("checks a built-in pack from the installed package with the scripted agent that ships with it", () => {
+    const folder = scratch("delivery-pack-check-");
+    execFileSync("npm", ["install", "--prefer-offline", "--no-audit", "--no-fund", tarball], { cwd: folder, encoding: "utf-8" });
+    const { stdout, status } = spawnSync(join(folder, "node_modules", ".bin", "delivery"), ["packs", "check", join(folder, "node_modules", "delivery-service", "packs", "code-review")], { cwd: folder, encoding: "utf-8", env: { ...process.env, ANTHROPIC_API_KEY: "" } });
+    expect(status).toBe(0);
+    expect(stdout).toContain("Nothing was sent to a real agent");
+  }, INSTALL_TIMEOUT);
 });

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DamagedReview } from "../errors.js";
 import { initTempRepo } from "../temp-repo.js";
-import { listReviews, loadReview, packsRoot, readReply } from "./review-record.js";
+import { listReviews, loadReview, newestFirst, packsRoot, readReply, reviewOfPlan, PLAN_FILE, uncheckable } from "./review-record.js";
 import { sampleFinding, writeReview } from "./review-fixtures.js";
 
 const repo = () => initTempRepo("review-record-", { "a.js": "x\n" });
@@ -67,5 +67,48 @@ describe("the review record", () => {
     const [entry] = await listReviews(project);
     if (entry?.state !== "unfinished") throw new Error("expected an unfinished review");
     expect((await readReply(dir, entry.header)).envelope).toEqual({ findings: [], notes: "" });
+  });
+});
+
+describe("the review a plan belongs to", () => {
+  it("is the finished review whose folder the plan sits in", async () => {
+    const repo_ = initTempRepo("plan-review-", { "a.js": "x\n" });
+    const dir = await writeReview(repo_, { findings: [] });
+
+    expect((await reviewOfPlan(repo_, join(dir, PLAN_FILE)))?.dir).toBe(dir);
+  });
+
+  it("is none for the project's own configuration, and for a review that was never finished", async () => {
+    const repo_ = initTempRepo("plan-review-", { "a.js": "x\n" });
+    const unfinished = await writeReview(repo_, { finished: false });
+
+    expect(await reviewOfPlan(repo_, join(repo_, "delivery.config.json"))).toBeUndefined();
+    expect(await reviewOfPlan(repo_, join(unfinished, PLAN_FILE))).toBeUndefined();
+  });
+});
+
+describe("whether a problem can be checked", () => {
+  const pack = { name: "code", version: "1.0.0", title: "Code review", hash: "0".repeat(64), maxFindings: 40, categories: [{ id: "correctness", title: "Wrong results" }] };
+  const none = sampleFinding({ check: { kind: "none" } });
+  const specific = sampleFinding();
+
+  it.each([
+    ["a problem with no check, in a project with no tests", { pack, noTests: true as const }, none, true],
+    ["a problem with no check, from a pack that requires one", { pack: { ...pack, requireCheck: true as const } }, none, true],
+    ["a problem with no check, in a project with tests and a pack that does not require one", { pack }, none, false],
+    ["a problem with a specific check, in a project with no tests", { pack, noTests: true as const }, specific, false],
+  ])("%s: %s", (_, header, finding, expected) => {
+    expect(uncheckable(header, finding)).toBe(expected);
+  });
+});
+
+describe("the order of reviews", () => {
+  it("puts the newest first, and of reviews made in the same second, the later one first", () => {
+    expect(newestFirst(["code-20261009T100000Z", "code-2-20261009T100000Z", "code-20261008T090000Z", "code-10-20261009T100000Z"])).toEqual([
+      "code-10-20261009T100000Z",
+      "code-2-20261009T100000Z",
+      "code-20261009T100000Z",
+      "code-20261008T090000Z",
+    ]);
   });
 });

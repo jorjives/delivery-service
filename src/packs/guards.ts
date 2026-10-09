@@ -218,14 +218,14 @@ export async function ignoredAssertions(worktreePath: string, guards: Guards): P
  * ponytail: package.json is read at the top of the project only; a workspace's own package.json is guarded only through `protectedGlobs`.
  * ponytail: the base is `merge-base HEAD <baseBranch>`, and a worker granted Bash can move HEAD (reset to an ancestor from before a test existed) so the base no longer holds the test; this is the documented Bash residual (docs/agent-interface.md). Pin the branch-point commit at provisioning and pass it on GateContext if that is seen.
  */
-export async function guardAssertions(worktreePath: string, baseBranch: string, guards: Guards, verify: GateRef): Promise<Assertion[]> {
+export async function guardAssertions(worktreePath: string, baseBranch: string, guards: Guards, verify: GateRef | null): Promise<Assertion[]> {
   const base = await git(worktreePath, ["merge-base", "HEAD", baseBranch]);
   const tree = await treeOf(worktreePath);
   const tests = await touched(worktreePath, base, tree, guards.testGlobs.map(glob));
   const removed = tests.filter(({ status }) => status !== "A" && status !== "M").map(({ path }) => `${path} deleted`);
   // A problem in a test is fixed by changing one: its fix may modify an existing test, never remove one.
   const edited = guards.testsCategory ? [] : tests.filter(({ status }) => status === "M").map(({ path }) => `${path} changed`);
-  const runs = checkFilesOf(verify, { repoPath: worktreePath, worktreePath }).map((path) => `:(literal)${path}`);
+  const runs = (verify === null ? [] : checkFilesOf(verify, { repoPath: worktreePath, worktreePath })).map((path) => `:(literal)${path}`);
   const settings = [...(await hiddenFiles(worktreePath)), ...(await touched(worktreePath, base, tree, [...guards.protectedGlobs.map(glob), ...runs])).map(({ path }) => path)];
   const [commandBefore, commandAfter] = await Promise.all([testCommandAt(worktreePath, base), testCommandAt(worktreePath, tree)]);
   if (commandBefore !== commandAfter) settings.push("package.json (how tests are run)");

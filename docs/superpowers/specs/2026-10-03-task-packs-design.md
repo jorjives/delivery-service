@@ -980,6 +980,10 @@ Points where the approved artefacts disagreed or were silent, resolved at assemb
 5. **Report sections.** The product design's report sections for pack states are rendered
    from `deriveFindings`, not by adding states to the report's own standing model; the
    report document gains only `tags`.
+6. **The no-tests level wording.** The UX table and §7 quote the level as "finding check only,
+   no regression tests", but "finding" is in the vocabulary's never-say column, which the
+   forbidden-word test enforces over every owner-facing phrase. Resolved at slice 6: the owner
+   reads "this problem's own check only, no regression tests"; the meaning is unchanged.
 
 ## Open questions
 

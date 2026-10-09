@@ -25,18 +25,28 @@ export type NotLandedReason = (typeof NOT_LANDED_REASONS)[number];
  * folder, outside every working copy, so no agent can write it.
  */
 export const LedgerEntry = z.discriminatedUnion("t", [
-  z.object({ t: z.literal("decision"), at: At, ids: z.array(Id).min(1), choice: z.enum(["approve", "skip"]) }),
+  z.object({
+    t: z.literal("decision"),
+    at: At,
+    ids: z.array(Id).min(1),
+    choice: z.enum(["approve", "skip"]),
+    /** The owner approved these knowing nothing checks their fixes except them: each fix waits for sign-off. */
+    allowUnchecked: z.literal(true).optional(),
+  }),
   z.object({
     t: z.literal("authorise"),
     at: At,
     ids: z.array(Id).min(1),
-    verify: GateRef,
+    /** The project's check of each fix, pinned; null when the project has no tests. */
+    verify: GateRef.nullable(),
     guards: GuardLists.optional(),
     /** The pack's threshold when this was written, and what it decided for each problem: computed once, never again. */
     threshold: Severity.nullable().optional(),
     hold: z.record(Id, z.boolean()).optional(),
     /** How a fix lands once it may: the project's closer, pinned. */
     landing: CloserRef.optional(),
+    /** The review these were authorised from. Part of each fix's identity, so a problem that comes back in a later review is fixed again rather than matched to its earlier fix. Absent on an authorisation written before fixes named their review. */
+    review: z.string().optional(),
   }),
   z.object({ t: z.literal("fix_observed"), at: At, id: Id, outcome: z.literal("already_resolved"), commit: z.string().min(1) }),
   z.object({ t: z.literal("signed_off"), at: At, id: Id }),
@@ -76,10 +86,11 @@ export async function readLedger(reviewDir: string): Promise<LedgerEntry[]> {
 
 /** What `delivery fix` was authorised to do for a problem: the project check it is judged by and what it may not touch. Part of the fix's identity. */
 export interface Authorised {
-  verify: GateRef;
+  verify: GateRef | null;
   guards?: GuardLists;
   hold?: boolean;
   landing?: CloserRef;
+  review?: string;
 }
 
 /** The problems `delivery fix` has taken on, each as it was first authorised. */
@@ -95,6 +106,7 @@ export function authorisations(entries: readonly LedgerEntry[]): Map<string, Aut
         ...(entry.guards === undefined ? {} : { guards: entry.guards }),
         ...(hold === undefined ? {} : { hold }),
         ...(entry.landing === undefined ? {} : { landing: entry.landing }),
+        ...(entry.review === undefined ? {} : { review: entry.review }),
       });
     }
   }
@@ -111,4 +123,17 @@ export function signOffResults(entries: readonly LedgerEntry[]): Map<string, Sig
   const found = new Map<string, SignOffResult>();
   for (const entry of entries) if (entry.t === "rejected" || entry.t === "landed" || entry.t === "not_landed") found.set(entry.id, entry);
   return found;
+}
+
+/** The problems whose latest choice is approval without a check. */
+export function allowedUnchecked(entries: readonly LedgerEntry[]): Set<string> {
+  const allowed = new Set<string>();
+  for (const entry of entries) {
+    if (entry.t !== "decision") continue;
+    for (const id of entry.ids) {
+      if (entry.choice === "approve" && entry.allowUnchecked === true) allowed.add(id);
+      else allowed.delete(id);
+    }
+  }
+  return allowed;
 }

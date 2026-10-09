@@ -39,6 +39,8 @@ const envelope = (...findings: ScannedFinding[]): ScanEnvelope => ({ findings, n
 const head = (repo: string) => git(repo, ["rev-parse", "HEAD"]);
 const confirm = (repo: string, env: ScanEnvelope, maxFindings = 40) => confirmFindings(repo, head(repo), { pack: "code", maxFindings }, env);
 
+const LOCKED = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/minimist": { version: "1.2.5" } } }, null, 2);
+
 /** Commit `files` on top of `repo`'s main branch. */
 function commit(repo: string, files: Record<string, string>): void {
   for (const [name, contents] of Object.entries(files)) writeFileSync(join(repo, name), contents);
@@ -165,7 +167,6 @@ describe("the list a review offers", () => {
 });
 
 describe("a vulnerable-version check", () => {
-  const LOCKED = JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/minimist": { version: "1.2.5" } } }, null, 2);
   const dependency = (version: string): ScannedFinding =>
     problem({ where: { path: "package-lock.json" }, anchor: '"node_modules/minimist": {', check: { kind: "dependency-absent", package: "minimist", version } });
 
@@ -179,6 +180,15 @@ describe("a vulnerable-version check", () => {
     const repo = initTempRepo("confirm-dependency-", { "package-lock.json": LOCKED });
     const { findings } = await confirm(repo, envelope(dependency("9.9.9")));
     expect(findings[0]).toMatchObject({ check: { kind: "anchor-gone" }, droppedCheck: { kind: "dependency-absent", package: "minimist", version: "9.9.9" } });
+  });
+});
+
+describe("a check the pack does not offer", () => {
+  it("is not used: the problem falls back to anchor-gone and the suggestion is kept for engineers", async () => {
+    const repo = initTempRepo("confirm-offered-", { "package-lock.json": LOCKED });
+    const suggested = { kind: "dependency-absent", package: "minimist", version: "1.2.5" } as const;
+    const { findings } = await confirmFindings(repo, head(repo), { pack: "code", maxFindings: 40, checks: ["anchor-gone", "pattern-absent"] }, envelope(problem({ where: { path: "package-lock.json" }, anchor: '"node_modules/minimist": {', check: suggested })));
+    expect(findings[0]).toMatchObject({ check: { kind: "anchor-gone" }, droppedCheck: suggested });
   });
 });
 

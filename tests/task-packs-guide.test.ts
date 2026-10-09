@@ -4,8 +4,10 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY } from "../src/packs/render.js";
-import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU } from "../src/packs/render.js";
+import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY, NO_TESTS_WARNING, NO_TESTS_LEVEL, CANNOT_BE_CHECKED } from "../src/packs/render.js";
+import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU, EARLIER_WORDS } from "../src/packs/render.js";
+import { OUTCOME_WORDS } from "../src/packs/review-report.js";
+import { FindingsDocument, FindingsProblem } from "../src/packs/findings-document.js";
 import { REPO_ROOT } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/task-packs.md"), "utf-8");
@@ -66,5 +68,43 @@ describe("the task packs guide", () => {
 
   it("explains signing off and declining a kept fix", () => {
     for (const phrase of ["delivery findings sign-off", "delivery findings reject", CHECKING_SIGN_OFF, NEEDS_YOU]) expect(flat).toContain(phrase);
+  });
+
+  it("shows coming back to the report after a fix phase: the opening sentence and each section by who must act", () => {
+    expect(guide).toContain("delivery report");
+    for (const heading of ["WAITING FOR YOUR SIGN-OFF", "NEEDS YOU", "STOPPED, FOR YOUR ENGINEERS", "DONE", "SKIPPED BY YOU"]) expect(guide).toContain(heading);
+    expect(flat).toContain("Problem 1 of 6");
+    expect(flat).toContain(OUTCOME_WORDS.waiting[0]);
+    expect(flat).toContain("carry on with: delivery fix");
+  });
+
+  it("explains reading a review as data, naming every key of the findings document", () => {
+    expect(guide).toContain("delivery findings --json");
+    expect(guide).toContain("delivery findings --schema");
+    expect(guide).toContain("delivery.findings/1");
+    const keys = [FindingsDocument, FindingsProblem, FindingsDocument.shape.review, FindingsProblem.shape.where, FindingsProblem.shape.check, FindingsProblem.shape.fix.unwrap()].flatMap((schema) => Object.keys(schema.shape));
+    expect([...new Set(keys)].filter((key) => !guide.includes(`\`${key}\``))).toEqual([]);
+  });
+
+  it("explains a project with no tests: the warning, the level, and that every fix waits, and points at its example", () => {
+    for (const phrase of [NO_TESTS_WARNING, NO_TESTS_LEVEL, CANNOT_BE_CHECKED, "requireCheck"]) expect(flat).toContain(phrase);
+    expect(guide).toContain("examples/no-tests-example");
+    expect(guide).toContain("--allow-unchecked");
+    expect(flat).toContain("nothing will check this fix except you");
+  });
+
+  it("points at the scripted demo of a project with no tests, which exists", () => {
+    expect(guide).toContain("npm run demo:packs-slice-6");
+    expect(existsSync(join(REPO_ROOT, "demos/task-packs-slice-6-no-tests.ts"))).toBe(true);
+  });
+
+  it("explains running a review again: what is carried, how to see what is hidden, and the recommended choice", () => {
+    for (const command of ["delivery findings --include-skipped", "delivery findings approve --recommended"]) expect(guide).toContain(command);
+    for (const phrase of Object.values(EARLIER_WORDS)) expect(flat).toContain(phrase);
+    expect(flat).toContain("skipped or declined in an earlier review, not shown");
+  });
+
+  it("names every key of the findings data, including what an earlier review carried", () => {
+    expect(guide).toContain("`earlier`");
   });
 });

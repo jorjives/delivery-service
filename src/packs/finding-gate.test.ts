@@ -14,7 +14,7 @@ import { exampleRepo, sampleFinding } from "./review-fixtures.js";
 const TESTS: GateRef = { type: "command", command: "node --test", parseMode: "exitcode" };
 const NEGATIVE = sampleFinding();
 const GUARDS: Guards = { ...DEFAULT_GUARDS, testsCategory: false };
-const ctxFor = (worktreePath: string, finding = NEGATIVE, verify: GateRef = TESTS, guards: Guards | undefined = GUARDS): GateContext => ({
+const ctxFor = (worktreePath: string, finding = NEGATIVE, verify: GateRef | null = TESTS, guards: Guards | undefined = GUARDS): GateContext => ({
   worktreePath,
   taskDef: fixTaskFor("code", finding, verify, guards),
   gateRef: FINDING_GATE_REF,
@@ -215,5 +215,40 @@ it.each([
     const repo = exampleRepo("finding-gate-");
     const gate = await loadCustomGate(repo, FINDING_GATE_MODULE);
     expect((await gate.baseline(ctxFor(repo))).status).toBe("PASS");
+  });
+});
+
+describe("the check of a fix in a project with no tests", () => {
+  const noTests = (repo: string) => ctxFor(repo, NEGATIVE, null);
+
+  it("reads back from a run's record with no project check, so the queue recognises it", () => {
+    const task = fixTaskFor("code", NEGATIVE, null);
+    expect(FixTask.parse(JSON.parse(JSON.stringify(task)))).toStrictEqual(task);
+  });
+
+  it("runs no tests, and passes a fix that removes the flagged code by the problem's own check alone", async () => {
+    const repo = exampleRepo("finding-gate-no-tests-");
+    const baseline = await findingGate.baseline(noTests(repo));
+    expect(baseline).toEqual({ status: "PASS", assertions: [] });
+    edit(repo, "return price - discount;", HONEST);
+    const check = await findingGate.check(noTests(repo));
+    expect(resolvedOf(check)).toBe("PASS");
+    expect(failing(check)).toEqual([]);
+    expect(computeDelta(baseline, check, { failOnNewAssertions: true }).pass).toBe(true);
+  });
+
+  it("fails a fix that leaves the flagged code in place", async () => {
+    const repo = exampleRepo("finding-gate-no-tests-");
+    const baseline = await findingGate.baseline(noTests(repo));
+    const check = await findingGate.check(noTests(repo));
+    expect(resolvedOf(check)).toBe("FAIL");
+    expect(computeDelta(baseline, check, { failOnNewAssertions: true }).pass).toBe(false);
+  });
+
+  it("still refuses a fix that deletes an existing test", async () => {
+    const repo = exampleRepo("finding-gate-no-tests-");
+    edit(repo, "return price - discount;", HONEST);
+    rmSync(join(repo, "checkout.test.js"));
+    expect(failing(await findingGate.check(noTests(repo)))).toContain(TESTS_GUARD);
   });
 });

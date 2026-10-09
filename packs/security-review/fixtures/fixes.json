@@ -1,0 +1,18 @@
+{
+  "expectations": [
+    {
+      "when": { "promptContains": "-> FAIL)" },
+      "json": { "status": "escalate", "category": "authority", "rationale": "Told its fix was refused, the scripted agent gives up." }
+    },
+    {
+      "when": { "promptContains": "A key for the payments service is written in the code" },
+      "effects": [{ "edit": { "path": "payments.js", "old": "const PAYMENTS_KEY = \"pk-live-9Rt4Wq2Zx7Lm3Vb8\";", "new": "const PAYMENTS_KEY = process.env.PAYMENTS_KEY ?? \"\";" } }],
+      "json": { "status": "completed", "rationale": "The key is read from PAYMENTS_KEY in the environment." }
+    },
+    {
+      "when": { "promptContains": "Checks of secure connections are turned off" },
+      "effects": [{ "edit": { "path": "settings.js", "old": "  verifyCertificates: false,", "new": "  // verifyCertificates: false," } }],
+      "json": { "status": "completed", "rationale": "Commented the setting out." }
+    }
+  ]
+}

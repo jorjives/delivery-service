@@ -1,15 +1,17 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { mkdtempSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { appendLedger, readLedger } from "../packs/ledger.js";
-import { CHANGES_NOTE, CHANGES_WHICH, NO_REVIEW_YET, noKeptFix, unfinishedReview } from "../packs/render.js";
-import { exampleRepo, sampleFinding, writeReview } from "../packs/review-fixtures.js";
+import { CHANGES_NOTE, CHANGES_WHICH, earlierHiddenLine, NO_REVIEW_YET, noKeptFix, unfinishedReview, uncheckedRefused, uncheckedApproved } from "../packs/render.js";
+import { exampleRepo, sampleFinding, writeReview, writeFixPhase, FIX_PHASE_FINDINGS, PACK_FORBIDDEN } from "../packs/review-fixtures.js";
+import { FindingsDocument } from "../packs/findings-document.js";
 import { initTempRepo } from "../temp-repo.js";
 import { withoutAt } from "../without-at.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { alreadyTakenOn, approvedLine, noSuchProblem, skippedLine, testsOnlyApproved, NOTHING_CHOSEN } from "./findings-command.js";
+import { alreadyTakenOn, approvedLine, noSuchProblem, skippedLine, testsOnlyApproved, NOTHING_CHOSEN, SCHEMA_ALONE, ALL_UNCHECKED, NONE_RECOMMENDED, RECOMMENDED_ALONE, recommendedLine } from "./findings-command.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import type { MockScript } from "../mock-script.js";
 
@@ -88,9 +90,65 @@ describe("delivery findings", () => {
     const { stdout } = await delivery(["findings"], { cwd: project });
     expect(stdout).toContain("1. The price shown at checkout can be negative (high): not yet decided\n2. Old payment code (low): skipped by you\n");
   });
+
+  it("hides what was skipped in an earlier review of the same kind, says how many, and shows it with --include-skipped", async () => {
+    const project = repo();
+    const earlier = await writeReview(project, { reviewId: "code-20261001T100000Z", findings: TWO });
+    await appendLedger(earlier, { t: "decision", ids: [TWO[1]?.id ?? ""], choice: "skip" });
+    await writeReview(project, { reviewId: "code-20261005T101500Z", findings: TWO });
+
+    const hidden = await delivery(["findings"], { cwd: project });
+    expect(hidden.stdout).toContain("1. The price shown at checkout can be negative (high): not yet decided\n");
+    expect(hidden.stdout).not.toContain("2. Old payment code");
+    expect(hidden.stdout).toContain(`${earlierHiddenLine(1)}\n`);
+
+    const shown = await delivery(["findings", "--include-skipped"], { cwd: project });
+    expect(shown.stdout).toContain("2. Old payment code (low): skipped by you in an earlier review\n");
+    expect(shown.stdout).not.toContain(earlierHiddenLine(1));
+
+    const data = FindingsDocument.parse(JSON.parse((await delivery(["findings", "--json"], { cwd: project })).stdout));
+    expect(data.problems.map((p) => [p.state, p.earlier])).toEqual([["proposed", null], ["skipped", "skipped"]]);
+  });
 });
 
 describe("choosing which problems to fix", () => {
+  it("does not offer a problem that cannot be checked: approving it is refused, and --all leaves it out", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { findings: TWO, noTests: true });
+    const refused = await delivery(["findings", "approve", "2"], { cwd: project });
+    expect(refused.exitCode).toBe(EXIT.configuration);
+    expect(refused.stderr).toBe(`${uncheckedRefused(2)}\n`);
+    await delivery(["findings", "approve", "--all"], { cwd: project });
+    expect(withoutAt(await readLedger(dir))).toEqual([{ t: "decision", ids: [TWO[0]?.id], choice: "approve" }]);
+    const { stdout } = await delivery(["findings"], { cwd: project });
+    expect(stdout).toContain("2. Old payment code (low): needs your decision; cannot be checked");
+  });
+
+  it("sets a problem with no check aside in a project with tests when the review's pack requires a check", async () => {
+    const project = repo();
+    await writeReview(project, { findings: TWO, pack: { requireCheck: true } });
+    const { stdout } = await delivery(["findings"], { cwd: project });
+    expect(stdout).toContain("2. Old payment code (low): needs your decision; cannot be checked");
+  });
+
+  it("approves a problem that cannot be checked when told to anyway, records it, and warns in one line", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { findings: TWO, noTests: true });
+    const { exitCode, stdout } = await delivery(["findings", "approve", "2", "--allow-unchecked"], { cwd: project });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(`${uncheckedApproved(2)}\n`);
+    expect(withoutAt(await readLedger(dir))).toEqual([{ t: "decision", ids: [TWO[1]?.id], choice: "approve", allowUnchecked: true }]);
+    expect((await delivery(["findings"], { cwd: project })).stdout).toContain("2. Old payment code (low): being fixed");
+  });
+
+  it("refuses --allow-unchecked with --all: the owner names each problem", async () => {
+    const project = repo();
+    await writeReview(project, { findings: TWO, noTests: true });
+    const { exitCode, stderr } = await delivery(["findings", "approve", "--all", "--allow-unchecked"], { cwd: project });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe(`${ALL_UNCHECKED}\n`);
+  });
+
   const THREE = [...TWO, sampleFinding({ id: "222222222222", title: "Settings errors are unhelpful", severity: "medium" })];
 
   it("records approvals and skips for exactly the problems named, and the latest choice wins", async () => {
@@ -201,5 +259,91 @@ describe("delivery findings <n> --changes", () => {
     const { exitCode, stderr } = await delivery(["findings", "--changes"], { cwd: repo });
     expect(exitCode).toBe(EXIT.configuration);
     expect(stderr).toBe(`${CHANGES_WHICH}\n`);
+  });
+});
+
+describe("delivery findings approve --recommended", () => {
+  const THREE = [
+    sampleFinding(),
+    sampleFinding({ id: "222222222222", title: "Settings errors are unhelpful", severity: "medium", check: { kind: "pattern-absent", pattern: "x", paths: ["a.js"] } }),
+    sampleFinding({ id: "333333333333", title: "Old payment code", severity: "low", check: { kind: "none" } }),
+  ];
+
+  it("approves the problems with a check of their own that are not serious enough to wait for sign-off, and says which", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { reviewId: "security-20261005T101500Z", findings: THREE, pack: SECURITY });
+    const { exitCode, stdout } = await delivery(["findings", "approve", "--recommended"], { cwd: project });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(`${recommendedLine([2])}\n`);
+    expect(withoutAt(await readLedger(dir))).toEqual([{ t: "decision", ids: ["222222222222"], choice: "approve" }]);
+  });
+
+  it("leaves out what the owner skipped, and says so when nothing is left to recommend", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { findings: THREE });
+    await delivery(["findings", "skip", "1", "2"], { cwd: project });
+    const { exitCode, stdout } = await delivery(["findings", "approve", "--recommended"], { cwd: project });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(`${NONE_RECOMMENDED}\n`);
+    expect((await readLedger(dir)).filter((entry) => entry.t === "decision" && entry.choice === "approve")).toEqual([]);
+  });
+
+  it("takes no numbers and no other choice", async () => {
+    const project = repo();
+    await writeReview(project, { findings: THREE });
+    for (const extra of [["1"], ["--all"], ["--allow-unchecked"]]) {
+      const { exitCode, stderr } = await delivery(["findings", "approve", "--recommended", ...extra], { cwd: project });
+      expect(exitCode).toBe(EXIT.configuration);
+      expect(stderr).toBe(`${RECOMMENDED_ALONE}\n`);
+    }
+  });
+
+  it("is worded for the owner", () => {
+    for (const line of [recommendedLine([1, 2]), recommendedLine([2]), NONE_RECOMMENDED, RECOMMENDED_ALONE]) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
+    expect(recommendedLine([1, 2])).toBe("Approved 1 and 2, the recommended ones: each has a check of its own and is not serious enough to wait for your sign-off. Start fixing with: delivery fix");
+  });
+});
+
+describe("delivery findings approve --all after an earlier review", () => {
+  it("leaves out what an earlier review settled, since it is not listed", async () => {
+    const project = repo();
+    const earlier = await writeReview(project, { reviewId: "code-20261001T100000Z", findings: TWO });
+    await appendLedger(earlier, { t: "decision", ids: [TWO[1]?.id ?? ""], choice: "skip" });
+    const dir = await writeReview(project, { reviewId: "code-20261005T101500Z", findings: TWO });
+    await delivery(["findings", "approve", "--all"], { cwd: project });
+    expect(withoutAt(await readLedger(dir))).toEqual([{ t: "decision", ids: [TWO[0]?.id], choice: "approve" }]);
+  });
+});
+
+describe("delivery findings as data", () => {
+  it("prints one versioned document with every problem, its state, its check and its fix's run", async () => {
+    const project = exampleRepo("findings-json-");
+    await writeFixPhase(project);
+
+    const { exitCode, stdout } = await delivery(["findings", "--json"], { cwd: project });
+    const doc = FindingsDocument.parse(JSON.parse(stdout));
+
+    expect(doc.schema).toBe("delivery.findings/1");
+    expect(doc.problems.map((problem) => problem.state)).toEqual(["held", "fixed", "fixed", "unfixable", "stopped", "skipped"]);
+    expect(doc.problems[2]?.check).toEqual({ kind: "none", level: "tests only: no check of this specific problem" });
+    expect(doc.problems[0]?.fix?.run).toBe("fix-1-20261005T110000Z");
+    expect(doc.problems[5]?.fix).toBeNull();
+    expect(doc.problems.map((problem) => problem.id)).toEqual(FIX_PHASE_FINDINGS.map((finding) => finding.id));
+    expect(exitCode).toBe(0);
+  });
+
+  it("prints its JSON Schema anywhere, needing no project", async () => {
+    const nowhere = mkdtempSync(join(tmpdir(), "findings-schema-"));
+
+    const { exitCode, stdout } = await delivery(["findings", "--schema"], { cwd: nowhere });
+
+    expect(Object.keys(JSON.parse(stdout))).toEqual(["delivery.findings/1"]);
+    expect(exitCode).toBe(0);
+  });
+
+  it("refuses --schema with anything it would otherwise show", async () => {
+    const { exitCode, stderr } = await delivery(["findings", "1", "--schema"], { cwd: repo() });
+    expect(stderr).toContain(SCHEMA_ALONE);
+    expect(exitCode).toBe(EXIT.configuration);
   });
 });

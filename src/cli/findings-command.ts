@@ -1,10 +1,11 @@
 import { resolve } from "node:path";
 import { DamagedReview } from "../errors.js";
-import { appendLedger, authorisations, readLedger } from "../packs/ledger.js";
+import { appendLedger, authorisations } from "../packs/ledger.js";
 import { keptChanges } from "../packs/kept-changes.js";
-import { keptFix, readFindingStates } from "../packs/fix-state.js";
-import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords } from "../packs/render.js";
-import { listReviews, loadReview } from "../packs/review-record.js";
+import { UNDECIDED, hiddenByDefault, keptFix, readFindingStates, recommended, type FindingState } from "../packs/fix-state.js";
+import { findingsDocument, findingsSchema } from "../packs/findings-document.js";
+import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords, uncheckedRefused, uncheckedApproved } from "../packs/render.js";
+import { listReviews, loadReview, uncheckable } from "../packs/review-record.js";
 import type { SavedReview } from "../packs/review-record.js";
 import { literalsOf, maskIn } from "../packs/secrets.js";
 import { stripControl } from "../report/text.js";
@@ -16,12 +17,26 @@ export interface FindingsOptions {
   repo?: string;
   unconfirmed?: boolean;
   changes?: boolean;
+  /** Print the published schema of `--json`'s document instead of any problems. */
+  schema?: boolean;
+  /** Also list problems skipped or declined in an earlier review, which are left out by default. */
+  includeSkipped?: boolean;
 }
+
+export const SCHEMA_ALONE = "Use `--schema` on its own: it prints the schema of the data, not the problems, so it takes no number and no other option.";
 
 export interface DecideOptions {
   repo?: string;
   all?: boolean;
+  allowUnchecked?: boolean;
+  /** Approve the problems still to decide that have a check of their own and are not serious enough to wait for your sign-off; says which it chose. */
+  recommended?: boolean;
 }
+
+export const RECOMMENDED_ALONE = "Use --recommended on its own: it chooses the problems itself, so it takes no numbers and no other choice.";
+export const NONE_RECOMMENDED = "None to recommend: no problem still to decide has a check of its own and is mild enough to be fixed without your sign-off. Choose by number: delivery findings";
+export const recommendedLine = (numbers: readonly number[]): string =>
+  `Approved ${numberList(numbers)}, the recommended ${numbers.length === 1 ? "one: it has" : "ones: each has"} a check of its own and is not serious enough to wait for your sign-off. Start fixing with: delivery fix`;
 
 export const noSuchProblem = (asked: string, count: number): string =>
   `There is no problem ${asked} in the latest review: it lists ${count}. See the list with: delivery findings`;
@@ -44,6 +59,7 @@ export const alreadyTakenOn = (number: number): string => `Problem ${number} is 
 export const NOTHING_CHOSEN = "Say which problems, by their numbers in the list, for example: delivery findings approve 1 3, or delivery findings approve --all";
 export const ALL_AND_NUMBERS = "Give either problem numbers or --all, not both.";
 export const NOTHING_LEFT = "Every problem in the list is already being fixed or has finished. See where each stands with: delivery findings";
+export const ALL_UNCHECKED = "Name each problem to approve without a check by its number: --allow-unchecked does not go with --all.";
 
 /** The latest review, finished, for a command that acts on it: a refusal naming the command to run when there is none or it was stopped part way. */
 export async function finishedReview(repoPath: string): Promise<SavedReview> {
@@ -56,9 +72,16 @@ export async function finishedReview(repoPath: string): Promise<SavedReview> {
 
 /**
  * `delivery findings [n]`: the latest review's problems, one of them in full,
- * or the ones that could not be confirmed. Only reads.
+ * or the ones that could not be confirmed; with `--json`, the whole list as one `delivery.findings/1` document. Only reads.
  */
 export async function findingsCommand(number: string | undefined, options: FindingsOptions, ctx: CommandContext): Promise<ExitCode> {
+  // The schema is the same wherever it is asked for.
+  if (options.schema === true) {
+    if (number !== undefined || options.unconfirmed === true || options.changes === true) throw new Refusal(SCHEMA_ALONE, EXIT.configuration);
+    ctx.writeLine(JSON.stringify(findingsSchema(), null, 2));
+    return EXIT.ok;
+  }
+
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
   const say = (line: string): void => ctx.report.note(line);
   const [latest] = await listReviews(repoPath);
@@ -83,7 +106,7 @@ export async function findingsCommand(number: string | undefined, options: Findi
     const at = states[n - 1];
     const fix = at === undefined ? undefined : keptFix(at);
     const kept = fix !== undefined && (at?.state === "held" || at?.state === "signed_off_failed" || at?.state === "rejected");
-    if (!kept || at === undefined) throw new Refusal(noKeptFix(n, stateWords(at ?? { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null })), EXIT.configuration);
+    if (!kept || at === undefined) throw new Refusal(noKeptFix(n, stateWords(at ?? UNDECIDED)), EXIT.configuration);
     const finding = review.result.findings[n - 1];
     const hide = (text: string): string => stripControl(finding === undefined ? text : maskIn(text, literalsOf(finding)));
     const { stat, patch } = await keptChanges(repoPath, fix);
@@ -96,7 +119,11 @@ export async function findingsCommand(number: string | undefined, options: Findi
   }
   if (number === undefined) {
     const { states } = await readFindingStates(repoPath, review);
-    for (const line of listLines(review, states)) say(line);
+    if (ctx.json) {
+      ctx.writeLine(JSON.stringify(findingsDocument(review, states), null, 2));
+      return EXIT.ok;
+    }
+    for (const line of listLines(review, states, { includeSkipped: options.includeSkipped === true })) say(line);
     return EXIT.ok;
   }
   const count = review.result.findings.length;
@@ -106,21 +133,38 @@ export async function findingsCommand(number: string | undefined, options: Findi
 }
 
 /**
- * `delivery findings approve|skip`: record the owner's choice for exactly the
- * problems named, by their identities, in the latest review's ledger. Every
- * number is checked before anything is written. A problem `delivery fix` has
- * already taken on keeps its choice.
+ * `delivery findings approve|skip [numbers]`: approve or skip the problems named, or `--all` (the ones listed, not those an
+ * earlier review settled), or `--recommended` (the problems with a check that will not wait for sign-off).
+ * Every number is checked before anything is written. A problem `delivery fix` has already taken on keeps its choice.
  */
 export async function decideCommand(choice: "approve" | "skip", numbers: string[], options: DecideOptions, ctx: CommandContext): Promise<ExitCode> {
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
   const review = await finishedReview(repoPath);
   const { findings } = review.result;
-  const takenOn = authorisations(await readLedger(review.dir));
+  const { entries, states } = await readFindingStates(repoPath, review);
+  const takenOn = authorisations(entries);
+  const stateAt = (n: number): FindingState => states[n - 1] ?? UNDECIDED;
   const open = (n: number): boolean => !takenOn.has(findings[n - 1]?.id ?? "");
+  const blocked = (n: number): boolean => {
+    const finding = findings[n - 1];
+    return finding !== undefined && uncheckable(review.header, finding);
+  };
   let chosen: number[];
+  if (options.recommended === true) {
+    if (options.all === true || options.allowUnchecked === true || numbers.length > 0) throw new Refusal(RECOMMENDED_ALONE, EXIT.configuration);
+    const picked = findings.flatMap((finding, index) => (recommended(review.header, finding, states[index] ?? UNDECIDED) ? [index + 1] : []));
+    if (picked.length === 0) {
+      ctx.report.note(NONE_RECOMMENDED);
+      return EXIT.ok;
+    }
+    await appendLedger(review.dir, { t: "decision", ids: picked.map((n) => findings[n - 1]?.id ?? ""), choice: "approve" });
+    ctx.report.note(recommendedLine(picked));
+    return EXIT.ok;
+  }
   if (options.all === true) {
+    if (options.allowUnchecked === true) throw new Refusal(ALL_UNCHECKED, EXIT.configuration);
     if (numbers.length > 0) throw new Refusal(ALL_AND_NUMBERS, EXIT.configuration);
-    chosen = findings.map((_, index) => index + 1).filter(open);
+    chosen = findings.map((_, index) => index + 1).filter((n) => open(n) && !hiddenByDefault(stateAt(n)) && (choice === "skip" || !blocked(n)));
     if (chosen.length === 0) {
       ctx.report.note(NOTHING_LEFT);
       return EXIT.ok;
@@ -138,13 +182,18 @@ export async function decideCommand(choice: "approve" | "skip", numbers: string[
     ];
     const taken = chosen.find((n) => !open(n));
     if (taken !== undefined) throw new Refusal(alreadyTakenOn(taken), EXIT.configuration);
+    const unchecked = choice === "approve" && options.allowUnchecked !== true ? chosen.find(blocked) : undefined;
+    if (unchecked !== undefined) throw new Refusal(uncheckedRefused(unchecked), EXIT.configuration);
   }
-  await appendLedger(review.dir, { t: "decision", ids: chosen.map((n) => findings[n - 1]?.id ?? ""), choice });
+  await appendLedger(review.dir, { t: "decision", ids: chosen.map((n) => findings[n - 1]?.id ?? ""), choice, ...(options.allowUnchecked === true ? { allowUnchecked: true as const } : {}) });
   if (choice === "skip") {
     ctx.report.note(skippedLine(chosen));
     return EXIT.ok;
   }
-  for (const n of chosen) if (findings[n - 1]?.check.kind === "none") ctx.report.note(testsOnlyApproved(n));
+  for (const n of chosen) {
+    if (blocked(n)) ctx.report.note(uncheckedApproved(n));
+    else if (findings[n - 1]?.check.kind === "none") ctx.report.note(testsOnlyApproved(n));
+  }
   ctx.report.note(approvedLine(chosen));
   return EXIT.ok;
 }

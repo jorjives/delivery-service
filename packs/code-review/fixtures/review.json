@@ -1,0 +1,33 @@
+{
+  "expectations": [
+    {
+      "json": {
+        "findings": [
+          {
+            "title": "The total can go below zero",
+            "category": "correctness",
+            "severity": "high",
+            "where": { "path": "total.js" },
+            "problem": "A discount larger than the price makes the total negative.",
+            "whyItMatters": "A negative total means paying the customer.",
+            "fixedLooksLike": "A total never goes below zero.",
+            "anchor": "return price - discount;",
+            "check": { "kind": "anchor-gone" }
+          },
+          {
+            "title": "A missing or broken settings file gives an unhelpful error",
+            "category": "error-handling",
+            "severity": "medium",
+            "where": { "path": "settings.js" },
+            "problem": "A missing or broken settings file stops the program with a technical error.",
+            "whyItMatters": "Whoever runs it cannot tell which file to fix.",
+            "fixedLooksLike": "A missing or broken settings file gives a message naming the file.",
+            "anchor": "return JSON.parse(readFileSync(path, \"utf-8\"));",
+            "check": { "kind": "pattern-absent", "pattern": "JSON\\.parse\\(readFileSync\\(", "paths": ["settings.js"] }
+          }
+        ],
+        "notes": ""
+      }
+    }
+  ]
+}

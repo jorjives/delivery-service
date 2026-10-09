@@ -3,10 +3,12 @@ import { readdir, readFile } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 import { InvalidPack, UnknownPack } from "../errors.js";
 import { isEnoent } from "../journal.js";
-import { Severity } from "./finding.js";
+import { Severity, SPECIFIC_CHECKS } from "./finding.js";
 import { GuardGlob } from "./guards.js";
+import type { JsonSchema } from "../report/json-schema.js";
 
 /** The version of the pack format this build reads. Additive-only within the major. */
 export const PACK_SCHEMA = "delivery.pack/1";
@@ -21,6 +23,8 @@ const PackFile = z.string().refine((file) => file !== "" && basename(file) === f
  * that would widen what a review's agent may do.
  */
 export const PackManifest = z.strictObject({
+  /** Where an editor finds the schema to check this file against while it is written (`delivery packs --schema`). Ignored by the harness. */
+  $schema: z.string().optional(),
   schema: z.literal(PACK_SCHEMA),
   name: Slug,
   version: z.string().regex(/^\d+\.\d+\.\d+$/, "must be a version such as 1.0.0"),
@@ -48,6 +52,14 @@ export const PackManifest = z.strictObject({
       .refine((categories) => new Set(categories.map((category) => category.id)).size === categories.length, "must not name the same category twice"),
     maxFindings: z.int().min(1).max(200).default(40),
     consequenceLabel: z.enum(["why-it-matters", "what-could-happen"]).default("why-it-matters"),
+    /** Every problem must have a specific check: one with none is set aside for the owner's decision, in any project. */
+    requireCheck: z.literal(true).optional(),
+    /** The checks this pack's problems may use. A problem whose suggested check is not here falls back to anchor-gone. */
+    checks: z
+      .array(z.enum(SPECIFIC_CHECKS))
+      .min(1)
+      .refine((checks) => checks.includes("anchor-gone"), "must include anchor-gone: every problem can fall back to it")
+      .default([...SPECIFIC_CHECKS]),
   }),
   /** What the agent fixing one of this pack's problems is told, beside the harness's own fixed instructions, and what the pack adds to the paths and markers a fix may not touch. Optional: the harness's own are enough. */
   fix: z
@@ -59,6 +71,12 @@ export const PackManifest = z.strictObject({
 });
 export type PackManifest = z.infer<typeof PackManifest>;
 
+/**
+ * The JSON Schema of `pack.json` as an author writes it: strict, so an editor flags a key the format
+ * does not name or a check it does not have while it is typed. What `delivery packs --schema` prints.
+ */
+export const packSchema = (): JsonSchema => ({ ...z.toJSONSchema(PackManifest, { io: "input" }), title: PACK_SCHEMA });
+
 /** A loaded pack: where it is, what it says, the scanner's instructions, and a hash of both, so a review records exactly which pack it ran. */
 export interface Pack {
   dir: string;
@@ -68,41 +86,83 @@ export interface Pack {
   hash: string;
 }
 
+/** One thing wrong with a pack, as an author fixes it: the file (absolute), the field in it, and one plain sentence starting with that field. */
+export interface PackProblem {
+  file: string;
+  field: string | null;
+  message: string;
+}
+
+/** Why a key the format does not name is refused: the format is the whole of what a pack may say. */
+export const DATA_ONLY =
+  "is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check";
+
+/** One sentence per issue, in the project configuration's manner: the field, then what is wrong, quoting the value and listing what is allowed. */
+function describe(issue: Issue, raw: unknown): string {
+  const field = fieldOf(issue);
+  const where = field === null ? "the manifest" : `"${field}"`;
+  if (issue.code === "unrecognized_keys") return `${where} ${DATA_ONLY}`;
+  const value = valueAt(raw, issue.path);
+  if (field !== null && value === undefined) return `${where} is missing`;
+  if (issue.code === "invalid_value") {
+    const allowed = issue.values.map(String).join(", ");
+    const kind = issue.path[0] === "scan" && issue.path[1] === "checks" ? "the available checks are" : "the allowed values are";
+    return `${where} is ${JSON.stringify(value)} but ${kind}: ${allowed}`;
+  }
+  return `${where} ${issue.message}`;
+}
+
+export function packProblems(file: string, error: z.ZodError, raw: unknown): PackProblem[] {
+  return eachIssue(error).map((issue) => ({ file, field: fieldOf(issue), message: describe(issue, raw) }));
+}
+
 /** Where the built-in packs are: `packs/` beside `src/` in a checkout, and beside `dist/` in the installed package. */
 export const BUILT_IN_PACKS = fileURLToPath(new URL("../../packs/", import.meta.url));
 
-async function readPackFile(dir: string, name: string): Promise<string> {
+/** The text of a file in the pack, or the problem of its absence. */
+async function packFile(dir: string, name: string): Promise<string | PackProblem> {
   const file = join(dir, name);
   try {
     return await readFile(file, "utf-8");
   } catch (err) {
-    if (isEnoent(err)) throw new InvalidPack(file, "is missing");
+    if (isEnoent(err)) return { file, field: null, message: "is missing" };
     throw err;
   }
 }
 
-/** Read and check the pack in `dir`. Refuses, naming the file and the field, anything the format does not allow. */
-export async function loadPack(dir: string): Promise<Pack> {
+/** Read and check the pack in `dir`, naming every problem with it by file and field rather than stopping at the first. */
+export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack } | { ok: false; problems: PackProblem[] }> {
   const manifestFile = join(dir, "pack.json");
-  const raw = await readPackFile(dir, "pack.json");
+  const raw = await packFile(dir, "pack.json");
+  if (typeof raw !== "string") return { ok: false, problems: [raw] };
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    throw new InvalidPack(manifestFile, "is not valid JSON");
+    return { ok: false, problems: [{ file: manifestFile, field: null, message: "is not valid JSON" }] };
   }
   const parsed = PackManifest.safeParse(json);
-  if (!parsed.success) {
-    const issue = parsed.error.issues.at(0);
-    const where = issue === undefined || issue.path.length === 0 ? "the manifest" : `"${issue.path.join(".")}"`;
-    throw new InvalidPack(manifestFile, `${where} ${issue?.message ?? "is not a valid pack"}`);
+  if (!parsed.success) return { ok: false, problems: packProblems(manifestFile, parsed.error, json) };
+  const scanInstructions = await packFile(dir, parsed.data.scan.prompt);
+  const fixInstructions = parsed.data.fix === undefined ? undefined : await packFile(dir, parsed.data.fix.prompt);
+  if (typeof scanInstructions !== "string" || (fixInstructions !== undefined && typeof fixInstructions !== "string")) {
+    return { ok: false, problems: [scanInstructions, fixInstructions].filter((text): text is PackProblem => text !== undefined && typeof text !== "string") };
   }
-  const scanInstructions = await readPackFile(dir, parsed.data.scan.prompt);
-  const fixInstructions = parsed.data.fix === undefined ? undefined : await readPackFile(dir, parsed.data.fix.prompt);
   const hasher = createHash("sha256").update(raw).update("\0").update(scanInstructions);
   // A pack without fix instructions keeps the identity it had before they existed.
   if (fixInstructions !== undefined) hasher.update("\0").update(fixInstructions);
-  return { dir, manifest: parsed.data, scanInstructions, ...(fixInstructions === undefined ? {} : { fixInstructions }), hash: hasher.digest("hex") };
+  return {
+    ok: true,
+    pack: { dir, manifest: parsed.data, scanInstructions, ...(fixInstructions === undefined ? {} : { fixInstructions }), hash: hasher.digest("hex") },
+  };
+}
+
+/** Read and check the pack in `dir`. Refuses, naming the file and the field, the first thing the format does not allow. */
+export async function loadPack(dir: string): Promise<Pack> {
+  const inspected = await inspectPack(dir);
+  if (inspected.ok) return inspected.pack;
+  const [first] = inspected.problems;
+  throw new InvalidPack(first?.file ?? join(dir, "pack.json"), first?.message ?? "is not a valid pack");
 }
 
 /** Every pack shipped with the harness, in folder order. */

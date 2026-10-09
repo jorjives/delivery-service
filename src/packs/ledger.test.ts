@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { DamagedReview } from "../errors.js";
 import type { GateRef } from "../schema.js";
 import { withoutAt } from "../without-at.js";
-import { appendLedger, authorisations, readLedger, signOffResults, type LedgerEntry } from "./ledger.js";
+import { appendLedger, authorisations, readLedger, signOffResults, allowedUnchecked, type LedgerEntry } from "./ledger.js";
 import { guardListsFor } from "./guards.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "ledger-"));
@@ -82,5 +82,15 @@ describe("a review's record of what was decided", () => {
     ];
     expect(signOffResults(entries).get("aaaaaaaaaaaa")).toMatchObject({ t: "landed", commit: "abc123" });
     expect(signOffResults(entries).get("bbbbbbbbbbbb")).toMatchObject({ t: "rejected" });
+  });
+});
+
+describe("approving without a check", () => {
+  const AT = "2026-10-05T10:00:00.000Z";
+  const decided = (ids: string[], choice: "approve" | "skip", allowUnchecked?: true): LedgerEntry => ({ t: "decision", at: AT, ids, choice, ...(allowUnchecked ? { allowUnchecked } : {}) });
+
+  it("is remembered for each problem until a later choice replaces it", () => {
+    expect(allowedUnchecked([decided(["aaaaaaaaaaaa", "bbbbbbbbbbbb"], "approve", true)])).toEqual(new Set(["aaaaaaaaaaaa", "bbbbbbbbbbbb"]));
+    expect(allowedUnchecked([decided(["aaaaaaaaaaaa"], "approve", true), decided(["aaaaaaaaaaaa"], "skip")])).toEqual(new Set());
   });
 });

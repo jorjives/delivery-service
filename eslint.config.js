@@ -30,8 +30,8 @@ export default defineConfig(
     },
   },
   {
-    // examples/ holds plain JavaScript projects a person copies out; they are
-    // outside tsconfig.json, so typed linting cannot parse them.
-    ignores: ["dist/", "node_modules/", "vendor/", "examples/"],
+    // examples/ and the packs' fixture projects hold plain JavaScript projects a person copies
+    // out; they are outside tsconfig.json, so typed linting cannot parse them.
+    ignores: ["dist/", "node_modules/", "vendor/", "examples/", "packs/"],
   }
 );

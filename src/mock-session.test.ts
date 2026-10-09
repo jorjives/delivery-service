@@ -84,11 +84,11 @@ describe("the installed claude-mock", () => {
 });
 
 describe("when claude-mock cannot be found", () => {
-  it("fails with a sentence naming where it looked and that npm install provides it", () => {
+  it("fails with a sentence naming where it looked", () => {
     const missing = join(tmpdir(), "no-such-checkout", "node_modules", ".bin", "claude-mock");
     expect(() => resolveMockExecutable(missing)).toThrow(MockNotInstalled);
     expect(() => resolveMockExecutable(missing)).toThrow(
-      `claude-mock was not found at ${missing}. Run npm install in the harness checkout: it installs claude-mock from vendor/claude-mock.`,
+      `claude-mock was not found at ${missing}.`,
     );
   });
 });

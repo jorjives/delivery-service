@@ -1,10 +1,12 @@
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { InvalidPack, UnknownPack } from "../errors.js";
-import { BUILT_IN_PACKS, builtInPacks, loadPack, PACK_SCHEMA, resolvePack } from "./manifest.js";
+import { openSchema, publishedKeys } from "../report/json-schema.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, loadPack, PACK_SCHEMA, PackManifest, packSchema, resolvePack } from "./manifest.js";
 
 /** A copy of the built-in code pack whose manifest has been changed by `edit`. */
 function editedPack(edit: (manifest: Record<string, unknown>) => void): string {
@@ -140,5 +142,123 @@ describe("the security pack", () => {
   it("refuses a hold threshold that is not a severity word", async () => {
     const dir = editedPack((manifest) => (manifest.hold = { atOrAbove: "severe" }));
     await expect(loadPack(dir)).rejects.toMatchObject({ detail: expect.stringContaining('"hold.atOrAbove"') });
+  });
+});
+
+describe("a pack that requires a check", () => {
+  it("may say every problem must have a specific check", async () => {
+    expect((await loadPack(editedPack((m) => ((m.scan as Record<string, unknown>).requireCheck = true)))).manifest.scan.requireCheck).toBe(true);
+  });
+
+  it("is refused, naming the field, when it says so in any other way", async () => {
+    await expect(loadPack(editedPack((m) => ((m.scan as Record<string, unknown>).requireCheck = "yes")))).rejects.toThrow(/scan\.requireCheck/);
+  });
+});
+
+describe("inspecting a pack", () => {
+  it("names every problem in the manifest, each by its file and field", async () => {
+    const dir = editedPack((m) => {
+      m.version = "one";
+      m.hold = { atOrAbove: "severe" };
+      delete m.title;
+    });
+    const result = await inspectPack(dir);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const file = join(dir, "pack.json");
+    expect(result.problems).toEqual(
+      expect.arrayContaining([
+        { file, field: "version", message: '"version" must be a version such as 1.0.0' },
+        { file, field: "title", message: '"title" is missing' },
+        { file, field: "hold.atOrAbove", message: '"hold.atOrAbove" is "severe" but the allowed values are: critical, high, medium, low' },
+      ]),
+    );
+    expect(result.problems).toHaveLength(3);
+  });
+
+  it.each([
+    ["write tools for the review's agent", (m: Record<string, unknown>) => ((m.scan as Record<string, unknown>).allowedTools = ["Read", "Edit"]), "scan.allowedTools"],
+    ["commands for the review's agent", (m: Record<string, unknown>) => ((m.scan as Record<string, unknown>).commands = ["npm audit"]), "scan.commands"],
+    ["a check of its own for the fix", (m: Record<string, unknown>) => (m.fix = { prompt: "fix.md", gate: { type: "custom", modulePath: "./my-check.mjs" } }), "fix.gate"],
+    ["a closer of its own", (m: Record<string, unknown>) => (m.closer = { type: "custom", modulePath: "./land.mjs" }), "closer"],
+  ])("refuses a manifest that tries to bring %s, saying a pack is data only", async (_, edit, field) => {
+    const dir = editedPack(edit);
+    const result = await inspectPack(dir);
+    expect(result).toEqual({ ok: false, problems: [{ file: join(dir, "pack.json"), field, message: `"${field}" ${DATA_ONLY}` }] });
+  });
+
+  it("names a missing instructions file by its own path", async () => {
+    const dir = editedPack(() => undefined);
+    rmSync(join(dir, "scan.md"));
+    expect(await inspectPack(dir)).toEqual({ ok: false, problems: [{ file: join(dir, "scan.md"), field: null, message: "is missing" }] });
+  });
+
+  it("gives the loaded pack when there is nothing wrong", async () => {
+    const result = await inspectPack(join(BUILT_IN_PACKS, "code-review"));
+    expect(result.ok && result.pack.manifest.name).toBe("code");
+  });
+});
+
+describe("the checks a pack offers", () => {
+  it("names an unknown check kind by file and field, listing the available ones", async () => {
+    const dir = editedPack((m) => ((m.scan as Record<string, unknown>).checks = ["anchor-gone", "page-contains"]));
+    expect(await inspectPack(dir)).toEqual({
+      ok: false,
+      problems: [{ file: join(dir, "pack.json"), field: "scan.checks.1", message: '"scan.checks.1" is "page-contains" but the available checks are: anchor-gone, pattern-absent, dependency-absent' }],
+    });
+  });
+
+  it("must include anchor-gone, the check every problem can fall back to", async () => {
+    const dir = editedPack((m) => ((m.scan as Record<string, unknown>).checks = ["pattern-absent"]));
+    const result = await inspectPack(dir);
+    expect(!result.ok && result.problems[0]?.field).toBe("scan.checks");
+  });
+
+  it("offers every check when a pack names none, so a pack written before the list stays valid", async () => {
+    const dir = editedPack((m) => delete (m.scan as Record<string, unknown>).checks);
+    expect((await loadPack(dir)).manifest.scan.checks).toEqual(["anchor-gone", "pattern-absent", "dependency-absent"]);
+  });
+
+  it("ships the code review with the checks of its own lens, and the security review with all three", async () => {
+    expect((await resolvePack("code", "/")).manifest.scan.checks).toEqual(["anchor-gone", "pattern-absent"]);
+    expect((await resolvePack("security", "/")).manifest.scan.checks).toEqual(["anchor-gone", "pattern-absent", "dependency-absent"]);
+  });
+});
+
+describe("the pack format's JSON Schema", () => {
+  const schema = z.fromJSONSchema(packSchema());
+  const builtIn = (folder: string): unknown => JSON.parse(readFileSync(join(BUILT_IN_PACKS, folder, "pack.json"), "utf-8"));
+
+  it("accepts every built-in pack's manifest, so an editor holds a copy to the same rules", () => {
+    for (const folder of ["code-review", "security-review"]) expect(schema.safeParse(builtIn(folder)).error).toBeUndefined();
+  });
+
+  it("flags an unknown key and an unknown check kind as an editor would while they are typed", () => {
+    const manifest = builtIn("code-review") as { scan: Record<string, unknown> };
+    expect(schema.safeParse({ ...manifest, tools: ["Bash"] }).success).toBe(false);
+    expect(schema.safeParse({ ...manifest, scan: { ...manifest.scan, checks: ["page-contains"] } }).success).toBe(false);
+  });
+
+  it("names itself by the format's version", () => {
+    expect(packSchema().title).toBe(PACK_SCHEMA);
+  });
+
+  it("lets a manifest name the schema it is written against, for an editor", async () => {
+    const dir = editedPack((m) => (m.$schema = "./pack.schema.json"));
+    expect((await loadPack(dir)).manifest.name).toBe("code");
+  });
+});
+
+/** The stability promise: a pack valid under delivery.pack/1 stays valid. A line may be added, never removed or changed. */
+describe("the pack format's stability promise", () => {
+  const promised = readFileSync(new URL("./pack-published-keys.txt", import.meta.url), "utf-8").trimEnd().split("\n");
+  const current = publishedKeys(openSchema(PackManifest), PACK_SCHEMA);
+
+  it("keeps every key and name ever published, each the kind of value it was", () => {
+    expect(promised.filter((line) => !current.includes(line))).toEqual([]);
+  });
+
+  it("puts every key and name published now under the promise: add its line to pack-published-keys.txt", () => {
+    expect(current.filter((line) => !promised.includes(line))).toEqual([]);
   });
 });

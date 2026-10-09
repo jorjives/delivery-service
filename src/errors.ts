@@ -172,9 +172,7 @@ export class InvalidRoleConfig extends Error {
 export class MockNotInstalled extends Error {
   readonly code = "MOCK_NOT_INSTALLED" as const;
   constructor(readonly path: string) {
-    super(
-      `claude-mock was not found at ${path}. Run npm install in the harness checkout: it installs claude-mock from vendor/claude-mock.`,
-    );
+    super(`claude-mock was not found at ${path}.`);
     this.name = "MockNotInstalled";
   }
 }

@@ -13,3 +13,6 @@ export { runSurfaceAgainstMock } from "./scripted-surface-run.js";
 export type { ScriptedSurfaceResult, ScriptedSurfaceRun } from "./scripted-surface-run.js";
 export { runSupervisorAgainstMock } from "./scripted-supervisor-run.js";
 export type { ScriptedSupervisorRun, ScriptedTask, ScriptedTaskResult } from "./scripted-supervisor-run.js";
+export { checkPack } from "./cli/pack-check.js";
+export type { PackCheck, PackCheckRun } from "./cli/pack-check.js";
+export type { PackProblem } from "./packs/manifest.js";

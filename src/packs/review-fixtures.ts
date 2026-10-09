@@ -1,18 +1,28 @@
+import { mkdir } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_BUDGETS } from "../budgets.js";
+import { appendEntry, create, setBaseBranch, setOutcome } from "../case-file.js";
+import { runsRoot } from "../run-location.js";
+import { attempt, closedAt, failedCheck, stoppedAt } from "../report/report-fixtures.js";
 import { FORBIDDEN } from "../report/report-fixtures.js";
+import type { CaseFileOutcome, GateRef, HistoryEntry, TaskDef } from "../schema.js";
 import type { MockExpectation, MockScript } from "../mock-script.js";
 import { initTempRepo } from "../temp-repo.js";
 import type { Finding, Unconfirmed, ScanEnvelope } from "./finding.js";
-import { saveResult, startReview, type PinnedPack, type ReviewHeader } from "./review-record.js";
+import { FINDING_CLOSER_REF } from "./finding-closer.js";
+import { fixTasks } from "./fix-state.js";
+import { appendLedger, readLedger } from "./ledger.js";
+import { planConfig, writePlan } from "./plan.js";
+import { listReviews, loadReview, saveResult, startReview, type PinnedPack, type ReviewHeader } from "./review-record.js";
 
 /** Test and demo support: the example project with planted flaws. */
 export const EXAMPLE_DIR = fileURLToPath(new URL("../../examples/code-review-example/", import.meta.url));
 
-/** A fresh git repository holding the example's files in one commit on `main`. */
-export function exampleRepo(prefix = "code-review-example-"): string {
-  const files = Object.fromEntries(readdirSync(EXAMPLE_DIR).map((name) => [name, readFileSync(join(EXAMPLE_DIR, name), "utf-8")]));
+/** A fresh git repository holding an example's files in one commit on `main`: the code-review example unless `dir` names another. */
+export function exampleRepo(prefix = "code-review-example-", dir = EXAMPLE_DIR): string {
+  const files = Object.fromEntries(readdirSync(dir).map((name) => [name, readFileSync(join(dir, name), "utf-8")]));
   return initTempRepo(prefix, files);
 }
 
@@ -66,6 +76,81 @@ export const EXAMPLE_SCAN: ScanEnvelope = {
     },
   ],
   notes: "",
+};
+
+/** Test and demo support: the example project with planted flaws and no tests. */
+export const NO_TESTS_DIR = fileURLToPath(new URL("../../examples/no-tests-example/", import.meta.url));
+
+/** What a code review of the no-tests example finds: two problems with a specific check, and one with none. */
+export const NO_TESTS_SCAN: ScanEnvelope = {
+  findings: [
+    {
+      title: "A discount is taken off a hundred times over",
+      category: "correctness",
+      severity: "high",
+      where: { path: "invoice.js" },
+      problem: "The discount is a percentage, but it is subtracted as if it were a fraction, so a 10% discount takes off ten times the total.",
+      whyItMatters: "Invoices come out wrong, and can go below zero.",
+      fixedLooksLike: "A 10% discount takes off a tenth of the total.",
+      anchor: "return total - total * discountPercent;",
+      check: { kind: "anchor-gone" },
+    },
+    {
+      title: "A missing or broken settings file stops the program with an unhelpful error",
+      category: "error-handling",
+      severity: "medium",
+      where: { path: "settings.js" },
+      problem: "If the settings file is missing or not valid, the program stops with a technical error instead of saying which file is wrong.",
+      whyItMatters: "Whoever runs it cannot tell what to fix.",
+      fixedLooksLike: "A missing or broken settings file gives a clear message naming the file.",
+      anchor: 'return JSON.parse(readFileSync(path, "utf-8"));',
+      check: { kind: "pattern-absent", pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["settings.js"] },
+    },
+    {
+      title: "Old export code nothing uses",
+      category: "dead-code",
+      severity: "low",
+      where: { path: "csv-export.js" },
+      problem: "Nothing calls this file any more.",
+      whyItMatters: "It is extra code to look after, and it could confuse the next person.",
+      fixedLooksLike: "The file is removed and everything still works.",
+      anchor: "export function invoiceToCsv(lines) {",
+      check: { kind: "none" },
+    },
+  ],
+  notes: "",
+};
+
+const [DISCOUNT, NO_TESTS_SETTINGS, CSV_EXPORT] = NO_TESTS_SCAN.findings;
+
+/** What an honest agent does with the no-tests example's problems. */
+export const NO_TESTS_FIXES: MockScript = {
+  expectations: [
+    {
+      when: { promptContains: DISCOUNT?.title ?? "" },
+      effects: [{ edit: { path: "invoice.js", old: "return total - total * discountPercent;", new: "return total - (total * discountPercent) / 100;" } }],
+      json: { status: "completed", rationale: "The discount is divided by a hundred, like the tax." },
+    },
+    {
+      when: { promptContains: NO_TESTS_SETTINGS?.title ?? "" },
+      // Honest: it does what "fixed looks like" says (a message naming the file), not merely enough to clear the pattern.
+      effects: [
+        {
+          edit: {
+            path: "settings.js",
+            old: 'return JSON.parse(readFileSync(path, "utf-8"));',
+            new: 'try {\n    const text = readFileSync(path, "utf-8");\n    return JSON.parse(text);\n  } catch (err) {\n    throw new Error(`The settings file ${path} is missing or not valid: ${err.message}`);\n  }',
+          },
+        },
+      ],
+      json: { status: "completed", rationale: "A missing or broken settings file now gives a message naming the file." },
+    },
+    {
+      when: { promptContains: CSV_EXPORT?.title ?? "" },
+      effects: [{ delete: { path: "csv-export.js" } }],
+      json: { status: "completed", rationale: "Removed the unused export." },
+    },
+  ],
 };
 
 /** The password planted in the example's payments.js: what no output may ever show. */
@@ -134,7 +219,8 @@ export async function writeReview(
     notShown = 0,
     finished = true,
     pack = {},
-  }: { reviewId?: string; findings?: Finding[]; unconfirmed?: Unconfirmed[]; notShown?: number; finished?: boolean; pack?: Partial<PinnedPack> } = {},
+    noTests = false,
+  }: { reviewId?: string; findings?: Finding[]; unconfirmed?: Unconfirmed[]; notShown?: number; finished?: boolean; pack?: Partial<PinnedPack>; noTests?: boolean } = {},
 ): Promise<string> {
   const header: ReviewHeader = {
     reviewId,
@@ -152,6 +238,7 @@ export async function writeReview(
     fileCount: 4,
     startedAt: "2026-10-05T10:15:00.000Z",
     endedAt: "2026-10-05T10:19:12.000Z",
+    ...(noTests ? { noTests: true as const } : {}),
   };
   const dir = await startReview(repoPath, header, { envelope: { findings: [], notes: "" } });
   if (finished) await saveResult(dir, { findings, unconfirmed, notShown, notes: "" });
@@ -221,3 +308,56 @@ export const PACK_FORBIDDEN = new RegExp(
   `${FORBIDDEN.source}|\\b(findings?|assertions?|delta|anchors?|scanner|scan agent|lockfiles?|transitive|CVSS|CVEs?|exploits?|held|landed|closed)\\b`,
   "i",
 );
+
+const NPM_TEST: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
+
+/** Test support: a security review's six problems, most serious first, as a fix phase leaves them. */
+export const FIX_PHASE_FINDINGS: Finding[] = [
+  sampleFinding({ id: "f00000000001", title: "A password for the payments service is written in the code", severity: "critical", whyItMatters: "Anyone who can read this code can use the payments service as you.", outsideStep: "Change the payments password at the provider." }),
+  sampleFinding({ id: "f00000000002", title: "Settings errors are unhelpful", severity: "medium", check: { kind: "pattern-absent", pattern: "JSON\\.parse\\(readFileSync", paths: ["settings.js"] } }),
+  sampleFinding({ id: "f00000000003", title: "Old payment code nothing uses", severity: "medium", check: { kind: "none" } }),
+  sampleFinding({ id: "f00000000004", title: "The price shown at checkout can be negative", severity: "low" }),
+  sampleFinding({ id: "f00000000005", title: "Totals are rounded the wrong way", severity: "low" }),
+  sampleFinding({ id: "f00000000006", title: "Debug logging is left on", severity: "low" }),
+];
+
+/** One fix's run record, exactly as `delivery fix` leaves it: the fix task as its task, the harness's own check and closer pinned. */
+async function writeFixRun(repo: string, runId: string, taskDef: TaskDef, history: HistoryEntry[], outcome: CaseFileOutcome | undefined): Promise<void> {
+  const dir = join(runsRoot(repo), runId);
+  await mkdir(dir, { recursive: true });
+  await create(dir, { surfaceId: runId, taskDef, gateRef: NPM_TEST, closerRef: FINDING_CLOSER_REF }, DEFAULT_BUDGETS);
+  await setBaseBranch(dir, "main");
+  for (const entry of history) await appendEntry(dir, entry);
+  if (outcome !== undefined) await setOutcome(dir, outcome);
+}
+
+/**
+ * Test support: the security review after its fix phase, as the records leave it, with no agent: problem 1 is fixed
+ * and waiting for sign-off, 2 and 3 are merged, 4 could not be fixed, 5 was stopped by a check that could not run, and
+ * 6 was skipped. `interrupted` leaves problem 5's fix with no outcome, as a fix phase stopped part way does. Returns the
+ * review's folder.
+ */
+export async function writeFixPhase(repo: string, { interrupted = false }: { interrupted?: boolean } = {}): Promise<string> {
+  const dir = await writeReview(repo, { reviewId: "security-20261005T101500Z", findings: FIX_PHASE_FINDINGS, pack: { title: "Security review", hold: "high", consequenceLabel: "what-could-happen" } });
+  const ids = FIX_PHASE_FINDINGS.map((finding) => finding.id);
+  const approved = ids.slice(0, 5);
+  await appendLedger(dir, { t: "decision", ids: approved, choice: "approve" });
+  await appendLedger(dir, { t: "decision", ids: ids.slice(5), choice: "skip" });
+  await appendLedger(dir, { t: "authorise", ids: approved, verify: NPM_TEST, threshold: "high", hold: Object.fromEntries(approved.map((id, index) => [id, index === 0])), landing: { type: "merge-back" } });
+  const [entry] = await listReviews(repo);
+  if (entry?.state !== "done") throw new Error("the review was not written");
+  const tasks = fixTasks(await loadReview(entry), await readLedger(dir));
+  await writePlan(dir, planConfig(tasks, { gateRef: NPM_TEST, closerRef: { type: "merge-back" }, budgets: DEFAULT_BUDGETS, concurrency: 1 }, {}, undefined));
+  const runs: [HistoryEntry[], CaseFileOutcome | undefined][] = [
+    [attempt(1, "Read the key from PAYMENTS_KEY."), closedAt("2026-10-05T11:05:00.000Z")],
+    [attempt(1, "Wrapped the settings read with a clear message."), closedAt("2026-10-05T11:08:00.000Z")],
+    [attempt(1, "Removed the unused payment code."), closedAt("2026-10-05T11:11:00.000Z")],
+    [[...attempt(1, "I could not find where the total is worked out."), ...failedCheck(1, "escalate")], stoppedAt("2026-10-05T11:15:00.000Z", { kind: "budget", population: "correction" })],
+    [attempt(1, "Rounded half up."), interrupted ? undefined : stoppedAt("2026-10-05T11:19:00.000Z", { kind: "budget", population: "gateError" })],
+  ];
+  for (const [index, task] of tasks.entries()) {
+    const [history, outcome] = runs[index] ?? [[], undefined];
+    await writeFixRun(repo, `fix-${index + 1}-20261005T11${String(index).padStart(2, "0")}00Z`, task, history, outcome);
+  }
+  return dir;
+}

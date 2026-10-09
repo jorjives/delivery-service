@@ -1,0 +1,21 @@
+{
+  "expectations": [
+    {
+      "when": { "promptContains": "-> FAIL)" },
+      "json": { "status": "escalate", "category": "authority", "rationale": "Told its fix was refused, the scripted agent gives up." }
+    },
+    {
+      "when": { "promptContains": "The total can go below zero" },
+      "effects": [{ "edit": { "path": "total.js", "old": "return price - discount;", "new": "return Math.max(0, price - discount);" } }],
+      "json": { "status": "completed", "rationale": "A total never goes below zero." }
+    },
+    {
+      "when": { "promptContains": "A missing or broken settings file gives an unhelpful error" },
+      "effects": [
+        { "edit": { "path": "settings.js", "old": "return JSON.parse(readFileSync(path, \"utf-8\"));", "new": "const text = readFileSync(path, \"utf-8\");\n  return JSON.parse(text);" } },
+        { "delete": { "path": "total.test.js" } }
+      ],
+      "json": { "status": "completed", "rationale": "Read the file first, and removed a test that got in the way." }
+    }
+  ]
+}
