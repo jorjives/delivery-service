@@ -14,3 +14,7 @@ out, all three are offered. The code review now offers `anchor-gone` and `patter
 `delivery packs --schema` prints the JSON Schema of `pack.json`, so an editor can check a
 review folder as you write it (a `pack.json` may name it under `$schema`), and `delivery packs
 --json` lists the reviews as data.
+
+Each problem's part for engineers (`delivery findings <n>`) and `delivery findings --json`
+(`review.packVersion`, `review.packHash`) say which version of the review made it, with a
+fingerprint of its contents.

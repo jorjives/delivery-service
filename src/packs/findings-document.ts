@@ -34,7 +34,17 @@ export const FindingsProblem = z.object({
 /** What `delivery findings --json` prints: the latest review and every problem in it. */
 export const FindingsDocument = z.object({
   schema: z.literal(FINDINGS_SCHEMA),
-  review: z.object({ id: z.string(), pack: z.string(), title: z.string(), commit: z.string(), startedAt: z.string(), endedAt: z.string() }),
+  review: z.object({
+    id: z.string(),
+    pack: z.string(),
+    title: z.string(),
+    commit: z.string(),
+    startedAt: z.string(),
+    endedAt: z.string(),
+    /** The version of the pack that made the review, and a fingerprint of its manifest and instructions: a changed pack shows as a changed fingerprint. */
+    packVersion: z.string(),
+    packHash: z.string(),
+  }),
   problems: z.array(FindingsProblem),
   /** How many the review reported that could not be found in the project: `delivery findings --unconfirmed`. */
   unconfirmed: z.int().min(0),
@@ -47,7 +57,7 @@ export type FindingsDocument = z.infer<typeof FindingsDocument>;
 export function findingsDocument({ header, result }: SavedReview, states: readonly FindingState[]): FindingsDocument {
   return {
     schema: FINDINGS_SCHEMA,
-    review: { id: header.reviewId, pack: header.pack.name, title: header.pack.title, commit: header.commit, startedAt: header.startedAt, endedAt: header.endedAt },
+    review: { id: header.reviewId, pack: header.pack.name, title: header.pack.title, commit: header.commit, startedAt: header.startedAt, endedAt: header.endedAt, packVersion: header.pack.version, packHash: header.pack.hash },
     problems: result.findings.map((finding, index) => {
       const at = states[index] ?? UNDECIDED;
       return {

@@ -25,10 +25,14 @@ const fixed: FindingState = { ...UNDECIDED, state: "fixed", fix: { run: "fix-a-2
 const overTheWire = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
 describe("the findings document", () => {
+  it("says which version of the pack made the review, and a fingerprint of its contents", () => {
+    expect(findingsDocument(review, []).review).toMatchObject({ packVersion: review.header.pack.version, packHash: review.header.pack.hash });
+  });
+
   it("gives every problem with its state, its check's kind and level, and a pointer to its fix's run", () => {
     expect(findingsDocument(review, [fixed, UNDECIDED])).toEqual({
       schema: "delivery.findings/1",
-      review: { id: "code-20261005T101500Z", pack: "code", title: "Code review", commit: "abcdef0123456789abcdef0123456789abcdef01", startedAt: "2026-10-05T10:15:00.000Z", endedAt: "2026-10-05T10:19:12.000Z" },
+      review: { id: "code-20261005T101500Z", pack: "code", title: "Code review", commit: "abcdef0123456789abcdef0123456789abcdef01", startedAt: "2026-10-05T10:15:00.000Z", endedAt: "2026-10-05T10:19:12.000Z", packVersion: "1.0.0", packHash: "0".repeat(64) },
       problems: [
         {
           number: 1,

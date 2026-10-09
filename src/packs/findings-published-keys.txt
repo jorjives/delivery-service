@@ -48,6 +48,8 @@ delivery.findings/1.review.commit: string
 delivery.findings/1.review.endedAt: string
 delivery.findings/1.review.id: string
 delivery.findings/1.review.pack: string
+delivery.findings/1.review.packHash: string
+delivery.findings/1.review.packVersion: string
 delivery.findings/1.review.startedAt: string
 delivery.findings/1.review.title: string
 delivery.findings/1.review: object

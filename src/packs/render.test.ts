@@ -3,7 +3,7 @@ import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
-  AGENT_OPINION, CHANGES_TESTS, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
+  AGENT_OPINION, CHANGES_TESTS, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, madeBy, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
   opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
@@ -80,6 +80,13 @@ describe("the findings view", () => {
     ]);
   });
 
+  it("tells engineers which version of the pack made the review", () => {
+    const saved = review();
+    const lines = findingLines(saved, 1);
+    expect(lines).toContain("  Made by: the code review, version 1.0.0 (contents 000000000000)");
+    expect(madeBy({ name: "code", version: "1.2.0", hash: "abcdef0123456789" })).toBe("Made by: the code review, version 1.2.0 (contents abcdef012345)");
+  });
+
   it("shows one problem in full, then a block for engineers with category, file range, check kind and its parameters", () => {
     const lines = findingLines(review(), 2);
     expect(lines.slice(0, 1)).toEqual(["2. Settings errors are unhelpful (medium)"]);
@@ -91,6 +98,7 @@ describe("the findings view", () => {
       "  Checked in: settings.js",
       '  Flagged text: "return price - discount;"',
       "  Identity: 111111111111, from review code-20261005T101500Z of commit abcdef012345",
+      "  Made by: the code review, version 1.0.0 (contents 000000000000)",
     ]);
   });
 

@@ -76,6 +76,9 @@ export const CHANGES_NOTE = "The agent changed these files. This shows what chan
 export const CHANGES_WHICH = "Say which problem's changes to show, by its number in the list, for example: delivery findings 1 --changes";
 export const noKeptFix = (number: number, words: string): string => `Problem ${number} has no kept fix to show: it is ${words}. See where each stands with: delivery findings`;
 
+/** Which version of which pack made a review, for engineers: the fingerprint changes whenever its manifest or instructions do. */
+export const madeBy = ({ name, version, hash }: Pick<PinnedPack, "name" | "version" | "hash">): string => `Made by: the ${name} review, version ${version} (contents ${hash.slice(0, 12)})`;
+
 /** How a problem's consequence is introduced, as its pack chose. */
 export const CONSEQUENCE_WORDS: Record<NonNullable<PinnedPack["consequenceLabel"]>, string> = {
   "why-it-matters": "Why it matters",
@@ -280,6 +283,7 @@ export function findingLines({ header, result }: SavedReview, number: number): s
     `  Flagged text: ${quoted(hide(finding.anchor), "    ")}`,
     ...(finding.detail === undefined ? [] : [`  The agent's notes: ${quoted(hide(finding.detail), "    ")}`]),
     `  Identity: ${finding.id}, from review ${header.reviewId} of commit ${header.commit.slice(0, 12)}`,
+    `  ${madeBy(header.pack)}`,
   ];
 }
 
