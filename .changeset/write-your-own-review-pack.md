@@ -18,3 +18,5 @@ review folder as you write it (a `pack.json` may name it under `$schema`), and `
 Each problem's part for engineers (`delivery findings <n>`) and `delivery findings --json`
 (`review.packVersion`, `review.packHash`) say which version of the review made it, with a
 fingerprint of its contents.
+
+`delivery review --json` prints the review as a `delivery.findings/1` document, and `delivery fix --json` ends with one.

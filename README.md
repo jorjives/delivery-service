@@ -75,7 +75,7 @@ id. Every key is present, `null` where it does not apply. A run of several at on
 `HEALTHY`, and `ESCALATED` when it gives up), with `affected` listing the task run ids it
 concerns (`null` on the run starting and finishing).
 
-`--json` works on `delivery resume`, `delivery status`, `delivery report` and `delivery validate` too. Without it the output is
+`--json` works on `delivery resume`, `delivery status`, `delivery report`, `delivery validate`, `delivery review`, `delivery findings`, `delivery fix` and `delivery packs` too. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
 The lines above are the running command's own account of itself and carry no version. To build
 on what a run did, use the versioned data described in [Reports as data](docs/reporting.md).

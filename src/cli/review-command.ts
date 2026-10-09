@@ -3,6 +3,8 @@ import { resolvePack } from "../packs/manifest.js";
 import { fixNowLines, NOT_NOW, opening, RECOVERED, reviewLines, failureSentence, checkLevel } from "../packs/render.js";
 import { uncheckable, type SavedReview } from "../packs/review-record.js";
 import { runReview } from "../packs/review.js";
+import { findingsDocument } from "../packs/findings-document.js";
+import { readFindingStates } from "../packs/fix-state.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
@@ -52,7 +54,10 @@ export async function reviewCommand(packArg: string, repoArg: string | undefined
   if (outcome.recovered) say(RECOVERED);
   for (const line of reviewLines(outcome.review)) say(line);
 
-  if (ctx.interactive === true && pickQuestion(outcome.review).choices.length > 0) {
+  if (ctx.json) {
+    const { states } = await readFindingStates(repoPath, outcome.review);
+    ctx.writeLine(JSON.stringify(findingsDocument(outcome.review, states), null, 2));
+  } else if (ctx.interactive === true && pickQuestion(outcome.review).choices.length > 0) {
     say("");
     const picked = await ask.pick(pickQuestion(outcome.review));
     const when = picked.length === 0 ? "later" : await ask.choose(WHEN_QUESTION);

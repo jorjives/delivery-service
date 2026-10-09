@@ -16,6 +16,7 @@ import { UNCOMMITTED_NOTE } from "./project.js";
 import { pickQuestion, reviewCommand, WHEN_QUESTION } from "./review-command.js";
 import type { CommandContext } from "./context.js";
 import { withoutCredentials } from "../mock-session.js";
+import { FINDINGS_SCHEMA, type FindingsDocument } from "../packs/findings-document.js";
 
 const mocked = async (script = scanScript(EXAMPLE_SCAN)) => ({ [TEST_MOCK_SCRIPT]: await scriptFile(script) });
 const reviewDirs = (repo: string) => (existsSync(packsRoot(repo)) ? readdirSync(packsRoot(repo)).filter((name) => name !== "scan-errors") : []);
@@ -128,13 +129,13 @@ describe("delivery review", () => {
     expect(reviewDirs(repo)).toEqual([expect.stringMatching(/^mine-\d{8}T\d{6}Z$/)]);
   }, RUN_TIMEOUT);
 
-  it("never asks anything in a pipe or with --json, and keeps standard output clear under --json", async () => {
+  it("never asks anything in a pipe or with --json, and keeps standard output for the findings document under --json", async () => {
     const repo = exampleRepo();
     const piped = await delivery(["review", "code"], { cwd: repo, env: await mocked(), isTTY: false, answers: ["anything"] });
     expect(piped.exitCode).toBe(EXIT.ok);
     const json = await delivery(["--json", "review", "code"], { cwd: exampleRepo(), env: await mocked(), isTTY: true, answers: ["anything"] });
     expect(json.exitCode).toBe(EXIT.ok);
-    expect(json.stdout).toBe("");
+    expect(() => JSON.parse(json.stdout)).not.toThrow();
     expect(json.stderr).toContain("It found 3 problems.");
   }, RUN_TIMEOUT);
 
@@ -193,6 +194,20 @@ describe("delivery review at a terminal", () => {
   it("says nothing has changed when the owner chooses not now", async () => {
     const { lines } = await atTerminal(exampleRepo(), scriptedAsk({ choice: "later" }).ask);
     expect(lines.at(-1)).toBe(NOT_NOW);
+  }, RUN_TIMEOUT);
+
+  it("gives the review as one findings document with --json, its words on standard error", async () => {
+    const repo = exampleRepo();
+    const { exitCode, stdout, stderr } = await delivery(["review", "code", "--json"], { cwd: repo, env: await mocked() });
+    expect(exitCode).toBe(EXIT.ok);
+    const doc = JSON.parse(stdout) as FindingsDocument;
+    expect(doc.schema).toBe(FINDINGS_SCHEMA);
+    expect(doc.problems.map((p) => [p.title, p.state])).toEqual([
+      ["The price shown at checkout can be negative", "proposed"],
+      ["A missing or broken settings file stops the shop with an unhelpful error", "proposed"],
+      ["Old code for a payment provider you no longer use", "proposed"],
+    ]);
+    expect(stderr).toContain(READS_ONLY);
   }, RUN_TIMEOUT);
 
   it("offers in the interactive choice only the problems that can be checked", () => {

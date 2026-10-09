@@ -16,6 +16,7 @@ import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { ALL_FINISHED, alreadyFixedLine, fixingLine, NOTHING_APPROVED } from "./fix-command.js";
+import { FINDINGS_SCHEMA, type FindingsDocument } from "../packs/findings-document.js";
 
 const NEGATIVE = sampleFinding();
 const SETTINGS = sampleFinding({
@@ -73,6 +74,9 @@ const DELETES_THE_TEST = {
 const GIVES_UP_WHEN_THE_DELETION_IS_REFUSED = {
   when: { promptContains: "\n- guard:tests-untouched" },
   json: { status: "escalate", category: "authority", rationale: "The test would have to go for this to pass." },
+};
+const CLAMPS_TOTAL: MockScript = {
+  expectations: [{ effects: [{ edit: { path: "checkout.js", old: "return price - discount;", new: "return Math.max(0, price - discount);" } }], json: { status: "completed", rationale: "A total never goes below zero." } }],
 };
 
 const env = async (script: MockScript) => ({ [TEST_MOCK_SCRIPT]: await scriptFile(script) });
@@ -371,6 +375,18 @@ describe("delivery fix in a project with no tests", () => {
     },
     RUN_TIMEOUT,
   );
+
+  it("ends its JSON step records with the findings document as one last line", async () => {
+    const repo = exampleRepo();
+    await delivery(["review", "code"], { cwd: repo, env: await env(scanScript({ findings: [NEGATIVE], notes: "" })) });
+    await delivery(["findings", "approve", "1"], { cwd: repo });
+    const { stdout } = await delivery(["fix", "--json"], { cwd: repo, env: await env(CLAMPS_TOTAL) });
+    const lines = stdout.trimEnd().split("\n");
+    for (const line of lines) expect(() => JSON.parse(line)).not.toThrow();
+    const doc = JSON.parse(lines.at(-1) ?? "") as FindingsDocument;
+    expect(doc.schema).toBe(FINDINGS_SCHEMA);
+    expect(doc.problems[0]?.state).toBe("fixed");
+  }, RUN_TIMEOUT);
 
   const UNUSED_GATEWAY = sampleFinding({
     id: "222222222222",

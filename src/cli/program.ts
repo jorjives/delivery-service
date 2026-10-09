@@ -95,7 +95,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .version(version, "-V, --version", "print the harness version")
     .option("--no-color", "print without colour")
-    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate and findings, and one JSON event per line from status --watch")
+    .option("--json", "print machine-readable output: one JSON object per step while a run or a fix happens, one JSON document from status, report, validate, review, findings and packs, and one JSON event per line from status --watch")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
     .configureOutput({ writeOut: (text) => out.stdout.write(text), writeErr: (text) => out.stderr.write(text) });

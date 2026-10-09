@@ -6,6 +6,7 @@ import { FINDING_GATE_REF } from "../packs/finding-gate.js";
 import { FINDING_CLOSER_REF } from "../packs/finding-closer.js";
 import type { FixTask } from "../packs/fix-task.js";
 import { readFindingStates } from "../packs/fix-state.js";
+import { findingsDocument } from "../packs/findings-document.js";
 import { appendLedger } from "../packs/ledger.js";
 import { guardListsFor } from "../packs/guards.js";
 import { planConfig, writePlan } from "../packs/plan.js";
@@ -81,6 +82,8 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
   if (fresh.length === 0 && !states.some((at) => at.state === "fixing")) {
     if (states.some((at) => at.state !== "proposed" && at.state !== "skipped" && at.state !== "needs_decision")) {
       say(ALL_FINISHED);
+      // Standard output under --json is one JSON object per line (the steps); the closing document is one more line.
+      if (ctx.json) ctx.writeLine(JSON.stringify(findingsDocument(review, states)));
       return EXIT.ok;
     }
     throw new Refusal(NOTHING_APPROVED, EXIT.configuration);
@@ -136,5 +139,7 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
   const after = await readFindingStates(repoPath, review);
   say("");
   for (const line of listLines(review, after.states)) say(line);
+  // Standard output under --json is one JSON object per line (the steps); the closing document is one more line.
+  if (ctx.json) ctx.writeLine(JSON.stringify(findingsDocument(review, after.states)));
   return exitCode;
 }

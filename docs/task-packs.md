@@ -201,6 +201,8 @@ add keys and names; it never removes or changes one.
 - `unconfirmed`: how many the review reported that could not be found in your project.
 - `notShown`: how many it found beyond the review's limit.
 
+`delivery review <pack> --json` prints the same document as soon as the review is saved, and `delivery fix --json` ends its step records with it as one last line.
+
 The flagged code and a check's pattern are never in it: either may hold a secret.
 
 ## Where a review is kept
