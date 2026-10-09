@@ -528,8 +528,9 @@ never goes to the base branch, a PR or the owner on its own.
 - **One open delivery branch per base branch,** named `delivery/<base>` (e.g. `delivery/main`).
   It is created from the base's tip when a run finds none open, and it stays open across runs
   until it reaches the base, so a scheduled project always has exactly one branch to review. Its
-  current tip, and the gate result accepted on that tip, are recorded in the run file and carried
-  by the ledger between runs; that result is the baseline the next task's gate is judged against.
+  current tip, and the gate result accepted on that tip, are recorded once, in the ledger; the run
+  file's log records each landing. That result is the baseline the next task's gate is judged
+  against.
 - **Every task starts from the delivery branch's tip,** not the base's, so it sees all the work
   landed before it. Provisioning (5.4) takes the tip at that moment.
 - **Landing a task is a merge-back onto the delivery branch.** This is the existing merge-back
@@ -541,13 +542,18 @@ never goes to the base branch, a PR or the owner on its own.
   above 1), the harness rebases the task's commits onto the new tip in the task's own worktree and
   runs the gate and guards again, judged against the new tip's baseline. If the rebase is clean
   and the gate passes, the fast-forward is attempted again; if the tip moved again meanwhile, this
-  repeats, and it can repeat at most once per other task in the run. If the rebase conflicts, or
-  the gate fails on the rebased tree, the task is **re-run on the tip**: provisioned afresh at the
-  current tip, with a new session primed with the task, the evidence (the conflicting files, or
-  the newly failing assertions) and the name of its previous task branch, which is kept, renamed
-  with an attempt suffix, for it to read. A re-run spends the existing `close` budget; when that is exhausted the task escalates
-  with the existing close-exhaustion packet, and its accepted branch is kept. Nothing conflicting
-  or failing is ever written to the delivery branch.
+  repeats, and it can repeat at most once per other task in the run. Otherwise the landing is a
+  `close_failure` for the existing router, spending the `close` budget, and its retry is a
+  **re-run on the tip** with a new session:
+  - if the rebase applied but the gate fails, the session works in the rebased worktree, primed
+    with the newly failing assertions, as for any gate rejection (5.11);
+  - if the rebase conflicts, the task is provisioned afresh at the current tip, and the session is
+    primed with the task, the conflicting files and the previous task branch, which is kept for it
+    to read.
+
+  When the `close` budget is exhausted the task escalates with the existing close-exhaustion
+  packet, and its accepted branch is kept. Nothing conflicting or failing is ever written to the
+  delivery branch.
 - **A task that stops** (escalated, parked, aborted or held) never lands, so the delivery branch
   and the tasks after it are unaffected.
 - **The base moving under an open delivery branch.** At the start of a run, if the base has
@@ -555,12 +561,15 @@ never goes to the base branch, a PR or the owner on its own.
   scratch worktree and runs the gate. If that is clean and green, the merge commit lands on the
   delivery branch and becomes its tip. If not, the run starts no task and escalates with a packet
   naming the conflict or the failing assertions: reconciling the owner's own commits with
-  delivered work is the owner's decision.
+  delivered work is the owner's decision. The escalation stands, and later runs do not repeat the
+  attempt, until the base or the delivery branch moves.
 - **The project's closer acts once per run,** on the delivery branch, after its tasks have landed
-  and if at least one did. The closer interface is unchanged: its `branch` is the delivery branch
-  and its `baseBranch` is the base. Merge-back fast-forwards the base and deletes the delivery
+  and if at least one did. The closer interface is unchanged: its `branch` is the delivery branch,
+  its `baseBranch` is the base, and its `worktreePath` is a scratch worktree on the delivery
+  branch's tip, removed afterwards. Merge-back fast-forwards the base and deletes the delivery
   branch. Commit-to-branch leaves the delivery branch for the owner. Open-PR opens one PR for the
-  delivery branch, or updates the one already open for it. A closer is therefore called again on a
+  delivery branch; on a later run it finds that PR open, as it already detects, and gains one
+  step: updating the PR's body with the items now landed. A closer is therefore called again on a
   delivery branch it handled in an earlier run, and must treat an existing branch or PR as its own.
   Custom closers receive the same context. If the closer fails, the delivery branch stands, and
   the next run retries the closer before it starts any task, after bringing in any base commits
@@ -657,7 +666,8 @@ runs, the item ledger carries the item to the next `--sources` run. Invariant 2 
 | Interrupted: usage limit, crash, timeout, idle, no reply, reply in the wrong shape | Same | Resumed, with a turn saying why (for a wrong shape, the expected shape) |
 | Rejected by the gate or guards, budget remaining | Same | New, primed with triage's brief and the gate evidence: it corrects the existing work |
 | Next workflow step | Same | New, or resumed with `continue: true` |
-| Accepted, but it no longer applies on the delivery branch's tip (5.7) | Fresh, at the tip | New, primed with the task, the evidence and the previous branch's name |
+| Accepted, rebased cleanly onto the moved delivery tip, but the gate fails (5.7) | Same, rebased | New, primed with the newly failing assertions |
+| Accepted, but its rebase onto the moved delivery tip conflicts (5.7) | Fresh, at the tip | New, primed with the task, the conflicting files and the previous branch's name |
 | **Across runs** | | |
 | Run ended interrupted | Same | Resumed |
 | Run ended with corrections exhausted | Fresh | Fresh: the in-run loop already tried correcting that state, and resuming would re-ship it. The old branch is kept for inspection. |
@@ -734,7 +744,8 @@ ordinary backlog.
   pauses before the task lands on the delivery branch: the work waits on its own task branch, and
   tasks after it do not build on it. `delivery sign-off <id>` lands it on the open delivery branch
   (creating one if none is open) by the rules of 5.7, rebase and re-check or re-run on the tip
-  included, then runs the project's closer. `delivery reject <id>` declines the item, as today.
+  included, then runs the project's closer and the after steps, as a run does. `delivery reject
+  <id>` declines the item, as today.
 - **What the owner reads.** `delivery backlog` lists ideas, open, held and parked items in the
   plain-language form today's review uses, and `delivery backlog <id>` shows one in full with its
   FOR ENGINEERS block. What a non-technical owner sees and does is unchanged: review, choose, read
@@ -832,11 +843,12 @@ The same machinery covers work Autoloop cannot express:
 - **An agent after step commits anything but new backlog items:** those commits are discarded
   with its worktree, and the report says so.
 - **Accepted task no longer applies on the delivery branch's tip:** rebased and re-checked; on a
-  conflict or a newly failing assertion, re-run on the tip against the `close` budget; when that is
-  exhausted, escalated with the close-exhaustion packet and the accepted branch kept (5.7).
+  conflict or a newly failing assertion, a `close_failure` re-run on the tip against the `close`
+  budget; when that is exhausted, escalated with the close-exhaustion packet and the accepted
+  branch kept (5.7).
 - **Base has commits the open delivery branch lacks, and merging them conflicts or fails the
   gate:** the run starts no task and escalates with a packet naming the conflict or the failing
-  assertions.
+  assertions; not retried until the base or the delivery branch moves.
 - **The run's closer fails:** the delivery branch stands; the next run retries the closer before
   starting any task.
 
@@ -871,11 +883,12 @@ is involved.
   each edit the same import line in one test file. With concurrency 1, each task starts from the
   tip holding the tasks before it, the delivery branch passes the gate after each lands, and
   merging it into the base needs no conflict resolution or hand edits. With concurrency 3, two
-  tasks whose rebase conflicts are re-run on the tip and both land; a rebase that applies cleanly
-  but fails the gate is re-run too; nothing conflicting or failing reaches the delivery branch.
-  A task that escalates leaves the delivery branch unchanged and the tasks after it land. A
-  second run continues the open delivery branch; the base moving underneath is merged in when
-  clean and green, and escalates the run when not. Each shipped closer, called twice on the same
+  tasks whose rebase conflicts are re-run at the tip in a fresh worktree and both land; a rebase
+  that applies cleanly but fails the gate is corrected in the same rebased worktree; nothing
+  conflicting or failing reaches the delivery branch. A task that escalates leaves the delivery
+  branch unchanged and the tasks after it land. A second run continues the open delivery branch;
+  the base moving underneath is merged in when clean and green, and escalates the run when not,
+  and a third run with nothing moved does not retry it. Each shipped closer, called twice on the same
   delivery branch, leaves one branch or one PR. An item landed on an unmerged delivery branch is
   not dispatched again, and is dispatchable again once that branch is deleted unmerged. `status`
   and `report` name the delivery branch.
