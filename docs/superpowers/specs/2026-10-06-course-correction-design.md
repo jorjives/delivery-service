@@ -5,7 +5,11 @@
 > **Supersedes, in part:** `docs/agent-interface.md` (Tool authority, Prompt assembly),
 > `docs/single-surface-control-flow.md` (invariants 2 and 5), `docs/configuring-a-role.md`,
 > `docs/task-packs.md` (findings, approval and fix), roadmap Items 13 and 14 (folded in here as
-> work sources and scheduling).
+> work sources and scheduling), and `2026-09-26-multi-surface-supervisor-design.md` §4 and §9
+> (merge onto a moving base; the "no automatic rebase" non-goal), replaced by the delivery
+> branch (5.7).
+> **Folds in:** the Autoloop issue "Tasks from one list each branch from main, so their branches
+> conflict" (found in the `~/dev/delivery-trial` run of 2026-10-06), as the delivery branch (5.7).
 
 ## 1. Why
 
@@ -89,6 +93,7 @@ The right-choice lens applied to every decision that shapes the agent's interact
 | 13 | Every attempt a fresh session, interrupted ones included (invariant 2) | Easy | Resume interrupted sessions; keep fresh sessions for judged attempts |
 | 14 | Scanner given a pre-built file list | Easy | Let the scanner explore |
 | 15 | Personas derived and adopted without confirmation; accessibility read as narrowing the agent | Easy | Confirmed personas; accessibility scoped to the harness's surfaces |
+| 15a | Every task branches from the base and is landed on its own, so tasks from one run conflict with each other and the owner reconciles them | Easy | Tasks land in turn on one delivery branch, each built on the work before it (5.7) |
 | 16 | Gate's pass/fail authoritative; no classifier overturns it (invariant 1) | Right | |
 | 17 | Baseline fingerprint and delta rule, ABSENT closes vanished assertions | Right | |
 | 18 | Task delivered by prompt, never written into the worktree | Right | |
@@ -104,7 +109,9 @@ The right-choice lens applied to every decision that shapes the agent's interact
 **The pattern:** every easy choice is *security by subtraction*. Each one placed the trust
 boundary at the agent's inputs: fewer tools, fewer paths, fewer instructions it may follow,
 less context it may carry. The boundary belongs at acceptance. Every right choice already sits
-there. The correction keeps rows 16 to 26 and replaces rows 1 to 15.
+there. The correction keeps rows 16 to 26 and replaces rows 1 to 15a. Row 15a is the same
+pattern in landing: each task was judged in isolation, and the integration of their work was
+left to the owner, unchecked.
 
 ## 4. Revised invariants
 
@@ -128,6 +135,9 @@ These replace the five invariants in `docs/single-surface-control-flow.md`.
    substitutes for it.
 8. **Workflows are data.** The harness does not know what a "leg", a "slice" or a "fix" is.
    Those are operator-authored workflows and work sources.
+9. **What the owner receives has passed the check as a whole.** Accepted work lands on one
+   delivery branch, in turn, and the gate has passed on every tip that branch has had. The owner
+   never receives two pieces of accepted work that conflict, or that pass apart and fail together.
 
 ## 5. Design
 
@@ -347,11 +357,12 @@ the config references:
 ```
 
 - **Each step is one surface run** of the existing single-surface machine: provisioning (first
-  step only), pre-gate, agent, gate, triage and budgets. Steps share the task's worktree and
-  branch. Each step's gate baselines against the previous step's accepted state.
+  step only, from the delivery branch's tip, 5.7), pre-gate, agent, gate, triage and budgets.
+  Steps share the task's worktree and branch. Each step's gate baselines against the previous
+  step's accepted state.
 - **`continue: true`** resumes the previous step's session, so a multi-step workflow keeps its
   reasoning where the operator wants it to.
-- **The closer runs once**, after the last step is accepted.
+- **The task lands once**, on the delivery branch, after the last step is accepted (5.7).
 - **`{{task.*}}`** interpolates fields of the task (5.5). Interpolation is pure, and the rendered
   prompt is what goes into the case file, so determinism holds.
 - **A step's gate** is the project's gate unless the step names another: a preset or a
@@ -416,11 +427,11 @@ available as {{task.<field>}}, e.g. `spec:` and `slice:` for a slice delivery.
 - **Agents cannot edit existing items.** The guards (5.2) refuse an edit or removal of an existing
   item. The task an agent works on is pinned in the case file at dispatch, so editing its file
   could not change what it is judged against anyway.
-- **Resolving an item is part of landing.** On acceptance, in `CLOSING` and before any closer
-  runs, the harness adds a commit to the task branch that sets the item's `status: resolved`.
-  Closers stay unaware of it. The item's completion lands
-  together with the work that completes it; with the open-PR closer, it lands when the PR merges.
-  A recurring item is not resolved; its last-closed time goes into the ledger.
+- **Resolving an item is part of landing.** On acceptance, in `CLOSING` and before the task lands
+  on the delivery branch, the harness adds a commit to the task branch that sets the item's
+  `status: resolved`. Closers stay unaware of it. The item's completion travels with the work that
+  completes it, and reaches the base branch when the delivery branch does (5.7). A recurring item
+  is not resolved; its last-closed time goes into the ledger.
 - `.delivery/.gitignore` changes from ignoring everything to ignoring everything except
   `backlog/`, so run records and locks stay untracked.
 
@@ -448,6 +459,10 @@ ladder, and the roadmap's local scheduling item builds on them.
   item that escalates, or that exhausts its corrections on `parkAfter` consecutive `--sources`
   runs (default 3, Autoloop's budget), is parked. A parked item is skipped until `delivery unpark <id>`, and is listed by
   `delivery status`, the report and `notify`. Parking writes nothing to the repository.
+- **Landed, not yet merged.** An item whose work is on an open delivery branch is recorded in the
+  ledger against that branch and is not dispatched again, even though its file is still open on
+  the base branch. When the delivery branch reaches the base, its items' entries are cleared; if
+  the branch is deleted without reaching the base, they become dispatchable again.
 - **Carrying an item's work into the next run.** The ledger keeps the item's worktree and session
   id when a run ends without landing. What the next `--sources` run does with them depends on how
   that run ended (5.11): an interrupted run is resumed, a run that exhausted its corrections is
@@ -462,9 +477,10 @@ every project:
   delivered the task decides what happens to it in `CLOSING`. The `backlog` source leaves it on
   the branch, to land with the work. A tracker source takes it off the branch, alongside the
   resolution commit, and holds it in the case file, so on a tracker-backed project the folder is
-  only a drop folder, empty on the base branch. After the closer succeeds, the source raises each
-  held item as the first `after` step (5.7), and the ledger records the raised id, so a retried raise never duplicates. An attempt
-  that is rejected or does not land raises nothing.
+  only a drop folder, empty on the base branch. After the run's closer succeeds, the source raises
+  each held item of every task that landed as the first `after` step (5.7), and the ledger records
+  the raised id, so a retried raise never duplicates. An attempt that is rejected or does not land
+  raises nothing.
 - **The source contract gains `raise`.** A `command` source is run as `<command> raise` with the
   item as JSON on stdin, and prints the new id. Bitbucket, Jira or any other tracker is a short
   script.
@@ -478,8 +494,9 @@ every project:
     travel in a fenced `delivery` block at the end of the issue body, written by `raise` and read
     by listing.
   - *Completing:* with the merge-back closer, the issue is closed with a comment linking the
-    commit. With the open-PR closer, the PR body carries `Closes #<n>`, so the issue closes when
-    the PR merges and completion lands with the work.
+    commit. With the open-PR closer, the delivery branch's one PR carries a `Closes #<n>` line for
+    every issue landed on it, so each issue closes when the PR merges and completion lands with
+    the work.
   - *Mirroring:* a parked item gets a `delivery:parked` label, and a `decision` escalation's
     question is posted as a comment. The ledger stays the record; the issue shows its state
     where the owner already works.
@@ -504,9 +521,64 @@ Both become ordinary agent sessions with full capability and a fence:
 
 ### 5.7 Landing, after steps and notification
 
-- **Closers** are unchanged (merge-back, open-PR, commit-to-branch, custom). Holding serious
-  fixes for sign-off becomes a workflow's `hold` (5.13).
-- **`after` steps** run in order after a successful close. Each is one of:
+**The delivery branch.** Accepted work lands in two stages: each task onto the project's
+**delivery branch**, in turn, and then the delivery branch through the project's closer. A task
+never goes to the base branch, a PR or the owner on its own.
+
+- **One open delivery branch per base branch,** named `delivery/<base>` (e.g. `delivery/main`).
+  It is created from the base's tip when a run finds none open, and it stays open across runs
+  until it reaches the base, so a scheduled project always has exactly one branch to review. Its
+  current tip, and the gate result accepted on that tip, are recorded in the run file and carried
+  by the ledger between runs; that result is the baseline the next task's gate is judged against.
+- **Every task starts from the delivery branch's tip,** not the base's, so it sees all the work
+  landed before it. Provisioning (5.4) takes the tip at that moment.
+- **Landing a task is a merge-back onto the delivery branch.** This is the existing merge-back
+  closer's mechanism, aimed at the delivery branch instead of the base: under the repository
+  lock, a `--ff-only` merge plus the ancestry probe. When the task started from the current tip,
+  the fast-forward succeeds and nothing is re-checked, because the task's own accepted gate ran on
+  exactly the tree the delivery branch now holds.
+- **When the tip has moved,** because another task landed while this one worked (concurrency
+  above 1), the harness rebases the task's commits onto the new tip in the task's own worktree and
+  runs the gate and guards again, judged against the new tip's baseline. If the rebase is clean
+  and the gate passes, the fast-forward is attempted again; if the tip moved again meanwhile, this
+  repeats, and it can repeat at most once per other task in the run. If the rebase conflicts, or
+  the gate fails on the rebased tree, the task is **re-run on the tip**: provisioned afresh at the
+  current tip, with a new session primed with the task, the evidence (the conflicting files, or
+  the newly failing assertions) and the name of its previous task branch, which is kept, renamed
+  with an attempt suffix, for it to read. A re-run spends the existing `close` budget; when that is exhausted the task escalates
+  with the existing close-exhaustion packet, and its accepted branch is kept. Nothing conflicting
+  or failing is ever written to the delivery branch.
+- **A task that stops** (escalated, parked, aborted or held) never lands, so the delivery branch
+  and the tasks after it are unaffected.
+- **The base moving under an open delivery branch.** At the start of a run, if the base has
+  commits the delivery branch lacks, the harness merges the base into the delivery branch in a
+  scratch worktree and runs the gate. If that is clean and green, the merge commit lands on the
+  delivery branch and becomes its tip. If not, the run starts no task and escalates with a packet
+  naming the conflict or the failing assertions: reconciling the owner's own commits with
+  delivered work is the owner's decision.
+- **The project's closer acts once per run,** on the delivery branch, after its tasks have landed
+  and if at least one did. The closer interface is unchanged: its `branch` is the delivery branch
+  and its `baseBranch` is the base. Merge-back fast-forwards the base and deletes the delivery
+  branch. Commit-to-branch leaves the delivery branch for the owner. Open-PR opens one PR for the
+  delivery branch, or updates the one already open for it. A closer is therefore called again on a
+  delivery branch it handled in an earlier run, and must treat an existing branch or PR as its own.
+  Custom closers receive the same context. If the closer fails, the delivery branch stands, and
+  the next run retries the closer before it starts any task, after bringing in any base commits
+  as above (a base that moved is the usual reason a merge-back fails).
+- **The agent cannot move the delivery branch.** The landing boundary (5.2) already refuses any
+  branch update other than the task branch, so only the harness lands work on it.
+- **The owner reviews and merges one branch.** `delivery status` and `delivery report` name the
+  delivery branch, what landed on it in each run, and what is waiting there. The getting-started
+  and project-configuration guides describe it.
+
+With one task per run (`--max 1`, the default), this reduces to Autoloop's behaviour: one task,
+built on the latest delivered work, landed through the project's closer.
+
+- **Closers** are otherwise unchanged (merge-back, open-PR, commit-to-branch, custom). Holding
+  serious fixes for sign-off becomes a workflow's `hold` (5.13).
+- **`after` steps** run in order after the run's closer succeeds. A run runs each distinct
+  `after` list among the tasks that landed once, in dispatch order: a deploy happens once per run,
+  not once per task. Each step is one of:
   - a command: `{ "run": "make deploy", "in": "base" | "worktree" }`, as Autoloop's `deploy.sh`;
   - an agent pass: `{ "prompt": "Write release notes for the landed commits and post them to the
     project's discussion." }`, a session with full capability (5.1);
@@ -569,9 +641,10 @@ It notes that the operator's own settings and CLAUDE.md also load.
 
 Case file and run file persistence (the case file gains the session id, the workflow step, the
 step's guard changes and the fence state, under a new format version), crash recovery, the gate interface and its presets, the
-baseline and delta rule, the deterministic router, budgets, escalation packets, closers and the
-repo lock, the multi-surface supervisor and breaker, reporting and the versioned report JSON,
-sign-off, and `claude-mock` with the testing guide.
+baseline and delta rule, the deterministic router, budgets, escalation packets, the closer
+interface and the shipped closers (now aimed at the delivery branch, 5.7), the repo lock, the
+multi-surface supervisor and breaker, reporting and the versioned report JSON, sign-off, and
+`claude-mock` with the testing guide.
 
 ### 5.11 Sessions and worktrees across attempts and runs
 
@@ -584,6 +657,7 @@ runs, the item ledger carries the item to the next `--sources` run. Invariant 2 
 | Interrupted: usage limit, crash, timeout, idle, no reply, reply in the wrong shape | Same | Resumed, with a turn saying why (for a wrong shape, the expected shape) |
 | Rejected by the gate or guards, budget remaining | Same | New, primed with triage's brief and the gate evidence: it corrects the existing work |
 | Next workflow step | Same | New, or resumed with `continue: true` |
+| Accepted, but it no longer applies on the delivery branch's tip (5.7) | Fresh, at the tip | New, primed with the task, the evidence and the previous branch's name |
 | **Across runs** | | |
 | Run ended interrupted | Same | Resumed |
 | Run ended with corrections exhausted | Fresh | Fresh: the in-run loop already tried correcting that state, and resuming would re-ship it. The old branch is kept for inspection. |
@@ -657,9 +731,10 @@ ordinary backlog.
   gate as `item:<id>:resolved`, so "the problem is gone" is a requirement. This is today's
   finding gate, generalised to every item.
 - **Sign-off.** A workflow's `hold` names a severity. For an item at or above it, `CLOSING`
-  pauses before the project's closer, whichever it is: the work waits on its branch.
-  `delivery sign-off <id>` runs that closer, and `delivery reject <id>` declines the item, as
-  today.
+  pauses before the task lands on the delivery branch: the work waits on its own task branch, and
+  tasks after it do not build on it. `delivery sign-off <id>` lands it on the open delivery branch
+  (creating one if none is open) by the rules of 5.7, rebase and re-check or re-run on the tip
+  included, then runs the project's closer. `delivery reject <id>` declines the item, as today.
 - **What the owner reads.** `delivery backlog` lists ideas, open, held and parked items in the
   plain-language form today's review uses, and `delivery backlog <id>` shows one in full with its
   FOR ENGINEERS block. What a non-technical owner sees and does is unchanged: review, choose, read
@@ -683,7 +758,7 @@ ordinary backlog.
 | `AUTOLOOP_VERIFY_CMD` + setup/teardown + flake retry | Project gate (command gate), with setup and teardown; flakes handled by `recheck_gate` |
 | Ledger, failure classes, park breaker, park issue | Item ledger (5.5) and existing termini |
 | Session resume of a preserved worktree | Invariant 2 and ledger resume (5.5) |
-| `close.sh` (close-prep agent, re-gate, ff merge, promote outbox) | A final workflow step if wanted, then the resolution commit and the merge-back closer; follow-ups land as ordinary new items |
+| `close.sh` (close-prep agent, re-gate, ff merge, promote outbox) | A final workflow step if wanted, then the resolution commit, landing on the delivery branch and the merge-back closer; follow-ups land as ordinary new items |
 | `deploy.sh` | `after` steps (a command, with an optional `check`) |
 | `notify.sh`, health digest | `notify` command; `delivery report --json` across projects |
 | fsguard (bubblewrap) | The write fence (5.2): fsguard, ported |
@@ -724,7 +799,8 @@ The same machinery covers work Autoloop cannot express:
   not.
 - Workflows of any shape, such as design, plan, implement and review, each step gated and each
   free to use any skill.
-- Several items per run, concurrently, through the existing supervisor.
+- Several items per run, concurrently, through the existing supervisor, landing in turn on one
+  delivery branch that the owner reviews as a whole.
 - A GitHub issue tracker as the backlog: label an issue to have it delivered.
 - Non-code work, wherever a command can judge it: documentation builds, link checks, schema
   validation, or a report that must exist and parse.
@@ -755,6 +831,14 @@ The same machinery covers work Autoloop cannot express:
   and retried first on the next `--sources` run. The landing stands.
 - **An agent after step commits anything but new backlog items:** those commits are discarded
   with its worktree, and the report says so.
+- **Accepted task no longer applies on the delivery branch's tip:** rebased and re-checked; on a
+  conflict or a newly failing assertion, re-run on the tip against the `close` budget; when that is
+  exhausted, escalated with the close-exhaustion packet and the accepted branch kept (5.7).
+- **Base has commits the open delivery branch lacks, and merging them conflicts or fails the
+  gate:** the run starts no task and escalates with a packet naming the conflict or the failing
+  assertions.
+- **The run's closer fails:** the delivery branch stands; the next run retries the closer before
+  starting any task.
 
 ## 8. Testing
 
@@ -783,8 +867,20 @@ is involved.
   repository accepts all of them. An operator `env` key that names the same git configuration is
   overridden by the harness's. A scripted session followed by a PR on the task branch ends
   `ESCALATED` with the cause `LANDED_OUTSIDE_CLOSER`.
+- **Delivery branch:** the `~/dev/delivery-trial` case as a fixture: three scripted tasks that
+  each edit the same import line in one test file. With concurrency 1, each task starts from the
+  tip holding the tasks before it, the delivery branch passes the gate after each lands, and
+  merging it into the base needs no conflict resolution or hand edits. With concurrency 3, two
+  tasks whose rebase conflicts are re-run on the tip and both land; a rebase that applies cleanly
+  but fails the gate is re-run too; nothing conflicting or failing reaches the delivery branch.
+  A task that escalates leaves the delivery branch unchanged and the tasks after it land. A
+  second run continues the open delivery branch; the base moving underneath is merged in when
+  clean and green, and escalates the run when not. Each shipped closer, called twice on the same
+  delivery branch, leaves one branch or one PR. An item landed on an unmerged delivery branch is
+  not dispatched again, and is dispatchable again once that branch is deleted unmerged. `status`
+  and `report` name the delivery branch.
 - **Workflows:** a scripted two-step workflow: step 2 baselines against step 1's accepted state;
-  `continue: true` resumes the session id; the closer runs once; a gate failure in step 2 retries
+  `continue: true` resumes the session id; the task lands once; a gate failure in step 2 retries
   step 2 only; step 2's guards ignore a test step 1 changed; a step with no `gate` runs the
   project's. `commits-ahead` fails a step that committed nothing. A command gate's teardown runs
   after a failing gate, and a failing setup is a gate error.
@@ -815,8 +911,8 @@ is involved.
 - **Packs:** a scripted scan lands confirmed ideas; one with an unconfirmable finding, or one
   that changes code, fails its gate and is rerouted; `approve` and `decline` commit only the named
   items and refuse dirty ones; an approved item is delivered with `item:<id>:resolved` in its gate
-  and fails while the problem remains; an item at or above `hold` waits on its branch until
-  `sign-off`. Each built-in pack, rewritten, passes its existing scripted review fixtures.
+  and fails while the problem remains; an item at or above `hold` waits on its own task branch,
+  off the delivery branch, until `sign-off` lands it there. Each built-in pack, rewritten, passes its existing scripted review fixtures.
 - **Prompt:** the Acceptance slot names the gate command. No prompt contains the removed
   prohibitions. The same case file still yields a byte-identical prompt.
 
@@ -841,6 +937,12 @@ is involved.
   findings system itself is deleted in favour of the backlog (5.13).
 - **Test-weakening detection:** reuse `src/packs/guards.ts` for every run; no new detector. The
   existing-test edit guard becomes opt-in outside packs (5.2).
+- **Delivery branch:** reuse, not build. Landing a task is the existing merge-back closer's
+  `--ff-only` merge and ancestry probe, aimed at the delivery branch; the closer interface and the
+  shipped closers are unchanged in shape. The one new mechanism is rebase-and-re-check, which is
+  what merge queues (GitHub Merge Queue, Bors, Mergify) do; conflicts are never resolved
+  mechanically, only by re-running the agent on the tip. A merge-queue service was not adopted:
+  it needs a hosted remote, and the harness lands locally.
 
 ### Operability and DX
 
@@ -871,6 +973,12 @@ is involved.
 - **Landing boundary (decided 2026-10-07).** Agents never merge, push or open PRs; landing is the
   closer's alone. Enforced by instruction, session-scoped git hooks, and PR detection (5.2).
   Acceptance-check failures go through triage; only landing outside the closer bypasses it.
+- **Delivery branch (decided 2026-10-09).** Tasks land in turn on one open delivery branch per
+  base, built on each other and checked after each lands; the project's closer acts on that branch
+  once per run (5.7). Choosing merge-back to avoid conflicting task branches was rejected: it
+  lands unreviewed work on the base. This overturns the multi-surface supervisor's non-goal of
+  automatic rebase, within limits: clean rebases are re-checked, and conflicts go back to the
+  agent, never to a mechanical resolver.
 
 ## 10. Risks
 
