@@ -146,8 +146,8 @@ export function deriveFindings(
 /** What each decided state carries to a later review. A state missing here carries nothing. */
 const CARRIED: Partial<Record<FixState, EarlierChoice>> = { skipped: "skipped", rejected: "declined", fixed: "fixed", signed_off_landed: "fixed", already_resolved: "fixed" };
 
-/** Whether a fix ended by opening a pull request rather than landing: the same test `stateWords` (`render.ts`) uses for "PR opened". */
-const opensPr = ({ state, fix, signOff }: FindingState): boolean =>
+/** Whether a fix ended by opening a pull request rather than landing: also what `stateWords` (`render.ts`) reads as "PR opened". */
+export const opensPr = ({ state, fix, signOff }: FindingState): boolean =>
   (state === "fixed" && fix?.closer === "open-pr") || (state === "signed_off_landed" && signOff?.t === "landed" && signOff.closer.type === "open-pr");
 
 /**

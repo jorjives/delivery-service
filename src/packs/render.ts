@@ -3,7 +3,7 @@ import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
 import { atOrAbove, SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
-import { hiddenByDefault, UNDECIDED, type EarlierChoice, type FindingState, type FixState } from "./fix-state.js";
+import { hiddenByDefault, opensPr, UNDECIDED, type EarlierChoice, type FindingState, type FixState } from "./fix-state.js";
 import { NOT_LANDED_REASONS, type NotLandedReason } from "./ledger.js";
 import { uncheckable, type PinnedPack, type ReviewHeader, type SavedReview } from "./review-record.js";
 import { literalsOf, maskIn } from "./secrets.js";
@@ -142,12 +142,7 @@ export const CAME_BACK_LINE = "Came back: it was fixed in an earlier review, and
 export const earlierHiddenLine = (count: number): string =>
   `${problems(count)} skipped or declined in an earlier review, not shown. See ${count === 1 ? "it" : "them"} with: delivery findings --include-skipped`;
 
-export const stateWords = ({ state, fix, signOff, earlier }: FindingState): string =>
-  earlier !== null
-    ? EARLIER_WORDS[earlier]
-    : (state === "fixed" && fix?.closer === "open-pr") || (state === "signed_off_landed" && signOff?.t === "landed" && signOff.closer.type === "open-pr")
-      ? PR_OPENED
-      : STATE_WORDS[state];
+export const stateWords = (at: FindingState): string => (at.earlier !== null ? EARLIER_WORDS[at.earlier] : opensPr(at) ? PR_OPENED : STATE_WORDS[at.state]);
 
 export const fixWaiting = (count: number): string => `${count} approved and not started yet. Start fixing ${count === 1 ? "it" : "them"} with: delivery fix`;
 

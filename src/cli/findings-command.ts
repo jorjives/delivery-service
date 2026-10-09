@@ -133,14 +133,9 @@ export async function findingsCommand(number: string | undefined, options: Findi
 }
 
 /**
- * `delivery findings approve|skip`: record the owner's choice for exactly the
- * problems named, by their identities, in the latest review's ledger. Every
- * number is checked before anything is written. A problem `delivery fix` has
- * already taken on keeps its choice.
- */
-/**
  * `delivery findings approve|skip [numbers]`: approve or skip the problems named, or `--all` (the ones listed, not those an
  * earlier review settled), or `--recommended` (the problems with a check that will not wait for sign-off).
+ * Every number is checked before anything is written. A problem `delivery fix` has already taken on keeps its choice.
  */
 export async function decideCommand(choice: "approve" | "skip", numbers: string[], options: DecideOptions, ctx: CommandContext): Promise<ExitCode> {
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
