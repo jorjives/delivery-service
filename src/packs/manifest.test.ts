@@ -1,10 +1,10 @@
-import { cpSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { InvalidPack, UnknownPack } from "../errors.js";
-import { BUILT_IN_PACKS, builtInPacks, loadPack, PACK_SCHEMA, resolvePack } from "./manifest.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, loadPack, PACK_SCHEMA, resolvePack } from "./manifest.js";
 
 /** A copy of the built-in code pack whose manifest has been changed by `edit`. */
 function editedPack(edit: (manifest: Record<string, unknown>) => void): string {
@@ -150,5 +150,49 @@ describe("a pack that requires a check", () => {
 
   it("is refused, naming the field, when it says so in any other way", async () => {
     await expect(loadPack(editedPack((m) => ((m.scan as Record<string, unknown>).requireCheck = "yes")))).rejects.toThrow(/scan\.requireCheck/);
+  });
+});
+
+describe("inspecting a pack", () => {
+  it("names every problem in the manifest, each by its file and field", async () => {
+    const dir = editedPack((m) => {
+      m.version = "one";
+      m.hold = { atOrAbove: "severe" };
+      delete m.title;
+    });
+    const result = await inspectPack(dir);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    const file = join(dir, "pack.json");
+    expect(result.problems).toEqual(
+      expect.arrayContaining([
+        { file, field: "version", message: '"version" must be a version such as 1.0.0' },
+        { file, field: "title", message: '"title" is missing' },
+        { file, field: "hold.atOrAbove", message: '"hold.atOrAbove" is "severe" but the allowed values are: critical, high, medium, low' },
+      ]),
+    );
+    expect(result.problems).toHaveLength(3);
+  });
+
+  it.each([
+    ["write tools for the review's agent", (m: Record<string, unknown>) => ((m.scan as Record<string, unknown>).allowedTools = ["Read", "Edit"]), "scan.allowedTools"],
+    ["commands for the review's agent", (m: Record<string, unknown>) => ((m.scan as Record<string, unknown>).commands = ["npm audit"]), "scan.commands"],
+    ["a check of its own for the fix", (m: Record<string, unknown>) => (m.fix = { prompt: "fix.md", gate: { type: "custom", modulePath: "./my-check.mjs" } }), "fix.gate"],
+    ["a closer of its own", (m: Record<string, unknown>) => (m.closer = { type: "custom", modulePath: "./land.mjs" }), "closer"],
+  ])("refuses a manifest that tries to bring %s, saying a pack is data only", async (_, edit, field) => {
+    const dir = editedPack(edit);
+    const result = await inspectPack(dir);
+    expect(result).toEqual({ ok: false, problems: [{ file: join(dir, "pack.json"), field, message: `"${field}" ${DATA_ONLY}` }] });
+  });
+
+  it("names a missing instructions file by its own path", async () => {
+    const dir = editedPack(() => undefined);
+    rmSync(join(dir, "scan.md"));
+    expect(await inspectPack(dir)).toEqual({ ok: false, problems: [{ file: join(dir, "scan.md"), field: null, message: "is missing" }] });
+  });
+
+  it("gives the loaded pack when there is nothing wrong", async () => {
+    const result = await inspectPack(join(BUILT_IN_PACKS, "code-review"));
+    expect(result.ok && result.pack.manifest.name).toBe("code");
   });
 });
