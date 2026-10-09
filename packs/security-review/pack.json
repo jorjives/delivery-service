@@ -14,6 +14,7 @@
       { "id": "dependencies", "title": "Library versions known to be unsafe", "description": "A library the project installs at a version the reviewer knows has a published weakness.", "reviewerKnowledge": true }
     ],
     "maxFindings": 40,
+    "checks": ["anchor-gone", "pattern-absent", "dependency-absent"],
     "consequenceLabel": "what-could-happen"
   },
   "fix": { "prompt": "fix.md" },

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 import { InvalidPack, UnknownPack } from "../errors.js";
 import { isEnoent } from "../journal.js";
-import { Severity } from "./finding.js";
+import { Severity, SPECIFIC_CHECKS, type SpecificCheck } from "./finding.js";
 import { GuardGlob } from "./guards.js";
 
 /** The version of the pack format this build reads. Additive-only within the major. */
@@ -51,6 +51,12 @@ export const PackManifest = z.strictObject({
     consequenceLabel: z.enum(["why-it-matters", "what-could-happen"]).default("why-it-matters"),
     /** Every problem must have a specific check: one with none is set aside for the owner's decision, in any project. */
     requireCheck: z.literal(true).optional(),
+    /** The checks this pack's problems may use. A problem whose suggested check is not here falls back to anchor-gone. */
+    checks: z
+      .array(z.enum(SPECIFIC_CHECKS))
+      .min(1)
+      .refine((checks) => checks.includes("anchor-gone"), "must include anchor-gone: every problem can fall back to it")
+      .default([...SPECIFIC_CHECKS]),
   }),
   /** What the agent fixing one of this pack's problems is told, beside the harness's own fixed instructions, and what the pack adds to the paths and markers a fix may not touch. Optional: the harness's own are enough. */
   fix: z
@@ -91,7 +97,8 @@ function describe(issue: Issue, raw: unknown): string {
   if (field !== null && value === undefined) return `${where} is missing`;
   if (issue.code === "invalid_value") {
     const allowed = issue.values.map(String).join(", ");
-    return `${where} is ${JSON.stringify(value)} but the allowed values are: ${allowed}`;
+    const kind = issue.path[0] === "scan" && issue.path[1] === "checks" ? "the available checks are" : "the allowed values are";
+    return `${where} is ${JSON.stringify(value)} but ${kind}: ${allowed}`;
   }
   return `${where} ${issue.message}`;
 }

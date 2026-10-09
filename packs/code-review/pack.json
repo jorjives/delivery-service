@@ -14,7 +14,8 @@
       { "id": "debt", "title": "Shortcuts the code admits to", "description": "Shortcuts the code itself owns up to, such as TODO notes and temporary workarounds." },
       { "id": "tests", "title": "Tests that do not check what they claim", "description": "A test that passes whatever the code does, or checks the wrong thing.", "changesTests": true }
     ],
-    "maxFindings": 40
+    "maxFindings": 40,
+    "checks": ["anchor-gone", "pattern-absent"]
   },
   "fix": { "prompt": "fix.md" },
   "severity": {

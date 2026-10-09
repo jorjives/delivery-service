@@ -136,7 +136,7 @@ const rank = (finding: Finding): number => SEVERITIES.indexOf(finding.severity);
 export async function confirmFindings(
   repoPath: string,
   commit: string,
-  { pack, maxFindings, categories = [] }: { pack: string; maxFindings: number; categories?: readonly PinnedCategory[] },
+  { pack, maxFindings, categories = [], checks }: { pack: string; maxFindings: number; categories?: readonly PinnedCategory[]; checks?: readonly CheckKind[] },
   envelope: ScanEnvelope,
 ): Promise<ScanResult> {
   const flags = new Map(categories.map((category) => [category.id, category]));
@@ -174,10 +174,12 @@ export async function confirmFindings(
   }
   const ordered = [...confirmed.values()].sort((a, b) => rank(a) - rank(b) || a.id.localeCompare(b.id));
   // Checks are tried only for the problems offered, so a reply with many problems costs no more git time than the limit allows.
+  const offeredHere = (check: CheckSpec): boolean => check.kind === "none" || checks === undefined || checks.includes(check.kind);
   const offered: Finding[] = [];
   for (const finding of ordered.slice(0, maxFindings)) {
     const { check } = finding;
-    offered.push((await holdsNow(repoPath, commit, check)) ? finding : { ...finding, check: { kind: "anchor-gone" }, droppedCheck: check });
+    // ponytail: the engineers' line for a dropped check says it does not match the code; for a check the pack does not offer that is approximate. Give it its own words if anyone reads it as wrong.
+    offered.push(offeredHere(check) && (await holdsNow(repoPath, commit, check)) ? finding : { ...finding, check: { kind: "anchor-gone" }, droppedCheck: check });
   }
   return {
     findings: offered,

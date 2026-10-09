@@ -28,6 +28,10 @@ export const CheckSpec = z.discriminatedUnion("kind", [
 export type CheckSpec = z.infer<typeof CheckSpec>;
 export type CheckKind = CheckSpec["kind"];
 
+/** The checks that look at the code itself, in the order a pack lists them. `none` is not among them: any problem may have no check. */
+export const SPECIFIC_CHECKS = ["anchor-gone", "pattern-absent", "dependency-absent"] as const satisfies readonly CheckKind[];
+export type SpecificCheck = (typeof SPECIFIC_CHECKS)[number];
+
 const Text = z.string().min(1);
 
 /**

@@ -35,7 +35,7 @@ const scratchId = (packName: string): string => `review-${packName}`;
 export async function finishReview(repoPath: string, dir: string): Promise<SavedReview> {
   const header = await readHeader(dir);
   const { envelope } = await readReply(dir, header);
-  const result = await confirmFindings(repoPath, header.commit, { pack: header.pack.name, maxFindings: header.pack.maxFindings, categories: header.pack.categories }, envelope);
+  const result = await confirmFindings(repoPath, header.commit, { pack: header.pack.name, maxFindings: header.pack.maxFindings, categories: header.pack.categories, checks: header.pack.checks }, envelope);
   await saveResult(dir, result);
   return { dir, header, result };
 }
@@ -52,6 +52,7 @@ const pinned = ({ manifest, hash, fixInstructions }: Pack): ReviewHeader["pack"]
   consequenceLabel: manifest.scan.consequenceLabel,
   hold: manifest.hold.atOrAbove,
   guards: { testGlobs: manifest.fix?.testGlobs ?? [], protectedGlobs: manifest.fix?.protectedGlobs ?? [], skipMarkers: manifest.fix?.skipMarkers ?? [] },
+  checks: manifest.scan.checks,
   ...(fixInstructions === undefined ? {} : { fixInstructions }),
 });
 

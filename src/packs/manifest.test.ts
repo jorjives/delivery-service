@@ -196,3 +196,29 @@ describe("inspecting a pack", () => {
     expect(result.ok && result.pack.manifest.name).toBe("code");
   });
 });
+
+describe("the checks a pack offers", () => {
+  it("names an unknown check kind by file and field, listing the available ones", async () => {
+    const dir = editedPack((m) => ((m.scan as Record<string, unknown>).checks = ["anchor-gone", "page-contains"]));
+    expect(await inspectPack(dir)).toEqual({
+      ok: false,
+      problems: [{ file: join(dir, "pack.json"), field: "scan.checks.1", message: '"scan.checks.1" is "page-contains" but the available checks are: anchor-gone, pattern-absent, dependency-absent' }],
+    });
+  });
+
+  it("must include anchor-gone, the check every problem can fall back to", async () => {
+    const dir = editedPack((m) => ((m.scan as Record<string, unknown>).checks = ["pattern-absent"]));
+    const result = await inspectPack(dir);
+    expect(!result.ok && result.problems[0]?.field).toBe("scan.checks");
+  });
+
+  it("offers every check when a pack names none, so a pack written before the list stays valid", async () => {
+    const dir = editedPack((m) => delete (m.scan as Record<string, unknown>).checks);
+    expect((await loadPack(dir)).manifest.scan.checks).toEqual(["anchor-gone", "pattern-absent", "dependency-absent"]);
+  });
+
+  it("ships the code review with the checks of its own lens, and the security review with all three", async () => {
+    expect((await resolvePack("code", "/")).manifest.scan.checks).toEqual(["anchor-gone", "pattern-absent"]);
+    expect((await resolvePack("security", "/")).manifest.scan.checks).toEqual(["anchor-gone", "pattern-absent", "dependency-absent"]);
+  });
+});
