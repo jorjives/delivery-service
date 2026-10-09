@@ -14,7 +14,7 @@ import { repoLocked } from "../repo-lock.js";
 import { isSaved, notSaved, SAVED_TO, saveReport } from "./saved-report.js";
 import { listTasks } from "./status-command.js";
 import { findConfig } from "./config.js";
-import { deriveFindings, fixRunsOf } from "../packs/fix-state.js";
+import { deriveFindings, earlierChoices, fixRunsOf } from "../packs/fix-state.js";
 import { readLedger } from "../packs/ledger.js";
 import { reviewOfPlan, uncheckable, type SavedReview } from "../packs/review-record.js";
 import { reviewPart } from "../packs/review-report.js";
@@ -69,7 +69,7 @@ export async function readReport(repoPath: string, named: ReportSubject | undefi
   // A review's plan is told by its problems even when no fix is left to run, never swapped for the most recent run.
   const recent = named === undefined && list.length === 0 && told === undefined ? mostRecentSubject(snapshot) : undefined;
   const doc = deriveReport(recent ? { ...snapshot, subject: recent } : snapshot);
-  const states = told === undefined ? undefined : deriveFindings(told.result.findings, await readLedger(told.dir), fixRunsOf(snapshot, doc), (finding) => uncheckable(told.header, finding));
+  const states = told === undefined ? undefined : deriveFindings(told.result.findings, await readLedger(told.dir), fixRunsOf(snapshot, doc), (finding) => uncheckable(told.header, finding), await earlierChoices(repoPath, told));
   return {
     doc,
     empty: told === undefined && holdsNoRun(snapshot),

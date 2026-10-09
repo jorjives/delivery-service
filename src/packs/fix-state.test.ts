@@ -11,12 +11,12 @@ import type { CaseFileOutcome, GateRef, TaskDef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { FINDING_GATE_REF } from "./finding-gate.js";
 import type { Finding } from "./finding.js";
-import { deriveFindings, fixTasks, readFindingStates, fixRunsOf, lastWords, UNDECIDED, type FixRun, type FixState } from "./fix-state.js";
+import { carryOver, deriveFindings, fixTasks, hiddenByDefault, readFindingStates, fixRunsOf, lastWords, UNDECIDED, type EarlierChoice, type FindingState, type FixRun, type FixState } from "./fix-state.js";
 import { fixTaskFor } from "./fix-task.js";
 import { appendLedger, type LedgerEntry } from "./ledger.js";
 import { guardListsFor } from "./guards.js";
 import { loadReview, listReviews, type ReviewEntry, type SavedReview } from "./review-record.js";
-import { sampleFinding, writeReview } from "./review-fixtures.js";
+import { FIX_PHASE_FINDINGS, sampleFinding, writeFixPhase, writeReview } from "./review-fixtures.js";
 import type { RunRecord } from "../run-records.js";
 
 const AT = "2026-10-05T10:00:00.000Z";
@@ -24,6 +24,7 @@ const NPM: GateRef = { type: "command", command: "npm test", parseMode: "exitcod
 const A = sampleFinding();
 const B = sampleFinding({ id: "111111111111", title: "Old payment code" });
 const NOTHING_UNCHECKABLE = (): boolean => false;
+const NOTHING_EARLIER: ReadonlyMap<string, EarlierChoice> = new Map();
 const decide = (ids: string[], choice: "approve" | "skip"): LedgerEntry => ({ t: "decision", at: AT, ids, choice });
 const authorise = (ids: string[]): LedgerEntry => ({ t: "authorise", at: AT, ids, verify: NPM });
 const plain = (audience: Plain["audience"]): Plain => ({ group: audience === "engineer" ? "needs_an_engineer" : "needs_your_decision", audience, sentence: "s", agentSaid: null, next: [] });
@@ -31,8 +32,8 @@ const run = (over: Partial<FixRun>): FixRun => ({ run: "r", standing: "unfinishe
 
 describe("where each problem stands", () => {
   it("is not yet decided until the owner says, and the owner's latest choice wins", () => {
-    expect(deriveFindings([A, B], [], new Map(), NOTHING_UNCHECKABLE).map((s) => s.state)).toEqual(["proposed", "proposed"]);
-    expect(deriveFindings([A, B], [decide([A.id, B.id], "approve"), decide([B.id], "skip")], new Map(), NOTHING_UNCHECKABLE).map((s) => s.state)).toEqual(["approved", "skipped"]);
+    expect(deriveFindings([A, B], [], new Map(), NOTHING_UNCHECKABLE, NOTHING_EARLIER).map((s) => s.state)).toEqual(["proposed", "proposed"]);
+    expect(deriveFindings([A, B], [decide([A.id, B.id], "approve"), decide([B.id], "skip")], new Map(), NOTHING_UNCHECKABLE, NOTHING_EARLIER).map((s) => s.state)).toEqual(["approved", "skipped"]);
   });
 
   it.each([
@@ -46,12 +47,12 @@ describe("where each problem stands", () => {
     [run({ standing: "aborted", plain: plain("engineer") }), "stopped"],
   ])("once authorised, follows its fix's run: %j is %s", (fix, state) => {
     const fixes = new Map(fix === undefined ? [] : [[A.id, fix]]);
-    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes, NOTHING_UNCHECKABLE)[0]).toEqual({ state, fix, refused: false, cause: null, signOff: null });
+    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes, NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]).toEqual({ state, fix, refused: false, cause: null, signOff: null, earlier: null });
   });
 
   it("is already fixed when its code was gone before its fix started, whatever else is recorded", () => {
     const entries: LedgerEntry[] = [decide([A.id], "approve"), authorise([A.id]), { t: "fix_observed", at: AT, id: A.id, outcome: "already_resolved", commit: "c" }];
-    expect(deriveFindings([A], entries, new Map(), NOTHING_UNCHECKABLE)[0]?.state).toBe("already_resolved");
+    expect(deriveFindings([A], entries, new Map(), NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]?.state).toBe("already_resolved");
   });
 });
 
@@ -142,7 +143,7 @@ describe("reading gate rounds and refusals", () => {
     [[["finding:0123456789ab:resolved"]], "escalated", false, null],
   ])("reads refusals from its fix's gate rounds: %j ending %s", (rounds, standing, refused, cause) => {
     const fix = run({ standing: standing as FixRun["standing"], plain: standing === "closed" ? null : plain("owner"), rounds });
-    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], new Map([[A.id, fix]]), NOTHING_UNCHECKABLE)[0]).toMatchObject({ refused, cause });
+    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], new Map([[A.id, fix]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]).toMatchObject({ refused, cause });
   });
 
   it("appends a gate entry to the fix and reads the refusal", async () => {
@@ -167,8 +168,8 @@ describe("holding fixes for sign-off", () => {
   it("is waiting for sign-off when a held fix has passed, and fixed when one that is not held has", () => {
     const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main", said: null };
     const held: LedgerEntry = { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high", hold: { [A.id]: true }, landing: { type: "merge-back" } };
-    expect(deriveFindings([A], [decide([A.id], "approve"), held], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE)[0]?.state).toBe("held");
-    expect(deriveFindings([A], [decide([A.id], "approve"), { ...held, hold: { [A.id]: false } }], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE)[0]?.state).toBe("fixed");
+    expect(deriveFindings([A], [decide([A.id], "approve"), held], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]?.state).toBe("held");
+    expect(deriveFindings([A], [decide([A.id], "approve"), { ...held, hold: { [A.id]: false } }], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]?.state).toBe("fixed");
   });
 
   it("gives each fix task the release it was authorised with", () => {
@@ -186,7 +187,7 @@ describe("holding fixes for sign-off", () => {
   ])("a held fix after %j is %s", (after, state) => {
     const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main", said: null };
     const held: LedgerEntry = { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high", hold: { [A.id]: true }, landing: { type: "merge-back" } };
-    const [at] = deriveFindings([A], [decide([A.id], "approve"), held, ...after], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE);
+    const [at] = deriveFindings([A], [decide([A.id], "approve"), held, ...after], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER);
     expect(at?.state).toBe(state);
     expect(at?.signOff).toEqual(after.find((entry) => entry.t !== "signed_off") ?? null);
   });
@@ -240,7 +241,7 @@ describe("the agent's last words on a fix", () => {
 
 describe("a problem nobody has decided on", () => {
   it("is not yet decided, with no fix", () => {
-    expect(UNDECIDED).toEqual({ state: "proposed", fix: undefined, refused: false, cause: null, signOff: null });
+    expect(UNDECIDED).toEqual({ state: "proposed", fix: undefined, refused: false, cause: null, signOff: null, earlier: null });
   });
 });
 
@@ -248,17 +249,92 @@ describe("a problem with no specific check where one is needed", () => {
   const blocked = (finding: Finding): boolean => finding.id === B.id;
 
   it("needs the owner's decision, and is never just not yet decided or approved", () => {
-    expect(deriveFindings([A, B], [], new Map(), blocked).map((at) => at.state)).toEqual(["proposed", "needs_decision"]);
-    expect(deriveFindings([A, B], [decide([A.id, B.id], "approve")], new Map(), blocked).map((at) => at.state)).toEqual(["approved", "needs_decision"]);
+    expect(deriveFindings([A, B], [], new Map(), blocked, NOTHING_EARLIER).map((at) => at.state)).toEqual(["proposed", "needs_decision"]);
+    expect(deriveFindings([A, B], [decide([A.id, B.id], "approve")], new Map(), blocked, NOTHING_EARLIER).map((at) => at.state)).toEqual(["approved", "needs_decision"]);
   });
 
   it("is skipped when the owner skips it", () => {
-    expect(deriveFindings([B], [decide([B.id], "skip")], new Map(), blocked).map((at) => at.state)).toEqual(["skipped"]);
+    expect(deriveFindings([B], [decide([B.id], "skip")], new Map(), blocked, NOTHING_EARLIER).map((at) => at.state)).toEqual(["skipped"]);
   });
 
   it("is approved once the owner approves it without a check", () => {
     const blocked = (finding: Finding): boolean => finding.id === B.id;
     const anyway: LedgerEntry = { t: "decision", at: AT, ids: [B.id], choice: "approve", allowUnchecked: true };
-    expect(deriveFindings([B], [anyway], new Map(), blocked).map((at) => at.state)).toEqual(["approved"]);
+    expect(deriveFindings([B], [anyway], new Map(), blocked, NOTHING_EARLIER).map((at) => at.state)).toEqual(["approved"]);
+  });
+});
+
+describe("what earlier reviews carry", () => {
+  const S = (state: FixState): FindingState => ({ ...UNDECIDED, state });
+  const C = sampleFinding({ id: "222222222222" });
+  const D = sampleFinding({ id: "333333333333" });
+
+  it("carries a skip, a decline and a fix; a later decided state wins, and an undecided one keeps what came before", () => {
+    const older = { findings: [A, B, C, D], states: [S("skipped"), S("rejected"), S("fixed"), S("approved")] };
+    const newer = { findings: [A, B, C], states: [S("proposed"), S("approved"), S("needs_decision")] };
+    expect(carryOver([older, newer])).toEqual(new Map([[A.id, "skipped"], [C.id, "fixed"]]));
+  });
+
+  it.each([
+    ["skipped", "skipped"],
+    ["rejected", "declined"],
+    ["fixed", "fixed"],
+    ["signed_off_landed", "fixed"],
+    ["already_resolved", "fixed"],
+  ] as const)("carries %s as %s", (state, carried) => {
+    expect(carryOver([{ findings: [A], states: [S(state)] }]).get(A.id)).toBe(carried);
+  });
+
+  it.each(["approved", "fixing", "held", "unfixable", "stopped", "signed_off_failed"] as const)("carries nothing for %s", (state) => {
+    expect(carryOver([{ findings: [A], states: [S("skipped")] }, { findings: [A], states: [S(state)] }]).has(A.id)).toBe(false);
+  });
+
+  it("carries nothing for a fix that only opened a pull request, since its flagged code was never removed", () => {
+    const opened = { ...S("fixed"), fix: { closer: "open-pr" } as FixRun };
+    expect(carryOver([{ findings: [A], states: [opened] }]).has(A.id)).toBe(false);
+  });
+
+  it("keeps an earlier skip or decline as skipped and offers a problem fixed earlier again as come back, until this review decides", () => {
+    const earlier = new Map<string, EarlierChoice>([[A.id, "skipped"], [B.id, "declined"], [C.id, "fixed"]]);
+    const read = (entries: LedgerEntry[]) => deriveFindings([A, B, C], entries, new Map(), NOTHING_UNCHECKABLE, earlier).map(({ state, earlier: e }) => [state, e]);
+    expect(read([])).toEqual([["skipped", "skipped"], ["skipped", "declined"], ["proposed", "fixed"]]);
+    expect(read([decide([A.id, C.id], "approve")])).toEqual([["approved", null], ["skipped", "declined"], ["approved", null]]);
+  });
+
+  it("never offers again a problem fixed earlier that this review did not find", () => {
+    // A review lists only problems whose flagged code it found (confirm.test.ts: "flagged code that is not in the file" is not offered),
+    // so a fixed problem whose code is still gone is never in the list, whatever earlier reviews carry.
+    const states = deriveFindings([A], [], new Map(), NOTHING_UNCHECKABLE, new Map<string, EarlierChoice>([[D.id, "fixed"]]));
+    expect(states).toEqual([UNDECIDED]);
+  });
+
+  it("hides by default only a problem skipped because of an earlier review", () => {
+    expect(hiddenByDefault({ ...S("skipped"), earlier: "declined" })).toBe(true);
+    expect(hiddenByDefault(S("skipped"))).toBe(false);
+    expect(hiddenByDefault({ ...S("proposed"), earlier: "fixed" })).toBe(false);
+  });
+
+  it("reads what earlier reviews of the same pack decided, and nothing from another pack's", async () => {
+    const repo = initTempRepo("fix-state-", { "a.js": "x\n" });
+    // Security review 1: problem 1 waiting for sign-off, 2 and 3 merged, 4 could not be fixed, 5 stopped, 6 skipped.
+    const first = await writeFixPhase(repo);
+    await appendLedger(first, { t: "rejected", id: FIX_PHASE_FINDINGS[0]?.id ?? "" });
+    // A code review in between skips problem 4: another pack, so it carries nothing to a security review.
+    const code = await writeReview(repo, { reviewId: "code-20261008T090000Z", findings: FIX_PHASE_FINDINGS });
+    await appendLedger(code, { t: "decision", ids: [FIX_PHASE_FINDINGS[3]?.id ?? ""], choice: "skip" });
+    await writeReview(repo, { reviewId: "security-20261009T100000Z", findings: FIX_PHASE_FINDINGS, pack: { title: "Security review", hold: "high", consequenceLabel: "what-could-happen" } });
+    const [latest] = await listReviews(repo);
+    if (latest?.state !== "done") throw new Error("no review");
+
+    const { states } = await readFindingStates(repo, await loadReview(latest));
+
+    expect(states.map(({ state, earlier }) => [state, earlier])).toEqual([
+      ["skipped", "declined"],
+      ["proposed", "fixed"],
+      ["proposed", "fixed"],
+      ["proposed", null],
+      ["proposed", null],
+      ["skipped", "skipped"],
+    ]);
   });
 });
