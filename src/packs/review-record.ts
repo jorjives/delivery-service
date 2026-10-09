@@ -141,8 +141,12 @@ export const PLAN_FILE = "plan.config.json";
 const STAMP = /(\d{8}T\d{6}Z)$/;
 const stampOf = (name: string): string => STAMP.exec(name)?.[1] ?? "";
 
-/** Review folder names, newest first by the time stamp each ends with. */
-export const newestFirst = (names: readonly string[]): string[] => names.toSorted((a, b) => stampOf(b).localeCompare(stampOf(a)) || b.localeCompare(a));
+/**
+ * Review folder names, newest first by the time stamp each ends with. In the same second `runIdFor` numbers a later
+ * review (`code-2-…` after `code-…`, `code-10-…` after `code-9-…`), so the longer name is the later one.
+ */
+export const newestFirst = (names: readonly string[]): string[] =>
+  names.toSorted((a, b) => stampOf(b).localeCompare(stampOf(a)) || b.length - a.length || (a < b ? 1 : a > b ? -1 : 0));
 
 /** The newest plan any review of this repository holds, for the commands that read a configuration when the project has none of its own. Synchronous, as finding a configuration is. */
 export function latestPlanFile(repoPath: string): string | undefined {

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DamagedReview } from "../errors.js";
 import { initTempRepo } from "../temp-repo.js";
-import { listReviews, loadReview, packsRoot, readReply, reviewOfPlan, PLAN_FILE, uncheckable } from "./review-record.js";
+import { listReviews, loadReview, newestFirst, packsRoot, readReply, reviewOfPlan, PLAN_FILE, uncheckable } from "./review-record.js";
 import { sampleFinding, writeReview } from "./review-fixtures.js";
 
 const repo = () => initTempRepo("review-record-", { "a.js": "x\n" });
@@ -99,5 +99,16 @@ describe("whether a problem can be checked", () => {
     ["a problem with a specific check, in a project with no tests", { pack, noTests: true as const }, specific, false],
   ])("%s: %s", (_, header, finding, expected) => {
     expect(uncheckable(header, finding)).toBe(expected);
+  });
+});
+
+describe("the order of reviews", () => {
+  it("puts the newest first, and of reviews made in the same second, the later one first", () => {
+    expect(newestFirst(["code-20261009T100000Z", "code-2-20261009T100000Z", "code-20261008T090000Z", "code-10-20261009T100000Z"])).toEqual([
+      "code-10-20261009T100000Z",
+      "code-2-20261009T100000Z",
+      "code-20261009T100000Z",
+      "code-20261008T090000Z",
+    ]);
   });
 });
