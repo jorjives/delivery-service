@@ -16,11 +16,11 @@ const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf-8")) a
 };
 
 /** What `npm publish` would send, without sending it or running `prepack`: the `dist/` the suite already built. */
-function packFiles(): string[] {
+function packReport(): { files: string[]; bundled: string[] } {
   const [report] = JSON.parse(
     execFileSync("npm", ["pack", "--dry-run", "--ignore-scripts", "--json"], { cwd: REPO_ROOT, encoding: "utf-8" }),
-  ) as [{ files: { path: string }[] }];
-  return report.files.map((file) => file.path);
+  ) as [{ files: { path: string }[]; bundled?: string[] }];
+  return { files: report.files.map((file) => file.path), bundled: report.bundled ?? [] };
 }
 
 describe("the package", () => {
@@ -30,13 +30,15 @@ describe("the package", () => {
     expect(pkg.exports["./testing"]).toEqual({ types: "./dist/testing.d.ts", default: "./dist/testing.js" });
   });
 
-  it("ships its built output, its built-in reviews, its readme and its changelog, and nothing else", () => {
-    const packed = packFiles();
-    const extras = packed.filter((path) => !path.startsWith("dist/"));
-    expect(extras.sort()).toEqual(["CHANGELOG.md", "README.md", "package.json", "packs/code-review/fix.md", "packs/code-review/pack.json", "packs/code-review/scan.md", "packs/security-review/fix.md", "packs/security-review/pack.json", "packs/security-review/scan.md"]);
-    for (const file of ["dist/cli/main.js", "dist/index.js", "dist/index.d.ts", "dist/testing.js", "dist/testing.d.ts", "dist/packs/manifest.js"]) {
-      expect(packed).toContain(file);
-    }
+  it("ships its built output, its built-in reviews, its readme, its changelog and the scripted agent, and nothing else", () => {
+    const { files, bundled } = packReport();
+    const own = files.filter((path) => !path.startsWith("dist/") && !path.startsWith("node_modules/"));
+    expect(own.filter((path) => !path.startsWith("packs/")).sort()).toEqual(["CHANGELOG.md", "README.md", "package.json"]);
+    for (const file of ["packs/code-review/pack.json", "packs/code-review/scan.md", "packs/code-review/fix.md", "packs/security-review/pack.json", "packs/security-review/scan.md", "packs/security-review/fix.md"]) expect(own).toContain(file);
+    for (const file of ["dist/cli/main.js", "dist/index.js", "dist/index.d.ts", "dist/testing.js", "dist/testing.d.ts", "dist/packs/manifest.js"]) expect(files).toContain(file);
+    // The pack check runs a review folder against the scripted agent, so an installed copy carries it.
+    expect(bundled).toEqual(["@jorj/claude-mock"]);
+    expect(files).toContain("node_modules/@jorj/claude-mock/dist/cli.js");
   });
 
   // A check nothing arms runs nowhere. The skip is deliberate locally, so the only

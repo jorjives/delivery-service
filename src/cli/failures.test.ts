@@ -21,7 +21,7 @@ import {
   UnknownPack,
   DamagedReview,
 } from "../errors.js";
-import { EXIT, Refusal, renderFailure, UNEXPECTED_FOOTER } from "./failures.js";
+import { EXIT, Refusal, renderFailure, UNEXPECTED_FOOTER, MOCK_MISSING_REMEDY } from "./failures.js";
 
 /** Harness vocabulary a person using the command should never have to learn. */
 const JARGON = /worktree|envelope|surface|terminus|[A-Z]{2,}_[A-Z_]+/;
@@ -53,7 +53,7 @@ describe("renderFailure", () => {
     [new InvalidCloserExport("./closers/c.js", "default", "no close()"), EXIT.configuration, "docs/writing-a-closer.md"],
     [new ProvisioningFailure("/r/.delivery/runs/x", "fatal: invalid reference: main"), EXIT.configuration, "at least one commit"],
     [new InvalidRoleConfig("allowedTools", "must not be empty"), EXIT.configuration, "docs/configuring-a-role.md"],
-    [new MockNotInstalled("/h/node_modules/.bin/claude-mock"), EXIT.configuration, "development checkout"],
+    [new MockNotInstalled("/h/node_modules/.bin/claude-mock"), EXIT.configuration, MOCK_MISSING_REMEDY],
     [new ImmutabilityViolation("/r/.delivery/runs/x", "baseline"), EXIT.unexpected, "This is a bug"],
     [new MissingBaseline("/r/.delivery/runs/x"), EXIT.unexpected, "This is a bug"],
     [new IllegalStateTransition("/r/.delivery/runs/x", "TRIAGE", "triage"), EXIT.unexpected, "This is a bug"],

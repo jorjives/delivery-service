@@ -20,3 +20,5 @@ Each problem's part for engineers (`delivery findings <n>`) and `delivery findin
 fingerprint of its contents.
 
 `delivery review --json` prints the review as a `delivery.findings/1` document, and `delivery fix --json` ends with one.
+
+The scripted agent now ships inside the package, so `delivery packs check` and the testing API's scripted runs work from an installed copy, with no checkout.
