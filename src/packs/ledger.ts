@@ -40,7 +40,7 @@ export const LedgerEntry = z.discriminatedUnion("t", [
     /** The project's check of each fix, pinned; null when the project has no tests. */
     verify: GateRef.nullable(),
     guards: GuardLists.optional(),
-    /** The pack's threshold when this was written, and what it decided for each problem: computed once, never again. */
+    /** The threshold in force when this was written (the owner's --sign-off-threshold choice, or the pack's default if none was given), and what it decided for each problem: computed once, never again. */
     threshold: Severity.nullable().optional(),
     hold: z.record(Id, z.boolean()).optional(),
     /** How a fix lands once it may: the project's closer, pinned. */
