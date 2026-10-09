@@ -6,7 +6,6 @@ import {
   AGENT_OPINION, CAME_BACK_LINE, CHANGES_TESTS, CHECK_LEVEL, earlierHiddenLine, EARLIER_WORDS, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, madeBy, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
   opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, stateWords, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved,
 } from "./render.js";
-import type { Severity } from "./finding.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
 import { PACK_FORBIDDEN, sampleFinding } from "./review-fixtures.js";
