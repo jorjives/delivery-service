@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { appendLedger, readLedger } from "../packs/ledger.js";
-import { CHANGES_NOTE, CHANGES_WHICH, NO_REVIEW_YET, noKeptFix, unfinishedReview, uncheckedRefused, uncheckedApproved } from "../packs/render.js";
+import { CHANGES_NOTE, CHANGES_WHICH, earlierHiddenLine, NO_REVIEW_YET, noKeptFix, unfinishedReview, uncheckedRefused, uncheckedApproved } from "../packs/render.js";
 import { exampleRepo, sampleFinding, writeReview, writeFixPhase, FIX_PHASE_FINDINGS } from "../packs/review-fixtures.js";
 import { FindingsDocument } from "../packs/findings-document.js";
 import { initTempRepo } from "../temp-repo.js";
@@ -89,6 +89,25 @@ describe("delivery findings", () => {
     await appendLedger(dir, { t: "decision", ids: [TWO[1]?.id ?? ""], choice: "skip" });
     const { stdout } = await delivery(["findings"], { cwd: project });
     expect(stdout).toContain("1. The price shown at checkout can be negative (high): not yet decided\n2. Old payment code (low): skipped by you\n");
+  });
+
+  it("hides what was skipped in an earlier review of the same kind, says how many, and shows it with --include-skipped", async () => {
+    const project = repo();
+    const earlier = await writeReview(project, { reviewId: "code-20261001T100000Z", findings: TWO });
+    await appendLedger(earlier, { t: "decision", ids: [TWO[1]?.id ?? ""], choice: "skip" });
+    await writeReview(project, { reviewId: "code-20261005T101500Z", findings: TWO });
+
+    const hidden = await delivery(["findings"], { cwd: project });
+    expect(hidden.stdout).toContain("1. The price shown at checkout can be negative (high): not yet decided\n");
+    expect(hidden.stdout).not.toContain("2. Old payment code");
+    expect(hidden.stdout).toContain(`${earlierHiddenLine(1)}\n`);
+
+    const shown = await delivery(["findings", "--include-skipped"], { cwd: project });
+    expect(shown.stdout).toContain("2. Old payment code (low): skipped by you in an earlier review\n");
+    expect(shown.stdout).not.toContain(earlierHiddenLine(1));
+
+    const data = FindingsDocument.parse(JSON.parse((await delivery(["findings", "--json"], { cwd: project })).stdout));
+    expect(data.problems.map((p) => [p.state, p.earlier])).toEqual([["proposed", null], ["skipped", "skipped"]]);
   });
 });
 

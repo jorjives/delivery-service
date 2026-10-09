@@ -19,6 +19,8 @@ export interface FindingsOptions {
   changes?: boolean;
   /** Print the published schema of `--json`'s document instead of any problems. */
   schema?: boolean;
+  /** Also list problems skipped or declined in an earlier review, which are left out by default. */
+  includeSkipped?: boolean;
 }
 
 export const SCHEMA_ALONE = "Use `--schema` on its own: it prints the schema of the data, not the problems, so it takes no number and no other option.";
@@ -114,7 +116,7 @@ export async function findingsCommand(number: string | undefined, options: Findi
       ctx.writeLine(JSON.stringify(findingsDocument(review, states), null, 2));
       return EXIT.ok;
     }
-    for (const line of listLines(review, states)) say(line);
+    for (const line of listLines(review, states, { includeSkipped: options.includeSkipped === true })) say(line);
     return EXIT.ok;
   }
   const count = review.result.findings.length;

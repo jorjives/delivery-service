@@ -46,6 +46,7 @@ describe("the findings document", () => {
           check: { kind: "anchor-gone", level: "checked: the flagged code is gone" },
           refused: false,
           cause: null,
+          earlier: null,
           fix: { run: "fix-a-20261005T110000Z", branch: "surface/fix-a", base: "main", closer: "merge-back" },
         },
         {
@@ -60,12 +61,20 @@ describe("the findings document", () => {
           check: { kind: "none", level: "tests only: no check of this specific problem" },
           refused: false,
           cause: null,
+          earlier: null,
           fix: null,
         },
       ],
       unconfirmed: 0,
       notShown: 2,
     });
+  });
+
+  it("says what an earlier review carried to each problem, or null", () => {
+    const doc = findingsDocument(review, [{ ...UNDECIDED, state: "skipped", earlier: "declined" }, UNDECIDED]);
+    expect(doc.problems[0]?.earlier).toBe("declined");
+    expect(doc.problems[0]?.words).toBe("declined at sign-off in an earlier review");
+    expect(doc.problems[1]?.earlier).toBeNull();
   });
 
   it("never carries the flagged text or a check's pattern, which may hold a secret", () => {

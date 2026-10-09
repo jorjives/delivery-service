@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { openSchema, type JsonSchema } from "../report/json-schema.js";
 import { Severity, type CheckKind } from "./finding.js";
-import { FIX_STATES, UNDECIDED, UNFIXABLE_CAUSES, type FindingState } from "./fix-state.js";
+import { EARLIER_CHOICES, FIX_STATES, UNDECIDED, UNFIXABLE_CAUSES, type FindingState } from "./fix-state.js";
 import { CHECK_LEVEL, stateWords, checkLevel } from "./render.js";
 import type { SavedReview } from "./review-record.js";
 
@@ -27,6 +27,8 @@ export const FindingsProblem = z.object({
   /** Whether a check of its fix ever refused it for removing, changing or skipping tests. */
   refused: z.boolean(),
   cause: z.enum(UNFIXABLE_CAUSES).nullable(),
+  /** What an earlier review of the same kind decided, where this review has no choice of its own: skipped or declined (its state is then "skipped"), or fixed (it came back). Null when nothing was carried. */
+  earlier: z.enum(EARLIER_CHOICES).nullable(),
   /** Its fix's run, for `delivery status <run>`; null before `delivery fix` has taken it on. */
   fix: z.object({ run: z.string().nullable(), branch: z.string().nullable(), base: z.string().nullable(), closer: z.string().nullable() }).nullable(),
 });
@@ -72,6 +74,7 @@ export function findingsDocument({ header, result }: SavedReview, states: readon
         check: { kind: finding.check.kind, level: checkLevel(header, finding.check.kind) },
         refused: at.refused,
         cause: at.cause,
+        earlier: at.earlier,
         fix: at.fix === undefined ? null : { run: at.fix.run, branch: at.fix.branch, base: at.fix.base, closer: at.fix.closer },
       };
     }),

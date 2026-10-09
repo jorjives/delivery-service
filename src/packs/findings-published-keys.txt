@@ -10,6 +10,10 @@ delivery.findings/1.problems[].check.kind = "pattern-absent"
 delivery.findings/1.problems[].check.kind: string
 delivery.findings/1.problems[].check.level: string
 delivery.findings/1.problems[].check: object
+delivery.findings/1.problems[].earlier = "declined"
+delivery.findings/1.problems[].earlier = "fixed"
+delivery.findings/1.problems[].earlier = "skipped"
+delivery.findings/1.problems[].earlier: null|string
 delivery.findings/1.problems[].fix.base: null|string
 delivery.findings/1.problems[].fix.branch: null|string
 delivery.findings/1.problems[].fix.closer: null|string

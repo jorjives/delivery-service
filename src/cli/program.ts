@@ -216,6 +216,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("[number]", "show this problem in full, counted from 1 as the list numbers them")
     .option("--unconfirmed", "list the problems the review reported that could not be found in your project, and why")
     .option("--changes", "with a problem's number: show what its kept fix changed, file by file")
+    .option("--include-skipped", "also list problems you skipped or declined in an earlier review of the same kind, which are left out by default")
     .option("--schema", "print the published JSON Schema of the document `delivery findings --json` prints, instead of the problems")
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
     .action(async (number: string | undefined, options: FindingsOptions, command: Command) => {
