@@ -5,7 +5,7 @@ import { deriveReport } from "../report/derive.js";
 import { loadSnapshot, type RecordSnapshot } from "../report/snapshot.js";
 import { repoLocked } from "../repo-lock.js";
 import { DamagedReview } from "../errors.js";
-import { atOrAbove, type Finding } from "./finding.js";
+import { atOrAbove, type Finding, type Severity } from "./finding.js";
 import { fixTaskFor, type FixTask } from "./fix-task.js";
 import { authorisations, readLedger, resolvedIds, signOffResults, allowedUnchecked, type LedgerEntry, type SignOffResult } from "./ledger.js";
 import { changesTests, listReviews, loadReview, uncheckable, type ReviewHeader, type SavedReview } from "./review-record.js";
@@ -41,7 +41,7 @@ export interface FindingState {
    */
   earlier: EarlierChoice | null;
   /** The sign-off threshold its fix was authorised under (null: nothing waits for severity); undefined when not authorised or authorised before it was recorded, where the pack's applies. What `holdWhy` reads. */
-  threshold: import("./finding.js").Severity | null | undefined;
+  threshold: Severity | null | undefined;
   /** Whether its fix was authorised to change existing tests, at the owner's word. */
   testEdits: boolean;
 }
