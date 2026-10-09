@@ -5,7 +5,7 @@ import { z } from "zod";
 import { DamagedReview } from "../errors.js";
 import { atomicWrite, isEnoent } from "../journal.js";
 import { SessionUsage } from "../schema.js";
-import { scanEnvelopeFor, ScanResult, Severity, SPECIFIC_CHECKS, type Finding, type ScanEnvelope, type SpecificCheck } from "./finding.js";
+import { scanEnvelopeFor, ScanResult, Severity, SPECIFIC_CHECKS, type Finding, type ScanEnvelope } from "./finding.js";
 import { GuardLists } from "./guards.js";
 
 /** Owner-only: these files hold the agent's words about the project, which can quote anything in it. */

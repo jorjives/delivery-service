@@ -12,6 +12,7 @@ const TOTAL = "The total can go below zero";
 const SETTINGS = "A missing or broken settings file gives an unhelpful error";
 
 /** A copy of a built-in pack, with `edit` applied to one of its JSON files. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- fixture JSON is edited by arbitrary deep paths
 function packCopy(folder = "code-review", file?: string, edit?: (json: Record<string, any>) => void): string {
   const dir = join(mkdtempSync(join(tmpdir(), "pack-check-")), "my-pack");
   cpSync(join(BUILT_IN_PACKS, folder), dir, { recursive: true });

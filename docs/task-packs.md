@@ -190,7 +190,8 @@ add keys and names; it never removes or changes one.
 
 - `schema`: always `delivery.findings/1`.
 - `review`: the review's `id`, its `pack` name and `title`, the `commit` it read, and when it
-  `startedAt` and `endedAt`.
+  `startedAt` and `endedAt`, plus the `packVersion` of the pack that made it and a `packHash`
+  fingerprint of its manifest and instructions (a changed pack shows as a changed fingerprint).
 - `problems`: every problem, in the order `delivery findings` numbers them. Each has its `number`,
   its `id` (the same for the same problem found again), `title`, `category`, `severity`, `where`
   (`path`, `line`, `endLine`), its `state` from the closed set and the `words` you read for it, its

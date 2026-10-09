@@ -6,7 +6,7 @@ import { z } from "zod";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 import { InvalidPack, UnknownPack } from "../errors.js";
 import { isEnoent } from "../journal.js";
-import { Severity, SPECIFIC_CHECKS, type SpecificCheck } from "./finding.js";
+import { Severity, SPECIFIC_CHECKS } from "./finding.js";
 import { GuardGlob } from "./guards.js";
 import type { JsonSchema } from "../report/json-schema.js";
 
