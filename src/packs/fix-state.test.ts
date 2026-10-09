@@ -11,7 +11,7 @@ import type { CaseFileOutcome, GateRef, TaskDef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { FINDING_GATE_REF } from "./finding-gate.js";
 import type { Finding } from "./finding.js";
-import { carryOver, deriveFindings, fixTasks, hiddenByDefault, readFindingStates, fixRunsOf, lastWords, recommended, UNDECIDED, type EarlierChoice, type FindingState, type FixRun, type FixState } from "./fix-state.js";
+import { carryOver, deriveFindings, fixTasks, hiddenByDefault, readFindingStates, fixRunsOf, lastWords, recommended, reopensForTestEdits, UNDECIDED, type EarlierChoice, type FindingState, type FixRun, type FixState } from "./fix-state.js";
 import { fixTaskFor } from "./fix-task.js";
 import { appendLedger, type LedgerEntry } from "./ledger.js";
 import { guardListsFor } from "./guards.js";
@@ -47,7 +47,7 @@ describe("where each problem stands", () => {
     [run({ standing: "aborted", plain: plain("engineer") }), "stopped"],
   ])("once authorised, follows its fix's run: %j is %s", (fix, state) => {
     const fixes = new Map(fix === undefined ? [] : [[A.id, fix]]);
-    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes, NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]).toEqual({ state, fix, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined });
+    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes, NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]).toEqual({ state, fix, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined, testEdits: false });
   });
 
   it("is already fixed when its code was gone before its fix started, whatever else is recorded", () => {
@@ -241,7 +241,7 @@ describe("the agent's last words on a fix", () => {
 
 describe("a problem nobody has decided on", () => {
   it("is not yet decided, with no fix", () => {
-    expect(UNDECIDED).toEqual({ state: "proposed", fix: undefined, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined });
+    expect(UNDECIDED).toEqual({ state: "proposed", fix: undefined, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined, testEdits: false });
   });
 });
 
@@ -254,6 +254,35 @@ describe("recording the sign-off threshold with an authorisation", () => {
     expect(stateFor([decide([A.id], "approve"), authorised(null)])?.threshold).toBeNull();
     expect(stateFor([decide([A.id], "approve"), authorised()])?.threshold).toBeUndefined();
     expect(stateFor([decide([A.id], "approve")])?.threshold).toBeUndefined();
+  });
+});
+
+describe("letting a fix change existing tests", () => {
+  const approveEdits: LedgerEntry = { t: "decision", at: AT, ids: [A.id], choice: "approve", allowTestEdits: true };
+  const granted: LedgerEntry = { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: null, hold: { [A.id]: true }, allowTestEdits: [A.id], landing: { type: "merge-back" } };
+  const refusedEdit = run({ standing: "escalated", plain: plain("owner"), rounds: [["guard:tests-unchanged"]] });
+
+  it("can re-open only a problem that could not be fixed because it needs a change to a test", () => {
+    const [needsEdit] = deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], new Map([[A.id, refusedEdit]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER);
+    const [deleted] = deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], new Map([[A.id, run({ standing: "escalated", plain: plain("owner"), rounds: [["guard:tests-untouched"]] })]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER);
+    expect(needsEdit?.cause).toBe("needs_test_change");
+    expect(reopensForTestEdits(needsEdit ?? UNDECIDED)).toBe(true);
+    expect(reopensForTestEdits(deleted ?? UNDECIDED)).toBe(false);
+    expect(reopensForTestEdits({ ...UNDECIDED, state: "fixing" })).toBe(false);
+  });
+
+  it("is approved again, with no fix yet, once re-opened; then follows its new fix, which says it may change tests", () => {
+    const reopened = [decide([A.id], "approve"), authorise([A.id]), approveEdits];
+    expect(deriveFindings([A], reopened, new Map([[A.id, refusedEdit]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]?.state).toBe("approved");
+    const closed = run({ standing: "closed", closer: "commit-to-branch", branch: "surface/r2", base: "main" });
+    expect(deriveFindings([A], [...reopened, granted], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]).toMatchObject({ state: "held", testEdits: true });
+  });
+
+  it("gives the fix task the grant, so it is a different task from the refused one", () => {
+    const review = { header: { pack: { name: "code", categories: [], guards: undefined } }, result: { findings: [A], unconfirmed: [], notShown: 0, notes: "" } } as unknown as SavedReview;
+    const [task] = fixTasks(review, [approveEdits, granted]);
+    expect(task?.authorisation).toEqual({ verify: NPM, hold: true, landing: { type: "merge-back" }, allowTestEdits: true });
+    expect(fixTasks(review, [decide([A.id], "approve"), authorise([A.id]), approveEdits])).toEqual([]);
   });
 });
 

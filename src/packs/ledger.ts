@@ -32,6 +32,8 @@ export const LedgerEntry = z.discriminatedUnion("t", [
     choice: z.enum(["approve", "skip"]),
     /** The owner approved these knowing nothing checks their fixes except them: each fix waits for sign-off. */
     allowUnchecked: z.literal(true).optional(),
+    /** The owner let these problems' fixes change existing tests (never delete or skip one): each fix waits for sign-off. An approval with this after a problem was taken on re-opens it (`authorisations`). */
+    allowTestEdits: z.literal(true).optional(),
   }),
   z.object({
     t: z.literal("authorise"),
@@ -45,6 +47,8 @@ export const LedgerEntry = z.discriminatedUnion("t", [
     hold: z.record(Id, z.boolean()).optional(),
     /** How a fix lands once it may: the project's closer, pinned. */
     landing: CloserRef.optional(),
+    /** The problems whose fixes the owner let change existing tests; each is held. Absent: none. */
+    allowTestEdits: z.array(Id).optional(),
     /** The review these were authorised from. Part of each fix's identity, so a problem that comes back in a later review is fixed again rather than matched to its earlier fix. Absent on an authorisation written before fixes named their review. */
     review: z.string().optional(),
   }),
@@ -91,13 +95,22 @@ export interface Authorised {
   threshold?: Severity | null;
   hold?: boolean;
   landing?: CloserRef;
+  allowTestEdits?: true;
   review?: string;
 }
 
-/** The problems `delivery fix` has taken on, each as it was first authorised. */
+/**
+ * The problems `delivery fix` has taken on, each as it was first authorised. An approval allowing test edits that
+ * comes after a problem's authorisation re-opens it (the owner unblocking a fix that needed a test changed): the
+ * problem is no longer taken on, and its next authorisation is the one that counts.
+ */
 export function authorisations(entries: readonly LedgerEntry[]): Map<string, Authorised> {
   const found = new Map<string, Authorised>();
   for (const entry of entries) {
+    if (entry.t === "decision") {
+      if (entry.choice === "approve" && entry.allowTestEdits === true) for (const id of entry.ids) found.delete(id);
+      continue;
+    }
     if (entry.t !== "authorise") continue;
     for (const id of entry.ids) {
       if (found.has(id)) continue;
@@ -107,6 +120,7 @@ export function authorisations(entries: readonly LedgerEntry[]): Map<string, Aut
         ...(entry.guards === undefined ? {} : { guards: entry.guards }),
         ...(entry.threshold === undefined ? {} : { threshold: entry.threshold }),
         ...(hold === undefined ? {} : { hold }),
+        ...(entry.allowTestEdits?.includes(id) === true ? { allowTestEdits: true as const } : {}),
         ...(entry.landing === undefined ? {} : { landing: entry.landing }),
         ...(entry.review === undefined ? {} : { review: entry.review }),
       });
@@ -134,6 +148,19 @@ export function allowedUnchecked(entries: readonly LedgerEntry[]): Set<string> {
     if (entry.t !== "decision") continue;
     for (const id of entry.ids) {
       if (entry.choice === "approve" && entry.allowUnchecked === true) allowed.add(id);
+      else allowed.delete(id);
+    }
+  }
+  return allowed;
+}
+
+/** The problems whose latest choice is approval letting their fix change existing tests. */
+export function allowedTestEdits(entries: readonly LedgerEntry[]): Set<string> {
+  const allowed = new Set<string>();
+  for (const entry of entries) {
+    if (entry.t !== "decision") continue;
+    for (const id of entry.ids) {
+      if (entry.choice === "approve" && entry.allowTestEdits === true) allowed.add(id);
       else allowed.delete(id);
     }
   }

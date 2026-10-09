@@ -3,8 +3,8 @@ import { CloserRef, GateRef } from "../schema.js";
 import { Finding, Severity } from "./finding.js";
 import { Guards } from "./guards.js";
 
-/** Whether a fix waits for sign-off, and how it lands once it may: decided when it was authorised, from its severity and the pack's threshold. */
-export const Release = z.object({ hold: z.boolean(), landing: CloserRef });
+/** Whether a fix waits for sign-off, how it lands once it may, and whether the owner let it change existing tests: decided when it was authorised. */
+export const Release = z.object({ hold: z.boolean(), landing: CloserRef, allowTestEdits: z.literal(true).optional() });
 export type Release = z.infer<typeof Release>;
 
 /**
@@ -19,8 +19,8 @@ export const FixTask = z.object({
   finding: Finding,
   /** What the fix may not touch, pinned when it was authorised. Absent on a task authorised before guards travelled with it. */
   guards: Guards.optional(),
-  /** Absent `hold` and `landing`: a fix authorised before fixes could wait for sign-off. `verify` null: the project has no tests, so the problem's own check is all there is, and the fix always waits for sign-off. */
-  authorisation: z.object({ verify: GateRef.nullable(), hold: z.boolean().optional(), landing: CloserRef.optional() }),
+  /** Absent `hold` and `landing`: a fix authorised before fixes could wait for sign-off. `verify` null: the project has no tests, so the problem's own check is all there is, and the fix always waits for sign-off. `allowTestEdits`: the owner let this fix change existing tests, never delete or skip one. */
+  authorisation: z.object({ verify: GateRef.nullable(), hold: z.boolean().optional(), landing: CloserRef.optional(), allowTestEdits: z.literal(true).optional() }),
 });
 export type FixTask = z.infer<typeof FixTask>;
 

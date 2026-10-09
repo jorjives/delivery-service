@@ -42,10 +42,12 @@ export interface FindingState {
   earlier: EarlierChoice | null;
   /** The sign-off threshold its fix was authorised under (null: nothing waits for severity); undefined when not authorised or authorised before it was recorded, where the pack's applies. What `holdWhy` reads. */
   threshold: import("./finding.js").Severity | null | undefined;
+  /** Whether its fix was authorised to change existing tests, at the owner's word. */
+  testEdits: boolean;
 }
 
 /** A problem the owner has not decided on yet. */
-export const UNDECIDED: FindingState = { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined };
+export const UNDECIDED: FindingState = { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined, testEdits: false };
 
 /** The agent's own account of its last finished attempt at a fix, verbatim; null when no attempt of it finished. A repair's words are not the fix's. */
 export const lastWords = (history: CaseFile["history"]): string | null =>
@@ -102,7 +104,7 @@ function stateOf(state: FixState, fix: FixRun | undefined, signOff: SignOffResul
   const rounds = fix?.rounds ?? [];
   const refused = rounds.some((round) => round.some(isGuard));
   const cause = state === "unfixable" && needsTestChange(rounds.at(-1) ?? []) ? "needs_test_change" : null;
-  return { state, fix, refused, cause, signOff, earlier, threshold: undefined };
+  return { state, fix, refused, cause, signOff, earlier, threshold: undefined, testEdits: false };
 }
 
 /**
@@ -130,7 +132,7 @@ export function deriveFindings(
     if (gone.has(finding.id)) return stateOf("already_resolved", fix);
     const auth = authorised.get(finding.id);
     if (auth !== undefined) {
-      const authorisedUnder = { threshold: auth.threshold };
+      const authorisedUnder = { threshold: auth.threshold, testEdits: auth.allowTestEdits === true };
       const state = fromRun(fix, auth.hold === true);
       if (state !== "held") return { ...stateOf(state, fix), ...authorisedUnder };
       const result = results.get(finding.id);
@@ -177,6 +179,9 @@ export function carryOver(reviews: readonly { findings: readonly Finding[]; stat
 /** A problem skipped because of an earlier review and not chosen again here: left out of lists unless asked for. */
 export const hiddenByDefault = (at: FindingState): boolean => at.state === "skipped" && at.earlier !== null;
 
+/** Whether approving a problem again letting its fix change tests re-opens it: only one that could not be fixed because it needs a test changed. */
+export const reopensForTestEdits = (at: FindingState): boolean => at.state === "unfixable" && at.cause === "needs_test_change";
+
 /**
  * Whether a problem is recommended: still to decide (one that came back included), with a check of its own, and
  * mild enough that its fix lands without the owner's sign-off. Every specific check is the strongest level there is;
@@ -197,7 +202,7 @@ export function fixTasks({ header, result }: SavedReview, entries: readonly Ledg
     const auth = authorised.get(finding.id);
     if (auth === undefined || gone.has(finding.id)) return [];
     const guards = auth.guards === undefined ? undefined : { ...auth.guards, testsCategory: changesTests(header.pack, finding.category) };
-    const release = auth.landing === undefined ? undefined : { hold: auth.hold ?? false, landing: auth.landing };
+    const release = auth.landing === undefined ? undefined : { hold: auth.hold ?? false, landing: auth.landing, ...(auth.allowTestEdits === true ? { allowTestEdits: true as const } : {}) };
     return [fixTaskFor(header.pack.name, finding, auth.verify, guards, release, auth.review)];
   });
 }

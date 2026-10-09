@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { DamagedReview } from "../errors.js";
 import type { GateRef } from "../schema.js";
 import { withoutAt } from "../without-at.js";
-import { appendLedger, authorisations, readLedger, signOffResults, allowedUnchecked, type LedgerEntry } from "./ledger.js";
+import { appendLedger, authorisations, readLedger, signOffResults, allowedUnchecked, allowedTestEdits, type LedgerEntry } from "./ledger.js";
 import { guardListsFor } from "./guards.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "ledger-"));
@@ -101,5 +101,33 @@ describe("recording the sign-off threshold", () => {
     expect(authorisations([{ ...base, threshold: null }] as LedgerEntry[]).get("aaaaaaaaaaaa")).toHaveProperty("threshold", null);
     expect(authorisations([{ ...base, threshold: "medium" }] as LedgerEntry[]).get("aaaaaaaaaaaa")?.threshold).toBe("medium");
     expect(authorisations([base] as LedgerEntry[]).get("aaaaaaaaaaaa")).not.toHaveProperty("threshold");
+  });
+});
+
+describe("letting a fix change existing tests", () => {
+  const AT = "2026-10-09T10:00:00.000Z";
+  const A = "aaaaaaaaaaaa";
+  const approve = (allowTestEdits?: true): LedgerEntry => ({ t: "decision", at: AT, ids: [A], choice: "approve", ...(allowTestEdits ? { allowTestEdits } : {}) });
+  const authorise = (over: Partial<Extract<LedgerEntry, { t: "authorise" }>> = {}): LedgerEntry => ({ t: "authorise", at: AT, ids: [A], verify: NPM_TEST, hold: { [A]: false }, landing: { type: "merge-back" }, ...over });
+
+  it("is remembered for each problem until a later choice replaces it", () => {
+    expect(allowedTestEdits([approve(true)])).toEqual(new Set([A]));
+    expect(allowedTestEdits([approve(true), approve()])).toEqual(new Set());
+  });
+
+  it("reads back from the record, with the authorisation naming each problem it was granted for", async () => {
+    const d = dir();
+    await appendLedger(d, { t: "decision", ids: [A], choice: "approve", allowTestEdits: true });
+    await appendLedger(d, { t: "authorise", ids: [A], verify: NPM_TEST, hold: { [A]: true }, allowTestEdits: [A], landing: { type: "merge-back" } });
+    expect(authorisations(await readLedger(d)).get(A)).toEqual({ verify: NPM_TEST, hold: true, allowTestEdits: true, landing: { type: "merge-back" } });
+  });
+
+  it("re-opens a problem already taken on when approved again allowing test edits, so its next authorisation is the one that counts", () => {
+    expect(authorisations([approve(), authorise(), approve(true)]).has(A)).toBe(false);
+    expect(authorisations([approve(), authorise(), approve(true), authorise({ hold: { [A]: true }, allowTestEdits: [A] })]).get(A)).toEqual({ verify: NPM_TEST, hold: true, allowTestEdits: true, landing: { type: "merge-back" } });
+  });
+
+  it("is not re-opened by an approval that does not allow test edits", () => {
+    expect(authorisations([approve(), authorise(), approve()]).get(A)).toEqual({ verify: NPM_TEST, hold: false, landing: { type: "merge-back" } });
   });
 });
