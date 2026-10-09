@@ -16,8 +16,14 @@ export const FINDING_GATE_REF: GateRef = { type: "custom", modulePath: FINDING_G
 
 export const findingAssertion = (id: string): string => `finding:${id}:resolved`;
 
-/** What a fix may not touch: as authorised, or the harness's own lists for a fix authorised before guards travelled with it. */
-const guardsOf = (task: FixTask): Guards => task.guards ?? { ...DEFAULT_GUARDS, testsCategory: false };
+/**
+ * What a fix may not touch: as authorised, or the harness's own lists for a fix authorised before guards travelled
+ * with it. A fix the owner let change tests may modify an existing test, as a problem in a test may; never delete or skip one.
+ */
+const guardsOf = (task: FixTask): Guards => {
+  const guards = task.guards ?? { ...DEFAULT_GUARDS, testsCategory: false };
+  return task.authorisation.allowTestEdits === true ? { ...guards, testsCategory: true } : guards;
+};
 
 /** What a project with no tests adds to a fix's check: nothing, so the problem's own check and the guards are the whole of it. */
 const NO_TESTS: GateReport = { status: "PASS", assertions: [] };

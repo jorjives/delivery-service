@@ -46,6 +46,10 @@ describe("the plan a fix runs from", () => {
     expect(FIX_INSTRUCTIONS).toContain("If your change to a test is refused, stop");
   });
 
+  it("tells the agent it may change an existing test, never delete or skip one, when its authorisation allows test edits", () => {
+    expect(FIX_INSTRUCTIONS).toContain("or its authorisation says allowTestEdits is true");
+  });
+
   it("is written owner-only beside its review, and the newest written is the one found", async () => {
     const repo = initTempRepo("plan-", { "a.js": "x\n" });
     const older = await writeReview(repo, { reviewId: "code-20261001T000000Z" });

@@ -18,7 +18,7 @@ export const FIX_INSTRUCTIONS = [
   "(commenting it out does not count) and that every test that passed before still passes.",
   "Do not delete or skip an existing test, do not change how the tests are run (test settings, CI files, ignore rules, or the test scripts in package.json),",
   "and do not hide a test setting, or a test that skips or singles out others, from git: a fix that does is refused, however it passes. The task's guards list the paths and markers this covers. Adding new tests is welcome.",
-  "Where the task's guards say testsCategory is true, the problem is in a test, so you may change an existing test, but never delete or skip one.",
+  "Where the task's guards say testsCategory is true (the problem is in a test), or its authorisation says allowTestEdits is true (the owner allowed it), you may change an existing test, but never delete or skip one.",
   "If the problem cannot be fixed without changing an existing test, make the smallest change to that test that the fix needs and finish as usual:",
   "the check refuses it, the owner is told the problem needs a change to one of their tests, and nothing is merged. Never delete or skip a test to get there.",
   "If your change to a test is refused, stop and escalate, saying why in one plain sentence: do not look for another way round.",

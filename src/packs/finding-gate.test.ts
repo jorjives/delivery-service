@@ -160,6 +160,29 @@ describe.each([["only pass or fail as a whole", EXITCODE], ["each test's own res
     expect((await judge((repo) => writeFileSync(join(repo, "checkout.test.js"), readFileSync(join(repo, "checkout.test.js"), "utf-8").replace("7", "7 /* exact */")), tests)).delta.pass).toBe(true);
     expect((await judge((repo) => rmSync(join(repo, "checkout.test.js")), tests)).delta.pass).toBe(false);
   });
+
+  it("for a fix the owner let change tests, is allowed to change a test but not to delete or skip one", async () => {
+    const granted = (worktreePath: string): GateContext => ({
+      ...ctxFor(worktreePath, NEGATIVE, verify, GUARDS),
+      taskDef: fixTaskFor("code", NEGATIVE, verify, GUARDS, { hold: true, landing: { type: "merge-back" }, allowTestEdits: true }),
+    });
+    const judgeGranted = async (change: (repo: string) => void) => {
+      const repo = exampleRepo("finding-gate-granted-");
+      const baseline = await findingGate.baseline(granted(repo));
+      edit(repo, "return price - discount;", HONEST);
+      change(repo);
+      const check = await findingGate.check(granted(repo));
+      return { check, delta: computeDelta(baseline, check, { failOnNewAssertions: true }) };
+    };
+    const test = (repo: string): string => join(repo, "checkout.test.js");
+
+    expect((await judgeGranted((repo) => writeFileSync(test(repo), readFileSync(test(repo), "utf-8").replace("7", "7 /* exact */")))).delta.pass).toBe(true);
+    const deleted = await judgeGranted((repo) => rmSync(test(repo)));
+    expect(failing(deleted.check)).toEqual([TESTS_GUARD]);
+    expect(deleted.delta.pass).toBe(false);
+    const skipped = await judgeGranted((repo) => writeFileSync(test(repo), readFileSync(test(repo), "utf-8").replace("test(", "test.skip(")));
+    expect(failing(skipped.check)).toEqual([SKIP_GUARD]);
+  });
 });
 
 it("allows an honest fix that adds a new test, when the project's check leaves a compiled copy of it where git ignores it, round after round", async () => {
