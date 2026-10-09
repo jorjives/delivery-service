@@ -191,6 +191,8 @@ A fix at or above the pack's `hold` severity counts as passing its check when it
 delivery packs check ./my-review
 ```
 
+Running the fixtures runs the fixture project's own tests on your machine, as `delivery fix` runs a project's tests. Only check a pack whose `fixtures/project` you have read or trust, as you would only run the tests of a project you trust.
+
 If there are problems with the manifest or fixtures, they are named by file and field:
 
 ```
