@@ -67,8 +67,8 @@ describe("a review's record of what was decided", () => {
     const entries: LedgerEntry[] = [
       { t: "authorise", at: AT, ids: ["aaaaaaaaaaaa", "bbbbbbbbbbbb"], verify: NPM_TEST, threshold: "high", hold: { aaaaaaaaaaaa: true, bbbbbbbbbbbb: false }, landing: { type: "merge-back" } },
     ];
-    expect(authorisations(entries).get("aaaaaaaaaaaa")).toEqual({ verify: NPM_TEST, hold: true, landing: { type: "merge-back" } });
-    expect(authorisations(entries).get("bbbbbbbbbbbb")).toEqual({ verify: NPM_TEST, hold: false, landing: { type: "merge-back" } });
+    expect(authorisations(entries).get("aaaaaaaaaaaa")).toEqual({ verify: NPM_TEST, threshold: "high", hold: true, landing: { type: "merge-back" } });
+    expect(authorisations(entries).get("bbbbbbbbbbbb")).toEqual({ verify: NPM_TEST, threshold: "high", hold: false, landing: { type: "merge-back" } });
   });
 
   it("folds each problem's sign-off to its last result", () => {
