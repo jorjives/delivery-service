@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { cleanGitEnv } from "../git-env.js";
 import { readLedger } from "../packs/ledger.js";
 import { guardListsFor } from "../packs/guards.js";
-import { needsTestChangeLine, NO_REVIEW_YET, REFUSED_WEAKENING, thresholdLine, HOLD_WHY } from "../packs/render.js";
+import { needsTestChangeLine, NO_REVIEW_YET, REFUSED_WEAKENING, thresholdLine, HOLD_WHY, allowTestEditsHint } from "../packs/render.js";
 import { readFindingStates } from "../packs/fix-state.js";
 import { EXAMPLE_DIR, exampleRepo, NO_TESTS_DIR, NO_TESTS_FIXES, NO_TESTS_SCAN, sampleFinding, writeReview, scanScript } from "../packs/review-fixtures.js";
 import { promptsSent, readJournal } from "../mock-script.js";
@@ -77,6 +77,12 @@ const GIVES_UP_WHEN_THE_DELETION_IS_REFUSED = {
 };
 const CLAMPS_TOTAL: MockScript = {
   expectations: [{ effects: [{ edit: { path: "checkout.js", old: "return price - discount;", new: "return Math.max(0, price - discount);" } }], json: { status: "completed", rationale: "A total never goes below zero." } }],
+};
+// What an agent allowed to change tests does: fixes the code and makes the smallest change to the test.
+const FIXES_WITH_A_TEST_EDIT = {
+  when: { promptContains: NEGATIVE.id },
+  effects: [FIXES_THE_CODE, { write: { path: "checkout.test.js", content: ORIGINAL_TEST.replace("7", "7 /* never below zero */") } }],
+  json: { status: "completed", rationale: "fixed it, and changed the test that relied on the old total" },
 };
 
 const env = async (script: MockScript) => ({ [TEST_MOCK_SCRIPT]: await scriptFile(script) });
@@ -272,6 +278,47 @@ describe("delivery fix", () => {
 
       expect(stdout).toContain(`: could not be fixed\n    ${REFUSED_WEAKENING}\n`);
       expect(stdout).not.toContain("needs a change to one of your tests");
+      expect(readFileSync(join(repo, "checkout.test.js"), "utf-8")).toBe(ORIGINAL_TEST);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "fixes a problem that needed a test changed once the owner allows it, and keeps that fix waiting for sign-off",
+    async () => {
+      const { repo, dir } = await reviewed([NEGATIVE]);
+      await delivery(["findings", "approve", "1"], { cwd: repo });
+      const first = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [STOPS_WHEN_THE_TEST_EDIT_IS_REFUSED, EDITS_THE_TEST_AS_THE_ONLY_WAY] }) });
+      expect(first.stdout).toContain(`    ${allowTestEditsHint(1)}`);
+
+      const approved = await delivery(["findings", "approve", "1", "--allow-test-edits"], { cwd: repo });
+      expect(approved.exitCode).toBe(EXIT.ok);
+      const before = head(repo);
+      const { exitCode, stdout } = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [FIXES_WITH_A_TEST_EDIT] }) });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain("1. The price shown at checkout can be negative (high): waiting for your sign-off");
+      expect(stdout).toContain(`    Why this needs you: ${HOLD_WHY.testEdits}`);
+      expect(stdout).not.toContain(needsTestChangeLine(1));
+      expect(head(repo)).toBe(before);
+      expect(readFileSync(join(repo, "checkout.test.js"), "utf-8")).toBe(ORIGINAL_TEST);
+      const authorised = (await readLedger(dir)).filter((entry) => entry.t === "authorise");
+      expect(authorised).toHaveLength(2);
+      expect(authorised[1]).toMatchObject({ ids: [NEGATIVE.id], allowTestEdits: [NEGATIVE.id], hold: { [NEGATIVE.id]: true } });
+      const { states } = await readFindingStates(repo, await finishedReview(repo));
+      expect(execFileSync("git", ["show", `${states[0]?.fix?.branch}:checkout.test.js`], { cwd: repo, encoding: "utf-8" })).toContain("never below zero");
+    },
+    RUN_TIMEOUT * 3,
+  );
+
+  it(
+    "still refuses a fix allowed to change tests that deletes one",
+    async () => {
+      const { repo } = await reviewed([NEGATIVE]);
+      await delivery(["findings", "approve", "1", "--allow-test-edits"], { cwd: repo });
+      const { stdout } = await delivery(["fix"], { cwd: repo, env: await env({ expectations: [GIVES_UP_WHEN_THE_DELETION_IS_REFUSED, DELETES_THE_TEST] }) });
+
+      expect(stdout).toContain(`: could not be fixed\n    ${REFUSED_WEAKENING}\n`);
       expect(readFileSync(join(repo, "checkout.test.js"), "utf-8")).toBe(ORIGINAL_TEST);
     },
     RUN_TIMEOUT * 2,

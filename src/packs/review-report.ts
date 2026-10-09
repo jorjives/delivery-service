@@ -123,7 +123,7 @@ export const UNFIXABLE_ACTION: Record<PlainGroup | UnfixableCause, { who: string
   abandoned: { who: "you, or an engineer you pass it to", what: (n) => `The agent judged it cannot be fixed as described. See it in full with delivery findings ${n} and decide whether to fix it by hand.` },
   needs_an_engineer: { who: "an engineer", what: (n) => `Pass it to whoever maintains your checks, with: delivery findings ${n}` },
   stopped: { who: "you, or an engineer you pass it to", what: (n) => `The record does not say why it stopped. See it in full with delivery findings ${n}.` },
-  needs_test_change: { who: "you, or an engineer you trust with your tests", what: (n) => `Change that test yourself or have an engineer do it. See where the problem is with delivery findings ${n}.` },
+  needs_test_change: { who: "you, or an engineer you trust with your tests", what: (n) => `Change that test yourself or have an engineer do it, or let an agent change it with delivery findings approve ${n} --allow-test-edits and its fix will wait for your sign-off. See where the problem is with delivery findings ${n}.` },
 };
 
 export const REVIEW_NEXT = "Next: delivery findings (every problem and where it stands), delivery status --all (every run)";

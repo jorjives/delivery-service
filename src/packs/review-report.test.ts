@@ -136,6 +136,7 @@ describe("a review's report, problem by problem", () => {
 
     expect(lines).toContain("    Could not be fixed. It needs a change to one of your tests, which this review does not let an agent do.");
     expect(lines).toContain(`    Who acts: ${UNFIXABLE_ACTION.needs_test_change.who}.`);
+    expect(UNFIXABLE_ACTION.needs_test_change.what(1)).toContain("delivery findings approve 1 --allow-test-edits");
   });
 
   it("puts a problem stopped by a broken check with the engineers, told as any stopped task is", () => {

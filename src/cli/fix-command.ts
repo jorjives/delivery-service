@@ -8,7 +8,7 @@ import { FINDING_CLOSER_REF } from "../packs/finding-closer.js";
 import type { FixTask } from "../packs/fix-task.js";
 import { readFindingStates } from "../packs/fix-state.js";
 import { findingsDocument } from "../packs/findings-document.js";
-import { appendLedger } from "../packs/ledger.js";
+import { appendLedger, allowedTestEdits } from "../packs/ledger.js";
 import { guardListsFor } from "../packs/guards.js";
 import { planConfig, writePlan } from "../packs/plan.js";
 import { listLines } from "../packs/render.js";
@@ -80,7 +80,7 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
   const review = await finishedReview(repoPath);
   const { findings } = review.result;
 
-  const { states } = await readFindingStates(repoPath, review);
+  const { entries, states } = await readFindingStates(repoPath, review);
   const fresh = findings.filter((_, index) => states[index]?.state === "approved");
   if (fresh.length === 0 && !states.some((at) => at.state === "fixing")) {
     if (states.some((at) => at.state !== "proposed" && at.state !== "skipped" && at.state !== "needs_decision")) {
@@ -96,6 +96,9 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
   if (fresh.length > 0) {
     const threshold = options.signOffThreshold === undefined ? (review.header.pack.hold ?? null) : thresholdOf(options.signOffThreshold);
     if (options.signOffThreshold !== undefined) say(thresholdLine(threshold));
+    // The owner let these fixes change existing tests: recorded with the authorisation, and each always waits for sign-off.
+    const testEdits = allowedTestEdits(entries);
+    const edits = fresh.filter((finding) => testEdits.has(finding.id)).map((finding) => finding.id);
     // With nothing to check a fix broke nothing else, now or when the review was made, or when the owner approved it without a check, the owner is the final check of every fix.
     await appendLedger(review.dir, {
       t: "authorise",
@@ -103,7 +106,8 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
       verify,
       guards: guardListsFor(review.header.pack.guards),
       threshold,
-      hold: Object.fromEntries(fresh.map((finding) => [finding.id, verify === null || review.header.noTests === true || uncheckable(review.header, finding) || atOrAbove(finding.severity, threshold)])),
+      ...(edits.length === 0 ? {} : { allowTestEdits: edits }),
+      hold: Object.fromEntries(fresh.map((finding) => [finding.id, verify === null || review.header.noTests === true || uncheckable(review.header, finding) || testEdits.has(finding.id) || atOrAbove(finding.severity, threshold)])),
       landing: pinnedCloser(project.closerRef, repoPath),
       review: review.header.reviewId,
     });

@@ -4,7 +4,7 @@ import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
   AGENT_OPINION, CAME_BACK_LINE, CHANGES_TESTS, CHECK_LEVEL, earlierHiddenLine, EARLIER_WORDS, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, madeBy, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, stateWords, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved,
+  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, stateWords, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved, allowTestEditsHint,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
@@ -177,6 +177,16 @@ describe("the findings view", () => {
     ]);
     expect(lines).toContain(needsTestChangeLine(2));
     expect(needsTestChangeLine(2)).toBe("2 problems could not be fixed: each needs a change to one of your tests, which this review does not let an agent do.");
+  });
+
+  it("tells the owner how to let an agent change the test a problem needs changed, and why such a fix waits", () => {
+    const stuck: FindingState = { ...at("unfixable", { standing: "escalated", plain: { group: "needs_your_decision", audience: "owner", sentence: "Needs your decision.", agentSaid: null, next: [] } }), cause: "needs_test_change" };
+    const lines = listLines(review(), [stuck, at("proposed"), at("proposed")]);
+    expect(lines[lines.indexOf("    Why: It needs a change to one of your tests, which this review does not let an agent do.") + 1]).toBe(`    ${allowTestEditsHint(1)}`);
+    expect(allowTestEditsHint(1)).toBe("To let an agent change that test, and see the change before it reaches your main copy: delivery findings approve 1 --allow-test-edits");
+    const granted: FindingState = { ...at("held", { closer: "commit-to-branch", branch: "surface/r" }), testEdits: true };
+    expect(listLines(review(), [granted, at("proposed"), at("proposed")])).toContain(`    Why this needs you: ${HOLD_WHY.testEdits}`);
+    for (const line of [allowTestEditsHint(1), HOLD_WHY.testEdits]) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
 
   it("shows, before it is approved, that a problem's fix will change the tests", () => {

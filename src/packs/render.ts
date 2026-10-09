@@ -41,10 +41,12 @@ export const HOLD_WHY = {
   serious: "it is a serious problem, and you should see what changed before it reaches your main copy.",
   noTests: "your project has no tests, so nothing has checked that this fix did not break something else.",
   unchecked: "nothing checks this fix except you, so you should see what changed before it reaches your main copy.",
+  testEdits: "you let its fix change your existing tests, so you should see what changed before it reaches your main copy.",
 };
 
-/** Why this problem's fix waits: the owner approved it without a check, the project's missing tests, or its severity under the threshold it was authorised under (the pack's own only for an authorisation that predates the record of it). */
-export function holdWhy(header: Pick<ReviewHeader, "noTests" | "pack">, finding: Finding, at: Pick<FindingState, "threshold">): string {
+/** Why this problem's fix waits: the owner let it change tests, approved it without a check, the project's missing tests, or its severity under the threshold it was authorised under (the pack's own only for an authorisation that predates the record of it). */
+export function holdWhy(header: Pick<ReviewHeader, "noTests" | "pack">, finding: Finding, at: Pick<FindingState, "threshold" | "testEdits">): string {
+  if (at.testEdits) return HOLD_WHY.testEdits;
   if (uncheckable(header, finding)) return HOLD_WHY.unchecked;
   const threshold = at.threshold === undefined ? (header.pack.hold ?? null) : at.threshold;
   return header.noTests === true && !atOrAbove(finding.severity, threshold) ? HOLD_WHY.noTests : HOLD_WHY.serious;
@@ -156,6 +158,9 @@ export const problems = (count: number): string => `${count} ${count === 1 ? "pr
 
 export const needsTestChangeLine = (count: number): string => `${problems(count)} could not be fixed: ${count === 1 ? "it" : "each"} ${NEEDS_TEST_CHANGE}.`;
 
+export const allowTestEditsHint = (number: number): string =>
+  `To let an agent change that test, and see the change before it reaches your main copy: delivery findings approve ${number} --allow-test-edits`;
+
 /** Why a problem's fix stopped: the harness's plain sentence, then the agent's own words, quoted. */
 function stopLines({ state, fix, cause }: FindingState): string[] {
   if ((state !== "unfixable" && state !== "stopped") || !fix?.plain) return [];
@@ -261,7 +266,7 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
   const problemLines = result.findings.flatMap((finding, index) => {
     const at = states[index] ?? UNDECIDED;
     if (!includeSkipped && hiddenByDefault(at)) return [];
-    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}${at.state === "needs_decision" ? `; ${CANNOT_BE_CHECKED}` : ""}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...(at.state === "needs_decision" ? [`    ${UNCHECKABLE_WHY} ${approveAnyway(index + 1)}`] : []), ...signOffLines(index + 1, at, holdWhy(header, finding, at))];
+    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}${at.state === "needs_decision" ? `; ${CANNOT_BE_CHECKED}` : ""}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...(at.cause === "needs_test_change" ? [`    ${allowTestEditsHint(index + 1)}`] : []), ...(at.state === "needs_decision" ? [`    ${UNCHECKABLE_WHY} ${approveAnyway(index + 1)}`] : []), ...signOffLines(index + 1, at, holdWhy(header, finding, at))];
   });
   // What only a person can do, once the code part is done.
   const needsYou = result.findings.flatMap((finding, index) =>
