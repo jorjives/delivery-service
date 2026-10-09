@@ -353,6 +353,7 @@ not sliced.
 ## Slice 8: Keep Your Choices Between Reviews
 
 **Status:** ✅ Complete — 2026-10-09 — `31554f5`
+**Tests:** ✅ Recorded — 2026-10-09 — `31dc3b9` — cli — 1 UAT + 4 AC, 0 skipped
 
 **Delivers:** Running the same review again does not re-propose problems the owner already skipped, declined or had fixed, and points out any fixed problem that has come back; the owner can approve the recommended problems in one step.
 
