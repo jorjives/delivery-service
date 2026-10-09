@@ -388,6 +388,7 @@ not sliced.
 ## Slice 9: Choose What Waits for Sign-Off and When Tests May Change
 
 **Status:** ✅ Complete — 2026-10-09 — `f438f46`
+**Tests:** ✅ Recorded — 2026-10-09 — `6378ef1` — cli (vitest) — 1 UAT + 7 AC, 1 skipped
 
 **Delivers:** The owner chooses how serious a problem must be for its fix to wait for her sign-off, and can let a specific fix change existing tests when that is the only way to fix it.
 
