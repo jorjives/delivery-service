@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { DamagedReview } from "../errors.js";
 import { appendLedger, authorisations } from "../packs/ledger.js";
 import { keptChanges } from "../packs/kept-changes.js";
-import { UNDECIDED, hiddenByDefault, keptFix, readFindingStates, recommended, type FindingState } from "../packs/fix-state.js";
+import { UNDECIDED, hiddenByDefault, keptFix, readFindingStates, recommended, reopensForTestEdits, type FindingState } from "../packs/fix-state.js";
 import { findingsDocument, findingsSchema } from "../packs/findings-document.js";
 import { CHANGES_NOTE, CHANGES_WHICH, findingLines, listLines, NO_REVIEW_YET, noKeptFix, unconfirmedLines, unfinishedReview, stateWords, uncheckedRefused, uncheckedApproved } from "../packs/render.js";
 import { listReviews, loadReview, uncheckable } from "../packs/review-record.js";
@@ -31,6 +31,8 @@ export interface DecideOptions {
   allowUnchecked?: boolean;
   /** Approve the problems still to decide that have a check of their own and are not serious enough to wait for your sign-off; says which it chose. */
   recommended?: boolean;
+  /** Let each named problem's fix change existing tests (never delete or skip one); each waits for sign-off. Re-opens a problem that could not be fixed because it needed a test changed. */
+  allowTestEdits?: boolean;
 }
 
 export const RECOMMENDED_ALONE = "Use --recommended on its own: it chooses the problems itself, so it takes no numbers and no other choice.";
@@ -60,6 +62,8 @@ export const NOTHING_CHOSEN = "Say which problems, by their numbers in the list,
 export const ALL_AND_NUMBERS = "Give either problem numbers or --all, not both.";
 export const NOTHING_LEFT = "Every problem in the list is already being fixed or has finished. See where each stands with: delivery findings";
 export const ALL_UNCHECKED = "Name each problem to approve without a check by its number: --allow-unchecked does not go with --all.";
+export const ALL_TEST_EDITS = "Name each problem whose fix may change your tests by its number: --allow-test-edits does not go with --all.";
+export const testEditsApproved = (number: number): string => `Problem ${number}: its fix may change your existing tests, but never delete or skip one, so it will wait for your sign-off.`;
 
 /** The latest review, finished, for a command that acts on it: a refusal naming the command to run when there is none or it was stopped part way. */
 export async function finishedReview(repoPath: string): Promise<SavedReview> {
@@ -135,7 +139,8 @@ export async function findingsCommand(number: string | undefined, options: Findi
 /**
  * `delivery findings approve|skip [numbers]`: approve or skip the problems named, or `--all` (the ones listed, not those an
  * earlier review settled), or `--recommended` (the problems with a check that will not wait for sign-off).
- * Every number is checked before anything is written. A problem `delivery fix` has already taken on keeps its choice.
+ * Every number is checked before anything is written. A problem `delivery fix` has already taken on keeps its choice, unless
+ * `--allow-test-edits` re-opens one that ended needing a test changed.
  */
 export async function decideCommand(choice: "approve" | "skip", numbers: string[], options: DecideOptions, ctx: CommandContext): Promise<ExitCode> {
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
@@ -144,14 +149,14 @@ export async function decideCommand(choice: "approve" | "skip", numbers: string[
   const { entries, states } = await readFindingStates(repoPath, review);
   const takenOn = authorisations(entries);
   const stateAt = (n: number): FindingState => states[n - 1] ?? UNDECIDED;
-  const open = (n: number): boolean => !takenOn.has(findings[n - 1]?.id ?? "");
+  const open = (n: number): boolean => !takenOn.has(findings[n - 1]?.id ?? "") || (options.allowTestEdits === true && reopensForTestEdits(stateAt(n)));
   const blocked = (n: number): boolean => {
     const finding = findings[n - 1];
     return finding !== undefined && uncheckable(review.header, finding);
   };
   let chosen: number[];
   if (options.recommended === true) {
-    if (options.all === true || options.allowUnchecked === true || numbers.length > 0) throw new Refusal(RECOMMENDED_ALONE, EXIT.configuration);
+    if (options.all === true || options.allowUnchecked === true || options.allowTestEdits === true || numbers.length > 0) throw new Refusal(RECOMMENDED_ALONE, EXIT.configuration);
     const picked = findings.flatMap((finding, index) => (recommended(review.header, finding, states[index] ?? UNDECIDED) ? [index + 1] : []));
     if (picked.length === 0) {
       ctx.report.note(NONE_RECOMMENDED);
@@ -162,6 +167,7 @@ export async function decideCommand(choice: "approve" | "skip", numbers: string[
     return EXIT.ok;
   }
   if (options.all === true) {
+    if (options.allowTestEdits === true) throw new Refusal(ALL_TEST_EDITS, EXIT.configuration);
     if (options.allowUnchecked === true) throw new Refusal(ALL_UNCHECKED, EXIT.configuration);
     if (numbers.length > 0) throw new Refusal(ALL_AND_NUMBERS, EXIT.configuration);
     chosen = findings.map((_, index) => index + 1).filter((n) => open(n) && !hiddenByDefault(stateAt(n)) && (choice === "skip" || !blocked(n)));
@@ -185,12 +191,13 @@ export async function decideCommand(choice: "approve" | "skip", numbers: string[
     const unchecked = choice === "approve" && options.allowUnchecked !== true ? chosen.find(blocked) : undefined;
     if (unchecked !== undefined) throw new Refusal(uncheckedRefused(unchecked), EXIT.configuration);
   }
-  await appendLedger(review.dir, { t: "decision", ids: chosen.map((n) => findings[n - 1]?.id ?? ""), choice, ...(options.allowUnchecked === true ? { allowUnchecked: true as const } : {}) });
+  await appendLedger(review.dir, { t: "decision", ids: chosen.map((n) => findings[n - 1]?.id ?? ""), choice, ...(options.allowUnchecked === true ? { allowUnchecked: true as const } : {}), ...(options.allowTestEdits === true ? { allowTestEdits: true as const } : {}) });
   if (choice === "skip") {
     ctx.report.note(skippedLine(chosen));
     return EXIT.ok;
   }
   for (const n of chosen) {
+    if (options.allowTestEdits === true) ctx.report.note(testEditsApproved(n));
     if (blocked(n)) ctx.report.note(uncheckedApproved(n));
     else if (findings[n - 1]?.check.kind === "none") ctx.report.note(testsOnlyApproved(n));
   }

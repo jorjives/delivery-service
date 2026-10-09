@@ -231,6 +231,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("[numbers...]", "the problems to approve, as the list numbers them")
     .option("--all", "approve every problem listed now that is not already being fixed (not those you settled in an earlier review)")
     .option("--allow-unchecked", "approve problems that cannot be checked: nothing will check their fixes except you, so each waits for your sign-off")
+    .option("--allow-test-edits", "let each named problem's fix change your existing tests, never delete or skip one: each waits for your sign-off. Use it on a problem that needs a change to one of your tests to have it fixed on the next delivery fix")
     .option("--recommended", "approve the problems still to decide that have a check of their own and are not serious enough to wait for your sign-off; says which it chose")
     .action(async (numbers: string[], _options: DecideOptions, command: Command) => {
       exitCode = await decideCommand("approve", numbers, command.optsWithGlobals<DecideOptions>(), ctxFor(command));

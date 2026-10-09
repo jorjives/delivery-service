@@ -11,7 +11,7 @@ import { initTempRepo } from "../temp-repo.js";
 import { withoutAt } from "../without-at.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { alreadyTakenOn, approvedLine, noSuchProblem, skippedLine, testsOnlyApproved, NOTHING_CHOSEN, SCHEMA_ALONE, ALL_UNCHECKED, NONE_RECOMMENDED, RECOMMENDED_ALONE, recommendedLine } from "./findings-command.js";
+import { alreadyTakenOn, approvedLine, noSuchProblem, skippedLine, testsOnlyApproved, NOTHING_CHOSEN, SCHEMA_ALONE, ALL_UNCHECKED, NONE_RECOMMENDED, RECOMMENDED_ALONE, recommendedLine, ALL_TEST_EDITS, testEditsApproved } from "./findings-command.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import type { MockScript } from "../mock-script.js";
 
@@ -180,6 +180,41 @@ describe("choosing which problems to fix", () => {
     const { stdout } = await delivery(["findings", "approve", "1", "2"], { cwd: project });
     expect(stdout.split("\n").filter((line) => line === testsOnlyApproved(2))).toHaveLength(1);
     expect(stdout).not.toContain(testsOnlyApproved(1));
+  });
+
+  it("approves a problem letting its fix change existing tests, records it, and says its fix will wait for sign-off", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { findings: THREE });
+    const { exitCode, stdout } = await delivery(["findings", "approve", "1", "--allow-test-edits"], { cwd: project });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(`${testEditsApproved(1)}\n${approvedLine([1])}`);
+    expect(withoutAt(await readLedger(dir))).toEqual([{ t: "decision", ids: [THREE[0]?.id], choice: "approve", allowTestEdits: true }]);
+  });
+
+  it("refuses --allow-test-edits with --all or --recommended: the owner names each problem", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { findings: THREE });
+    const all = await delivery(["findings", "approve", "--all", "--allow-test-edits"], { cwd: project });
+    expect(all.exitCode).toBe(EXIT.configuration);
+    expect(all.stderr).toBe(`${ALL_TEST_EDITS}\n`);
+    const recommended = await delivery(["findings", "approve", "--recommended", "--allow-test-edits"], { cwd: project });
+    expect(recommended.exitCode).toBe(EXIT.configuration);
+    expect(recommended.stderr).toBe(`${RECOMMENDED_ALONE}\n`);
+    expect(await readLedger(dir)).toEqual([]);
+  });
+
+  it("will not re-open a problem already being fixed by allowing test edits", async () => {
+    const project = repo();
+    const dir = await writeReview(project, { findings: THREE });
+    await appendLedger(dir, { t: "authorise", ids: [THREE[0]?.id ?? ""], verify: { type: "command", command: "npm test", parseMode: "exitcode" } });
+    const { exitCode, stderr } = await delivery(["findings", "approve", "1", "--allow-test-edits"], { cwd: project });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe(`${alreadyTakenOn(1)}\n`);
+  });
+
+  it("says what letting a fix change tests means in the owner's words", () => {
+    expect(testEditsApproved(2)).toBe("Problem 2: its fix may change your existing tests, but never delete or skip one, so it will wait for your sign-off.");
+    for (const line of [testEditsApproved(2), ALL_TEST_EDITS]) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
 
   it("records nothing when any number is not in the list", async () => {
