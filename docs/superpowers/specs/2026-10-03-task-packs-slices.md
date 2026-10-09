@@ -387,6 +387,8 @@ not sliced.
 
 ## Slice 9: Choose What Waits for Sign-Off and When Tests May Change
 
+**Status:** ✅ Complete — 2026-10-09 — `f438f46`
+
 **Delivers:** The owner chooses how serious a problem must be for its fix to wait for her sign-off, and can let a specific fix change existing tests when that is the only way to fix it.
 
 ### Prerequisites
