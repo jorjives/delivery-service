@@ -629,7 +629,7 @@ npm run demo:agent-slice-2
 
 | What went wrong | What you see |
 |---|---|
-| The scripted agent is not installed | `runSurfaceAgainstMock` and `mockSessionEnvironment` throw `claude-mock was not found at <path>. The scripted agent comes with the harness: reinstall it, or run npm install in a checkout.` |
+| The scripted agent is not installed | `runSurfaceAgainstMock` and `mockSessionEnvironment` throw `claude-mock was not found at <path>.` |
 | A scripted envelope is malformed by mistake | `expectEnvelope` throws `The scripted envelope is not a valid worker result:`, then one line per problem, naming the field |
 | An expectation was never used | `assertFullyConsumed` throws, as above |
 | A `fakeAgentPort` is asked for a role it has no reply for | the call rejects with `fakeAgentPort was given no reply for the triage role: the test must supply a "triage" handler` |
