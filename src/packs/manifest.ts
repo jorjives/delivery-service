@@ -145,14 +145,15 @@ export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack }
   if (!parsed.success) return { ok: false, problems: packProblems(manifestFile, parsed.error, json) };
   const scanInstructions = await packFile(dir, parsed.data.scan.prompt);
   const fixInstructions = parsed.data.fix === undefined ? undefined : await packFile(dir, parsed.data.fix.prompt);
-  const missing = [scanInstructions, fixInstructions].filter((text): text is PackProblem => text !== undefined && typeof text !== "string");
-  if (missing.length > 0) return { ok: false, problems: missing };
-  const hasher = createHash("sha256").update(raw).update("\0").update(scanInstructions as string);
+  if (typeof scanInstructions !== "string" || (fixInstructions !== undefined && typeof fixInstructions !== "string")) {
+    return { ok: false, problems: [scanInstructions, fixInstructions].filter((text): text is PackProblem => text !== undefined && typeof text !== "string") };
+  }
+  const hasher = createHash("sha256").update(raw).update("\0").update(scanInstructions);
   // A pack without fix instructions keeps the identity it had before they existed.
-  if (fixInstructions !== undefined) hasher.update("\0").update(fixInstructions as string);
+  if (fixInstructions !== undefined) hasher.update("\0").update(fixInstructions);
   return {
     ok: true,
-    pack: { dir, manifest: parsed.data, scanInstructions: scanInstructions as string, ...(fixInstructions === undefined ? {} : { fixInstructions: fixInstructions as string }), hash: hasher.digest("hex") },
+    pack: { dir, manifest: parsed.data, scanInstructions, ...(fixInstructions === undefined ? {} : { fixInstructions }), hash: hasher.digest("hex") },
   };
 }
 
