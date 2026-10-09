@@ -4,7 +4,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY, NO_TESTS_WARNING, NO_TESTS_LEVEL, CANNOT_BE_CHECKED, NOTHING_WAITS_FOR_SEVERITY } from "../src/packs/render.js";
+import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY, NO_TESTS_WARNING, NO_TESTS_LEVEL, CANNOT_BE_CHECKED, NOTHING_WAITS_FOR_SEVERITY, HOLD_WHY } from "../src/packs/render.js";
 import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU, EARLIER_WORDS } from "../src/packs/render.js";
 import { OUTCOME_WORDS } from "../src/packs/review-report.js";
 import { FindingsDocument, FindingsProblem } from "../src/packs/findings-document.js";
@@ -112,5 +112,11 @@ describe("the task packs guide", () => {
     expect(guide).toContain("delivery fix --sign-off-threshold medium");
     expect(flat).toContain("critical, high, medium, low or none");
     expect(flat).toContain(NOTHING_WAITS_FOR_SEVERITY);
+  });
+
+  it("explains letting a fix change one of your tests, and that it still may not delete one", () => {
+    expect(guide).toContain("delivery findings approve 2 --allow-test-edits");
+    expect(flat).toContain("never delete or skip one");
+    expect(flat).toContain(HOLD_WHY.testEdits);
   });
 });

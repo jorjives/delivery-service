@@ -276,6 +276,21 @@ be fixed"; the list counts these on their own: it needs a change to one of your 
 review does not let an agent do. A fix refused for deleting or skipping a test, or for changing how
 tests run, is shown as rejected but is not counted this way.
 
+If you agree the test is what needs changing, approve that problem again, letting its fix change
+your tests, and fix it:
+
+```bash
+delivery findings approve 2 --allow-test-edits
+delivery fix
+```
+
+It is recorded, and it says its fix may change your existing tests, but never delete or skip one,
+so it will wait for your sign-off. The next `delivery fix` fixes it again; the fix is checked as any
+other, a deleted or skipped test is still refused, and the fix then waits: "Why this needs you: you
+let its fix change your existing tests, so you should see what changed before it reaches your main
+copy." You can give `--allow-test-edits` when you first approve a problem, too. It does not go with
+`--all`: name each problem.
+
 A review may mark a problem as being in a test itself (the code review's "Tests that do not check
 what they claim"). Such a problem says "Note: this fix will change your tests." before you approve
 it: its fix may change an existing test, but still never delete or skip one.
