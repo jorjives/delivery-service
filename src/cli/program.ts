@@ -17,7 +17,7 @@ import { runCommand, type RunOptions } from "./run-command.js";
 import { statusCommand, type StatusOptions } from "./status-command.js";
 import { validateCommand, type ValidateOptions } from "./validate-command.js";
 import { intervalSeconds, watchCommand } from "./watch-command.js";
-import { packsCommand } from "./packs-command.js";
+import { packsCommand, type PacksOptions } from "./packs-command.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
 export interface CliIo {
@@ -270,11 +270,12 @@ export async function runCli(io: CliIo): Promise<number> {
       exitCode = await fixCommand(options, ctxFor(command));
     });
 
-  program
+  const packs = program
     .command("packs")
     .description("list the reviews available, each with a sentence saying what it looks for")
-    .action(async (_options: unknown, command: Command) => {
-      exitCode = await packsCommand(ctxFor(command));
+    .option("--schema", "print the JSON Schema of a review folder's pack.json, so your editor can check one as you write it")
+    .action(async (options: PacksOptions, command: Command) => {
+      exitCode = await packsCommand(options, ctxFor(command));
     });
 
   try {

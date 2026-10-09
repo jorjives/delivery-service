@@ -3,8 +3,10 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { InvalidPack, UnknownPack } from "../errors.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, loadPack, PACK_SCHEMA, resolvePack } from "./manifest.js";
+import { openSchema, publishedKeys } from "../report/json-schema.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, loadPack, PACK_SCHEMA, PackManifest, packSchema, resolvePack } from "./manifest.js";
 
 /** A copy of the built-in code pack whose manifest has been changed by `edit`. */
 function editedPack(edit: (manifest: Record<string, unknown>) => void): string {
@@ -220,5 +222,43 @@ describe("the checks a pack offers", () => {
   it("ships the code review with the checks of its own lens, and the security review with all three", async () => {
     expect((await resolvePack("code", "/")).manifest.scan.checks).toEqual(["anchor-gone", "pattern-absent"]);
     expect((await resolvePack("security", "/")).manifest.scan.checks).toEqual(["anchor-gone", "pattern-absent", "dependency-absent"]);
+  });
+});
+
+describe("the pack format's JSON Schema", () => {
+  const schema = z.fromJSONSchema(packSchema());
+  const builtIn = (folder: string): unknown => JSON.parse(readFileSync(join(BUILT_IN_PACKS, folder, "pack.json"), "utf-8"));
+
+  it("accepts every built-in pack's manifest, so an editor holds a copy to the same rules", () => {
+    for (const folder of ["code-review", "security-review"]) expect(schema.safeParse(builtIn(folder)).error).toBeUndefined();
+  });
+
+  it("flags an unknown key and an unknown check kind as an editor would while they are typed", () => {
+    const manifest = builtIn("code-review") as { scan: Record<string, unknown> };
+    expect(schema.safeParse({ ...manifest, tools: ["Bash"] }).success).toBe(false);
+    expect(schema.safeParse({ ...manifest, scan: { ...manifest.scan, checks: ["page-contains"] } }).success).toBe(false);
+  });
+
+  it("names itself by the format's version", () => {
+    expect(packSchema().title).toBe(PACK_SCHEMA);
+  });
+
+  it("lets a manifest name the schema it is written against, for an editor", async () => {
+    const dir = editedPack((m) => (m.$schema = "./pack.schema.json"));
+    expect((await loadPack(dir)).manifest.name).toBe("code");
+  });
+});
+
+/** The stability promise: a pack valid under delivery.pack/1 stays valid. A line may be added, never removed or changed. */
+describe("the pack format's stability promise", () => {
+  const promised = readFileSync(new URL("./pack-published-keys.txt", import.meta.url), "utf-8").trimEnd().split("\n");
+  const current = publishedKeys(openSchema(PackManifest), PACK_SCHEMA);
+
+  it("keeps every key and name ever published, each the kind of value it was", () => {
+    expect(promised.filter((line) => !current.includes(line))).toEqual([]);
+  });
+
+  it("puts every key and name published now under the promise: add its line to pack-published-keys.txt", () => {
+    expect(current.filter((line) => !promised.includes(line))).toEqual([]);
   });
 });

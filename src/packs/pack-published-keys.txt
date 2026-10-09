@@ -1,0 +1,52 @@
+delivery.pack/1.$schema: string (optional)
+delivery.pack/1.fix.prompt: string
+delivery.pack/1.fix.protectedGlobs: array (optional)
+delivery.pack/1.fix.protectedGlobs[]: string
+delivery.pack/1.fix.skipMarkers: array (optional)
+delivery.pack/1.fix.skipMarkers[]: string
+delivery.pack/1.fix.testGlobs: array (optional)
+delivery.pack/1.fix.testGlobs[]: string
+delivery.pack/1.fix: object (optional)
+delivery.pack/1.hold.atOrAbove = "critical"
+delivery.pack/1.hold.atOrAbove = "high"
+delivery.pack/1.hold.atOrAbove = "low"
+delivery.pack/1.hold.atOrAbove = "medium"
+delivery.pack/1.hold.atOrAbove: null|string
+delivery.pack/1.hold: object (optional)
+delivery.pack/1.name: string
+delivery.pack/1.scan.categories: array
+delivery.pack/1.scan.categories[].changesTests = true
+delivery.pack/1.scan.categories[].changesTests: boolean (optional)
+delivery.pack/1.scan.categories[].description: string
+delivery.pack/1.scan.categories[].id: string
+delivery.pack/1.scan.categories[].reviewerKnowledge = true
+delivery.pack/1.scan.categories[].reviewerKnowledge: boolean (optional)
+delivery.pack/1.scan.categories[].scope = "repo"
+delivery.pack/1.scan.categories[].scope: string (optional)
+delivery.pack/1.scan.categories[].sensitive = true
+delivery.pack/1.scan.categories[].sensitive: boolean (optional)
+delivery.pack/1.scan.categories[].title: string
+delivery.pack/1.scan.categories[]: object
+delivery.pack/1.scan.checks: array (optional)
+delivery.pack/1.scan.checks[] = "anchor-gone"
+delivery.pack/1.scan.checks[] = "dependency-absent"
+delivery.pack/1.scan.checks[] = "pattern-absent"
+delivery.pack/1.scan.checks[]: string
+delivery.pack/1.scan.consequenceLabel = "what-could-happen"
+delivery.pack/1.scan.consequenceLabel = "why-it-matters"
+delivery.pack/1.scan.consequenceLabel: string (optional)
+delivery.pack/1.scan.maxFindings: integer (optional)
+delivery.pack/1.scan.prompt: string
+delivery.pack/1.scan.requireCheck = true
+delivery.pack/1.scan.requireCheck: boolean (optional)
+delivery.pack/1.scan: object
+delivery.pack/1.schema = "delivery.pack/1"
+delivery.pack/1.schema: string
+delivery.pack/1.severity.critical: string
+delivery.pack/1.severity.high: string
+delivery.pack/1.severity.low: string
+delivery.pack/1.severity.medium: string
+delivery.pack/1.severity: object
+delivery.pack/1.summary: string
+delivery.pack/1.title: string
+delivery.pack/1.version: string

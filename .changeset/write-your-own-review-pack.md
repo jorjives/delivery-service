@@ -10,3 +10,7 @@ check, is refused: a review folder holds only data.
 A review's `pack.json` can list the checks its problems may use under `scan.checks` (any of
 `anchor-gone`, `pattern-absent` and `dependency-absent`, always including `anchor-gone`); left
 out, all three are offered. The code review now offers `anchor-gone` and `pattern-absent`.
+
+`delivery packs --schema` prints the JSON Schema of `pack.json`, so an editor can check a
+review folder as you write it (a `pack.json` may name it under `$schema`), and `delivery packs
+--json` lists the reviews as data.

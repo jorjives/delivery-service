@@ -789,7 +789,7 @@ it. Nothing in your project changes.
   your tests, and merges it. One that cannot be fixed is explained, and the rest carry on.
 - `delivery report` then tells you, problem by problem, what was fixed, what is waiting for your
   sign-off and what could not be fixed, under who must act.
-- `delivery packs` lists the reviews available; `delivery review ./my-review` runs one from a folder.
+- `delivery packs` lists the reviews available (`--json` for a script); `delivery review ./my-review` runs one from a folder, and `delivery packs --schema` prints the JSON Schema of its `pack.json` for your editor.
 
 `delivery review security` does the same for weaknesses someone could take advantage of. A fix of
 a critical or high problem is checked but waits for you: see what it changed with

@@ -1,5 +1,6 @@
+import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { builtInPacks } from "../packs/manifest.js";
+import { builtInPacks, packSchema } from "../packs/manifest.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
@@ -12,5 +13,18 @@ describe("delivery packs", () => {
     expect(lines[0]).toBe("These reviews are available:");
     for (const pack of await builtInPacks()) expect(lines).toContain(`  ${pack.manifest.name}: ${pack.manifest.summary}`);
     expect(lines.slice(-2)).toEqual(["Run one with: delivery review code", "Or run a review from a folder of your own: delivery review ./path-to-the-folder"]);
+  });
+
+  it("prints the pack format's JSON Schema with --schema, wherever it is asked", async () => {
+    const { exitCode, stdout } = await delivery(["packs", "--schema"], { cwd: tmpdir() });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(JSON.parse(stdout)).toEqual(packSchema());
+  });
+
+  it("lists the reviews as data with --json", async () => {
+    const { exitCode, stdout } = await delivery(["packs", "--json"], { cwd: initTempRepo("packs-json-", { "a.js": "x\n" }) });
+    expect(exitCode).toBe(EXIT.ok);
+    const packs = await builtInPacks();
+    expect(JSON.parse(stdout)).toEqual({ packs: packs.map(({ manifest }) => ({ name: manifest.name, version: manifest.version, title: manifest.title, summary: manifest.summary })) });
   });
 });

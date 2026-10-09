@@ -8,6 +8,7 @@ import { InvalidPack, UnknownPack } from "../errors.js";
 import { isEnoent } from "../journal.js";
 import { Severity, SPECIFIC_CHECKS, type SpecificCheck } from "./finding.js";
 import { GuardGlob } from "./guards.js";
+import type { JsonSchema } from "../report/json-schema.js";
 
 /** The version of the pack format this build reads. Additive-only within the major. */
 export const PACK_SCHEMA = "delivery.pack/1";
@@ -22,6 +23,8 @@ const PackFile = z.string().refine((file) => file !== "" && basename(file) === f
  * that would widen what a review's agent may do.
  */
 export const PackManifest = z.strictObject({
+  /** Where an editor finds the schema to check this file against while it is written (`delivery packs --schema`). Ignored by the harness. */
+  $schema: z.string().optional(),
   schema: z.literal(PACK_SCHEMA),
   name: Slug,
   version: z.string().regex(/^\d+\.\d+\.\d+$/, "must be a version such as 1.0.0"),
@@ -67,6 +70,12 @@ export const PackManifest = z.strictObject({
   hold: z.strictObject({ atOrAbove: Severity.nullable() }).default({ atOrAbove: null }),
 });
 export type PackManifest = z.infer<typeof PackManifest>;
+
+/**
+ * The JSON Schema of `pack.json` as an author writes it: strict, so an editor flags a key the format
+ * does not name or a check it does not have while it is typed. What `delivery packs --schema` prints.
+ */
+export const packSchema = (): JsonSchema => ({ ...z.toJSONSchema(PackManifest, { io: "input" }), title: PACK_SCHEMA });
 
 /** A loaded pack: where it is, what it says, the scanner's instructions, and a hash of both, so a review records exactly which pack it ran. */
 export interface Pack {

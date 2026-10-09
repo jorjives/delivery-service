@@ -59,7 +59,7 @@ issued, says "One thing is left for you:" and what it is.
 - `delivery findings` lists the latest review's problems and where each stands.
 - `delivery findings 1` shows problem 1 in full, followed by a **FOR ENGINEERS** block: the category, the exact lines, the kind of check and what it looks for.
 - `delivery findings --unconfirmed` lists problems the review reported that the harness could not find in your project, so did not offer. The reason is one of: "that file is not in your last commit", "that path leads outside your project", "that path is not an ordinary file in your project", "the code it points at is not in that file", or "it did not say exactly which code it means".
-- `delivery packs` lists the reviews available. `delivery review ./my-review` runs one from a folder of your own, exactly as a built-in one.
+- `delivery packs` lists the reviews available. `delivery review ./my-review` runs one from a folder of your own, exactly as a built-in one. `delivery packs --schema` prints the JSON Schema of a review folder's `pack.json`.
 
 ## Choosing what to fix
 
