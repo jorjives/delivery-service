@@ -784,7 +784,10 @@ it. Nothing in your project changes.
 - `delivery findings` lists the latest review's problems and where each stands;
   `delivery findings 2` shows one in full, with a part for engineers. With `--json`, it gives the
   whole list as data.
-- `delivery findings approve 1 3` (or `--all`) and `delivery findings skip 2` choose what is fixed.
+- `delivery findings approve 1 3` (or `--all`, or `--recommended` for the checked ones that need no
+  sign-off) and `delivery findings skip 2` choose what is fixed. Run the review again later and
+  what you skipped or declined is not asked again (`delivery findings --include-skipped` shows
+  it); a fixed problem whose code is back is marked "came back".
 - `delivery fix` fixes each approved problem in its own copy, checks it against its own check and
   your tests, and merges it. One that cannot be fixed is explained, and the rest carry on.
 - `delivery report` then tells you, problem by problem, what was fixed, what is waiting for your

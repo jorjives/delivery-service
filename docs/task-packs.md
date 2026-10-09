@@ -75,6 +75,11 @@ delivery findings approve --all
 change your mind, choose again: your latest choice counts, until fixing starts. Approving a
 problem that is tests only says so once, because only your existing tests can show it is fixed.
 
+`delivery findings approve --recommended` approves, in one step, the problems still to decide that
+have a check of their own and are not serious enough to wait for your sign-off, and says which it
+chose. It never picks a problem you skipped, and in a project with no tests it picks none, since
+every fix there waits for you.
+
 `delivery findings` then shows each problem as one of:
 
 - "not yet decided": you have not chosen.
@@ -86,6 +91,24 @@ problem that is tests only says so once, because only your existing tests can sh
 - "already fixed": the code it points at had gone before its fix started, so nothing was done.
 - "could not be fixed": the agent could not fix it. The reason follows, with what the agent said.
 - "stopped by a setup problem": something in the setup stopped the fix, and an engineer is needed.
+
+## Running a review again
+
+Run the same review again whenever you like, for example every week. Each problem is known by
+what it is and the code it points at, so the same problem found again is recognised, and what you
+decided about it in an earlier review of the same kind carries over until you choose again:
+
+- A problem you skipped, or whose fix you declined at sign-off, is not offered again. The review
+  says how many it left out, for example "2 problems skipped or declined in an earlier review, not
+  shown". `delivery findings --include-skipped` lists them, as "skipped by you in an earlier
+  review" or "declined at sign-off in an earlier review". To change your mind, approve one by its
+  number.
+- A problem that was fixed and whose code is still gone is not offered again.
+- A problem that was fixed but whose flagged code is back is offered again, marked "came back: it
+  was fixed in an earlier review, and the flagged code is back".
+
+`delivery findings approve --all` approves only the problems listed, never those an earlier
+review settled.
 
 ## Having them fixed
 
@@ -196,7 +219,7 @@ add keys and names; it never removes or changes one.
   its `id` (the same for the same problem found again), `title`, `category`, `severity`, `where`
   (`path`, `line`, `endLine`), its `state` from the closed set and the `words` you read for it, its
   `check` (`kind`, and the `level` you read), whether a check ever `refused` its fix for weakening
-  your tests, the `cause` when the harness knows why it could not be fixed, and its `fix`: the
+  your tests, the `cause` when the harness knows why it could not be fixed, `earlier`: what an earlier review of the same kind decided where this one has not (`skipped`, `declined`, or `fixed` for a problem that came back), or null, and its `fix`: the
   `run` (see it with `delivery status <run>`), `branch`, `base` and `closer`, or null before
   `delivery fix` took it on.
 - `unconfirmed`: how many the review reported that could not be found in your project.

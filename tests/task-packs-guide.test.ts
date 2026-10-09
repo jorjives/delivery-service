@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRMED_WHY, NO_TESTS_WARNING, NO_TESTS_LEVEL, CANNOT_BE_CHECKED } from "../src/packs/render.js";
-import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU } from "../src/packs/render.js";
+import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU, EARLIER_WORDS } from "../src/packs/render.js";
 import { OUTCOME_WORDS } from "../src/packs/review-report.js";
 import { FindingsDocument, FindingsProblem } from "../src/packs/findings-document.js";
 import { REPO_ROOT } from "./helpers.js";
@@ -96,5 +96,15 @@ describe("the task packs guide", () => {
   it("points at the scripted demo of a project with no tests, which exists", () => {
     expect(guide).toContain("npm run demo:packs-slice-6");
     expect(existsSync(join(REPO_ROOT, "demos/task-packs-slice-6-no-tests.ts"))).toBe(true);
+  });
+
+  it("explains running a review again: what is carried, how to see what is hidden, and the recommended choice", () => {
+    for (const command of ["delivery findings --include-skipped", "delivery findings approve --recommended"]) expect(guide).toContain(command);
+    for (const phrase of Object.values(EARLIER_WORDS)) expect(flat).toContain(phrase);
+    expect(flat).toContain("skipped or declined in an earlier review, not shown");
+  });
+
+  it("names every key of the findings data, including what an earlier review carried", () => {
+    expect(guide).toContain("`earlier`");
   });
 });
