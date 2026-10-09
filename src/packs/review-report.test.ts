@@ -6,7 +6,7 @@ import type { SavedReview } from "./review-record.js";
 import { PACK_FORBIDDEN } from "./review-fixtures.js";
 import { sampleFinding } from "./review-fixtures.js";
 import { AGENT_DID, REVIEW_NEXT, outcomeOf, OUTCOME_WORDS, reviewPart, reviewSections, UNFIXABLE_ACTION, reviewOpening } from "./review-report.js";
-import { CHECK_LEVEL, NO_TESTS_LEVEL, UNCHECKABLE_WHY } from "./render.js";
+import { CHECK_LEVEL, NO_TESTS_LEVEL, UNCHECKABLE_WHY, HOLD_WHY } from "./render.js";
 
 const HEADER: SavedReview["header"] = {
   reviewId: "security-20261005T101500Z",
@@ -190,6 +190,13 @@ describe("a review of a project with no tests, as the report tells it", () => {
     const lines = reviewSections(noTestsOf([problem(1, { severity: "low" })]), [at("held")], false);
     expect(lines).toContain(`    How we know: the check passed (${CHECK_LEVEL["anchor-gone"]}); ${NO_TESTS_LEVEL}.`);
     expect(lines).toContain("    Why this needs you: your project has no tests, so nothing has checked that this fix did not break something else.");
+  });
+
+  it("gives a waiting fix its reason from the threshold it was authorised under", () => {
+    const noTestsReview = { ...reviewOf([problem(1, { severity: "high" })]), header: { ...HEADER, noTests: true as const, pack: { ...HEADER.pack, hold: "high" as const } } };
+    expect(reviewSections(noTestsReview, [at("held", { threshold: null })], false)).toContain(`    Why this needs you: ${HOLD_WHY.noTests}`);
+    expect(reviewSections(noTestsReview, [at("held", { threshold: "high" })], false)).toContain(`    Why this needs you: ${HOLD_WHY.serious}`);
+    expect(reviewSections(noTestsReview, [at("held", { threshold: undefined })], false)).toContain(`    Why this needs you: ${HOLD_WHY.serious}`); // authorised before it was recorded: the pack's own (high)
   });
 
   it("names the level on a fixed line, so it never reads as proved by tests", () => {

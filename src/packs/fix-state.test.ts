@@ -47,7 +47,7 @@ describe("where each problem stands", () => {
     [run({ standing: "aborted", plain: plain("engineer") }), "stopped"],
   ])("once authorised, follows its fix's run: %j is %s", (fix, state) => {
     const fixes = new Map(fix === undefined ? [] : [[A.id, fix]]);
-    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes, NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]).toEqual({ state, fix, refused: false, cause: null, signOff: null, earlier: null });
+    expect(deriveFindings([A], [decide([A.id], "approve"), authorise([A.id])], fixes, NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]).toEqual({ state, fix, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined });
   });
 
   it("is already fixed when its code was gone before its fix started, whatever else is recorded", () => {
@@ -241,7 +241,19 @@ describe("the agent's last words on a fix", () => {
 
 describe("a problem nobody has decided on", () => {
   it("is not yet decided, with no fix", () => {
-    expect(UNDECIDED).toEqual({ state: "proposed", fix: undefined, refused: false, cause: null, signOff: null, earlier: null });
+    expect(UNDECIDED).toEqual({ state: "proposed", fix: undefined, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined });
+  });
+});
+
+describe("recording the sign-off threshold with an authorisation", () => {
+  it("carries the threshold a problem was authorised under into its state, null included, and has none for a problem not yet authorised", () => {
+    const authorised = (threshold?: "medium" | null): LedgerEntry => ({ t: "authorise", at: AT, ids: [A.id], verify: NPM, ...(threshold === undefined ? {} : { threshold }), hold: { [A.id]: true }, landing: { type: "merge-back" } });
+    const closed = new Map([[A.id, run({ standing: "closed", closer: "commit-to-branch", branch: "surface/r", base: "main" })]]);
+    const stateFor = (entries: LedgerEntry[]) => deriveFindings([A], entries, closed, NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0];
+    expect(stateFor([decide([A.id], "approve"), authorised("medium")])?.threshold).toBe("medium");
+    expect(stateFor([decide([A.id], "approve"), authorised(null)])?.threshold).toBeNull();
+    expect(stateFor([decide([A.id], "approve"), authorised()])?.threshold).toBeUndefined();
+    expect(stateFor([decide([A.id], "approve")])?.threshold).toBeUndefined();
   });
 });
 

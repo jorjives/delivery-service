@@ -43,10 +43,11 @@ export const HOLD_WHY = {
   unchecked: "nothing checks this fix except you, so you should see what changed before it reaches your main copy.",
 };
 
-/** Why this problem's fix waits: the owner approved it without a check, the project's missing tests, or its severity. */
-export function holdWhy(header: Pick<ReviewHeader, "noTests" | "pack">, finding: Finding): string {
+/** Why this problem's fix waits: the owner approved it without a check, the project's missing tests, or its severity under the threshold it was authorised under (the pack's own only for an authorisation that predates the record of it). */
+export function holdWhy(header: Pick<ReviewHeader, "noTests" | "pack">, finding: Finding, at: Pick<FindingState, "threshold">): string {
   if (uncheckable(header, finding)) return HOLD_WHY.unchecked;
-  return header.noTests === true && !atOrAbove(finding.severity, header.pack.hold ?? null) ? HOLD_WHY.noTests : HOLD_WHY.serious;
+  const threshold = at.threshold === undefined ? (header.pack.hold ?? null) : at.threshold;
+  return header.noTests === true && !atOrAbove(finding.severity, threshold) ? HOLD_WHY.noTests : HOLD_WHY.serious;
 }
 
 /** Why a reported problem is not offered. Total over the closed set. */
@@ -95,6 +96,11 @@ export function holdSentence(threshold: Severity): string {
   const words = held.length === 1 ? held[0] : `${held.slice(0, -1).join(", ")} or ${held.at(-1)}`;
   return `Problems that are ${words} are fixed and checked, but wait for your sign-off before they reach your main copy.`;
 }
+
+export const NOTHING_WAITS_FOR_SEVERITY = "No fix waits for your sign-off because of how serious its problem is.";
+
+/** What `delivery fix` says of the sign-off threshold the owner chose. */
+export const thresholdLine = (threshold: Severity | null): string => (threshold === null ? NOTHING_WAITS_FOR_SEVERITY : holdSentence(threshold));
 
 const category = (pack: PinnedPack, id: string) => pack.categories.find((known) => known.id === id);
 
@@ -255,7 +261,7 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
   const problemLines = result.findings.flatMap((finding, index) => {
     const at = states[index] ?? UNDECIDED;
     if (!includeSkipped && hiddenByDefault(at)) return [];
-    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}${at.state === "needs_decision" ? `; ${CANNOT_BE_CHECKED}` : ""}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...(at.state === "needs_decision" ? [`    ${UNCHECKABLE_WHY} ${approveAnyway(index + 1)}`] : []), ...signOffLines(index + 1, at, holdWhy(header, finding))];
+    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}${at.state === "needs_decision" ? `; ${CANNOT_BE_CHECKED}` : ""}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...(at.state === "needs_decision" ? [`    ${UNCHECKABLE_WHY} ${approveAnyway(index + 1)}`] : []), ...signOffLines(index + 1, at, holdWhy(header, finding, at))];
   });
   // What only a person can do, once the code part is done.
   const needsYou = result.findings.flatMap((finding, index) =>

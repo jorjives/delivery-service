@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { cleanGitEnv } from "../git-env.js";
 import { readLedger } from "../packs/ledger.js";
 import { guardListsFor } from "../packs/guards.js";
-import { needsTestChangeLine, NO_REVIEW_YET, REFUSED_WEAKENING } from "../packs/render.js";
+import { needsTestChangeLine, NO_REVIEW_YET, REFUSED_WEAKENING, thresholdLine, HOLD_WHY } from "../packs/render.js";
 import { readFindingStates } from "../packs/fix-state.js";
 import { EXAMPLE_DIR, exampleRepo, NO_TESTS_DIR, NO_TESTS_FIXES, NO_TESTS_SCAN, sampleFinding, writeReview, scanScript } from "../packs/review-fixtures.js";
 import { promptsSent, readJournal } from "../mock-script.js";
@@ -311,6 +311,49 @@ describe("delivery fix", () => {
     },
     RUN_TIMEOUT,
   );
+
+  it(
+    "keeps medium, high and critical fixes waiting for sign-off when the owner chooses medium, and records the choice",
+    async () => {
+      const { repo, dir } = await reviewed();
+      await delivery(["findings", "approve", "--all"], { cwd: repo });
+      const { exitCode, stdout } = await delivery(["fix", "--sign-off-threshold", "medium"], { cwd: repo, env: await env({ expectations: [FIXES_CHECKOUT, FIXES_SETTINGS] }) });
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain(thresholdLine("medium"));
+      expect(stdout).toContain("1. The price shown at checkout can be negative (high): waiting for your sign-off");
+      expect(stdout).toContain("2. Settings errors are unhelpful (medium): waiting for your sign-off");
+      expect(readFileSync(join(repo, "checkout.js"), "utf-8")).toContain("return price - discount;");
+      expect((await readLedger(dir)).find((entry) => entry.t === "authorise")).toMatchObject({ threshold: "medium", hold: { [NEGATIVE.id]: true, [SETTINGS.id]: true } });
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "keeps nothing waiting for its severity when the owner chooses none, even on the security review",
+    async () => {
+      const repo = exampleRepo("fix-threshold-none-");
+      const dir = await writeReview(repo, { reviewId: "security-20261006T101500Z", findings: [NEGATIVE, SETTINGS], pack: SECURITY });
+      await delivery(["findings", "approve", "--all"], { cwd: repo });
+      const { stdout } = await delivery(["fix", "--sign-off-threshold", "none"], { cwd: repo, env: await env({ expectations: [FIXES_CHECKOUT, FIXES_SETTINGS] }) });
+
+      expect(stdout).toContain(thresholdLine(null));
+      expect(stdout).toContain("1. The price shown at checkout can be negative (high): fixed and merged");
+      expect(stdout).toContain("2. Settings errors are unhelpful (medium): fixed and merged");
+      expect((await readLedger(dir)).find((entry) => entry.t === "authorise")).toMatchObject({ threshold: null, hold: { [NEGATIVE.id]: false, [SETTINGS.id]: false } });
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it("refuses a sign-off threshold that is not one of the severities or none, and records nothing", async () => {
+    const { repo, dir } = await reviewed([NEGATIVE]);
+    await delivery(["findings", "approve", "1"], { cwd: repo });
+    const { exitCode, stderr } = await delivery(["fix", "--sign-off-threshold", "serious"], { cwd: repo });
+
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("critical, high, medium, low, none");
+    expect((await readLedger(dir)).some((entry) => entry.t === "authorise")).toBe(false);
+  });
 });
 
 const head = (repo: string): string => execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf-8" }).trim();
@@ -337,6 +380,34 @@ describe("delivery fix in a project with no tests", () => {
       const review = await finishedReview(repo);
       const [first, second] = review.result.findings;
       expect((await readLedger(review.dir)).find((entry) => entry.t === "authorise")).toMatchObject({ verify: null, threshold: null, hold: { [first?.id ?? ""]: true, [second?.id ?? ""]: true } });
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "still keeps every fix waiting there when the owner chooses none",
+    async () => {
+      const repo = await reviewedWithoutTests();
+      const { stdout } = await delivery(["fix", "--sign-off-threshold", "none"], { cwd: repo, env: await env(NO_TESTS_FIXES) });
+
+      expect(stdout).toContain("1. A discount is taken off a hundred times over (high): waiting for your sign-off");
+      expect(stdout).toContain("2. A missing or broken settings file stops the program with an unhelpful error (medium): waiting for your sign-off");
+      const review = await finishedReview(repo);
+      expect((await readLedger(review.dir)).find((entry) => entry.t === "authorise")).toMatchObject({ threshold: null });
+      expect(stdout).toContain(`    Why this needs you: ${HOLD_WHY.noTests}`);
+    },
+    RUN_TIMEOUT * 2,
+  );
+
+  it(
+    "says a high fix waits for how serious it is, not for the missing tests, when the owner chooses medium",
+    async () => {
+      const repo = await reviewedWithoutTests();
+      const { stdout } = await delivery(["fix", "--sign-off-threshold", "medium"], { cwd: repo, env: await env(NO_TESTS_FIXES) });
+
+      expect(stdout).toContain("1. A discount is taken off a hundred times over (high): waiting for your sign-off");
+      expect(stdout).toContain(`    Why this needs you: ${HOLD_WHY.serious}`);
+      expect((await delivery(["findings"], { cwd: repo })).stdout).toContain(`    Why this needs you: ${HOLD_WHY.serious}`);
     },
     RUN_TIMEOUT * 2,
   );

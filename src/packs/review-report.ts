@@ -173,7 +173,7 @@ function itemLines(review: SavedReview, number: number, finding: Finding, at: Fi
         ...saidLine(at.fix?.said),
         `    ${howWeKnow(review.header, finding.check.kind)}`,
         ...leftLine(finding),
-        ...signOffLines(number, at, holdWhy(review.header, finding)),
+        ...signOffLines(number, at, holdWhy(review.header, finding, at)),
       ];
     case "unfixable": {
       const action = UNFIXABLE_ACTION[at.cause ?? at.fix?.plain?.group ?? "stopped"];
@@ -183,9 +183,9 @@ function itemLines(review: SavedReview, number: number, finding: Finding, at: Fi
     case "stopped":
       return [title, `    Stopped by a setup problem. ${at.fix?.plain?.sentence ?? NOT_RECORDED}`, ...saidLine(at.fix?.plain?.agentSaid), ...toAct(at.fix?.plain?.next ?? [])];
     case "signed_off_failed":
-      return [title, "    Signed off but could not be merged.", ...signOffLines(number, at, holdWhy(review.header, finding))];
+      return [title, "    Signed off but could not be merged.", ...signOffLines(number, at, holdWhy(review.header, finding, at))];
     case "rejected":
-      return [title, "    Declined at sign-off.", ...signOffLines(number, at, holdWhy(review.header, finding))];
+      return [title, "    Declined at sign-off.", ...signOffLines(number, at, holdWhy(review.header, finding, at))];
     case "fixed":
     case "signed_off_landed":
       return [`${title}: ${stateWords(at)}; ${checkLevel(review.header, finding.check.kind)}`];

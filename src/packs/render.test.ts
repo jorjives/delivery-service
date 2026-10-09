@@ -6,6 +6,7 @@ import {
   AGENT_OPINION, CAME_BACK_LINE, CHANGES_TESTS, CHECK_LEVEL, earlierHiddenLine, EARLIER_WORDS, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, madeBy, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
   opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, stateWords, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved,
 } from "./render.js";
+import type { Severity } from "./finding.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
 import { PACK_FORBIDDEN, sampleFinding } from "./review-fixtures.js";
@@ -25,7 +26,7 @@ const PATTERN = sampleFinding({ id: "111111111111", title: "Settings errors are 
 const UNUSED = sampleFinding({ id: "222222222222", title: "Old payment code", severity: "low", check: { kind: "none" }, droppedCheck: { kind: "pattern-absent", pattern: "x", paths: ["a.js"] }, detail: "nothing imports it" });
 const unconfirmed = UNCONFIRMED_REASONS.map((reason): Unconfirmed => ({ title: "Rounding", severity: "medium", path: "pricing.js", problem: "Prices round down.", reason }));
 const review = (overrides: Partial<SavedReview["result"]> = {}): SavedReview => ({ dir: "/d", header: HEADER, result: { findings: [NEGATIVE, PATTERN, UNUSED], unconfirmed: [], notShown: 0, notes: "", ...overrides } });
-const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, said: null, ...fix }, refused: false, cause: null, signOff: null, earlier: null });
+const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, said: null, ...fix }, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined });
 const undecided = [at("proposed"), at("proposed"), at("proposed")];
 
 describe("a finished review, as the owner reads it", () => {
@@ -316,6 +317,21 @@ describe("a review of a project with no tests", () => {
     const low = sampleFinding({ severity: "low" });
     const lines = listLines(noTests([low]), [at("held", { closer: "commit-to-branch", branch: "surface/fix-1", base: "main" })]);
     expect(lines).toContain(`    Why this needs you: ${HOLD_WHY.noTests}`);
+  });
+
+  it("works the reason out from the threshold the fix was authorised under, not the pack's default: a security review run with none, in a project with no tests, waits for the missing tests", () => {
+    const security = { ...noTests([sampleFinding({ severity: "high" })]), header: { ...noTests().header, pack: { ...HEADER.pack, name: "security", hold: "high" as const } } };
+    const held = (threshold: FindingState["threshold"]): FindingState => ({ ...at("held", { closer: "commit-to-branch", branch: "surface/fix-1", base: "main" }), threshold });
+    expect(listLines(security, [held(null)])).toContain(`    Why this needs you: ${HOLD_WHY.noTests}`);
+    expect(listLines(security, [held(null)])).not.toContain(`    Why this needs you: ${HOLD_WHY.serious}`);
+    expect(listLines(security, [held("high")])).toContain(`    Why this needs you: ${HOLD_WHY.serious}`);
+    expect(listLines(security, [held("critical")])).toContain(`    Why this needs you: ${HOLD_WHY.noTests}`);
+    expect(listLines(security, [held(undefined)])).toContain(`    Why this needs you: ${HOLD_WHY.serious}`); // authorised before the threshold was recorded: the pack's own (high)
+  });
+
+  it("says a high fix waits for its severity when the owner chose a lower threshold than a code review's default of none", () => {
+    const code = noTests([sampleFinding({ severity: "high" })]);
+    expect(listLines(code, [{ ...at("held", { closer: "commit-to-branch", branch: "surface/fix-1", base: "main" }), threshold: "medium" }])).toContain(`    Why this needs you: ${HOLD_WHY.serious}`);
   });
 
   it("sets a problem with no check aside as needing a decision, and says how to approve it anyway", () => {

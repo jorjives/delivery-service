@@ -4,8 +4,10 @@ import { Command, CommanderError, Option } from "commander";
 import type { CommandContext, CliStdin, ExitOnInterrupt } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
 import { secretMasker } from "../packs/secrets.js";
+import { SIGN_OFF_THRESHOLDS } from "../packs/finding.js";
 import { decideCommand, findingsCommand, type DecideOptions, type FindingsOptions } from "./findings-command.js";
 import type { SignOffOptions } from "./sign-off-command.js";
+import type { FixOptions } from "./fix-command.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
@@ -266,8 +268,13 @@ export async function runCli(io: CliIo): Promise<number> {
       "fix the problems you approved in your latest review: each is fixed by an agent in its own copy, checked by its own check and your tests (if you have any), then merged or kept for your sign-off",
     )
     .option("--concurrency <n>", "how many problems to fix at once (default: 1, or `concurrency` in delivery.config.json)")
+    .addOption(
+      new Option("--sign-off-threshold <level>", "how serious a problem must be for its fix to wait for your sign-off: that level and every more serious one wait; none: nothing waits for how serious it is (default: the review's own)").choices(
+        SIGN_OFF_THRESHOLDS,
+      ),
+    )
     .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
-    .action(async (options: { repo?: string; concurrency?: string }, command: Command) => {
+    .action(async (options: FixOptions, command: Command) => {
       const { fixCommand } = await import("./fix-command.js");
       exitCode = await fixCommand(options, ctxFor(command));
     });

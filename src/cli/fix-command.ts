@@ -1,7 +1,8 @@
 import { resolve } from "node:path";
 import { git } from "../git-exec.js";
-import { atOrAbove } from "../packs/finding.js";
+import { atOrAbove, thresholdOf, type SignOffThreshold } from "../packs/finding.js";
 import { checkFinding } from "../packs/finding-check.js";
+import { thresholdLine } from "../packs/render.js";
 import { FINDING_GATE_REF } from "../packs/finding-gate.js";
 import { FINDING_CLOSER_REF } from "../packs/finding-closer.js";
 import type { FixTask } from "../packs/fix-task.js";
@@ -24,6 +25,8 @@ import { checkCustomModules, resolveProject, type ProjectSettings } from "./sett
 export interface FixOptions {
   repo?: string;
   concurrency?: string;
+  /** How serious a problem must be for its fix to wait for sign-off; absent: the pack's own. Recorded with the authorisation. */
+  signOffThreshold?: SignOffThreshold;
 }
 
 export const NOTHING_APPROVED = "Nothing is approved to fix yet. Choose with: delivery findings approve 1 3, or delivery findings approve --all";
@@ -91,7 +94,8 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
 
   const { config, project, verify } = await fixSettings(options, startDir, repoPath, ctx);
   if (fresh.length > 0) {
-    const threshold = review.header.pack.hold ?? null;
+    const threshold = options.signOffThreshold === undefined ? (review.header.pack.hold ?? null) : thresholdOf(options.signOffThreshold);
+    if (options.signOffThreshold !== undefined) say(thresholdLine(threshold));
     // With nothing to check a fix broke nothing else, now or when the review was made, or when the owner approved it without a check, the owner is the final check of every fix.
     await appendLedger(review.dir, {
       t: "authorise",

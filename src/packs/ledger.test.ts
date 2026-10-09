@@ -94,3 +94,12 @@ describe("approving without a check", () => {
     expect(allowedUnchecked([decided(["aaaaaaaaaaaa"], "approve", true), decided(["aaaaaaaaaaaa"], "skip")])).toEqual(new Set());
   });
 });
+
+describe("recording the sign-off threshold", () => {
+  it("remembers the threshold an authorisation was written under, null included, and leaves it absent for an older entry", () => {
+    const base = { t: "authorise", at: "2026-10-09T10:00:00.000Z", ids: ["aaaaaaaaaaaa"], verify: NPM_TEST, landing: { type: "merge-back" as const } };
+    expect(authorisations([{ ...base, threshold: null }] as LedgerEntry[]).get("aaaaaaaaaaaa")).toHaveProperty("threshold", null);
+    expect(authorisations([{ ...base, threshold: "medium" }] as LedgerEntry[]).get("aaaaaaaaaaaa")?.threshold).toBe("medium");
+    expect(authorisations([base] as LedgerEntry[]).get("aaaaaaaaaaaa")).not.toHaveProperty("threshold");
+  });
+});

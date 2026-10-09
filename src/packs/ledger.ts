@@ -88,6 +88,7 @@ export async function readLedger(reviewDir: string): Promise<LedgerEntry[]> {
 export interface Authorised {
   verify: GateRef | null;
   guards?: GuardLists;
+  threshold?: Severity | null;
   hold?: boolean;
   landing?: CloserRef;
   review?: string;
@@ -104,6 +105,7 @@ export function authorisations(entries: readonly LedgerEntry[]): Map<string, Aut
       found.set(id, {
         verify: entry.verify,
         ...(entry.guards === undefined ? {} : { guards: entry.guards }),
+        ...(entry.threshold === undefined ? {} : { threshold: entry.threshold }),
         ...(hold === undefined ? {} : { hold }),
         ...(entry.landing === undefined ? {} : { landing: entry.landing }),
         ...(entry.review === undefined ? {} : { review: entry.review }),

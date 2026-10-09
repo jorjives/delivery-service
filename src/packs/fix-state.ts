@@ -40,10 +40,12 @@ export interface FindingState {
    * Null when nothing was carried.
    */
   earlier: EarlierChoice | null;
+  /** The sign-off threshold its fix was authorised under (null: nothing waits for severity); undefined when not authorised or authorised before it was recorded, where the pack's applies. What `holdWhy` reads. */
+  threshold: import("./finding.js").Severity | null | undefined;
 }
 
 /** A problem the owner has not decided on yet. */
-export const UNDECIDED: FindingState = { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null, earlier: null };
+export const UNDECIDED: FindingState = { state: "proposed", fix: undefined, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined };
 
 /** The agent's own account of its last finished attempt at a fix, verbatim; null when no attempt of it finished. A repair's words are not the fix's. */
 export const lastWords = (history: CaseFile["history"]): string | null =>
@@ -100,7 +102,7 @@ function stateOf(state: FixState, fix: FixRun | undefined, signOff: SignOffResul
   const rounds = fix?.rounds ?? [];
   const refused = rounds.some((round) => round.some(isGuard));
   const cause = state === "unfixable" && needsTestChange(rounds.at(-1) ?? []) ? "needs_test_change" : null;
-  return { state, fix, refused, cause, signOff, earlier };
+  return { state, fix, refused, cause, signOff, earlier, threshold: undefined };
 }
 
 /**
@@ -128,10 +130,11 @@ export function deriveFindings(
     if (gone.has(finding.id)) return stateOf("already_resolved", fix);
     const auth = authorised.get(finding.id);
     if (auth !== undefined) {
+      const authorisedUnder = { threshold: auth.threshold };
       const state = fromRun(fix, auth.hold === true);
-      if (state !== "held") return stateOf(state, fix);
+      if (state !== "held") return { ...stateOf(state, fix), ...authorisedUnder };
       const result = results.get(finding.id);
-      return stateOf(afterSignOff(result), fix, result ?? null);
+      return { ...stateOf(afterSignOff(result), fix, result ?? null), ...authorisedUnder };
     }
     const chosen = choice.get(finding.id);
     if (chosen === "skip") return stateOf("skipped", fix);

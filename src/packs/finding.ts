@@ -9,6 +9,12 @@ export type Severity = z.infer<typeof Severity>;
 export const atOrAbove = (severity: Severity, threshold: Severity | null): boolean =>
   threshold !== null && SEVERITIES.indexOf(severity) <= SEVERITIES.indexOf(threshold);
 
+/** What the owner may choose for which fixes wait for sign-off: a severity (that one and every more serious one wait), or none (nothing waits for its severity). */
+export const SIGN_OFF_THRESHOLDS = [...SEVERITIES, "none"] as const;
+export type SignOffThreshold = (typeof SIGN_OFF_THRESHOLDS)[number];
+/** The owner's choice as a threshold on the closed order: none is null, which holds nothing. */
+export const thresholdOf = (choice: SignOffThreshold): Severity | null => (choice === "none" ? null : choice);
+
 /**
  * How the harness will know a problem is fixed. Closed and harness-owned: a
  * review's agent picks one, and the harness decides whether it can be used.
