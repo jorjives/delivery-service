@@ -1,0 +1,34 @@
+{
+  "expectations": [
+    {
+      "json": {
+        "findings": [
+          {
+            "title": "A key for the payments service is written in the code",
+            "category": "secrets",
+            "severity": "critical",
+            "where": { "path": "payments.js" },
+            "problem": "The key the program uses to take payments is written into payments.js.",
+            "whyItMatters": "Anyone who can read the code can take payments as you.",
+            "fixedLooksLike": "The key is not in the code, and the code reads it from somewhere private instead.",
+            "anchor": "const PAYMENTS_KEY = \"pk-live-9Rt4Wq2Zx7Lm3Vb8\";",
+            "check": { "kind": "anchor-gone" },
+            "outsideStep": "Change the key at the payments provider: only a person can do that."
+          },
+          {
+            "title": "Checks of secure connections are turned off",
+            "category": "insecure-defaults",
+            "severity": "high",
+            "where": { "path": "settings.js" },
+            "problem": "The program does not check it is talking to the real server.",
+            "whyItMatters": "Someone on the same network could read or change what is sent.",
+            "fixedLooksLike": "Secure connections are checked.",
+            "anchor": "verifyCertificates: false,",
+            "check": { "kind": "pattern-absent", "pattern": "verifyCertificates: false", "paths": ["settings.js"] }
+          }
+        ],
+        "notes": ""
+      }
+    }
+  ]
+}

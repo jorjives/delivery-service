@@ -85,4 +85,14 @@ describe("the pack check", () => {
     expect(result).toMatchObject({ ready: false, run: null });
     expect(result.problems[0]).toMatchObject({ file: join(dir, FIXTURES.review), field: null, message: expect.stringMatching(/^the scripted review could not be used: /) });
   }, CHECK_TIMEOUT);
+
+  it("counts a serious fix that waits for sign-off as passing its check, and refuses a line commented out", async () => {
+    const result = await checkPack(packCopy("security-review"));
+    expect(result.problems).toEqual([]);
+    expect(result.run).toEqual({
+      found: ["A key for the payments service is written in the code", "Checks of secure connections are turned off"],
+      fixed: ["A key for the payments service is written in the code"],
+      refused: [{ title: "Checks of secure connections are turned off", why: CHECK_FAILED }],
+    });
+  }, CHECK_TIMEOUT);
 });

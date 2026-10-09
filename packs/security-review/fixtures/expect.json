@@ -1,0 +1,5 @@
+{
+  "found": ["A key for the payments service is written in the code", "Checks of secure connections are turned off"],
+  "fixed": ["A key for the payments service is written in the code"],
+  "refused": ["Checks of secure connections are turned off"]
+}
