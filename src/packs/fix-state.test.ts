@@ -15,7 +15,7 @@ import { deriveFindings, fixTasks, readFindingStates, fixRunsOf, lastWords, UNDE
 import { fixTaskFor } from "./fix-task.js";
 import { appendLedger, type LedgerEntry } from "./ledger.js";
 import { guardListsFor } from "./guards.js";
-import { loadReview, listReviews, type SavedReview } from "./review-record.js";
+import { loadReview, listReviews, type ReviewEntry, type SavedReview } from "./review-record.js";
 import { sampleFinding, writeReview } from "./review-fixtures.js";
 import type { RunRecord } from "../run-records.js";
 
@@ -106,6 +106,23 @@ describe("the fix tasks", () => {
     const [entry] = await listReviews(repo);
     if (entry?.state !== "done") throw new Error("no review");
     expect(fixTasks(await loadReview(entry), [decide([A.id], "approve"), authorise([A.id])])).toEqual([fixTaskFor("code", A, NPM)]);
+  });
+
+  it("name the review they were authorised from, so a problem found again in a later review is fixed again rather than matched to its earlier fix", async () => {
+    const repo = initTempRepo("fix-state-", { "a.js": "x\n" });
+    await writeReview(repo, { reviewId: "code-20261001T100000Z", findings: [A] });
+    await writeReview(repo, { reviewId: "code-20261005T101500Z", findings: [A] });
+    const [later, earlier] = await listReviews(repo);
+    if (later?.state !== "done" || earlier?.state !== "done") throw new Error("no review");
+    const tasksOf = async (entry: Extract<ReviewEntry, { state: "done" }>, review: string) =>
+      fixTasks(await loadReview(entry), [decide([A.id], "approve"), { t: "authorise", at: AT, ids: [A.id], verify: NPM, review }]);
+
+    const [first] = await tasksOf(earlier, "code-20261001T100000Z");
+    const [second] = await tasksOf(later, "code-20261005T101500Z");
+
+    expect(first).toEqual(fixTaskFor("code", A, NPM, undefined, undefined, "code-20261001T100000Z"));
+    expect(first?.tags.review).toBe("code-20261001T100000Z");
+    expect(second).not.toEqual(first);
   });
 });
 

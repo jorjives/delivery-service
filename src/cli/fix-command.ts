@@ -101,6 +101,7 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
       threshold,
       hold: Object.fromEntries(fresh.map((finding) => [finding.id, verify === null || review.header.noTests === true || uncheckable(review.header, finding) || atOrAbove(finding.severity, threshold)])),
       landing: pinnedCloser(project.closerRef, repoPath),
+      review: review.header.reviewId,
     });
   }
 

@@ -134,7 +134,7 @@ export function fixTasks({ header, result }: SavedReview, entries: readonly Ledg
     if (auth === undefined || gone.has(finding.id)) return [];
     const guards = auth.guards === undefined ? undefined : { ...auth.guards, testsCategory: changesTests(header.pack, finding.category) };
     const release = auth.landing === undefined ? undefined : { hold: auth.hold ?? false, landing: auth.landing };
-    return [fixTaskFor(header.pack.name, finding, auth.verify, guards, release)];
+    return [fixTaskFor(header.pack.name, finding, auth.verify, guards, release, auth.review)];
   });
 }
 

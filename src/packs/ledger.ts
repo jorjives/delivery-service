@@ -45,6 +45,8 @@ export const LedgerEntry = z.discriminatedUnion("t", [
     hold: z.record(Id, z.boolean()).optional(),
     /** How a fix lands once it may: the project's closer, pinned. */
     landing: CloserRef.optional(),
+    /** The review these were authorised from. Part of each fix's identity, so a problem that comes back in a later review is fixed again rather than matched to its earlier fix. Absent on an authorisation written before fixes named their review. */
+    review: z.string().optional(),
   }),
   z.object({ t: z.literal("fix_observed"), at: At, id: Id, outcome: z.literal("already_resolved"), commit: z.string().min(1) }),
   z.object({ t: z.literal("signed_off"), at: At, id: Id }),
@@ -88,6 +90,7 @@ export interface Authorised {
   guards?: GuardLists;
   hold?: boolean;
   landing?: CloserRef;
+  review?: string;
 }
 
 /** The problems `delivery fix` has taken on, each as it was first authorised. */
@@ -103,6 +106,7 @@ export function authorisations(entries: readonly LedgerEntry[]): Map<string, Aut
         ...(entry.guards === undefined ? {} : { guards: entry.guards }),
         ...(hold === undefined ? {} : { hold }),
         ...(entry.landing === undefined ? {} : { landing: entry.landing }),
+        ...(entry.review === undefined ? {} : { review: entry.review }),
       });
     }
   }
