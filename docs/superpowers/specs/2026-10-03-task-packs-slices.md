@@ -310,6 +310,7 @@ not sliced.
 ## Slice 7: Write Your Own Pack and Prove It Without a Real Agent
 
 **Status:** ✅ Complete — 2026-10-09 — `bb82e1e`
+**Tests:** ✅ Recorded — 2026-10-09 — `d0c7e34` — cli (vitest) — 1 UAT + 8 AC, 0 skipped
 
 **Delivers:** An extender copies a built-in pack, changes it for her own domain, and runs `delivery packs check` to have any mistake named by file and field and the pack run end to end against a scripted agent, with no real agent and no API key.
 
