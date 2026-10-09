@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { git } from "../../tests/helpers.js";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
-import { AGENT_OPINION, fixNowLines, NOT_NOW, NOTHING_CHANGED, READS_ONLY, CANNOT_BE_CHECKED, NO_TESTS_LEVEL, NO_TESTS_WARNING } from "../packs/render.js";
+import { AGENT_OPINION, earlierHiddenLine, fixNowLines, NOT_NOW, NOTHING_CHANGED, READS_ONLY, CANNOT_BE_CHECKED, NO_TESTS_LEVEL, NO_TESTS_WARNING } from "../packs/render.js";
 import { packsRoot } from "../packs/review-record.js";
+import { UNDECIDED } from "../packs/fix-state.js";
 import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, sampleFinding, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript, NO_TESTS_DIR, NO_TESTS_SCAN } from "../packs/review-fixtures.js";
 import { plainReporter } from "./report.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
@@ -178,6 +179,20 @@ describe("delivery review", () => {
     const { stdout } = await delivery(["review", "code"], { cwd: exampleRepo(), env: await mocked() });
     expect(stdout).not.toContain(NO_TESTS_WARNING);
   }, RUN_TIMEOUT);
+
+  it("does not offer again what the owner skipped in an earlier review of the same kind, and says how many it left out", async () => {
+    const repo = exampleRepo();
+    await delivery(["review", "code"], { cwd: repo, env: await mocked() });
+    await delivery(["findings", "skip", "3"], { cwd: repo });
+
+    const { exitCode, stdout } = await delivery(["review", "code"], { cwd: repo, env: await mocked() });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain("1. The price shown at checkout can be negative (high)");
+    expect(stdout).not.toContain("3. Old code for a payment provider you no longer use");
+    expect(stdout).toContain(earlierHiddenLine(1));
+    expect(stdout).toContain("  Fix all 2: delivery findings approve --all, then delivery fix");
+  }, RUN_TIMEOUT);
 });
 
 describe("delivery review at a terminal", () => {
@@ -213,12 +228,19 @@ describe("delivery review at a terminal", () => {
   it("offers in the interactive choice only the problems that can be checked", () => {
     const header = { reviewId: "code-1", pack: { name: "code", version: "1.0.0", title: "Code review", hash: "0".repeat(64), maxFindings: 40, categories: [{ id: "correctness", title: "Wrong results" }] }, repoPath: "/r", commit: "1".repeat(40), fileCount: 1, startedAt: "2026-10-05T10:15:00.000Z", endedAt: "2026-10-05T10:19:12.000Z", noTests: true as const };
     const findings = [sampleFinding(), sampleFinding({ id: "222222222222", check: { kind: "none" } })];
-    expect(pickQuestion({ dir: "/d", header, result: { findings, unconfirmed: [], notShown: 0, notes: "" } }).choices.map((choice) => choice.value)).toEqual(["1"]);
+    expect(pickQuestion({ dir: "/d", header, result: { findings, unconfirmed: [], notShown: 0, notes: "" } }, []).choices.map((choice) => choice.value)).toEqual(["1"]);
   });
 
   it("asks in the owner's words", () => {
     const review = { dir: "/d", header: {} as never, result: { findings: [], unconfirmed: [], notShown: 0, notes: "" } };
-    const text = [pickQuestion(review).message, WHEN_QUESTION.message, ...WHEN_QUESTION.choices.flatMap((c) => [c.name, c.description])].join("\n");
+    const text = [pickQuestion(review, []).message, WHEN_QUESTION.message, ...WHEN_QUESTION.choices.flatMap((c) => [c.name, c.description])].join("\n");
     expect(text).not.toMatch(PACK_FORBIDDEN);
+  });
+
+  it("leaves out of the interactive choice what an earlier review settled", () => {
+    const header = { reviewId: "code-1", pack: { name: "code", version: "1.0.0", title: "Code review", hash: "0".repeat(64), maxFindings: 40, categories: [{ id: "correctness", title: "Wrong results" }] }, repoPath: "/r", commit: "1".repeat(40), fileCount: 1, startedAt: "2026-10-05T10:15:00.000Z", endedAt: "2026-10-05T10:19:12.000Z" };
+    const findings = [sampleFinding(), sampleFinding({ id: "222222222222" })];
+    const states = [{ ...UNDECIDED, state: "skipped" as const, earlier: "skipped" as const }, UNDECIDED];
+    expect(pickQuestion({ dir: "/d", header, result: { findings, unconfirmed: [], notShown: 0, notes: "" } }, states).choices.map((choice) => choice.value)).toEqual(["2"]);
   });
 });

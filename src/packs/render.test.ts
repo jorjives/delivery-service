@@ -3,8 +3,8 @@ import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
-  AGENT_OPINION, CHANGES_TESTS, CHECK_LEVEL, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, madeBy, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved,
+  AGENT_OPINION, CAME_BACK_LINE, CHANGES_TESTS, CHECK_LEVEL, earlierHiddenLine, EARLIER_WORDS, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, madeBy, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
+  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, stateWords, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
@@ -30,7 +30,7 @@ const undecided = [at("proposed"), at("proposed"), at("proposed")];
 
 describe("a finished review, as the owner reads it", () => {
   it("says how long it took, how many it found, that it is an agent's opinion, then one numbered block per problem", () => {
-    const lines = reviewLines(review());
+    const lines = reviewLines(review(), []);
     expect(lines.slice(0, 3)).toEqual(["Review finished in 4 min 12 s. It found 3 problems.", AGENT_OPINION, ""]);
     expect(lines.slice(3, 9)).toEqual([
       "1. The price shown at checkout can be negative (high)",
@@ -45,7 +45,7 @@ describe("a finished review, as the owner reads it", () => {
   });
 
   it("ends with how many have a specific check, that nothing has changed, and the exact next commands", () => {
-    expect(reviewLines(review()).slice(-6)).toEqual([
+    expect(reviewLines(review(), []).slice(-6)).toEqual([
       "2 of 3 have a specific check; 1 is tests only.",
       NOTHING_CHANGED,
       "",
@@ -56,14 +56,14 @@ describe("a finished review, as the owner reads it", () => {
   });
 
   it("says how many more were found than it shows, and how many could not be confirmed", () => {
-    const lines = reviewLines(review({ notShown: 5, unconfirmed: unconfirmed.slice(0, 2) }));
+    const lines = reviewLines(review({ notShown: 5, unconfirmed: unconfirmed.slice(0, 2) }), []);
     expect(lines).toContain("5 more not shown: this review lists at most 2 problems.");
     expect(lines).toContain("2 more could not be confirmed: the code they point at could not be found, so they are not offered. See them with: delivery findings --unconfirmed");
     expect(lines[0]).toBe("Review finished in 4 min 12 s. It found 8 problems.");
   });
 
   it("says it found none, that this is not proof, and how many files it looked at", () => {
-    expect(reviewLines(review({ findings: [] }))).toEqual(["Review finished in 4 min 12 s.", noneFound(84)]);
+    expect(reviewLines(review({ findings: [] }), [])).toEqual(["Review finished in 4 min 12 s.", noneFound(84)]);
     expect(noneFound(84)).toBe("The review found no problems. That is not proof there are none: the review is an agent's opinion, it looked at 84 files, and it can miss things.");
   });
 });
@@ -183,9 +183,9 @@ describe("the findings view", () => {
     const header = { ...HEADER, pack: { ...HEADER.pack, categories: [...HEADER.pack.categories, { id: "tests", title: "Tests", changesTests: true as const }] } };
     const weak = sampleFinding({ category: "tests" });
     const saved: SavedReview = { dir: "/d", header, result: { findings: [weak], unconfirmed: [], notShown: 0, notes: "" } };
-    expect(reviewLines(saved)).toContain(`    Note: ${CHANGES_TESTS}.`);
+    expect(reviewLines(saved, [])).toContain(`    Note: ${CHANGES_TESTS}.`);
     expect(findingLines(saved, 1)).toContain(`    Note: ${CHANGES_TESTS}.`);
-    expect(reviewLines(review())).not.toContain(`    Note: ${CHANGES_TESTS}.`);
+    expect(reviewLines(review(), [])).not.toContain(`    Note: ${CHANGES_TESTS}.`);
   });
 });
 
@@ -233,7 +233,7 @@ describe("a security review, as the owner reads it", () => {
   const security = (findings = [SECRET, LIBRARY]): SavedReview => ({ dir: "/d", header: SECURITY, result: { findings, unconfirmed: [], notShown: 0, notes: "" } });
 
   it("opens with how many problems there are at each severity, and says which wait for sign-off", () => {
-    expect(reviewLines(security()).slice(0, 4)).toEqual([
+    expect(reviewLines(security(), []).slice(0, 4)).toEqual([
       "Review finished in 4 min 12 s. It found 2 problems.",
       "By how serious they are: 1 critical, 0 high, 1 medium, 0 low.",
       "Problems that are critical or high are fixed and checked, but wait for your sign-off before they reach your main copy.",
@@ -242,7 +242,7 @@ describe("a security review, as the owner reads it", () => {
   });
 
   it("says what could happen, labels the reviewer's own knowledge, and notes what is left for a person", () => {
-    const lines = reviewLines(security());
+    const lines = reviewLines(security(), []);
     expect(lines).toContain("    What could happen: Wrong totals cost money and trust.");
     expect(lines).not.toContain("    Why it matters: Wrong totals cost money and trust.");
     expect(lines).toContain("    One thing is left for you: Change the password at the provider.");
@@ -251,11 +251,11 @@ describe("a security review, as the owner reads it", () => {
   });
 
   it("uses no word an owner should not have to know", () => {
-    for (const line of reviewLines(security())) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
+    for (const line of reviewLines(security(), [])) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
 
   it("leaves a code review opening as it was", () => {
-    expect(reviewLines(review())[1]).toBe(AGENT_OPINION);
+    expect(reviewLines(review(), [])[1]).toBe(AGENT_OPINION);
   });
 });
 
@@ -302,12 +302,12 @@ describe("a review of a project with no tests", () => {
   const noTests = (findings = [NEGATIVE, PATTERN, UNUSED]): SavedReview => ({ dir: "/d", header: { ...HEADER, noTests: true as const }, result: { findings, unconfirmed: [], notShown: 0, notes: "" } });
 
   it("says at the top that the project has no tests, that nothing checks a fix broke nothing else, and that every fix waits", () => {
-    expect(reviewLines(noTests()).slice(0, 2)).toEqual(["Review finished in 4 min 12 s. It found 3 problems.", NO_TESTS_WARNING]);
+    expect(reviewLines(noTests(), []).slice(0, 2)).toEqual(["Review finished in 4 min 12 s. It found 3 problems.", NO_TESTS_WARNING]);
     expect(NO_TESTS_WARNING).toBe("Your project has no tests, so nothing will check that a fix has not broken something else. Every fix will wait for your sign-off before it reaches your main copy.");
   });
 
   it("says each specific check is the problem's own check only, and that a problem with none cannot be checked", () => {
-    const lines = reviewLines(noTests());
+    const lines = reviewLines(noTests(), []);
     expect(lines).toContain(`    How we will know: ${CHECK_LEVEL["anchor-gone"]}; ${NO_TESTS_LEVEL}.`);
     expect(lines).toContain(`    How we will know: ${CANNOT_BE_CHECKED}.`);
   });
@@ -325,7 +325,7 @@ describe("a review of a project with no tests", () => {
   });
 
   it("counts problems that cannot be checked, and offers to fix all the others", () => {
-    const lines = reviewLines(noTests());
+    const lines = reviewLines(noTests(), []);
     expect(lines).toContain("2 of 3 have a specific check; 1 cannot be checked, so it waits for your decision.");
     expect(lines).toContain("  Fix all 2: delivery findings approve --all, then delivery fix");
     expect(lines).toContain(`    ${approveAnyway(3)}`);
@@ -338,7 +338,7 @@ describe("a review of a project with no tests", () => {
     if (unused === undefined || negative === undefined) throw new Error("missing findings");
     const block = problemBlock(3, unused, header);
     expect(block[block.indexOf(`    How we will know: ${CANNOT_BE_CHECKED}.`) + 1]).toBe(`    ${approveAnyway(3)}`);
-    expect(reviewLines(noTests()).filter((line) => line === `    ${approveAnyway(3)}`)).toHaveLength(1);
+    expect(reviewLines(noTests(), []).filter((line) => line === `    ${approveAnyway(3)}`)).toHaveLength(1);
     expect(problemBlock(1, negative, header).join("\n")).not.toContain("approve");
   });
 
@@ -350,7 +350,7 @@ describe("a review of a project with no tests", () => {
   });
 
   it("never uses the harness's internal words", () => {
-    for (const line of [...reviewLines(noTests()), ...listLines(noTests(), [at("held"), at("proposed"), at("proposed")]), ...listLines(noTests(), [at("proposed"), at("proposed"), at("needs_decision")])]) expect(line.replace(/delivery findings|branch \S+/g, "")).not.toMatch(PACK_FORBIDDEN);
+    for (const line of [...reviewLines(noTests(), []), ...listLines(noTests(), [at("held"), at("proposed"), at("proposed")]), ...listLines(noTests(), [at("proposed"), at("proposed"), at("needs_decision")])]) expect(line.replace(/delivery findings|branch \S+/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
 });
 
@@ -358,7 +358,7 @@ describe("the review's own words", () => {
   it("never use the harness's internal words", () => {
     const everything = [
       ...opening("Code review"), RECOVERED, NOT_NOW, NO_REVIEW_YET, unfinishedReview("code"),
-      ...reviewLines(review({ notShown: 1, unconfirmed })), ...reviewLines(review({ findings: [] })),
+      ...reviewLines(review({ notShown: 1, unconfirmed }), []), ...reviewLines(review({ findings: [] }), []),
       ...listLines(review({ unconfirmed }), undecided), ...unconfirmedLines(review({ unconfirmed })), ...fixNowLines([1, 3]),
       ...findingLines(review(), 1).slice(0, findingLines(review(), 1).indexOf("FOR ENGINEERS")),
       ...Object.values(CHECK_LEVEL), ...Object.values(UNCONFIRMED_WHY), ...Object.values(STATE_WORDS), ...Object.values(NOT_LANDED_WHY), PR_OPENED, fixWaiting(1), fixWaiting(2), NEEDS_YOU,
@@ -367,6 +367,57 @@ describe("the review's own words", () => {
       REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, needsTestChangeLine(1), needsTestChangeLine(2),
     ].join("\n");
     expect(everything.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
+  });
+});
+
+describe("problems an earlier review decided", () => {
+  const carried = (state: FixState, earlier: FindingState["earlier"]): FindingState => ({ ...at(state), earlier });
+
+  it("leaves out of a new review what was skipped or declined earlier, says how many, and marks one that came back", () => {
+    const lines = reviewLines(review(), [carried("skipped", "skipped"), carried("proposed", "fixed"), carried("skipped", "declined")]);
+    expect(lines[0]).toBe("Review finished in 4 min 12 s. It found 3 problems.");
+    expect(lines).not.toContain("1. The price shown at checkout can be negative (high)");
+    expect(lines).not.toContain("3. Old payment code (low)");
+    expect(lines).toContain("2. Settings errors are unhelpful (medium)");
+    expect(lines).toContain(`    ${CAME_BACK_LINE}`);
+    expect(lines).toContain(earlierHiddenLine(2));
+    expect(lines).toContain("1 of 1 has a specific check; 0 are tests only.");
+    expect(lines).toContain("  Fix all 1: delivery findings approve --all, then delivery fix");
+  });
+
+  it("says only how many were left out when every problem was decided earlier", () => {
+    const all = [carried("skipped", "skipped"), carried("skipped", "skipped"), carried("skipped", "declined")];
+    expect(reviewLines(review(), all)).toEqual(["Review finished in 4 min 12 s. It found 3 problems.", earlierHiddenLine(3), NOTHING_CHANGED]);
+  });
+
+  it("words the line about hidden problems for one and for several", () => {
+    expect(earlierHiddenLine(1)).toBe("1 problem skipped or declined in an earlier review, not shown. See it with: delivery findings --include-skipped");
+    expect(earlierHiddenLine(3)).toBe("3 problems skipped or declined in an earlier review, not shown. See them with: delivery findings --include-skipped");
+  });
+
+  it("hides them from the list too, and shows them with their words when asked", () => {
+    const states = [carried("skipped", "declined"), carried("proposed", "fixed"), at("skipped")];
+    const hidden = listLines(review(), states);
+    expect(hidden.some((line) => line.startsWith("1. "))).toBe(false);
+    expect(hidden).toContain(`2. Settings errors are unhelpful (medium): ${EARLIER_WORDS.fixed}`);
+    expect(hidden).toContain("3. Old payment code (low): skipped by you");
+    expect(hidden).toContain(earlierHiddenLine(1));
+    const shown = listLines(review(), states, { includeSkipped: true });
+    expect(shown).toContain(`1. The price shown at checkout can be negative (high): ${EARLIER_WORDS.declined}`);
+    expect(shown.some((line) => line.includes("not shown"))).toBe(false);
+  });
+
+  it("words each carried choice", () => {
+    expect(stateWords(carried("skipped", "skipped"))).toBe("skipped by you in an earlier review");
+    expect(stateWords(carried("skipped", "declined"))).toBe("declined at sign-off in an earlier review");
+    expect(stateWords(carried("proposed", "fixed"))).toBe("came back: it was fixed in an earlier review, and the flagged code is back");
+  });
+
+  it("uses only the owner's words", () => {
+    const states = [carried("skipped", "declined"), carried("proposed", "fixed"), carried("skipped", "skipped")];
+    for (const line of [...reviewLines(review(), states), ...listLines(review(), states), ...listLines(review(), states, { includeSkipped: true })]) {
+      expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
+    }
   });
 });
 

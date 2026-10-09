@@ -3,7 +3,7 @@ import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
 import { atOrAbove, SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
-import { UNDECIDED, type FindingState, type FixState } from "./fix-state.js";
+import { hiddenByDefault, UNDECIDED, type EarlierChoice, type FindingState, type FixState } from "./fix-state.js";
 import { NOT_LANDED_REASONS, type NotLandedReason } from "./ledger.js";
 import { uncheckable, type PinnedPack, type ReviewHeader, type SavedReview } from "./review-record.js";
 import { literalsOf, maskIn } from "./secrets.js";
@@ -130,8 +130,24 @@ export const STATE_WORDS: Record<FixState, string> = {
 /** "Fixed and merged" where the project's way of landing work opens a pull request instead: nothing has merged. */
 export const PR_OPENED = "fixed, pull request opened";
 
-export const stateWords = ({ state, fix, signOff }: FindingState): string =>
-  (state === "fixed" && fix?.closer === "open-pr") || (state === "signed_off_landed" && signOff?.t === "landed" && signOff.closer.type === "open-pr") ? PR_OPENED : STATE_WORDS[state];
+/** Where a problem stands because of an earlier review of the same kind, as the owner reads it. Total over the closed set. */
+export const EARLIER_WORDS: Record<EarlierChoice, string> = {
+  skipped: "skipped by you in an earlier review",
+  declined: "declined at sign-off in an earlier review",
+  fixed: "came back: it was fixed in an earlier review, and the flagged code is back",
+};
+/** The line a new review adds under a problem that came back. */
+export const CAME_BACK_LINE = "Came back: it was fixed in an earlier review, and the flagged code is back.";
+
+export const earlierHiddenLine = (count: number): string =>
+  `${problems(count)} skipped or declined in an earlier review, not shown. See ${count === 1 ? "it" : "them"} with: delivery findings --include-skipped`;
+
+export const stateWords = ({ state, fix, signOff, earlier }: FindingState): string =>
+  earlier !== null
+    ? EARLIER_WORDS[earlier]
+    : (state === "fixed" && fix?.closer === "open-pr") || (state === "signed_off_landed" && signOff?.t === "landed" && signOff.closer.type === "open-pr")
+      ? PR_OPENED
+      : STATE_WORDS[state];
 
 export const fixWaiting = (count: number): string => `${count} approved and not started yet. Start fixing ${count === 1 ? "it" : "them"} with: delivery fix`;
 
@@ -197,25 +213,34 @@ export function problemBlock(number: number, finding: Finding, header: ReviewHea
   ];
 }
 
-/** What `delivery review` prints once the review is saved. */
-export function reviewLines({ header, result }: SavedReview): string[] {
-  const shown = result.findings.length;
+/** What `delivery review` prints once the review is saved. `states` is aligned with the review's problems; one skipped or declined in an earlier review is counted, not listed. */
+export function reviewLines({ header, result }: SavedReview, states: readonly FindingState[]): string[] {
   const took = `Review finished in ${durationWords(Date.parse(header.endedAt) - Date.parse(header.startedAt))}.`;
-  if (shown === 0) return [took, noneFound(header.fileCount), ...unconfirmedPointer(result.unconfirmed.length)];
-  const checked = result.findings.filter((finding) => finding.check.kind !== "none").length;
-  const deciding = result.findings.filter((finding) => uncheckable(header, finding)).length;
+  if (result.findings.length === 0) return [took, noneFound(header.fileCount), ...unconfirmedPointer(result.unconfirmed.length)];
+  const listed = result.findings.flatMap((finding, index) => {
+    const at = states[index] ?? UNDECIDED;
+    return hiddenByDefault(at) ? [] : [{ finding, number: index + 1, at }];
+  });
+  const hidden = result.findings.length - listed.length;
+  const foundLine = `${took} It found ${problems(result.findings.length + result.notShown)}.`;
+  if (listed.length === 0) return [foundLine, earlierHiddenLine(hidden), ...unconfirmedPointer(result.unconfirmed.length), NOTHING_CHANGED];
+  const shownFindings = listed.map(({ finding }) => finding);
+  const shown = shownFindings.length;
+  const checked = shownFindings.filter((finding) => finding.check.kind !== "none").length;
+  const deciding = shownFindings.filter((finding) => uncheckable(header, finding)).length;
   const testsOnly = shown - checked - deciding;
   const offered = shown - deciding;
   // A pack that holds fixes by severity opens with the severities, since they decide what waits for the owner.
   const threshold = header.pack.hold ?? null;
   return [
-    `${took} It found ${problems(shown + result.notShown)}.`,
+    foundLine,
     ...(header.noTests === true ? [NO_TESTS_WARNING] : []),
-    ...(threshold === null ? [] : [severityLine(result.findings), holdSentence(threshold)]),
+    ...(threshold === null ? [] : [severityLine(shownFindings), holdSentence(threshold)]),
     AGENT_OPINION,
     "",
-    ...result.findings.flatMap((finding, index) => problemBlock(index + 1, finding, header)),
+    ...listed.flatMap(({ finding, number, at }) => [...problemBlock(number, finding, header), ...(at.earlier === "fixed" ? [`    ${CAME_BACK_LINE}`] : [])]),
     ...(result.notShown > 0 ? [`${result.notShown} more not shown: this review lists at most ${header.pack.maxFindings} problems.`] : []),
+    ...(hidden === 0 ? [] : [earlierHiddenLine(hidden)]),
     ...unconfirmedPointer(result.unconfirmed.length),
     "",
     `${checked} of ${shown} ${shown === 1 ? "has" : "have"} a specific check; ${deciding === 0 ? `${testsOnly} ${testsOnly === 1 ? "is" : "are"} tests only.` : `${deciding} cannot be checked, so ${deciding === 1 ? "it waits" : "they wait"} for your decision.`}`,
@@ -228,11 +253,13 @@ export function reviewLines({ header, result }: SavedReview): string[] {
 }
 
 /** What `delivery findings` prints: the latest review's problems and where each stands. `states` is aligned with the review's problems. */
-export function listLines({ header, result }: SavedReview, states: readonly FindingState[]): string[] {
+export function listLines({ header, result }: SavedReview, states: readonly FindingState[], { includeSkipped = false }: { includeSkipped?: boolean } = {}): string[] {
   const waiting = states.filter((at) => at.state === "approved").length;
   const needsTest = states.filter((at) => at.cause === "needs_test_change").length;
+  const hidden = includeSkipped ? 0 : states.filter(hiddenByDefault).length;
   const problemLines = result.findings.flatMap((finding, index) => {
     const at = states[index] ?? UNDECIDED;
+    if (!includeSkipped && hiddenByDefault(at)) return [];
     return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}${at.state === "needs_decision" ? `; ${CANNOT_BE_CHECKED}` : ""}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...(at.state === "needs_decision" ? [`    ${UNCHECKABLE_WHY} ${approveAnyway(index + 1)}`] : []), ...signOffLines(index + 1, at, holdWhy(header, finding))];
   });
   // What only a person can do, once the code part is done.
@@ -242,6 +269,7 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
   return [
     `${header.pack.title} of ${basename(header.repoPath)}, ${dayAndMinute(header.endedAt)} UTC: ${problems(result.findings.length)}.`,
     ...problemLines,
+    ...(hidden === 0 ? [] : [earlierHiddenLine(hidden)]),
     ...unconfirmedPointer(result.unconfirmed.length),
     ...(needsYou.length === 0 ? [] : ["", NEEDS_YOU, ...needsYou]),
     ...(needsTest === 0 ? [] : ["", needsTestChangeLine(needsTest)]),
