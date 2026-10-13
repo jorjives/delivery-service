@@ -309,6 +309,16 @@ describe("delivery review --preview", () => {
     expect(stdout).toContain("It has 1 file in the project's last commit:\nauth/session.js");
   }, RUN_TIMEOUT);
 
+  it("never lets a file name in the project drive the terminal", async () => {
+    const repo = exampleRepo();
+    writeFileSync(join(repo, "evil\u001b[2Jname.js"), "x\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "Add a hostile file name"]);
+    const { stdout } = await delivery(["review", "code", "--preview"], { cwd: repo, env: unsigned() });
+    expect(stdout).toContain("evilname.js");
+    expect(stdout).not.toContain("\u001b");
+  }, RUN_TIMEOUT);
+
   it("gives the same as data with --json", async () => {
     const repo = exampleRepo();
     const { stdout } = await delivery(["review", "code", "--preview", "--json"], { cwd: repo, env: unsigned() });

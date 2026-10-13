@@ -1,4 +1,5 @@
 import { isAbsolute, posix, resolve } from "node:path";
+import { stripControl } from "../report/text.js";
 import { resolvePack, type Pack } from "../packs/manifest.js";
 import { projectPath } from "../packs/confirm.js";
 import { fixNowLines, NOT_NOW, nothingInPart, onlyPart, opening, outsideProject, PREVIEW_INTRO, RECOVERED, reviewLines, failureSentence, checkLevel } from "../packs/render.js";
@@ -72,7 +73,7 @@ async function previewReview(pack: Pack, repoPath: string, scope: string | undef
     return EXIT.ok;
   }
   const [title] = opening(pack.manifest.title);
-  for (const line of [title ?? "", ...(scope === undefined ? [] : [onlyPart(scope)]), ...((await hasUncommittedChanges(repoPath)) ? [UNCOMMITTED_NOTE] : []), PREVIEW_INTRO, RULE, `${systemPrompt}\n\n${prompt}`, RULE, toolsLine(tools)]) {
+  for (const line of [title ?? "", ...(scope === undefined ? [] : [onlyPart(scope)]), ...((await hasUncommittedChanges(repoPath)) ? [UNCOMMITTED_NOTE] : []), PREVIEW_INTRO, RULE, stripControl(`${systemPrompt}\n\n${prompt}`), RULE, toolsLine(tools)]) {
     ctx.writeLine(line);
   }
   return EXIT.ok;
