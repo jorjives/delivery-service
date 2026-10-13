@@ -34,7 +34,7 @@ describe("running a review", () => {
     expect(outcome.kind).toBe("done");
     if (outcome.kind !== "done") return;
     expect(outcome.recovered).toBe(false);
-    expect(outcome.review.header).toMatchObject({ pack: { name: "code", maxFindings: 40 }, commit: git(repo, ["rev-parse", "HEAD"]), fileCount: 8 });
+    expect(outcome.review.header).toMatchObject({ pack: { name: "code", maxFindings: 40 }, commit: git(repo, ["rev-parse", "HEAD"]), fileCount: 9 });
     expect(outcome.review.header.pack.fixInstructions).toBe((await resolvePack("code", "/")).fixInstructions);
     expect(outcome.review.header.pack.checks).toEqual(["anchor-gone", "pattern-absent"]);
     expect(outcome.review.header.pack.guards).toEqual({ testGlobs: [], protectedGlobs: [], skipMarkers: [] });

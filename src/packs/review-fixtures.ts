@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { appendEntry, create, setBaseBranch, setOutcome } from "../case-file.js";
@@ -22,7 +22,8 @@ export const EXAMPLE_DIR = fileURLToPath(new URL("../../examples/code-review-exa
 
 /** A fresh git repository holding an example's files in one commit on `main`: the code-review example unless `dir` names another. */
 export function exampleRepo(prefix = "code-review-example-", dir = EXAMPLE_DIR): string {
-  const files = Object.fromEntries(readdirSync(dir).map((name) => [name, readFileSync(join(dir, name), "utf-8")]));
+  const entries = readdirSync(dir, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile());
+  const files = Object.fromEntries(entries.map((entry) => { const path = join(entry.parentPath, entry.name); return [relative(dir, path), readFileSync(path, "utf-8")]; }));
   return initTempRepo(prefix, files);
 }
 
@@ -74,6 +75,38 @@ export const EXAMPLE_SCAN: ScanEnvelope = {
       anchor: "return Math.floor(price * 100) / 100;",
       check: { kind: "anchor-gone" },
     },
+  ],
+  notes: "",
+};
+
+/** What a code review of only the example's `auth` folder finds: one problem in it it is sure of, one it is not, and one outside the folder. */
+export const SCOPED_SCAN: ScanEnvelope = {
+  findings: [
+    {
+      title: "Signed-in sessions never run out, and new ones are refused",
+      category: "correctness",
+      severity: "high",
+      confidence: "high",
+      where: { path: "auth/session.js" },
+      problem: "The check is the wrong way round: a session is treated as valid only after its hour is up.",
+      whyItMatters: "People are signed out straight away, and old sessions stay open for ever.",
+      fixedLooksLike: "A session is valid for one hour after it starts, and not after.",
+      anchor: "return now - startedAt > 60 * 60 * 1000;",
+      check: { kind: "anchor-gone" },
+    },
+    {
+      title: "Session times are compared without saying their unit",
+      category: "inconsistency",
+      severity: "low",
+      confidence: "low",
+      where: { path: "auth/session.js" },
+      problem: "The function does not say whether times are in seconds or milliseconds.",
+      whyItMatters: "A caller passing seconds would get the wrong answer.",
+      fixedLooksLike: "The function says which unit it expects.",
+      anchor: "export function sessionIsValid(startedAt, now) {",
+      check: { kind: "none" },
+    },
+    EXAMPLE_SCAN.findings[0]!,
   ],
   notes: "",
 };

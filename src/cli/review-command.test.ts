@@ -70,7 +70,7 @@ describe("delivery review", () => {
     const repo = exampleRepo();
     const { exitCode, stdout } = await delivery(["review", "code"], { cwd: repo, env: await mocked(scanScript({ findings: [], notes: "" })) });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain("The review found no problems. That is not proof there are none: the review is an agent's opinion, it looked at 8 files, and it can miss things.");
+    expect(stdout).toContain("The review found no problems. That is not proof there are none: the review is an agent's opinion, it looked at 9 files, and it can miss things.");
   }, RUN_TIMEOUT);
 
   it("reviews for security with nothing configured, opening by severity and never showing the password", async () => {
