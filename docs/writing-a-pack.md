@@ -41,15 +41,15 @@ Each field of `pack.json` is optional unless noted. Bump `version` when you chan
 | Field | Value | Notes |
 |-------|-------|-------|
 | `$schema` | `string` | Where an editor finds the schema to check this file against while it is written. Ignored by the harness. Optional. |
-| `schema` | `string` | Not used here. Present for compatibility. Optional. |
+| `schema` | `string` | Always `delivery.pack/1`, the format this harness reads. Required. |
 | `name` | `string` | Short name of the review, such as `code`. Used in sentences and `delivery review <name>`. Required. |
 | `version` | `string` | Version of the pack, such as `1.0.0`. When you change this pack's manifest or instructions, bump the version. Required. |
 | `title` | `string` | The review's title, such as `Code review`. Required. |
 | `summary` | `string` | One sentence saying what it looks for. Required. |
 | `scan` | `object` | The review phase: see below. Required. |
 | `fix` | `object` | The fix phase, optional. If present, it holds `prompt` and `testGlobs`, `protectedGlobs`, `skipMarkers`. Optional. |
-| `severity` | `string` | The problem threshold for sign-off: `critical`, `high`, `medium`, `low`. Defaults to `high`. Critical and high problems wait for sign-off before merging. Optional. |
-| `hold` | `object` | Problems at or above this severity wait for sign-off. Holds `atOrAbove` (one of the severities). Defaults to `high`. Optional. |
+| `severity` | `object` | What each of `low`, `medium`, `high`, `critical` means for this pack, one plain sentence each, by consequence. The reviewer is told these. Required. |
+| `hold` | `object` | `{ "atOrAbove": "high" }`: fixes of problems at or above this severity wait for sign-off. `null`, the default, holds nothing. Optional. |
 
 ### scan
 
@@ -58,10 +58,10 @@ The review phase. Holds:
 | Field | Value | Notes |
 |-------|-------|-------|
 | `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `scan.md`. Required. |
-| `categories` | `object` | How the review categorises problems. Holds `changesTests`, `reviewerKnowledge`, `scope`, `sensitive` (each a list of category names). Optional. |
+| `categories` | `array` | The kinds of problem this review reports: a list of `{ id, title, description }`, each optionally with `changesTests`, `reviewerKnowledge`, `scope: "repo"` or `sensitive`. At least one. Required. |
 | `maxFindings` | `number` | Limit the number of problems in one review. Defaults to `40`. Optional. |
-| `consequenceLabel` | `string` | What the review calls the outcome of a fix (e.g. "the code is safer"). Defaults to "the code is better". Optional. |
-| `requireCheck` | `boolean` | Whether every problem must have a check. Defaults to `true`. Optional. |
+| `consequenceLabel` | `string` | `why-it-matters` (the default) or `what-could-happen`: how each problem's consequence is introduced to the owner. Optional. |
+| `requireCheck` | `boolean` | `true` sets aside every problem with no specific check for the owner's decision, in any project. Absent by default. Optional. |
 | `checks` | `array` | The checks this pack's problems may use. See "The checks a problem may use" below. Defaults to all three. Optional. |
 
 ## The checks a problem may use
