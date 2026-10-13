@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
-import { atOrAbove, SEVERITIES, type CheckKind, type CheckSpec, type Confidence, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
+import { atOrAbove, SEVERITIES, type CheckKind, type CheckSpec, type Confidence, type Finding, type Severity, type Unconfirmed, type UnconfirmedReason } from "./finding.js";
 import { hiddenByDefault, opensPr, UNDECIDED, type EarlierChoice, type FindingState, type FixState } from "./fix-state.js";
 import { NOT_LANDED_REASONS, type NotLandedReason } from "./ledger.js";
 import { uncheckable, type PinnedPack, type ReviewHeader, type SavedReview } from "./review-record.js";
@@ -201,14 +201,25 @@ export function signOffLines(number: number, { state, fix, signOff }: FindingSta
   }
 }
 
-export const opening = (title: string): string[] => [`${title} of your project.`, READS_ONLY];
+export const onlyPart = (path: string): string => `This review looks only at ${pathName(path)}.`;
+export const outsideProject = (raw: string): string => `"${pathName(raw)}" is not inside your project. Name a folder or file in it, relative to where you are, for example: delivery review code --path src`;
+export const nothingInPart = (path: string): string => `There is nothing at "${pathName(path)}" in your last commit to review. Check the name, relative to where you are, and that it is committed.`;
+export const outsidePartPointer = (count: number, path: string): string => `${count} more ${count === 1 ? "was" : "were"} outside ${pathName(path)}, so ${count === 1 ? "it is" : "they are"} not offered. See ${count === 1 ? "it" : "them"} with: delivery findings --unconfirmed`;
+
+export const opening = (title: string, path?: string): string[] => [`${title} of your project.`, ...(path === undefined ? [] : [onlyPart(path)]), READS_ONLY];
 export const unfinishedReview = (packName: string): string => `The last review was stopped before it was saved. Run \`delivery review ${packName}\` to finish it.`;
 
 export const noneFound = (fileCount: number): string =>
   `The review found no problems. That is not proof there are none: the review is an agent's opinion, it looked at ${fileCount} ${fileCount === 1 ? "file" : "files"}, and it can miss things.`;
 
-const unconfirmedPointer = (count: number): string[] =>
-  count === 0 ? [] : [`${count} more could not be confirmed: the code they point at could not be found, so they are not offered. See them with: delivery findings --unconfirmed`];
+function unconfirmedPointer(unconfirmed: readonly Unconfirmed[], path: string | undefined): string[] {
+  const outside = unconfirmed.filter((item) => item.reason === "outside_scope").length;
+  const missing = unconfirmed.length - outside;
+  return [
+    ...(missing === 0 ? [] : [`${missing} more could not be confirmed: the code they point at could not be found, so they are not offered. See them with: delivery findings --unconfirmed`]),
+    ...(outside === 0 || path === undefined ? [] : [outsidePartPointer(outside, path)]),
+  ];
+}
 
 /** One problem as a numbered block: title and severity, then one fact per line, in the words its pack chose. */
 export function problemBlock(number: number, finding: Finding, header: ReviewHeader): string[] {
@@ -244,15 +255,16 @@ function setAside(items: readonly { finding: Finding; number: number; at: Findin
 
 /** What `delivery review` prints once the review is saved. `states` is aligned with the review's problems; one skipped or declined in an earlier review is counted, not listed. */
 export function reviewLines({ header, result }: SavedReview, states: readonly FindingState[]): string[] {
+  const scope = header.path === undefined ? [] : [onlyPart(header.path)];
   const took = `Review finished in ${durationWords(Date.parse(header.endedAt) - Date.parse(header.startedAt))}.`;
-  if (result.findings.length === 0) return [took, noneFound(header.fileCount), ...unconfirmedPointer(result.unconfirmed.length)];
+  if (result.findings.length === 0) return [...scope, took, noneFound(header.fileCount), ...unconfirmedPointer(result.unconfirmed, header.path)];
   const listed = result.findings.flatMap((finding, index) => {
     const at = states[index] ?? UNDECIDED;
     return hiddenByDefault(at) ? [] : [{ finding, number: index + 1, at }];
   });
   const hidden = result.findings.length - listed.length;
   const foundLine = `${took} It found ${problems(result.findings.length + result.notShown)}.`;
-  if (listed.length === 0) return [foundLine, earlierHiddenLine(hidden), ...unconfirmedPointer(result.unconfirmed.length), NOTHING_CHANGED];
+  if (listed.length === 0) return [...scope, foundLine, earlierHiddenLine(hidden), ...unconfirmedPointer(result.unconfirmed, header.path), NOTHING_CHANGED];
   const shownFindings = listed.map(({ finding }) => finding);
   const shown = shownFindings.length;
   const checked = shownFindings.filter((finding) => finding.check.kind !== "none").length;
@@ -262,6 +274,7 @@ export function reviewLines({ header, result }: SavedReview, states: readonly Fi
   // A pack that holds fixes by severity opens with the severities, since they decide what waits for the owner.
   const threshold = header.pack.hold ?? null;
   return [
+    ...scope,
     foundLine,
     ...(header.noTests === true ? [NO_TESTS_WARNING] : []),
     ...(threshold === null ? [] : [severityLine(shownFindings), holdSentence(threshold)]),
@@ -271,7 +284,7 @@ export function reviewLines({ header, result }: SavedReview, states: readonly Fi
     ...setAside(listed.filter(({ finding }) => unsure(finding))),
     ...(result.notShown > 0 ? [`${result.notShown} more not shown: this review lists at most ${header.pack.maxFindings} problems.`] : []),
     ...(hidden === 0 ? [] : [earlierHiddenLine(hidden)]),
-    ...unconfirmedPointer(result.unconfirmed.length),
+    ...unconfirmedPointer(result.unconfirmed, header.path),
     "",
     `${checked} of ${shown} ${shown === 1 ? "has" : "have"} a specific check; ${deciding === 0 ? `${testsOnly} ${testsOnly === 1 ? "is" : "are"} tests only.` : `${deciding} cannot be checked, so ${deciding === 1 ? "it waits" : "they wait"} for your decision.`}`,
     NOTHING_CHANGED,
@@ -302,9 +315,10 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
   );
   return [
     `${header.pack.title} of ${basename(header.repoPath)}, ${dayAndMinute(header.endedAt)} UTC: ${problems(result.findings.length)}.`,
+    ...(header.path === undefined ? [] : [onlyPart(header.path)]),
     ...problemLines,
     ...(hidden === 0 ? [] : [earlierHiddenLine(hidden)]),
-    ...unconfirmedPointer(result.unconfirmed.length),
+    ...unconfirmedPointer(result.unconfirmed, header.path),
     ...(needsYou.length === 0 ? [] : ["", NEEDS_YOU, ...needsYou]),
     ...(needsTest === 0 ? [] : ["", needsTestChangeLine(needsTest)]),
     ...(waiting === 0 ? [] : ["", fixWaiting(waiting)]),

@@ -37,7 +37,7 @@ describe("the findings document", () => {
   it("gives every problem with its state, its check's kind and level, and a pointer to its fix's run", () => {
     expect(findingsDocument(review, [fixed, UNDECIDED])).toEqual({
       schema: "delivery.findings/1",
-      review: { id: "code-20261005T101500Z", pack: "code", title: "Code review", commit: "abcdef0123456789abcdef0123456789abcdef01", startedAt: "2026-10-05T10:15:00.000Z", endedAt: "2026-10-05T10:19:12.000Z", packVersion: "1.0.0", packHash: "0".repeat(64) },
+      review: { id: "code-20261005T101500Z", pack: "code", title: "Code review", commit: "abcdef0123456789abcdef0123456789abcdef01", startedAt: "2026-10-05T10:15:00.000Z", endedAt: "2026-10-05T10:19:12.000Z", packVersion: "1.0.0", packHash: "0".repeat(64), path: null },
       problems: [
         {
           number: 1,
@@ -114,5 +114,10 @@ describe("the findings document's stability promise", () => {
 
   it("puts every key and name published now under the promise: add its line to findings-published-keys.txt", () => {
     expect(current.filter((line) => !promised.includes(line))).toEqual([]);
+  });
+
+  it("says which one part of the project was reviewed, or null for the whole project", () => {
+    expect(findingsDocument({ ...review, header: { ...review.header, path: "auth" } }, []).review.path).toBe("auth");
+    expect(findingsDocument(review, []).review.path).toBeNull();
   });
 });

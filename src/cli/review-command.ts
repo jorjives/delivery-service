@@ -1,6 +1,7 @@
-import { resolve } from "node:path";
+import { isAbsolute, posix, resolve } from "node:path";
 import { resolvePack } from "../packs/manifest.js";
-import { fixNowLines, NOT_NOW, opening, RECOVERED, reviewLines, failureSentence, checkLevel } from "../packs/render.js";
+import { projectPath } from "../packs/confirm.js";
+import { fixNowLines, NOT_NOW, nothingInPart, opening, outsideProject, RECOVERED, reviewLines, failureSentence, checkLevel } from "../packs/render.js";
 import { hiddenByDefault, readFindingStates, UNDECIDED, type FindingState } from "../packs/fix-state.js";
 import { uncheckable, type SavedReview } from "../packs/review-record.js";
 import { runReview } from "../packs/review.js";
@@ -8,6 +9,7 @@ import { findingsDocument } from "../packs/findings-document.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
+import { git } from "../git-exec.js";
 import type { Ask, ChoiceQuestion, PickQuestion } from "./init.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
 import { fixSettings } from "./fix-command.js";
@@ -31,27 +33,51 @@ export const WHEN_QUESTION: ChoiceQuestion = {
   default: "later",
 };
 
+export interface ReviewCommandOptions {
+  /** Review only this part of the project: a folder or file, relative to where the command is typed. */
+  path?: string;
+  /** Print what the review agent would be told, and start nothing. */
+  preview?: boolean;
+}
+
+/**
+ * A part of the project as git names it, from what the owner typed relative to `startDir`; refused when it leads out.
+ * `undefined` when it names the whole project (`--path .` at the top).
+ */
+export async function partToReview(startDir: string, raw: string): Promise<string | undefined> {
+  // posix.join would silently re-root an absolute path under the prefix; refuse it instead, as projectPath does.
+  if (isAbsolute(raw) || /^[A-Za-z]:/.test(raw)) throw new Refusal(outsideProject(raw), EXIT.configuration);
+  const prefix = (await git(startDir, ["rev-parse", "--show-prefix"])).trim();
+  const joined = posix.normalize(posix.join(prefix, raw.replace(/\\/g, "/"))).replace(/\/$/, "");
+  if (joined === ".") return undefined;
+  const part = projectPath(joined);
+  if (part === undefined) throw new Refusal(outsideProject(raw), EXIT.configuration);
+  return part;
+}
+
 /**
  * `delivery review <pack> [repo]`: say what it is about to do, run the review,
  * and print the list. On a terminal it then offers the owner a choice; in a
  * pipe or with `--json` it never asks. The review's lines are notes, so under
  * `--json` they go to standard error and standard output stays clear.
  */
-export async function reviewCommand(packArg: string, repoArg: string | undefined, ctx: CommandContext, ask: Ask): Promise<ExitCode> {
-  const repoPath = await findRepository(resolve(ctx.cwd, repoArg ?? "."));
+export async function reviewCommand(packArg: string, repoArg: string | undefined, ctx: CommandContext, ask: Ask, options: ReviewCommandOptions = {}): Promise<ExitCode> {
+  const startDir = resolve(ctx.cwd, repoArg ?? ".");
+  const repoPath = await findRepository(startDir);
   const pack = await resolvePack(packArg, ctx.cwd);
   const say = (line: string): void => ctx.report.note(line);
+  const scope = options.path === undefined ? undefined : await partToReview(startDir, options.path);
 
-  for (const line of opening(pack.manifest.title)) say(line);
+  for (const line of opening(pack.manifest.title, scope)) say(line);
   if (await hasUncommittedChanges(repoPath)) say(UNCOMMITTED_NOTE);
 
   // The same question `delivery fix` asks, so what the review promises is what the fix does; but a review only reads,
   // so a JavaScript config is never run. ponytail: such a project may be warned it has no tests when its config
   // names a check; `delivery fix` asks again with the whole config, and a wrong warning only holds more fixes.
-  const { verify } = await fixSettings({}, resolve(ctx.cwd, repoArg ?? "."), repoPath, ctx, true);
-  const outcome = await runReview(repoPath, pack, { session: () => agentSession(ctx.env), env: ctx.env, noTests: verify === null });
+  const { verify } = await fixSettings({}, startDir, repoPath, ctx, true);
+  const outcome = await runReview(repoPath, pack, { session: () => agentSession(ctx.env), env: ctx.env, noTests: verify === null, ...(scope === undefined ? {} : { scope }) });
   if (outcome.kind === "failed") throw new Refusal(failureSentence(outcome.terminus, packArg), EXIT.agentRuntime);
-  if (outcome.kind === "empty_scope") throw new Refusal(`there is nothing in ${outcome.scope} to review`, EXIT.configuration);
+  if (outcome.kind === "empty_scope") throw new Refusal(nothingInPart(outcome.scope), EXIT.configuration);
 
   say("");
   if (outcome.recovered) say(RECOVERED);

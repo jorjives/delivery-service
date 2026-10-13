@@ -66,6 +66,16 @@ issued, says "One thing is left for you:" and what it is.
 - `delivery findings --unconfirmed` lists problems the review reported that the harness could not find in your project, so did not offer. The reason is one of: "that file is not in your last commit", "that path leads outside your project", "that path is not an ordinary file in your project", "the code it points at is not in that file", or "it did not say exactly which code it means".
 - `delivery packs` lists the reviews available. `delivery review ./my-review` runs one from a folder of your own, exactly as a built-in one. `delivery packs --schema` prints the JSON Schema of a review folder's `pack.json`. To write one, see [Writing a pack](writing-a-pack.md).
 
+## Review one part of your project
+
+To review only the part you care about, name it:
+
+```bash
+delivery review code --path src/auth
+```
+
+The part is a folder or a file, relative to where you are. The review says "This review looks only at src/auth." before and after it runs, and the agent is shown only that part's files. A problem it reports anywhere else is not offered: it is listed with `delivery findings --unconfirmed` as "it is outside the part of your project you asked to review". A part outside your project, or one with nothing committed in it, is refused before anything starts.
+
 ## Choosing what to fix
 
 Nothing is fixed until you say so. Choose by the numbers in the list:
@@ -234,7 +244,7 @@ add keys and names; it never removes or changes one.
 - `schema`: always `delivery.findings/1`.
 - `review`: the review's `id`, its `pack` name and `title`, the `commit` it read, and when it
   `startedAt` and `endedAt`, plus the `packVersion` of the pack that made it and a `packHash`
-  fingerprint of its manifest and instructions (a changed pack shows as a changed fingerprint).
+  fingerprint of its manifest and instructions (a changed pack shows as a changed fingerprint), and the `path` of the one part reviewed, or null for the whole project.
 - `problems`: every problem, in the order `delivery findings` numbers them. Each has its `number`,
   its `id` (the same for the same problem found again), `title`, `category`, `severity`, `confidence` (`high`, `medium`, `low`, or null when the review did not say),
   `where` (`path`, `line`, `endLine`), its `state` from the closed set and the `words` you read for it, its

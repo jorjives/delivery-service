@@ -48,6 +48,8 @@ export const FindingsDocument = z.object({
     /** The version of the pack that made the review, and a fingerprint of its manifest and instructions: a changed pack shows as a changed fingerprint. */
     packVersion: z.string(),
     packHash: z.string(),
+    /** The one part of the project reviewed; null: the whole project. */
+    path: z.string().nullable(),
   }),
   problems: z.array(FindingsProblem),
   /** How many the review reported that could not be found in the project: `delivery findings --unconfirmed`. */
@@ -61,7 +63,7 @@ export type FindingsDocument = z.infer<typeof FindingsDocument>;
 export function findingsDocument({ header, result }: SavedReview, states: readonly FindingState[]): FindingsDocument {
   return {
     schema: FINDINGS_SCHEMA,
-    review: { id: header.reviewId, pack: header.pack.name, title: header.pack.title, commit: header.commit, startedAt: header.startedAt, endedAt: header.endedAt, packVersion: header.pack.version, packHash: header.pack.hash },
+    review: { id: header.reviewId, pack: header.pack.name, title: header.pack.title, commit: header.commit, startedAt: header.startedAt, endedAt: header.endedAt, packVersion: header.pack.version, packHash: header.pack.hash, path: header.path ?? null },
     problems: result.findings.map((finding, index) => {
       const at = states[index] ?? UNDECIDED;
       return {

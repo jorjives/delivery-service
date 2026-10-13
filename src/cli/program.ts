@@ -7,6 +7,7 @@ import { secretMasker } from "../packs/secrets.js";
 import { SIGN_OFF_THRESHOLDS } from "../packs/finding.js";
 import { decideCommand, findingsCommand, type DecideOptions, type FindingsOptions } from "./findings-command.js";
 import type { SignOffOptions } from "./sign-off-command.js";
+import type { ReviewCommandOptions } from "./review-command.js";
 import type { FixOptions } from "./fix-command.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
@@ -206,10 +207,11 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .argument("<pack>", "which review: a name from `delivery packs`, such as code, or the path to a review folder of your own")
     .argument("[repo]", "the git repository to review (default: the current folder)")
-    .action(async (pack: string, repo: string | undefined, _options: unknown, command: Command) => {
+    .option("--path <part>", "review only this part of your project, such as src/auth: a folder or file, relative to where you are")
+    .action(async (pack: string, repo: string | undefined, options: ReviewCommandOptions, command: Command) => {
       const ctx = ctxFor(command, repo);
       const { reviewCommand } = await import("./review-command.js");
-      exitCode = await reviewCommand(pack, repo, ctx, inquirerAsk(ctx.colour));
+      exitCode = await reviewCommand(pack, repo, ctx, inquirerAsk(ctx.colour), options);
     });
 
   const findings = program

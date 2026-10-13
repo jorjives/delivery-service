@@ -4,6 +4,7 @@ import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
   AGENT_OPINION, CAME_BACK_LINE, CHANGES_TESTS, CHECK_LEVEL, earlierHiddenLine, EARLIER_WORDS, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, madeBy, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
+  onlyPart, outsideProject, nothingInPart, outsidePartPointer,
   opening, PR_OPENED, POSSIBLY_WORTH_A_LOOK, SET_ASIDE, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, stateWords, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved, allowTestEditsHint,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
@@ -486,4 +487,12 @@ describe("how sure the review is", () => {
   it("uses none of the words the owner never reads", () => {
     for (const line of [...reviewLines(review({ findings: [SURE, MAYBE] }), []), POSSIBLY_WORTH_A_LOOK, SET_ASIDE]) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
   });
+});
+
+it("says which part a review looked at, in the list as well as the review", () => {
+  const scoped: SavedReview = { ...review(), header: { ...HEADER, path: "auth" } };
+  expect(reviewLines(scoped, undecided)[0]).toBe(onlyPart("auth"));
+  expect(listLines(scoped, undecided)[1]).toBe(onlyPart("auth"));
+  expect(reviewLines(review(), undecided).join("\n")).not.toContain("looks only at");
+  for (const line of [onlyPart("auth"), outsideProject("../x"), nothingInPart("x"), outsidePartPointer(2, "auth")]) expect(line).not.toMatch(PACK_FORBIDDEN);
 });

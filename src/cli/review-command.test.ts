@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { git } from "../../tests/helpers.js";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
-import { AGENT_OPINION, earlierHiddenLine, fixNowLines, NOT_NOW, NOTHING_CHANGED, READS_ONLY, CANNOT_BE_CHECKED, NO_TESTS_LEVEL, NO_TESTS_WARNING } from "../packs/render.js";
+import { AGENT_OPINION, earlierHiddenLine, fixNowLines, NOT_NOW, NOTHING_CHANGED, READS_ONLY, CANNOT_BE_CHECKED, NO_TESTS_LEVEL, NO_TESTS_WARNING, onlyPart, outsideProject, nothingInPart, outsidePartPointer, POSSIBLY_WORTH_A_LOOK, SET_ASIDE } from "../packs/render.js";
 import { packsRoot } from "../packs/review-record.js";
 import { UNDECIDED } from "../packs/fix-state.js";
-import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, sampleFinding, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript, NO_TESTS_DIR, NO_TESTS_SCAN } from "../packs/review-fixtures.js";
+import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, sampleFinding, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript, NO_TESTS_DIR, NO_TESTS_SCAN, SCOPED_SCAN } from "../packs/review-fixtures.js";
 import { plainReporter } from "./report.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
@@ -243,4 +243,37 @@ describe("delivery review at a terminal", () => {
     const states = [{ ...UNDECIDED, state: "skipped" as const, earlier: "skipped" as const }, UNDECIDED];
     expect(pickQuestion({ dir: "/d", header, result: { findings, unconfirmed: [], notShown: 0, notes: "" } }, states).choices.map((choice) => choice.value)).toEqual(["2"]);
   });
+});
+
+describe("delivery review --path", () => {
+  it("reviews only the part asked for, says so before and after, and lists what was outside it apart", async () => {
+    const repo = exampleRepo();
+    const { exitCode, stdout } = await delivery(["review", "code", "--path", "auth"], { cwd: repo, env: await mocked(scanScript(SCOPED_SCAN)) });
+    expect(exitCode).toBe(EXIT.ok);
+    const lines = stdout.split("\n");
+    expect(lines.slice(0, 3)).toEqual(["Code review of your project.", onlyPart("auth"), READS_ONLY]);
+    expect(stdout).toMatch(/^Review finished in \d+ s\. It found 2 problems\.$/m);
+    expect(lines.filter((line) => line === onlyPart("auth"))).toHaveLength(2);
+    expect(stdout).toContain("1. Signed-in sessions never run out, and new ones are refused (high)");
+    expect(stdout).toContain(`${POSSIBLY_WORTH_A_LOOK} (1): ${SET_ASIDE}`);
+    expect(stdout).toContain(outsidePartPointer(1, "auth"));
+  }, RUN_TIMEOUT);
+
+  it("takes the part relative to the folder it is typed in", async () => {
+    const repo = exampleRepo();
+    const { exitCode, stdout } = await delivery(["review", "code", "--path", "."], { cwd: join(repo, "auth"), env: await mocked(scanScript(SCOPED_SCAN)) });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(onlyPart("auth"));
+  }, RUN_TIMEOUT);
+
+  it("refuses a part outside the project, and one with nothing in it, before any agent starts", async () => {
+    const repo = exampleRepo();
+    const outside = await delivery(["review", "code", "--path", "../elsewhere"], { cwd: repo, env: await mocked() });
+    expect(outside.exitCode).toBe(EXIT.configuration);
+    expect(outside.stderr).toContain(outsideProject("../elsewhere"));
+    const empty = await delivery(["review", "code", "--path", "nowhere"], { cwd: repo, env: await mocked() });
+    expect(empty.exitCode).toBe(EXIT.configuration);
+    expect(empty.stderr).toContain(nothingInPart("nowhere"));
+    expect(reviewDirs(repo)).toEqual([]);
+  }, RUN_TIMEOUT);
 });

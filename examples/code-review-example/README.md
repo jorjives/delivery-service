@@ -18,6 +18,8 @@ A tiny shop with problems planted in it for a code review and a security review 
 
 3. Run `delivery review code`, then `delivery findings 1`. Nothing in the folder changes.
 
+4. To review only the `auth` folder: `delivery review code --path auth`.
+
 [Reviewing your project](../../docs/task-packs.md) explains what you see.
 
 Then choose and fix:
