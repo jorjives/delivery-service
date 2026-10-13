@@ -60,6 +60,8 @@ export const ReviewHeader = z.object({
   endedAt: z.string().datetime(),
   /** No test command could be found when the review ran: nothing checks a fix broke nothing else, so every fix waits for sign-off. Absent: the project had one, or the review predates this. */
   noTests: z.literal(true).optional(),
+  /** The one part of the project reviewed, as git names it (a folder or a file); absent: the whole project. */
+  path: z.string().optional(),
 });
 export type ReviewHeader = z.infer<typeof ReviewHeader>;
 

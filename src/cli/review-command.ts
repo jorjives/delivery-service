@@ -51,6 +51,7 @@ export async function reviewCommand(packArg: string, repoArg: string | undefined
   const { verify } = await fixSettings({}, resolve(ctx.cwd, repoArg ?? "."), repoPath, ctx, true);
   const outcome = await runReview(repoPath, pack, { session: () => agentSession(ctx.env), env: ctx.env, noTests: verify === null });
   if (outcome.kind === "failed") throw new Refusal(failureSentence(outcome.terminus, packArg), EXIT.agentRuntime);
+  if (outcome.kind === "empty_scope") throw new Refusal(`there is nothing in ${outcome.scope} to review`, EXIT.configuration);
 
   say("");
   if (outcome.recovered) say(RECOVERED);

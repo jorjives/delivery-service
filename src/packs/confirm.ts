@@ -125,6 +125,9 @@ async function holdsNow(repoPath: string, commit: string, check: CheckSpec): Pro
   return true;
 }
 
+/** Whether a file is inside the part of the project reviewed: the whole project, or that folder or file by whole names. */
+export const inScope = (path: string, scope: string | undefined): boolean => scope === undefined || path === scope || path.startsWith(`${scope}/`);
+
 /** Problems the review is unsure of go last, so they are listed apart and cut first; then the most serious first. */
 const rank = (finding: Finding): number => (finding.confidence === "low" ? SEVERITIES.length : 0) + SEVERITIES.indexOf(finding.severity);
 
@@ -137,7 +140,7 @@ const rank = (finding: Finding): number => (finding.confidence === "low" ? SEVER
 export async function confirmFindings(
   repoPath: string,
   commit: string,
-  { pack, maxFindings, categories = [], checks }: { pack: string; maxFindings: number; categories?: readonly PinnedCategory[]; checks?: readonly CheckKind[] },
+  { pack, maxFindings, categories = [], checks, scope }: { pack: string; maxFindings: number; categories?: readonly PinnedCategory[]; checks?: readonly CheckKind[]; scope?: string },
   envelope: ScanEnvelope,
 ): Promise<ScanResult> {
   const flags = new Map(categories.map((category) => [category.id, category]));
@@ -151,6 +154,10 @@ export async function confirmFindings(
     const placed = await place(repoPath, commit, scanned);
     if ("reason" in placed) {
       unconfirmed.push({ title: words(scanned.title, TEXT_LIMITS.title), severity: scanned.severity, path: plain(scanned.where.path, TEXT_LIMITS.path), problem: words(scanned.problem, TEXT_LIMITS.sentence), reason: placed.reason });
+      continue;
+    }
+    if (!inScope(placed.path, scope)) {
+      unconfirmed.push({ title: words(scanned.title, TEXT_LIMITS.title), severity: scanned.severity, path: placed.path, problem: words(scanned.problem, TEXT_LIMITS.sentence), reason: "outside_scope" });
       continue;
     }
     const id = findingId(pack, scanned.category, placed.path, scanned.anchor);

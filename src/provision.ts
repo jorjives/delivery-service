@@ -17,7 +17,8 @@ export function branchName(surfaceId: string): string {
  * it. A remote-tracking ref such as `origin/main` cannot be merged into, so the
  * prefix is stripped for the local branch name.
  */
-async function resolveBaseRef(repoPath: string): Promise<{ ref: string; localBranch: string }> {
+/** Exported so a preview reads the commit a review would. */
+export async function resolveBaseRef(repoPath: string): Promise<{ ref: string; localBranch: string }> {
   try {
     const ref = await git(repoPath, ["symbolic-ref", "--short", "refs/remotes/origin/HEAD"]);
     return { ref, localBranch: ref.replace(/^origin\//, "") };

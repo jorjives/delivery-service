@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { git } from "../../tests/helpers.js";
 import { initTempRepo } from "../temp-repo.js";
-import { confirmFindings, findingId, locate, normaliseAnchor, TEXT_LIMITS } from "./confirm.js";
+import { confirmFindings, findingId, inScope, locate, normaliseAnchor, TEXT_LIMITS } from "./confirm.js";
 import type { ScanEnvelope, ScannedFinding } from "./finding.js";
 import { maskSecret } from "./secrets.js";
 
@@ -258,5 +258,23 @@ describe("how sure the review is", () => {
     const result = await confirm(repo, envelope(unsure, sure), 1);
     expect(result.findings.map((finding) => finding.title)).toEqual(["Surely"]);
     expect(result.notShown).toBe(1);
+  });
+});
+
+describe("a review of one part of the project", () => {
+  it("does not offer a problem outside the part asked for: it is listed as outside it", async () => {
+    const repo = initTempRepo("confirm-scope-", { "total.js": TOTAL, "auth/login.js": "export const check = (a, b) => a == b;\n" });
+    const outside = problem();
+    const inside = problem({ title: "Loose comparison", where: { path: "auth/login.js" }, anchor: "export const check = (a, b) => a == b;" });
+    const result = await confirmFindings(repo, head(repo), { pack: "code", maxFindings: 40, scope: "auth" }, envelope(outside, inside));
+    expect(result.findings.map((finding) => finding.title)).toEqual(["Loose comparison"]);
+    expect(result.unconfirmed).toEqual([expect.objectContaining({ reason: "outside_scope", path: "total.js" })]);
+  });
+
+  it("counts a file as inside a part only by whole folder names", () => {
+    expect(inScope("auth/login.js", "auth")).toBe(true);
+    expect(inScope("auth", "auth")).toBe(true);
+    expect(inScope("authority.js", "auth")).toBe(false);
+    expect(inScope("total.js", undefined)).toBe(true);
   });
 });

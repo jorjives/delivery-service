@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { git } from "../../tests/helpers.js";
+import { initTempRepo } from "../temp-repo.js";
 import { mockSessionEnvironment, promptsSent, readJournal, writeMockScript, type MockScript } from "../testing.js";
 import { provisionWorktree } from "../provision.js";
 import { runPlace } from "../run-location.js";
@@ -141,5 +142,29 @@ describe("a review that was interrupted", () => {
     expect(outcome).toMatchObject({ kind: "done", recovered: false });
     expect(promptsSent(await readJournal(journalPath))).toHaveLength(1);
     expect(branches(repo)).toBe("* main");
+  });
+});
+
+describe("reviewing one part of the project", () => {
+  it("sends only that part's files, records the part, and does not offer problems elsewhere", async () => {
+    const repo = initTempRepo("review-scope-", { "checkout.js": "export function total(price, discount) {\n  return price - discount;\n}\n", "auth/session.js": "export function sessionIsValid(startedAt, now) {\n  return now - startedAt > 60 * 60 * 1000;\n}\n" });
+    const inside = { ...EXAMPLE_SCAN.findings[0]!, title: "Sessions never expire", where: { path: "auth/session.js" }, anchor: "return now - startedAt > 60 * 60 * 1000;" };
+    const { session, journalPath } = await scripted(scanScript({ findings: [EXAMPLE_SCAN.findings[0], inside], notes: "" }));
+    const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env: state(), scope: "auth" });
+
+    if (outcome.kind !== "done") throw new Error(outcome.kind);
+    expect(outcome.review.header).toMatchObject({ path: "auth", fileCount: 1 });
+    expect(outcome.review.result.findings.map((finding) => finding.title)).toEqual(["Sessions never expire"]);
+    expect(outcome.review.result.unconfirmed.map((item) => item.reason)).toEqual(["outside_scope"]);
+    const [prompt] = promptsSent(await readJournal(journalPath));
+    expect(prompt).toContain("auth/session.js");
+    expect(prompt).not.toContain("checkout.js\n");
+  });
+
+  it("starts no session and sets nothing up when nothing is in that part", async () => {
+    const repo = exampleRepo();
+    const outcome = await runReview(repo, await resolvePack("code", "/"), { session: NEVER, env: state(), scope: "nowhere" });
+    expect(outcome).toEqual({ kind: "empty_scope", scope: "nowhere" });
+    expect(existsSync(packsRoot(repo))).toBe(false);
   });
 });

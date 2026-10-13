@@ -59,6 +59,7 @@ export const UNCONFIRMED_WHY: Record<UnconfirmedReason, string> = {
   not_a_file: "that path is not an ordinary file in your project",
   text_not_found: "the code it points at is not in that file",
   vague: "it did not say exactly which code it means",
+  outside_scope: "it is outside the part of your project you asked to review",
 };
 
 export const READS_ONLY = "This reads your project and writes nothing to it. It can take a few minutes.";

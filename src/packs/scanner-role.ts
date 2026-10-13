@@ -33,7 +33,7 @@ export function scannerRoleConfig(pack: Pack): RoleConfig<ScanEnvelope> {
 }
 
 /** What the scanner is asked: a pure function of the pack and the files in the commit it reads. */
-export function scanPrompt(pack: Pack, files: readonly string[]): string {
+export function scanPrompt(pack: Pack, files: readonly string[], scope?: string): string {
   const { manifest } = pack;
   const listed = files.slice(0, FILE_LIST_LIMIT);
   const more = files.length - listed.length;
@@ -59,14 +59,19 @@ export function scanPrompt(pack: Pack, files: readonly string[]): string {
     `- Report at most ${manifest.scan.maxFindings} problems, the most serious first, and each problem once.`,
     "- `notes`: anything the owner should know about the review as a whole, or an empty string.",
     "",
-    "## The project",
-    `The project has ${files.length} ${files.length === 1 ? "file" : "files"} in its last commit:`,
+    ...(scope === undefined
+      ? ["## The project", `The project has ${files.length} ${files.length === 1 ? "file" : "files"} in its last commit:`]
+      : [
+          "## The part to review",
+          `Review only \`${scope}\`: report problems only in files inside it. You may read other files in the project to understand it, but a problem reported elsewhere is not shown to the owner.`,
+          `It has ${files.length} ${files.length === 1 ? "file" : "files"} in the project's last commit:`,
+        ]),
     ...listed,
     ...(more > 0 ? [`...and ${more} more.`] : []),
   ].join("\n");
 }
 
 /** The whole of what one review session is sent. */
-export function scanSession(pack: Pack, files: readonly string[]): AssembledPrompt {
-  return { systemPrompt: scannerRoleConfig(pack).systemPromptFragment, prompt: scanPrompt(pack, files) };
+export function scanSession(pack: Pack, files: readonly string[], scope?: string): AssembledPrompt {
+  return { systemPrompt: scannerRoleConfig(pack).systemPromptFragment, prompt: scanPrompt(pack, files, scope) };
 }

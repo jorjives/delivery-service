@@ -42,6 +42,17 @@ describe("what the review's agent is asked", () => {
     expect(prompt).not.toContain(`f${FILE_LIST_LIMIT}.js`);
   });
 
+  it("tells the review which part to look at, and lists only its files", async () => {
+    const prompt = scanPrompt(await code(), ["auth/login.js"], "auth");
+    expect(prompt).toContain("## The part to review\nReview only `auth`: report problems only in files inside it.");
+    expect(prompt).toContain("It has 1 file in the project's last commit:\nauth/login.js");
+    expect(prompt).not.toContain("## The project");
+  });
+
+  it("is unchanged for a review of the whole project", async () => {
+    expect(scanPrompt(await code(), ["a.js"], undefined)).toBe(scanPrompt(await code(), ["a.js"]));
+  });
+
   it("offers the vulnerable-version check only in a pack that offers it", async () => {
     const sentence = "`dependency-absent`: fixed when `package-lock.json` no longer installs `package` at `version`";
     expect(scanPrompt(await resolvePack("security", "/"), ["a.js"])).toContain(sentence);

@@ -74,7 +74,7 @@ export type ScanEnvelope = z.infer<ReturnType<typeof scanEnvelopeFor>>;
 export type ScannedFinding = ScanEnvelope["findings"][number];
 
 /** Why a reported problem could not be confirmed, so is listed but not offered. Closed, so the words for it are total. */
-export const UNCONFIRMED_REASONS = ["no_such_file", "outside_project", "not_a_file", "text_not_found", "vague"] as const;
+export const UNCONFIRMED_REASONS = ["no_such_file", "outside_project", "not_a_file", "text_not_found", "vague", "outside_scope"] as const;
 export type UnconfirmedReason = (typeof UNCONFIRMED_REASONS)[number];
 
 /** A problem the harness confirmed in the repository at the review's commit. */
