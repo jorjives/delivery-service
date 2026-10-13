@@ -50,6 +50,15 @@ describe("what the review's agent is asked", () => {
   });
 });
 
+it("tells the review what not to report, when its pack lists any", async () => {
+  const pack = await code();
+  expect(scanPrompt(pack, ["a.js"])).toContain(
+    "## What not to report\nDo not report these, even where you see them:\n- Style, formatting and naming preferences, and missing comments.\n- Anything in a test file, unless the test itself is wrong.",
+  );
+  const security = await resolvePack("security", "/");
+  expect(scanPrompt(security, ["a.js"])).not.toContain("What not to report");
+});
+
 it("asks how sure the review is of each problem, in words", async () => {
   expect(scanPrompt(await code(), ["a.js"])).toContain("- `confidence`: how sure you are that this is a real problem: `high`, `medium` or `low`.");
 });

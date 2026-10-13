@@ -16,7 +16,6 @@ Look for problems a person would want fixed, not matters of taste.
   or that checks something other than what its name says. Report these only under this
   category: fixing one means changing that test.
 
-Do not report style, formatting, naming preferences or missing comments. Do not report anything
-in test files unless the test itself is wrong. Prefer fewer, certain problems to many guesses.
+Prefer fewer, certain problems to many guesses.
 When a problem would be fixed by removing or changing one recognisable line, prefer the
 `anchor-gone` check; use `pattern-absent` only for a pattern that would come back in other places.

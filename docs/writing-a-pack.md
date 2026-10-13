@@ -59,6 +59,7 @@ The review phase. Holds:
 |-------|-------|-------|
 | `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `scan.md`. Required. |
 | `categories` | `array` | The kinds of problem this review reports: a list of `{ id, title, description }`, each optionally with `changesTests`, `reviewerKnowledge`, `scope: "repo"` or `sensitive`. At least one. Required. |
+| `exclude` | `array` | Kinds of problem the reviewer is told not to report, one plain sentence each, such as "Style, formatting and naming preferences, and missing comments.". `delivery review <pack> --preview` shows them. It is an instruction to the reviewer: to keep a kind of problem out for certain, leave its category out. Optional. |
 | `maxFindings` | `number` | Limit the number of problems in one review. Defaults to `40`. Optional. |
 | `consequenceLabel` | `string` | `why-it-matters` (the default) or `what-could-happen`: how each problem's consequence is introduced to the owner. Optional. |
 | `requireCheck` | `boolean` | `true` sets aside every problem with no specific check for the owner's decision, in any project. Absent by default. Optional. |

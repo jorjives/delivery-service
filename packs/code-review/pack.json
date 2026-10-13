@@ -1,7 +1,7 @@
 {
   "schema": "delivery.pack/1",
   "name": "code",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "title": "Code review",
   "summary": "Looks for code that gives wrong results, code nothing uses, missing handling of things going wrong, the same job done different ways, and shortcuts the code admits to.",
   "scan": {
@@ -14,6 +14,7 @@
       { "id": "debt", "title": "Shortcuts the code admits to", "description": "Shortcuts the code itself owns up to, such as TODO notes and temporary workarounds." },
       { "id": "tests", "title": "Tests that do not check what they claim", "description": "A test that passes whatever the code does, or checks the wrong thing.", "changesTests": true }
     ],
+    "exclude": ["Style, formatting and naming preferences, and missing comments.", "Anything in a test file, unless the test itself is wrong."],
     "maxFindings": 40,
     "checks": ["anchor-gone", "pattern-absent"]
   },

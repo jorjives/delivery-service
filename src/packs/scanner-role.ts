@@ -46,6 +46,7 @@ export function scanPrompt(pack: Pack, files: readonly string[]): string {
     "Report problems in these categories only, naming each by its id:",
     ...manifest.scan.categories.map((category) => `- \`${category.id}\`: ${category.title}. ${category.description}`),
     "",
+    ...(manifest.scan.exclude === undefined ? [] : ["## What not to report", "Do not report these, even where you see them:", ...manifest.scan.exclude.map((kind) => `- ${kind}`), ""]),
     "## How serious each problem is",
     ...SEVERITIES.map((severity) => `- ${severity}: ${manifest.severity[severity]}`),
     "",

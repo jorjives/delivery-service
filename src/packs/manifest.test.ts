@@ -37,6 +37,13 @@ describe("the built-in packs", () => {
     expect(err).toBeInstanceOf(UnknownPack);
     expect(err).toMatchObject({ packName: "nope", available: ["code", "security"] });
   });
+
+  it("keep matters of taste out of the code review by its exclusion list, not its instructions", async () => {
+    const code = await resolvePack("code", "/");
+    expect(code.manifest.version).toBe("1.1.0");
+    expect(code.manifest.scan.exclude).toEqual(["Style, formatting and naming preferences, and missing comments.", "Anything in a test file, unless the test itself is wrong."]);
+    expect(code.scanInstructions).not.toContain("Do not report style");
+  });
 });
 
 describe("a pack from a folder", () => {
@@ -64,6 +71,7 @@ describe("a pack from a folder", () => {
     ["a version that is not one", (m: Record<string, unknown>) => (m.version = "one"), "version"],
     ["a guarded path with git's own prefix, which could take paths out of what is guarded", (m: Record<string, unknown>) => (m.fix = { prompt: "fix.md", protectedGlobs: [":(exclude)**"] }), "fix.protectedGlobs.0"],
     ["an empty skip marker", (m: Record<string, unknown>) => (m.fix = { prompt: "fix.md", skipMarkers: [""] }), "fix.skipMarkers.0"],
+    ["an empty exclusion", (m: Record<string, unknown>) => ((m.scan as Record<string, unknown>).exclude = [""]), "scan.exclude.0"],
   ])("is refused for %s, naming the file and the field", async (_, edit, field) => {
     const dir = editedPack(edit);
     const err = await loadPack(dir).catch((e: unknown) => e);
