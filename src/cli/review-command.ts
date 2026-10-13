@@ -1,10 +1,13 @@
 import { isAbsolute, posix, resolve } from "node:path";
-import { resolvePack } from "../packs/manifest.js";
+import { resolvePack, type Pack } from "../packs/manifest.js";
 import { projectPath } from "../packs/confirm.js";
-import { fixNowLines, NOT_NOW, nothingInPart, opening, outsideProject, RECOVERED, reviewLines, failureSentence, checkLevel } from "../packs/render.js";
+import { fixNowLines, NOT_NOW, nothingInPart, onlyPart, opening, outsideProject, PREVIEW_INTRO, RECOVERED, reviewLines, failureSentence, checkLevel } from "../packs/render.js";
 import { hiddenByDefault, readFindingStates, UNDECIDED, type FindingState } from "../packs/fix-state.js";
 import { uncheckable, type SavedReview } from "../packs/review-record.js";
-import { runReview } from "../packs/review.js";
+import { filesToReview, runReview } from "../packs/review.js";
+import { resolveBaseRef } from "../provision.js";
+import { scanSession, scannerRoleConfig } from "../packs/scanner-role.js";
+import { RULE, toolsLine } from "./preview-command.js";
 import { findingsDocument } from "../packs/findings-document.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
@@ -56,6 +59,26 @@ export async function partToReview(startDir: string, raw: string): Promise<strin
 }
 
 /**
+ * `delivery review <pack> --preview`: what the review agent would be told, from the same `scanSession` and file listing
+ * a review uses, at the commit a review would read. Only reads: no agent, no sign-in, no network, nothing written.
+ */
+async function previewReview(pack: Pack, repoPath: string, scope: string | undefined, ctx: CommandContext): Promise<ExitCode> {
+  const files = await filesToReview(repoPath, (await resolveBaseRef(repoPath)).ref, scope);
+  if (scope !== undefined && files.length === 0) throw new Refusal(nothingInPart(scope), EXIT.configuration);
+  const { systemPrompt, prompt } = scanSession(pack, files, scope);
+  const tools = scannerRoleConfig(pack).allowedTools;
+  if (ctx.json) {
+    ctx.writeLine(JSON.stringify({ systemPrompt, prompt, tools }, null, 2));
+    return EXIT.ok;
+  }
+  const [title] = opening(pack.manifest.title);
+  for (const line of [title ?? "", ...(scope === undefined ? [] : [onlyPart(scope)]), ...((await hasUncommittedChanges(repoPath)) ? [UNCOMMITTED_NOTE] : []), PREVIEW_INTRO, RULE, `${systemPrompt}\n\n${prompt}`, RULE, toolsLine(tools)]) {
+    ctx.writeLine(line);
+  }
+  return EXIT.ok;
+}
+
+/**
  * `delivery review <pack> [repo]`: say what it is about to do, run the review,
  * and print the list. On a terminal it then offers the owner a choice; in a
  * pipe or with `--json` it never asks. The review's lines are notes, so under
@@ -67,6 +90,8 @@ export async function reviewCommand(packArg: string, repoArg: string | undefined
   const pack = await resolvePack(packArg, ctx.cwd);
   const say = (line: string): void => ctx.report.note(line);
   const scope = options.path === undefined ? undefined : await partToReview(startDir, options.path);
+
+  if (options.preview === true) return previewReview(pack, repoPath, scope, ctx);
 
   for (const line of opening(pack.manifest.title, scope)) say(line);
   if (await hasUncommittedChanges(repoPath)) say(UNCOMMITTED_NOTE);

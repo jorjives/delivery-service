@@ -782,6 +782,7 @@ first: one whose code cannot be found is not offered, and `delivery findings --u
 it. Nothing in your project changes.
 
 - `delivery review code --path src/auth` reviews only that part of your project.
+- `delivery review code --preview` prints what the review agent would be told, with no sign-in and no network.
 - `delivery findings` lists the latest review's problems and where each stands;
   `delivery findings 2` shows one in full, with a part for engineers. With `--json`, it gives the
   whole list as data.

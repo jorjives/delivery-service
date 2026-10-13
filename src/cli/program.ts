@@ -208,6 +208,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .argument("<pack>", "which review: a name from `delivery packs`, such as code, or the path to a review folder of your own")
     .argument("[repo]", "the git repository to review (default: the current folder)")
     .option("--path <part>", "review only this part of your project, such as src/auth: a folder or file, relative to where you are")
+    .option("--preview", "show what the review agent would be told, and start nothing: no sign-in and no network needed")
     .action(async (pack: string, repo: string | undefined, options: ReviewCommandOptions, command: Command) => {
       const ctx = ctxFor(command, repo);
       const { reviewCommand } = await import("./review-command.js");

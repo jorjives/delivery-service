@@ -63,6 +63,7 @@ export const UNCONFIRMED_WHY: Record<UnconfirmedReason, string> = {
 };
 
 export const READS_ONLY = "This reads your project and writes nothing to it. It can take a few minutes.";
+export const PREVIEW_INTRO = "What the review agent will be told (nothing is sent, and no sign-in is needed):";
 export const AGENT_OPINION = "The agent that did the review is giving its opinion: check anything that matters.";
 export const NOTHING_CHANGED = "Nothing has been changed and nothing will be until you approve it.";
 export const RECOVERED = "Finishing the review that was interrupted: the agent had already replied, so it is not asked again.";

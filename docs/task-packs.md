@@ -66,6 +66,18 @@ issued, says "One thing is left for you:" and what it is.
 - `delivery findings --unconfirmed` lists problems the review reported that the harness could not find in your project, so did not offer. The reason is one of: "that file is not in your last commit", "that path leads outside your project", "that path is not an ordinary file in your project", "the code it points at is not in that file", or "it did not say exactly which code it means".
 - `delivery packs` lists the reviews available. `delivery review ./my-review` runs one from a folder of your own, exactly as a built-in one. `delivery packs --schema` prints the JSON Schema of a review folder's `pack.json`. To write one, see [Writing a pack](writing-a-pack.md).
 
+## See what the review will be told
+
+```bash
+delivery review code --preview
+```
+
+prints "What the review agent will be told (nothing is sent, and no sign-in is needed):" and then,
+between two lines, exactly the instructions and the list of your committed files the agent would be
+sent, followed by what it may do (read files and look through the project, nothing else). It needs
+no sign-in and no network and changes nothing. Add `--path` to preview a review of one part, or
+`--json` for the same as data.
+
 ## Review one part of your project
 
 To review only the part you care about, name it:

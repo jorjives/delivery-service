@@ -3,8 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { git } from "../../tests/helpers.js";
-import { BUILT_IN_PACKS } from "../packs/manifest.js";
-import { AGENT_OPINION, earlierHiddenLine, fixNowLines, NOT_NOW, NOTHING_CHANGED, READS_ONLY, CANNOT_BE_CHECKED, NO_TESTS_LEVEL, NO_TESTS_WARNING, onlyPart, outsideProject, nothingInPart, outsidePartPointer, POSSIBLY_WORTH_A_LOOK, SET_ASIDE } from "../packs/render.js";
+import { BUILT_IN_PACKS, resolvePack } from "../packs/manifest.js";
+import { filesToReview } from "../packs/review.js";
+import { scanSession, scannerRoleConfig } from "../packs/scanner-role.js";
+import { AGENT_OPINION, earlierHiddenLine, fixNowLines, NOT_NOW, NOTHING_CHANGED, PREVIEW_INTRO, READS_ONLY, CANNOT_BE_CHECKED, NO_TESTS_LEVEL, NO_TESTS_WARNING, onlyPart, outsideProject, nothingInPart, outsidePartPointer, POSSIBLY_WORTH_A_LOOK, SET_ASIDE } from "../packs/render.js";
+import { RULE, toolsLine } from "./preview-command.js";
 import { packsRoot } from "../packs/review-record.js";
 import { UNDECIDED } from "../packs/fix-state.js";
 import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, sampleFinding, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript, NO_TESTS_DIR, NO_TESTS_SCAN, SCOPED_SCAN } from "../packs/review-fixtures.js";
@@ -275,5 +278,40 @@ describe("delivery review --path", () => {
     expect(empty.exitCode).toBe(EXIT.configuration);
     expect(empty.stderr).toContain(nothingInPart("nowhere"));
     expect(reviewDirs(repo)).toEqual([]);
+  }, RUN_TIMEOUT);
+});
+
+describe("delivery review --preview", () => {
+  const unsigned = () => {
+    const home = mkdtempSync(join(tmpdir(), "preview-home-"));
+    const env = Object.fromEntries(Object.entries(withoutCredentials(process.env)).filter(([name]) => name !== TEST_MOCK_SCRIPT));
+    return { ...env, HOME: home, CLAUDE_CODE_DIR: join(home, ".claude") };
+  };
+
+  it("prints exactly what the review agent would be sent, with nobody signed in, and sets nothing up", async () => {
+    const repo = exampleRepo();
+    const pack = await resolvePack("code", "/");
+    const files = await filesToReview(repo, "main");
+    const { systemPrompt, prompt } = scanSession(pack, files);
+    const { exitCode, stdout, stderr } = await delivery(["review", "code", "--preview"], { cwd: repo, env: unsigned() });
+
+    expect(stderr).toBe("");
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe([`Code review of your project.`, PREVIEW_INTRO, RULE, `${systemPrompt}\n\n${prompt}`, RULE, toolsLine(scannerRoleConfig(pack).allowedTools), ""].join("\n"));
+    expect(existsSync(packsRoot(repo))).toBe(false);
+    expect(git(repo, ["worktree", "list"]).split("\n")).toHaveLength(1);
+  }, RUN_TIMEOUT);
+
+  it("previews a review of one part with only that part's files", async () => {
+    const repo = exampleRepo();
+    const { stdout } = await delivery(["review", "code", "--preview", "--path", "auth"], { cwd: repo, env: unsigned() });
+    expect(stdout).toContain(onlyPart("auth"));
+    expect(stdout).toContain("It has 1 file in the project's last commit:\nauth/session.js");
+  }, RUN_TIMEOUT);
+
+  it("gives the same as data with --json", async () => {
+    const repo = exampleRepo();
+    const { stdout } = await delivery(["review", "code", "--preview", "--json"], { cwd: repo, env: unsigned() });
+    expect(Object.keys(JSON.parse(stdout) as object)).toEqual(["systemPrompt", "prompt", "tools"]);
   }, RUN_TIMEOUT);
 });
