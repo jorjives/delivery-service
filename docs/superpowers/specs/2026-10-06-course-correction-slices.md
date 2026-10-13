@@ -19,16 +19,14 @@ instead.
   issues as a backlog) are in scope**, rather than deferred to a later spec, because they are the
   parts of the design that most directly replace machinery operators already depend on.
 
-**Ordering rationale:** Slice 1 is the one genuinely non-negotiable foundation — nothing else in
-the design is safe to ship (full tool access, the operator's own hooks and plugins, unattended
-runs) until the write fence and the landing boundary exist first. After that, the order follows
-the operator's own journey: express work as more than one step (2), keep a backlog of it instead
-of a fixed list (3), see it land coherently instead of as conflicting branches (4), have something
-happen once it lands (5), stop running it by hand (6), and only then the two substantial
-extensions that build on all of the above: a tracker as the backlog (7) and packs converging on
-it (8). Rows 5.3 (the prompt), 5.6 (triage and gate maintenance) and the revised invariants (§4)
-are folded into whichever slice first depends on them rather than given their own slice, because
-none of them is independently observable.
+**Ordering rationale:** Slice 1 is the one non-negotiable foundation — full tool access, the
+operator's own hooks and plugins, and unattended runs are not safe to ship before the write fence
+and the landing boundary exist. After that, the order follows the operator's own journey: express
+work as more than one step (2), keep a backlog of it (3), see it land coherently (4), have
+something happen once it lands (5), stop running it by hand (6), then the two extensions that
+build on all of the above: a tracker as the backlog (7) and packs converging on it (8). §5.3 (the
+prompt), §5.6 (triage and gate maintenance) and the revised invariants (§4) are folded into
+whichever slice first depends on them, since none is independently observable.
 
 ---
 
@@ -276,8 +274,8 @@ re-check, never auto-resolve a conflict.
 - [ ] The first task of a run, with no delivery branch yet open, creates one from the base
   branch's current tip; every later task in that and following runs starts from the delivery
   branch's current tip, so it sees every task landed before it
-- [ ] A task whose branch is still at the delivery branch's current tip when it finishes lands
-  with nothing re-checked, because its own acceptance already proved the tree the branch now holds
+- [ ] A task still at the delivery branch's current tip when it finishes lands with nothing
+  re-checked, because its own acceptance already proved the tree the branch now holds
 - [ ] A task that finishes after another task has already landed is automatically rebuilt on top
   of that other task's work and re-checked before landing; if that re-check passes, it lands; if
   the branch has moved again meanwhile this can happen again, up to once per other task in the run
