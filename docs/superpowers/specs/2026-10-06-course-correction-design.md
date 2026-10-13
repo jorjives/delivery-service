@@ -1,7 +1,8 @@
 # Delivery Service: Course Correction — Design
 
-> **Status:** Proposed (awaiting owner approval)
+> **Status:** Approved
 > **Created:** 2026-10-06
+> **Approved:** 2026-10-13
 > **Supersedes, in part:** `docs/agent-interface.md` (Tool authority, Prompt assembly),
 > `docs/single-surface-control-flow.md` (invariants 2 and 5), `docs/configuring-a-role.md`,
 > `docs/task-packs.md` (findings, approval and fix), roadmap Items 13 and 14 (folded in here as
