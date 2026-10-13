@@ -39,3 +39,11 @@ describe("what a review's agent may reply", () => {
     expect(parsed.findings[0]?.where).toEqual({ path: "total.js" });
   });
 });
+
+it("takes a reply with or without a confidence, and only the three words", () => {
+  const Envelope = scanEnvelopeFor(["correctness"]);
+  const one = { title: "t", category: "correctness", severity: "low", where: { path: "a.js" }, problem: "p", whyItMatters: "w", fixedLooksLike: "f", anchor: "abcdefghij", check: { kind: "anchor-gone" } };
+  expect(Envelope.safeParse({ findings: [one], notes: "" }).success).toBe(true);
+  expect(Envelope.safeParse({ findings: [{ ...one, confidence: "low" }], notes: "" }).success).toBe(true);
+  expect(Envelope.safeParse({ findings: [{ ...one, confidence: "certain" }], notes: "" }).success).toBe(false);
+});

@@ -49,3 +49,7 @@ describe("what the review's agent is asked", () => {
     expect(scanPrompt(await resolvePack("code", "/"), ["a.js"])).toContain("`none`: when nothing about the code itself can show the problem is fixed.");
   });
 });
+
+it("asks how sure the review is of each problem, in words", async () => {
+  expect(scanPrompt(await code(), ["a.js"])).toContain("- `confidence`: how sure you are that this is a real problem: `high`, `medium` or `low`.");
+});

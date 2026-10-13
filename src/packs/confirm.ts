@@ -125,7 +125,8 @@ async function holdsNow(repoPath: string, commit: string, check: CheckSpec): Pro
   return true;
 }
 
-const rank = (finding: Finding): number => SEVERITIES.indexOf(finding.severity);
+/** Problems the review is unsure of go last, so they are listed apart and cut first; then the most serious first. */
+const rank = (finding: Finding): number => (finding.confidence === "low" ? SEVERITIES.length : 0) + SEVERITIES.indexOf(finding.severity);
 
 /**
  * Check every problem the agent reported against the repository at `commit`
@@ -165,6 +166,7 @@ export async function confirmFindings(
       fixedLooksLike: words(scanned.fixedLooksLike, TEXT_LIMITS.sentence),
       anchor: scanned.anchor,
       check: scanned.check,
+      ...(scanned.confidence === undefined ? {} : { confidence: scanned.confidence }),
       ...(scanned.detail ? { detail: maskIn(stripControl(scanned.detail), [...secrets, ...secretLiterals(scanned.detail, false)]).trim().slice(0, TEXT_LIMITS.detail) } : {}),
       ...(scanned.outsideStep ? { outsideStep: words(scanned.outsideStep, TEXT_LIMITS.sentence) } : {}),
       ...(flags.get(scanned.category)?.scope === "repo" ? { scope: "repo" as const } : {}),

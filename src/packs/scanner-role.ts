@@ -54,6 +54,7 @@ export function scanPrompt(pack: Pack, files: readonly string[]): string {
     "- `anchor`: the offending code copied exactly from that file: one to five whole lines, with at least 8 characters that are not spaces. The harness finds the problem by this text, so a problem whose text is not in the file is not shown to the owner.",
     `- \`check\`: how the harness will know the problem is fixed. ${[...manifest.scan.checks, "none" as const].map((kind) => CHECK_HELP[kind]).join(" ")}`,
     "- `title`, `problem`, `whyItMatters`, `fixedLooksLike`: short plain sentences for the owner. `detail`: optional technical notes for an engineer. `outsideStep`: optional. One plain sentence for what only a person can do once the code is fixed, such as changing a leaked password at its provider. Leave it out when the code fix is the whole fix.",
+    "- `confidence`: how sure you are that this is a real problem: `high`, `medium` or `low`. Say `low` for one that may be nothing; the owner sees those set aside. Always give it.",
     `- Report at most ${manifest.scan.maxFindings} problems, the most serious first, and each problem once.`,
     "- `notes`: anything the owner should know about the review as a whole, or an empty string.",
     "",

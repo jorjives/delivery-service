@@ -5,6 +5,11 @@ export const SEVERITIES = ["critical", "high", "medium", "low"] as const;
 export const Severity = z.enum(SEVERITIES);
 export type Severity = z.infer<typeof Severity>;
 
+/** How sure a review is that a problem is real, most sure first. Words, never a number; a problem it is unsure of ("low") is set aside, not hidden. */
+export const CONFIDENCES = ["high", "medium", "low"] as const;
+export const Confidence = z.enum(CONFIDENCES);
+export type Confidence = z.infer<typeof Confidence>;
+
 /** Whether a problem is at or above a threshold on the closed order. A null threshold holds nothing. */
 export const atOrAbove = (severity: Severity, threshold: Severity | null): boolean =>
   threshold !== null && SEVERITIES.indexOf(severity) <= SEVERITIES.indexOf(threshold);
@@ -58,6 +63,8 @@ export function scanEnvelopeFor(categoryIds: readonly string[]) {
     fixedLooksLike: Text,
     anchor: Text,
     check: CheckSpec,
+    /** Optional, so a reply recorded before reviews said it, and a pack's own scripted fixtures, still read. */
+    confidence: Confidence.optional(),
     detail: z.string().optional(),
     outsideStep: z.string().optional(),
   });
@@ -82,6 +89,8 @@ export const Finding = z.object({
   fixedLooksLike: z.string(),
   anchor: z.string(),
   check: CheckSpec,
+  /** How sure the review was that this is a real problem. Absent for a review made before reviews said, or when the agent did not. */
+  confidence: Confidence.optional(),
   /** The check the agent suggested and the harness could not use, kept for engineers. */
   droppedCheck: CheckSpec.optional(),
   detail: z.string().optional(),

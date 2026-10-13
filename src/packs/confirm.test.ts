@@ -235,3 +235,28 @@ describe("a secret the review repeats in its own words", () => {
     expect(shown).toContain(maskSecret(SECRET));
   });
 });
+
+describe("how sure the review is", () => {
+  it("keeps the review's confidence on each problem it confirms", async () => {
+    const repo = initTempRepo("confirm-sure-", { "total.js": TOTAL });
+    const result = await confirm(repo, envelope(problem({ confidence: "medium" })));
+    expect(result.findings[0]?.confidence).toBe("medium");
+  });
+
+  it("lists the problems it is unsure of after every other, whatever their severity", async () => {
+    const repo = initTempRepo("confirm-order-", { "total.js": TOTAL, "b.js": "export const b = 'something else entirely';\n" });
+    const unsure = problem({ title: "Maybe", severity: "critical", confidence: "low" });
+    const sure = problem({ title: "Surely", severity: "low", where: { path: "b.js" }, anchor: "export const b = 'something else entirely';", confidence: "high" });
+    const result = await confirm(repo, envelope(unsure, sure));
+    expect(result.findings.map((finding) => finding.title)).toEqual(["Surely", "Maybe"]);
+  });
+
+  it("cuts the unsure problems first when there are more than the limit", async () => {
+    const repo = initTempRepo("confirm-cut-", { "total.js": TOTAL, "b.js": "export const b = 'something else entirely';\n" });
+    const unsure = problem({ title: "Maybe", severity: "critical", confidence: "low" });
+    const sure = problem({ title: "Surely", severity: "low", where: { path: "b.js" }, anchor: "export const b = 'something else entirely';" });
+    const result = await confirm(repo, envelope(unsure, sure), 1);
+    expect(result.findings.map((finding) => finding.title)).toEqual(["Surely"]);
+    expect(result.notShown).toBe(1);
+  });
+});
