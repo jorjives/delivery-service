@@ -7,6 +7,7 @@ seeded_by: [50-20260930T212043Z-gate-maintenance-can-weaken-the-check.md]
 
 # Pre-Built Task Packs — Design
 
+> **Status:** ✅ Complete — 2026-10-13 — all 10 slices delivered
 > **Status:** Approved (autonomous design-team run; no human reviewed it).
 > Roadmap: `docs/superpowers/specs/2026-09-04-delivery-harness-roadmap.md`, Item 12.
 > Extends: `2026-09-17-project-configuration-design.md` (Item 9: `DeliveryConfig`, the task list, content identity via `findQueueRun`), `2026-10-01-observability-and-reporting-design.md` (Item 11: the report document and its plain-language rendering).

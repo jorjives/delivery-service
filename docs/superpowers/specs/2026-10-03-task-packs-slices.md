@@ -1,6 +1,7 @@
 # Pre-Built Task Packs — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-10-03-task-packs-design.md`
+> **Status:** ✅ Complete — 2026-10-13 — all 10 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** as with Items 8 to 11, this item's product surface is the `delivery` command,
@@ -422,6 +423,7 @@ not sliced.
 
 ## Slice 10: Focus, Quieten and Preview a Review, and See What It Cost
 
+**Status:** ✅ Complete — 2026-10-13 — `807b4b9`
 **Delivers:** The owner can review just part of a project, see how sure the review was of each problem with the less certain ones set aside, preview what the review agent will be told without signing in, and see what the review and its fixes cost.
 
 **Build note:** Cost and duration come from the session usage the harness already records for every agent session; the preview reuses the existing `delivery preview` approach of showing exactly what will be sent.
