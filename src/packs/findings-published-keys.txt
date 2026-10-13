@@ -10,6 +10,10 @@ delivery.findings/1.problems[].check.kind = "pattern-absent"
 delivery.findings/1.problems[].check.kind: string
 delivery.findings/1.problems[].check.level: string
 delivery.findings/1.problems[].check: object
+delivery.findings/1.problems[].confidence = "high"
+delivery.findings/1.problems[].confidence = "low"
+delivery.findings/1.problems[].confidence = "medium"
+delivery.findings/1.problems[].confidence: null|string
 delivery.findings/1.problems[].earlier = "declined"
 delivery.findings/1.problems[].earlier = "fixed"
 delivery.findings/1.problems[].earlier = "skipped"

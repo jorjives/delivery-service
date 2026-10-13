@@ -4,7 +4,7 @@ import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
   AGENT_OPINION, CAME_BACK_LINE, CHANGES_TESTS, CHECK_LEVEL, earlierHiddenLine, EARLIER_WORDS, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, madeBy, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  opening, PR_OPENED, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, stateWords, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved, allowTestEditsHint,
+  opening, PR_OPENED, POSSIBLY_WORTH_A_LOOK, SET_ASIDE, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, stateWords, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved, allowTestEditsHint,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
 import type { SavedReview } from "./review-record.js";
@@ -453,5 +453,37 @@ describe("a secret in a problem's text", () => {
     const text = findingLines(review({ findings: [finding] }), 1).join("\n");
     expect(text).not.toContain(secret);
     expect(text).toContain("pay-… (21 characters)");
+  });
+});
+
+describe("how sure the review is", () => {
+  const SURE = sampleFinding({ confidence: "high" });
+  const MAYBE = sampleFinding({ id: "333333333333", title: "Sessions may last too long", severity: "medium", where: { path: "auth/session.js", line: 2, endLine: 2 }, confidence: "low" });
+
+  it("says it under where each problem is", () => {
+    expect(problemBlock(1, SURE, HEADER).slice(1, 3)).toEqual(["    Where: checkout.js, line 3", "    How sure the review is: high"]);
+  });
+
+  it("says nothing of it for a problem from a review that did not say", () => {
+    expect(problemBlock(1, sampleFinding(), HEADER).join("\n")).not.toContain("How sure");
+  });
+
+  it("sets the unsure problems aside after the list, one line each, keeping their numbers", () => {
+    const lines = reviewLines(review({ findings: [SURE, MAYBE] }), [at("proposed"), at("proposed")]);
+    const aside = lines.indexOf(`${POSSIBLY_WORTH_A_LOOK} (1): ${SET_ASIDE}`);
+    expect(aside).toBeGreaterThan(lines.indexOf("1. The price shown at checkout can be negative (high)"));
+    expect(lines.slice(aside + 1, aside + 3)).toEqual(["  2. Sessions may last too long (medium), auth/session.js, line 2", "  See one in full: delivery findings 2"]);
+    expect(lines).not.toContain("2. Sessions may last too long (medium)");
+  });
+
+  it("sets them aside in delivery findings too", () => {
+    const lines = listLines(review({ findings: [SURE, MAYBE] }), [at("proposed"), at("proposed")]);
+    const aside = lines.indexOf(`${POSSIBLY_WORTH_A_LOOK}: ${SET_ASIDE}`);
+    expect(aside).toBeGreaterThan(0);
+    expect(lines[aside + 1]).toBe("2. Sessions may last too long (medium): not yet decided");
+  });
+
+  it("uses none of the words the owner never reads", () => {
+    for (const line of [...reviewLines(review({ findings: [SURE, MAYBE] }), []), POSSIBLY_WORTH_A_LOOK, SET_ASIDE]) expect(line).not.toMatch(PACK_FORBIDDEN);
   });
 });

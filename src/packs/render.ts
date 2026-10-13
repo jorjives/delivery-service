@@ -2,7 +2,7 @@ import { basename } from "node:path";
 import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
 import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
-import { atOrAbove, SEVERITIES, type CheckKind, type CheckSpec, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
+import { atOrAbove, SEVERITIES, type CheckKind, type CheckSpec, type Confidence, type Finding, type Severity, type UnconfirmedReason } from "./finding.js";
 import { hiddenByDefault, opensPr, UNDECIDED, type EarlierChoice, type FindingState, type FixState } from "./fix-state.js";
 import { NOT_LANDED_REASONS, type NotLandedReason } from "./ledger.js";
 import { uncheckable, type PinnedPack, type ReviewHeader, type SavedReview } from "./review-record.js";
@@ -147,6 +147,14 @@ export const EARLIER_WORDS: Record<EarlierChoice, string> = {
 /** The line a new review adds under a problem that came back. */
 export const CAME_BACK_LINE = "Came back: it was fixed in an earlier review, and the flagged code is back.";
 
+/** The heading over the problems the review is unsure of, and why they are set aside. */
+export const POSSIBLY_WORTH_A_LOOK = "Possibly worth a look";
+export const SET_ASIDE = "the review is less sure of these, so they are set aside. Each can still be approved by its number.";
+/** How sure the review was that a problem is real, as the owner reads it. */
+export const howSure = (confidence: Confidence): string => `How sure the review is: ${confidence}`;
+/** Whether the review is unsure of a problem, so it is set aside rather than listed with the rest. */
+export const unsure = (finding: Pick<Finding, "confidence">): boolean => finding.confidence === "low";
+
 export const earlierHiddenLine = (count: number): string =>
   `${problems(count)} skipped or declined in an earlier review, not shown. See ${count === 1 ? "it" : "them"} with: delivery findings --include-skipped`;
 
@@ -208,6 +216,7 @@ export function problemBlock(number: number, finding: Finding, header: ReviewHea
   return [
     `${number}. ${finding.title} (${finding.severity})`,
     `    Where: ${pathName(finding.where.path)}, line ${finding.where.line}`,
+    ...(finding.confidence === undefined ? [] : [`    ${howSure(finding.confidence)}`]),
     `    What is wrong: ${finding.problem}`,
     `    ${CONSEQUENCE_WORDS[pack.consequenceLabel ?? "why-it-matters"]}: ${finding.whyItMatters}`,
     `    Fixed looks like: ${finding.fixedLooksLike}`,
@@ -216,6 +225,19 @@ export function problemBlock(number: number, finding: Finding, header: ReviewHea
     ...(kind?.changesTests === true ? [`    Note: ${CHANGES_TESTS}.`] : []),
     ...(kind?.reviewerKnowledge === true ? [`    Note: ${REVIEWER_KNOWLEDGE}`] : []),
     ...(finding.outsideStep === undefined ? [] : [`    ${LEFT_FOR_YOU}: ${finding.outsideStep}`]),
+  ];
+}
+
+/** The problems the review is unsure of, one line each under their own heading, keeping their numbers. Nothing when there are none. */
+function setAside(items: readonly { finding: Finding; number: number; at: FindingState }[]): string[] {
+  const [first] = items;
+  if (first === undefined) return [];
+  return [
+    "",
+    `${POSSIBLY_WORTH_A_LOOK} (${items.length}): ${SET_ASIDE}`,
+    // An unsure problem that came back keeps slice 8's marker, so setting it aside never hides that it returned.
+    ...items.flatMap(({ finding, number, at }) => [`  ${number}. ${finding.title} (${finding.severity}), ${pathName(finding.where.path)}, line ${finding.where.line}`, ...(at.earlier === "fixed" ? [`    ${CAME_BACK_LINE}`] : [])]),
+    `  See one in full: delivery findings ${first.number}`,
   ];
 }
 
@@ -244,7 +266,8 @@ export function reviewLines({ header, result }: SavedReview, states: readonly Fi
     ...(threshold === null ? [] : [severityLine(shownFindings), holdSentence(threshold)]),
     AGENT_OPINION,
     "",
-    ...listed.flatMap(({ finding, number, at }) => [...problemBlock(number, finding, header), ...(at.earlier === "fixed" ? [`    ${CAME_BACK_LINE}`] : [])]),
+    ...listed.filter(({ finding }) => !unsure(finding)).flatMap(({ finding, number, at }) => [...problemBlock(number, finding, header), ...(at.earlier === "fixed" ? [`    ${CAME_BACK_LINE}`] : [])]),
+    ...setAside(listed.filter(({ finding }) => unsure(finding))),
     ...(result.notShown > 0 ? [`${result.notShown} more not shown: this review lists at most ${header.pack.maxFindings} problems.`] : []),
     ...(hidden === 0 ? [] : [earlierHiddenLine(hidden)]),
     ...unconfirmedPointer(result.unconfirmed.length),
@@ -263,11 +286,15 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
   const waiting = states.filter((at) => at.state === "approved").length;
   const needsTest = states.filter((at) => at.cause === "needs_test_change").length;
   const hidden = includeSkipped ? 0 : states.filter(hiddenByDefault).length;
-  const problemLines = result.findings.flatMap((finding, index) => {
+  const problemItems = result.findings.flatMap((finding, index) => {
     const at = states[index] ?? UNDECIDED;
     if (!includeSkipped && hiddenByDefault(at)) return [];
-    return [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}${at.state === "needs_decision" ? `; ${CANNOT_BE_CHECKED}` : ""}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...(at.cause === "needs_test_change" ? [`    ${allowTestEditsHint(index + 1)}`] : []), ...(at.state === "needs_decision" ? [`    ${UNCHECKABLE_WHY} ${approveAnyway(index + 1)}`] : []), ...signOffLines(index + 1, at, holdWhy(header, finding, at))];
+    const lines = [`${index + 1}. ${finding.title} (${finding.severity}): ${stateWords(at)}${at.state === "needs_decision" ? `; ${CANNOT_BE_CHECKED}` : ""}`, ...(at.refused ? [`    ${REFUSED_WEAKENING}`] : []), ...stopLines(at), ...(at.cause === "needs_test_change" ? [`    ${allowTestEditsHint(index + 1)}`] : []), ...(at.state === "needs_decision" ? [`    ${UNCHECKABLE_WHY} ${approveAnyway(index + 1)}`] : []), ...signOffLines(index + 1, at, holdWhy(header, finding, at))];
+    return [{ unsure: unsure(finding), lines }];
   });
+  // Unsure problems are last in the review's order, so one heading above the first of them sets all of them aside.
+  const firstUnsure = problemItems.findIndex((item) => item.unsure);
+  const problemLines = problemItems.flatMap((item, index) => [...(index === firstUnsure ? ["", `${POSSIBLY_WORTH_A_LOOK}: ${SET_ASIDE}`] : []), ...item.lines]);
   // What only a person can do, once the code part is done.
   const needsYou = result.findings.flatMap((finding, index) =>
     finding.outsideStep !== undefined && (states[index]?.state === "fixed" || states[index]?.state === "signed_off_landed") ? [`  Problem ${index + 1}: ${finding.outsideStep}`] : [],

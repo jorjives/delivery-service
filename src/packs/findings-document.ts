@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { openSchema, type JsonSchema } from "../report/json-schema.js";
-import { Severity, type CheckKind } from "./finding.js";
+import { CONFIDENCES, Severity, type CheckKind } from "./finding.js";
 import { EARLIER_CHOICES, FIX_STATES, UNDECIDED, UNFIXABLE_CAUSES, type FindingState } from "./fix-state.js";
 import { CHECK_LEVEL, stateWords, checkLevel } from "./render.js";
 import type { SavedReview } from "./review-record.js";
@@ -18,6 +18,8 @@ export const FindingsProblem = z.object({
   title: z.string(),
   category: z.string(),
   severity: Severity,
+  /** How sure the review was that it is a real problem; null when the review did not say. */
+  confidence: z.enum(CONFIDENCES).nullable(),
   where: z.object({ path: z.string(), line: z.int().min(1), endLine: z.int().min(1) }),
   /** Where it stands, from the closed set. */
   state: z.enum(FIX_STATES),
@@ -68,6 +70,7 @@ export function findingsDocument({ header, result }: SavedReview, states: readon
         title: finding.title,
         category: finding.category,
         severity: finding.severity,
+        confidence: finding.confidence ?? null,
         where: { path: finding.where.path, line: finding.where.line, endLine: finding.where.endLine },
         state: at.state,
         words: stateWords(at),

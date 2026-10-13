@@ -26,6 +26,11 @@ When it finishes, you get a numbered list. Each problem says how serious it is (
 - "checked: the vulnerable version is no longer installed": the harness will check a library version is no longer in the project.
 - "tests only: no check of this specific problem": only your existing tests will say whether a fix broke something. Nothing checks this problem itself.
 
+Each problem also says **How sure the review is**: high, medium or low. Problems it is unsure of
+are listed last, one line each, under "Possibly worth a look": the review is less sure of these, so
+they are set aside. Each can still be approved by its number. `delivery findings` sets them aside
+the same way, and `delivery findings approve --recommended` never picks one.
+
 The list ends by saying how many problems have a specific check, then:
 
 ```
@@ -231,8 +236,8 @@ add keys and names; it never removes or changes one.
   `startedAt` and `endedAt`, plus the `packVersion` of the pack that made it and a `packHash`
   fingerprint of its manifest and instructions (a changed pack shows as a changed fingerprint).
 - `problems`: every problem, in the order `delivery findings` numbers them. Each has its `number`,
-  its `id` (the same for the same problem found again), `title`, `category`, `severity`, `where`
-  (`path`, `line`, `endLine`), its `state` from the closed set and the `words` you read for it, its
+  its `id` (the same for the same problem found again), `title`, `category`, `severity`, `confidence` (`high`, `medium`, `low`, or null when the review did not say),
+  `where` (`path`, `line`, `endLine`), its `state` from the closed set and the `words` you read for it, its
   `check` (`kind`, and the `level` you read), whether a check ever `refused` its fix for weakening
   your tests, the `cause` when the harness knows why it could not be fixed, `earlier`: what an earlier review of the same kind decided where this one has not (`skipped`, `declined`, or `fixed` for a problem that came back), or null, and its `fix`: the
   `run` (see it with `delivery status <run>`), `branch`, `base` and `closer`, or null before

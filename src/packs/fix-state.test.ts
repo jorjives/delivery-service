@@ -394,6 +394,11 @@ describe("the recommended problems", () => {
     expect(pick(header(null, true))).toEqual([]);
   });
 
+  it("does not recommend a problem the review is unsure of", () => {
+    expect(recommended(header(null), sampleFinding({ severity: "low", confidence: "low" }), UNDECIDED)).toBe(false);
+    expect(recommended(header(null), sampleFinding({ severity: "low", confidence: "medium" }), UNDECIDED)).toBe(true);
+  });
+
   it("never include a problem already decided, here or in an earlier review, and do include one that came back", () => {
     expect(recommended(header(null), HIGH, { ...UNDECIDED, state: "skipped" })).toBe(false);
     expect(recommended(header(null), HIGH, { ...UNDECIDED, state: "skipped", earlier: "skipped" })).toBe(false);

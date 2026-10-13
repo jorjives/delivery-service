@@ -25,6 +25,11 @@ const fixed: FindingState = { ...UNDECIDED, state: "fixed", fix: { run: "fix-a-2
 const overTheWire = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
 describe("the findings document", () => {
+  it("says how sure the review was of each problem, or null when it did not say", () => {
+    const doc = findingsDocument({ ...review, result: { ...review.result, findings: [sampleFinding({ confidence: "low" }), sampleFinding({ id: "999999999999" })] } }, []);
+    expect(doc.problems.map((problem) => problem.confidence)).toEqual(["low", null]);
+  });
+
   it("says which version of the pack made the review, and a fingerprint of its contents", () => {
     expect(findingsDocument(review, []).review).toMatchObject({ packVersion: review.header.pack.version, packHash: review.header.pack.hash });
   });
@@ -40,6 +45,7 @@ describe("the findings document", () => {
           title: "The price shown at checkout can be negative",
           category: "correctness",
           severity: "high",
+          confidence: null,
           where: { path: "checkout.js", line: 3, endLine: 3 },
           state: "fixed",
           words: "fixed and merged",
@@ -55,6 +61,7 @@ describe("the findings document", () => {
           title: "Old payment code",
           category: "correctness",
           severity: "low",
+          confidence: null,
           where: { path: "checkout.js", line: 3, endLine: 3 },
           state: "proposed",
           words: "not yet decided",

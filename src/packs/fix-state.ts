@@ -184,11 +184,11 @@ export const reopensForTestEdits = (at: FindingState): boolean => at.state === "
 
 /**
  * Whether a problem is recommended: still to decide (one that came back included), with a check of its own, and
- * mild enough that its fix lands without the owner's sign-off. Every specific check is the strongest level there is;
+ * mild enough that its fix lands without the owner's sign-off, and one the review is sure enough of. Every specific check is the strongest level there is;
  * "tests only" is the weaker one. With no tests every fix waits for sign-off, so nothing is recommended.
  */
 export const recommended = (header: Pick<ReviewHeader, "noTests" | "pack">, finding: Finding, at: FindingState): boolean =>
-  at.state === "proposed" && finding.check.kind !== "none" && header.noTests !== true && !atOrAbove(finding.severity, header.pack.hold ?? null);
+  at.state === "proposed" && finding.check.kind !== "none" && header.noTests !== true && !atOrAbove(finding.severity, header.pack.hold ?? null) && finding.confidence !== "low";
 
 /**
  * One fix task per authorised problem still wanting a fix, in the review's order, each exactly as it was
