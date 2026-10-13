@@ -424,6 +424,7 @@ not sliced.
 ## Slice 10: Focus, Quieten and Preview a Review, and See What It Cost
 
 **Status:** ✅ Complete — 2026-10-13 — `807b4b9`
+**Tests:** ✅ Recorded — 2026-10-13 — `a7a7fbb` — cli (vitest) — 1 UAT + 5 AC, 0 skipped
 **Delivers:** The owner can review just part of a project, see how sure the review was of each problem with the less certain ones set aside, preview what the review agent will be told without signing in, and see what the review and its fixes cost.
 
 **Build note:** Cost and duration come from the session usage the harness already records for every agent session; the preview reuses the existing `delivery preview` approach of showing exactly what will be sent.
