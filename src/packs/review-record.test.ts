@@ -1,9 +1,10 @@
-import { mkdirSync, statSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { DamagedReview } from "../errors.js";
 import { initTempRepo } from "../temp-repo.js";
-import { listReviews, loadReview, newestFirst, packsRoot, readReply, reviewOfPlan, PLAN_FILE, uncheckable } from "./review-record.js";
+import { listReviews, loadReview, newestFirst, packsRoot, readReply, reviewOfPlan, PLAN_FILE, saveResult, startReview, uncheckable, type ReviewHeader } from "./review-record.js";
 import { sampleFinding, writeReview } from "./review-fixtures.js";
 
 const repo = () => initTempRepo("review-record-", { "a.js": "x\n" });
@@ -110,5 +111,27 @@ describe("the order of reviews", () => {
       "code-20261009T100000Z",
       "code-20261008T090000Z",
     ]);
+  });
+});
+
+describe("what the review session cost", () => {
+  it("reads back what the review session cost, and nothing when its record does not say", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "usage-"));
+    const HEADER: ReviewHeader = {
+      reviewId: "code-20261005T101500Z",
+      pack: { name: "code", version: "1.0.0", title: "Code review", hash: "0".repeat(64), maxFindings: 40, categories: [{ id: "correctness", title: "Wrong results" }] },
+      repoPath: repo,
+      commit: "1".repeat(40),
+      fileCount: 4,
+      startedAt: "2026-10-05T10:15:00.000Z",
+      endedAt: "2026-10-05T10:19:12.000Z",
+    };
+    const dir = await startReview(repo, HEADER, { envelope: { findings: [], notes: "" }, usage: { costUsd: 0.31, durationMs: 252_000 } });
+    await saveResult(dir, { findings: [], unconfirmed: [], notShown: 0, notes: "" });
+    const [entry] = await listReviews(repo);
+    if (entry?.state !== "done") throw new Error("not done");
+    expect((await loadReview(entry)).usage).toEqual({ costUsd: 0.31, durationMs: 252_000 });
+    writeFileSync(join(dir, "refs", "reply.json"), "not json");
+    expect((await loadReview(entry)).usage).toBeUndefined();
   });
 });

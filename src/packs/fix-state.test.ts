@@ -28,7 +28,7 @@ const NOTHING_EARLIER: ReadonlyMap<string, EarlierChoice> = new Map();
 const decide = (ids: string[], choice: "approve" | "skip"): LedgerEntry => ({ t: "decision", at: AT, ids, choice });
 const authorise = (ids: string[]): LedgerEntry => ({ t: "authorise", at: AT, ids, verify: NPM });
 const plain = (audience: Plain["audience"]): Plain => ({ group: audience === "engineer" ? "needs_an_engineer" : "needs_your_decision", audience, sentence: "s", agentSaid: null, next: [] });
-const run = (over: Partial<FixRun>): FixRun => ({ run: "r", standing: "unfinished", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, said: null, ...over });
+const run = (over: Partial<FixRun>): FixRun => ({ run: "r", standing: "unfinished", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, said: null, usage: null, usageRecorded: { recorded: 0, sessions: 0 }, ...over });
 
 describe("where each problem stands", () => {
   it("is not yet decided until the owner says, and the owner's latest choice wins", () => {
@@ -166,7 +166,7 @@ describe("reading gate rounds and refusals", () => {
 
 describe("holding fixes for sign-off", () => {
   it("is waiting for sign-off when a held fix has passed, and fixed when one that is not held has", () => {
-    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main", said: null };
+    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main", said: null, usage: null, usageRecorded: { recorded: 0, sessions: 0 }, };
     const held: LedgerEntry = { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high", hold: { [A.id]: true }, landing: { type: "merge-back" } };
     expect(deriveFindings([A], [decide([A.id], "approve"), held], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]?.state).toBe("held");
     expect(deriveFindings([A], [decide([A.id], "approve"), { ...held, hold: { [A.id]: false } }], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER)[0]?.state).toBe("fixed");
@@ -185,7 +185,7 @@ describe("holding fixes for sign-off", () => {
     [[{ t: "not_landed", at: AT, id: A.id, reason: "check_failed" as const, detail: "npm test" } as const], "signed_off_failed"],
     [[{ t: "rejected", at: AT, id: A.id } as const], "rejected"],
   ])("a held fix after %j is %s", (after, state) => {
-    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main", said: null };
+    const closed = { run: "r", standing: "closed" as const, closer: "commit-to-branch" as const, plain: null, rounds: [], branch: "surface/r", base: "main", said: null, usage: null, usageRecorded: { recorded: 0, sessions: 0 }, };
     const held: LedgerEntry = { t: "authorise", at: AT, ids: [A.id], verify: NPM, threshold: "high", hold: { [A.id]: true }, landing: { type: "merge-back" } };
     const [at] = deriveFindings([A], [decide([A.id], "approve"), held, ...after], new Map([[A.id, closed]]), NOTHING_UNCHECKABLE, NOTHING_EARLIER);
     expect(at?.state).toBe(state);

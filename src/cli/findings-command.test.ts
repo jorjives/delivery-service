@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { appendLedger, readLedger } from "../packs/ledger.js";
-import { CHANGES_NOTE, CHANGES_WHICH, earlierHiddenLine, NO_REVIEW_YET, noKeptFix, unfinishedReview, uncheckedRefused, uncheckedApproved } from "../packs/render.js";
+import { CHANGES_NOTE, CHANGES_WHICH, earlierHiddenLine, NO_REVIEW_YET, noKeptFix, unfinishedReview, uncheckedRefused, uncheckedApproved, WHAT_IT_COST } from "../packs/render.js";
 import { exampleRepo, sampleFinding, writeReview, writeFixPhase, FIX_PHASE_FINDINGS, PACK_FORBIDDEN } from "../packs/review-fixtures.js";
 import { FindingsDocument } from "../packs/findings-document.js";
 import { initTempRepo } from "../temp-repo.js";
@@ -39,6 +39,7 @@ describe("delivery findings", () => {
     const { stdout } = await delivery(["findings"], { cwd: project });
     expect(stdout).toContain("1. The price shown at checkout can be negative (high): not yet decided\n2. Old payment code (low): not yet decided\n");
     expect(stdout).toContain("1 more could not be confirmed");
+    expect(stdout).toContain(WHAT_IT_COST);
   });
 
   it("shows one problem in full with the block for engineers", async () => {

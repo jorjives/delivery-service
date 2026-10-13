@@ -76,6 +76,8 @@ export interface ReviewPart {
   next: string;
   /** The command that carries the review's work on, said wherever the report would say how to carry on. */
   carryOn: string;
+  /** What the review and its fixes took and cost, one line each, told in the tuning section in place of the run's own figure. */
+  cost: string[];
 }
 
 const RUN_AGAIN = "delivery run";
@@ -332,7 +334,7 @@ export function durationWords(ms: number): string {
 }
 
 /** An estimated cost in US dollars, to the cent; a cost too small to show in cents is said to be under one. */
-const costWords = (usd: number): string => (usd > 0 && usd < 0.005 ? "under USD 0.01" : `USD ${usd.toFixed(2)}`);
+export const costWords = (usd: number): string => (usd > 0 && usd < 0.005 ? "under USD 0.01" : `USD ${usd.toFixed(2)}`);
 
 /**
  * What the agent sessions behind something took and cost, always with how many
@@ -343,6 +345,18 @@ export function usageSentence({ usage, usageRecorded }: { usage: UsageTotal | nu
   if (usage === null) return `Time and cost were not recorded for ${subject}.`;
   const { recorded, sessions } = usageRecorded;
   return `Time and cost, recorded for ${recorded} of ${sessions} agent ${sessions === 1 ? "session" : "sessions"}: ${durationWords(usage.durationMs)} of session time; ${costWords(usage.costUsd)}, estimated by the agent runtime.`;
+}
+
+/**
+ * What some agent sessions took and cost, under `subject`: none run, not recorded, the whole, or how many sessions the
+ * figure covers. Never zero for lack of data. Information only.
+ */
+export function costLine(subject: string, { usage, usageRecorded }: { usage: UsageTotal | null; usageRecorded: UsageCoverage }): string {
+  const { recorded, sessions } = usageRecorded;
+  if (sessions === 0) return `${subject}: none has run yet.`;
+  if (usage === null) return `${subject}: time not recorded; cost not recorded.`;
+  const cover = recorded === sessions ? "" : `, recorded for ${recorded} of ${sessions} agent ${sessions === 1 ? "session" : "sessions"}`;
+  return `${subject}${cover}: ${durationWords(usage.durationMs)} of session time; ${costWords(usage.costUsd)}, estimated by the agent runtime.`;
 }
 
 /**
@@ -371,17 +385,18 @@ function worthALookLines(doc: ReportDocument, colour: boolean): string[] {
  * for whoever adjusts the limits, then where this report was saved when it was. Nothing when no task has a run to count and
  * nothing was saved.
  */
-function tuningLines(doc: ReportDocument, colour: boolean, saved: string | undefined): string[] {
+function tuningLines(doc: ReportDocument, colour: boolean, saved: string | undefined, review?: ReviewPart): string[] {
   const ran = doc.surfaces.filter((surface) => surface.budgets.length > 0);
   const sums = budgetTotals(ran).map((row) => `${RETRY_WORDS[row.population]} ${row.used} of ${row.max}`);
+  const usage = review !== undefined ? review.cost : ran.length === 0 ? [] : [usageSentence(doc, "this run")];
   const lines = [
     ...(ran.length === 0
       ? []
       : [
           `  Retries used across ${ran.length === 1 ? "this task" : "these tasks"}: ${sums.join("; ")}.`,
           ...(doc.run ? [`  Repairs of the setup every task shares: ${doc.run.runBudgets.gateMaintenance.used} of ${doc.run.runBudgets.gateMaintenance.max}.`] : []),
-          `  ${usageSentence(doc, "this run")}`,
         ]),
+    ...usage.map((line) => `  ${line}`),
     ...(saved === undefined ? [] : [`  ${saved}`]),
   ];
   return lines.length === 0 ? [] : ["", paint(colour, "quiet", "FOR WHOEVER TUNES THIS"), ...lines];
@@ -433,7 +448,7 @@ export function renderText(doc: ReportDocument, { colour, saved, review }: { col
     ...runStopLines(doc.run, review?.carryOn),
     ...(review === undefined ? SECTIONS.flatMap((section) => sectionLines(doc, section, colour)) : review.sections),
     ...worthALookLines(doc, colour),
-    ...tuningLines(doc, colour, saved),
+    ...tuningLines(doc, colour, saved, review),
     "",
     review?.next ?? nextLine(doc),
   ];

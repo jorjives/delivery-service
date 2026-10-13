@@ -419,6 +419,21 @@ describe("delivery report", () => {
       expect(lines).toEqual(expect.arrayContaining(["BEING FIXED (1)"]));
     });
 
+    it("tells what the review and its fixes cost in the tuning section", async () => {
+      const repo = exampleRepo("report-review-cost-");
+      await writeFixPhase(repo);
+
+      const { stdout } = await delivery(["report"], { cwd: repo });
+      const lines = stdout.split("\n");
+      const tuning = lines.slice(lines.indexOf("FOR WHOEVER TUNES THIS") + 1);
+      // Found by content, not offset: whether the retries and repairs lines precede it depends on what the fix phase recorded.
+      const from = tuning.findIndex((line) => line.startsWith("  The review: "));
+
+      expect(from).toBeGreaterThanOrEqual(0);
+      expect(tuning[from + 1]).toMatch(/^  The fixes(: |, recorded for )/);
+      expect(stdout).not.toContain("for this run.");
+    });
+
     it("tells a run of one fix by its id as a task, as before", async () => {
       const repo = exampleRepo("report-review-one-");
       await writeFixPhase(repo);

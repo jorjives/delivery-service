@@ -247,6 +247,11 @@ decided, have sections of their own.
 It reads only the records, so it works from another terminal while `delivery fix` is going, and
 after an interruption it says to carry on with: delivery fix.
 
+Its last part, FOR WHOEVER TUNES THIS, says what the review and its fixes took and cost, one line
+each: the agent's session time and the cost the agent runtime estimated. A figure the record does
+not hold reads "not recorded", never zero; one that covers only some sessions says how many.
+`delivery findings` ends with the same two lines under "What it cost:".
+
 ## Read a review as data
 
 `delivery findings --json` prints the latest review as one document, versioned

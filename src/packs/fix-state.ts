@@ -16,7 +16,7 @@ export const FIX_STATES = ["proposed", "needs_decision", "approved", "skipped", 
 export type FixState = (typeof FIX_STATES)[number];
 
 /** What the report says of a problem's fix, what each of its check rounds newly failed, oldest first, and the agent's own last account of it. */
-export type FixRun = Pick<ReportSurface, "run" | "standing" | "closer" | "plain" | "branch" | "base"> & { rounds: string[][]; said: string | null };
+export type FixRun = Pick<ReportSurface, "run" | "standing" | "closer" | "plain" | "branch" | "base" | "usage" | "usageRecorded"> & { rounds: string[][]; said: string | null };
 
 /** Why a problem could not be fixed, where the harness can say so itself. Closed, so the words for each are total. */
 export const UNFIXABLE_CAUSES = ["needs_test_change"] as const;

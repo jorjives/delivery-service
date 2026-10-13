@@ -78,19 +78,19 @@ function repairsOf(snapshot: RecordSnapshot, record: RunRecord): ReportRepair[] 
   return [...own, ...setup].sort((a, b) => (a.at ?? "").localeCompare(b.at ?? ""));
 }
 
-type UsagePart = Pick<ReportSurface, "usage" | "usageRecorded">;
+export type UsagePart = Pick<ReportSurface, "usage" | "usageRecorded">;
 
 const NO_SESSIONS: UsagePart = { usage: null, usageRecorded: { recorded: 0, sessions: 0 } };
 
 /** One agent session's figure: recorded only when the runtime reported both its cost and its time, since half a figure is not the whole. */
-function sessionUsage(usage: SessionUsage | undefined): UsagePart {
+export function sessionUsage(usage: SessionUsage | undefined): UsagePart {
   return usage?.costUsd !== undefined && usage.durationMs !== undefined
     ? { usage: { costUsd: usage.costUsd, durationMs: usage.durationMs }, usageRecorded: { recorded: 1, sessions: 1 } }
     : { usage: null, usageRecorded: { recorded: 0, sessions: 1 } };
 }
 
 /** Several figures as one: summed over the sessions that recorded one, every session counted. Null, never zero, when none did. */
-function addUp(parts: readonly UsagePart[]): UsagePart {
+export function addUp(parts: readonly UsagePart[]): UsagePart {
   return parts.reduce<UsagePart>(
     (total, part) => ({
       usage:

@@ -135,6 +135,18 @@ export interface SavedReview {
   dir: string;
   header: ReviewHeader;
   result: ScanResult;
+  /** What the review's own agent session took and cost, as the runtime reported it; absent when its record does not say. */
+  usage?: SessionUsage;
+}
+
+/** The review session's usage, from its kept reply; nothing when the reply is missing or damaged, which a finished review does not need. */
+async function scanUsage(dir: string): Promise<SessionUsage | undefined> {
+  try {
+    return (await readJson(join(dir, "refs", "reply.json"), StoredReply)).usage;
+  } catch (err) {
+    if (err instanceof DamagedReview) return undefined;
+    throw err;
+  }
 }
 
 /** The configuration `delivery fix` writes beside a review. */
@@ -188,7 +200,9 @@ export async function listReviews(repoPath: string): Promise<ReviewEntry[]> {
 }
 
 export async function loadReview(entry: Extract<ReviewEntry, { state: "done" }>): Promise<SavedReview> {
-  return { dir: entry.dir, header: entry.header, result: await readJson(join(entry.dir, "refs", "scan.json"), ScanResult) };
+  const result = await readJson(join(entry.dir, "refs", "scan.json"), ScanResult);
+  const usage = await scanUsage(entry.dir);
+  return { dir: entry.dir, header: entry.header, result, ...(usage === undefined ? {} : { usage }) };
 }
 
 /** The finished review a plan file belongs to, when `file` is one: `delivery fix` writes a plan into its review's own folder. */

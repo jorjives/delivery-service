@@ -11,3 +11,5 @@ The built-in code review (now 1.1.0) lists style and naming preferences, and tes
 is not itself wrong.
 
 `delivery review <pack> --path <part>` reviews only one folder or file of your project and says so; a problem reported elsewhere is listed as outside the part, never offered. `delivery findings --json` gains `review.path`. `delivery review <pack> --preview` prints exactly what the review agent would be told, with no sign-in and no network, and starts nothing.
+
+`delivery findings` and the report's tuning section say what the review and its fixes took and cost; a fact not recorded reads "not recorded".

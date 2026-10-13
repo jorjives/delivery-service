@@ -1,7 +1,8 @@
 import { basename } from "node:path";
 import { DID_NOT_COMPLETE } from "../agent-invoke.js";
 import { USAGE_LIMIT_WORDS, type Incomplete } from "../ports.js";
-import { dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
+import { costLine, dayAndMinute, durationWords, pathName, quoted } from "../report/text.js";
+import { addUp, sessionUsage } from "../report/derive.js";
 import { atOrAbove, SEVERITIES, type CheckKind, type CheckSpec, type Confidence, type Finding, type Severity, type Unconfirmed, type UnconfirmedReason } from "./finding.js";
 import { hiddenByDefault, opensPr, UNDECIDED, type EarlierChoice, type FindingState, type FixState } from "./fix-state.js";
 import { NOT_LANDED_REASONS, type NotLandedReason } from "./ledger.js";
@@ -296,8 +297,17 @@ export function reviewLines({ header, result }: SavedReview, states: readonly Fi
   ];
 }
 
+/** The heading over what the review and its fixes took and cost, as `delivery findings` and the report say it. */
+export const WHAT_IT_COST = "What it cost:";
+
+/** What the review and its fixes took and cost, one line each: the review's own session, and every fix session together. `states` is aligned with the review's problems. */
+export function costLines(review: Pick<SavedReview, "usage">, states: readonly FindingState[]): string[] {
+  return [costLine("The review", sessionUsage(review.usage)), costLine("The fixes", addUp(states.flatMap((at) => (at.fix === undefined ? [] : [at.fix]))))];
+}
+
 /** What `delivery findings` prints: the latest review's problems and where each stands. `states` is aligned with the review's problems. */
-export function listLines({ header, result }: SavedReview, states: readonly FindingState[], { includeSkipped = false }: { includeSkipped?: boolean } = {}): string[] {
+export function listLines(review: SavedReview, states: readonly FindingState[], { includeSkipped = false }: { includeSkipped?: boolean } = {}): string[] {
+  const { header, result } = review;
   const waiting = states.filter((at) => at.state === "approved").length;
   const needsTest = states.filter((at) => at.cause === "needs_test_change").length;
   const hidden = includeSkipped ? 0 : states.filter(hiddenByDefault).length;
@@ -323,6 +333,9 @@ export function listLines({ header, result }: SavedReview, states: readonly Find
     ...(needsYou.length === 0 ? [] : ["", NEEDS_YOU, ...needsYou]),
     ...(needsTest === 0 ? [] : ["", needsTestChangeLine(needsTest)]),
     ...(waiting === 0 ? [] : ["", fixWaiting(waiting)]),
+    "",
+    WHAT_IT_COST,
+    ...costLines(review, states).map((line) => `  ${line}`),
     ...(result.findings.length === 0 ? [] : ["", "See one in full: delivery findings 1"]),
   ];
 }

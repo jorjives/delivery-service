@@ -4,7 +4,7 @@ import type { Incomplete } from "../ports.js";
 import { UNCONFIRMED_REASONS, type Unconfirmed } from "./finding.js";
 import {
   AGENT_OPINION, CAME_BACK_LINE, CHANGES_TESTS, CHECK_LEVEL, earlierHiddenLine, EARLIER_WORDS, failureSentence, findingLines, fixNowLines, fixWaiting, listLines, madeBy, NEEDS_TEST_CHANGE, needsTestChangeLine, NO_REVIEW_YET, noneFound, NOT_NOW, NOTHING_CHANGED,
-  onlyPart, outsideProject, nothingInPart, outsidePartPointer,
+  onlyPart, outsideProject, nothingInPart, outsidePartPointer, WHAT_IT_COST, costLines,
   opening, PR_OPENED, POSSIBLY_WORTH_A_LOOK, SET_ASIDE, REFUSED_WEAKENING, REVIEWER_KNOWLEDGE, reviewLines, problemBlock, RECOVERED, STATE_WORDS, stateWords, UNCONFIRMED_WHY, unconfirmedLines, unfinishedReview, NOT_LANDED_WHY, NOT_LANDED_REASONS, NEEDS_YOU, CANNOT_BE_CHECKED, HOLD_WHY, NO_TESTS_LEVEL, NO_TESTS_WARNING, UNCHECKABLE_WHY, approveAnyway, uncheckedApproved, allowTestEditsHint,
 } from "./render.js";
 import type { FindingState, FixRun, FixState } from "./fix-state.js";
@@ -26,7 +26,7 @@ const PATTERN = sampleFinding({ id: "111111111111", title: "Settings errors are 
 const UNUSED = sampleFinding({ id: "222222222222", title: "Old payment code", severity: "low", check: { kind: "none" }, droppedCheck: { kind: "pattern-absent", pattern: "x", paths: ["a.js"] }, detail: "nothing imports it" });
 const unconfirmed = UNCONFIRMED_REASONS.map((reason): Unconfirmed => ({ title: "Rounding", severity: "medium", path: "pricing.js", problem: "Prices round down.", reason }));
 const review = (overrides: Partial<SavedReview["result"]> = {}): SavedReview => ({ dir: "/d", header: HEADER, result: { findings: [NEGATIVE, PATTERN, UNUSED], unconfirmed: [], notShown: 0, notes: "", ...overrides } });
-const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, said: null, ...fix }, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined, testEdits: false });
+const at = (state: FixState, fix?: Partial<FixRun>): FindingState => ({ state, fix: fix === undefined ? undefined : { run: "r", standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: null, base: null, said: null, usage: null, usageRecorded: { recorded: 0, sessions: 0 }, ...fix }, refused: false, cause: null, signOff: null, earlier: null, threshold: undefined, testEdits: false });
 const undecided = [at("proposed"), at("proposed"), at("proposed")];
 
 describe("a finished review, as the owner reads it", () => {
@@ -76,6 +76,10 @@ describe("the findings view", () => {
       "1. The price shown at checkout can be negative (high): not yet decided",
       "2. Settings errors are unhelpful (medium): not yet decided",
       "3. Old payment code (low): not yet decided",
+      "",
+      WHAT_IT_COST,
+      "  The review: time not recorded; cost not recorded.",
+      "  The fixes: none has run yet.",
       "",
       "See one in full: delivery findings 1",
     ]);
@@ -495,4 +499,18 @@ it("says which part a review looked at, in the list as well as the review", () =
   expect(listLines(scoped, undecided)[1]).toBe(onlyPart("auth"));
   expect(reviewLines(review(), undecided).join("\n")).not.toContain("looks only at");
   for (const line of [onlyPart("auth"), outsideProject("../x"), nothingInPart("x"), outsidePartPointer(2, "auth")]) expect(line.replace(/delivery findings/g, "")).not.toMatch(PACK_FORBIDDEN);
+});
+
+describe("what a review cost", () => {
+  it("ends delivery findings with the review's and the fixes' time and cost", () => {
+    const fixed = at("fixed", { usage: { costUsd: 0.5, durationMs: 120_000 }, usageRecorded: { recorded: 1, sessions: 1 } });
+    const lines = listLines({ ...review(), usage: { costUsd: 0.31, durationMs: 252_000 } }, [fixed, at("proposed"), at("proposed")]);
+    const from = lines.indexOf(WHAT_IT_COST);
+    expect(lines.slice(from, from + 3)).toEqual([WHAT_IT_COST, "  The review: 4 min 12 s of session time; USD 0.31, estimated by the agent runtime.", "  The fixes: 2 min of session time; USD 0.50, estimated by the agent runtime."]);
+  });
+
+  it("says what was not recorded, never zero", () => {
+    expect(costLines(review(), undecided)).toEqual(["The review: time not recorded; cost not recorded.", "The fixes: none has run yet."]);
+    for (const line of costLines(review(), undecided)) expect(line).not.toMatch(PACK_FORBIDDEN);
+  });
 });

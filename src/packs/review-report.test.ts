@@ -34,7 +34,7 @@ const reviewOf = (findings: Finding[]): SavedReview => ({ dir: "/d", header: HEA
 const at = (state: FixState, over: Partial<FindingState> = {}, fix: Partial<FixRun> = {}): FindingState => ({
   ...UNDECIDED,
   state,
-  fix: { run: `fix-${state}-20261005T110000Z`, standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: "surface/fix-1", base: "main", said: null, ...fix },
+  fix: { run: `fix-${state}-20261005T110000Z`, standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: "surface/fix-1", base: "main", said: null, usage: null, usageRecorded: { recorded: 0, sessions: 0 }, ...fix },
   ...over,
 });
 

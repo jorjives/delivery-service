@@ -21,7 +21,7 @@ const review: SavedReview = {
   },
   result: { findings: [sampleFinding(), sampleFinding({ id: "111111111111", title: "Old payment code", severity: "low", check: { kind: "none" } })], unconfirmed: [], notShown: 2, notes: "" },
 };
-const fixed: FindingState = { ...UNDECIDED, state: "fixed", fix: { run: "fix-a-20261005T110000Z", standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: "surface/fix-a", base: "main", said: "Clamped." } };
+const fixed: FindingState = { ...UNDECIDED, state: "fixed", fix: { run: "fix-a-20261005T110000Z", standing: "closed", closer: "merge-back", plain: null, rounds: [], branch: "surface/fix-a", base: "main", said: "Clamped.", usage: null, usageRecorded: { recorded: 0, sessions: 0 }, } };
 const overTheWire = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 
 describe("the findings document", () => {

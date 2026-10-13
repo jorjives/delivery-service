@@ -25,7 +25,7 @@ import {
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 import type { HistoryEntry } from "../schema.js";
-import { closingSentence, durationWords, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
+import { closingSentence, costLine, durationWords, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
 
 const report = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false });
 
@@ -541,6 +541,7 @@ describe("a report told by a review's problems", () => {
     sections: ["", "DONE (1)", '  Problem 1 of 2: "Totals can be negative" (high): fixed and merged'],
     next: "Next: delivery findings (every problem and where it stands), delivery status --all (every run)",
     carryOn: "delivery fix",
+    cost: [],
   };
   const told = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false, review: part });
 
@@ -582,5 +583,23 @@ describe("a report told by a review's problems", () => {
   it("says nothing different without a review part", () => {
     const snapshot = snapshotOf({ live: false, records: [formDone, footerWorking], runs: [going] });
     expect(renderText(deriveReport(snapshot), { colour: false })[0]).toBe("Work on your task list stopped part way (4 tasks: 1 done, 1 not finished, 2 waiting to start). To carry on: delivery run");
+  });
+});
+
+describe("what something cost, fact by fact", () => {
+  it("says none has run, not recorded, the whole, or how much of it the figure covers", () => {
+    expect(costLine("The fixes", { usage: null, usageRecorded: { recorded: 0, sessions: 0 } })).toBe("The fixes: none has run yet.");
+    expect(costLine("The review", { usage: null, usageRecorded: { recorded: 0, sessions: 1 } })).toBe("The review: time not recorded; cost not recorded.");
+    expect(costLine("The review", { usage: { costUsd: 0.31, durationMs: 252_000 }, usageRecorded: { recorded: 1, sessions: 1 } })).toBe("The review: 4 min 12 s of session time; USD 0.31, estimated by the agent runtime.");
+    expect(costLine("The fixes", { usage: { costUsd: 0.8, durationMs: 540_000 }, usageRecorded: { recorded: 2, sessions: 3 } })).toBe("The fixes, recorded for 2 of 3 agent sessions: 9 min of session time; USD 0.80, estimated by the agent runtime.");
+  });
+
+  it("tells a review's cost in the tuning section in place of the run's, even before any fix has run", () => {
+    const doc = deriveReport(snapshotOf());
+    const review: ReviewPart = { opening: [], sections: [], next: "Next: x", carryOn: "delivery fix", cost: ["The review: time not recorded; cost not recorded.", "The fixes: none has run yet."] };
+    const lines = renderText(doc, { colour: false, review });
+    const at = lines.indexOf("FOR WHOEVER TUNES THIS");
+    expect(lines.slice(at + 1, at + 3)).toEqual(["  The review: time not recorded; cost not recorded.", "  The fixes: none has run yet."]);
+    expect(lines.join("\n")).not.toContain("for this run");
   });
 });

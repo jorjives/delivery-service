@@ -6,7 +6,7 @@ import { dayAndMinute, pathName } from "../report/text.js";
 import type { CheckKind, Finding } from "./finding.js";
 import { UNDECIDED, type UnfixableCause } from "./fix-state.js";
 import type { FindingState } from "./fix-state.js";
-import { CHECK_LEVEL, CONSEQUENCE_WORDS, fixWaiting, LEFT_FOR_YOU, NEEDS_TEST_CHANGE, PR_OPENED, problems, signOffLines, stateWords, checkLevel, holdWhy, NO_TESTS_LEVEL, CANNOT_BE_CHECKED, UNCHECKABLE_WHY } from "./render.js";
+import { CHECK_LEVEL, CONSEQUENCE_WORDS, costLines, fixWaiting, LEFT_FOR_YOU, NEEDS_TEST_CHANGE, PR_OPENED, problems, signOffLines, stateWords, checkLevel, holdWhy, NO_TESTS_LEVEL, CANNOT_BE_CHECKED, UNCHECKABLE_WHY } from "./render.js";
 import type { ReviewHeader, SavedReview } from "./review-record.js";
 
 /** What a review's opening counts a problem under once the owner has approved it. Closed, so the words for each are total. */
@@ -224,5 +224,5 @@ export function reviewSections(review: SavedReview, states: readonly FindingStat
 
 /** A review's fix phase as the report tells it. Pure: the same review and states always give the same lines. */
 export function reviewPart(review: SavedReview, states: readonly FindingState[], colour: boolean): ReviewPart {
-  return { opening: reviewOpening(review, states), sections: reviewSections(review, states, colour), next: REVIEW_NEXT, carryOn: "delivery fix" };
+  return { opening: reviewOpening(review, states), sections: reviewSections(review, states, colour), next: REVIEW_NEXT, carryOn: "delivery fix", cost: costLines(review, states) };
 }

@@ -796,7 +796,7 @@ it. Nothing in your project changes.
   `--sign-off-threshold medium` (or critical, high, low, none) chooses which fixes wait for your
   sign-off instead of the review's default.
 - `delivery report` then tells you, problem by problem, what was fixed, what is waiting for your
-  sign-off and what could not be fixed, under who must act.
+  sign-off and what could not be fixed, under who must act, and what the review and its fixes cost.
 - `delivery packs` lists the reviews available (`--json` for a script); `delivery review ./my-review` runs one from a folder, and `delivery packs --schema` prints the JSON Schema of its `pack.json` for your editor.
 - `delivery packs check ./my-review` checks a review folder of your own and runs its fixtures against a scripted agent: see [Writing a pack](docs/writing-a-pack.md).
 

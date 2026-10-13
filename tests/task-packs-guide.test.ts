@@ -8,6 +8,7 @@ import { CHECK_LEVEL, NOTHING_CHANGED, READS_ONLY, REVIEWER_KNOWLEDGE, UNCONFIRM
 import { POSSIBLY_WORTH_A_LOOK, SET_ASIDE, onlyPart, PREVIEW_INTRO } from "../src/packs/render.js";
 import { PR_OPENED, STATE_WORDS, REFUSED_WEAKENING, NEEDS_TEST_CHANGE, CHANGES_TESTS, CHECKING_SIGN_OFF, NEEDS_YOU, EARLIER_WORDS } from "../src/packs/render.js";
 import { OUTCOME_WORDS } from "../src/packs/review-report.js";
+import { WHAT_IT_COST } from "../src/packs/render.js";
 import { FindingsDocument, FindingsProblem } from "../src/packs/findings-document.js";
 import { REPO_ROOT } from "./helpers.js";
 
@@ -15,6 +16,12 @@ const guide = readFileSync(join(REPO_ROOT, "docs/task-packs.md"), "utf-8");
 const flat = guide.replace(/\s+/g, " ");
 
 describe("the task packs guide", () => {
+  it("says where to see what a review and its fixes cost", () => {
+    expect(flat).toContain(WHAT_IT_COST);
+    expect(flat).toContain("FOR WHOEVER TUNES THIS");
+    expect(flat).toContain("not recorded");
+  });
+
   it("explains how sure the review is, and what is set aside", () => {
     expect(flat).toContain("How sure the review is");
     expect(flat).toContain(POSSIBLY_WORTH_A_LOOK);
