@@ -38,7 +38,7 @@ describe("delivery packs check", () => {
     expect(stdout.split("\n")).toEqual(
       expect.arrayContaining([
         "Checking the review in my-pack…",
-        "✓ pack.json: the code review, version 1.0.0.",
+        "✓ pack.json: the code review, version 1.1.0.",
         '✓ The scripted review found 2 problems, as fixtures/expect.json expects: "The total can go below zero", "A missing or broken settings file gives an unhelpful error".',
         '✓ The scripted fix for "The total can go below zero" passed its check.',
         '✓ The scripted cheat for "A missing or broken settings file gives an unhelpful error" was refused: it removed, changed or skipped tests.',

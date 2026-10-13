@@ -144,7 +144,7 @@ describe("AC: the pack schema and --json", () => {
     const findings = JSON.parse(runDelivery(["findings", "--json"], { cwd: repo, env }).stdout) as {
       review: { packVersion: string; packHash: string };
     };
-    expect(findings.review.packVersion).toBe("1.0.0");
+    expect(findings.review.packVersion).toBe("1.1.0");
     expect(findings.review.packHash).toMatch(/^[0-9a-f]{64}$/);
   });
 });

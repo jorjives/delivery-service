@@ -34,7 +34,7 @@ describe("the pack check", () => {
     expect(result.problems).toEqual([]);
     expect(result).toMatchObject({
       ready: true,
-      pack: { name: "code", version: "1.0.0" },
+      pack: { name: "code", version: "1.1.0" },
       run: { found: [TOTAL, SETTINGS], fixed: [TOTAL], refused: [{ title: SETTINGS, why: WEAKENED_TESTS }] },
       sentToAgent: false,
     });

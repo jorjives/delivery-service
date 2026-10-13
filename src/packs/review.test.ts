@@ -148,8 +148,10 @@ describe("a review that was interrupted", () => {
 describe("reviewing one part of the project", () => {
   it("sends only that part's files, records the part, and does not offer problems elsewhere", async () => {
     const repo = initTempRepo("review-scope-", { "checkout.js": "export function total(price, discount) {\n  return price - discount;\n}\n", "auth/session.js": "export function sessionIsValid(startedAt, now) {\n  return now - startedAt > 60 * 60 * 1000;\n}\n" });
-    const inside = { ...EXAMPLE_SCAN.findings[0]!, title: "Sessions never expire", where: { path: "auth/session.js" }, anchor: "return now - startedAt > 60 * 60 * 1000;" };
-    const { session, journalPath } = await scripted(scanScript({ findings: [EXAMPLE_SCAN.findings[0], inside], notes: "" }));
+    const [first] = EXAMPLE_SCAN.findings;
+    if (!first) throw new Error("the example scan has no findings");
+    const inside = { ...first, title: "Sessions never expire", where: { path: "auth/session.js" }, anchor: "return now - startedAt > 60 * 60 * 1000;" };
+    const { session, journalPath } = await scripted(scanScript({ findings: [first, inside], notes: "" }));
     const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env: state(), scope: "auth" });
 
     if (outcome.kind !== "done") throw new Error(outcome.kind);

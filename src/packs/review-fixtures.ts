@@ -106,7 +106,7 @@ export const SCOPED_SCAN: ScanEnvelope = {
       anchor: "export function sessionIsValid(startedAt, now) {",
       check: { kind: "none" },
     },
-    EXAMPLE_SCAN.findings[0]!,
+    ...EXAMPLE_SCAN.findings.slice(0, 1),
   ],
   notes: "",
 };

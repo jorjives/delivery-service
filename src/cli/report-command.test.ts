@@ -430,7 +430,7 @@ describe("delivery report", () => {
       const from = tuning.findIndex((line) => line.startsWith("  The review: "));
 
       expect(from).toBeGreaterThanOrEqual(0);
-      expect(tuning[from + 1]).toMatch(/^  The fixes(: |, recorded for )/);
+      expect(tuning[from + 1]).toMatch(/^ {2}The fixes(: |, recorded for )/);
       expect(stdout).not.toContain("for this run.");
     });
 
