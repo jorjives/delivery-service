@@ -7,7 +7,7 @@ import { delivery } from "./command-fixtures.js";
 import { EXIT, Refusal } from "./failures.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import type { PackCheck } from "./pack-check.js";
-import { NEEDS_CONFIRMATION, NOT_TRUSTED, packsCheckCommand, readyLine, SENT_NOTHING } from "./packs-check-command.js";
+import { checkingLine, NEEDS_CONFIRMATION, NOT_TRUSTED, packsCheckCommand, readyLine, SENT_NOTHING } from "./packs-check-command.js";
 
 const CHECK_TIMEOUT = 120_000;
 
@@ -77,7 +77,7 @@ describe("delivery packs check", () => {
       expect((err as Refusal).message).toBe(NEEDS_CONFIRMATION);
       expect((err as Refusal).exitCode).toBe(EXIT.configuration);
       expect(asked).toEqual([]);
-      expect(lines).toEqual([]);
+      expect(lines).toEqual([checkingLine("my-pack")]);
     });
 
     it("asks, in a terminal, before running the fixtures, and proceeds on yes", async () => {
@@ -100,7 +100,7 @@ describe("delivery packs check", () => {
 
       expect(exitCode).toBe(EXIT.ok);
       expect(asked).toHaveLength(1);
-      expect(lines).toEqual([NOT_TRUSTED("my-pack")]);
+      expect(lines).toEqual([checkingLine("my-pack"), NOT_TRUSTED("my-pack")]);
     });
 
     it("skips the question with --yes, even in a terminal", async () => {

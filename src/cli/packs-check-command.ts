@@ -3,7 +3,7 @@ import { FIXTURES } from "../packs/pack-fixtures.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import type { Ask, ConfirmQuestion } from "./init.js";
-import { checkPack, type PackCheck } from "./pack-check.js";
+import { checkPack, NotTrusted, type PackCheck } from "./pack-check.js";
 
 export interface PacksCheckOptions {
   /** Skip the trust confirmation below: for a non-interactive run, where nothing can ask. */
@@ -49,23 +49,33 @@ export function passedLines({ pack, run }: PackCheck, pathArg: string): string[]
 
 /**
  * `delivery packs check <path>`: every problem with a review folder, named by file and field; then,
- * if there are none, its fixtures run against the scripted agent. Before that run, trust is confirmed:
- * asked in a terminal, required as `--yes` otherwise, since nothing can ask. Exit codes follow
- * `delivery validate`: 0 ready, 2 anything wrong with the pack or trust declined/unconfirmable.
- * With `--json`, the whole result as one document.
+ * if there are none, trust is confirmed before its fixtures run against the scripted agent: asked
+ * in a terminal, required as `--yes` otherwise, since nothing can ask. A declined pack is left
+ * alone (exit 0); an unconfirmable one (non-interactive, no `--yes`) is refused (exit 2), same as
+ * any other configuration problem. Exit codes otherwise follow `delivery validate`: 0 ready, 2
+ * anything wrong with the pack. With `--json`, the whole result as one document.
  */
 export async function packsCheckCommand(pathArg: string, options: PacksCheckOptions, ctx: CommandContext, ask: Ask): Promise<ExitCode> {
   const dir = resolve(ctx.cwd, pathArg);
   const shown = (file: string): string => relative(ctx.cwd, file) || ".";
-  if (options.yes !== true) {
-    if (ctx.stdin.isTTY !== true) throw new Refusal(NEEDS_CONFIRMATION, EXIT.configuration);
-    if (!(await ask.confirm(trustQuestion(shown(dir))))) {
+  if (!ctx.json) ctx.writeLine(checkingLine(shown(dir)));
+  const confirm =
+    options.yes === true
+      ? undefined
+      : async (): Promise<boolean> => {
+          if (ctx.stdin.isTTY !== true) throw new Refusal(NEEDS_CONFIRMATION, EXIT.configuration);
+          return ask.confirm(trustQuestion(shown(dir)));
+        };
+  let result: PackCheck;
+  try {
+    result = await checkPack(dir, { env: ctx.env, confirm });
+  } catch (err) {
+    if (err instanceof NotTrusted) {
       ctx.writeLine(NOT_TRUSTED(shown(dir)));
       return EXIT.ok;
     }
+    throw err;
   }
-  if (!ctx.json) ctx.writeLine(checkingLine(shown(dir)));
-  const result = await checkPack(dir, { env: ctx.env });
   const exitCode = result.ready ? EXIT.ok : EXIT.configuration;
   if (ctx.json) {
     ctx.writeLine(JSON.stringify(result, null, 2));

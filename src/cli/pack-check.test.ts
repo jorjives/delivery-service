@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
 import { FIXTURES } from "../packs/pack-fixtures.js";
 import { UNCONFIRMED_WHY } from "../packs/render.js";
-import { CHECK_FAILED, checkPack, sandboxedEnv, WEAKENED_TESTS } from "./pack-check.js";
+import { CHECK_FAILED, checkPack, NotTrusted, sandboxedEnv, WEAKENED_TESTS } from "./pack-check.js";
 
 const CHECK_TIMEOUT = 120_000;
 const TOTAL = "The total can go below zero";
@@ -95,6 +95,33 @@ describe("the pack check", () => {
       fixed: ["A key for the payments service is written in the code"],
       refused: [{ title: "Checks of secure connections are turned off", why: CHECK_FAILED }],
     });
+  }, CHECK_TIMEOUT);
+});
+
+describe("confirming trust before running a pack's fixtures", () => {
+  it("never asks when the manifest has a problem: nothing would run anyway", async () => {
+    const dir = packCopy("code-review", "pack.json", (m) => (m.scan.checks = ["anchor-gone", "page-contains"]));
+    const confirm = () => Promise.reject(new Error("should not be asked"));
+    const result = await checkPack(dir, { confirm });
+    expect(result).toMatchObject({ ready: false, run: null });
+  });
+
+  it("asks once before running fixtures, and declines without running them", async () => {
+    const dir = packCopy();
+    const before = listing(dir);
+    let calls = 0;
+    const confirm = () => {
+      calls++;
+      return Promise.resolve(false);
+    };
+    await expect(checkPack(dir, { confirm })).rejects.toBeInstanceOf(NotTrusted);
+    expect(calls).toBe(1);
+    expect(listing(dir)).toEqual(before);
+  });
+
+  it("runs the fixtures as normal once confirm resolves true", async () => {
+    const result = await checkPack(packCopy(), { confirm: () => Promise.resolve(true) });
+    expect(result).toMatchObject({ ready: true, run: { fixed: [TOTAL] } });
   }, CHECK_TIMEOUT);
 });
 

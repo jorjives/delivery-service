@@ -44,7 +44,7 @@ describe("UAT: write a pack of your own and prove it before pointing it at a rea
 
     // Step 3: fixed, the scripted review, fix and cheat are reported.
     writeFileSync(manifest, original);
-    const ok = runDelivery(["packs", "check", "my-review"], { cwd });
+    const ok = runDelivery(["packs", "check", "my-review", "--yes"], { cwd });
     expect(ok.status).toBe(0);
     expect(ok.stdout).toContain("The scripted review found 2 problems");
     expect(ok.stdout).toContain('The scripted fix for "The total can go below zero" passed its check.');
@@ -78,7 +78,7 @@ describe("AC: a pack whose scripted run does not match its expectations fails th
   it("fails when the scripted review does not yield an expected problem", () => {
     const { cwd } = copyOfCodeReview();
     rewrite(cwd, "fixtures/expect.json", JSON.stringify({ found: ["Imaginary problem", "The total can go below zero", "A missing or broken settings file gives an unhelpful error"], fixed: ["The total can go below zero"], refused: ["A missing or broken settings file gives an unhelpful error"] }));
-    const result = runDelivery(["packs", "check", "my-review"], { cwd });
+    const result = runDelivery(["packs", "check", "my-review", "--yes"], { cwd });
     expect(result.status).toBe(2);
     expect(result.stdout).toContain('the scripted review did not find "Imaginary problem"');
     expect(result.stdout).toContain(SENT_NOTHING);
@@ -106,7 +106,7 @@ describe("AC: a pack whose scripted run does not match its expectations fails th
 describe("AC: exit codes follow delivery validate", () => {
   it("exits 0 for a ready pack and 2 for one that is not", () => {
     const { cwd } = copyOfCodeReview();
-    expect(runDelivery(["packs", "check", "my-review"], { cwd }).status).toBe(0);
+    expect(runDelivery(["packs", "check", "my-review", "--yes"], { cwd }).status).toBe(0);
     expect(runDelivery(["packs", "check", "nope"], { cwd }).status).toBe(runDelivery(["validate"], { cwd }).status);
   });
 });
@@ -123,7 +123,7 @@ describe("AC: the pack schema and --json", () => {
     const { cwd } = copyOfCodeReview();
     const list = JSON.parse(runDelivery(["packs", "--json"], { cwd }).stdout) as { packs: Array<{ name: string }> };
     expect(list.packs.map((pack) => pack.name)).toEqual(expect.arrayContaining(["code", "security"]));
-    const check = JSON.parse(runDelivery(["packs", "check", "my-review", "--json"], { cwd }).stdout) as {
+    const check = JSON.parse(runDelivery(["packs", "check", "my-review", "--json", "--yes"], { cwd }).stdout) as {
       ready: boolean;
       sentToAgent: boolean;
       run: { fixed: string[] };
@@ -166,7 +166,7 @@ describe("AC: a pack cannot give the review agent tools or commands", () => {
 
 describe("AC: both built-in packs pass the same check", () => {
   it.each(["code-review", "security-review"])("passes the pack check for %s", (folder) => {
-    const result = runDelivery(["packs", "check", join(BUILT_IN_PACKS, folder)], { cwd: REPO_ROOT });
+    const result = runDelivery(["packs", "check", join(BUILT_IN_PACKS, folder), "--yes"], { cwd: REPO_ROOT });
     expect(result.status).toBe(0);
     expect(result.stdout).toContain(SENT_NOTHING);
   });

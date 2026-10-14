@@ -58,18 +58,33 @@ export function sandboxedEnv(env: NodeJS.ProcessEnv, home: string): NodeJS.Proce
   return sandboxed;
 }
 
+/** Thrown by `checkPack` when `confirm` declines to run a validated pack's fixtures. */
+export class NotTrusted extends Error {
+  constructor() {
+    super("Declined to run this pack's fixtures.");
+    this.name = "NotTrusted";
+  }
+}
+
 /**
  * Check a pack the way an author needs it checked: every problem with its manifest and fixtures,
  * named by file and field; then, when there are none, its fixtures run end to end exactly as
  * `delivery review`, `delivery findings approve` and `delivery fix` would run them, with every agent
  * reply scripted by the fixtures. Nothing is sent to a real agent, no credentials are passed on,
  * and nothing is written into the pack's folder.
+ *
+ * `confirm`, when given, is asked exactly once, after the manifest and fixtures are known to be
+ * valid and before any of the pack's own code runs — never for a pack that was going to be
+ * rejected anyway. Declining throws `NotTrusted`. Leaving it unset (the default for a pack's own
+ * test suite, which has no one to ask) runs the fixtures outright: `checkPack` itself asks no
+ * questions unless told to.
  */
-export async function checkPack(dir: string, { env = process.env }: { env?: NodeJS.ProcessEnv } = {}): Promise<PackCheck> {
+export async function checkPack(dir: string, { env = process.env, confirm }: { env?: NodeJS.ProcessEnv; confirm?: () => Promise<boolean> } = {}): Promise<PackCheck> {
   const [inspected, read] = await Promise.all([inspectPack(dir), readFixtures(dir)]);
   const pack = inspected.ok ? { name: inspected.pack.manifest.name, version: inspected.pack.manifest.version, hash: inspected.pack.hash } : null;
   const problems = [...(inspected.ok ? [] : inspected.problems), ...(read.ok ? [] : read.problems)];
   if (!inspected.ok || !read.ok) return { ready: false, pack, problems, run: null, sentToAgent: false };
+  if (confirm !== undefined && !(await confirm())) throw new NotTrusted();
   const { fixtures } = read;
   const expectFile = join(dir, FIXTURES.expect);
   const fixesFile = join(dir, FIXTURES.fixes);

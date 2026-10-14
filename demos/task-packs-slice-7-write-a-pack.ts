@@ -34,4 +34,4 @@ writeFileSync(manifest, original.replace('"pattern-absent"]', '"page-contains"]'
 await show(cwd, ["packs", "check", "my-review"]);
 
 writeFileSync(manifest, original);
-await show(cwd, ["packs", "check", "my-review"]);
+await show(cwd, ["packs", "check", "my-review", "--yes"]);
