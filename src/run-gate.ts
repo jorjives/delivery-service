@@ -7,7 +7,7 @@ import type { SurfaceLocation } from "./ports.js";
 import type { CaseFileHeader, GateEntry, GateReport, DeltaResult, NewFailure } from "./schema.js";
 
 function gateContext(header: CaseFileHeader, worktreePath: string, env?: NodeJS.ProcessEnv): GateContext {
-  return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, ...(env === undefined ? {} : { env }) };
+  return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, env };
 }
 
 // The gate measures the worktree but is loaded from the repo root: a relative

@@ -32,7 +32,7 @@ function exec(command: string, cwd: string, timeoutMs: number, env?: NodeJS.Proc
     execFileCb(
       "/bin/sh",
       ["-c", command],
-      { cwd, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024, ...(env === undefined ? {} : { env }) },
+      { cwd, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024, env },
       (err, stdout, stderr) => {
         if (err && "code" in err && typeof err.code === "string") {
           // System-level error (ENOENT, ETIMEDOUT, etc.) — not a command exit code
