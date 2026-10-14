@@ -80,10 +80,8 @@ export async function checkPack(dir: string, { env = process.env }: { env?: Node
     // Copied out, because claude-mock writes its journal beside its script.
     const reviewScript = join(scratch, "review.json");
     const fixesScript = join(scratch, "fixes.json");
-    await writeFile(reviewScript, fixtures.reviewScript);
-    await writeFile(fixesScript, fixtures.fixesScript);
     const home = join(scratch, "home");
-    await mkdir(home, { recursive: true });
+    await Promise.all([writeFile(reviewScript, fixtures.reviewScript), writeFile(fixesScript, fixtures.fixesScript), mkdir(home, { recursive: true })]);
     const quiet = (): void => undefined;
     const ctxWith = (script: string): CommandContext => ({
       cwd: repo,
