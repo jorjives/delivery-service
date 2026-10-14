@@ -529,6 +529,8 @@ time.
 
 ## Item 12: Pre-Built Task Packs
 
+**Status:** ✅ Complete — 2026-10-13 — spec: `docs/superpowers/specs/2026-10-03-task-packs-design.md`
+
 **Delivers:** Ready-to-use task packs for common scenarios that a project owner
 can point at their codebase and run immediately, demonstrating the harness's
 value without any custom configuration.
