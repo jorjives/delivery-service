@@ -192,7 +192,7 @@ A fix at or above the pack's `hold` severity counts as passing its check when it
 delivery packs check ./my-review
 ```
 
-Running the fixtures runs the fixture project's own tests on your machine, as `delivery fix` runs a project's tests. Only check a pack whose `fixtures/project` you have read or trust, as you would only run the tests of a project you trust.
+Running the fixtures runs the fixture project's own tests on your machine, as `delivery fix` runs a project's tests, so it asks you to confirm you trust the pack's code before anything runs: `y` to continue, Enter or `n` to leave it alone. The command runs that test command with none of your credentials and a scratch `HOME` in place of your own, but it is still real code with your real filesystem and process access - only check a pack whose `fixtures/project` you have read or trust. In a script or CI, where nothing can ask, pass `--yes` once you do.
 
 If there are problems with the manifest or fixtures, they are named by file and field:
 
@@ -259,6 +259,8 @@ describe("my review pack", () => {
 });
 ```
 
+`checkPack` itself asks no questions - the confirmation above is the CLI command's, for a person checking a pack they did not write. Your own test suite calls it directly on your own pack, with the same sandboxed environment but no prompt.
+
 ## What a scripted check cannot prove
 
 A scripted check proves:
@@ -274,7 +276,7 @@ A scripted check cannot prove:
 - Whether a real agent follows your `scan.md`. As `docs/testing-your-pipeline.md` explains, a real agent may follow the instructions differently.
 - Your review catches real problems in your area.
 
-Also: unlike `delivery review`, `delivery packs check` runs `fixtures/project/`'s own `test` script (the way it proves a fix broke nothing). Only check a pack someone else wrote after reading and understanding what their `fixtures/project/` tests, and what their fixtures claim the review should find.
+Also: unlike `delivery review`, `delivery packs check` runs `fixtures/project/`'s own `test` script (the way it proves a fix broke nothing). The confirmation above, and the sandboxed environment that command runs with, guard against an accidental credential leak - they are not a sandbox against hostile code. Only check a pack someone else wrote after reading and understanding what their `fixtures/project/` tests, and what their fixtures claim the review should find.
 
 ## Try it
 

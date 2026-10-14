@@ -125,6 +125,28 @@ describe("createCommandGate", () => {
     expect(report.assertions[0]?.outcome).toBe("FAIL");
   });
 
+  it("passes ctx.env to the spawned command when set", async () => {
+    mockExecFile("", "", 0);
+
+    const gate = createCommandGate("make check", "exitcode");
+    await gate.baseline({ ...stubCtx(), env: { PATH: "/usr/bin", HOME: "/scratch/home" } });
+
+    const call = (execFile as unknown as ReturnType<typeof vi.fn>).mock.calls.at(0);
+    const opts = call?.[2] as { env?: NodeJS.ProcessEnv };
+    expect(opts.env).toEqual({ PATH: "/usr/bin", HOME: "/scratch/home" });
+  });
+
+  it("passes no env option when ctx carries none, so the command inherits the process's own", async () => {
+    mockExecFile("", "", 0);
+
+    const gate = createCommandGate("make check", "exitcode");
+    await gate.baseline(stubCtx());
+
+    const call = (execFile as unknown as ReturnType<typeof vi.fn>).mock.calls.at(0);
+    const opts = call?.[2] as { env?: NodeJS.ProcessEnv };
+    expect(opts.env).toBeUndefined();
+  });
+
   it("command not found produces an ERROR report, not a crash", async () => {
     mockExecFileError("ENOENT");
 

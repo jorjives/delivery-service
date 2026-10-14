@@ -1,8 +1,7 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { withoutCredentials } from "../mock-session.js";
 import { readFindingStates, UNDECIDED, type FixState } from "../packs/fix-state.js";
 import { inspectPack, type PackProblem } from "../packs/manifest.js";
 import { FIXTURES, readFixtures } from "../packs/pack-fixtures.js";
@@ -47,17 +46,45 @@ const nobody = (): Promise<never> => Promise.reject(new Error("the pack check as
 const NO_QUESTIONS: Ask = { text: nobody, choose: nobody, confirm: nobody, pick: nobody };
 
 /**
+ * `env` cut to the one thing the pack's own fixture code needs from the
+ * caller's environment to run at all (`PATH`, to find a shell and its tools),
+ * plus a scratch `HOME` in place of the caller's own: every secret the
+ * caller's environment carries, credentials included, stays out of a pack's
+ * code, trusted or not.
+ */
+export function sandboxedEnv(env: NodeJS.ProcessEnv, home: string): NodeJS.ProcessEnv {
+  const sandboxed: NodeJS.ProcessEnv = { HOME: home };
+  if (env.PATH !== undefined) sandboxed.PATH = env.PATH;
+  return sandboxed;
+}
+
+/** Thrown by `checkPack` when `confirm` declines to run a validated pack's fixtures. */
+export class NotTrusted extends Error {
+  constructor() {
+    super("Declined to run this pack's fixtures.");
+    this.name = "NotTrusted";
+  }
+}
+
+/**
  * Check a pack the way an author needs it checked: every problem with its manifest and fixtures,
  * named by file and field; then, when there are none, its fixtures run end to end exactly as
  * `delivery review`, `delivery findings approve` and `delivery fix` would run them, with every agent
  * reply scripted by the fixtures. Nothing is sent to a real agent, no credentials are passed on,
  * and nothing is written into the pack's folder.
+ *
+ * `confirm`, when given, is asked exactly once, after the manifest and fixtures are known to be
+ * valid and before any of the pack's own code runs — never for a pack that was going to be
+ * rejected anyway. Declining throws `NotTrusted`. Leaving it unset (the default for a pack's own
+ * test suite, which has no one to ask) runs the fixtures outright: `checkPack` itself asks no
+ * questions unless told to.
  */
-export async function checkPack(dir: string, { env = process.env }: { env?: NodeJS.ProcessEnv } = {}): Promise<PackCheck> {
+export async function checkPack(dir: string, { env = process.env, confirm }: { env?: NodeJS.ProcessEnv; confirm?: () => Promise<boolean> } = {}): Promise<PackCheck> {
   const [inspected, read] = await Promise.all([inspectPack(dir), readFixtures(dir)]);
   const pack = inspected.ok ? { name: inspected.pack.manifest.name, version: inspected.pack.manifest.version, hash: inspected.pack.hash } : null;
   const problems = [...(inspected.ok ? [] : inspected.problems), ...(read.ok ? [] : read.problems)];
   if (!inspected.ok || !read.ok) return { ready: false, pack, problems, run: null, sentToAgent: false };
+  if (confirm !== undefined && !(await confirm())) throw new NotTrusted();
   const { fixtures } = read;
   const expectFile = join(dir, FIXTURES.expect);
   const fixesFile = join(dir, FIXTURES.fixes);
@@ -68,12 +95,12 @@ export async function checkPack(dir: string, { env = process.env }: { env?: Node
     // Copied out, because claude-mock writes its journal beside its script.
     const reviewScript = join(scratch, "review.json");
     const fixesScript = join(scratch, "fixes.json");
-    await writeFile(reviewScript, fixtures.reviewScript);
-    await writeFile(fixesScript, fixtures.fixesScript);
+    const home = join(scratch, "home");
+    await Promise.all([writeFile(reviewScript, fixtures.reviewScript), writeFile(fixesScript, fixtures.fixesScript), mkdir(home, { recursive: true })]);
     const quiet = (): void => undefined;
     const ctxWith = (script: string): CommandContext => ({
       cwd: repo,
-      env: { ...withoutCredentials(env), XDG_STATE_HOME: join(scratch, "state"), [TEST_MOCK_SCRIPT]: script },
+      env: { ...sandboxedEnv(env, home), XDG_STATE_HOME: join(scratch, "state"), [TEST_MOCK_SCRIPT]: script },
       colour: false,
       json: false,
       interactive: false,
