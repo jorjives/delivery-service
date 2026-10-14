@@ -6,8 +6,8 @@ import type { GateContext } from "./command-gate.js";
 import type { SurfaceLocation } from "./ports.js";
 import type { CaseFileHeader, GateEntry, GateReport, DeltaResult, NewFailure } from "./schema.js";
 
-function gateContext(header: CaseFileHeader, worktreePath: string): GateContext {
-  return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch };
+function gateContext(header: CaseFileHeader, worktreePath: string, env?: NodeJS.ProcessEnv): GateContext {
+  return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, ...(env === undefined ? {} : { env }) };
 }
 
 // The gate measures the worktree but is loaded from the repo root: a relative
@@ -30,9 +30,10 @@ function gateOf(header: CaseFileHeader, location: SurfaceLocation) {
 export async function recordBaseline(
   dir: string,
   location: SurfaceLocation,
+  env?: NodeJS.ProcessEnv,
 ): Promise<GateReport> {
   const { header } = await load(dir);
-  const report = await gateOf(header, location).baseline(gateContext(header, location.worktreePath));
+  const report = await gateOf(header, location).baseline(gateContext(header, location.worktreePath, env));
 
   if (report.status !== "ERROR") {
     await setBaseline(dir, report);
@@ -50,11 +51,12 @@ export async function runCheck(
   dir: string,
   location: SurfaceLocation,
   attempt: number,
+  env?: NodeJS.ProcessEnv,
 ): Promise<{ report: GateReport; delta: DeltaResult }> {
   const { header, history } = await load(dir);
   if (header.baseline === null) throw new MissingBaseline(dir);
 
-  const report = await gateOf(header, location).check(gateContext(header, location.worktreePath));
+  const report = await gateOf(header, location).check(gateContext(header, location.worktreePath, env));
   const delta = computeDelta(header.baseline, report, {
     failOnNewAssertions: header.gateRef.failOnNewAssertions,
   });

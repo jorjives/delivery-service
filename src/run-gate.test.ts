@@ -84,6 +84,30 @@ describe("recordBaseline", () => {
   });
 });
 
+describe("recordBaseline and runCheck with an explicit env", () => {
+  const ENV_GATE: GateRef = { type: "command", command: 'test "$MARKER" = "scratch"', parseMode: "exitcode" };
+
+  beforeEach(async () => {
+    await newSurface(ENV_GATE);
+  });
+
+  it("runs the gate's command with the given env, not the process's own", async () => {
+    const report = await recordBaseline(surfaceDir, location, { MARKER: "scratch" });
+    expect(report.assertions[0]?.outcome).toBe("PASS");
+  });
+
+  it("fails when the given env lacks what the command needs", async () => {
+    const report = await recordBaseline(surfaceDir, location, {});
+    expect(report.assertions[0]?.outcome).toBe("FAIL");
+  });
+
+  it("threads env through runCheck as well as recordBaseline", async () => {
+    await recordBaseline(surfaceDir, location, { MARKER: "scratch" });
+    const { report } = await runCheck(surfaceDir, location, 1, { MARKER: "scratch" });
+    expect(report.assertions[0]?.outcome).toBe("PASS");
+  });
+});
+
 describe("a custom gate with a relative modulePath", () => {
   // A gate reporting where it was loaded from. The copy planted in the worktree
   // stands in for one the agent under judgement wrote or edited.

@@ -76,6 +76,7 @@ export async function driveToOutcome(
     agent,
     triage: deterministicRouter,
     closer: resolveCloser(header.closerRef ?? DEFAULT_CLOSER, repoPath),
+    env: ctx.env,
     ...(ctx.repairCoordinator === undefined ? {} : { repairCoordinator: ctx.repairCoordinator }),
   };
 

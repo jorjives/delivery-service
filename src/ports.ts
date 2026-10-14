@@ -213,6 +213,8 @@ export interface SurfacePorts {
   closer: CloserPort;
   /** Set only for a task of a run of several at once. */
   repairCoordinator?: RepairCoordinator;
+  /** Passed to the gate's `GateContext`. Unset: the gate's command inherits the process's own environment. */
+  env?: NodeJS.ProcessEnv;
 }
 
 /**

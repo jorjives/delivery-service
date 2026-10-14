@@ -479,7 +479,7 @@ async function preGating(
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
-  const report = await onSharedGround(ports, caseFile, () => recordBaseline(dir, locationOf(caseFile, location)));
+  const report = await onSharedGround(ports, caseFile, () => recordBaseline(dir, locationOf(caseFile, location), ports.env));
   if (report.status !== "ERROR") {
     await updateCursor(dir, { state: "AGENT_ACTIVE" });
     return { state: "AGENT_ACTIVE", done: false };
@@ -683,6 +683,7 @@ async function gating(
       dir,
       locationOf(caseFile, location),
       workerAttempt(caseFile.history),
+      ports.env,
     ),
   );
   const state: SurfaceState = delta.pass ? "CLOSING" : "TRIAGE";
