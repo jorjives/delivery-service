@@ -294,9 +294,11 @@ export async function runCli(io: CliIo): Promise<number> {
       "check a review folder of your own before you use it: every mistake is named by file and field, then its fixtures run against a scripted agent, with nothing sent to a real agent",
     )
     .argument("<path>", "the review folder to check, such as ./my-review")
-    .action(async (path: string, _options: unknown, command: Command) => {
+    .option("--yes", "skip asking whether you trust this pack's code before its fixtures run; needed when this isn't a terminal")
+    .action(async (path: string, options: { yes?: boolean }, command: Command) => {
       const { packsCheckCommand } = await import("./packs-check-command.js");
-      exitCode = await packsCheckCommand(path, ctxFor(command));
+      const ctx = ctxFor(command);
+      exitCode = await packsCheckCommand(path, options, ctx, inquirerAsk(ctx.colour));
     });
 
   try {

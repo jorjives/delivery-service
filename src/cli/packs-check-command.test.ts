@@ -4,9 +4,10 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
 import { delivery } from "./command-fixtures.js";
-import { EXIT } from "./failures.js";
+import { EXIT, Refusal } from "./failures.js";
+import { context, scriptedAsk } from "./init-fixtures.js";
 import type { PackCheck } from "./pack-check.js";
-import { readyLine, SENT_NOTHING } from "./packs-check-command.js";
+import { NEEDS_CONFIRMATION, NOT_TRUSTED, packsCheckCommand, readyLine, SENT_NOTHING } from "./packs-check-command.js";
 
 const CHECK_TIMEOUT = 120_000;
 
@@ -26,14 +27,14 @@ function myPack(edit?: (manifest: { scan: { checks: string[] } }) => void): stri
 describe("delivery packs check", () => {
   it("names a made-up check kind by file and field, with the available ones, and stops as validate does", async () => {
     const cwd = myPack((m) => (m.scan.checks = ["anchor-gone", "page-contains"]));
-    const { exitCode, stdout } = await delivery(["packs", "check", "my-pack"], { cwd });
+    const { exitCode, stdout } = await delivery(["packs", "check", "my-pack", "--yes"], { cwd });
     expect(exitCode).toBe(EXIT.configuration);
     expect(stdout).toContain('my-pack/pack.json: "scan.checks.1" is "page-contains" but the available checks are: anchor-gone, pattern-absent, dependency-absent.');
     expect(stdout).not.toContain(SENT_NOTHING);
   });
 
   it("on a valid pack, says what the scripted review found, which fix passed, which cheat was refused, and that nothing reached a real agent", async () => {
-    const { exitCode, stdout } = await delivery(["packs", "check", "my-pack"], { cwd: myPack() });
+    const { exitCode, stdout } = await delivery(["packs", "check", "my-pack", "--yes"], { cwd: myPack() });
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout.split("\n")).toEqual(
       expect.arrayContaining([
@@ -51,17 +52,67 @@ describe("delivery packs check", () => {
 
   it("names a folder with no pack in it, and exits as validate does", async () => {
     const cwd = mkdtempSync(join(tmpdir(), "packs-check-empty-"));
-    const { exitCode, stdout } = await delivery(["packs", "check", "nothing-here"], { cwd });
+    const { exitCode, stdout } = await delivery(["packs", "check", "nothing-here", "--yes"], { cwd });
     expect(exitCode).toBe(EXIT.configuration);
     expect(stdout).toContain("nothing-here/pack.json: is missing.");
   });
 
   it("gives the whole result as one document with --json, with the same exit codes", async () => {
-    const good = await delivery(["packs", "check", "my-pack", "--json"], { cwd: myPack() });
+    const good = await delivery(["packs", "check", "my-pack", "--json", "--yes"], { cwd: myPack() });
     expect(good.exitCode).toBe(EXIT.ok);
     expect(JSON.parse(good.stdout) as PackCheck).toMatchObject({ ready: true, sentToAgent: false, problems: [] });
-    const bad = await delivery(["packs", "check", "my-pack", "--json"], { cwd: myPack((m) => (m.scan.checks = ["nope"])) });
+    const bad = await delivery(["packs", "check", "my-pack", "--json", "--yes"], { cwd: myPack((m) => (m.scan.checks = ["nope"])) });
     expect(bad.exitCode).toBe(EXIT.configuration);
     expect((JSON.parse(bad.stdout) as PackCheck).problems.map((p) => p.field)).toEqual(["scan.checks.0"]);
   }, CHECK_TIMEOUT);
+
+  describe("trusting the pack before its fixtures run", () => {
+    it("refuses a non-interactive run with no --yes, and runs nothing", async () => {
+      const { ctx, lines } = context(myPack(), { interactive: false });
+      const { ask, asked } = scriptedAsk();
+
+      const err = await packsCheckCommand("my-pack", {}, ctx, ask).catch((e: unknown) => e);
+
+      expect(err).toBeInstanceOf(Refusal);
+      expect((err as Refusal).message).toBe(NEEDS_CONFIRMATION);
+      expect((err as Refusal).exitCode).toBe(EXIT.configuration);
+      expect(asked).toEqual([]);
+      expect(lines).toEqual([]);
+    });
+
+    it("asks, in a terminal, before running the fixtures, and proceeds on yes", async () => {
+      const { ctx, lines } = context(myPack());
+      ctx.env = { ...process.env };
+      const { ask, asked } = scriptedAsk({ confirm: true });
+
+      const exitCode = await packsCheckCommand("my-pack", {}, ctx, ask);
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(asked).toHaveLength(1);
+      expect(lines).toContain(SENT_NOTHING);
+    }, CHECK_TIMEOUT);
+
+    it("asks, in a terminal, and runs nothing on no", async () => {
+      const { ctx, lines } = context(myPack());
+      const { ask, asked } = scriptedAsk({ confirm: false });
+
+      const exitCode = await packsCheckCommand("my-pack", {}, ctx, ask);
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(asked).toHaveLength(1);
+      expect(lines).toEqual([NOT_TRUSTED("my-pack")]);
+    });
+
+    it("skips the question with --yes, even in a terminal", async () => {
+      const { ctx, lines } = context(myPack());
+      ctx.env = { ...process.env };
+      const { ask, asked } = scriptedAsk();
+
+      const exitCode = await packsCheckCommand("my-pack", { yes: true }, ctx, ask);
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(asked).toEqual([]);
+      expect(lines).toContain(SENT_NOTHING);
+    }, CHECK_TIMEOUT);
+  });
 });
