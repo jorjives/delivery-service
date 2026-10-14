@@ -1,8 +1,7 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
-import { withoutCredentials } from "../mock-session.js";
 import { readFindingStates, UNDECIDED, type FixState } from "../packs/fix-state.js";
 import { inspectPack, type PackProblem } from "../packs/manifest.js";
 import { FIXTURES, readFixtures } from "../packs/pack-fixtures.js";
@@ -47,6 +46,19 @@ const nobody = (): Promise<never> => Promise.reject(new Error("the pack check as
 const NO_QUESTIONS: Ask = { text: nobody, choose: nobody, confirm: nobody, pick: nobody };
 
 /**
+ * `env` cut to the one thing the pack's own fixture code needs from the
+ * caller's environment to run at all (`PATH`, to find a shell and its tools),
+ * plus a scratch `HOME` in place of the caller's own: every secret the
+ * caller's environment carries, credentials included, stays out of a pack's
+ * code, trusted or not.
+ */
+export function sandboxedEnv(env: NodeJS.ProcessEnv, home: string): NodeJS.ProcessEnv {
+  const sandboxed: NodeJS.ProcessEnv = { HOME: home };
+  if (env.PATH !== undefined) sandboxed.PATH = env.PATH;
+  return sandboxed;
+}
+
+/**
  * Check a pack the way an author needs it checked: every problem with its manifest and fixtures,
  * named by file and field; then, when there are none, its fixtures run end to end exactly as
  * `delivery review`, `delivery findings approve` and `delivery fix` would run them, with every agent
@@ -70,10 +82,12 @@ export async function checkPack(dir: string, { env = process.env }: { env?: Node
     const fixesScript = join(scratch, "fixes.json");
     await writeFile(reviewScript, fixtures.reviewScript);
     await writeFile(fixesScript, fixtures.fixesScript);
+    const home = join(scratch, "home");
+    await mkdir(home, { recursive: true });
     const quiet = (): void => undefined;
     const ctxWith = (script: string): CommandContext => ({
       cwd: repo,
-      env: { ...withoutCredentials(env), XDG_STATE_HOME: join(scratch, "state"), [TEST_MOCK_SCRIPT]: script },
+      env: { ...sandboxedEnv(env, home), XDG_STATE_HOME: join(scratch, "state"), [TEST_MOCK_SCRIPT]: script },
       colour: false,
       json: false,
       interactive: false,

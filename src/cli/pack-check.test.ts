@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
 import { FIXTURES } from "../packs/pack-fixtures.js";
 import { UNCONFIRMED_WHY } from "../packs/render.js";
-import { CHECK_FAILED, checkPack, WEAKENED_TESTS } from "./pack-check.js";
+import { CHECK_FAILED, checkPack, sandboxedEnv, WEAKENED_TESTS } from "./pack-check.js";
 
 const CHECK_TIMEOUT = 120_000;
 const TOTAL = "The total can go below zero";
@@ -96,4 +96,15 @@ describe("the pack check", () => {
       refused: [{ title: "Checks of secure connections are turned off", why: CHECK_FAILED }],
     });
   }, CHECK_TIMEOUT);
+});
+
+describe("sandboxedEnv", () => {
+  it("keeps only PATH from the caller's environment, plus the given scratch HOME", () => {
+    const env = { PATH: "/usr/bin:/bin", AWS_SECRET_ACCESS_KEY: "leak", ANTHROPIC_API_KEY: "leak", HOME: "/home/real-user" };
+    expect(sandboxedEnv(env, "/scratch/home")).toEqual({ PATH: "/usr/bin:/bin", HOME: "/scratch/home" });
+  });
+
+  it("omits PATH when the caller's environment has none", () => {
+    expect(sandboxedEnv({}, "/scratch/home")).toEqual({ HOME: "/scratch/home" });
+  });
 });
