@@ -14,6 +14,7 @@ import { type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
 import { pickingUp } from "./output.js";
 import { prepareRunDir, runIdFor, runPlace } from "../run-location.js";
+import { gateDigestOf } from "../run-gate.js";
 import type { RunRecord } from "../run-records.js";
 import { taskIntent } from "../task-list.js";
 import { checkCustomModules, DEFAULT_CLOSER, type ProjectSettings } from "./settings.js";
@@ -43,7 +44,12 @@ export async function startRun(
   const runId = chosenId ?? runIdFor(intent, new Date());
   const { dir } = runPlace(repoPath, runId, ctx.env);
   await prepareRunDir(repoPath, dir);
-  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt, agent }, budgets);
+  const gateDigest = await gateDigestOf(gateRef, repoPath);
+  const caseFile = await create(
+    dir,
+    { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt, agent, ...(gateDigest === undefined ? {} : { gateDigest }) },
+    budgets,
+  );
   ctx.report.note(`Starting run ${runId}: ${intent}`);
   ctx.report.step({ state: "PROVISIONING", done: false });
   return driveToOutcome({ runId, repoPath, dir, caseFile }, session, ctx);

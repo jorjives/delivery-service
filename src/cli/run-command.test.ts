@@ -267,6 +267,19 @@ describe("delivery run", () => {
     },
     RUN_TIMEOUT,
   );
+
+  it(
+    "pins a digest of the project's own check module when the run starts",
+    async () => {
+      const gate = "export default { baseline: async () => ({ status: 'PASS', assertions: [] }), check: async () => ({ status: 'PASS', assertions: [] }) };\n";
+      const repo = initTempRepo("run-command-digest-", { "package.json": PACKAGE, "gate.mjs": gate, "delivery.config.json": JSON.stringify({ gate: { type: "custom", modulePath: "./gate.mjs" } }) });
+      const { stdout } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      const runId = branchIn(stdout).replace("surface/", "");
+      const caseJson = JSON.parse(readFileSync(join(repo, ".delivery", "runs", runId, "case.json"), "utf-8")) as { header: { gateDigest?: string } };
+      expect(caseJson.header.gateDigest).toMatch(/^[0-9a-f]{64}$/);
+    },
+    RUN_TIMEOUT,
+  );
 });
 
 const configIn = (repo: string, config: unknown): void => writeFileSync(join(repo, "delivery.config.json"), JSON.stringify(config));

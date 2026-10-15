@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
 import { create, load, readRef, setBaseBranch } from "./case-file.js";
-import { recordBaseline, runCheck } from "./run-gate.js";
+import { recordBaseline, runCheck, GATE_GUARD, gateDigestOf } from "./run-gate.js";
 import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 import { withoutAt } from "./without-at.js";
@@ -323,5 +323,37 @@ describe("the guards on every run", () => {
     await tap(GREEN);
     await recordBaseline(surfaceDir, location);
     expect((await runCheck(surfaceDir, location, 1)).delta.pass).toBe(true);
+  });
+});
+
+describe("the gate's own module", () => {
+  async function customSurface(): Promise<string> {
+    surfaceDir = await mkdtemp(join(tmpdir(), "run-gate-case-"));
+    worktree = await mkdtemp(join(tmpdir(), "run-gate-tree-"));
+    const repoPath = await mkdtemp(join(tmpdir(), "run-gate-repo-"));
+    location = { repoPath, worktreePath: worktree };
+    await writeFile(join(repoPath, "gate.mjs"), "export default { baseline: async () => ({ status: 'PASS', assertions: [] }), check: async () => ({ status: 'PASS', assertions: [] }) };\n");
+    const gateRef: GateRef = { type: "custom", modulePath: "./gate.mjs" };
+    const gateDigest = await gateDigestOf(gateRef, repoPath);
+    await create(surfaceDir, { surfaceId: "surface-1", taskDef: { intent: "fix bug" }, gateRef, gateDigest }, budgets);
+    await recordBaseline(surfaceDir, location);
+    return repoPath;
+  }
+
+  it("passes while the module is as it was when the run started", async () => {
+    await customSurface();
+    expect((await runCheck(surfaceDir, location, 1)).delta.pass).toBe(true);
+  });
+
+  it("fails, naming the module, once it has changed", async () => {
+    const repoPath = await customSurface();
+    await writeFile(join(repoPath, "gate.mjs"), "export default { baseline: async () => ({ status: 'PASS', assertions: [] }), check: async () => ({ status: 'PASS', assertions: [] }) }; // lenient\n");
+    const { delta } = await runCheck(surfaceDir, location, 1);
+    expect(delta.newFailures.map((failure) => failure.id)).toEqual([GATE_GUARD]);
+    expect(delta.newFailures[0]?.detail).toContain("./gate.mjs");
+  });
+
+  it("is not looked for on a command gate, whose command the guards already compare", async () => {
+    expect(await gateDigestOf(TAP_GATE, "/unused")).toBeUndefined();
   });
 });

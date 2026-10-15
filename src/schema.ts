@@ -180,6 +180,10 @@ export const CaseFileHeader = z.object({
   // provisioning. The guards diff from it, so moving HEAD back cannot hide a
   // deleted test. Optional: a record made before it was pinned has none.
   startCommit: z.string().optional(),
+  // A custom gate's module, hashed when the run started. Checked on every
+  // round, so a gate edited mid-run fails the round. Absent for a command gate,
+  // whose command the guards already compare, and for older records.
+  gateDigest: z.string().optional(),
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 

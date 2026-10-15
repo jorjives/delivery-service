@@ -3,10 +3,13 @@ import { resolveGate } from "./resolve-gate.js";
 import { computeDelta } from "./delta-rule.js";
 import { MissingBaseline } from "./errors.js";
 import { guardedGate, guardBase } from "./task-guards.js";
+import { integrityOf } from "./gate-digest.js";
 import type { GateContext } from "./command-gate.js";
 import type { SurfaceLocation } from "./ports.js";
 import type { AcceptedSettings } from "./guards.js";
 import type { CaseFileHeader, GateEntry, GateReport, DeltaResult, NewFailure } from "./schema.js";
+
+export { GATE_GUARD, gateDigestOf } from "./gate-digest.js";
 
 function gateContext(header: CaseFileHeader, worktreePath: string, env?: NodeJS.ProcessEnv): GateContext {
   return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, env };
@@ -61,7 +64,12 @@ export async function runCheck(
   const { header, history } = await load(dir);
   if (header.baseline === null) throw new MissingBaseline(dir);
 
-  const report = await gateOf(header, location).check(gateContext(header, location.worktreePath, env));
+  const checked = await gateOf(header, location).check(gateContext(header, location.worktreePath, env));
+  const integrity = await integrityOf(header, location.repoPath);
+  const report: GateReport =
+    integrity.some((a) => a.outcome === "FAIL")
+      ? { ...checked, status: "FAIL", assertions: [...checked.assertions, ...integrity] }
+      : { ...checked, assertions: [...checked.assertions, ...integrity] };
   const delta = computeDelta(header.baseline, report, {
     failOnNewAssertions: header.gateRef.failOnNewAssertions,
   });
