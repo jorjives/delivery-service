@@ -37,8 +37,8 @@ beforeEach(async () => {
 
 describe("assemblePrompt", () => {
   it.each([
-    ["worker", workerRoleConfig, "You are the worker on a gated delivery harness."],
-    ["gate maintenance", gateMaintenanceRoleConfig, "You are gate maintenance on a gated delivery harness."],
+    ["worker", workerRoleConfig, "You are carrying out one task for a delivery harness"],
+    ["gate maintenance", gateMaintenanceRoleConfig, "The project's check could not run in this working copy"],
   ])("puts the role fragment and the domain prompt in %s's system prompt", async (_role, roleCfg, opening) => {
     const caseFile = await load(dir);
     const { systemPrompt } = assemblePrompt(caseFile, roleCfg, await resolveEvidence(dir, caseFile));

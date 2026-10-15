@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 import { git } from "../../tests/helpers.js";
 import { BUILT_IN_PACKS, resolvePack } from "../packs/manifest.js";
 import { filesToReview } from "../packs/review.js";
-import { scanSession, scannerRoleConfig } from "../packs/scanner-role.js";
+import { scanSession } from "../packs/scanner-role.js";
 import { AGENT_OPINION, earlierHiddenLine, fixNowLines, NOT_NOW, NOTHING_CHANGED, PREVIEW_INTRO, READS_ONLY, CANNOT_BE_CHECKED, NO_TESTS_LEVEL, NO_TESTS_WARNING, onlyPart, outsideProject, nothingInPart, outsidePartPointer, POSSIBLY_WORTH_A_LOOK, SET_ASIDE } from "../packs/render.js";
-import { RULE, toolsLine } from "./preview-command.js";
+import { RULE } from "./preview-command.js";
 import { packsRoot } from "../packs/review-record.js";
 import { UNDECIDED } from "../packs/fix-state.js";
 import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, sampleFinding, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript, NO_TESTS_DIR, NO_TESTS_SCAN, SCOPED_SCAN } from "../packs/review-fixtures.js";
@@ -297,7 +297,7 @@ describe("delivery review --preview", () => {
 
     expect(stderr).toBe("");
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toBe([`Code review of your project.`, PREVIEW_INTRO, RULE, `${systemPrompt}\n\n${prompt}`, RULE, toolsLine(scannerRoleConfig(pack).allowedTools), ""].join("\n"));
+    expect(stdout).toBe([`Code review of your project.`, PREVIEW_INTRO, RULE, `${systemPrompt}\n\n${prompt}`, RULE, ""].join("\n"));
     expect(existsSync(packsRoot(repo))).toBe(false);
     expect(git(repo, ["worktree", "list"]).split("\n")).toHaveLength(1);
   }, RUN_TIMEOUT);
@@ -322,6 +322,6 @@ describe("delivery review --preview", () => {
   it("gives the same as data with --json", async () => {
     const repo = exampleRepo();
     const { stdout } = await delivery(["review", "code", "--preview", "--json"], { cwd: repo, env: unsigned() });
-    expect(Object.keys(JSON.parse(stdout) as object)).toEqual(["systemPrompt", "prompt", "tools"]);
+    expect(Object.keys(JSON.parse(stdout) as object)).toEqual(["systemPrompt", "prompt"]);
   }, RUN_TIMEOUT);
 });

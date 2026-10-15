@@ -55,7 +55,6 @@ describe("UAT: see exactly what the agent will be told", () => {
     expect(firstLines[3]).toBe(RULE);
     expect(first.stdout).toContain(COMPLETE.domain);
     expect(first.stdout).toContain(`"intent": "${COMPLETE.tasks[0]}"`);
-    expect(first.stdout).toContain("Tools it can use: read files, look through the project, edit files, run commands.");
 
     // Step 2: reword the description in the file and preview again.
     const reworded = "A tiny tool that greets people warmly by their first name.";
@@ -79,13 +78,11 @@ describe("UAT: see exactly what the agent will be told", () => {
 });
 
 describe("acceptance criteria", () => {
-  it("shows the gate-maintenance role's instructions and tools, without Bash", () => {
+  it("shows the gate-maintenance role's instructions", () => {
     const repo = freshRepo(COMPLETE, "uat-slice-4-role-");
     const { stdout, status } = runDelivery(["preview", "--role", "gate-maintenance"], { cwd: repo });
     expect(status).toBe(EXIT.ok);
     expect(stdout).toContain("What the agent that repairs your check will be told (before any run starts):");
-    expect(stdout).toContain("Tools it can use: read files, look through the project, edit files.");
-    expect(stdout).not.toContain("run commands");
   });
 
   it("previews a single `task` and refuses a task number for it", () => {

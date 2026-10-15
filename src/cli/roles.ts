@@ -13,7 +13,6 @@ function withOverride(shipped: RoleConfig, override: RoleOverride | undefined): 
   const merged: RoleConfig = {
     ...shipped,
     systemPromptFragment: override?.systemPromptFragment ?? shipped.systemPromptFragment,
-    allowedTools: override?.allowedTools ?? shipped.allowedTools,
   };
   validateRoleConfig(merged);
   return merged;

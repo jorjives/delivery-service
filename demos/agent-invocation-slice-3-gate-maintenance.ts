@@ -66,7 +66,6 @@ async function main(): Promise<void> {
 
   console.log("1. The gate-maintenance role's configuration");
   console.log(`   Role:            ${gateMaintenanceRoleConfig.role}`);
-  console.log(`   Permitted tools: ${gateMaintenanceRoleConfig.allowedTools.join(", ")}`);
   console.log(`   Worktree:        ${worktreePath}`);
   console.log(`   Project checks:  ${checksDir} (outside the worktree)`);
   console.log("   Invocation code: the same invoke() the worker uses; only this config differs\n");

@@ -8,7 +8,7 @@ import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { noSuchTask, RULE, SINGLE_TASK, TASK_NUMBER, toolsLine } from "./preview-command.js";
+import { noSuchTask, RULE, SINGLE_TASK, TASK_NUMBER } from "./preview-command.js";
 import { EVERY_TASK_DONE } from "./queue.js";
 import { NO_TASK } from "./settings.js";
 
@@ -37,16 +37,6 @@ function repoWith(config: unknown, files: Record<string, string> = {}): string {
   });
 }
 
-describe("the everyday phrase for each tool", () => {
-  it("says what the worker's tools let it do, once each, in order", () => {
-    expect(toolsLine(workerRoleConfig.allowedTools)).toBe("Tools it can use: read files, look through the project, edit files, run commands.");
-  });
-
-  it("prints a tool with no everyday phrase as written", () => {
-    expect(toolsLine(["Read", "WebFetch"])).toBe("Tools it can use: read files, WebFetch.");
-  });
-});
-
 describe("delivery preview", () => {
   it("names the next task, then frames the worker's instructions with the description and the task in the owner's words", async () => {
     const repo = repoWith(PROJECT);
@@ -59,7 +49,7 @@ describe("delivery preview", () => {
     expect(lines[4]).toBe(workerRoleConfig.systemPromptFragment.split("\n")[0]);
     expect(stdout).toContain(`${workerRoleConfig.systemPromptFragment}\n\n${DOMAIN}\n\n## Task`);
     expect(stdout).toContain(`"intent": "${FIRST}"`);
-    expect(stdout.endsWith(`${RULE}\n${toolsLine(workerRoleConfig.allowedTools)}\n`)).toBe(true);
+    expect(stdout.endsWith(`${RULE}\n`)).toBe(true);
   });
 
   it("passes over a task whose run was delivered, as delivery run would", async () => {
@@ -84,14 +74,13 @@ describe("delivery preview", () => {
     expect((await delivery(["preview"], { cwd: repo })).stdout).toBe((await delivery(["preview"], { cwd: repo })).stdout);
   });
 
-  it("shows what the agent that repairs the check is told, and what it may do, when asked for that role", async () => {
+  it("shows what the agent that repairs the check is told, when asked for that role", async () => {
     const repo = repoWith(PROJECT);
     const { stdout, exitCode } = await delivery(["preview", "--role", "gate-maintenance"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain("What the agent that repairs your check will be told (before any run starts):");
     expect(stdout).toContain(`${gateMaintenanceRoleConfig.systemPromptFragment}\n\n${DOMAIN}`);
-    expect(stdout.endsWith(`${toolsLine(gateMaintenanceRoleConfig.allowedTools)}\n`)).toBe(true);
-    expect(toolsLine(gateMaintenanceRoleConfig.allowedTools)).toBe("Tools it can use: read files, look through the project, edit files.");
+    expect(stdout.endsWith(`${RULE}\n`)).toBe(true);
   });
 
   it("refuses a role it cannot show, naming the two it can", async () => {
@@ -140,26 +129,22 @@ describe("delivery preview", () => {
     expect(stdout).toContain(DOMAIN);
   });
 
-  it("shows the worker's instructions and tools as the file changes them", async () => {
+  it("shows the worker's instructions as the file changes them", async () => {
     const OPS_RULE = "Never modify anything under the ops folder.";
-    const tools = ["Read", "Glob", "Grep", "Edit", "Write"];
-    const repo = repoWith({ ...PROJECT, roles: { worker: { systemPromptFragment: OPS_RULE, allowedTools: tools } } });
+    const repo = repoWith({ ...PROJECT, roles: { worker: { systemPromptFragment: OPS_RULE } } });
     const { stdout, exitCode } = await delivery(["preview"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout.split("\n")[4]).toBe(OPS_RULE);
     expect(stdout).toContain(`${OPS_RULE}\n\n${DOMAIN}\n\n## Task`);
     expect(stdout).not.toContain(workerRoleConfig.systemPromptFragment);
-    expect(stdout.endsWith(`${RULE}\n${toolsLine(tools)}\n`)).toBe(true);
-    expect(stdout).not.toContain("run commands");
   });
 
   it("shows gate maintenance as the file changes it, and leaves the worker as built", async () => {
-    const repo = repoWith({ ...PROJECT, roles: { gateMaintenance: { allowedTools: ["Read"] } } });
+    const repo = repoWith({ ...PROJECT, roles: { gateMaintenance: { systemPromptFragment: "Repair only .env." } } });
     const repair = await delivery(["preview", "--role", "gate-maintenance"], { cwd: repo });
-    expect(repair.stdout).toContain(`${gateMaintenanceRoleConfig.systemPromptFragment}\n\n${DOMAIN}`);
-    expect(repair.stdout.endsWith(`${RULE}\nTools it can use: read files.\n`)).toBe(true);
+    expect(repair.stdout).toContain(`Repair only .env.\n\n${DOMAIN}`);
     const worker = await delivery(["preview"], { cwd: repo });
-    expect(worker.stdout.endsWith(`${RULE}\n${toolsLine(workerRoleConfig.allowedTools)}\n`)).toBe(true);
+    expect(worker.stdout).toContain(`${workerRoleConfig.systemPromptFragment}\n\n${DOMAIN}`);
   });
 });
 

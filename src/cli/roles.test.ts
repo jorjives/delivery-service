@@ -18,25 +18,25 @@ describe("the roles a run from the command line is given", () => {
     expect(rolesFor({ worker: { systemPromptFragment: OPS_RULE } }).worker).toEqual({ ...workerRoleConfig, systemPromptFragment: OPS_RULE });
   });
 
-  it("takes the file's tools for gate maintenance and keeps its built-in instructions", () => {
-    expect(rolesFor({ gateMaintenance: { allowedTools: ["Read", "Edit"] } })["gate-maintenance"]).toEqual({
+  it("takes the file's instructions for gate maintenance and keeps its built-in reply shape", () => {
+    expect(rolesFor({ gateMaintenance: { systemPromptFragment: OPS_RULE } })["gate-maintenance"]).toEqual({
       ...gateMaintenanceRoleConfig,
-      allowedTools: ["Read", "Edit"],
+      systemPromptFragment: OPS_RULE,
     });
   });
 
   it("changes one role without touching the other", () => {
-    const roles = rolesFor({ worker: { systemPromptFragment: OPS_RULE, allowedTools: ["Read"] } });
+    const roles = rolesFor({ worker: { systemPromptFragment: OPS_RULE } });
     expect(roles["gate-maintenance"]).toEqual(gateMaintenanceRoleConfig);
   });
 
   it("never changes triage, whatever the file says about the other two", () => {
-    const roles = rolesFor({ worker: { allowedTools: ["Read"] }, gateMaintenance: { systemPromptFragment: OPS_RULE } });
+    const roles = rolesFor({ worker: { systemPromptFragment: OPS_RULE }, gateMaintenance: { systemPromptFragment: OPS_RULE } });
     expect(roles.triage).toBe(triageRoleConfig);
   });
 
   it("passes every merged role through the library's own role check", () => {
-    expect(() => rolesFor({ worker: { allowedTools: [] } })).toThrow(InvalidRoleConfig);
+    expect(() => rolesFor({ worker: { systemPromptFragment: "" } })).toThrow(InvalidRoleConfig);
     expect(() => rolesFor({ gateMaintenance: { systemPromptFragment: "" } })).toThrow(InvalidRoleConfig);
   });
 });

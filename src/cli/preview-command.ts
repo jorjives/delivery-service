@@ -46,22 +46,6 @@ const WHO: Record<PreviewRole, string> = {
   "gate-maintenance": "the agent that repairs your check",
 };
 
-/** What each tool lets an agent do, in everyday words. */
-const TOOL_PHRASES: Record<string, string> = {
-  Read: "read files",
-  Glob: "look through the project",
-  Grep: "look through the project",
-  Edit: "edit files",
-  Write: "edit files",
-  Bash: "run commands",
-};
-
-/** What the agent may do, once per phrase, in the role's own order. A tool with no everyday phrase is named as written, never hidden. */
-export function toolsLine(tools: readonly string[]): string {
-  const phrases = [...new Set(tools.map((tool) => TOOL_PHRASES[tool] ?? tool))];
-  return `Tools it can use: ${phrases.join(", ")}.`;
-}
-
 /**
  * What a run's first dispatch has to go on besides its record: nothing yet.
  * No brief, because nothing has been tried; no failing checks; no setback.
@@ -133,6 +117,5 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
   ctx.writeLine(RULE);
   ctx.writeLine(`${systemPrompt}\n\n${prompt}`);
   ctx.writeLine(RULE);
-  ctx.writeLine(toolsLine(roleCfg.allowedTools));
   return EXIT.ok;
 }

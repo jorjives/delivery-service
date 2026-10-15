@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { READ_ONLY_TOOLS, validateRoleConfig } from "../role-config.js";
+import { validateRoleConfig } from "../role-config.js";
 import { resolvePack } from "./manifest.js";
 import { FILE_LIST_LIMIT, SCANNER_FRAGMENT, scannerRoleConfig, scanPrompt, scanSession } from "./scanner-role.js";
 
@@ -10,7 +10,7 @@ describe("the review's agent", () => {
     const pack = await code();
     const role = scannerRoleConfig(pack);
     expect(() => validateRoleConfig(role)).not.toThrow();
-    expect(role).toMatchObject({ role: "scanner", allowedTools: [...READ_ONLY_TOOLS] });
+    expect(role).toMatchObject({ role: "scanner" });
     expect(role.systemPromptFragment).toBe(`${SCANNER_FRAGMENT}\n\n${pack.scanInstructions.trim()}`);
   });
 

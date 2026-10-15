@@ -1,9 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { z } from "zod";
-import { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig, READ_ONLY_TOOLS } from "./role-config.js";
+import { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
 import { InvalidRoleConfig } from "./errors.js";
-import { TriageEnvelope } from "./triage-role-config.js";
+import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
+import { SCANNER_FRAGMENT } from "./packs/scanner-role.js";
 
 describe("WorkerEnvelope", () => {
   it("accepts a clean completion", () => {
@@ -45,10 +46,9 @@ describe("WorkerEnvelope", () => {
 });
 
 describe("workerRoleConfig", () => {
-  it("is a worker config with a prompt fragment and a non-empty tool list", () => {
+  it("is a worker config with a prompt fragment", () => {
     expect(workerRoleConfig.role).toBe("worker");
     expect(workerRoleConfig.systemPromptFragment.length).toBeGreaterThan(0);
-    expect(workerRoleConfig.allowedTools.length).toBeGreaterThan(0);
   });
 
   it("passes its own validation", () => {
@@ -57,17 +57,6 @@ describe("workerRoleConfig", () => {
 });
 
 describe("validateRoleConfig", () => {
-  it("names the offending field when the tool list is empty", () => {
-    const cfg = { ...workerRoleConfig, allowedTools: [] };
-    expect(() => validateRoleConfig(cfg)).toThrow(InvalidRoleConfig);
-    try {
-      validateRoleConfig(cfg);
-    } catch (err) {
-      expect((err as InvalidRoleConfig).field).toBe("allowedTools");
-      expect((err as InvalidRoleConfig).message).toContain("allowedTools");
-    }
-  });
-
   it("names the offending field when the prompt fragment is blank", () => {
     try {
       validateRoleConfig({ ...workerRoleConfig, systemPromptFragment: "" });
@@ -94,21 +83,6 @@ describe("gateMaintenanceRoleConfig", () => {
     expect(() => validateRoleConfig(gateMaintenanceRoleConfig)).not.toThrow();
   });
 
-  it("may edit files, which is how it repairs the environment", () => {
-    expect(gateMaintenanceRoleConfig.allowedTools).toEqual(
-      expect.arrayContaining(["Edit", "Write"]),
-    );
-  });
-
-  it("is not granted a shell, which could write past the worktree boundary", () => {
-    expect(gateMaintenanceRoleConfig.allowedTools).not.toContain("Bash");
-  });
-
-  it("tells the session it repairs the environment and never the checks", () => {
-    expect(gateMaintenanceRoleConfig.systemPromptFragment).toMatch(/environment/);
-    expect(gateMaintenanceRoleConfig.systemPromptFragment).toMatch(/never .*checks/i);
-  });
-
   it("replies with the same completed/escalate shape as the worker", () => {
     expect(
       gateMaintenanceRoleConfig.envelopeSchema.safeParse({ status: "completed", rationale: "fixed .env" }).success,
@@ -119,40 +93,28 @@ describe("gateMaintenanceRoleConfig", () => {
   });
 });
 
-describe("a triage config cannot be configured into editing the worktree", () => {
-  it("names allowedTools and the read-only rule when a triage config grants Edit", () => {
-    expect(() =>
-      validateRoleConfig({
-        role: "triage",
-        systemPromptFragment: "You classify setbacks.",
-        envelopeSchema: TriageEnvelope,
-        allowedTools: ["Read", "Edit"],
-      }),
-    ).toThrow(/allowedTools.*read-only/);
+describe("what a role is", () => {
+  it("is its context and reply shape alone, with no tool list", () => {
+    for (const roleCfg of [workerRoleConfig, gateMaintenanceRoleConfig, triageRoleConfig]) {
+      expect(roleCfg).not.toHaveProperty("allowedTools");
+    }
   });
 
-  it("accepts any subset of the read-only tools", () => {
-    expect(READ_ONLY_TOOLS).toEqual(["Read", "Glob", "Grep"]);
-    expect(() =>
-      validateRoleConfig({
-        role: "triage",
-        systemPromptFragment: "You classify setbacks.",
-        envelopeSchema: TriageEnvelope,
-        allowedTools: ["Read"],
-      }),
-    ).not.toThrow();
-  });
-});
-
-describe("the scanner role", () => {
-  const scanner = (allowedTools: string[]) => ({ role: "scanner" as const, systemPromptFragment: "You review.", envelopeSchema: z.object({}), allowedTools });
-
-  it("is accepted with the read-only tools", () => {
-    expect(() => validateRoleConfig(scanner([...READ_ONLY_TOOLS]))).not.toThrow();
+  it("accepts any role with a context and a reply schema, triage included", () => {
+    expect(() => validateRoleConfig({ role: "triage", systemPromptFragment: "classify", envelopeSchema: TriageEnvelope })).not.toThrow();
   });
 
-  it.each(["Edit", "Write", "Bash"])("is refused %s, because a review only reads", (tool) => {
-    expect(() => validateRoleConfig(scanner(["Read", tool]))).toThrow(InvalidRoleConfig);
-    expect(() => validateRoleConfig(scanner(["Read", tool]))).toThrow(`scanner is read-only by design and may use only Read, Glob, Grep, not ${tool}`);
+  it("no longer tells the worker to make the smallest change, nor that it cannot see the check", () => {
+    expect(workerRoleConfig.systemPromptFragment).not.toMatch(/smallest change/);
+    expect(workerRoleConfig.systemPromptFragment).not.toMatch(/cannot see/);
+  });
+
+  it("tells gate maintenance the check's definition is verified, not that it is out of reach", () => {
+    expect(gateMaintenanceRoleConfig.systemPromptFragment).toContain("verified unchanged");
+    expect(gateMaintenanceRoleConfig.systemPromptFragment).not.toMatch(/outside your working tree/);
+  });
+
+  it("no longer tells the reviewer it can only read", () => {
+    expect(SCANNER_FRAGMENT).not.toMatch(/You only read/);
   });
 });

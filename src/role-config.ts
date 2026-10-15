@@ -41,8 +41,6 @@ export interface RoleConfig<E = Envelope> extends RoleHandle {
   systemPromptFragment: string;
   /** The reply shape this role may emit. Also constrains the SDK's output. */
   envelopeSchema: z.ZodType<E>;
-  /** The authored, positive tool list. This role's entire blast radius. */
-  allowedTools: string[];
   /**
    * Reserved for per-invocation SDK-level resource caps. Deliberately untyped
    * and unused: the budget design owns the field names, and guessing at them
@@ -52,76 +50,42 @@ export interface RoleConfig<E = Envelope> extends RoleHandle {
 }
 
 /**
- * The only tools triage or the scanner may be granted. Triage is read-only until
- * its single case-file append; that is what makes a crash mid-triage safe to
- * replay, so the tool list is a property of the role, not a knob to widen. The
- * scanner only describes what it reads; a pack cannot widen it, because the list
- * is a property of the role.
- */
-export const READ_ONLY_TOOLS = ["Read", "Glob", "Grep"] as const;
-
-/**
- * The reference worker configuration. An extender copies this, changes the
- * domain sentences in the fragment, and has a working role.
+ * The reference worker configuration: the harness's context for the session,
+ * appended to Claude Code's own system prompt. An extender copies this and
+ * changes the sentences.
  */
 export const workerRoleConfig: RoleConfig = {
   role: "worker",
   systemPromptFragment: [
-    "You are the worker on a gated delivery harness.",
-    "You make the smallest change to the working tree that satisfies the task below.",
-    "You do not run, edit, or reason about the project's gate: a separate, pinned gate",
-    "judges your work, and you cannot see or influence it.",
-    "If you cannot proceed and no further attempt would help, escalate instead of guessing.",
+    "You are carrying out one task for a delivery harness, in a working copy and branch it made for this task.",
+    "Work as you normally would, with your own tools, skills and judgement.",
+    "If you cannot finish and no further attempt would help, escalate instead of guessing.",
   ].join("\n"),
   envelopeSchema: WorkerEnvelope,
-  allowedTools: ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
 };
 
-/**
- * The reference gate-maintenance configuration. Same seam, same reply shape as
- * the worker; only the content differs.
- *
- * It may edit files because repairing the environment means editing files. It
- * cannot edit the checks because they live outside the worktree and the tool
- * guard refuses any call aimed outside it. It is deliberately not given `Bash`:
- * a shell can write past that boundary in ways the runtime does not always flag.
- */
+/** The reference gate-maintenance configuration. Same seam, same reply shape as the worker; only the content differs. */
 export const gateMaintenanceRoleConfig: RoleConfig = {
   role: "gate-maintenance",
   systemPromptFragment: [
-    "You are gate maintenance on a gated delivery harness.",
-    "The project's gate could not run. Repair the environment inside the working tree",
-    "(configuration, fixtures, dependency manifests) so that the gate can run again.",
-    "You never edit, weaken, or work around the checks themselves: they are pinned by",
-    "the harness, kept outside your working tree, and any attempt to touch them is refused.",
-    "If the only fix is a change to a check, escalate instead.",
+    "The project's check could not run in this working copy, so the delivery harness asked you to repair it.",
+    "Repair the environment (configuration, fixtures, dependency manifests) so that the check can run.",
+    "The check's own definition is verified unchanged afterward, so you do not need to protect it yourself; focus on the environment around it.",
+    "Deleting, renaming or skipping a test, or hiding one from git, is refused, and so is a change to the check's own module.",
+    "A change to how tests run (a test-runner setting, a CI file, the test script) is allowed for a repair, and is shown to the person afterwards.",
+    "If only a change to the check would fix it, escalate instead.",
   ].join("\n"),
   envelopeSchema: WorkerEnvelope,
-  allowedTools: ["Read", "Glob", "Grep", "Edit", "Write"],
 };
 
-const READ_ONLY_ROLES: readonly AgentRole[] = ["triage", "scanner"];
-
-const RoleConfigShape = z
-  .object({
-    role: z.enum(["worker", "triage", "gate-maintenance", "scanner"] as const satisfies readonly AgentRole[]),
-    systemPromptFragment: z.string().min(1),
-    envelopeSchema: z.custom<z.ZodType<unknown>>((value) => value instanceof z.ZodType, {
-      message: "must be a zod schema",
-    }),
-    allowedTools: z.array(z.string().min(1)).min(1),
-    budgets: z.record(z.string(), z.unknown()).optional(),
-  })
-  .superRefine((cfg, ctx) => {
-    if (!READ_ONLY_ROLES.includes(cfg.role)) return;
-    const writable = cfg.allowedTools.find((tool) => !(READ_ONLY_TOOLS as readonly string[]).includes(tool));
-    if (writable === undefined) return;
-    ctx.addIssue({
-      code: "custom",
-      path: ["allowedTools"],
-      message: `${cfg.role} is read-only by design and may use only ${READ_ONLY_TOOLS.join(", ")}, not ${writable}`,
-    });
-  });
+const RoleConfigShape = z.object({
+  role: z.enum(["worker", "triage", "gate-maintenance", "scanner"] as const satisfies readonly AgentRole[]),
+  systemPromptFragment: z.string().min(1),
+  envelopeSchema: z.custom<z.ZodType<unknown>>((value) => value instanceof z.ZodType, {
+    message: "must be a zod schema",
+  }),
+  budgets: z.record(z.string(), z.unknown()).optional(),
+});
 
 /**
  * Check a role config before any session is spawned, and name the field that is

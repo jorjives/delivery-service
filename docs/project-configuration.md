@@ -147,22 +147,19 @@ delivery preview
 ```
 
 It prints the instructions the first task on your list will be given, word for word, with
-your description in place, and then what the agent may do. The middle is long, so it is
-shortened here:
+your description in place. The middle is long, so it is shortened here:
 
 ```text
 Next up is Task 1 of 2: add a function that turns a title into a URL slug, with a test
 What the worker will be told (before any run starts):
 ─────────────────────────────────────────────────────
-You are the worker on a gated delivery harness.
+You are carrying out one task for a delivery harness, in a working copy and branch it made for this task.
 …
 A small library of text helpers that our team's Node.js scripts share. Plain JavaScript modules with no dependencies, each function tested with node:test.
 …
 ─────────────────────────────────────────────────────
-Tools it can use: read files, look through the project, edit files.
 ```
 
-"run commands" is missing from the last line because of the shorter tool list in step 5.
 `delivery preview --queue-index 2` shows the second task instead. Like `delivery
 validate`, it needs no sign-in and changes nothing.
 

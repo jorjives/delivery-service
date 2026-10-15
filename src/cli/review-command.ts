@@ -7,8 +7,8 @@ import { hiddenByDefault, readFindingStates, UNDECIDED, type FindingState } from
 import { uncheckable, type SavedReview } from "../packs/review-record.js";
 import { filesToReview, runReview } from "../packs/review.js";
 import { resolveBaseRef } from "../provision.js";
-import { scanSession, scannerRoleConfig } from "../packs/scanner-role.js";
-import { RULE, toolsLine } from "./preview-command.js";
+import { scanSession } from "../packs/scanner-role.js";
+import { RULE } from "./preview-command.js";
 import { findingsDocument } from "../packs/findings-document.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
@@ -67,13 +67,12 @@ async function previewReview(pack: Pack, repoPath: string, scope: string | undef
   const files = await filesToReview(repoPath, (await resolveBaseRef(repoPath)).ref, scope);
   if (scope !== undefined && files.length === 0) throw new Refusal(nothingInPart(scope), EXIT.configuration);
   const { systemPrompt, prompt } = scanSession(pack, files, scope);
-  const tools = scannerRoleConfig(pack).allowedTools;
   if (ctx.json) {
-    ctx.writeLine(JSON.stringify({ systemPrompt, prompt, tools }, null, 2));
+    ctx.writeLine(JSON.stringify({ systemPrompt, prompt }, null, 2));
     return EXIT.ok;
   }
   const [title] = opening(pack.manifest.title);
-  for (const line of [title ?? "", ...(scope === undefined ? [] : [onlyPart(scope)]), ...((await hasUncommittedChanges(repoPath)) ? [UNCOMMITTED_NOTE] : []), PREVIEW_INTRO, RULE, stripControl(`${systemPrompt}\n\n${prompt}`), RULE, toolsLine(tools)]) {
+  for (const line of [title ?? "", ...(scope === undefined ? [] : [onlyPart(scope)]), ...((await hasUncommittedChanges(repoPath)) ? [UNCOMMITTED_NOTE] : []), PREVIEW_INTRO, RULE, stripControl(`${systemPrompt}\n\n${prompt}`), RULE]) {
     ctx.writeLine(line);
   }
   return EXIT.ok;

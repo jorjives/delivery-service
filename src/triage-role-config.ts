@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { READ_ONLY_TOOLS, type RoleConfig } from "./role-config.js";
+import type { RoleConfig } from "./role-config.js";
 
 /**
  * What a retried session is told: what is failing, what earlier attempts tried
@@ -65,5 +65,4 @@ export const triageRoleConfig: RoleConfig<TriageEnvelope> = {
     "Your diagnosis is a hypothesis for the next session to test, not an established fact.",
   ].join("\n"),
   envelopeSchema: TriageEnvelope,
-  allowedTools: [...READ_ONLY_TOOLS],
 };

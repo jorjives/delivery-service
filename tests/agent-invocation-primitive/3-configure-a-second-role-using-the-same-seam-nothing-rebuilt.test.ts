@@ -28,7 +28,6 @@ describe("UAT: configure a second role using the same seam, nothing rebuilt", ()
     () => {
       const s = section("1. The gate-maintenance role's configuration", "2. Scenario: repair");
       expect(s).toContain("Role:            gate-maintenance");
-      expect(s).toContain("Permitted tools: Read, Glob, Grep, Edit, Write");
       expect(s).toContain("Invocation code: the same invoke() the worker uses; only this config differs");
     },
   );

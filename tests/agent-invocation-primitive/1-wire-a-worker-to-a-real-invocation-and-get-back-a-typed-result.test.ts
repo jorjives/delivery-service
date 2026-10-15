@@ -44,11 +44,10 @@ describe("UAT: wire a worker to a real invocation and get back a typed result", 
   });
 
   it(
-    "UAT: prints the worker role and its permitted tools before running any scenario",
+    "prints the worker role before running any scenario",
     () => {
       const s = section("Role:", "Scenario: the agent finishes cleanly");
       expect(s).toContain("Role:      worker");
-      expect(s).toContain("Tools:");
     },
   );
 

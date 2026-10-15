@@ -424,10 +424,10 @@ describe("invoking gate-maintenance through the same seam as the worker", () => 
 const configs = { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig };
 
 describe("createAgentPort", () => {
-  it("refuses a triage config that grants an editing tool before any session is spawned", async () => {
+  it("refuses a malformed triage config before any session is spawned", async () => {
     const port = createAgentPort({
       ...configs,
-      triage: { ...triageRoleConfig, allowedTools: ["Read", "Write"] },
+      triage: { ...triageRoleConfig, systemPromptFragment: "" },
     });
     await expect(port.invoke({ role: "triage" }, { ...ctx, sessionKey: "triage-0" })).rejects.toThrow(InvalidRoleConfig);
   });
@@ -549,7 +549,7 @@ describe("runSession: one session from a prompt the caller assembled, with no ca
   it("refuses a malformed role before any session, as invoke does", async () => {
     const bare = await mkdtemp(join(tmpdir(), "run-session-"));
     await expect(
-      runSession({ ...workerRoleConfig, allowedTools: [] }, { worktreePath, dir: bare, sessionKey: "scan-1" }, { systemPrompt: "", prompt: "x" }, useMock()),
+      runSession({ ...workerRoleConfig, systemPromptFragment: "" }, { worktreePath, dir: bare, sessionKey: "scan-1" }, { systemPrompt: "", prompt: "x" }, useMock()),
     ).rejects.toBeInstanceOf(InvalidRoleConfig);
   });
 });

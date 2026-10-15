@@ -64,10 +64,6 @@ describe("triageRoleConfig", () => {
     expect(() => validateRoleConfig(triageRoleConfig)).not.toThrow();
   });
 
-  it("is given read-only tools and nothing else", () => {
-    expect(triageRoleConfig.allowedTools).toEqual(["Read", "Glob", "Grep"]);
-  });
-
   it("tells the session it is a read-only classifier and that its diagnosis is a hypothesis", () => {
     expect(triageRoleConfig.systemPromptFragment).toContain("read-only");
     expect(triageRoleConfig.systemPromptFragment).toContain("hypothesis");

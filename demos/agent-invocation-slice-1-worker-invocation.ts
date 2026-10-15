@@ -86,8 +86,7 @@ async function main(): Promise<void> {
   const ctx: AgentContext = { worktreePath, dir, sessionKey: "worker-1-0" };
 
   console.log(`Case file: ${dir}`);
-  console.log(`Role:      ${workerRoleConfig.role}`);
-  console.log(`Tools:     ${workerRoleConfig.allowedTools.join(", ")}\n`);
+  console.log(`Role:      ${workerRoleConfig.role}\n`);
 
   for (const scenario of scenarios) {
     fs.writeFileSync(scriptPath, JSON.stringify([{ json: scenario.reply }]), "utf-8");

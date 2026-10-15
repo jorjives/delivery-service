@@ -80,8 +80,8 @@ config it is handed does.
 | **gate-maintenance** | edits environment/harness, never assertions | repair note | `completed`, `escalate` |
 | **scanner** | read-only over the project's last commit; no case file | `ScanEnvelope` (per pack) | none: a list of problems, never a status |
 
-Each row is one `role_cfg`. The divergence between them lives entirely in the four
-config fields; the primitive does not branch on role.
+Each row is one `role_cfg`. A role is its context, appended to Claude Code's own
+system prompt, and its reply schema; the primitive does not branch on role.
 
 For the extender's how-to, with both reference configurations, see
 [Configuring a role](configuring-a-role.md).

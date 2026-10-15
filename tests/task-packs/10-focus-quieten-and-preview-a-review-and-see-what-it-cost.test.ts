@@ -116,7 +116,7 @@ describe("AC: --preview shows what the agent will be told with no sign-in and no
     const headBefore = git(repo, ["rev-parse", "HEAD"]);
     const { status, stdout } = runDelivery(["review", "code", "--preview", "--json"], { cwd: repo });
     expect(status).toBe(0);
-    expect(Object.keys(JSON.parse(stdout) as object)).toEqual(["systemPrompt", "prompt", "tools"]);
+    expect(Object.keys(JSON.parse(stdout) as object)).toEqual(["systemPrompt", "prompt"]);
     expect(git(repo, ["status", "--porcelain"])).toBe("");
     expect(git(repo, ["rev-parse", "HEAD"])).toBe(headBefore);
     expect(git(repo, ["worktree", "list"]).split("\n")).toHaveLength(1);

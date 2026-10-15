@@ -14,14 +14,13 @@ and hands back exactly one result. A **role** is nothing more than the
 configuration you pass as `roleCfg`. You never write invocation code for a new
 role; you write a new configuration.
 
-A role configuration has four fields:
+A role configuration has three fields:
 
 | Field | What it is | What happens if it is wrong |
 |---|---|---|
-| `role` | `"worker"`, `"gate-maintenance"`, `"triage"` or `"scanner"`; `triage` and `scanner` may use only `Read`, `Glob` and `Grep` | Rejected before any session starts |
+| `role` | `"worker"`, `"gate-maintenance"`, `"triage"` or `"scanner"` | Rejected before any session starts |
 | `systemPromptFragment` | Who the agent is and what it is for, in plain sentences. Must not be empty. | Rejected before any session starts |
 | `envelopeSchema` | The reply shape the agent must end with. Use `WorkerEnvelope` for the worker and gate-maintenance, and `TriageEnvelope` for triage. | Rejected before any session starts |
-| `allowedTools` | The tools the agent may use, e.g. `["Read", "Edit"]`. Must not be empty. This is the role's entire blast radius. | Rejected before any session starts |
 
 A mistake in any field throws `InvalidRoleConfig`, naming the field, before an
 agent is started. It is never reported as a failed run.
@@ -33,10 +32,9 @@ Everything below is imported from the harness's single entry point,
 
 ## The two reference configurations
 
-Start from one of these. Copy it, change the sentences to suit your project, and
-narrow the tools if you want.
+Start from one of these. Copy it and change the sentences to suit your project.
 
-**Worker**: makes the change the task asks for, inside the working tree.
+**Worker**: carries out the task, inside the working copy and branch made for it.
 
 ```ts
 import { WorkerEnvelope, type RoleConfig } from "delivery-service";
@@ -44,12 +42,11 @@ import { WorkerEnvelope, type RoleConfig } from "delivery-service";
 export const myWorker: RoleConfig = {
   role: "worker",
   systemPromptFragment: [
-    "You are the worker on a gated delivery harness.",
-    "You make the smallest change to the working tree that satisfies the task below.",
-    "If you cannot proceed and no further attempt would help, escalate instead of guessing.",
+    "You are carrying out one task for a delivery harness, in a working copy and branch it made for this task.",
+    "Work as you normally would, with your own tools, skills and judgement.",
+    "If you cannot finish and no further attempt would help, escalate instead of guessing.",
   ].join("\n"),
   envelopeSchema: WorkerEnvelope,
-  allowedTools: ["Read", "Glob", "Grep", "Edit", "Write", "Bash"],
 };
 ```
 
@@ -62,21 +59,19 @@ import { WorkerEnvelope, type RoleConfig } from "delivery-service";
 export const myGateMaintenance: RoleConfig = {
   role: "gate-maintenance",
   systemPromptFragment: [
-    "You are gate maintenance on a gated delivery harness.",
-    "Repair the environment inside the working tree so that the gate can run again.",
-    "You never edit, weaken, or work around the checks themselves.",
-    "If the only fix is a change to a check, escalate instead.",
+    "The project's check could not run in this working copy, so the delivery harness asked you to repair it.",
+    "Repair the environment (configuration, fixtures, dependency manifests) so that the check can run.",
+    "Deleting, renaming or skipping a test, or hiding one from git, is refused, and so is a change to the check's own module.",
+    "If only a change to the check would fix it, escalate instead.",
   ].join("\n"),
   envelopeSchema: WorkerEnvelope,
-  allowedTools: ["Read", "Glob", "Grep", "Edit", "Write"],
 };
 ```
 
 The two are also exported ready-made as `workerRoleConfig` and
 `gateMaintenanceRoleConfig`.
 
-The only differences between them are the sentences and the tool list. The call
-you make is identical.
+The only difference between them is the sentences. The call you make is identical.
 
 ## From the configuration file
 
@@ -196,21 +191,10 @@ the wrong shape, why the role's `envelopeSchema` refused it as `cause`.
 
 ## What a role cannot do
 
-Two rules are enforced by the harness itself, not requested of the agent:
-
-1. **Only the tools in `allowedTools`.** Any other tool call is refused before it runs.
-2. **Only inside the worktree.** Any call aimed at a file outside the worktree is
-   refused before it runs, even with a tool the role is allowed. This is how
-   gate-maintenance can edit files but can never edit the project's checks: keep
-   the checks outside the worktree and they are out of every role's reach.
-
-A refusal comes back as `incomplete`, with a sentence naming the role, what it
-tried, and that the refusal was the boundary working as intended.
-
-One limit to know about: if you grant `Bash`, the agent's shell can write to
-places the harness cannot always see. That is why the gate-maintenance reference
-configuration does not grant it. Grant `Bash` only to a role you would trust
-with the whole machine the run executes on.
+A role does not limit what the agent may do: every session has every tool your own Claude Code
+setup gives it. What a role's work may change is judged afterwards: the gate, the test guards
+and the gate's integrity check decide whether it is accepted. To keep the agent from a tool,
+use `permissions.deny` in your own Claude settings.
 
 ## Trying it offline
 
