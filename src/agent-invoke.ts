@@ -2,11 +2,12 @@ import { query, type Options, type SDKAssistantMessage, type SDKResultMessage } 
 import { z } from "zod";
 import { load, writeRef } from "./case-file.js";
 import { assemblePrompt, resolveEvidence, type AssembledPrompt } from "./prompt-assembly.js";
-import { validateRoleConfig } from "./role-config.js";
+import { gateMaintenanceRoleConfig, validateRoleConfig, workerRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
 import type { AgentContext, AgentPort, DispatchedRole, RoleHandle, Incomplete, Metered } from "./ports.js";
 import { USAGE_LIMIT_WORDS } from "./ports.js";
 import { messageOf } from "./gate-support.js";
+import { triageRoleConfig } from "./triage-role-config.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
 import type { UsageLimit, SessionUsage, AgentOptions } from "./schema.js";
 import type { JsonSchema } from "./report/json-schema.js";
@@ -340,6 +341,9 @@ export interface RoleConfigs {
   "gate-maintenance": RoleConfig;
   triage: RoleConfig<TriageEnvelope>;
 }
+
+/** The roles every run from the command line is given: the shipped ones. What a project adds goes in `agent.append`. */
+export const DEFAULT_ROLES: RoleConfigs = { worker: workerRoleConfig, "gate-maintenance": gateMaintenanceRoleConfig, triage: triageRoleConfig };
 
 /**
  * The SDK-backed `AgentPort`: a role name in, that role's pinned config through

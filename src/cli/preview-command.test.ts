@@ -129,20 +129,18 @@ describe("delivery preview", () => {
     expect(stdout).toContain(DOMAIN);
   });
 
-  it("shows the worker's instructions as the file changes them", async () => {
+  it("shows the agent's instructions as the file adds to them", async () => {
     const OPS_RULE = "Never modify anything under the ops folder.";
-    const repo = repoWith({ ...PROJECT, roles: { worker: { systemPromptFragment: OPS_RULE } } });
+    const repo = repoWith({ ...PROJECT, agent: { append: OPS_RULE } });
     const { stdout, exitCode } = await delivery(["preview"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout.split("\n")[4]).toBe(OPS_RULE);
-    expect(stdout).toContain(`${OPS_RULE}\n\n${DOMAIN}\n\n## Task`);
-    expect(stdout).not.toContain(workerRoleConfig.systemPromptFragment);
+    expect(stdout).toContain(`${workerRoleConfig.systemPromptFragment}\n\n${DOMAIN}\n\n${OPS_RULE}\n\n## Task`);
   });
 
-  it("shows gate maintenance as the file changes it, and leaves the worker as built", async () => {
-    const repo = repoWith({ ...PROJECT, roles: { gateMaintenance: { systemPromptFragment: "Repair only .env." } } });
+  it("shows gate maintenance's own instructions, unaffected by the file", async () => {
+    const repo = repoWith(PROJECT);
     const repair = await delivery(["preview", "--role", "gate-maintenance"], { cwd: repo });
-    expect(repair.stdout).toContain(`Repair only .env.\n\n${DOMAIN}`);
+    expect(repair.stdout).toContain(`${gateMaintenanceRoleConfig.systemPromptFragment}\n\n${DOMAIN}`);
     const worker = await delivery(["preview"], { cwd: repo });
     expect(worker.stdout).toContain(`${workerRoleConfig.systemPromptFragment}\n\n${DOMAIN}`);
   });
@@ -167,12 +165,12 @@ describe("delivery preview on a configuration with a problem", () => {
     expect(preview.exitCode).toBe(EXIT.configuration);
   });
 
-  it("refuses empty worker instructions in the words validate uses", async () => {
-    const repo = repoWith({ ...PROJECT, roles: { worker: { systemPromptFragment: " " } } });
+  it("refuses roles still set in the file, in the words validate uses", async () => {
+    const repo = repoWith({ ...PROJECT, roles: { worker: { systemPromptFragment: "Be careful." } } });
     const preview = await delivery(["preview"], { cwd: repo });
     const validate = await delivery(["validate"], { cwd: repo });
     expect(preview.exitCode).toBe(EXIT.configuration);
-    expect(preview.stderr).toContain("`roles.worker.systemPromptFragment`, the instructions for the worker, is empty.");
+    expect(preview.stderr).toContain("`roles` is no longer used. Put any instructions for the agent in `agent.append` instead.");
     expect(preview.stderr).toBe(validate.stderr);
   });
 });

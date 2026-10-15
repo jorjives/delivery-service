@@ -14,7 +14,7 @@ import { fakeAgentPort } from "../agent-port-double.js";
 import type { AgentContext, Terminus } from "../ports.js";
 import { appendLine } from "../journal.js";
 import { createRunFile } from "../run-file.js";
-import { RunEntry, type CaseFileOutcome, type GateRef, type RoleOverrides, type RunHeader } from "../schema.js";
+import { RunEntry, type AgentOptions, type CaseFileOutcome, type GateRef, type RunHeader } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { ExitOnInterrupt } from "./context.js";
 import { runCli } from "./program.js";
@@ -119,15 +119,15 @@ export async function interruptedRun(
     steps,
     worker,
     domain,
-    roleOverrides,
-  }: { task: string; steps: number; worker: (ctx: AgentContext) => Promise<Terminus>; domain?: string; roleOverrides?: RoleOverrides },
+    agent,
+  }: { task: string; steps: number; worker: (ctx: AgentContext) => Promise<Terminus>; domain?: string; agent?: AgentOptions },
 ): Promise<string> {
   const runId = runIdFor(task, new Date());
   const { dir, location } = runPlace(repo, runId, { XDG_STATE_HOME: state });
   await prepareRunDir(repo, dir);
   await create(
     dir,
-    { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER, domainPrompt: domain, roleOverrides },
+    { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER, domainPrompt: domain, agent },
     DEFAULT_BUDGETS,
   );
   const ports = { agent: fakeAgentPort({ worker }), triage: deterministicRouter, closer: resolveCloser(DEFAULT_CLOSER, repo) };

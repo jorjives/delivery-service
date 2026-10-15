@@ -26,7 +26,7 @@ const STEP = {
   describe: "## 2. Describe your project",
   list: "## 3. List what you want done",
   check: "## 4. Choose how the work is checked, and what happens to it",
-  tools: "## 5. Decide what the agent may do",
+  tools: "## 5. Tell the agent how you like things done",
   validate: "## 6. Check your setup",
   preview: "## 7. See what the agent will be told",
   run: "## 8. Run the list",
@@ -126,7 +126,7 @@ describe("the project-configuration guide", () => {
     expect(sectionOf(guide, STEP.list, STEP.check)).toContain("`tasks`");
     const check = sectionOf(guide, STEP.check, STEP.tools);
     for (const key of ["`gate`", "`closer`", "`commit-to-branch`", "`merge-back`", "`open-pr`"]) expect(check).toContain(key);
-    expect(sectionOf(guide, STEP.tools, STEP.validate)).toContain("`roles`");
+    expect(sectionOf(guide, STEP.tools, STEP.validate)).toContain("`agent`");
   });
 
   it("shows a ready-made check as the simplest way to choose one, naming all four", () => {
@@ -169,13 +169,13 @@ describe("the project-configuration guide", () => {
     expect(missingFrom(secondRun.stdout, outputBlock(sectionOf(guide, STEP.add, STEP.further)))).toBeUndefined();
   });
 
-  it("leaves one closed run per task, each told the example's description and given its worker's tool list", async () => {
+  it("leaves one closed run per task, each told the example's description and its own agent options", async () => {
     const runs = await allRuns(project);
     expect(runs.map((run) => run.caseFile.header.taskDef.intent).sort()).toEqual([...(edited.tasks as string[])].sort());
     for (const run of runs) {
       expect(run.caseFile.outcome?.kind).toBe("closed");
       expect(run.caseFile.header.domainPrompt).toBe(config.domain);
-      expect(run.caseFile.header.roleOverrides).toEqual(config.roles);
+      expect(run.caseFile.header.agent).toEqual(config.agent);
     }
   });
 

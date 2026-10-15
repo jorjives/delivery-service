@@ -14,11 +14,11 @@ const EXAMPLE = join(REPO_ROOT, "examples", "project-configuration-example");
 const config = () => readConfig(join(EXAMPLE, "delivery.config.json"));
 
 describe("the project-configuration example", () => {
-  it("checks in a configuration with a project description, a list of tasks and a worker override", async () => {
-    const { domain, tasks, roles } = await config();
+  it("checks in a configuration with a project description, a list of tasks and its own agent options", async () => {
+    const { domain, tasks, agent } = await config();
     expect(domain?.trim()).toBeTruthy();
     expect(tasks?.length).toBeGreaterThanOrEqual(2);
-    expect(roles?.worker).toBeDefined();
+    expect(agent?.append).toBeDefined();
   });
 
   it("chooses a built-in check and closing action, so the project needs no code of its own", async () => {

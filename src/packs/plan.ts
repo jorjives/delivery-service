@@ -2,7 +2,6 @@ import { join } from "node:path";
 import type { DeliveryConfig } from "../cli/config.js";
 import type { ProjectSettings } from "../cli/settings.js";
 import { atomicWrite } from "../journal.js";
-import { workerRoleConfig } from "../role-config.js";
 import { FINDING_GATE_REF } from "./finding-gate.js";
 import { FINDING_CLOSER_REF } from "./finding-closer.js";
 import type { FixTask } from "./fix-task.js";
@@ -29,17 +28,18 @@ export const FIX_INSTRUCTIONS = [
  * The configuration a fix runs from: a real project configuration, so
  * `validate`, `preview` and `status` read it unchanged. Its tasks are the
  * authorised problems, its check the harness's own wrapped round the
- * project's, and its worker the project's own with the fix instructions added.
+ * project's, and its agent options the project's own with the fix instructions added.
  * Pure: the same decisions and settings give the same plan.
  */
 export function planConfig(tasks: FixTask[], project: ProjectSettings, config: DeliveryConfig, packFix: string | undefined): DeliveryConfig {
-  const worker = config.roles?.worker;
-  const fragment = [worker?.systemPromptFragment ?? workerRoleConfig.systemPromptFragment, FIX_INSTRUCTIONS, ...(packFix === undefined ? [] : [packFix.trim()])].join("\n\n");
+  const append = [config.agent?.append, FIX_INSTRUCTIONS, ...(packFix === undefined ? [] : [packFix.trim()])]
+    .filter((part): part is string => part !== undefined)
+    .join("\n\n");
   return {
     // `tasks` must hold at least one entry when present; a plan whose every problem was found already fixed lists none.
     ...(tasks.length === 0 ? {} : { tasks }),
     ...(config.domain === undefined ? {} : { domain: config.domain }),
-    roles: { ...config.roles, worker: { ...worker, systemPromptFragment: fragment } },
+    agent: { ...config.agent, append },
     gate: FINDING_GATE_REF,
     // Its closer the harness's own, which keeps a fix waiting for sign-off on its branch and lands the rest the project's way.
     closer: FINDING_CLOSER_REF,

@@ -93,12 +93,12 @@ describe("UAT: set up a whole project by following the project-configuration gui
 });
 
 describe("acceptance criteria", () => {
-  it("ships a second example project with a description, at least two tasks and one worker override", () => {
+  it("ships a second example project with a description, at least two tasks and its own agent options", () => {
     expect(typeof EXAMPLE_CONFIG.domain).toBe("string");
     expect(EXAMPLE_CONFIG.domain.trim().length).toBeGreaterThan(0);
     expect(Array.isArray(EXAMPLE_CONFIG.tasks)).toBe(true);
     expect(EXAMPLE_CONFIG.tasks.length).toBeGreaterThanOrEqual(2);
-    expect(EXAMPLE_CONFIG.roles?.worker).toBeDefined();
+    expect(EXAMPLE_CONFIG.agent?.append).toBeDefined();
   });
 
   it("leaves the original sample project working unchanged, as the no-configuration first run", () => {

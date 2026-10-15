@@ -1,4 +1,4 @@
-import { createAgentPort } from "../agent-invoke.js";
+import { createAgentPort, DEFAULT_ROLES } from "../agent-invoke.js";
 import { create, load } from "../case-file.js";
 import { resolveCloser } from "../resolve-closer.js";
 import { deterministicRouter } from "../router.js";
@@ -8,7 +8,6 @@ import type { SurfacePorts } from "../ports.js";
 import type { TaskDef } from "../schema.js";
 import { captureRepair, checkFilesOf } from "../repair-changes.js";
 import type { RepairOutcome } from "../breaker.js";
-import { rolesFor } from "./roles.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
 import { type ExitCode } from "./failures.js";
@@ -36,7 +35,7 @@ export interface RunStart extends ProjectSettings {
  * so from here on there is a record on disk for whatever happens next.
  */
 export async function startRun(
-  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, agent, roleOverrides, runId: chosenId }: RunStart,
+  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, agent, runId: chosenId }: RunStart,
   session: SessionEnvironment,
   ctx: CommandContext,
 ): Promise<ExitCode> {
@@ -44,7 +43,7 @@ export async function startRun(
   const runId = chosenId ?? runIdFor(intent, new Date());
   const { dir } = runPlace(repoPath, runId, ctx.env);
   await prepareRunDir(repoPath, dir);
-  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt, agent, roleOverrides }, budgets);
+  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt, agent }, budgets);
   ctx.report.note(`Starting run ${runId}: ${intent}`);
   ctx.report.step({ state: "PROVISIONING", done: false });
   return driveToOutcome({ runId, repoPath, dir, caseFile }, session, ctx);
@@ -68,10 +67,7 @@ export async function driveToOutcome(
   const { dir, repoPath, runId } = record;
   const { header } = record.caseFile;
   const { location } = runPlace(repoPath, runId, ctx.env);
-  // The roles come from the run's own record, as its check and closing action
-  // do, so a resumed run is told what it was told before, whatever the file
-  // says now, and never regains a tool its project took away.
-  const agent = createAgentPort(rolesFor(header.roleOverrides), { ...session, agent: header.agent });
+  const agent = createAgentPort(DEFAULT_ROLES, { ...session, agent: header.agent });
   const ports: SurfacePorts = {
     agent,
     triage: deterministicRouter,
@@ -91,14 +87,14 @@ export async function driveToOutcome(
 
 /**
  * One repair of the environment every task of a run shares: the existing
- * gate-maintenance role, its instructions and its tools, run in the copy and
- * against the record of the task that found it broken, with that task's own
- * roles. Nothing about what the repair may touch changes because the run asked,
- * and what it changed in that copy, captured as a task's own repair is.
+ * gate-maintenance role, run in the copy and against the record of the task
+ * that found it broken, with that task's own agent options. Nothing about
+ * what the repair may touch changes because the run asked, and what it
+ * changed in that copy, captured as a task's own repair is.
  */
 export async function dispatchRepair(record: RunRecord, sessionKey: string, session: SessionEnvironment, env: NodeJS.ProcessEnv): Promise<RepairOutcome> {
   const { location } = runPlace(record.repoPath, record.runId, env);
-  const agent = createAgentPort(rolesFor(record.caseFile.header.roleOverrides), { ...session, agent: record.caseFile.header.agent });
+  const agent = createAgentPort(DEFAULT_ROLES, { ...session, agent: record.caseFile.header.agent });
   const worktreePath = record.caseFile.cursor.worktreeRef || location.worktreePath;
   const { result: terminus, changes } = await captureRepair(
     worktreePath,

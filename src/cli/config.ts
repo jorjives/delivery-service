@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
-import { AgentOptions, CloserRef, RoleOverrides, TaskDef, Written } from "../schema.js";
+import { AgentOptions, CloserRef, TaskDef, Written } from "../schema.js";
 import { latestPlanFile } from "../packs/review-record.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
@@ -16,7 +16,7 @@ export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
 /** The keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `roles`, `gate`, `closer`, `budgets` and `concurrency`";
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets` and `concurrency`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -122,10 +122,6 @@ export const DeliveryConfig = z
     // Options for every agent session, passed to Claude Code as written, and
     // `append`, text added to what every agent is told.
     agent: AgentOptions.optional(),
-    // What this project changes about the worker and gate maintenance: their
-    // instructions and the tools they may use, each field laid over the
-    // built-in role. Triage is not here: it is the harness's own.
-    roles: RoleOverrides.optional(),
     // How the work is checked: a ready-made check by name, or one written out
     // as the library takes it. Resolved to the written-out form before any run
     // starts, so a run's record never holds a name.
@@ -167,8 +163,6 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
   agent:
     'It is a set of options for the agent\'s sessions, passed to Claude Code as written, for example `{ "model": "opus", "effort": "high" }`, ' +
     "and `append`, text added to what every agent is told.",
-  roles:
-    'It changes what the worker, or the agent that repairs your check, is told and which tools it may use, for example `{ "worker": { "allowedTools": ["Read", "Edit"] } }`: see docs/configuring-a-role.md.',
   gate:
     'It says how the work is checked: a ready-made check such as `{ "type": "test-runner" }`, or one written out such as ' +
     '`{ "type": "command", "command": "npm test", "parseMode": "exitcode" }`: see docs/writing-a-gate.md.',
@@ -177,41 +171,19 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
   concurrency: "It says how many tasks from your list may run at once: a whole number, 1 or more, such as `3`.",
 };
 
-/** Who each changeable role is, as the person reading a refusal knows it. */
-const WHO_FOR: Record<keyof RoleOverrides, string> = {
-  worker: "the worker",
-  gateMaintenance: "the agent that repairs your check",
-};
+/** The roles a config file could once change, in the order a refusal checks them. */
+const OLD_ROLES = ["worker", "gateMaintenance"] as const;
 
-const KEEP_BUILT_IN = "remove it to keep the built-in one";
-
-/**
- * The mistakes worth their own sentence under `roles`, each naming the field
- * and the way back to the built-in role. Anything else there is a value of the
- * wrong kind, left to the general sentence.
- */
-function roleProblem(file: string, issue: Issue, raw: unknown): string | undefined {
-  const [, role, field, item] = issue.path;
-  if (issue.code === "unrecognized_keys") {
-    return role === undefined
-      ? `I can't use ${file}: \`roles\` has no role called \`${issue.keys[0]}\`. ` +
-          `Only \`worker\` and \`gateMaintenance\` can be changed here, so ${KEEP_BUILT_IN}.`
-      : `I can't use ${file}: \`roles.${String(role)}\` has no setting called \`${issue.keys[0]}\`. ` +
-          `It takes \`systemPromptFragment\` and \`allowedTools\`, so ${KEEP_BUILT_IN}.`;
+/** A config file written before `roles` was removed, told where each part of it now lives. */
+export function rolesRemoved(file: string, raw: unknown): string {
+  const withTools = OLD_ROLES.find((role) => valueAt(raw, ["roles", role, "allowedTools"]) !== undefined);
+  if (withTools !== undefined) {
+    return (
+      `I can't use ${file}: \`roles.${withTools}.allowedTools\` is no longer used. ` +
+      "The agent now has the tools your own Claude Code setup gives it; to keep it from one, add it to `permissions.deny` in your Claude settings."
+    );
   }
-  const where = issue.path.join(".");
-  const whose = WHO_FOR[role as keyof RoleOverrides];
-  const value = valueAt(raw, issue.path);
-  if (field === "systemPromptFragment" && typeof value === "string") {
-    return `I can't use ${file}: \`${where}\`, the instructions for ${whose}, is empty. Write a sentence, or ${KEEP_BUILT_IN}.`;
-  }
-  if (field === "allowedTools" && item === undefined && issue.code === "too_small") {
-    return `I can't use ${file}: \`${where}\`, the tools ${whose} may use, is empty. Name at least one, or ${KEEP_BUILT_IN}.`;
-  }
-  if (field === "allowedTools" && typeof item === "number" && typeof value === "string") {
-    return `I can't use ${file}: \`roles.${String(role)}.allowedTools\` item ${item + 1} is empty. Name a tool, or remove it.`;
-  }
-  return undefined;
+  return `I can't use ${file}: \`roles\` is no longer used. Put any instructions for the agent in \`agent.append\` instead.`;
 }
 
 /**
@@ -244,10 +216,7 @@ export interface ConfigProblem {
 function describeIssue(file: string, issue: Issue, raw: unknown): string {
   const where = issue.path.join(".");
 
-  if (issue.path[0] === "roles") {
-    const said = roleProblem(file, issue, raw);
-    if (said !== undefined) return said;
-  }
+  if (issue.code === "unrecognized_keys" && issue.path.length === 0 && issue.keys.includes("roles")) return rolesRemoved(file, raw);
 
   if (issue.path[0] === "agent" && issue.code === "custom") return `I can't use ${file}: ${issue.message}`;
   if (where === "gate.type") return unknownGate(valueAt(raw, issue.path));

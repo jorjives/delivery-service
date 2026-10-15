@@ -75,43 +75,9 @@ The only difference between them is the sentences. The call you make is identica
 
 ## From the configuration file
 
-A project using the `delivery` command can change the worker's and gate
-maintenance's instructions and tools in its `delivery.config.json`, with no code:
-
-```json
-{
-  "roles": {
-    "worker": {
-      "systemPromptFragment": "You are the worker for the on-call service. Never modify anything under the ops folder.",
-      "allowedTools": ["Read", "Glob", "Grep", "Edit", "Write"]
-    },
-    "gateMaintenance": { "allowedTools": ["Read", "Glob", "Grep", "Edit"] }
-  }
-}
-```
-
-| Key | What it changes |
-|---|---|
-| `roles.worker.systemPromptFragment` | The worker's instructions, in place of the reference sentences above |
-| `roles.worker.allowedTools` | The tools the worker may use, in place of its reference list |
-| `roles.gateMaintenance.systemPromptFragment` | Gate maintenance's instructions |
-| `roles.gateMaintenance.allowedTools` | The tools gate maintenance may use |
-
-Each field is optional. Anything you leave out keeps its built-in value, so
-overriding only `allowedTools` keeps the reference instructions, and a project
-with no `roles` runs exactly as before. The reply shape (`envelopeSchema`) is not
-a setting: it stays the harness's own. Triage cannot be changed from the file: its
-tools are read-only by design (see [Triage](#triage)), and it stays a choice made
-in code.
-
-A run keeps the roles it started with. Editing `roles` changes the next run, not
-one already going, and resuming a run tells its agents what they were told before.
-
-`delivery validate` refuses a role other than `worker` or `gateMaintenance`, a
-setting other than those two, empty instructions and an empty tools list, each
-with the field named and the fix: remove it to keep the built-in one.
-`delivery preview` shows the instructions and the tools as your file sets them;
-add `--role gate-maintenance` for gate maintenance.
+A project no longer changes roles from its configuration file. Instructions go in
+`agent.append` (see [Project configuration](project-configuration.md)); tool restrictions go
+in `permissions.deny` in your own Claude settings.
 
 **A misspelled tool name is not caught by `delivery validate`.** No list of valid
 tool names is checked, because none could stay in step with the agent runtime you

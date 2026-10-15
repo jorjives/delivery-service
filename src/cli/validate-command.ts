@@ -1,6 +1,6 @@
 import { realpathSync } from "node:fs";
 import { relative, resolve } from "node:path";
-import type { CloserRef, GateRef, RoleOverrides } from "../schema.js";
+import type { CloserRef, GateRef } from "../schema.js";
 import { CloserModuleLoadFailure, GateModuleLoadFailure, InvalidCloserExport, InvalidGateExport } from "../errors.js";
 import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
@@ -63,25 +63,11 @@ function tasksPhrase(config: DeliveryConfig, concurrency: number): string {
   return 'no tasks listed: name one when you run, with `delivery run --task "..."`';
 }
 
-/** Each changeable role as `validate` names it, in the order it names them. */
-const ROLE_LINES: Record<keyof RoleOverrides, string> = { worker: "worker", gateMaintenance: "gate maintenance" };
-
-/** One line per role the file changes, saying which of its settings are the project's own; none for a role left as built. */
-function roleLines(config: DeliveryConfig): string[] {
-  return (Object.keys(ROLE_LINES) as (keyof RoleOverrides)[]).flatMap((role) => {
-    const override = config.roles?.[role];
-    const own: string[] = [];
-    if (override?.systemPromptFragment !== undefined) own.push("instructions");
-    if (override?.allowedTools !== undefined) own.push("tool list");
-    return own.length === 0 ? [] : [`${ROLE_LINES[role]}: your own ${own.join(" and ")}`];
-  });
-}
-
 /**
  * One line per thing `validate` checked, in the owner's terms: the description,
- * the tasks, what the check runs, what the closing action does, and which roles
- * the file changes. The check and closing action are the ones a run would use,
- * inferred and defaulted values included, so what is reported is what would
+ * the tasks, what the check runs, what the closing action does, and the agent
+ * options the file sets. The check and closing action are the ones a run would
+ * use, inferred and defaulted values included, so what is reported is what would
  * happen. When more than one task may run at once, the line says so, with how many are queued.
  */
 export function checkedLines(config: DeliveryConfig, project: ProjectSettings): string[] {
@@ -90,7 +76,6 @@ export function checkedLines(config: DeliveryConfig, project: ProjectSettings): 
     tasksPhrase(config, project.concurrency),
     `gate: ${gateLine(project)}`,
     `closer: ${closerPhrase(project.closerRef)}`,
-    ...roleLines(config),
     ...(config.agent === undefined ? [] : [`agent options: ${Object.keys(config.agent).join(", ")}`]),
   ].map((line) => `✓ ${line}`);
 }

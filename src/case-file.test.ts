@@ -52,11 +52,6 @@ describe("create", () => {
     expect(logRaw).toBe("");
   });
 
-  it("keeps the role overrides a run was started with, so reading it back tells its agents the same thing", async () => {
-    const roleOverrides = { worker: { systemPromptFragment: "Never modify anything under the ops folder.", allowedTools: ["Read", "Edit"] } };
-    await create(dir, { surfaceId: "surface-roles", taskDef: { intent: "add a page" }, gateRef, roleOverrides }, budgetDefaults);
-    expect((await load(dir)).header.roleOverrides).toEqual(roleOverrides);
-  });
 });
 
 describe("initialCaseFile", () => {

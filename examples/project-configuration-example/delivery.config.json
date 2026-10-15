@@ -6,7 +6,5 @@
   ],
   "gate": { "type": "command", "command": "npm test", "parseMode": "exitcode" },
   "closer": { "type": "commit-to-branch" },
-  "roles": {
-    "worker": { "allowedTools": ["Read", "Glob", "Grep", "Edit", "Write"] }
-  }
+  "agent": { "append": "Keep changes small and explain each one in the commit message." }
 }

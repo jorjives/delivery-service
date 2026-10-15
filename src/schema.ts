@@ -134,31 +134,6 @@ export type DeltaOptions = z.infer<typeof DeltaOptions>;
  */
 export const Written = z.string().refine((text) => text.trim() !== "");
 
-/**
- * What a project may change about one role, and nothing else: its
- * instructions and its permitted tools. The reply shape stays the harness's
- * own. Each field is optional, and an omitted one keeps the built-in value.
- * No list of valid tool names exists or is checked here: nothing could keep
- * one in step with the installed agent runtime, and what a role can reach is
- * bounded by the tool guard whatever is listed.
- */
-export const RoleOverride = z
-  .object({
-    systemPromptFragment: Written.optional(),
-    allowedTools: z.array(Written).min(1).optional(),
-  })
-  .strict();
-export type RoleOverride = z.infer<typeof RoleOverride>;
-
-/** The roles a project may change. Triage is absent on purpose: it stays a library-level choice. */
-export const RoleOverrides = z
-  .object({
-    worker: RoleOverride.optional(),
-    gateMaintenance: RoleOverride.optional(),
-  })
-  .strict();
-export type RoleOverrides = z.infer<typeof RoleOverrides>;
-
 /** The session options the harness sets itself for every session. The `agent` block may not name them. */
 export const HARNESS_OWNED = ["cwd", "systemPrompt", "outputFormat", "resume", "sessionId", "permissionMode", "allowDangerouslySkipPermissions", "pathToClaudeCodeExecutable"] as const;
 
@@ -191,12 +166,8 @@ export const CaseFileHeader = z.object({
   // The project's agent options, pinned at CREATE like domainPrompt so a resumed
   // run's sessions are set up as they were. Optional: older records stay valid.
   agent: AgentOptions.optional(),
-  // What the project changed about the worker and gate maintenance, pinned at
-  // CREATE like domainPrompt so a resumed run is told what it was told before
-  // and can never regain a tool its project had taken away. Only the plain
-  // fields are kept: the full roles are rebuilt from the shipped ones.
-  // Optional: records written before overrides existed stay valid.
-  roleOverrides: RoleOverrides.optional(),
+  // Records made before `roles` was removed carry what they changed; nothing reads it now.
+  roleOverrides: z.unknown().optional(),
   baseline: GateReport.nullable(),
   // The local branch this surface was provisioned from, pinned once at
   // PROVISIONING so a later default-branch change cannot redirect the close.

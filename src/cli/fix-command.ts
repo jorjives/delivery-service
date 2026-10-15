@@ -137,7 +137,12 @@ export async function fixCommand(options: FixOptions, ctx: CommandContext): Prom
       gone += 1;
       return true;
     };
-    exitCode = await runQueue(pending, { ...project, gateRef: FINDING_GATE_REF, closerRef: FINDING_CLOSER_REF, roleOverrides: plan.roles }, { repoPath, carryOn: true, skip }, ctx);
+    exitCode = await runQueue(
+      pending,
+      { ...project, gateRef: FINDING_GATE_REF, closerRef: FINDING_CLOSER_REF, ...(plan.agent === undefined ? {} : { agent: plan.agent }) },
+      { repoPath, carryOn: true, skip },
+      ctx,
+    );
     if (gone > 0) {
       say(alreadyFixedLine(gone));
       // Problems passed over have no task any more (`fixTasks`), so the plan the reading commands show drops them.

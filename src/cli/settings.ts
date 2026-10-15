@@ -2,14 +2,13 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { CloserRef } from "../schema.js";
-import type { AgentOptions, BudgetSet, CaseFileHeader, GateRef, RoleOverrides, TaskDef } from "../schema.js";
+import type { AgentOptions, BudgetSet, CaseFileHeader, GateRef, TaskDef } from "../schema.js";
 import { loadCustomCloser } from "../custom-closer.js";
 import { loadCustomGate } from "../custom-gate.js";
 import { Concurrency, unknownCloser, type DeliveryConfig } from "./config.js";
 import { isPreset, presetGate, type GatePreset } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
 import { inferGate } from "./project.js";
-import { rolesFor } from "./roles.js";
 
 export const NO_TASK = 'Tell me what to do: add `--task "describe the change you want"`.';
 
@@ -50,8 +49,6 @@ export interface ProjectSettings {
   domainPrompt?: string;
   /** The config file's agent options, pinned into the run when it starts. Absent when it sets none. */
   agent?: AgentOptions;
-  /** What the config file changes about the worker and gate maintenance, pinned into the run when it starts. Absent when it changes nothing. */
-  roleOverrides?: RoleOverrides;
   /** The ready-made check the file named, when that is where `gateRef` came from: kept only to describe it by name. A run pins `gateRef` alone. */
   gatePreset?: GatePreset;
 }
@@ -196,9 +193,6 @@ export async function resolveProject(
   flags: RunFlags,
   { env, repoPath, config }: { env: NodeJS.ProcessEnv; repoPath: string; config: DeliveryConfig },
 ): Promise<ProjectSettings> {
-  // Merged over the built-in roles and checked now, so a role the harness
-  // would refuse stops the command before any run's record exists.
-  rolesFor(config.roles);
   return {
     ...(await gateFrom(flags, env, config, repoPath)),
     closerRef: closerFrom(flags, env, config),
@@ -210,8 +204,6 @@ export async function resolveProject(
     domainPrompt: config.domain,
     // Likewise for the agent options: they are part of the project, reviewed with it.
     ...(config.agent === undefined ? {} : { agent: config.agent }),
-    // Likewise for the roles: they are part of the project, reviewed with it.
-    roleOverrides: config.roles,
   };
 }
 

@@ -44,9 +44,7 @@ This is its whole configuration file. The next four steps explain it a setting a
   ],
   "gate": { "type": "command", "command": "npm test", "parseMode": "exitcode" },
   "closer": { "type": "commit-to-branch" },
-  "roles": {
-    "worker": { "allowedTools": ["Read", "Glob", "Grep", "Edit", "Write"] }
-  }
+  "agent": { "append": "Keep changes small and explain each one in the commit message." }
 }
 ```
 
@@ -106,12 +104,12 @@ commits it to a new branch and leaves `main` alone, so you look at it before you
 it. The other built-in choices are `merge-back`, which merges it into your main branch,
 and `open-pr`, which opens a pull request.
 
-## 5. Decide what the agent may do
+## 5. Tell the agent how you like things done
 
-`roles` changes what an agent is told and which tools it may use. The example keeps the
-built-in instructions for the agent that does each task, the worker, and gives it a
-shorter list of tools, without `Bash`: it can read, search and edit files, but cannot run
-commands. Leave `roles` out and every agent keeps its built-in instructions and tools.
+`agent` holds options for the agent's sessions. `append` is text added to what every agent is
+told; the example asks for small, explained changes. The agent already works with your own
+Claude Code setup: your settings, CLAUDE.md, skills and plugins all load, and it has every tool
+they give it. To keep it from a tool, add it to `permissions.deny` in your Claude settings.
 
 ## 6. Check your setup
 
@@ -127,7 +125,7 @@ Checking delivery.config.json…
 ✓ 2 tasks queued
 ✓ gate: runs `npm test`
 ✓ closer: commits to a new branch
-✓ worker: your own tool list
+✓ agent options: append
 Ready to run.
 ```
 
@@ -216,9 +214,7 @@ Add one more sentence to the end of `tasks`, in your own words. For example:
   ],
   "gate": { "type": "command", "command": "npm test", "parseMode": "exitcode" },
   "closer": { "type": "commit-to-branch" },
-  "roles": {
-    "worker": { "allowedTools": ["Read", "Glob", "Grep", "Edit", "Write"] }
-  }
+  "agent": { "append": "Keep changes small and explain each one in the commit message." }
 }
 ```
 

@@ -27,22 +27,12 @@ function problemFor(raw: unknown): string {
 }
 
 describe("what a config file may contain", () => {
-  it("accepts exactly task, tasks, domain, roles, gate, closer and budgets, in the shapes the library already documents", () => {
+  it("accepts exactly task, tasks, domain, gate, closer and budgets, in the shapes the library already documents", () => {
     const config = {
       task: { intent: "add a function that says goodbye to a name, with a test" },
       gate: { type: "command", command: "npm test", parseMode: "exitcode" },
       closer: { type: "merge-back", deleteBranch: true },
       budgets: { correction: 5 },
-    };
-    expect(DeliveryConfig.parse(config)).toEqual(config);
-  });
-
-  it("accepts instructions and tools for the worker and gate maintenance, each field on its own", () => {
-    const config = {
-      roles: {
-        worker: { systemPromptFragment: "Never modify anything under the ops folder.", allowedTools: ["Read", "Glob", "Grep", "Edit"] },
-        gateMaintenance: { allowedTools: ["Read", "Edit"] },
-      },
     };
     expect(DeliveryConfig.parse(config)).toEqual(config);
   });
@@ -196,57 +186,9 @@ describe("what it says about a file it can't use", () => {
     );
   });
 
-  it("names a role that can't be changed from the file, and the way out", () => {
-    expect(problemFor({ roles: { triage: { allowedTools: ["Read"] } } })).toBe(
-      "I can't use delivery.config.json: `roles` has no role called `triage`. " +
-        "Only `worker` and `gateMaintenance` can be changed here, so remove it to keep the built-in one.",
-    );
-  });
-
-  it("names a role setting that doesn't exist, what a role takes, and the way out", () => {
-    expect(problemFor({ roles: { worker: { tools: ["Read"] } } })).toBe(
-      "I can't use delivery.config.json: `roles.worker` has no setting called `tools`. " +
-        "It takes `systemPromptFragment` and `allowedTools`, so remove it to keep the built-in one.",
-    );
-  });
-
-  it.each([[""], ["   "], ["\n\t "]])("names the worker's empty instructions and the two ways out (%j)", (value) => {
-    expect(problemFor({ roles: { worker: { systemPromptFragment: value } } })).toBe(
-      "I can't use delivery.config.json: `roles.worker.systemPromptFragment`, the instructions for the worker, is empty. " +
-        "Write a sentence, or remove it to keep the built-in one.",
-    );
-  });
-
-  it("names gate maintenance's empty instructions in the owner's words", () => {
-    expect(problemFor({ roles: { gateMaintenance: { systemPromptFragment: "" } } })).toBe(
-      "I can't use delivery.config.json: `roles.gateMaintenance.systemPromptFragment`, the instructions for the agent that repairs your check, is empty. " +
-        "Write a sentence, or remove it to keep the built-in one.",
-    );
-  });
-
-  it("names an empty tools list and the two ways out", () => {
-    expect(problemFor({ roles: { worker: { allowedTools: [] } } })).toBe(
-      "I can't use delivery.config.json: `roles.worker.allowedTools`, the tools the worker may use, is empty. " +
-        "Name at least one, or remove it to keep the built-in one.",
-    );
-  });
-
-  it("names an empty entry in a tools list by its position", () => {
-    expect(problemFor({ roles: { worker: { allowedTools: ["Read", " "] } } })).toBe(
-      "I can't use delivery.config.json: `roles.worker.allowedTools` item 2 is empty. Name a tool, or remove it.",
-    );
-  });
-
-  it("names roles given as something other than a set of roles", () => {
-    expect(problemFor({ roles: "strict" })).toBe(
-      'I can\'t use delivery.config.json: the setting `roles` is `"strict"`. ' +
-        'It changes what the worker, or the agent that repairs your check, is told and which tools it may use, for example `{ "worker": { "allowedTools": ["Read", "Edit"] } }`: see docs/configuring-a-role.md.',
-    );
-  });
-
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `roles`, `gate`, `closer`, `budgets` and `concurrency`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets` and `concurrency`.",
     );
   });
 
@@ -317,7 +259,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names a file that holds something other than one object of settings", () => {
     expect(problemFor(["add a page"])).toBe(
-      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `roles`, `gate`, `closer`, `budgets` and `concurrency`. " +
+      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets` and `concurrency`. " +
         "A `.js` or `.mjs` file exports that object as its default.",
     );
   });
@@ -331,8 +273,6 @@ describe("what it says about a file it can't use", () => {
     [{ budgets: "lots" }],
     [["add a page"]],
     [undefined],
-    [{ roles: "strict" }],
-    [{ roles: { worker: { allowedTools: "Read" } } }],
     [{ gate: { type: "file-exist", path: "CHANGES.md" } }],
     [{ gate: { type: "file-exists" } }],
     [{ gate: { type: "file-exists", path: "CHANGES.md", command: "ls" } }],
@@ -370,6 +310,20 @@ describe("what it says about a file it can't use", () => {
     [{ type: "file-exists", path: "CHANGES.md", command: "ls" }, "the ready-made check `file-exists` takes only `path`, so remove `command`."],
   ])("names a detail the ready-made check %j doesn't take", (gate, message) => {
     expect(problemFor({ gate })).toBe(`I can't use delivery.config.json: ${message}`);
+  });
+});
+
+describe("a config file that still has roles", () => {
+  it("says a tool list now belongs in the operator's own Claude settings, naming the field", () => {
+    expect(problemFor({ roles: { worker: { allowedTools: ["Read"] } } })).toBe(
+      `I can't use ${FILE}: \`roles.worker.allowedTools\` is no longer used. The agent now has the tools your own Claude Code setup gives it; to keep it from one, add it to \`permissions.deny\` in your Claude settings.`,
+    );
+  });
+
+  it("says instructions now go in agent.append", () => {
+    expect(problemFor({ roles: { gateMaintenance: { systemPromptFragment: "Be careful." } } })).toBe(
+      `I can't use ${FILE}: \`roles\` is no longer used. Put any instructions for the agent in \`agent.append\` instead.`,
+    );
   });
 });
 
@@ -504,7 +458,7 @@ describe("reading a config file", () => {
     const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
     const refusal = await refusalOf(found(repo, repo));
     expect(refusal.message).toBe(
-      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`roles\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
     );
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });
@@ -620,14 +574,14 @@ describe("every problem with a config file's shape, at once", () => {
   });
 
   it("gives each unknown key its own problem, named at its place", () => {
-    expect(problemsFor({ foo: 1, roles: { triage: {} } })).toEqual([
-      {
-        field: "roles.triage",
-        message: `I can't use ${FILE}: \`roles\` has no role called \`triage\`. Only \`worker\` and \`gateMaintenance\` can be changed here, so remove it to keep the built-in one.`,
-      },
+    expect(problemsFor({ foo: 1, roles: {} })).toEqual([
       {
         field: "foo",
-        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`roles\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
+        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
+      },
+      {
+        field: "roles",
+        message: `I can't use ${FILE}: \`roles\` is no longer used. Put any instructions for the agent in \`agent.append\` instead.`,
       },
     ]);
     expect(problemsFor({ foo: 1, bar: 2 }).map((problem) => problem.field)).toEqual(["foo", "bar"]);
@@ -637,7 +591,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor("add a page")).toEqual([
       {
         field: null,
-        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`roles\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
+        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
       },
     ]);
   });
