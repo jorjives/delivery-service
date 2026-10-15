@@ -203,6 +203,8 @@ function outcomeCause(cause: EscalationCause): OutcomeCause {
     case "repair_gave_up":
     case "triage_failure":
       return { kind: cause.kind };
+    case "landed_outside_closer":
+      return { kind: cause.kind, pullRequest: cause.pullRequest };
   }
 }
 
@@ -292,6 +294,10 @@ async function escalateFromTail(
     return escalate(dir, caseFile, location, ports, "triage", tail.rationale, ref.data.cause, ref.data.artifact);
   }
   const terminus = tail?.t === "terminus" ? tail : undefined;
+  if (terminus?.landedOutside !== undefined) {
+    const { pullRequest } = terminus.landedOutside;
+    return escalateFor(dir, caseFile, location, ports, source, `a pull request was found open for the task's branch: ${pullRequest}`, { kind: "landed_outside_closer", pullRequest, sessionKey: terminus.sessionKey });
+  }
   const cause: EscalationCause =
     terminus?.category === "authority"
       ? { kind: "authority", role: terminus.role ?? "worker" }
@@ -423,6 +429,9 @@ async function dispatchSession(
   const accepted = judged?.verdict.accepted ?? {};
   if (refused === null && Object.keys(accepted).length > 0) await appendEntry(dir, { t: "repair_accepted", sessionKey, settings: accepted });
   const changesRef = changes === undefined ? undefined : await writeRef(dir, `repair-${sessionKey}`, changes);
+  // Landing belongs to the closer. Once a close has been tried, a pull request may be the closer's own, so none is looked for.
+  const pullRequest =
+    ports.landed === undefined || caseFile.history.some((e) => e.t === "close") ? null : await ports.landed(branchName(caseFile.header.surfaceId));
   const entry: HistoryEntry = {
     t: "terminus",
     role,
@@ -434,12 +443,16 @@ async function dispatchSession(
     ...(terminus.status === "incomplete" && terminus.limit ? { limit: terminus.limit } : {}),
     ...(changesRef === undefined ? {} : { changesRef }),
     ...(terminus.usage === undefined ? {} : { usage: terminus.usage }),
+    ...(pullRequest === null ? {} : { landedOutside: { pullRequest } }),
     rationale: terminus.rationale,
   };
   await appendEntry(dir, entry);
 
   const state = deriveStateFromEntry(entry);
   if (state === "ESCALATED") {
+    if (pullRequest !== null) {
+      return escalateFor(dir, caseFile, location, ports, role, `a pull request was found open for the task's branch: ${pullRequest}`, { kind: "landed_outside_closer", pullRequest, sessionKey });
+    }
     return escalateFor(dir, caseFile, location, ports, role, terminus.rationale, { kind: "authority", role });
   }
   await updateCursor(dir, { state });

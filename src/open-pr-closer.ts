@@ -11,7 +11,7 @@ import type { TaskDef } from "./schema.js";
 
 const execFile = promisify(execFileCb);
 
-const OpenPullRequests = z.array(z.object({ url: z.string() }));
+export const OpenPullRequests = z.array(z.object({ url: z.string() }));
 
 /**
  * What a failed gh call left to go on. Node's execFile error carries `code`:

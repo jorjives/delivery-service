@@ -21,6 +21,7 @@ import { taskIntent } from "../task-list.js";
 import { checkCustomModules, DEFAULT_CLOSER, type ProjectSettings } from "./settings.js";
 import { bwrapOf, fenceOf, fencePaths, probeFence, type FenceSetting } from "../fence.js";
 import { containedSession } from "../containment.js";
+import { pullRequestFinder } from "../landed-outside.js";
 
 /** A run about to exist: what it is being asked to do, and everything its project asks of every run. */
 export interface RunStart extends ProjectSettings {
@@ -120,6 +121,7 @@ export async function driveToOutcome(
     triage: deterministicRouter,
     closer: resolveCloser(header.closerRef ?? DEFAULT_CLOSER, repoPath),
     env: ctx.env,
+    landed: pullRequestFinder(repoPath),
     ...(ctx.repairCoordinator === undefined ? {} : { repairCoordinator: ctx.repairCoordinator }),
   };
 

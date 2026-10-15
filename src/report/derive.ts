@@ -259,7 +259,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     finishedAt: outcome?.at ?? null,
     lastActivityAt: lastActivityOf(record),
     reason: outcome?.reason ?? null,
-    cause: cause === null ? null : { kind: cause.kind, role: cause.role ?? null, population: cause.population ?? null },
+    cause: cause === null ? null : { kind: cause.kind, role: cause.role ?? null, population: cause.population ?? null, pullRequest: cause.pullRequest ?? null },
     // A run that pinned no closer predates closers being pinned, and was committed to its branch.
     closer: landingOf(header),
     branch: branchName(header.surfaceId),

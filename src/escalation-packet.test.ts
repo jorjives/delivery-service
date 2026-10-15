@@ -36,7 +36,12 @@ const triageFailure = {
     "triage did not produce a usable verdict: triage session did not complete: the session ended without reporting a result. Escalating rather than guessing.",
 } satisfies EscalationCause;
 const repairGaveUp = { kind: "repair_gave_up" } satisfies EscalationCause;
-const all: EscalationCause[] = [authority, budget, closeBudget, triageFailure, repairGaveUp];
+const landedOutside = {
+  kind: "landed_outside_closer",
+  pullRequest: "https://github.com/example/project/pull/7",
+  sessionKey: "worker-1-0",
+} satisfies EscalationCause;
+const all: EscalationCause[] = [authority, budget, closeBudget, triageFailure, repairGaveUp, landedOutside];
 
 describe("buildEscalationPacket", () => {
   it.each(all.map((cause) => [cause.kind, cause] as const))(
@@ -78,6 +83,14 @@ describe("buildEscalationPacket", () => {
 
   it("puts triage's own reason in why_now when its reply could not be used", () => {
     expect(buildEscalationPacket(triageFailure, facts).why_now).toContain(triageFailure.rationale);
+  });
+
+  it("tells a person the agent opened a pull request itself, and that nothing was landed", () => {
+    const packet = buildEscalationPacket({ kind: "landed_outside_closer", pullRequest: "https://github.com/example/project/pull/7", sessionKey: "worker-1-0" }, facts);
+    expect(packet.decision).toBe(
+      "The agent opened a pull request for this task's branch itself: https://github.com/example/project/pull/7. Nothing has been landed by the harness. Decide whether to close that pull request or review and merge it yourself.",
+    );
+    expect(packet.why_now).toContain("A pull request was found open for the task's branch after session worker-1-0; landing belongs to the harness, so the task stops for you rather than being treated as merged.");
   });
 
   it("lists earlier triage rounds oldest first, or says there were none", () => {

@@ -67,7 +67,7 @@ Each entry of `surfaces`:
 | `standing` | Where the task stands, by the names `counts` uses |
 | `state`, `states` | The step the record is in, and every step it entered, oldest first, each with the time `at` it was entered |
 | `startedAt`, `finishedAt`, `lastActivityAt` | When it started and ended, and the latest time its record holds |
-| `reason`, `cause` | The recorded reason for a stop, and its cause: a `kind`, with the `role` or `population` it concerns, whichever the kind does not have being `null`. `cause` is `null` for a stop recorded before causes were |
+| `reason`, `cause` | The recorded reason for a stop, and its cause: a `kind`, with the `role` or `population` it concerns, and for `"landed_outside_closer"` (the agent opened a pull request for the task's branch itself) the `pullRequest` it opened; each of these the kind does not have is `null`. `cause` is `null` for a stop recorded before causes were |
 | `closer`, `branch`, `base` | How its work is landed, and where |
 | `attempts` | How many times the agent was set to work on it |
 | `budgets` | Each kind of retry: its `population`, how many were `used` and the `max` allowed |

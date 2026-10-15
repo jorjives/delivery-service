@@ -277,6 +277,9 @@ export const TerminusEntry = z.object({
   changesRef: z.string().optional(),
   // What the runtime reported the session cost and took. Absent for a record made before it was kept, a session that never ran, or one whose end was recovered. No routing decision reads it.
   usage: SessionUsage.optional(),
+  // A pull request was found open for the task's branch after this session: the task stops for the operator.
+  // Optional, so every record written before it was looked for stays valid.
+  landedOutside: z.object({ pullRequest: z.string() }).optional(),
   at: At.optional(),
 });
 export type TerminusEntry = z.infer<typeof TerminusEntry>;
@@ -395,11 +398,14 @@ export const OutcomeCause = z.object({
     "triage_escalated",
     "triage_abort",
     "provisioning",
+    "landed_outside_closer",
   ]),
   // authority and session_not_run only: whose session it was.
   role: z.enum(["worker", "gate-maintenance"]).optional(),
   // budget only: which retries ran out.
   population: Population.optional(),
+  // landed_outside_closer only: the pull request found open for the task's branch.
+  pullRequest: z.string().optional(),
 });
 export type OutcomeCause = z.infer<typeof OutcomeCause>;
 

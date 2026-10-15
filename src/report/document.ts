@@ -76,6 +76,7 @@ export const SurfaceCause = z.object({
   kind: OutcomeCause.shape.kind,
   role: OutcomeCause.shape.role.unwrap().nullable(),
   population: OutcomeCause.shape.population.unwrap().nullable(),
+  pullRequest: OutcomeCause.shape.pullRequest.unwrap().nullable(),
 });
 
 /**

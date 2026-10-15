@@ -271,6 +271,8 @@ export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
       // retries on the terminus budget rather than dispatching unboundedly.
       return entry.role === "gate-maintenance" ? "GATE_MAINTENANCE" : "INCOMPLETE_TERMINUS";
     case "terminus":
+      // A pull request the session opened itself is the operator's to look at, whatever the session reported.
+      if (entry.landedOutside !== undefined) return "ESCALATED";
       // A repair sessions terminus of ANY status stays inside GATE_MAINTENANCE:
       // its edge decides between re-baselining, redispatching and escalating.
       if (entry.role === "gate-maintenance") return "GATE_MAINTENANCE";

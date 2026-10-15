@@ -80,6 +80,8 @@ function decisionFor(cause: EscalationCause): string {
       return `No ${POPULATION_LABELS[cause.population]} budget remains (${cause.budget.used}/${cause.budget.max} used). Decide whether to continue manually, amend the task, or abandon it.`;
     case "triage_failure":
       return "Triage could not reach a verdict. Decide how to proceed from the evidence below.";
+    case "landed_outside_closer":
+      return `The agent opened a pull request for this task's branch itself: ${cause.pullRequest}. Nothing has been landed by the harness. Decide whether to close that pull request or review and merge it yourself.`;
   }
 }
 
@@ -95,6 +97,8 @@ function reasonFor(cause: EscalationCause): string {
       return `The ${POPULATION_LABELS[cause.population]} budget is spent (${cause.budget.used}/${cause.budget.max} used), so the harness cannot try again.`;
     case "triage_failure":
       return `Triage's reply could not be acted on: ${cause.rationale}`;
+    case "landed_outside_closer":
+      return `A pull request was found open for the task's branch after session ${cause.sessionKey}; landing belongs to the harness, so the task stops for you rather than being treated as merged.`;
   }
 }
 
@@ -118,8 +122,12 @@ export async function resolveEscalationPacket(
 ): Promise<EscalationPacket> {
   const { history } = caseFile;
   const fallback = cause.kind === "budget" ? cause.detail : NO_EVIDENCE;
+  const evidence =
+    cause.kind === "landed_outside_closer"
+      ? `Pull request ${cause.pullRequest}, found open after session ${cause.sessionKey}.`
+      : (await evidenceOf(dir, history)) || fallback;
   return buildEscalationPacket(cause, {
-    evidence: (await evidenceOf(dir, history)) || fallback,
+    evidence,
     priorRationales: history.flatMap((e) => (e.t === "triage" && e.verdict !== "escalate" ? [e.rationale] : [])),
     references: history.flatMap((e) => (e.t === "dispatch" ? [e.sessionKey] : [])),
     budgets: deriveBudgetsFromLog(history, caseFile.cursor.budgets),

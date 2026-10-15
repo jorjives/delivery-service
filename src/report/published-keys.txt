@@ -56,6 +56,7 @@ delivery.report/1.surfaces[].budgets[].used: integer
 delivery.report/1.surfaces[].budgets[]: object
 delivery.report/1.surfaces[].cause.kind = "authority"
 delivery.report/1.surfaces[].cause.kind = "budget"
+delivery.report/1.surfaces[].cause.kind = "landed_outside_closer"
 delivery.report/1.surfaces[].cause.kind = "provisioning"
 delivery.report/1.surfaces[].cause.kind = "repair_gave_up"
 delivery.report/1.surfaces[].cause.kind = "session_not_run"
@@ -69,6 +70,7 @@ delivery.report/1.surfaces[].cause.population = "gateError"
 delivery.report/1.surfaces[].cause.population = "gateMaintenance"
 delivery.report/1.surfaces[].cause.population = "terminus"
 delivery.report/1.surfaces[].cause.population: null|string
+delivery.report/1.surfaces[].cause.pullRequest: null|string
 delivery.report/1.surfaces[].cause.role = "gate-maintenance"
 delivery.report/1.surfaces[].cause.role = "worker"
 delivery.report/1.surfaces[].cause.role: null|string

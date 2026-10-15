@@ -605,6 +605,23 @@ describe("the AGENT_ACTIVE edge", () => {
     expect((await load(dir)).outcome?.reason).toContain("sign-off");
   });
 
+  it("resumes a pull request found after a session, recorded before the outcome was written", async () => {
+    // The crash window between appending the terminus and writing the outcome.
+    const PR = "https://github.com/example/project/pull/7";
+    const ports = portsWith(unusedAgent());
+    await setBaseline(dir, { status: "PASS", assertions: [], detail: "" });
+    await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" });
+    await appendEntry(dir, {
+      t: "terminus", role: "worker", attempt: 1, sessionKey: "worker-1-0",
+      status: "completed", rationale: "done", landedOutside: { pullRequest: PR },
+    });
+
+    const result = await advance(dir, { repoPath: "/unused", worktreePath: "/unused" }, ports);
+
+    expect(result).toEqual({ state: "ESCALATED", done: true });
+    expect((await load(dir)).outcome?.cause).toEqual({ kind: "landed_outside_closer", pullRequest: PR });
+  });
+
   it("resumes a triage escalate recorded before the outcome was written, crediting triage", async () => {
     // The crash window between appending an escalate triage entry and writing the outcome.
     const ports = portsWith(unusedAgent());
@@ -2491,5 +2508,42 @@ describe("a gate repair, judged by the guards when it ends", () => {
     expect(result.outcome?.cause).toEqual({ kind: "authority", role: "gate-maintenance" });
     expect(result.history.some((entry) => entry.t === "dispatch" && entry.role === "worker")).toBe(false);
     expect(result.history.some((entry) => entry.t === "repair_accepted")).toBe(false);
+  });
+});
+
+describe("a pull request found open for the task's branch after a session", () => {
+  const PR = "https://github.com/example/project/pull/7";
+
+  async function landedRun(landed: (branch: string) => Promise<string | null>) {
+    const dir = await mkdtemp(join(tmpdir(), "surface-landed-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    const asked: string[] = [];
+    const agent = sessionAgent(() => Promise.resolve({ status: "completed", rationale: "done, and I opened a PR" }));
+    const ports: SurfacePorts = {
+      ...portsWithTriage(agent),
+      landed: (branch) => {
+        asked.push(branch);
+        return landed(branch);
+      },
+    };
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+    return { dir, asked, result: await run(dir, location, ports) };
+  }
+
+  it("stops the task for the operator, naming the pull request and the session, instead of treating it as landed", async () => {
+    const { dir, asked, result } = await landedRun(() => Promise.resolve(PR));
+    expect(asked).toEqual(["surface/surface-1"]);
+    expect(result.state).toBe("ESCALATED");
+    expect(result.outcome).toMatchObject({ kind: "escalated", cause: { kind: "landed_outside_closer", pullRequest: PR } });
+    const { history } = await load(dir);
+    expect(history.filter((entry) => entry.t === "gate" || entry.t === "close")).toEqual([]);
+    expect(history.findLast((entry) => entry.t === "terminus")).toMatchObject({ sessionKey: "worker-1-0", landedOutside: { pullRequest: PR } });
+    const packet = EscalationPacket.parse(await readRef(dir, (await load(dir)).outcome?.packetRef ?? ""));
+    expect(packet.evidence).toBe(`Pull request ${PR}, found open after session worker-1-0.`);
+  });
+
+  it("carries on as usual when none is found", async () => {
+    const { result } = await landedRun(() => Promise.resolve(null));
+    expect(result.state).toBe("CLOSED");
   });
 });

@@ -92,7 +92,8 @@ export type EscalationCause =
   | { kind: "repair_gave_up" }
   | { kind: "session_not_run"; role: "worker" | "gate-maintenance" }
   | { kind: "budget"; population: BudgetPopulation; budget: Budget; detail: string }
-  | { kind: "triage_failure"; rationale: string };
+  | { kind: "triage_failure"; rationale: string }
+  | { kind: "landed_outside_closer"; pullRequest: string; sessionKey: string };
 
 export interface TriageInput {
   trigger: "gate_fail" | "gate_error" | "worker_escalate" | "close_failure";
@@ -215,6 +216,11 @@ export interface SurfacePorts {
   repairCoordinator?: RepairCoordinator;
   /** Passed to the gate's `GateContext`. Unset: the gate's command inherits the process's own environment. */
   env?: NodeJS.ProcessEnv;
+  /**
+   * The pull request open for a branch, or null. Asked after every worker or repair session, before any close has
+   * been tried; unset, nothing is looked for.
+   */
+  landed?: (branch: string) => Promise<string | null>;
 }
 
 /**

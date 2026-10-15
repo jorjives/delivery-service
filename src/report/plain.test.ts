@@ -31,6 +31,7 @@ const EVERY_CAUSE: OutcomeCause[] = [
   { kind: "budget", population: "gateMaintenance" },
   { kind: "budget", population: "close" },
   { kind: "budget" },
+  { kind: "landed_outside_closer", pullRequest: "https://github.com/example/project/pull/7" },
 ];
 
 describe("who a stopped task is for", () => {
@@ -47,6 +48,7 @@ describe("who a stopped task is for", () => {
     [{ kind: "repair_gave_up" }, "needs_an_engineer", "engineer"],
     [{ kind: "triage_failure" }, "needs_an_engineer", "engineer"],
     [{ kind: "provisioning" }, "needs_an_engineer", "engineer"],
+    [{ kind: "landed_outside_closer", pullRequest: "https://github.com/example/project/pull/7" }, "needs_your_decision", "owner"],
   ] as const)("puts %j in %s, for the %s", (cause, group, audience) => {
     expect(plainOf(facts(cause))).toMatchObject({ group, audience });
   });
@@ -103,6 +105,20 @@ describe("what kind of stop it was, in fixed words", () => {
   it("carries the agent's own words through untouched, and their absence as null", () => {
     expect(plainOf(facts({ kind: "authority", role: "worker" }, { agentSaid: "Removing it breaks 3 links." })).agentSaid).toBe("Removing it breaks 3 links.");
     expect(plainOf(facts({ kind: "provisioning" }, { agentSaid: null })).agentSaid).toBeNull();
+  });
+});
+
+describe("a task the agent opened a pull request for itself", () => {
+  const PR = "https://github.com/example/project/pull/7";
+
+  it("says plainly what happened and that the work was not landed", () => {
+    expect(plainOf(facts({ kind: "landed_outside_closer", pullRequest: PR })).sentence).toBe(
+      "Needs your attention. The agent opened a pull request for this task itself, so its work was not landed by the harness.",
+    );
+  });
+
+  it("names the pull request in what to do next", () => {
+    expect(plainOf(facts({ kind: "landed_outside_closer", pullRequest: PR })).next).toEqual([`Look at the pull request the agent opened: ${PR}. Close it, or review and merge it yourself.`]);
   });
 });
 
