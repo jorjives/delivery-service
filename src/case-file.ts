@@ -184,12 +184,12 @@ export async function setBaseline(dir: string, baseline: GateReport): Promise<vo
  * history entry — it advances no state, and the log tail must stay the single
  * authority for `deriveStateFromEntry`.
  */
-export function setBaseBranch(dir: string, branch: string): Promise<void> {
+export function setBaseBranch(dir: string, branch: string, startCommit?: string): Promise<void> {
   return setOnce(
     dir,
     "baseBranch",
     (caseJson) => caseJson.header.baseBranch !== null,
-    (caseJson) => ({ ...caseJson, header: { ...caseJson.header, baseBranch: branch } }),
+    (caseJson) => ({ ...caseJson, header: { ...caseJson.header, baseBranch: branch, ...(startCommit === undefined ? {} : { startCommit }) } }),
   );
 }
 

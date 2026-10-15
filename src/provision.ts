@@ -40,22 +40,27 @@ export async function resolveBaseRef(repoPath: string): Promise<{ ref: string; l
  * whole function idempotent: a crash anywhere inside it is recovered by calling
  * it again. Reports whether wreckage was cleared. Also reports the local branch
  * the worktree was started from, which the surface pins in its header for the
- * closer to merge into.
+ * closer to merge into. Also reports the commit the worktree started from,
+ * which the surface pins so the guards judge only what this task changed;
+ * `from` starts it from that pinned commit again when a torn provision is
+ * redone.
  */
 export async function provisionWorktree(
   dir: string,
   repoPath: string,
   worktreePath: string,
   surfaceId: string,
-): Promise<{ restarted: boolean; baseBranch: string }> {
+  from?: string,
+): Promise<{ restarted: boolean; baseBranch: string; startCommit: string }> {
   const branch = branchName(surfaceId);
   try {
     const { ref, localBranch } = await resolveBaseRef(repoPath);
     const removedTree = await tryGit(repoPath, ["worktree", "remove", "--force", "--", worktreePath]);
     await tryGit(repoPath, ["worktree", "prune"]);
     const removedBranch = await tryGit(repoPath, ["branch", "-D", "--", branch]);
-    await git(repoPath, ["worktree", "add", "-b", branch, "--", worktreePath, ref]);
-    return { restarted: removedTree || removedBranch, baseBranch: localBranch };
+    await git(repoPath, ["worktree", "add", "-b", branch, "--", worktreePath, from ?? ref]);
+    const startCommit = await git(worktreePath, ["rev-parse", "HEAD"]);
+    return { restarted: removedTree || removedBranch, baseBranch: localBranch, startCommit };
   } catch (err) {
     throw new ProvisioningFailure(dir, messageOf(err));
   }

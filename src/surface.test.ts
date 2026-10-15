@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { create, load, setBaseline, setOutcome, updateCursor, appendEntry, readRef, deriveBudgetsFromLog, rebuild, writeRef } from "./case-file.js";
 import { initTempRepo } from "./temp-repo.js";
+import { git } from "../tests/helpers.js";
 import { advance, run, triageTrigger } from "./surface.js";
 import { noopCloser } from "./ports.js";
 import { deterministicRouter } from "./router.js";
@@ -467,6 +468,21 @@ describe("advance", () => {
     await provisioned(dir, { "report.tap": PASSING_TAP }, portsWith(unusedAgent()));
 
     expect((await load(dir)).header.baseBranch).toBe("main");
+  });
+
+  it("pins the commit the work started from, and starts from it again after a crash", async () => {
+    const ports = portsWith(unusedAgent());
+    const location = await provisioned(dir, { "report.tap": PASSING_TAP }, ports);
+    const start = (await load(dir)).header.startCommit;
+    expect(start).toBe(git(location.worktreePath, ["rev-parse", "HEAD"]));
+
+    // The base branch moves on, then a crash before the cursor advance re-provisions.
+    git(location.repoPath, ["commit", "-q", "--allow-empty", "-m", "moved on"]);
+    await updateCursor(dir, { state: "PROVISIONING", worktreeRef: "" });
+    await advance(dir, location, ports);
+
+    expect(git(location.worktreePath, ["rev-parse", "HEAD"])).toBe(start);
+    expect((await load(dir)).header.startCommit).toBe(start);
   });
 
   it("re-provisions after a crash without failing on the already-pinned base branch", async () => {

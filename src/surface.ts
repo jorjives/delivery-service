@@ -572,9 +572,10 @@ async function provisioning(
   const worktreePath = worktreeOf(caseFile, location);
   let restarted: boolean;
   let baseBranch: string;
+  let startCommit: string;
   try {
-    ({ restarted, baseBranch } = await provisionWorktree(
-      dir, location.repoPath, worktreePath, caseFile.header.surfaceId,
+    ({ restarted, baseBranch, startCommit } = await provisionWorktree(
+      dir, location.repoPath, worktreePath, caseFile.header.surfaceId, caseFile.header.startCommit,
     ));
   } catch (err) {
     if (!(err instanceof ProvisioningFailure)) throw err;
@@ -585,7 +586,7 @@ async function provisioning(
 
   // Guarded rather than unconditional: provisioning legitimately runs twice
   // when a crash lands before the cursor advance, and the pin is set-once.
-  if (caseFile.header.baseBranch === null) await setBaseBranch(dir, baseBranch);
+  if (caseFile.header.baseBranch === null) await setBaseBranch(dir, baseBranch, startCommit);
 
   // The cursor advance is the commit point for "the worktree exists and belongs
   // to this surface" — provisioning has no history representation.

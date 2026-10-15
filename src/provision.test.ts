@@ -47,7 +47,7 @@ describe("provisionWorktree", () => {
   it("reports a clean first provision as not restarted", async () => {
     const result = await provisionWorktree(dir, repo, tree, "surface-42");
 
-    expect(result).toEqual({ restarted: false, baseBranch: "main" });
+    expect(result).toEqual({ restarted: false, baseBranch: "main", startCommit: git(repo, ["rev-parse", "HEAD"]) });
   });
 
   it("reports a provision that had to clear a leftover worktree as restarted", async () => {
@@ -55,7 +55,20 @@ describe("provisionWorktree", () => {
 
     const result = await provisionWorktree(dir, repo, tree, "surface-42");
 
-    expect(result).toEqual({ restarted: true, baseBranch: "main" });
+    expect(result).toEqual({ restarted: true, baseBranch: "main", startCommit: git(repo, ["rev-parse", "HEAD"]) });
+  });
+
+  it("starts from a given commit, and reports the commit it started from", async () => {
+    const first = git(repo, ["rev-parse", "HEAD"]);
+    await writeFile(join(repo, "later.txt"), "after\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-qm", "later"]);
+
+    const result = await provisionWorktree(dir, repo, tree, "surface-42", first);
+
+    expect(result.startCommit).toBe(first);
+    expect(git(tree, ["rev-parse", "HEAD"])).toBe(first);
+    expect(git(tree, ["rev-parse", "--abbrev-ref", "HEAD"])).toBe("surface/surface-42");
   });
 
   it("reports a mergeable local branch, not a remote-tracking ref, when the repo has an origin", async () => {

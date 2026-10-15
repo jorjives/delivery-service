@@ -176,6 +176,10 @@ export const CaseFileHeader = z.object({
   // The local branch this surface was provisioned from, pinned once at
   // PROVISIONING so a later default-branch change cannot redirect the close.
   baseBranch: z.string().nullable(),
+  // The commit the task's worktree started from, pinned with baseBranch at
+  // provisioning. The guards diff from it, so moving HEAD back cannot hide a
+  // deleted test. Optional: a record made before it was pinned has none.
+  startCommit: z.string().optional(),
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 
