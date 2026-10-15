@@ -47,7 +47,7 @@ Each field of `pack.json` is optional unless noted. Bump `version` when you chan
 | `title` | `string` | The review's title, such as `Code review`. Required. |
 | `summary` | `string` | One sentence saying what it looks for. Required. |
 | `scan` | `object` | The review phase: see below. Required. |
-| `fix` | `object` | The fix phase, optional. If present, it holds `prompt` and `testGlobs`, `protectedGlobs`, `skipMarkers`. Optional. |
+| `fix` | `object` | The fix phase, optional. If present, it holds `prompt` and `testGlobs`, `protectedGlobs`, `skipMarkers`: paths and markers this pack adds to what every run is already judged by (the guards), never ones it could take away. Optional. |
 | `severity` | `object` | What each of `low`, `medium`, `high`, `critical` means for this pack, one plain sentence each, by consequence. The reviewer is told these. Required. |
 | `hold` | `object` | `{ "atOrAbove": "high" }`: fixes of problems at or above this severity wait for sign-off. `null`, the default, holds nothing. Optional. |
 

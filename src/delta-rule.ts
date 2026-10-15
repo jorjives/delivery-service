@@ -1,3 +1,4 @@
+import { isGuard } from "./guards.js";
 import type { GateReport, DeltaResult, DeltaOptions, NewFailure } from "./schema.js";
 
 export function computeDelta(
@@ -30,17 +31,17 @@ export function computeDelta(
     }
   }
 
-  if (options?.failOnNewAssertions) {
-    const baselineIds = new Set(baseline.assertions.map((a) => a.id));
-    for (const checkAssertion of check.assertions) {
-      if (!baselineIds.has(checkAssertion.id) && checkAssertion.outcome !== "PASS") {
-        newFailures.push({
-          id: checkAssertion.id,
-          baselineOutcome: "ABSENT",
-          checkOutcome: checkAssertion.outcome,
-          detail: checkAssertion.detail,
-        });
-      }
+  // A guard's result is never at baseline, so it only ever arrives new: it counts whatever the gate's own option says.
+  const baselineIds = new Set(baseline.assertions.map((a) => a.id));
+  for (const checkAssertion of check.assertions) {
+    const counted = options?.failOnNewAssertions === true || isGuard(checkAssertion.id);
+    if (counted && !baselineIds.has(checkAssertion.id) && checkAssertion.outcome !== "PASS") {
+      newFailures.push({
+        id: checkAssertion.id,
+        baselineOutcome: "ABSENT",
+        checkOutcome: checkAssertion.outcome,
+        detail: checkAssertion.detail,
+      });
     }
   }
 

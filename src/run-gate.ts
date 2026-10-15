@@ -2,8 +2,10 @@ import { load, setBaseline, appendEntry, writeRef } from "./case-file.js";
 import { resolveGate } from "./resolve-gate.js";
 import { computeDelta } from "./delta-rule.js";
 import { MissingBaseline } from "./errors.js";
+import { guardedGate, guardBase } from "./task-guards.js";
 import type { GateContext } from "./command-gate.js";
 import type { SurfaceLocation } from "./ports.js";
+import type { AcceptedSettings } from "./guards.js";
 import type { CaseFileHeader, GateEntry, GateReport, DeltaResult, NewFailure } from "./schema.js";
 
 function gateContext(header: CaseFileHeader, worktreePath: string, env?: NodeJS.ProcessEnv): GateContext {
@@ -12,9 +14,12 @@ function gateContext(header: CaseFileHeader, worktreePath: string, env?: NodeJS.
 
 // The gate measures the worktree but is loaded from the repo root: a relative
 // custom `modulePath` resolved against the worktree would put the gate in reach
-// of the very roles it judges.
-function gateOf(header: CaseFileHeader, location: SurfaceLocation) {
-  return resolveGate(header.gateRef, location.repoPath);
+// of the very roles it judges. The guards join every gate's result, minus the
+// settings a gate repair was accepted as changing (Task 8A passes those).
+function gateOf(header: CaseFileHeader, location: SurfaceLocation, accepted: AcceptedSettings = {}) {
+  const gate = resolveGate(header.gateRef, location.repoPath);
+  const base = guardBase(header);
+  return base === null ? gate : guardedGate(gate, base, accepted);
 }
 
 /**

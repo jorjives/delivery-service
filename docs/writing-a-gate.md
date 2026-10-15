@@ -258,3 +258,11 @@ npm run demo:gate-slice-1   # the verdict rule, ABSENT included
 npm run demo:gate-slice-4   # resolving a gateRef into a gate
 npm run demo:gate-slice-5   # a baseline and its checks persisted in a case file
 ```
+
+Whatever your check reports, the harness adds its own results: whether the work deleted or
+renamed a test, changed how tests run, added a skip marker to a test, or hid a test setting from
+git. "Changed how tests run" includes `.gitignore` (it decides which files the other guards can
+see) and the project's `Makefile` or equivalent build file (it can redefine what a `test` target
+actually runs) alongside the obvious test-runner configs and CI files — protected on every run,
+not only inside a pack's own fix. They are worked out from the commit the task started from, and a
+failure among them fails the round even when your check passes.

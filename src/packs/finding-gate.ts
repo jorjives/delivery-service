@@ -1,14 +1,11 @@
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Gate, GateContext } from "../command-gate.js";
-import { errorReport, messageOf } from "../gate-support.js";
+import { errorReport } from "../gate-support.js";
 import { resolveGate } from "../resolve-gate.js";
 import type { Assertion, GateRef, GateReport } from "../schema.js";
-import { git } from "../git-exec.js";
-import { guardAssertions, ignoredAssertions } from "../guards.js";
 import { checkFinding } from "./finding-check.js";
 import { FixTask } from "./fix-task.js";
-import { activeGuards, verifyOf } from "../task-guards.js";
 
 /** This module's own path: loaded from the installed package, outside every working copy, so a fix's agent can neither read nor change it. */
 export const FINDING_GATE_MODULE = fileURLToPath(import.meta.url);
@@ -45,48 +42,25 @@ function regressionCheck(ctx: GateContext): { task: FixTask; gate: Gate | null; 
  * A fix's check: the project's own (its tests), and, unless the problem is
  * tests only, one more result saying whether the problem is gone. That result
  * is absent at baseline, so the delta rule's new-assertion option makes a FAIL
- * count and a PASS harmless. The guard results join the check, absent at
- * baseline except the ignored-file ones already there, which `baseline`
- * records. A check of the problem that cannot run is an error, never a pass.
- * In a project with no tests there is no project check: only the problem's own result and the guards are judged.
+ * count and a PASS harmless. A check of the problem that cannot run is an
+ * error, never a pass. In a project with no tests there is no project check:
+ * only the problem's own result is judged. The guards join this check as they
+ * join every run's (`guardedGate`).
  */
 const findingGate: Gate = {
   async baseline(ctx) {
     const resolved = regressionCheck(ctx);
     if (!("gate" in resolved)) return resolved;
-    const report = resolved.gate === null ? NO_TESTS : await resolved.gate.baseline(resolved.ctx);
-    if (report.status === "ERROR") return report;
-    // After the project's own run, so what that run leaves behind is part of the baseline, not a new failure.
-    try {
-      return { ...report, assertions: [...report.assertions, ...(await ignoredAssertions(ctx.worktreePath, activeGuards(ctx.taskDef)))] };
-    } catch (err) {
-      return errorReport(`which files git ignores could not be checked: ${messageOf(err)}`);
-    }
+    return resolved.gate === null ? NO_TESTS : resolved.gate.baseline(resolved.ctx);
   },
   async check(ctx) {
     const resolved = regressionCheck(ctx);
     if (!("gate" in resolved)) return resolved;
-    const { task, gate } = resolved;
-    if (!ctx.baseBranch) return errorReport("the branch this fix started from was not recorded, so changes to the project's tests cannot be checked");
-    // The guards and the problem are judged before the tests run, so what is judged is the agent's change, not what a test run leaves behind.
-    let guards: Assertion[];
-    try {
-      const base = await git(ctx.worktreePath, ["merge-base", "HEAD", ctx.baseBranch]);
-      guards = await guardAssertions(ctx.worktreePath, base, activeGuards(ctx.taskDef), verifyOf(ctx.taskDef, ctx.gateRef));
-    } catch (err) {
-      return errorReport(`whether this fix changed the project's tests could not be checked: ${messageOf(err)}`);
-    }
-    const found = await resolvedAssertion(task, ctx.worktreePath);
+    const found = await resolvedAssertion(resolved.task, ctx.worktreePath);
     if ("error" in found) return errorReport(`the check of this problem could not run: ${found.error}`);
-    const report = gate === null ? NO_TESTS : await gate.check(resolved.ctx);
-    if (report.status === "ERROR") {
-      // Even if the project's check can't run, return the guard assertions if any failed
-      if (guards.some((a) => a.outcome === "FAIL")) {
-        return { status: "FAIL", assertions: [...report.assertions, ...guards], detail: report.detail };
-      }
-      return report;
-    }
-    const assertions = [...report.assertions, ...found, ...guards];
+    const report = resolved.gate === null ? NO_TESTS : await resolved.gate.check(resolved.ctx);
+    if (report.status === "ERROR") return report;
+    const assertions = [...report.assertions, ...found];
     return { ...report, status: assertions.some((a) => a.outcome === "FAIL") ? "FAIL" : report.status, assertions };
   },
 };

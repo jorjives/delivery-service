@@ -2,12 +2,17 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
+import { rmSync, writeFileSync } from "node:fs";
 import { create, load, readRef, setBaseBranch } from "./case-file.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
 import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 import { withoutAt } from "./without-at.js";
 import type { SurfaceLocation } from "./ports.js";
+import { initTempRepo } from "./temp-repo.js";
+import { cleanGitEnv } from "./git-env.js";
+import { TESTS_GUARD, EDIT_GUARD } from "./guards.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -272,5 +277,51 @@ describe("what a gate is told", () => {
     const report = await recordBaseline(dir, { repoPath, worktreePath: await mkdtemp(join(tmpdir(), "run-gate-tree-")) });
 
     expect(report.assertions[0]?.detail).toBe("main");
+  });
+});
+
+describe("the guards on every run", () => {
+  const TEST = "import { test } from 'node:test';\ntest('adds', () => {});\n";
+
+  async function gitSurface(taskDef: Record<string, unknown> = { intent: "fix bug" }): Promise<string> {
+    const repo = initTempRepo("run-gate-guards-", { "report.tap": GREEN, "sum.test.js": TEST });
+    const startCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, env: cleanGitEnv() }).toString().trim();
+    surfaceDir = await mkdtemp(join(tmpdir(), "run-gate-case-"));
+    location = { repoPath: repo, worktreePath: repo };
+    await create(surfaceDir, { surfaceId: "surface-1", taskDef, gateRef: TAP_GATE, startCommit }, budgets);
+    await recordBaseline(surfaceDir, location);
+    return repo;
+  }
+
+  it("refuses a deleted test, naming it, though the project's check still passes", async () => {
+    const repo = await gitSurface();
+    rmSync(join(repo, "sum.test.js"));
+    const { delta } = await runCheck(surfaceDir, location, 1);
+    expect(delta.pass).toBe(false);
+    expect(delta.newFailures.map((failure) => failure.id)).toEqual([TESTS_GUARD]);
+    expect(delta.newFailures[0]?.detail).toContain("sum.test.js deleted");
+  });
+
+  it("accepts an edit to an existing test by default", async () => {
+    const repo = await gitSurface();
+    writeFileSync(join(repo, "sum.test.js"), TEST.replace("adds", "adds two numbers"));
+    expect((await runCheck(surfaceDir, location, 1)).delta.pass).toBe(true);
+  });
+
+  it("refuses that edit when the task adds the guard, and allows a deletion when the task turns its guard off", async () => {
+    const strict = await gitSurface({ intent: "fix bug", guards: { add: ["tests-unchanged"] } });
+    writeFileSync(join(strict, "sum.test.js"), TEST.replace("adds", "adds two numbers"));
+    expect((await runCheck(surfaceDir, location, 1)).delta.newFailures.map((failure) => failure.id)).toEqual([EDIT_GUARD]);
+
+    const relaxed = await gitSurface({ intent: "drop the old tests", guards: { off: ["tests-untouched"] } });
+    rmSync(join(relaxed, "sum.test.js"));
+    expect((await runCheck(surfaceDir, location, 1)).delta.pass).toBe(true);
+  });
+
+  it("judges a run whose record pins no start commit by its gate alone", async () => {
+    await newSurface();
+    await tap(GREEN);
+    await recordBaseline(surfaceDir, location);
+    expect((await runCheck(surfaceDir, location, 1)).delta.pass).toBe(true);
   });
 });

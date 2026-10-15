@@ -284,8 +284,9 @@ A password, key or token a review finds is never shown: not in the review, `deli
 
 ## A fix may not weaken your tests
 
-A fix that passes by removing, changing or switching off the tests that judge it is refused. Each
-fix is compared with your project as it was when the fix started, and it is refused if it:
+This holds for every task the harness runs, not only a review's fixes: a task that passes by
+removing, changing or switching off the tests that judge it is refused. Each task is compared with
+your project as it was when it started, and it is refused if it:
 
 - deletes or changes an existing test file (adding a new test is welcome);
 - adds a marker that skips a test, such as `.skip(`, `xit(`, `@Ignore` or `pytest.mark.skip`;

@@ -42,6 +42,9 @@ multi-surface concerns are out of scope here.
 6. **The agent runs as the operator's Claude Code would.** Their settings, CLAUDE.md,
    skills, plugins, hooks and MCP servers load, and every tool is available. The harness
    appends its context to Claude Code's own system prompt; it never replaces it.
+7. **Prohibitions are checks, not prose.** What the agent may not do to the tests is refused by a
+   guard at acceptance, by name, on every run; the agent is told what will judge its work, not
+   given a list of rules to obey.
 
 ## State machine
 

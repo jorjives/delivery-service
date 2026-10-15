@@ -270,3 +270,18 @@ describe("computeDelta", () => {
     expect(result.class).toBe("error");
   });
 });
+
+describe("a guard's result", () => {
+  it("counts when new and failing, even for a gate that does not count new assertions", () => {
+    const baseline = { status: "PASS" as const, assertions: [{ id: "a", outcome: "PASS" as const, detail: "ok" }] };
+    const check = { status: "FAIL" as const, assertions: [{ id: "a", outcome: "PASS" as const, detail: "ok" }, { id: "guard:no-skips", outcome: "FAIL" as const, detail: "Refused" }] };
+    const delta = computeDelta(baseline, check);
+    expect(delta.pass).toBe(false);
+    expect(delta.newFailures.map((failure) => failure.id)).toEqual(["guard:no-skips"]);
+  });
+
+  it("does not count other new assertions without the option", () => {
+    const baseline = { status: "PASS" as const, assertions: [] };
+    expect(computeDelta(baseline, { status: "FAIL", assertions: [{ id: "new-test", outcome: "FAIL", detail: "broke" }] }).pass).toBe(true);
+  });
+});

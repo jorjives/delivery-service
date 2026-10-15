@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DEFAULT_GUARDS, guardListsFor } from "./guards.js";
 import { fixTaskFor } from "./packs/fix-task.js";
 import { sampleFinding } from "./packs/review-fixtures.js";
 import type { GateRef } from "./schema.js";
-import { activeGuards, guardChanges, verifyOf } from "./task-guards.js";
+import { activeGuards, guardChanges, verifyOf, guardedGate } from "./task-guards.js";
+import type { Gate, GateContext } from "./command-gate.js";
+import { initTempRepo } from "./temp-repo.js";
+import { git } from "../tests/helpers.js";
 
 const NPM: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
 const PROJECT_TESTS: GateRef = { type: "command", command: "node --test", parseMode: "exitcode" };
@@ -43,5 +49,34 @@ describe("the check whose files the guards protect", () => {
     expect(verifyOf({ intent: "add a page" }, NPM)).toEqual(NPM);
     expect(verifyOf(fixTaskFor("code", sampleFinding(), PROJECT_TESTS), NPM)).toEqual(PROJECT_TESTS);
     expect(verifyOf(fixTaskFor("code", sampleFinding(), null), NPM)).toBeNull();
+  });
+});
+
+describe("a gate joined to the guards", () => {
+  const passing: Gate = { baseline: async () => ({ status: "PASS", assertions: [] }), check: async () => ({ status: "PASS", assertions: [] }) };
+  const broken: Gate = { ...passing, check: async () => ({ status: "ERROR", assertions: [], detail: "could not run" }) };
+  const ctxOf = (worktreePath: string): GateContext => ({ worktreePath, taskDef: { intent: "x" }, gateRef: NPM });
+
+  it("fails, with the guard's finding, when the check could not run but a guard failed", async () => {
+    const repo = initTempRepo("task-guards-", { "a.test.js": "test\n" });
+    const start = git(repo, ["rev-parse", "HEAD"]);
+    rmSync(join(repo, "a.test.js"));
+    const report = await guardedGate(broken, { commit: start }).check(ctxOf(repo));
+    expect(report.status).toBe("FAIL");
+    // Every active guard reports, pass or fail (guardAssertions), so the joined
+    // report carries all of them; what matters here is that the one that failed is among them.
+    expect(report.assertions.map((a) => a.id)).toContain("guard:tests-untouched");
+  });
+
+  it("is an error, never a pass, when the guards cannot be worked out", async () => {
+    const notGit = mkdtempSync(join(tmpdir(), "task-guards-"));
+    expect((await guardedGate(passing, { commit: "HEAD" }).check(ctxOf(notGit))).status).toBe("ERROR");
+  });
+
+  it("judges from where the work branched, for a record that pinned only its base branch", async () => {
+    const repo = initTempRepo("task-guards-", { "a.test.js": "test\n" });
+    git(repo, ["checkout", "-qb", "work"]);
+    rmSync(join(repo, "a.test.js"));
+    expect((await guardedGate(passing, { branch: "main" }).check(ctxOf(repo))).status).toBe("FAIL");
   });
 });
