@@ -4,7 +4,7 @@ This guide gets you from nothing to a first successful agent invocation for any
 of the three roles a run dispatches: the **worker**, **gate-maintenance** and
 **triage**. You do not need to read any source to follow it. A fourth role, the
 **scanner**, reviews a project for `delivery review`; it is configured by the
-review, not by you, and is read-only exactly as triage is.
+review, not by you, and works in a scratch copy that is thrown away, as triage does.
 
 ## What a role is
 
@@ -217,27 +217,27 @@ same kind of role as the other two: one configuration, the same `invoke`.
 ### The reference configuration
 
 ```ts
-import { TriageEnvelope, READ_ONLY_TOOLS, type RoleConfig } from "delivery-service";
+import { TriageEnvelope, type RoleConfig } from "delivery-service";
 
 export const myTriage: RoleConfig<TriageEnvelope> = {
   role: "triage",
   systemPromptFragment: [
-    "You are triage on a gated delivery harness: a read-only classifier.",
+    "You are triage on a gated delivery harness: you decide what happens after a setback.",
     "Read the setback, the remaining budgets and what earlier rounds decided, then choose what happens next.",
     "Your diagnosis is a hypothesis for the next session to test, not an established fact.",
   ].join("\n"),
   envelopeSchema: TriageEnvelope,
-  allowedTools: [...READ_ONLY_TOOLS], // Read, Glob, Grep
 };
 ```
 
 It is also exported ready-made as `triageRoleConfig`.
 
-**Triage's tool list is read-only by design. It is not a setting to widen.**
-Triage must never change the thing it is judging: the gate is the only proof
-that work is good, and a triage session that could edit the worktree could make
-a failure disappear rather than explain it. Change the sentences if you like;
-keep the tools to `Read`, `Glob` and `Grep`.
+**Triage works in a disposable copy.** Triage must never change the thing it is
+judging: the gate is the only proof that work is good. Triage has every tool a
+session has, so the harness gives it a copy of the task's working copy as it
+stands, uncommitted changes included, and throws the copy away when triage
+replies. It can read, run the check and try things there; none of it reaches the
+task's work.
 
 ### When triage is asked
 

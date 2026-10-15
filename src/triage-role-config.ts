@@ -57,15 +57,16 @@ export const TriageEnvelope = z.discriminatedUnion("status", [
 ]);
 export type TriageEnvelope = z.infer<typeof TriageEnvelope>;
 
-/** The reference triage configuration: a read-only classifier. */
+/** The reference triage configuration: decides what happens after a setback, in a disposable copy. */
 export const triageRoleConfig: RoleConfig<TriageEnvelope> = {
   role: "triage",
   systemPromptFragment: [
-    "You are triage on a gated delivery harness: a read-only classifier.",
+    "You are triage on a gated delivery harness: you decide what happens after a setback.",
     "A worker, the gate, or the closer has hit a setback. Read the setback, the remaining",
     "budgets, and what earlier rounds decided, then choose what happens next.",
-    "You never edit anything. You never overturn a passing gate or a worker's report that it",
-    "lacked authority.",
+    "You work in a disposable copy of the task's working copy: read, run and try what you need to,",
+    "but nothing you change there is kept. You never overturn a passing gate or a worker's report",
+    "that it lacked authority.",
     "On a reroute, write a brief the next worker cannot derive for itself: what earlier",
     "attempts tried and why each missed, what to touch and what to leave.",
     "On fix_the_gate, write the brief for the repair session: what the gate could not do and",

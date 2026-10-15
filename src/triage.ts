@@ -1,4 +1,5 @@
 import { deterministicRouter } from "./router.js";
+import { inDisposableCopy } from "./disposable-copy.js";
 import { SETBACK_LABELS } from "./escalation-packet.js";
 import { CHECK_GUARD, settingsChanged, type AcceptedSettings } from "./guards.js";
 import { activeGuards, guardBase, verifyOf } from "./task-guards.js";
@@ -106,7 +107,8 @@ export function createAgentTriage(agent: AgentPort): TriagePort {
         return deterministicRouter.triage(input);
       }
       if (!needsJudgement(input)) return deterministicRouter.triage(input);
-      const terminus = await agent.invoke({ role: "triage" }, input.ctx);
+      // Every tool is available, so triage judges in a copy: whatever it tries there, the work it judges is untouched.
+      const terminus = await inDisposableCopy(input.ctx.worktreePath, (copy) => agent.invoke({ role: "triage" }, { ...input.ctx, worktreePath: copy }));
       const verdict = toTriageVerdict(terminus, input);
       // Only ever read here: a lone settings-guard round, answered reroute, said yes. Nothing else writes an
       // acceptance, and a round that also failed for a real reason is never in reach of this at all.

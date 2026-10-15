@@ -76,7 +76,7 @@ config it is handed does.
 | Role | Blast radius | Payload on the happy path | Notable statuses |
 |---|---|---|---|
 | **worker** | edits the worktree | completion note | `completed`, `escalate(category)` |
-| **triage** | read-only over the case file | `SharpenedBrief` / `EscalationPacket` | `reroute`, `escalate`, `fix_the_gate`, `retry_close`, `abort` |
+| **triage** | works in a disposable copy of the working copy; nothing it changes is kept | `SharpenedBrief` / `EscalationPacket` | `reroute`, `escalate`, `fix_the_gate`, `retry_close`, `abort` |
 | **gate-maintenance** | edits environment/harness, never assertions | repair note | `completed`, `escalate` |
 | **scanner** | read-only over the project's last commit; no case file | `ScanEnvelope` (per pack) | none: a list of problems, never a status |
 

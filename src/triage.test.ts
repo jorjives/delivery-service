@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { writeFileSync, mkdtempSync } from "node:fs";
+import { writeFileSync, mkdtempSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createAgentTriage, needsJudgement, toTriageVerdict } from "./triage.js";
@@ -12,7 +12,7 @@ import type { BudgetSet, CaseFile, GateRef } from "./schema.js";
 import { DID_NOT_COMPLETE } from "./agent-invoke.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
 
-const ctx: AgentContext = { worktreePath: "/w", dir: "/d", sessionKey: "triage-0" };
+const ctx: AgentContext = { worktreePath: initTempRepo("triage-", { "a.txt": "a\n" }), dir: "/d", sessionKey: "triage-0" };
 
 function budgets(correctionUsed: number, closeUsed = 0): BudgetSet {
   return {
@@ -85,8 +85,21 @@ describe("createAgentTriage", () => {
   it("asks the triage agent about a stuck worker with budget left, with the round's context", async () => {
     const agent = triageAgent({ status: "reroute", rationale: "worth one more try", payload: brief, usage: {} });
     const verdict = await createAgentTriage(agent).triage(input({}));
-    expect(agent.calls).toEqual([ctx]);
+    expect(agent.calls).toEqual([{ ...ctx, worktreePath: expect.any(String) }]);
+    expect(agent.calls[0]?.worktreePath).not.toBe(ctx.worktreePath);
     expect(verdict).toEqual({ verdict: "reroute", rationale: "worth one more try", artifact: brief, usage: {} });
+  });
+
+  it("lets the triage agent change nothing in the task's working copy", async () => {
+    const agent = fakeAgentPort({
+      triage: (c) => {
+        expect(readFileSync(join(c.worktreePath, "a.txt"), "utf-8")).toBe("a\n");
+        writeFileSync(join(c.worktreePath, "a.txt"), "triage was here\n");
+        return Promise.resolve({ status: "reroute", rationale: "worth one more try", payload: brief, usage: {} });
+      },
+    });
+    await createAgentTriage(agent).triage(input({}));
+    expect(readFileSync(join(ctx.worktreePath, "a.txt"), "utf-8")).toBe("a\n");
   });
 
   it("routes a plain gate failure with more than one slot left with no agent call and no artefact", async () => {
@@ -233,7 +246,7 @@ describe("the last correction slot after a gate failure", () => {
   ] as TriageEnvelope[])("asks the agent on the last slot and acts on its $status answer", async (reply) => {
     const agent = triageAgent({ ...reply, usage: {} });
     const verdict = await createAgentTriage(agent).triage(gateFail(2));
-    expect(agent.calls).toEqual([ctx]);
+    expect(agent.calls).toEqual([{ ...ctx, worktreePath: expect.any(String) }]);
     expect(verdict).toEqual({ verdict: reply.status, rationale: reply.rationale, artifact: reply.payload, usage: {} });
   });
 });
@@ -275,7 +288,7 @@ describe("a gate error once rechecks are spent", () => {
   it("carries the agent's repair brief through with its fix_the_gate verdict", async () => {
     const agent = triageAgent({ status: "fix_the_gate", rationale: "the runner is missing", payload: brief, usage: {} });
     const verdict = await createAgentTriage(agent).triage(gateError(0));
-    expect(agent.calls).toEqual([ctx]);
+    expect(agent.calls).toEqual([{ ...ctx, worktreePath: expect.any(String) }]);
     expect(verdict).toEqual({ verdict: "fix_the_gate", rationale: "the runner is missing", artifact: brief, usage: {} });
   });
 

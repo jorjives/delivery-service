@@ -69,9 +69,14 @@ describe("triageRoleConfig", () => {
     expect(() => validateRoleConfig(triageRoleConfig)).not.toThrow();
   });
 
-  it("tells the session it is a read-only classifier and that its diagnosis is a hypothesis", () => {
-    expect(triageRoleConfig.systemPromptFragment).toContain("read-only");
+  it("tells the session its diagnosis is a hypothesis", () => {
     expect(triageRoleConfig.systemPromptFragment).toContain("hypothesis");
     expect(triageRoleConfig.systemPromptFragment).toContain("fix_the_gate");
+  });
+
+  it("tells triage it works in a copy that is thrown away, and no longer that it is read-only", () => {
+    expect(triageRoleConfig.systemPromptFragment).toContain("You work in a disposable copy of the task's working copy");
+    expect(triageRoleConfig.systemPromptFragment).not.toContain("read-only");
+    expect(triageRoleConfig.systemPromptFragment).not.toContain("You never edit anything");
   });
 });

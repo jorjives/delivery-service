@@ -364,7 +364,7 @@ Most non-pass events need no judgement. Split it:
 
 ### Recoverability
 
-Triage is read-only over the case file and produces a verdict with no side effect
+Triage works in a disposable copy, so it leaves nothing behind, and produces a verdict with no side effect
 until the harness acts. The transition (record verdict + act) is the commit point,
 exactly like the gate: a crash before recording re-runs triage harmlessly; a crash
 after reads the recorded verdict and proceeds.
