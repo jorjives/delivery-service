@@ -36,9 +36,10 @@ multi-surface concerns are out of scope here.
    disk alone.
 4. **Every state transition is a commit point.** Node actions are idempotent under
    replay, so re-running a node on resume is always safe.
-5. **The gate is out of the worker's reach.** Whatever an agent can freely edit, it
-   can neuter. The gate definition and assertion set are pinned by the harness, not
-   discovered from inside the worktree.
+5. **The gate is out of the agent's reach to alter, never out of its sight.** The agent is told
+   what the check is and may run it. The gate definition is pinned by the harness and loaded from
+   the main checkout, a custom gate's module is verified unchanged on every round, and the guards
+   refuse a change to how tests run.
 6. **The agent runs as the operator's Claude Code would.** Their settings, CLAUDE.md,
    skills, plugins, hooks and MCP servers load, and every tool is available. The harness
    appends its context to Claude Code's own system prompt; it never replaces it.

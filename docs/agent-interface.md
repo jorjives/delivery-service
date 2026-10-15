@@ -108,8 +108,9 @@ only *values*, never the order.
 The template per role, every slot read from the case file:
 
 ```
-[ system-prompt fragment ]     # role identity + domain context (see below)
+[ appended context ]           # role context + domain + agent.append, appended to Claude Code's own system prompt
 [ task_def ]                   # original intent, from the immutable header
+[ acceptance ]                 # worker and gate maintenance: the check and how to run it, the guards, the landing boundary
 [ distilled brief ]            # SharpenedBrief on a reroute, raw delta otherwise
 [ verbatim gate evidence ]     # the newly-failing assertions, unparaphrased
 [ setback ]                    # triage only: trigger, used/max budgets, setback evidence, prior triage rationales
@@ -121,6 +122,10 @@ The template per role, every slot read from the case file:
   drop a slot. This is what keeps the envelope instruction unconditional: if a
   project owned the template, it could tell a worker *not* to emit an envelope, and
   `INCOMPLETE_TERMINUS` would stop meaning "crash".
+- **The Acceptance slot tells the agent what will judge it.** The check's command (or
+  module) and how its result is read, the guards the task is judged by, and the
+  landing boundary, word for word. The agent may read and run the check; it is kept
+  honest by the integrity check and the guards, not by being hidden.
 - **The brief is rendered as labelled fields** (problem, dead ends, scope, references, diagnosis), with the diagnosis labelled as a hypothesis. Worker and gate-maintenance prompts carry no setback slot.
 - **The domain system-prompt fragment lives in the immutable header**, alongside
   `task_def` and `gate_ref`. It is pinned run-identity ("this is a Python service,

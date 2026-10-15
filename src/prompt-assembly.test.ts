@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { create, load, appendEntry, writeRef, initialCaseFile } from "./case-file.js";
-import { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE } from "./prompt-assembly.js";
+import { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE, LANDING_BOUNDARY, type PromptEvidence } from "./prompt-assembly.js";
 import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { triageRoleConfig } from "./triage-role-config.js";
@@ -50,7 +50,7 @@ describe("assemblePrompt", () => {
     const caseFile = await load(dir);
     const { prompt } = assemblePrompt(caseFile, workerRoleConfig, await resolveEvidence(dir, caseFile));
     expect(prompt).toContain("add a greeting endpoint");
-    const order = ["## Task", "## Brief", "## Gate evidence", "## Reply format"];
+    const order = ["## Task", "## Acceptance", "## Brief", "## Gate evidence", "## Reply format"];
     const positions = order.map((heading) => prompt.indexOf(heading));
     expect(positions.every((p) => p >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
@@ -114,7 +114,50 @@ describe("assemblePrompt", () => {
   });
 });
 
-describe("worker and gate-maintenance prompts are unchanged by triage", () => {
+describe("the Acceptance section", () => {
+  const caseFileWith = (header: Partial<Parameters<typeof initialCaseFile>[0]>) =>
+    initialCaseFile({ surfaceId: "s", taskDef: { intent: "add a greeting" }, gateRef, ...header }, budgets);
+  const acceptanceOf = (prompt: string): string => prompt.slice(prompt.indexOf("## Acceptance"), prompt.indexOf("## Brief"));
+  const NOTHING: PromptEvidence = { brief: null, newFailures: [], setback: null };
+
+  it("comes straight after the task, for the worker and for gate maintenance, and never for triage", () => {
+    for (const roleCfg of [workerRoleConfig, gateMaintenanceRoleConfig]) {
+      const { prompt } = assemblePrompt(caseFileWith({}), roleCfg, NOTHING);
+      expect(prompt.indexOf("## Task")).toBeLessThan(prompt.indexOf("## Acceptance"));
+      expect(prompt.indexOf("## Acceptance")).toBeLessThan(prompt.indexOf("## Brief"));
+    }
+    expect(assemblePrompt(caseFileWith({}), triageRoleConfig, NOTHING).prompt).not.toContain("## Acceptance");
+  });
+
+  it("names the check and how to run it, and no longer says it is hidden", () => {
+    const acceptance = acceptanceOf(assemblePrompt(caseFileWith({}), workerRoleConfig, NOTHING).prompt);
+    expect(acceptance).toContain("the command `cat report.tap`, run in this working copy");
+    expect(acceptance).toContain("each test's own result is read from its TAP output");
+    expect(acceptance).toContain("You may read what it runs and run it yourself.");
+    expect(acceptance).not.toMatch(/cannot see|hidden/);
+  });
+
+  it("names a check of the project's own by its module, and says it is verified unchanged", () => {
+    const acceptance = acceptanceOf(assemblePrompt(caseFileWith({ gateRef: { type: "custom", modulePath: "./checks/gate.mjs" } }), workerRoleConfig, NOTHING).prompt);
+    expect(acceptance).toContain("the module `./checks/gate.mjs` in the project's main folder");
+    expect(acceptance).toContain("verified unchanged");
+  });
+
+  it("states the guards the task is judged by, in one paragraph, and only those", () => {
+    const byDefault = acceptanceOf(assemblePrompt(caseFileWith({}), workerRoleConfig, NOTHING).prompt);
+    expect(byDefault).toContain("no existing test deleted or renamed; no change to how tests run");
+    expect(byDefault).not.toContain("no existing test edited");
+    const strict = acceptanceOf(assemblePrompt(caseFileWith({ taskDef: { intent: "x", guards: { add: ["tests-unchanged"] } } }), workerRoleConfig, NOTHING).prompt);
+    expect(strict).toContain("no existing test edited");
+  });
+
+  it("ends with the landing boundary, word for word", () => {
+    expect(LANDING_BOUNDARY).toBe("Your branch is the deliverable. The harness merges or opens a PR after acceptance. Do not merge, push, or open a PR, even if a skill says to.");
+    expect(acceptanceOf(assemblePrompt(caseFileWith({}), workerRoleConfig, NOTHING).prompt).trim().endsWith(LANDING_BOUNDARY)).toBe(true);
+  });
+});
+
+describe("worker and gate-maintenance prompts carry no setback", () => {
   it("renders the worker prompt exactly as before", async () => {
     await appendEntry(dir, { t: "dispatch", role: "worker", attempt: 1, sessionKey: "worker-1-0" });
     await appendEntry(dir, {
@@ -128,6 +171,13 @@ describe("worker and gate-maintenance prompts are unchanged by triage", () => {
       {
         "intent": "add a greeting endpoint"
       }
+
+      ## Acceptance
+      Your work is judged by the project's check: the command \`cat report.tap\`, run in this working copy, where each test's own result is read from its TAP output. You may read what it runs and run it yourself. A check that passed before your work must still pass.
+
+      The harness also checks your change against the commit this task started from: no existing test deleted or renamed; no change to how tests run (test-runner settings, CI files, the test command, .gitignore, and the Makefile or equivalent build file, since each can hide or redefine what the tests do); no new skip or only marker added to a test file; no test setting, or test that switches others off, left out of git. A failure names what it found.
+
+      Your branch is the deliverable. The harness merges or opens a PR after acceptance. Do not merge, push, or open a PR, even if a skill says to.
 
       ## Brief
       No distilled brief — work from the task and the gate evidence below.
@@ -202,6 +252,13 @@ describe("worker and gate-maintenance prompts are unchanged by triage", () => {
       {
         "intent": "add a greeting endpoint"
       }
+
+      ## Acceptance
+      Your work is judged by the project's check: the command \`cat report.tap\`, run in this working copy, where each test's own result is read from its TAP output. You may read what it runs and run it yourself. A check that passed before your work must still pass.
+
+      The harness also checks your change against the commit this task started from: no existing test deleted or renamed; no change to how tests run (test-runner settings, CI files, the test command, .gitignore, and the Makefile or equivalent build file, since each can hide or redefine what the tests do); no new skip or only marker added to a test file; no test setting, or test that switches others off, left out of git. A failure names what it found.
+
+      Your branch is the deliverable. The harness merges or opens a PR after acceptance. Do not merge, push, or open a PR, even if a skill says to.
 
       ## Brief
       No distilled brief — work from the task and the gate evidence below.
