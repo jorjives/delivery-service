@@ -196,6 +196,9 @@ export const CaseFileHeader = z.object({
   // round, so a gate edited mid-run fails the round. Absent for a command gate,
   // whose command the guards already compare, and for older records.
   gateDigest: z.string().optional(),
+  // The write fence the run started with, as probed before its first session.
+  // A resumed run keeps it. Absent on a record made before the fence existed.
+  fence: FenceRecord.optional(),
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 

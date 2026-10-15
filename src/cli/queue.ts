@@ -1,5 +1,5 @@
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { RunHeader, SlotOutcome, TaskDef, UsageLimit } from "../schema.js";
+import type { FenceRecord, RunHeader, SlotOutcome, TaskDef, UsageLimit } from "../schema.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { createRunBreaker, repairsUsed, tripsOf, type RunBreaker } from "../breaker.js";
 import { RunHalted } from "../errors.js";
@@ -8,7 +8,7 @@ import { createRunFile, loadRunFile, setRunOutcome } from "../run-file.js";
 import { agentSession } from "./agent-session.js";
 import { structureTask, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
-import { dispatchRepair, resumeRun, startRun } from "./drive.js";
+import { dispatchRepair, fenceAtStart, resumeRun, startRun } from "./drive.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
 import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "../run-location.js";
@@ -202,6 +202,10 @@ export async function runQueue(
   let session: Promise<SessionEnvironment> | undefined;
   const agent = (): Promise<SessionEnvironment> => (session ??= agentSession(ctx.env));
 
+  // Probed once for the whole list, when the first task starts, so its warning is said once.
+  let fenced: Promise<FenceRecord> | undefined;
+  const fence = (): Promise<FenceRecord> => (fenced ??= fenceAtStart(project.fence, repoPath, ctx));
+
   // A run of several at once that was stopped is carried on, in its own record and at the shape its record
   // says it started with, whatever the setting says now. Each slot is then filled exactly as for a new run:
   // a delivered task is passed over, one that was under way is picked up from its own record, the rest start.
@@ -288,7 +292,7 @@ export async function runQueue(
 
       const exitCode =
         existing === undefined
-          ? await startRun({ repoPath, taskDef, runId: surfaceId, ...project }, await agent(), taskCtx)
+          ? await startRun({ repoPath, taskDef, runId: surfaceId, ...project, fenceRecord: await fence() }, await agent(), taskCtx)
           : existing.caseFile.outcome
             ? // What a run that already ended did, said again for whoever is looking at the list today rather than watching that run.
               await reportOutcome(existing.dir, existing.caseFile, taskCtx)

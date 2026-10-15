@@ -40,9 +40,13 @@ function writeConfig(repo: string, config: unknown): void {
   writeFileSync(join(repo, "delivery.config.json"), JSON.stringify(config, null, 2));
 }
 
-/** A scripted turn that writes CHANGES.md, so a run's check has something to find. */
-async function mockScriptFor(repo: string): Promise<string> {
-  const path = join(repo, "mock.json");
+/**
+ * A scripted turn that writes CHANGES.md, so a run's check has something to find. Kept outside the
+ * repository, never inside it: the write fence (Task 11/12) makes the project's own main folder
+ * read-only to the agent's session, and claude-mock's journal would otherwise try to write there.
+ */
+async function mockScriptFor(): Promise<string> {
+  const path = join(scratch("uat-slice-8-mock-"), "mock.json");
   await writeMockScript(path, {
     expectations: [
       {
@@ -68,7 +72,7 @@ describe("UAT: pick a ready-made check by name", () => {
       expect(validated.status).toBe(EXIT.ok);
 
       // Step 3: the run finishes with the work on a branch containing the new file.
-      const env = { ...process.env, [TEST_MOCK_SCRIPT]: await mockScriptFor(repo) };
+      const env = { ...process.env, [TEST_MOCK_SCRIPT]: await mockScriptFor() };
       const run = runDelivery(["run"], { cwd: repo, env });
       expect(run.stdout).toContain(`passed \`test -f 'CHANGES.md'\``);
       expect(run.stdout).toMatch(/branch surface\/\S+/);
@@ -116,8 +120,8 @@ describe("acceptance criteria", () => {
       const viaPreset = freshRepo({ type: "file-exists", path: "CHANGES.md" });
       const viaWrittenOut = freshRepo({ type: "command", command: "test -f 'CHANGES.md'", parseMode: "exitcode" });
 
-      const presetEnv = { ...process.env, [TEST_MOCK_SCRIPT]: await mockScriptFor(viaPreset) };
-      const writtenOutEnv = { ...process.env, [TEST_MOCK_SCRIPT]: await mockScriptFor(viaWrittenOut) };
+      const presetEnv = { ...process.env, [TEST_MOCK_SCRIPT]: await mockScriptFor() };
+      const writtenOutEnv = { ...process.env, [TEST_MOCK_SCRIPT]: await mockScriptFor() };
 
       const presetRun = runDelivery(["run"], { cwd: viaPreset, env: presetEnv });
       const writtenOutRun = runDelivery(["run"], { cwd: viaWrittenOut, env: writtenOutEnv });

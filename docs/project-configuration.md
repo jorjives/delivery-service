@@ -119,6 +119,11 @@ told; the example asks for small, explained changes. The agent already works wit
 Claude Code setup: your settings, CLAUDE.md, skills and plugins all load, and it has every tool
 they give it. To keep it from a tool, add it to `permissions.deny` in your Claude settings.
 
+`fence` says whether the agent works inside a fence that keeps your main folder read-only while
+it works in its own copy: `"preferred"` (the default, used wherever it works), `"required"` (a
+run refuses to start without it), or `"off"`. It needs bubblewrap (`bwrap`) on Linux; where it
+cannot be had, a `"preferred"` run goes ahead and says so first.
+
 ## 6. Check your setup
 
 Before spending anything, check the file:

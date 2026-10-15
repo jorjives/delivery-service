@@ -14,7 +14,8 @@ import { fakeAgentPort } from "../agent-port-double.js";
 import type { AgentContext, Terminus } from "../ports.js";
 import { appendLine } from "../journal.js";
 import { createRunFile } from "../run-file.js";
-import { RunEntry, type AgentOptions, type CaseFileOutcome, type GateRef, type RunHeader } from "../schema.js";
+import { RunEntry, type AgentOptions, type CaseFileOutcome, type FenceRecord, type GateRef, type RunHeader } from "../schema.js";
+import { TEST_BWRAP } from "../fence.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { ExitOnInterrupt } from "./context.js";
 import { runCli } from "./program.js";
@@ -69,6 +70,7 @@ export interface DeliveryIo {
  * Test support: run `delivery <args>` in process, capturing what it prints. Working copies go under a scratch state
  * folder unless the caller names one. The real runtime is signed out unless the caller names a config folder, so a
  * test that forgets its scripted agent is refused at preflight instead of spending the contributor's own login.
+ * The fence is absent unless the caller names a `bwrap`, so the command's output is the same on every machine.
  */
 export async function delivery(args: string[], { cwd, env = {}, isTTY = false, answers = [], exitOnInterrupt }: DeliveryIo) {
   let stdout = "";
@@ -79,6 +81,7 @@ export async function delivery(args: string[], { cwd, env = {}, isTTY = false, a
     env: {
       ...signedOut(process.env),
       XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "command-state-")),
+      [TEST_BWRAP]: join(tmpdir(), "delivery-no-bwrap", "bwrap"),
       ...env,
     },
     stdin: Object.assign(Readable.from(answers.map((answer) => `${answer}\n`)), { isTTY: answers.length > 0 || undefined }),
@@ -120,14 +123,23 @@ export async function interruptedRun(
     worker,
     domain,
     agent,
-  }: { task: string; steps: number; worker: (ctx: AgentContext) => Promise<Terminus>; domain?: string; agent?: AgentOptions },
+    fence,
+  }: { task: string; steps: number; worker: (ctx: AgentContext) => Promise<Terminus>; domain?: string; agent?: AgentOptions; fence?: FenceRecord },
 ): Promise<string> {
   const runId = runIdFor(task, new Date());
   const { dir, location } = runPlace(repo, runId, { XDG_STATE_HOME: state });
   await prepareRunDir(repo, dir);
   await create(
     dir,
-    { surfaceId: runId, taskDef: { intent: task }, gateRef: GATE, closerRef: DEFAULT_CLOSER, domainPrompt: domain, agent },
+    {
+      surfaceId: runId,
+      taskDef: { intent: task },
+      gateRef: GATE,
+      closerRef: DEFAULT_CLOSER,
+      domainPrompt: domain,
+      agent,
+      ...(fence === undefined ? {} : { fence }),
+    },
     DEFAULT_BUDGETS,
   );
   const ports = { agent: fakeAgentPort({ worker }), triage: deterministicRouter, closer: resolveCloser(DEFAULT_CLOSER, repo) };

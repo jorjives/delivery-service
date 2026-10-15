@@ -57,4 +57,15 @@ describe("writing a journal", () => {
     expect(statSync(join(dir, "report.txt")).mode & 0o777).toBe(0o600);
     expect(readdirSync(dir)).toEqual(["report.txt"]);
   });
+
+  it("survives two writers racing on the same path, as two concurrent fence-wrapper writes for the same project do", async () => {
+    const dir = scratch();
+    const file = join(dir, "wrapper.sh");
+    // Both writers hold the same content, as two tasks of the same run do when the
+    // fence hashes to the same wrapper script: only their rename targets collide.
+    const results = await Promise.allSettled([atomicWrite(file, "same content\n"), atomicWrite(file, "same content\n")]);
+    for (const result of results) expect(result.status).toBe("fulfilled");
+    expect(readFileSync(file, "utf-8")).toBe("same content\n");
+    expect(readdirSync(dir)).toEqual(["wrapper.sh"]);
+  });
 });

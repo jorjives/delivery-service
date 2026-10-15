@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import type { CommandContext } from "./context.js";
-import { resumeRun, startRun } from "./drive.js";
+import { fenceAtStart, resumeRun, startRun } from "./drive.js";
 import { agentSession } from "./agent-session.js";
 import { loadConfig, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
@@ -95,10 +95,11 @@ async function startOne(
   const settings = await resolveSettings(options, { env: ctx.env, intent, repoPath, config });
   await checkCustomModules(settings.gateRef, settings.closerRef, repoPath);
   const session = await agentSession(ctx.env);
+  const fenceRecord = await fenceAtStart(settings.fence, repoPath, ctx);
   if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
   // The id is chosen here rather than left to `startRun`, so the report at the end knows which run to tell.
   const runId = runIdFor(taskIntent(settings.taskDef), new Date());
-  const exitCode = await startRun({ repoPath, ...settings, runId }, session, ctx);
+  const exitCode = await startRun({ repoPath, ...settings, runId, fenceRecord }, session, ctx);
   await closingReport(repoPath, { kind: "task", runId }, queueTasks(config), ctx);
   return exitCode;
 }

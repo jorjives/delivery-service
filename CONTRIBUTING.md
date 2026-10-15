@@ -52,6 +52,11 @@ This seam is for contributors and stays out of `--help`; an installed copy carri
 for `delivery packs check`. `src/cli/run-command.test.ts` drives the command in-process this way;
 `runDelivery` in `tests/helpers.ts` drives the compiled binary.
 
+`DELIVERY_TEST_BWRAP` names the bubblewrap the harness runs for the write fence. The `delivery()`
+test helper points it at a path that does not exist, so every command test sees the fence absent
+and prints the same output on every machine. `src/fence.test.ts` runs the real `bwrap` where it
+works and skips itself where it does not.
+
 The built-in reviews `delivery review` runs are data-only folders under `packs/` (a `pack.json` manifest, the agent's `scan.md` instructions and, optionally, its `fix.md` instructions for fixing a problem), shipped in the package; `src/packs/` is the engine. To see a review without an agent, run `npm run demo:packs-slice-1`: it reviews a copy of `examples/code-review-example` with the scripted reply `EXAMPLE_SCAN` from `src/packs/review-fixtures.ts`. Tests script a review the same way, with `scanScript(envelope)`, and write a review's record directly with `writeReview`. Every sentence a review prints comes from `src/packs/render.ts`; `src/packs/render.test.ts` holds them to the owner vocabulary.
 
 To prove a gate, a closer and role configurations work together, run one surface end to end

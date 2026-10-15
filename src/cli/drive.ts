@@ -5,12 +5,12 @@ import { deterministicRouter } from "../router.js";
 import { advance, type AdvanceResult } from "../surface.js";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import type { SurfacePorts } from "../ports.js";
-import type { TaskDef } from "../schema.js";
+import type { FenceRecord, TaskDef } from "../schema.js";
 import { captureRepair, checkFilesOf } from "../repair-changes.js";
 import type { RepairOutcome } from "../breaker.js";
 import { agentSession } from "./agent-session.js";
 import type { CommandContext } from "./context.js";
-import { type ExitCode } from "./failures.js";
+import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
 import { pickingUp } from "./output.js";
 import { prepareRunDir, runIdFor, runPlace } from "../run-location.js";
@@ -19,6 +19,8 @@ import { judgedRepair } from "../repair-guards.js";
 import type { RunRecord } from "../run-records.js";
 import { taskIntent } from "../task-list.js";
 import { checkCustomModules, DEFAULT_CLOSER, type ProjectSettings } from "./settings.js";
+import { bwrapOf, fenceOf, fencePaths, probeFence, type FenceSetting } from "../fence.js";
+import { containedSession } from "../containment.js";
 
 /** A run about to exist: what it is being asked to do, and everything its project asks of every run. */
 export interface RunStart extends ProjectSettings {
@@ -26,6 +28,34 @@ export interface RunStart extends ProjectSettings {
   taskDef: TaskDef;
   /** The id to give the run, when whoever starts it has already chosen one; otherwise one is made from the task and the second it started. */
   runId?: string;
+  /** The fence probed for this run before it started; absent for a caller that started none. */
+  fenceRecord?: FenceRecord;
+}
+
+/** Said before a run starts on a machine where the fence cannot be had. Word for word as the design gives it. */
+export const FENCE_ABSENT = "Your main folder is not protected on this machine. Commit or save your work before the run starts.";
+
+const fenceRequired = (reason: string): string =>
+  `I can't start: your main folder can't be protected on this machine (${reason}), and \`fence\` is "required" in your configuration. ` +
+  'Set it to "preferred" to run without it.';
+
+const fenceLost = (reason: string): string =>
+  `I can't carry on this run: it started with your main folder protected, and that protection is not available now (${reason}). ` +
+  "Carry it on where it started, or start the task again.";
+
+/**
+ * The fence a run starts with, probed once before its first session. Absent and preferred: the run goes ahead,
+ * saying so first. Absent and required: a setup refusal. Off: not probed.
+ */
+export async function fenceAtStart(setting: FenceSetting | undefined, repoPath: string, ctx: CommandContext): Promise<FenceRecord> {
+  const { mode, devices } = fenceOf(setting);
+  if (mode === "off") return { mode, devices, state: { present: false, reason: "turned off in your configuration" } };
+  const state = await probeFence(bwrapOf(ctx.env), await fencePaths(repoPath, undefined, devices), ctx.env);
+  if (!state.present) {
+    if (mode === "required") throw new Refusal(fenceRequired(state.reason ?? "unknown"), EXIT.configuration, "fence");
+    ctx.report.note(FENCE_ABSENT);
+  }
+  return { mode, devices, state };
 }
 
 /**
@@ -37,7 +67,7 @@ export interface RunStart extends ProjectSettings {
  * so from here on there is a record on disk for whatever happens next.
  */
 export async function startRun(
-  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, agent, runId: chosenId }: RunStart,
+  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, agent, runId: chosenId, fenceRecord }: RunStart,
   session: SessionEnvironment,
   ctx: CommandContext,
 ): Promise<ExitCode> {
@@ -48,7 +78,16 @@ export async function startRun(
   const gateDigest = await gateDigestOf(gateRef, repoPath);
   const caseFile = await create(
     dir,
-    { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt, agent, ...(gateDigest === undefined ? {} : { gateDigest }) },
+    {
+      surfaceId: runId,
+      taskDef,
+      gateRef,
+      closerRef,
+      domainPrompt,
+      agent,
+      ...(gateDigest === undefined ? {} : { gateDigest }),
+      ...(fenceRecord === undefined ? {} : { fence: fenceRecord }),
+    },
     budgets,
   );
   ctx.report.note(`Starting run ${runId}: ${intent}`);
@@ -74,7 +113,8 @@ export async function driveToOutcome(
   const { dir, repoPath, runId } = record;
   const { header } = record.caseFile;
   const { location } = runPlace(repoPath, runId, ctx.env);
-  const agent = createAgentPort(DEFAULT_ROLES, { ...session, agent: header.agent });
+  const contained = await containedSession({ ...session, agent: header.agent }, { header, repoPath, worktreePath: location.worktreePath, env: ctx.env });
+  const agent = createAgentPort(DEFAULT_ROLES, contained);
   const ports: SurfacePorts = {
     agent,
     triage: deterministicRouter,
@@ -101,8 +141,12 @@ export async function driveToOutcome(
  */
 export async function dispatchRepair(record: RunRecord, sessionKey: string, session: SessionEnvironment, env: NodeJS.ProcessEnv): Promise<RepairOutcome> {
   const { location } = runPlace(record.repoPath, record.runId, env);
-  const agent = createAgentPort(DEFAULT_ROLES, { ...session, agent: record.caseFile.header.agent });
   const worktreePath = record.caseFile.cursor.worktreeRef || location.worktreePath;
+  const contained = await containedSession(
+    { ...session, agent: record.caseFile.header.agent },
+    { header: record.caseFile.header, repoPath: record.repoPath, worktreePath, env },
+  );
+  const agent = createAgentPort(DEFAULT_ROLES, contained);
   const { result: judged, verdict } = await judgedRepair(
     worktreePath,
     { header: record.caseFile.header, repoPath: record.repoPath, history: record.caseFile.history },
@@ -124,6 +168,11 @@ export async function dispatchRepair(record: RunRecord, sessionKey: string, sess
 export async function resumeRun(record: RunRecord, ctx: CommandContext, session?: SessionEnvironment): Promise<ExitCode> {
   const { header } = record.caseFile;
   await checkCustomModules(header.gateRef, header.closerRef ?? DEFAULT_CLOSER, record.repoPath);
+  // A run that started inside the fence never carries on outside it.
+  if (header.fence?.state.present === true) {
+    const now = await probeFence(bwrapOf(ctx.env), await fencePaths(record.repoPath, undefined, header.fence.devices), ctx.env);
+    if (!now.present) throw new Refusal(fenceLost(now.reason ?? "unknown"), EXIT.configuration, "fence");
+  }
   const started = session ?? (await agentSession(ctx.env));
   ctx.report.note(`Resuming run ${record.runId}: ${taskIntent(header.taskDef)}`);
   ctx.report.note(pickingUp(record.caseFile));

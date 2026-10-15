@@ -18,6 +18,7 @@ import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
 import { allRuns, readRun } from "./runs.js";
 import { BOTH_TASKS } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
+import { FENCE_ABSENT } from "./drive.js";
 import { EVERY_TASK_DONE, liveRunFound, taskEnded, runPickedUp, STOPPED_PART_WAY } from "./queue.js";
 import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import { supervisedPlace, supervisorLockPath } from "../run-location.js";
@@ -892,7 +893,10 @@ describe("delivery run with several tasks at once", () => {
       const lines = stdout.trimEnd().split("\n");
       expect(lines[0]).toMatch(/^Starting run run-\d{8}T\d{6}Z: 3 tasks, up to 2 at once$/);
       expect(lines.at(-3)).toBe(EVERY_TASK_DONE);
-      for (const line of lines.slice(1, -3)) expect(line).toMatch(/^\[[123]\/3\] /);
+      // The fence is absent on this machine (the fixture names a `bwrap` that doesn't exist), so one line among
+      // the task lines warns about it, printed when the first task's slot starts rather than before "Starting run".
+      expect(lines).toContain(FENCE_ABSENT);
+      for (const line of lines.slice(1, -3)) expect(line === FENCE_ABSENT || /^\[[123]\/3\] /.test(line)).toBe(true);
       for (const [index, task] of [PAGE, SWAP, WAVE].entries()) {
         expect(stdout).toContain(`[${index + 1}/3] Done: the change for "${task}" passed \`npm test\``);
       }
@@ -1658,4 +1662,39 @@ describe("what delivery run leaves behind when it ends", () => {
     ]);
     expect(existsSync(join(repo, SAVED_TEXT))).toBe(true);
   });
+});
+
+describe("the write fence", () => {
+  it(
+    "goes ahead without it, warning first, and records it was absent",
+    async () => {
+      const repo = initTempRepo("run-command-fence-", { "package.json": PACKAGE });
+      const { exitCode, stdout } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain(FENCE_ABSENT);
+      expect(stdout.indexOf(FENCE_ABSENT)).toBeLessThan(stdout.indexOf("Starting run"));
+      const runId = branchIn(stdout).replace("surface/", "");
+      const caseJson = JSON.parse(readFileSync(join(repo, ".delivery", "runs", runId, "case.json"), "utf-8")) as { header: { fence?: unknown } };
+      expect(caseJson.header.fence).toEqual({ mode: "preferred", devices: [], state: { present: false, reason: "bubblewrap (bwrap) is not installed" } });
+    },
+    RUN_TIMEOUT,
+  );
+
+  it("refuses to start when the file requires it and it is absent, naming why", async () => {
+    const repo = initTempRepo("run-command-fence-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ fence: "required" }) });
+    const { exitCode, stderr } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("bubblewrap (bwrap) is not installed");
+    expect(stderr).toContain('`fence` is "required"');
+  });
+
+  it(
+    "says nothing of it when the file turns it off",
+    async () => {
+      const repo = initTempRepo("run-command-fence-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ fence: "off" }) });
+      const { stdout } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      expect(stdout).not.toContain(FENCE_ABSENT);
+    },
+    RUN_TIMEOUT,
+  );
 });

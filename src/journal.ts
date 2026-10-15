@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { open, rename } from "node:fs/promises";
 
 /**
@@ -22,7 +23,10 @@ export async function writeAndSync(filePath: string, flag: "w" | "a", data: stri
  * `mode` is the permissions the file is created with; left out, the platform's default.
  */
 export async function atomicWrite(filePath: string, data: string, mode?: number): Promise<void> {
-  const tmp = filePath + ".tmp";
+  // Suffixed with a random token, not a fixed ".tmp": two writers racing to replace the same
+  // path (two tasks of one run writing the same content-hashed fence wrapper, say) must not
+  // share a temporary file, or one's rename can find the other has already moved it away.
+  const tmp = `${filePath}.${randomBytes(6).toString("hex")}.tmp`;
   await writeAndSync(tmp, "w", data, mode);
   await rename(tmp, filePath);
 }

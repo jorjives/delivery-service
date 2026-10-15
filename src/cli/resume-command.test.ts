@@ -128,4 +128,13 @@ describe("delivery resume", () => {
     expect(stderr).not.toContain("at Object.");
     expect(exitCode).toBe(EXIT.configuration);
   });
+
+  it("refuses to carry on a run that started inside the fence on a machine where it is now absent", async () => {
+    const repo = initTempRepo("resume-fence-", { "package.json": PACKAGE });
+    const state = mkdtempSync(join(tmpdir(), "resume-fence-state-"));
+    await interruptedRun(repo, state, { task: TASK, steps: 1, worker: writesHello, fence: { mode: "preferred", devices: [], state: { present: true } } });
+    const { exitCode, stderr } = await delivery(["resume"], { cwd: repo, env: { XDG_STATE_HOME: state } });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("started with your main folder protected");
+  });
 });

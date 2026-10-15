@@ -188,7 +188,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets` and `concurrency`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency` and `fence`.",
     );
   });
 
@@ -259,7 +259,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names a file that holds something other than one object of settings", () => {
     expect(problemFor(["add a page"])).toBe(
-      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets` and `concurrency`. " +
+      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency` and `fence`. " +
         "A `.js` or `.mjs` file exports that object as its default.",
     );
   });
@@ -458,7 +458,7 @@ describe("reading a config file", () => {
     const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
     const refusal = await refusalOf(found(repo, repo));
     expect(refusal.message).toBe(
-      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\` and \`fence\`.`,
     );
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });
@@ -577,7 +577,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor({ foo: 1, roles: {} })).toEqual([
       {
         field: "foo",
-        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
+        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\` and \`fence\`.`,
       },
       {
         field: "roles",
@@ -591,7 +591,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor("add a page")).toEqual([
       {
         field: null,
-        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
+        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\` and \`fence\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
       },
     ]);
   });
@@ -633,5 +633,18 @@ describe("checking a config file without refusing it", () => {
     expect(checked.problems.map((problem) => problem.field)).toEqual(["tasks.1", "domain"]);
     const refusal = await refusalOf(loadConfig({ startDir: dirname(file), repoPath: dirname(file), flag: file, env: {} }));
     expect(refusal.message).toBe(checked.problems[0]?.message);
+  });
+});
+
+describe("the fence setting", () => {
+  it("takes a mode, or a mode and devices", () => {
+    for (const fence of ["preferred", "required", "off", { mode: "required", devices: ["/dev/kvm"] }, { devices: ["/dev/dri"] }]) {
+      expect(DeliveryConfig.safeParse({ fence }).success).toBe(true);
+    }
+  });
+
+  it("refuses anything else, saying what it takes", () => {
+    expect(problemFor({ fence: "always" })).toContain("`fence`");
+    expect(problemFor({ fence: "always" })).toContain('"preferred", "required" or "off"');
   });
 });

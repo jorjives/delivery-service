@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { CloserRef } from "../schema.js";
+import type { FenceSetting } from "../fence.js";
 import type { AgentOptions, BudgetSet, CaseFileHeader, GateRef, TaskDef } from "../schema.js";
 import { loadCustomCloser } from "../custom-closer.js";
 import { loadCustomGate } from "../custom-gate.js";
@@ -51,6 +52,8 @@ export interface ProjectSettings {
   agent?: AgentOptions;
   /** The ready-made check the file named, when that is where `gateRef` came from: kept only to describe it by name. A run pins `gateRef` alone. */
   gatePreset?: GatePreset;
+  /** The config file's fence setting; absent means the default, preferred. */
+  fence?: FenceSetting;
 }
 
 /** Everything a run needs to be created: what this one is being asked to do, and everything the project asks of all of them. */
@@ -204,6 +207,7 @@ export async function resolveProject(
     domainPrompt: config.domain,
     // Likewise for the agent options: they are part of the project, reviewed with it.
     ...(config.agent === undefined ? {} : { agent: config.agent }),
+    ...(config.fence === undefined ? {} : { fence: config.fence }),
   };
 }
 
