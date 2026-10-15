@@ -233,6 +233,7 @@ delivery report
 ```text
 Your task list: 2 of 4 tasks completed and merged; 1 needs your decision; 1 not started.
 Started 1 Oct 02:01 UTC; last activity 1 Oct 03:04 UTC.
+Your main folder was protected while the agent worked.
 
 NEEDS YOU (1)
   Task 3 of 4: "Remove every page under the old news section"
@@ -271,6 +272,11 @@ it has tasks in it:
   work: merged, committed on a branch, or a pull request open.
 - **Not finished:** tasks of a run that is still going, or that stopped part way.
 - **Not started:** tasks nothing has run yet, with why they were left and how to carry on.
+- **Worth a look:** a repair that changed a file the check runs (the guards accept it, so this is
+  where you review it), and a task that ran with a test guard turned off, naming the guards.
+
+Under the time the work ran, a line says whether your main folder was protected while the agent
+worked, and why not when it was not.
 
 Words taken from a run (your task, what the agent said) are always in quotation marks; every other
 sentence is the harness's own and is the same for every project. "For whoever tunes this" counts

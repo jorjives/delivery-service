@@ -107,6 +107,28 @@ delivery.report/1.surfaces[].decisions[].verdict = "reroute"
 delivery.report/1.surfaces[].decisions[].verdict = "retry_close"
 delivery.report/1.surfaces[].decisions[].verdict: string
 delivery.report/1.surfaces[].decisions[]: object
+delivery.report/1.surfaces[].fence.mode = "off"
+delivery.report/1.surfaces[].fence.mode = "preferred"
+delivery.report/1.surfaces[].fence.mode = "required"
+delivery.report/1.surfaces[].fence.mode: string
+delivery.report/1.surfaces[].fence.present: boolean
+delivery.report/1.surfaces[].fence.reason: null|string
+delivery.report/1.surfaces[].fence: null|object
+delivery.report/1.surfaces[].guards.added: array
+delivery.report/1.surfaces[].guards.added[] = "check-untouched"
+delivery.report/1.surfaces[].guards.added[] = "ignored"
+delivery.report/1.surfaces[].guards.added[] = "no-skips"
+delivery.report/1.surfaces[].guards.added[] = "tests-unchanged"
+delivery.report/1.surfaces[].guards.added[] = "tests-untouched"
+delivery.report/1.surfaces[].guards.added[]: string
+delivery.report/1.surfaces[].guards.off: array
+delivery.report/1.surfaces[].guards.off[] = "check-untouched"
+delivery.report/1.surfaces[].guards.off[] = "ignored"
+delivery.report/1.surfaces[].guards.off[] = "no-skips"
+delivery.report/1.surfaces[].guards.off[] = "tests-unchanged"
+delivery.report/1.surfaces[].guards.off[] = "tests-untouched"
+delivery.report/1.surfaces[].guards.off[]: string
+delivery.report/1.surfaces[].guards: null|object
 delivery.report/1.surfaces[].repairs: array
 delivery.report/1.surfaces[].repairs[].at: null|string
 delivery.report/1.surfaces[].repairs[].attempt: integer

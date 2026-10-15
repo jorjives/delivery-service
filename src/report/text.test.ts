@@ -24,7 +24,7 @@ import {
   timed,
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
-import type { HistoryEntry } from "../schema.js";
+import type { FenceRecord, HistoryEntry } from "../schema.js";
 import { closingSentence, costLine, durationWords, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
 
 const report = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false });
@@ -601,5 +601,41 @@ describe("what something cost, fact by fact", () => {
     const at = lines.indexOf("FOR WHOEVER TUNES THIS");
     expect(lines.slice(at + 1, at + 3)).toEqual(["  The review: time not recorded; cost not recorded.", "  The fixes: none has run yet."]);
     expect(lines.join("\n")).not.toContain("for this run");
+  });
+});
+
+describe("whether the main folder was protected", () => {
+  const PROTECTED = "Your main folder was protected while the agent worked.";
+  const withFence = (state: FenceRecord["state"]) =>
+    report(snapshotOf({ records: [formDone, recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "x"), outcome: closedAt("2026-10-01T02:58:00.000Z"), header: { fence: { mode: "preferred", devices: [], state } } })] }));
+
+  it("says it was, straight after when the work ran", () => {
+    const lines = withFence({ present: true });
+    expect(lines[lines.indexOf(PROTECTED) - 1]).toMatch(/^Started /);
+  });
+
+  it("says it was not, and why", () => {
+    expect(withFence({ present: false, reason: "bubblewrap (bwrap) is not installed" })).toContain(
+      "Your main folder was not protected while the agent worked (bubblewrap (bwrap) is not installed).",
+    );
+  });
+
+  it("says nothing of it for runs recorded before the fence was", () => {
+    expect(report(snapshotOf({ records: [formDone] })).join("\n")).not.toContain("main folder");
+  });
+});
+
+describe("a task that turned test guards off", () => {
+  it("is worth a look, naming the guards and the task", () => {
+    // The list asks for the task exactly as its run recorded it, so the report can name its place.
+    const task = { intent: FOOTER, guards: { off: ["no-skips"] } };
+    const lines = report(snapshotOf({ list: [task], records: [recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "x"), outcome: closedAt("2026-10-01T02:58:00.000Z"), header: { taskDef: task } })] }));
+    expect(lines).toContain("WORTH A LOOK");
+    expect(lines).toContain("  Task 1 of 1 ran with these test guards turned off: no-skips. What they would have caught was not checked.");
+  });
+
+  it("is not, for one that only added a guard", () => {
+    const lines = report(snapshotOf({ records: [recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "x"), outcome: closedAt("2026-10-01T02:58:00.000Z"), header: { taskDef: { intent: FOOTER, guards: { add: ["tests-unchanged"] } } } })] }));
+    expect(lines).not.toContain("WORTH A LOOK");
   });
 });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BreakerState, OutcomeCause, Population, RepairChanges, RepairStatus, SurfaceState, TriageEntry, Trip, UsageLimit } from "../schema.js";
+import { BreakerState, FenceMode, GuardName, OutcomeCause, Population, RepairChanges, RepairStatus, SurfaceState, TriageEntry, Trip, UsageLimit } from "../schema.js";
 import { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
 
 /** The version every report document names itself by. A later version adds keys; it never renames or removes one. */
@@ -145,6 +145,10 @@ export const ReportSurface = z.object({
   closer: z.enum(["merge-back", "commit-to-branch", "open-pr", "custom"]).nullable(),
   branch: z.string().nullable(),
   base: z.string().nullable(),
+  /** Whether the task's sessions ran inside the write fence, how the run was set, and why not when they did not; null for a run recorded before the fence was. */
+  fence: z.object({ mode: FenceMode, present: z.boolean(), reason: z.string().nullable() }).nullable(),
+  /** How the task's test guards differ from the defaults: what it added and what it turned off; null when they do not. */
+  guards: z.object({ added: z.array(GuardName), off: z.array(GuardName) }).nullable(),
   /** How many times the agent was set to work on the task. */
   attempts: z.number().int().nonnegative(),
   budgets: z.array(BudgetRow),

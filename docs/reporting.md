@@ -69,6 +69,8 @@ Each entry of `surfaces`:
 | `startedAt`, `finishedAt`, `lastActivityAt` | When it started and ended, and the latest time its record holds |
 | `reason`, `cause` | The recorded reason for a stop, and its cause: a `kind`, with the `role` or `population` it concerns, and for `"landed_outside_closer"` (the agent opened a pull request for the task's branch itself) the `pullRequest` it opened; each of these the kind does not have is `null`. `cause` is `null` for a stop recorded before causes were |
 | `closer`, `branch`, `base` | How its work is landed, and where |
+| `fence` | Whether the task's agent sessions ran inside the write fence: the `mode` the run was set to, whether it was `present`, and the `reason` when it was not. `null` for a run recorded before the fence was |
+| `guards` | How the task's test guards differ from the defaults: the guards it `added` and those it turned `off`. `null` when it kept the defaults |
 | `attempts` | How many times the agent was set to work on it |
 | `budgets` | Each kind of retry: its `population`, how many were `used` and the `max` allowed |
 | `decisions` | Every triage round, oldest first: `afterAttempt`, `trigger`, `verdict`, the `rationale` word for word, and the `brief` or `packet` the round produced. `recorded` is `false` when what the round wrote can no longer be read |

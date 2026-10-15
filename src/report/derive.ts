@@ -7,6 +7,7 @@ import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js
 import { CloserRef, Population, RepairChanges, type HistoryEntry, type RepairStatus, type RunEntry, type RunFile, type SessionUsage, type TaskDef, type Trip } from "../schema.js";
 import { claimedBy, supervisedView } from "../supervised-view.js";
 import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
+import { guardChanges } from "../task-guards.js";
 import { BriefRef } from "../prompt-assembly.js";
 import { PacketRef } from "../surface.js";
 import { EscalationPacket } from "../triage-role-config.js";
@@ -159,6 +160,8 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
     closer: null,
     branch: null,
     base: null,
+    fence: null,
+    guards: guardChanges(taskDef),
     attempts: 0,
     budgets: [],
     decisions: [],
@@ -264,6 +267,8 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     closer: landingOf(header),
     branch: branchName(header.surfaceId),
     base: header.baseBranch ?? null,
+    fence: header.fence === undefined ? null : { mode: header.fence.mode, present: header.fence.state.present, reason: header.fence.state.reason ?? null },
+    guards: guardChanges(header.taskDef),
     attempts,
     budgets: Population.options.map((population) => ({ population, used: budgets[population].used, max: budgets[population].max })),
     decisions: decisionsOf(record, snapshot.refs[record.runId] ?? {}),

@@ -21,15 +21,18 @@ export interface TaskRun {
   state?: SurfaceState;
   /** What the run wrote beside its log, by ref id: only `writeRecord` puts these on disk. */
   refs?: Record<string, unknown>;
+  /** Anything else the run's header held, such as the fence it ran with: spread over the defaults. */
+  header?: Partial<CreateHeader>;
 }
 
 const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
 
-const headerOf = ({ runId, task, closerRef }: TaskRun): CreateHeader => ({
+const headerOf = ({ runId, task, closerRef, header }: TaskRun): CreateHeader => ({
   surfaceId: runId,
   taskDef: { intent: task },
   gateRef: GATE,
   ...(closerRef ? { closerRef } : {}),
+  ...header,
 });
 
 /** Test support: a run's record as `loadSnapshot` would read it, built in memory. */

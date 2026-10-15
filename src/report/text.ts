@@ -220,6 +220,15 @@ function whenLines(doc: ReportDocument): string[] {
   return [`Started ${started === undefined ? "at a time not recorded" : `${dayAndMinute(started)} UTC`}; ${lastActivityWords(doc)}.`];
 }
 
+/** Whether the main folder was protected while the agent worked. Any task without the fence decides it; a report of runs recorded before the fence says nothing. */
+function fenceLines(doc: ReportDocument): string[] {
+  const fences = doc.surfaces.flatMap((surface) => (surface.fence === null ? [] : [surface.fence]));
+  if (fences.length === 0) return [];
+  const absent = fences.find((fence) => !fence.present);
+  if (absent === undefined) return ["Your main folder was protected while the agent worked."];
+  return [`Your main folder was not protected while the agent worked (${absent.reason ?? "why was not recorded"}).`];
+}
+
 /** Why a run of several at once stopped when no task caused it. Total over the causes a run records. */
 function runStopLines(run: ReportRun | null, carryOn = RUN_AGAIN): string[] {
   switch (run?.cause) {
@@ -377,7 +386,13 @@ function worthALookLines(doc: ReportDocument, colour: boolean): string[] {
       ];
     });
   });
-  return items.length === 0 ? [] : ["", paint(colour, "attention", "WORTH A LOOK"), ...items];
+  const guardsOff = doc.surfaces.flatMap((surface) =>
+    surface.guards === null || surface.guards.off.length === 0
+      ? []
+      : [`  ${surface.queue ? `Task ${surface.queue.task} of ${surface.queue.of}` : "This task"} ran with these test guards turned off: ${surface.guards.off.join(", ")}. What they would have caught was not checked.`],
+  );
+  const all = [...items, ...guardsOff];
+  return all.length === 0 ? [] : ["", paint(colour, "attention", "WORTH A LOOK"), ...all];
 }
 
 /**
@@ -432,8 +447,9 @@ function nextLine(doc: ReportDocument): string {
  * only quoted, with control characters taken out.
  *
  * Sections: NEEDS YOU, STOPPED, DONE, NOT FINISHED, NOT STARTED, a "WORTH A LOOK"
- * alert when a repair changed a file the check runs, retries and time used, and next
- * steps. `saved` is one sentence about the copy of this report kept on disk: where it
+ * alert when a repair changed a file the check runs or a task turned a test guard off,
+ * retries and time used, and next steps. `saved` is one sentence about the copy of this
+ * report kept on disk: where it
  * was saved, or that it could not be. Left out, the report says nothing of one.
  * With `review`, a review's fix phase is told by its problems: its opening and sections
  * replace the report's headline and task sections, and its command is the one to carry on with.
@@ -445,6 +461,7 @@ export function renderText(doc: ReportDocument, { colour, saved, review }: { col
     ...incompleteLines(doc),
     ...start,
     ...whenLines(doc),
+    ...fenceLines(doc),
     ...runStopLines(doc.run, review?.carryOn),
     ...(review === undefined ? SECTIONS.flatMap((section) => sectionLines(doc, section, colour)) : review.sections),
     ...worthALookLines(doc, colour),

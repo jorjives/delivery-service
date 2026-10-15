@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ReportDocument, stepOf } from "./document.js";
 import { deriveReport, mostRecentSubject } from "./derive.js";
-import type { OutcomeCause, SessionUsage } from "../schema.js";
+import type { FenceRecord, OutcomeCause, SessionUsage, TaskDef } from "../schema.js";
 import type { RecordRefs, RecordSnapshot } from "./snapshot.js";
 import { attempt, BANNER, BRIEF, closedAt, failedCheck, fill, FOOTER, footerFailed, footerWorking, FORM, formDone, HOMEPAGE, ID, PACKET, recordOf, runFileOf, snapshotOf, stoppedAt, timed, ownRepair, setupRepair, CHANGES_TOUCHING_CHECK } from "./report-fixtures.js";
 import type { HistoryEntry } from "../schema.js";
@@ -617,5 +617,37 @@ describe("what a report says a task carries about itself", () => {
   it("is null for a task with no tags, or with tags that are not plain values", () => {
     expect(deriveReport(snapshotOf()).surfaces.map((surface) => surface.tags)).toEqual([null, null, null, null]);
     expect(deriveReport(snapshotOf({ list: [{ intent: "x", tags: { nested: { a: 1 } } }] })).surfaces[0]?.tags).toBeNull();
+  });
+});
+
+describe("whether a task's main folder was protected", () => {
+  const fenced = (fence?: FenceRecord) =>
+    deriveReport(snapshotOf({ records: [formDone, recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "x"), outcome: closedAt("2026-10-01T02:58:00.000Z"), ...(fence === undefined ? {} : { header: { fence } }) })] })).surfaces[1]?.fence;
+
+  it("says so, and how the run was set, when it was", () => {
+    expect(fenced({ mode: "preferred", devices: [], state: { present: true } })).toEqual({ mode: "preferred", present: true, reason: null });
+  });
+
+  it("says why when it was not", () => {
+    expect(fenced({ mode: "preferred", devices: [], state: { present: false, reason: "bubblewrap (bwrap) is not installed" } })).toEqual({ mode: "preferred", present: false, reason: "bubblewrap (bwrap) is not installed" });
+  });
+
+  it("is null for a run recorded before the fence was", () => {
+    expect(fenced()).toBeNull();
+  });
+});
+
+describe("a task's test guards", () => {
+  // The list must hold this exact taskDef: the record is matched to its list entry by deep equality (`findQueueRun`), so a
+  // taskDef with `guards` only reaches a surface when the list is given that same taskDef.
+  const guardsOf = (taskDef: TaskDef) =>
+    deriveReport(snapshotOf({ list: [taskDef], records: [recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "x"), header: { taskDef } })] })).surfaces[0]?.guards;
+
+  it("are null when the task kept the defaults", () => {
+    expect(guardsOf({ intent: FOOTER })).toBeNull();
+  });
+
+  it("name what the task added and turned off", () => {
+    expect(guardsOf({ intent: FOOTER, guards: { add: ["tests-unchanged"], off: ["no-skips"] } })).toEqual({ added: ["tests-unchanged"], off: ["no-skips"] });
   });
 });
