@@ -1380,6 +1380,71 @@ describe("delivery run with several tasks at once", () => {
       expect((await loadRunFile(supervisedPlace(repo, RUN))).outcome).toMatchObject({ kind: "escalated", cause: "shared_environment" });
       expect(promptsSent(await readJournal(`${script}.journal.jsonl`)).some((prompt) => prompt.includes(PAGE))).toBe(true);
     });
+
+    it(
+      "refuses a shared repair that deletes a task's test, naming it; the task's own record holds no repair_accepted",
+      async () => {
+        const repo = initTempRepo("run-command-breaker-deletes-", {
+          "package.json": PACKAGE,
+          "delivery.config.json": JSON.stringify({ tasks: [PAGE], concurrency: 2, gate: gateRef }),
+          "sum.test.js": "import { test } from 'node:test';\ntest('adds', () => {});\n",
+        });
+        mkdirSync(join(repo, "gates"), { recursive: true });
+        writeFileSync(join(repo, "gates/shared.mjs"), RESTORABLE_GATE);
+        const deletesTest: MockScript = {
+          expectations: [{
+            effects: [
+              { write: { path: ".restored", content: "yes\n" } },
+              { delete: { path: "sum.test.js" } },
+            ],
+            json: { status: "completed", rationale: "fixed it" },
+          }],
+        };
+
+        const { exitCode } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(deletesTest) } });
+
+        expect(exitCode).toBe(EXIT.escalated);
+        const runFile = await theRunFile(repo);
+        expect(runFile.outcome).toMatchObject({ kind: "escalated", cause: "shared_environment", reason: expect.stringContaining("sum.test.js deleted") });
+        for (const record of await allRuns(repo)) {
+          expect(record.caseFile.history.some((entry) => entry.t === "repair_accepted")).toBe(false);
+        }
+      },
+      RUN_TIMEOUT * 2,
+    );
+
+    it(
+      "accepts a shared repair that edits a file the check runs: it writes a repair_accepted into the task's own record before the run's repair_terminus",
+      async () => {
+        const repo = initTempRepo("run-command-breaker-accepts-", {
+          "package.json": PACKAGE,
+          "delivery.config.json": JSON.stringify({ tasks: [PAGE], concurrency: 2, gate: gateRef }),
+          "vitest.config.js": "export default {};\n",
+        });
+        mkdirSync(join(repo, "gates"), { recursive: true });
+        writeFileSync(join(repo, "gates/shared.mjs"), RESTORABLE_GATE);
+        const editsConfig: MockScript = {
+          expectations: [{
+            effects: [
+              { write: { path: ".restored", content: "yes\n" } },
+              { write: { path: "vitest.config.js", content: "export default { test: { pool: 'forks' } };\n" } },
+            ],
+            json: { status: "completed", rationale: "fixed it" },
+          }],
+        };
+
+        const { exitCode } = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(editsConfig) } });
+
+        expect(exitCode).toBe(EXIT.ok);
+        const [record] = await allRuns(repo);
+        expect(record?.caseFile.history).toContainEqual(
+          expect.objectContaining({ t: "repair_accepted", settings: { "vitest.config.js": expect.any(String) } }),
+        );
+        const runFile = await theRunFile(repo);
+        expect(ofType(runFile.history, "repair_terminus")).toMatchObject([{ status: "completed" }]);
+      },
+      RUN_TIMEOUT * 2,
+    );
   });
 
   describe("when a check keeps erroring after a task has done its work", () => {

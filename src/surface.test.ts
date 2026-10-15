@@ -2453,3 +2453,43 @@ describe("what each session cost and took", () => {
     expect(await stepsWith({ costUsd: 1_000_000, durationMs: 86_400_000 })).toEqual(await stepsWith());
   });
 });
+
+describe("a gate repair, judged by the guards when it ends", () => {
+  const REPAIR_TEST = "import { test } from 'node:test';\ntest('adds', () => {});\n";
+
+  /** Provision a surface whose first baseline errors (no report.tap), with a scripted repair that fixes the gate and applies `opts`' side effects, and a worker that then completes cleanly. Drives the run to completion and returns its final record. */
+  async function runWithRepair(opts: { repairWrites?: Record<string, string>; repairDeletes?: string[] }): Promise<{ history: HistoryEntry[]; outcome?: CaseFile["outcome"] }> {
+    const dir = await mkdtemp(join(tmpdir(), "surface-case-"));
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef }, budgets);
+    const agent = sessionAgent((role, ctx) => {
+      if (role === "gate-maintenance") {
+        writeFileSync(join(ctx.worktreePath, "report.tap"), PASSING_TAP);
+        for (const [path, content] of Object.entries(opts.repairWrites ?? {})) writeFileSync(join(ctx.worktreePath, path), content);
+        for (const path of opts.repairDeletes ?? []) rmSync(join(ctx.worktreePath, path));
+        return Promise.resolve({ status: "completed", rationale: "repaired" });
+      }
+      writeFileSync(join(ctx.worktreePath, "feature.txt"), "the change\n");
+      return Promise.resolve({ status: "completed", rationale: "added the feature" });
+    });
+    const ports = portsWithTriage(agent);
+    const repoPath = initTempRepo("surface-repair-", { "sum.test.js": REPAIR_TEST, "vitest.config.js": "export default {};\n" });
+    const worktreePath = join(await mkdtemp(join(tmpdir(), "surface-tree-")), "wt");
+    await run(dir, { repoPath, worktreePath }, ports);
+    const { history, outcome } = await load(dir);
+    return { history, outcome };
+  }
+
+  it("that edits a file the check runs is accepted, and the worker's next round is not failed for it", async () => {
+    const result = await runWithRepair({ repairWrites: { "vitest.config.js": "export default { test: { pool: 'forks' } };\n" } });
+    expect(result.history.some((entry) => entry.t === "repair_accepted")).toBe(true);
+    expect(result.history.filter((entry) => entry.t === "gate").map((entry) => entry.status)).toEqual(["PASS"]);
+    expect(result.outcome?.kind).not.toBe("escalated");
+  });
+
+  it("that deletes a test is refused there: the run escalates as the repair's authority, and no worker round runs", async () => {
+    const result = await runWithRepair({ repairDeletes: ["sum.test.js"] });
+    expect(result.outcome?.cause).toEqual({ kind: "authority", role: "gate-maintenance" });
+    expect(result.history.some((entry) => entry.t === "dispatch" && entry.role === "worker")).toBe(false);
+    expect(result.history.some((entry) => entry.t === "repair_accepted")).toBe(false);
+  });
+});

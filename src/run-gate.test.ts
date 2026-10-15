@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
-import { create, load, readRef, setBaseBranch } from "./case-file.js";
+import { create, load, readRef, setBaseBranch, appendEntry } from "./case-file.js";
 import { recordBaseline, runCheck, GATE_GUARD, gateDigestOf } from "./run-gate.js";
 import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
 import type { BudgetSet, GateRef } from "./schema.js";
@@ -284,7 +284,7 @@ describe("the guards on every run", () => {
   const TEST = "import { test } from 'node:test';\ntest('adds', () => {});\n";
 
   async function gitSurface(taskDef: Record<string, unknown> = { intent: "fix bug" }): Promise<string> {
-    const repo = initTempRepo("run-gate-guards-", { "report.tap": GREEN, "sum.test.js": TEST });
+    const repo = initTempRepo("run-gate-guards-", { "report.tap": GREEN, "sum.test.js": TEST, "vitest.config.js": "export default {};\n" });
     const startCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, env: cleanGitEnv() }).toString().trim();
     surfaceDir = await mkdtemp(join(tmpdir(), "run-gate-case-"));
     location = { repoPath: repo, worktreePath: repo };
@@ -316,6 +316,21 @@ describe("the guards on every run", () => {
     const relaxed = await gitSurface({ intent: "drop the old tests", guards: { off: ["tests-untouched"] } });
     rmSync(join(relaxed, "sum.test.js"));
     expect((await runCheck(surfaceDir, location, 1)).delta.pass).toBe(true);
+  });
+
+  it("does not fail a round for a setting a gate repair was accepted as changing", async () => {
+    const repo = await gitSurface();
+    writeFileSync(join(repo, "vitest.config.js"), "export default { test: { pool: 'forks' } };\n");
+    const print = execFileSync("git", ["hash-object", "vitest.config.js"], { cwd: repo, env: cleanGitEnv() }).toString().trim();
+    await appendEntry(surfaceDir, { t: "repair_accepted", sessionKey: "gate-maintenance-1-0", settings: { "vitest.config.js": print } });
+    expect((await runCheck(surfaceDir, location, 1)).delta.pass).toBe(true);
+  });
+
+  it("fails the round once that setting is edited again", async () => {
+    const repo = await gitSurface();
+    writeFileSync(join(repo, "vitest.config.js"), "a\n");
+    await appendEntry(surfaceDir, { t: "repair_accepted", sessionKey: "gate-maintenance-1-0", settings: { "vitest.config.js": "not-this-one" } });
+    expect((await runCheck(surfaceDir, location, 1)).delta.newFailures.map((failure) => failure.id)).toEqual(["guard:check-untouched"]);
   });
 
   it("judges a run whose record pins no start commit by its gate alone", async () => {

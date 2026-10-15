@@ -9,6 +9,7 @@ import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
 import { EscalationPacket, type SharpenedBrief } from "./triage-role-config.js";
 import { captureRepair, checkFilesOf } from "./repair-changes.js";
+import { judgedRepair } from "./repair-guards.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext } from "./ports.js";
 import { OutcomeCause } from "./schema.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
@@ -407,11 +408,20 @@ async function dispatchSession(
   const session = () => ports.agent.invoke({ role }, { worktreePath, dir, sessionKey });
   // A repair may edit the very check that guards the work: what it changed is kept, before its terminus, so a
   // crash leaves at most an orphan ref (the recovered retry gets a new session key, so a new ref). Only kept,
-  // never judged: nothing below reads it.
-  const { result: terminus, changes } =
+  // never judged: nothing below reads it. The repair is also judged, straight after it ends, on its own change
+  // (Task 8A): a refusal stops the run here, for a person; an accepted settings change is recorded so the
+  // worker's own round is not failed for it.
+  const captured = () => captureRepair(worktreePath, checkFilesOf(caseFile.header.gateRef, { repoPath: location.repoPath, worktreePath }), session);
+  const judged =
     role === "gate-maintenance"
-      ? await captureRepair(worktreePath, checkFilesOf(caseFile.header.gateRef, { repoPath: location.repoPath, worktreePath }), session)
-      : { result: await session(), changes: undefined };
+      ? await judgedRepair(worktreePath, { header: caseFile.header, repoPath: location.repoPath, history: caseFile.history }, captured)
+      : undefined;
+  const { result: ended, changes } = judged === undefined ? { result: await session(), changes: undefined } : judged.result;
+  const refused = judged?.verdict.refused ?? null;
+  // A refused repair stops here, for a person: the run does not hand the guards' own verdict to the worker.
+  const terminus = refused === null ? ended : { status: "escalate" as const, category: "authority" as const, rationale: refused, ...(ended.usage === undefined ? {} : { usage: ended.usage }) };
+  const accepted = judged?.verdict.accepted ?? {};
+  if (refused === null && Object.keys(accepted).length > 0) await appendEntry(dir, { t: "repair_accepted", sessionKey, settings: accepted });
   const changesRef = changes === undefined ? undefined : await writeRef(dir, `repair-${sessionKey}`, changes);
   const entry: HistoryEntry = {
     t: "terminus",

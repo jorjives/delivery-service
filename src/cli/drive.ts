@@ -1,5 +1,5 @@
 import { createAgentPort, DEFAULT_ROLES } from "../agent-invoke.js";
-import { create, load } from "../case-file.js";
+import { create, load, appendEntry } from "../case-file.js";
 import { resolveCloser } from "../resolve-closer.js";
 import { deterministicRouter } from "../router.js";
 import { advance, type AdvanceResult } from "../surface.js";
@@ -15,6 +15,7 @@ import { reportOutcome } from "./outcome.js";
 import { pickingUp } from "./output.js";
 import { prepareRunDir, runIdFor, runPlace } from "../run-location.js";
 import { gateDigestOf } from "../run-gate.js";
+import { judgedRepair } from "../repair-guards.js";
 import type { RunRecord } from "../run-records.js";
 import { taskIntent } from "../task-list.js";
 import { checkCustomModules, DEFAULT_CLOSER, type ProjectSettings } from "./settings.js";
@@ -102,11 +103,21 @@ export async function dispatchRepair(record: RunRecord, sessionKey: string, sess
   const { location } = runPlace(record.repoPath, record.runId, env);
   const agent = createAgentPort(DEFAULT_ROLES, { ...session, agent: record.caseFile.header.agent });
   const worktreePath = record.caseFile.cursor.worktreeRef || location.worktreePath;
-  const { result: terminus, changes } = await captureRepair(
+  const { result: judged, verdict } = await judgedRepair(
     worktreePath,
-    checkFilesOf(record.caseFile.header.gateRef, { repoPath: record.repoPath, worktreePath }),
-    () => agent.invoke({ role: "gate-maintenance" }, { worktreePath, dir: record.dir, sessionKey }),
+    { header: record.caseFile.header, repoPath: record.repoPath, history: record.caseFile.history },
+    () =>
+      captureRepair(
+        worktreePath,
+        checkFilesOf(record.caseFile.header.gateRef, { repoPath: record.repoPath, worktreePath }),
+        () => agent.invoke({ role: "gate-maintenance" }, { worktreePath, dir: record.dir, sessionKey }),
+      ),
   );
+  const { result: ended, changes } = judged;
+  if (verdict.refused === null && Object.keys(verdict.accepted).length > 0) {
+    await appendEntry(record.dir, { t: "repair_accepted", sessionKey, settings: verdict.accepted });
+  }
+  const terminus = verdict.refused === null ? ended : { status: "escalate" as const, category: "authority" as const, rationale: verdict.refused, ...(ended.usage === undefined ? {} : { usage: ended.usage }) };
   return { terminus, ...(changes === undefined ? {} : { changes }) };
 }
 

@@ -4,6 +4,7 @@ import { computeDelta } from "./delta-rule.js";
 import { MissingBaseline } from "./errors.js";
 import { guardedGate, guardBase } from "./task-guards.js";
 import { integrityOf } from "./gate-digest.js";
+import { acceptedOf } from "./repair-guards.js";
 import type { GateContext } from "./command-gate.js";
 import type { SurfaceLocation } from "./ports.js";
 import type { AcceptedSettings } from "./guards.js";
@@ -64,7 +65,7 @@ export async function runCheck(
   const { header, history } = await load(dir);
   if (header.baseline === null) throw new MissingBaseline(dir);
 
-  const checked = await gateOf(header, location).check(gateContext(header, location.worktreePath, env));
+  const checked = await gateOf(header, location, acceptedOf(history)).check(gateContext(header, location.worktreePath, env));
   const integrity = await integrityOf(header, location.repoPath);
   const report: GateReport =
     integrity.some((a) => a.outcome === "FAIL")

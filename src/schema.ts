@@ -330,6 +330,17 @@ export const BaselineEntry = z.object({
 });
 export type BaselineEntry = z.infer<typeof BaselineEntry>;
 
+// A gate repair's change to how tests run, accepted: label to fingerprint. Written
+// before the repair's terminus. Later rounds do not count a setting that still
+// stands as the repair left it as the worker's change.
+export const RepairAcceptedEntry = z.object({
+  t: z.literal("repair_accepted"),
+  sessionKey: z.string(),
+  settings: z.record(z.string(), z.string()),
+  at: At.optional(),
+});
+export type RepairAcceptedEntry = z.infer<typeof RepairAcceptedEntry>;
+
 export const HistoryEntry = z.discriminatedUnion("t", [
   DispatchEntry,
   TerminusEntry,
@@ -337,6 +348,7 @@ export const HistoryEntry = z.discriminatedUnion("t", [
   TriageEntry,
   CloseEntry,
   BaselineEntry,
+  RepairAcceptedEntry,
 ]);
 export type HistoryEntry = z.infer<typeof HistoryEntry>;
 

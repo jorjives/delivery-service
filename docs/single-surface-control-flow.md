@@ -44,7 +44,9 @@ multi-surface concerns are out of scope here.
    appends its context to Claude Code's own system prompt; it never replaces it.
 7. **Prohibitions are checks, not prose.** What the agent may not do to the tests is refused by a
    guard at acceptance, by name, on every run; the agent is told what will judge its work, not
-   given a list of rules to obey.
+   given a list of rules to obey. A gate repair is judged by the same guards when it ends, on its
+   own change: its change to how tests run is accepted and reported, anything else the guards
+   refuse stops the run there.
 
 ## State machine
 

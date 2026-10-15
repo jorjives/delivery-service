@@ -288,6 +288,9 @@ export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
     // (recordBaseline never calls setBaseline with one), and either way the
     // surface is ready to dispatch a worker once it's captured.
     case "baseline": return "AGENT_ACTIVE";
+    // Written before the repair's own terminus (Task 8A); the terminus entry
+    // that follows is what actually moves the state.
+    case "repair_accepted": return "GATE_MAINTENANCE";
   }
 }
 
@@ -337,6 +340,8 @@ export function deriveBudgetsFromLog(
         if (entry.verdict === "reroute") used.correction++;
         else if (entry.verdict === "retry_close") used.close++;
         else if (entry.verdict === "recheck_gate") used.gateError++;
+        break;
+      case "repair_accepted":
         break;
     }
   }
@@ -404,6 +409,10 @@ export function resumeAction(tail: HistoryEntry | undefined): ResumeAction {
     // slice-2 plan); "start" fits — a baseline tail is ready to dispatch the
     // first worker, the same readiness a missing tail represents.
     case "baseline":
+      return "start";
+    // Unconsumed by the driver, same as "baseline" above: the terminus that
+    // always follows it is what resumeAction actually reads.
+    case "repair_accepted":
       return "start";
   }
 }

@@ -83,6 +83,13 @@ config it is handed does.
 Each row is one `role_cfg`. A role is its context, appended to Claude Code's own
 system prompt, and its reply schema; the primitive does not branch on role.
 
+A repair is judged by the same guards the moment it ends, on what it alone changed. One that
+deletes or renames a test, adds a skip marker, hides a file from git, or changes the check's own
+module is refused there and the run stops for you; it is never handed to the worker as the
+worker's failure. A repair's change to how tests run (a test-runner setting, a CI file, the test
+script, a file the check runs) is allowed, is listed under "Worth a look" in `delivery report`,
+and is not held against the worker unless the worker then edits it again.
+
 For the extender's how-to, with both reference configurations, see
 [Configuring a role](configuring-a-role.md).
 
