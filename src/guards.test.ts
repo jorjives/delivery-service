@@ -9,15 +9,18 @@ import { FILE_LIMIT } from "./packs/confirm.js";
 import {
   CHECK_GUARD,
   DEFAULT_GUARDS,
+  DEFAULT_ON,
   EDIT_GUARD,
   guardAssertions,
   guardListsFor,
+  GuardName,
+  GuardSwitches,
   ignoredAssertions,
   ignoredId,
   needsTestChange,
   SKIP_GUARD,
   TESTS_GUARD,
-  type Guards,
+  type ActiveGuards,
 } from "./guards.js";
 
 describe("what a fix may not touch", () => {
@@ -37,7 +40,7 @@ describe("what a fix may not touch", () => {
 });
 
 const NPM: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
-const GUARDS: Guards = { ...DEFAULT_GUARDS, testsCategory: false };
+const GUARDS: ActiveGuards = { lists: DEFAULT_GUARDS, on: GuardName.options };
 const PROJECT = {
   "package.json": JSON.stringify({ type: "module", scripts: { test: "node --test" } }, null, 2),
   "checkout.js": "export const total = (p, d) => p - d;\n",
@@ -51,7 +54,7 @@ const put = (repo: string, path: string, text: string): void => {
 const commit = (repo: string): void => {
   for (const args of [["add", "-A"], ["commit", "-qm", "agent"]]) execFileSync("git", args, { cwd: repo, env: cleanGitEnv() });
 };
-const outcomes = async (repo: string, guards = GUARDS, verify = NPM) =>
+const outcomes = async (repo: string, guards: ActiveGuards = GUARDS, verify = NPM) =>
   Object.fromEntries((await guardAssertions(repo, "main", guards, verify)).map((a) => [a.id, a.outcome]));
 const exclude = (repo: string, pattern: string): void => appendFileSync(join(repo, ".git", "info", "exclude"), `${pattern}\n`);
 
@@ -94,10 +97,11 @@ describe("whether a change touched the tests", () => {
   });
 
   it("for a problem whose fix changes tests, allows modifying a test and still refuses deleting one", async () => {
-    const tests = { ...GUARDS, testsCategory: true };
+    const tests = { ...GUARDS, on: GuardName.options.filter((name) => name !== "tests-unchanged") };
     const changed = initTempRepo("guards-", PROJECT);
     put(changed, "checkout.test.js", "import { test } from 'node:test';\ntest('takes the discount off', () => { /* stronger */ });\n");
-    expect(await outcomes(changed, tests)).toMatchObject({ [EDIT_GUARD]: "PASS", [TESTS_GUARD]: "PASS" });
+    expect(await outcomes(changed, tests)).not.toHaveProperty(EDIT_GUARD);
+    expect((await outcomes(changed, tests))[TESTS_GUARD]).toBe("PASS");
     const deleted = initTempRepo("guards-", PROJECT);
     rmSync(join(deleted, "checkout.test.js"));
     expect((await outcomes(deleted, tests))[TESTS_GUARD]).toBe("FAIL");
@@ -147,7 +151,7 @@ describe("whether a change touched the tests", () => {
   ])("refuses an added line with %s, in any file, new or old", async (_, line) => {
     const repo = initTempRepo("guards-", PROJECT);
     put(repo, "more.test.js", `import { test } from 'node:test';\n${line}\n`);
-    const skips = (await guardAssertions(repo, "main", { ...GUARDS, skipMarkers: [...GUARDS.skipMarkers, "@pending"] }, NPM)).find((a) => a.id === SKIP_GUARD);
+    const skips = (await guardAssertions(repo, "main", { ...GUARDS, lists: { ...GUARDS.lists, skipMarkers: [...GUARDS.lists.skipMarkers, "@pending"] } }, NPM)).find((a) => a.id === SKIP_GUARD);
     expect(skips).toMatchObject({ id: SKIP_GUARD, outcome: "FAIL", detail: expect.stringContaining("more.test.js") });
   });
 
@@ -237,14 +241,53 @@ describe("whether a change touched the tests", () => {
     expect((await outcomes(repo))[CHECK_GUARD]).toBe("FAIL");
   });
 
-  it("judges against where the fix branched, not where the base branch has moved since", async () => {
+  it("judges against the commit the work started from, not where the base branch has moved since", async () => {
     const repo = initTempRepo("guards-", PROJECT);
-    const git = (args: string[]) => execFileSync("git", args, { cwd: repo, env: cleanGitEnv() });
-    git(["checkout", "-qb", "fix"]);
-    git(["checkout", "-q", "main"]);
+    const git = (args: string[]) => execFileSync("git", args, { cwd: repo, env: cleanGitEnv() }).toString().trim();
+    const start = git(["rev-parse", "HEAD"]);
     rmSync(join(repo, "checkout.test.js"));
-    commit(repo); // main moves on, deleting the test
-    git(["checkout", "-q", "fix"]);
-    expect((await outcomes(repo))[TESTS_GUARD]).toBe("PASS");
+    commit(repo); // the branch moves on, deleting the test
+    expect(Object.fromEntries((await guardAssertions(repo, start, GUARDS, NPM)).map((a) => [a.id, a.outcome]))[TESTS_GUARD]).toBe("FAIL");
+  });
+});
+
+describe("which guards are judged", () => {
+  it("are, by default, the ones that catch weakening and never block honest work", () => {
+    expect(DEFAULT_ON).toEqual(["tests-untouched", "check-untouched", "no-skips", "ignored"]);
+  });
+
+  it("leaves out a guard that is off: an edit to an existing test is no failure by default", async () => {
+    const repo = initTempRepo("guards-", PROJECT);
+    put(repo, "checkout.test.js", "import { test } from 'node:test';\ntest('takes the whole discount off', () => {});\n");
+    const judged = await outcomes(repo, { ...GUARDS, on: DEFAULT_ON });
+    expect(judged).not.toHaveProperty(EDIT_GUARD);
+    expect(judged[TESTS_GUARD]).toBe("PASS");
+  });
+
+  it("looks for no hidden files when the ignored-file guard is off", async () => {
+    const repo = initTempRepo("guards-", PROJECT);
+    exclude(repo, "vitest.config.ts");
+    put(repo, "vitest.config.ts", "export default {};\n");
+    expect(await ignoredAssertions(repo, { ...GUARDS, on: ["tests-untouched"] })).toEqual([]);
+  });
+
+  it("are switched by name, and an unknown name is refused", () => {
+    expect(GuardSwitches.safeParse({ add: ["tests-unchanged"], off: ["no-skips"] }).success).toBe(true);
+    expect(GuardSwitches.safeParse({ off: ["tests"] }).success).toBe(false);
+    expect(GuardSwitches.safeParse({ remove: ["no-skips"] }).success).toBe(false);
+  });
+});
+
+describe("no-skips reads only test files", () => {
+  it("does not refuse a skip-shaped method outside a test file", async () => {
+    const repo = initTempRepo("guards-", PROJECT);
+    put(repo, "src/paginate.ts", "export const paginate = (items: unknown[]) => items.skip(1);\n");
+    expect((await outcomes(repo))[SKIP_GUARD]).toBe("PASS");
+  });
+
+  it("still refuses a real skip marker added to a test", async () => {
+    const repo = initTempRepo("guards-", PROJECT);
+    put(repo, "checkout.test.js", "import { test } from 'node:test';\ntest.skip('later', () => {});\n");
+    expect((await outcomes(repo))[SKIP_GUARD]).toBe("FAIL");
   });
 });

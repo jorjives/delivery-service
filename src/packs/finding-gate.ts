@@ -4,9 +4,11 @@ import type { Gate, GateContext } from "../command-gate.js";
 import { errorReport, messageOf } from "../gate-support.js";
 import { resolveGate } from "../resolve-gate.js";
 import type { Assertion, GateRef, GateReport } from "../schema.js";
+import { git } from "../git-exec.js";
+import { guardAssertions, ignoredAssertions } from "../guards.js";
 import { checkFinding } from "./finding-check.js";
 import { FixTask } from "./fix-task.js";
-import { DEFAULT_GUARDS, guardAssertions, ignoredAssertions, type Guards } from "../guards.js";
+import { activeGuards, verifyOf } from "../task-guards.js";
 
 /** This module's own path: loaded from the installed package, outside every working copy, so a fix's agent can neither read nor change it. */
 export const FINDING_GATE_MODULE = fileURLToPath(import.meta.url);
@@ -15,15 +17,6 @@ export const FINDING_GATE_MODULE = fileURLToPath(import.meta.url);
 export const FINDING_GATE_REF: GateRef = { type: "custom", modulePath: FINDING_GATE_MODULE, failOnNewAssertions: true };
 
 export const findingAssertion = (id: string): string => `finding:${id}:resolved`;
-
-/**
- * What a fix may not touch: as authorised, or the harness's own lists for a fix authorised before guards travelled
- * with it. A fix the owner let change tests may modify an existing test, as a problem in a test may; never delete or skip one.
- */
-const guardsOf = (task: FixTask): Guards => {
-  const guards = task.guards ?? { ...DEFAULT_GUARDS, testsCategory: false };
-  return task.authorisation.allowTestEdits === true ? { ...guards, testsCategory: true } : guards;
-};
 
 /** What a project with no tests adds to a fix's check: nothing, so the problem's own check and the guards are the whole of it. */
 const NO_TESTS: GateReport = { status: "PASS", assertions: [] };
@@ -65,7 +58,7 @@ const findingGate: Gate = {
     if (report.status === "ERROR") return report;
     // After the project's own run, so what that run leaves behind is part of the baseline, not a new failure.
     try {
-      return { ...report, assertions: [...report.assertions, ...(await ignoredAssertions(ctx.worktreePath, guardsOf(resolved.task)))] };
+      return { ...report, assertions: [...report.assertions, ...(await ignoredAssertions(ctx.worktreePath, activeGuards(ctx.taskDef)))] };
     } catch (err) {
       return errorReport(`which files git ignores could not be checked: ${messageOf(err)}`);
     }
@@ -78,7 +71,8 @@ const findingGate: Gate = {
     // The guards and the problem are judged before the tests run, so what is judged is the agent's change, not what a test run leaves behind.
     let guards: Assertion[];
     try {
-      guards = await guardAssertions(ctx.worktreePath, ctx.baseBranch, guardsOf(task), task.authorisation.verify);
+      const base = await git(ctx.worktreePath, ["merge-base", "HEAD", ctx.baseBranch]);
+      guards = await guardAssertions(ctx.worktreePath, base, activeGuards(ctx.taskDef), verifyOf(ctx.taskDef, ctx.gateRef));
     } catch (err) {
       return errorReport(`whether this fix changed the project's tests could not be checked: ${messageOf(err)}`);
     }

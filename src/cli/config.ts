@@ -5,7 +5,8 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
-import { AgentOptions, CloserRef, TaskDef, Written } from "../schema.js";
+import { AgentOptions, CloserRef, GuardName, TaskDef, Written } from "../schema.js";
+import { GuardSwitches } from "../guards.js";
 import { latestPlanFile } from "../packs/review-record.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
@@ -145,6 +146,18 @@ export const DeliveryConfig = z
       const first = structured.findIndex((earlier) => isDeepStrictEqual(earlier, taskDef));
       if (first !== index) ctx.addIssue({ code: "custom", message: sameTask(first + 1, index + 1), path: ["tasks"] });
     });
+  })
+  .superRefine((config, ctx) => {
+    // A task's guards are checked here, not in the entry's own schema, so a wrong name gets its own sentence
+    // rather than the whole entry being quoted back as the wrong kind.
+    const entries: [PropertyKey[], unknown][] = [
+      ...(config.task === undefined ? [] : [[["task"], config.task] as [PropertyKey[], unknown]]),
+      ...(config.tasks ?? []).map((entry, index): [PropertyKey[], unknown] => [["tasks", index], entry]),
+    ];
+    for (const [path, entry] of entries) {
+      if (typeof entry !== "object" || entry === null || !("guards" in entry)) continue;
+      if (!GuardSwitches.safeParse(entry.guards).success) ctx.addIssue({ code: "custom", path: [...path, "guards"], message: "guards" });
+    }
   });
 export type DeliveryConfig = z.infer<typeof DeliveryConfig>;
 
@@ -222,6 +235,13 @@ function describeIssue(file: string, issue: Issue, raw: unknown): string {
   if (where === "gate.type") return unknownGate(valueAt(raw, issue.path));
   const gateType = valueAt(raw, ["gate", "type"]);
   if (issue.path[0] === "gate" && isPresetName(gateType)) return presetProblem(file, issue, gateType);
+
+  if (issue.code === "custom" && issue.path.at(-1) === "guards") {
+    return (
+      `I can't use ${file}: \`${where}\` names a guard I don't know. The guards are ${andList(GuardName.options)}, ` +
+      "and `add` and `off` each take a list of them."
+    );
+  }
 
   if (issue.code === "unrecognized_keys") {
     const takes = where === "" ? `A config file takes only ${CONFIG_KEYS}.` : `\`${where}\` doesn't take it.`;

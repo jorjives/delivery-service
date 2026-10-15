@@ -4,8 +4,12 @@ import { git } from "./git-exec.js";
 import { isEnoent } from "./journal.js";
 import { checkFilesOf, treeOf } from "./repair-changes.js";
 import type { Assertion, GateRef } from "./schema.js";
+import { GuardName } from "./schema.js";
 import { FILE_LIMIT } from "./packs/confirm.js";
 import { z } from "zod";
+
+// Re-export GuardName for consumers who import from guards
+export { GuardName } from "./schema.js";
 
 /**
  * A path pattern, matched by git with glob magic: `**` crosses folders, `*`
@@ -33,9 +37,27 @@ export const DEFAULT_GUARDS: GuardLists = {
     // ponytail: test settings kept inside a general manifest (pyproject.toml [tool.pytest], setup.cfg [tool:pytest], Cargo.toml) are not guarded, as guarding the whole file would refuse every dependency change; package.json alone is read key by key (`testCommandAt`). A pack can add such a file to protectedGlobs.
     "**/.gitignore", // the ignore rules decide which files the guards below can see on a tracked path; ignored files are also checked directly (`ignoredAssertions`)
   ],
-  // ponytail: a marker is a plain substring of an added line in any file, so `.skip(` in production code (a stream's skip) is refused too; narrow per file kind if that turns up in practice.
   skipMarkers: [".skip(", ".only(", "xit(", "xdescribe(", "xtest(", "@Ignore", "@Disabled", "pytest.mark.skip", "pytest.mark.xfail", "unittest.skip", "t.Skip(", "#[ignore]"],
 };
+
+/** A task's change to which guards judge it: guards added to the defaults, and defaults turned off. */
+export const GuardSwitches = z.strictObject({ add: z.array(GuardName).optional(), off: z.array(GuardName).optional() });
+export type GuardSwitches = z.infer<typeof GuardSwitches>;
+
+/**
+ * The guards every run is judged by unless its task says otherwise: those that catch weakening and never block
+ * honest work. `tests-unchanged` is not among them, because test-first work and refactoring change existing tests.
+ */
+export const DEFAULT_ON: readonly GuardName[] = ["tests-untouched", "check-untouched", "no-skips", "ignored"];
+
+/** The guards one run is judged by: what they look at, and which of them are on. */
+export interface ActiveGuards {
+  lists: GuardLists;
+  on: readonly GuardName[];
+}
+
+/** Whether an assertion id belongs to a guard that is on. The ignored-file guard has one id per file. */
+const judged = (on: readonly GuardName[], id: string): boolean => on.some((name) => id === `guard:${name}` || id.startsWith(`guard:${name}:`));
 
 const merged = (defaults: string[], added: string[] = []): string[] => [...new Set([...defaults, ...added])];
 
@@ -103,8 +125,10 @@ async function testCommandAt(cwd: string, rev: string): Promise<string> {
   }
 }
 
-/** Each file with an added line holding a skip marker, as "file (marker)"; or the reason the change could not be read. */
-async function addedSkips(cwd: string, base: string, tree: string, markers: string[]): Promise<string[]> {
+/** Each test file with an added line holding a skip marker, as "file (marker)"; or the reason the change could not be read. Scoped to `testGlobs`: a marker outside a test file is not a test switched off. */
+async function addedSkips(cwd: string, base: string, tree: string, markers: string[], testGlobs: string[]): Promise<string[]> {
+  const testPaths = new Set((await touched(cwd, base, tree, testGlobs.map(glob))).map(({ path }) => path));
+  if (testPaths.size === 0) return [];
   let patch: string;
   try {
     patch = await git(cwd, ["diff-tree", "-r", "-p", "-U0", "--text", "--no-renames", "--no-ext-diff", "--no-textconv", "--no-color", base, tree], { raw: true, maxBuffer: PATCH_LIMIT });
@@ -114,12 +138,15 @@ async function addedSkips(cwd: string, base: string, tree: string, markers: stri
   }
   const found = new Set<string>();
   let file = "";
+  let inTest = false;
   let inHunk = false;
   for (const line of patch.split("\n")) {
     if (line.startsWith("diff --git ")) inHunk = false;
-    else if (!inHunk && line.startsWith("+++ ")) file = line.replace(/^\+\+\+ (b\/)?/, "");
-    else if (line.startsWith("@@")) inHunk = true;
-    else if (inHunk && line.startsWith("+")) for (const marker of markers) if (line.includes(marker)) found.add(`${file} (${marker})`);
+    else if (!inHunk && line.startsWith("+++ ")) {
+      file = line.replace(/^\+\+\+ (b\/)?/, "");
+      inTest = testPaths.has(file);
+    } else if (line.startsWith("@@")) inHunk = true;
+    else if (inHunk && inTest && line.startsWith("+")) for (const marker of markers) if (line.includes(marker)) found.add(`${file} (${marker})`);
   }
   return [...found];
 }
@@ -191,49 +218,68 @@ async function hiddenSkipsIn(worktreePath: string, path: string, markers: string
  * ponytail: a file already refused at baseline and then rewritten is not seen; hash it into the id if that matters.
  * ponytail: build output holding a copy of an already-skipped test (`dist/old.test.js` from a tracked test with a legitimate `.skip(`) is refused when the agent, not the project's check, built it; the refusal says to delete such output, so the agent's next attempt passes.
  */
-export async function ignoredAssertions(worktreePath: string, guards: Guards): Promise<Assertion[]> {
+export async function ignoredAssertions(worktreePath: string, guards: ActiveGuards): Promise<Assertion[]> {
+  if (!guards.on.includes("ignored")) return [];
   const refused = (path: string, why: string): Assertion => ({
     id: ignoredId(path),
     outcome: "FAIL",
-    detail: `Refused: this fix leaves ${path} where git ignores it, but the tests still read it from disk, and ${why}. Test settings, and tests that switch others off, may not be hidden from git: remove it (if your build or test run wrote it, delete that output), or fix the problem in the code.`,
+    detail: `Refused: this work leaves ${path} where git ignores it, but the tests still read it from disk, and ${why}. Test settings, and tests that switch others off, may not be hidden from git: remove it (if your build or test run wrote it, delete that output), or fix the problem in the code.`,
   });
-  const settings = await ignoredAmong(worktreePath, guards.protectedGlobs);
+  const settings = await ignoredAmong(worktreePath, guards.lists.protectedGlobs);
   const found = settings.map((path) => refused(path, "it decides how the tests run"));
-  for (const path of await ignoredAmong(worktreePath, guards.testGlobs)) {
+  for (const path of await ignoredAmong(worktreePath, guards.lists.testGlobs)) {
     if (settings.includes(path)) continue;
-    const skips = await hiddenSkipsIn(worktreePath, path, guards.skipMarkers);
+    const skips = await hiddenSkipsIn(worktreePath, path, guards.lists.skipMarkers);
     if (skips.length > 0) found.push(refused(path, `it switches tests off or cannot be checked: ${skips.join(", ")}`));
   }
   return found;
 }
 
+/** What a gate repair was accepted as changing: each setting's label, and a fingerprint of how it stood when the repair ended. */
+export type AcceptedSettings = Record<string, string>;
+
 /**
- * Whether the fix in `worktreePath` touched the tests that judge it: every
+ * Each setting that differs between `base` and `tree` (a revision or a tree id), with a fingerprint of how it stands
+ * in `tree`: the blob a protected or check file has there ("deleted" when it is gone), or the test command itself.
+ * Files hidden from git are not here: nothing excuses those.
+ */
+export async function settingsChanged(worktreePath: string, base: string, tree: string, lists: GuardLists, verify: GateRef | null): Promise<Map<string, string>> {
+  const runs = (verify === null ? [] : checkFilesOf(verify, { repoPath: worktreePath, worktreePath })).map((path) => `:(literal)${path}`);
+  const found = new Map<string, string>();
+  for (const { path } of await touched(worktreePath, base, tree, [...lists.protectedGlobs.map(glob), ...runs])) {
+    found.set(path, await git(worktreePath, ["rev-parse", "--verify", "-q", `${tree}:${path}`]).catch(() => "deleted"));
+  }
+  const [before, after] = await Promise.all([testCommandAt(worktreePath, base), testCommandAt(worktreePath, tree)]);
+  if (before !== after) found.set("package.json (how tests are run)", after);
+  return found;
+}
+
+/**
+ * Whether the work in `worktreePath` touched the tests that judge it: every
  * file in the working copy, committed or not, compared by git with where the
- * fix branched from `baseBranch`; and every ignored file that would change
+ * work started from `base`; and every ignored file that would change
  * what the tests do (`ignoredAssertions`), which the comparison cannot see.
  * Independent of how the project's tests report, so it holds for a project
  * whose tests say only pass or fail. Each is absent at baseline, so a FAIL is a
  * new failure.
  * ponytail: package.json is read at the top of the project only; a workspace's own package.json is guarded only through `protectedGlobs`.
- * ponytail: the base is `merge-base HEAD <baseBranch>`, and a worker granted Bash can move HEAD (reset to an ancestor from before a test existed) so the base no longer holds the test; this is the documented Bash residual (docs/agent-interface.md). Pin the branch-point commit at provisioning and pass it on GateContext if that is seen.
+ * `base` is the commit the work started from, pinned when its working copy was made, so moving HEAD back cannot hide a deleted test.
  */
-export async function guardAssertions(worktreePath: string, baseBranch: string, guards: Guards, verify: GateRef | null): Promise<Assertion[]> {
-  const base = await git(worktreePath, ["merge-base", "HEAD", baseBranch]);
+export async function guardAssertions(worktreePath: string, base: string, guards: ActiveGuards, verify: GateRef | null, accepted: AcceptedSettings = {}): Promise<Assertion[]> {
+  const { lists, on } = guards;
   const tree = await treeOf(worktreePath);
-  const tests = await touched(worktreePath, base, tree, guards.testGlobs.map(glob));
+  const tests = await touched(worktreePath, base, tree, lists.testGlobs.map(glob));
   const removed = tests.filter(({ status }) => status !== "A" && status !== "M").map(({ path }) => `${path} deleted`);
-  // A problem in a test is fixed by changing one: its fix may modify an existing test, never remove one.
-  const edited = guards.testsCategory ? [] : tests.filter(({ status }) => status === "M").map(({ path }) => `${path} changed`);
-  const runs = (verify === null ? [] : checkFilesOf(verify, { repoPath: worktreePath, worktreePath })).map((path) => `:(literal)${path}`);
-  const settings = [...(await hiddenFiles(worktreePath)), ...(await touched(worktreePath, base, tree, [...guards.protectedGlobs.map(glob), ...runs])).map(({ path }) => path)];
-  const [commandBefore, commandAfter] = await Promise.all([testCommandAt(worktreePath, base), testCommandAt(worktreePath, tree)]);
-  if (commandBefore !== commandAfter) settings.push("package.json (how tests are run)");
-  return [
+  const edited = tests.filter(({ status }) => status === "M").map(({ path }) => `${path} changed`);
+  const changed = await settingsChanged(worktreePath, base, tree, lists, verify);
+  // A setting a gate repair was accepted as changing, and which still stands as that repair left it, is not the worker's doing.
+  const settings = [...(await hiddenFiles(worktreePath)), ...[...changed].filter(([label, print]) => accepted[label] !== print).map(([label]) => label)];
+  const all = [
     assertion(TESTS_GUARD, removed, "removed existing tests"),
     assertion(EDIT_GUARD, edited, "changed existing tests", `${PUT_BACK} If only a change to an existing test would fix the problem, stop and say so.`),
     assertion(CHECK_GUARD, settings, "changed how the tests are run"),
-    assertion(SKIP_GUARD, await addedSkips(worktreePath, base, tree, guards.skipMarkers), "skipped tests"),
+    assertion(SKIP_GUARD, await addedSkips(worktreePath, base, tree, lists.skipMarkers, lists.testGlobs), "skipped tests"),
     ...(await ignoredAssertions(worktreePath, guards)),
   ];
+  return all.filter((found) => judged(on, found.id));
 }

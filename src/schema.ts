@@ -33,6 +33,10 @@ export type BudgetPopulation = keyof BudgetSet;
 export const TaskDef = z.record(z.string(), z.unknown());
 export type TaskDef = z.infer<typeof TaskDef>;
 
+/** The guards by name, in the order they are told. Each judges one way of weakening the tests. */
+export const GuardName = z.enum(["tests-untouched", "tests-unchanged", "check-untouched", "no-skips", "ignored"]);
+export type GuardName = z.infer<typeof GuardName>;
+
 export const GateRef = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("command"),

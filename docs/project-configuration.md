@@ -72,6 +72,14 @@ sentence makes it a new task, which is also how you ask for a finished one again
 Deleting a sentence leaves what already ran in the history. An empty sentence, or two
 that say exactly the same thing, are refused before anything runs.
 
+Every task's work is checked for weakened tests, whatever the check you set up says: a test
+deleted or renamed (`tests-untouched`), a change to how tests run, such as a test-runner setting or
+a CI file (`check-untouched`), a new skip marker (`no-skips`), and a test setting or skipping test
+hidden from git (`ignored`). Editing an existing test is allowed, because test-first work and
+refactoring do it. A task written as an object can change this with `guards`: `"add":
+["tests-unchanged"]` also refuses edits to existing tests, and `"off": [...]` turns a guard off
+for a task whose job is to change tests. The report shows any task whose guards differ.
+
 ## 4. Choose how the work is checked, and what happens to it
 
 `gate` is the check that decides whether the agent's work is good: the agent's own word
