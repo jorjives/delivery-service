@@ -7,7 +7,7 @@ import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 import { InvalidPack, UnknownPack } from "../errors.js";
 import { isEnoent } from "../journal.js";
 import { Severity, SPECIFIC_CHECKS } from "./finding.js";
-import { GuardGlob } from "./guards.js";
+import { GuardGlob } from "../guards.js";
 import type { JsonSchema } from "../report/json-schema.js";
 
 /** The version of the pack format this build reads. Additive-only within the major. */

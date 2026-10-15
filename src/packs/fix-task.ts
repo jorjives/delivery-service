@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { CloserRef, GateRef } from "../schema.js";
 import { Finding, Severity } from "./finding.js";
-import { Guards } from "./guards.js";
+import { Guards } from "../guards.js";
 
 /** Whether a fix waits for sign-off, how it lands once it may, and whether the owner let it change existing tests: decided when it was authorised. */
 export const Release = z.object({ hold: z.boolean(), landing: CloserRef, allowTestEdits: z.literal(true).optional() });

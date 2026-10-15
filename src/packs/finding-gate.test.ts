@@ -8,7 +8,7 @@ import { computeDelta } from "../delta-rule.js";
 import type { GateRef } from "../schema.js";
 import findingGate, { FINDING_GATE_MODULE, FINDING_GATE_REF, findingAssertion } from "./finding-gate.js";
 import { FixTask, fixTaskFor } from "./fix-task.js";
-import { CHECK_GUARD, DEFAULT_GUARDS, EDIT_GUARD, ignoredId, SKIP_GUARD, TESTS_GUARD, type Guards } from "./guards.js";
+import { CHECK_GUARD, DEFAULT_GUARDS, EDIT_GUARD, ignoredId, SKIP_GUARD, TESTS_GUARD, type Guards } from "../guards.js";
 import { exampleRepo, sampleFinding } from "./review-fixtures.js";
 
 const TESTS: GateRef = { type: "command", command: "node --test", parseMode: "exitcode" };

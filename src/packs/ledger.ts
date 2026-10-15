@@ -5,7 +5,7 @@ import { DamagedReview } from "../errors.js";
 import { appendLine, isEnoent, MalformedLine, parseLines } from "../journal.js";
 import { CloserRef, GateRef } from "../schema.js";
 import type { WithoutAt } from "../without-at.js";
-import { GuardLists } from "./guards.js";
+import { GuardLists } from "../guards.js";
 import { Severity } from "./finding.js";
 
 const Id = z.string().regex(/^[0-9a-f]{12}$/);

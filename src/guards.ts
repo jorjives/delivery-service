@@ -1,10 +1,10 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { git } from "../git-exec.js";
-import { isEnoent } from "../journal.js";
-import { checkFilesOf, treeOf } from "../repair-changes.js";
-import type { Assertion, GateRef } from "../schema.js";
-import { FILE_LIMIT } from "./confirm.js";
+import { git } from "./git-exec.js";
+import { isEnoent } from "./journal.js";
+import { checkFilesOf, treeOf } from "./repair-changes.js";
+import type { Assertion, GateRef } from "./schema.js";
+import { FILE_LIMIT } from "./packs/confirm.js";
 import { z } from "zod";
 
 /**

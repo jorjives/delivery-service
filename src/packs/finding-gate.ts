@@ -6,7 +6,7 @@ import { resolveGate } from "../resolve-gate.js";
 import type { Assertion, GateRef, GateReport } from "../schema.js";
 import { checkFinding } from "./finding-check.js";
 import { FixTask } from "./fix-task.js";
-import { DEFAULT_GUARDS, guardAssertions, ignoredAssertions, type Guards } from "./guards.js";
+import { DEFAULT_GUARDS, guardAssertions, ignoredAssertions, type Guards } from "../guards.js";
 
 /** This module's own path: loaded from the installed package, outside every working copy, so a fix's agent can neither read nor change it. */
 export const FINDING_GATE_MODULE = fileURLToPath(import.meta.url);

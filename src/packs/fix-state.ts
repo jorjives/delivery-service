@@ -9,7 +9,7 @@ import { atOrAbove, type Finding, type Severity } from "./finding.js";
 import { fixTaskFor, type FixTask } from "./fix-task.js";
 import { authorisations, readLedger, resolvedIds, signOffResults, allowedUnchecked, type LedgerEntry, type SignOffResult } from "./ledger.js";
 import { changesTests, listReviews, loadReview, uncheckable, type ReviewHeader, type SavedReview } from "./review-record.js";
-import { isGuard, needsTestChange } from "./guards.js";
+import { isGuard, needsTestChange } from "../guards.js";
 
 /** Every state a problem can be in, internally. The owner reads them through `STATE_WORDS` (`render.ts`). */
 export const FIX_STATES = ["proposed", "needs_decision", "approved", "skipped", "fixing", "fixed", "held", "signed_off_landed", "signed_off_failed", "rejected", "already_resolved", "unfixable", "stopped"] as const;

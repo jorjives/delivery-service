@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { cleanGitEnv } from "../git-env.js";
 import { readLedger } from "../packs/ledger.js";
-import { guardListsFor } from "../packs/guards.js";
+import { guardListsFor } from "../guards.js";
 import { needsTestChangeLine, NO_REVIEW_YET, REFUSED_WEAKENING, thresholdLine, HOLD_WHY, allowTestEditsHint } from "../packs/render.js";
 import { readFindingStates } from "../packs/fix-state.js";
 import { EXAMPLE_DIR, exampleRepo, NO_TESTS_DIR, NO_TESTS_FIXES, NO_TESTS_SCAN, sampleFinding, writeReview, scanScript } from "../packs/review-fixtures.js";

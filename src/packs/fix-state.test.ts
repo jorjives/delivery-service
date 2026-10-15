@@ -14,7 +14,7 @@ import type { Finding } from "./finding.js";
 import { carryOver, deriveFindings, fixTasks, hiddenByDefault, readFindingStates, fixRunsOf, lastWords, recommended, reopensForTestEdits, UNDECIDED, type EarlierChoice, type FindingState, type FixRun, type FixState } from "./fix-state.js";
 import { fixTaskFor } from "./fix-task.js";
 import { appendLedger, type LedgerEntry } from "./ledger.js";
-import { guardListsFor } from "./guards.js";
+import { guardListsFor } from "../guards.js";
 import { loadReview, listReviews, type ReviewEntry, type ReviewHeader, type SavedReview } from "./review-record.js";
 import { FIX_PHASE_FINDINGS, sampleFinding, writeFixPhase, writeReview } from "./review-fixtures.js";
 import type { RunRecord } from "../run-records.js";

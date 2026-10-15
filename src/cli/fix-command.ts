@@ -9,7 +9,7 @@ import type { FixTask } from "../packs/fix-task.js";
 import { readFindingStates } from "../packs/fix-state.js";
 import { findingsDocument } from "../packs/findings-document.js";
 import { appendLedger, allowedTestEdits } from "../packs/ledger.js";
-import { guardListsFor } from "../packs/guards.js";
+import { guardListsFor } from "../guards.js";
 import { planConfig, writePlan } from "../packs/plan.js";
 import { listLines } from "../packs/render.js";
 import { uncheckable } from "../packs/review-record.js";

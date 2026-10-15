@@ -6,7 +6,7 @@ import { DamagedReview } from "../errors.js";
 import type { GateRef } from "../schema.js";
 import { withoutAt } from "../without-at.js";
 import { appendLedger, authorisations, readLedger, signOffResults, allowedUnchecked, allowedTestEdits, type LedgerEntry } from "./ledger.js";
-import { guardListsFor } from "./guards.js";
+import { guardListsFor } from "../guards.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "ledger-"));
 const NPM_TEST: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
