@@ -1,8 +1,14 @@
 import { describe, it, expect } from "vitest";
+import { writeFileSync, mkdtempSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createAgentTriage, needsJudgement, toTriageVerdict } from "./triage.js";
 import { fakeAgentPort } from "./testing.js";
+import { initTempRepo } from "./temp-repo.js";
+import { git } from "../tests/helpers.js";
+import { create, load } from "./case-file.js";
 import type { AgentContext, AgentPort, TriageInput, TriageTerminus, Metered } from "./ports.js";
-import type { BudgetSet, CaseFile } from "./schema.js";
+import type { BudgetSet, CaseFile, GateRef } from "./schema.js";
 import { DID_NOT_COMPLETE } from "./agent-invoke.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
 
@@ -22,7 +28,7 @@ function input(overrides: Partial<TriageInput>): TriageInput {
   return {
     trigger: "worker_escalate",
     category: "exhaustion",
-    caseFile: {} as CaseFile, // never read by createAgentTriage
+    caseFile: { history: [] } as unknown as CaseFile, // gate_fail reads the last gate round; every other trigger still never does
     remainingBudgets: budgets(0),
     ctx,
     ...overrides,
@@ -46,6 +52,9 @@ function triageAgent(reply: Metered<TriageTerminus>): AgentPort & { calls: Agent
 /** An agent port that fails the test if it is called at all. */
 const forbiddenAgent: AgentPort = fakeAgentPort({});
 
+const checkUntouchedOnly: CaseFile = { history: [{ t: "gate", attempt: 1, status: "FAIL", newFailures: [{ id: "guard:check-untouched", detailRef: "d" }] }] } as unknown as CaseFile;
+const mixedFailure: CaseFile = { history: [{ t: "gate", attempt: 1, status: "FAIL", newFailures: [{ id: "guard:check-untouched", detailRef: "d" }, { id: "report.tap", detailRef: "d2" }] }] } as unknown as CaseFile;
+
 describe("needsJudgement", () => {
   it("engages the agent for a stuck worker while a correction slot is left", () => {
     expect(needsJudgement(input({ remainingBudgets: budgets(2) }))).toBe(true);
@@ -61,6 +70,14 @@ describe("needsJudgement", () => {
 
   it("does not engage the agent for a plain gate failure with more than one slot left", () => {
     expect(needsJudgement(input({ trigger: "gate_fail", category: undefined, remainingBudgets: budgets(0) }))).toBe(false);
+  });
+
+  it("engages the agent on the first round whose only new failure is the settings guard", () => {
+    expect(needsJudgement(input({ trigger: "gate_fail", category: undefined, remainingBudgets: budgets(0), caseFile: checkUntouchedOnly }))).toBe(true);
+  });
+
+  it("does not engage the agent for a settings failure alongside a real one, with budget left", () => {
+    expect(needsJudgement(input({ trigger: "gate_fail", category: undefined, remainingBudgets: budgets(0), caseFile: mixedFailure }))).toBe(false);
   });
 });
 
@@ -266,5 +283,46 @@ describe("a gate error once rechecks are spent", () => {
     const verdict = await createAgentTriage(forbiddenAgent).triage(gateError(2));
     expect(verdict.verdict).toBe("escalate");
     expect(verdict.cause).toMatchObject({ kind: "budget", population: "gateMaintenance" });
+  });
+});
+
+describe("a lone settings failure, triage's to accept", () => {
+  const NPM: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
+  const triageBudgets: BudgetSet = { correction: { used: 2, max: 3 }, gateError: { used: 0, max: 3 }, gateMaintenance: { used: 0, max: 2 }, terminus: { used: 0, max: 5 }, close: { used: 0, max: 3 } };
+
+  async function fixture() {
+    const repo = initTempRepo("triage-settings-", { "Makefile": "test:\n\tnpm test\n" });
+    const start = git(repo, ["rev-parse", "HEAD"]);
+    writeFileSync(join(repo, "Makefile"), "test:\n\tnpm test\n\nbuild:\n\tnpm run build\n");
+    const dir = mkdtempSync(join(tmpdir(), "triage-settings-case-"));
+    await create(dir, { surfaceId: "s", taskDef: { intent: "add a build target" }, gateRef: NPM, startCommit: start }, triageBudgets);
+    const caseFile = {
+      header: { taskDef: { intent: "add a build target" }, gateRef: NPM, startCommit: start },
+      history: [{ t: "gate", attempt: 1, status: "FAIL", newFailures: [{ id: "guard:check-untouched", detailRef: "d" }] }],
+    } as unknown as CaseFile;
+    return { repo, dir, caseFile };
+  }
+
+  it("records the current setting when triage accepts it, and a later round does not re-fail it", async () => {
+    const { repo, dir, caseFile } = await fixture();
+    const agent = triageAgent({ status: "reroute", rationale: "the Makefile target is the task's own point", payload: brief, acceptSettings: true, usage: {} });
+    await createAgentTriage(agent).triage(input({ trigger: "gate_fail", category: undefined, remainingBudgets: budgets(2), caseFile, ctx: { worktreePath: repo, dir, sessionKey: "triage-0" } }));
+    const { history } = await load(dir);
+    expect(history.some((entry) => entry.t === "triage_accepted" && Object.keys(entry.settings).includes("Makefile"))).toBe(true);
+  });
+
+  it("accepts nothing when triage does not say to", async () => {
+    const { repo, dir, caseFile } = await fixture();
+    const agent = triageAgent({ status: "reroute", rationale: "not this one", payload: brief, usage: {} });
+    await createAgentTriage(agent).triage(input({ trigger: "gate_fail", category: undefined, remainingBudgets: budgets(2), caseFile, ctx: { worktreePath: repo, dir, sessionKey: "triage-0" } }));
+    expect((await load(dir)).history.some((entry) => entry.t === "triage_accepted")).toBe(false);
+  });
+
+  it("never accepts anything for a test-deleting round, however triage answers: the field means nothing there", async () => {
+    const { repo, dir } = await fixture();
+    const deletion = { header: { taskDef: { intent: "x" }, gateRef: NPM, startCommit: "0".repeat(40) }, history: [{ t: "gate", attempt: 1, status: "FAIL", newFailures: [{ id: "guard:tests-untouched", detailRef: "d" }] }] } as unknown as CaseFile;
+    const agent = triageAgent({ status: "reroute", rationale: "try again", payload: brief, acceptSettings: true, usage: {} });
+    await createAgentTriage(agent).triage(input({ trigger: "gate_fail", category: undefined, remainingBudgets: budgets(0), caseFile: deletion, ctx: { worktreePath: repo, dir, sessionKey: "triage-0" } }));
+    expect((await load(dir)).history.some((entry) => entry.t === "triage_accepted")).toBe(false);
   });
 });

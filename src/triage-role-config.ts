@@ -41,7 +41,15 @@ export type EscalationPacket = z.infer<typeof EscalationPacket>;
  * `toTriageVerdict` in `triage.ts` is the only place that translates.
  */
 export const TriageEnvelope = z.discriminatedUnion("status", [
-  z.object({ status: z.literal("reroute"), rationale: z.string().min(1), payload: SharpenedBrief }),
+  z.object({
+    status: z.literal("reroute"),
+    rationale: z.string().min(1),
+    payload: SharpenedBrief,
+    // Read only after a gate_fail whose last round failed on check-untouched alone (src/triage.ts). Absent or
+    // false: nothing is accepted. True there: the settings that round found changed are the task's own, legitimate
+    // work, not a test weakened — the harness fingerprints and records them itself, never trusting triage's own account.
+    acceptSettings: z.boolean().optional(),
+  }),
   z.object({ status: z.literal("escalate"), rationale: z.string().min(1), payload: EscalationPacket }),
   z.object({ status: z.literal("fix_the_gate"), rationale: z.string().min(1), payload: GateRepairBrief }),
   z.object({ status: z.literal("retry_close"), rationale: z.string().min(1), payload: CloseRepairBrief }),

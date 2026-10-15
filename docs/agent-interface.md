@@ -90,6 +90,11 @@ worker's failure. A repair's change to how tests run (a test-runner setting, a C
 script, a file the check runs) is allowed, is listed under "Worth a look" in `delivery report`,
 and is not held against the worker unless the worker then edits it again.
 
+Triage may also accept a worker's own change to how tests run, the one time that matters: a round
+that failed on `check-untouched` alone, nothing else. Accepting one is recorded exactly as a
+repair's acceptance is, and later rounds judge the setting by it. A deleted, edited or skipped
+test is never triage's to wave through, on any round.
+
 For the extender's how-to, with both reference configurations, see
 [Configuring a role](configuring-a-role.md).
 

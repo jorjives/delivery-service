@@ -46,7 +46,9 @@ multi-surface concerns are out of scope here.
    guard at acceptance, by name, on every run; the agent is told what will judge its work, not
    given a list of rules to obey. A gate repair is judged by the same guards when it ends, on its
    own change: its change to how tests run is accepted and reported, anything else the guards
-   refuse stops the run there.
+   refuse stops the run there. Judgement, not just retry: a round that fails on the settings guard
+   alone is put to triage immediately, not only on the last correction slot, because no retry
+   changes that verdict by itself.
 
 ## State machine
 

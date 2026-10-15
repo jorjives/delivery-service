@@ -291,6 +291,9 @@ export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
     // Written before the repair's own terminus (Task 8A); the terminus entry
     // that follows is what actually moves the state.
     case "repair_accepted": return "GATE_MAINTENANCE";
+    // Written before the round's own triage entry (Task 8B); the gate FAIL
+    // entry it follows already put the surface in TRIAGE.
+    case "triage_accepted": return "TRIAGE";
   }
 }
 
@@ -342,6 +345,7 @@ export function deriveBudgetsFromLog(
         else if (entry.verdict === "recheck_gate") used.gateError++;
         break;
       case "repair_accepted":
+      case "triage_accepted":
         break;
     }
   }
@@ -414,5 +418,9 @@ export function resumeAction(tail: HistoryEntry | undefined): ResumeAction {
     // always follows it is what resumeAction actually reads.
     case "repair_accepted":
       return "start";
+    // Written before the round's own triage entry (Task 8B); a crash between
+    // them means the verdict itself was never recorded, so triage runs again.
+    case "triage_accepted":
+      return "triage";
   }
 }

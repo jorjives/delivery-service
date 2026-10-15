@@ -53,6 +53,11 @@ describe("triage reply shapes", () => {
     expect(TriageEnvelope.safeParse({ status: "reroute", rationale: "again" }).success).toBe(false);
   });
 
+  it("takes acceptSettings on a reroute, and leaves it optional", () => {
+    expect(TriageEnvelope.safeParse({ status: "reroute", rationale: "r", payload: brief, acceptSettings: true }).success).toBe(true);
+    expect(TriageEnvelope.safeParse({ status: "reroute", rationale: "r", payload: brief }).success).toBe(true);
+  });
+
   it("converts to a JSON Schema the SDK can constrain output with", () => {
     expect(() => z.toJSONSchema(TriageEnvelope)).not.toThrow();
   });

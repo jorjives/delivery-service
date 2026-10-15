@@ -341,6 +341,16 @@ export const RepairAcceptedEntry = z.object({
 });
 export type RepairAcceptedEntry = z.infer<typeof RepairAcceptedEntry>;
 
+// A worker's own change to how tests run, which triage judged legitimate on the round it alone failed and accepted:
+// label to fingerprint, folded the same way a repair's acceptance is (`acceptedOf`). Written before the round's
+// triage entry so a crash cannot lose it.
+export const TriageAcceptedEntry = z.object({
+  t: z.literal("triage_accepted"),
+  settings: z.record(z.string(), z.string()),
+  at: At.optional(),
+});
+export type TriageAcceptedEntry = z.infer<typeof TriageAcceptedEntry>;
+
 export const HistoryEntry = z.discriminatedUnion("t", [
   DispatchEntry,
   TerminusEntry,
@@ -349,6 +359,7 @@ export const HistoryEntry = z.discriminatedUnion("t", [
   CloseEntry,
   BaselineEntry,
   RepairAcceptedEntry,
+  TriageAcceptedEntry,
 ]);
 export type HistoryEntry = z.infer<typeof HistoryEntry>;
 

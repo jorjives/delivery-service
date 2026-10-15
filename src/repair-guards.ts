@@ -14,9 +14,9 @@ export interface RepairVerdict {
 const ACCEPTED: RepairVerdict = { refused: null, accepted: {} };
 const refusal = (why: string): RepairVerdict => ({ refused: `The repair was refused: ${why}`, accepted: {} });
 
-/** What every repair so far was accepted as changing, a later repair's fingerprint winning. */
+/** What every repair or triage acceptance so far was accepted as changing, a later one's fingerprint winning. */
 export function acceptedOf(history: HistoryEntry[]): AcceptedSettings {
-  return Object.assign({}, ...history.flatMap((entry) => (entry.t === "repair_accepted" ? [entry.settings] : [])));
+  return Object.assign({}, ...history.flatMap((entry) => (entry.t === "repair_accepted" || entry.t === "triage_accepted" ? [entry.settings] : [])));
 }
 
 /**
