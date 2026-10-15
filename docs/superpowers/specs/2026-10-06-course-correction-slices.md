@@ -32,6 +32,7 @@ whichever slice first depends on them, since none is independently observable.
 
 ## Slice 1: Run Tasks With Your Own Claude Code Setup, Safely Contained
 
+**Status:** ✅ Complete — 2026-10-15 — `d30dfb2`
 **Delivers:** A task's agent session runs with the operator's own Claude Code settings, CLAUDE.md,
 skills, plugins, hooks, MCP servers and full tool access — as the operator's own session would —
 while a write fence keeps the operator's main checkout untouched and a landing boundary stops the
