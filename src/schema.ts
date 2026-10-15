@@ -157,6 +157,18 @@ export const AgentOptions = z
   });
 export type AgentOptions = z.infer<typeof AgentOptions>;
 
+/** How hard a run insists on the write fence: used where it can be, required (absent is a setup refusal), or not used. */
+export const FenceMode = z.enum(["preferred", "required", "off"]);
+export type FenceMode = z.infer<typeof FenceMode>;
+
+/** Whether the fence was there when the run started, as probed; why not, when it was not. */
+export const FenceState = z.object({ present: z.boolean(), reason: z.string().optional() });
+export type FenceState = z.infer<typeof FenceState>;
+
+/** The fence a run started with: what was asked for, and what the probe found. */
+export const FenceRecord = z.object({ mode: FenceMode, devices: z.array(z.string()), state: FenceState });
+export type FenceRecord = z.infer<typeof FenceRecord>;
+
 export const CaseFileHeader = z.object({
   surfaceId: z.string(),
   taskDef: TaskDef,
