@@ -196,47 +196,20 @@ runtime did not report, or reported as something other than a finite, non-negati
 left out. A session that never ran carries no `usage`. Nothing that routes a terminus reads it;
 it is recorded for reporting.
 
-## Tool authority
+## What a session may do
 
-Each role's blast radius is a security boundary, not a convention, so it is enforced
-at the SDK seam.
+A session runs as the operator's own Claude Code would. It is built with Claude Code's own
+system prompt and the harness's context appended (`systemPrompt: { type: "preset", preset:
+"claude_code", append }`), loads every setting source (user, project and local: CLAUDE.md,
+skills, plugins, hooks and MCP servers), and runs with `permissionMode: "bypassPermissions"`.
+There is no tool list and no permission callback. An operator who wants to keep the agent
+from a tool says so the native way, with `permissions.deny` in their own Claude settings, and
+that setting refuses the call.
 
-- **`allowedTools` is pinned in `role_cfg`** and enforced at the session's
-  `canUseTool` callback — the one decision point, consulted before each tool
-  execution. Triage gets a read-only set; the worker gets edit + shell;
-  gate-maintenance gets edit scoped to the environment. The session's base tool
-  set is deliberately *not* narrowed to that list: a role must be able to issue
-  an out-of-role call so the seam can refuse it observably and name it in the
-  log. The refusal is reported as `INCOMPLETE_TERMINUS` with a sentence naming
-  the role, the tool, and that the boundary worked as intended.
-
-- **The runtime is the enforcer, and the mock is not.** `claude-mock` models no
-  tool permissions, so no offline test can drive a real out-of-role call
-  through it. The harness's own decision path is unit-tested directly; the
-  end-to-end guarantee rests on the real agent runtime. Known gap, stated
-  rather than papered over.
-
-- **One residual the guard cannot close.** `canUseTool` is consulted only for
-  calls the runtime would otherwise prompt about. A tool the runtime
-  auto-approves under the pinned permission mode — the read-only family — is
-  never put to the guard, so an out-of-role *read-only* call is not refused and
-  not reported. Closing it would need a computed deny-list, which this design
-  rejected for having nothing to enumerate against. Every mutating tool, which
-  is where a role's blast radius actually lives, goes through the guard.
-
-- **No role may act outside its worktree.** Gate-maintenance's "environment, not
-  assertions" boundary is finer than a tool list: it needs edit tools but must not
-  touch assertion definitions. Those definitions live outside every agent-reachable
-  worktree (invariant 5), and the same `canUseTool` guard enforces that location: a
-  call whose target path (`file_path`, `notebook_path`, `path`, or the path the runtime
-  itself flags as outside its working directory) resolves outside the run's
-  worktree is refused, for every role, with a sentence naming the role, the tool,
-  the path, and that the boundary worked as intended. The runtime already routes
-  such calls to the guard instead of running them; before this rule the guard
-  answered "allow" for any permitted tool, so "not present, so not editable" held
-  only by luck. Residual: a role granted `Bash` can write wherever its shell can,
-  and the runtime does not flag every such command, which is why the reference
-  gate-maintenance config does not grant `Bash`.
+What the agent may change is not limited at its inputs. Its work is judged at acceptance:
+the gate, the test-weakening guards and the gate's integrity check, all outside its reach to
+alter. The main checkout is protected by a write fence, and the branch is the deliverable: the
+agent cannot merge, push or open a pull request itself.
 
 ## Relationship to the mock
 

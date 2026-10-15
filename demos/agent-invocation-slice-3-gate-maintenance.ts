@@ -25,7 +25,6 @@ import * as path from "node:path";
 import { create } from "../src/case-file.js";
 import { invoke } from "../src/agent-invoke.js";
 import { gateMaintenanceRoleConfig } from "../src/role-config.js";
-import { authorityRefusal, createToolAuthority } from "../src/tool-authority.js";
 import { mockSessionEnvironment } from "../src/testing.js";
 import type { AgentContext } from "../src/ports.js";
 import type { BudgetSet, GateRef } from "../src/schema.js";
@@ -94,29 +93,11 @@ async function main(): Promise<void> {
   console.log(`   After:  .env = ${JSON.stringify(fs.readFileSync(envFile, "utf-8"))}`);
   console.log(`   Result: ${repaired.status} — ${repaired.rationale}\n`);
 
-  console.log("3. Scenario: try to edit one of the project's checks");
-  console.log(`   Attempt: Edit ${checkFile}`);
-  console.log("            (Edit IS in this role's permitted tools)");
-  const authority = createToolAuthority(gateMaintenanceRoleConfig, worktreePath);
-  const decision = await authority.canUseTool(
-    "Edit",
-    { file_path: checkFile, old_string: "grep -q hello", new_string: "true" },
-    { signal: new AbortController().signal, toolUseID: "demo-edit", requestId: "demo-request" },
-  );
-  console.log(`   Decision: ${decision?.behavior ?? "(none)"}`);
-  const refused = authorityRefusal(gateMaintenanceRoleConfig, authority.refusals, []);
-  console.log(`   Result:   ${refused?.status ?? "(no refusal recorded)"}`);
-  console.log(`   Reason:   ${refused?.rationale ?? "-"}`);
-  console.log(`   Check file unchanged: ${fs.readFileSync(checkFile, "utf-8").includes("grep -q hello") ? "yes" : "NO"}\n`);
-
-  console.log("4. What this shows");
+  console.log("3. What this shows");
   console.log(
     "   A second, narrower role ran through the unchanged invocation seam with nothing\n" +
       "   but a new configuration, and got the same kind of result as a worker's clean\n" +
-      "   completion. Its edit tools reach the environment but not the checks: a call aimed\n" +
-      "   outside the worktree is refused by the same guard that refuses out-of-role tools.\n" +
-      "   Note: claude-mock models no tool permissions, so scenario 3 drives the harness's\n" +
-      "   own guard directly; the live guarantee rests on the real agent runtime.\n" +
+      "   completion.\n" +
       "   Guide: docs/configuring-a-role.md",
   );
 }

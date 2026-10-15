@@ -1,14 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { InvalidRoleConfig } from "../errors.js";
 import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
-import { createToolAuthority, refusalSentence } from "../tool-authority.js";
 import { triageRoleConfig } from "../triage-role-config.js";
 import { rolesFor } from "./roles.js";
 
 const OPS_RULE = "Never modify anything under the ops folder.";
-
-/** The options bag the SDK passes as `canUseTool`'s third argument. */
-const sdkCallOptions = { signal: new AbortController().signal, toolUseID: "roles-test-tool-use", requestId: "roles-test-request" };
 
 describe("the roles a run from the command line is given", () => {
   it("is the three built-in roles when the file changes nothing", () => {
@@ -42,13 +38,5 @@ describe("the roles a run from the command line is given", () => {
   it("passes every merged role through the library's own role check", () => {
     expect(() => rolesFor({ worker: { allowedTools: [] } })).toThrow(InvalidRoleConfig);
     expect(() => rolesFor({ gateMaintenance: { systemPromptFragment: "" } })).toThrow(InvalidRoleConfig);
-  });
-
-  it("refuses the agent a tool the file leaves out, exactly as the built-in tool guard refuses one", async () => {
-    const { worker } = rolesFor({ worker: { allowedTools: ["Read", "Glob", "Grep", "Edit", "Write"] } });
-    const authority = createToolAuthority(worker, "/runs/roles-test/tree");
-    const decision = await authority.canUseTool("Bash", { command: "ls" }, sdkCallOptions);
-    expect(decision).toEqual({ behavior: "deny", message: refusalSentence(worker, "Bash") });
-    expect(authority.refusals).toEqual([refusalSentence(worker, "Bash")]);
   });
 });

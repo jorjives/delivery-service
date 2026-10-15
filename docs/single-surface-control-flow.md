@@ -39,6 +39,9 @@ multi-surface concerns are out of scope here.
 5. **The gate is out of the worker's reach.** Whatever an agent can freely edit, it
    can neuter. The gate definition and assertion set are pinned by the harness, not
    discovered from inside the worktree.
+6. **The agent runs as the operator's Claude Code would.** Their settings, CLAUDE.md,
+   skills, plugins, hooks and MCP servers load, and every tool is available. The harness
+   appends its context to Claude Code's own system prompt; it never replaces it.
 
 ## State machine
 

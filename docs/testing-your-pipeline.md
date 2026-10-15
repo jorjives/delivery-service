@@ -35,7 +35,7 @@ in for the agent behind it, and they answer different questions:
 |---|---|---|
 | What it runs | Nothing below the agent port: no prompt assembly, no reply validation, no Agent SDK | The real invocation, the real Agent SDK over the real command-line protocol, and real reply validation |
 | Cost | No process is started | One short-lived process per agent session |
-| Proves your role configuration | No | Yes: the only stand-in that runs your `systemPromptFragment` and `envelopeSchema` through the real wiring (but not your `allowedTools`: see "What the scripted agent cannot prove") |
+| Proves your role configuration | No | Yes: the only stand-in that runs your `systemPromptFragment` and `envelopeSchema` through the real wiring (but not what your own Claude Code settings allow: see "What the scripted agent cannot prove") |
 | Right for | Fast tests of the surface driver, triage or routing that need exact control over each reply | Tests of your own pipeline: your gate, closer and role configurations together |
 
 If you are testing your gate, closer or role configurations, use the scripted
@@ -599,31 +599,11 @@ same figures under `usage` and `usageRecorded` (see [Reports as data](reporting.
 
 ## What the scripted agent cannot prove
 
-**The scripted agent cannot prove that a role is refused a tool it was not
-given.** It does not model `allowedTools` at all. It makes no tool calls: the
-files a script's `effects` write are written by the scripted agent itself, so the
-harness's permission guard never sees them. A script can change a file your
-role has no tool to touch, and the test still passes. A passing scripted test is
-not evidence that your `allowedTools` are enforced.
-
-That guarantee is tested where it is enforced instead:
-
-- **`src/tool-authority.test.ts`** tests the guard itself: it allows the tools a
-  role names, refuses any other, refuses a permitted tool aimed outside the
-  worktree, and reports each refusal in a sentence naming the role and what it
-  tried.
-- **`src/agent-invoke.test.ts`** ("the session options the primitive builds")
-  tests that every real session is started with that guard as the Agent SDK's
-  permission decision point, with no setting that would route around it.
-- **In a live session**, the real `claude` runtime consults the guard before
-  every tool call, and a refusal comes back as `incomplete`, as
-  [Configuring a role](configuring-a-role.md) describes.
-
-To watch the guard's decisions on out-of-role and out-of-worktree calls:
-
-```bash
-npm run demo:agent-slice-2
-```
+The scripted agent cannot prove what your own Claude Code settings allow or refuse. It makes no
+tool calls: its effects are written by the scripted agent itself, inside the working copy, so a
+`permissions.deny` rule in your settings is never consulted. That a session is built to load your
+settings is proved in `src/agent-invoke.test.ts`, which hands the real runtime the options the
+harness builds.
 
 ## When the test itself is wrong
 

@@ -2,7 +2,6 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import { SharpenedBrief, EscalationPacket, TriageEnvelope, triageRoleConfig } from "./triage-role-config.js";
 import { validateRoleConfig } from "./role-config.js";
-import { createToolAuthority } from "./tool-authority.js";
 
 const brief = {
   problem: "the greeting endpoint returns 'hi', and the test expects 'hello'",
@@ -67,15 +66,6 @@ describe("triageRoleConfig", () => {
 
   it("is given read-only tools and nothing else", () => {
     expect(triageRoleConfig.allowedTools).toEqual(["Read", "Glob", "Grep"]);
-  });
-
-  it("is refused every editing or shell tool by the guard, even inside the worktree", async () => {
-    const authority = createToolAuthority(triageRoleConfig, "/runs/s-1/tree");
-    const options = { signal: new AbortController().signal, toolUseID: "t", requestId: "r" };
-    for (const tool of ["Edit", "Write", "Bash", "NotebookEdit"]) {
-      const decision = await authority.canUseTool(tool, { file_path: "/runs/s-1/tree/a.txt" }, options);
-      expect(decision?.behavior).toBe("deny");
-    }
   });
 
   it("tells the session it is a read-only classifier and that its diagnosis is a hypothesis", () => {

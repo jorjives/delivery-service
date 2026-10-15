@@ -221,15 +221,12 @@ describe("the 'testing your delivery pipeline' guide", () => {
     expect(incomplete).toContain("terminus budget exhausted (<used>/<max>): ");
   });
 
-  it("says plainly that the scripted agent cannot prove tool-permission refusals, and where they are tested", () => {
+  it("says plainly that the scripted agent cannot prove what your own settings allow, and where session building is tested", () => {
     const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong");
-    expect(limits).toMatch(/The scripted agent cannot prove that a role is refused a tool it was not\s+given\./);
-    expect(limits).toContain("`allowedTools`");
-    for (const file of ["src/tool-authority.test.ts", "src/agent-invoke.test.ts"]) {
-      expect(limits).toContain(`\`${file}\``);
-      expect(existsSync(join(REPO_ROOT, file))).toBe(true);
-    }
-    expect(limits).toContain("npm run demo:agent-slice-2");
+    expect(limits).toContain("The scripted agent cannot prove what your own Claude Code settings allow or refuse.");
+    expect(limits).toContain("`permissions.deny`");
+    expect(limits).toContain("`src/agent-invoke.test.ts`");
+    expect(existsSync(join(REPO_ROOT, "src/agent-invoke.test.ts"))).toBe(true);
   });
 
   it("is where the role guide's offline quick start points", () => {

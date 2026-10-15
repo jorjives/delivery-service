@@ -73,12 +73,11 @@ describe("UAT: test your own pipeline by following one guide", () => {
     expect(incomplete).toContain("the session replied with something that is not a valid result for this role");
   });
 
-  it("states plainly that the scripted agent cannot prove tool-permission refusals, and where that guarantee is tested instead", () => {
+  it("states plainly that the scripted agent cannot prove what your own settings allow, and where that guarantee is tested instead", () => {
     const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong");
-    expect(limits).toContain("cannot prove that a role is refused a tool it was not");
-    expect(limits).toContain("src/tool-authority.test.ts");
+    expect(limits).toContain("The scripted agent cannot prove what your own Claude Code settings allow or refuse.");
+    expect(limits).toContain("`permissions.deny`");
     expect(limits).toContain("src/agent-invoke.test.ts");
-    expect(limits).toContain("demo:agent-slice-2");
   });
 
   it("needs no network, no API key and no global setup", () => {

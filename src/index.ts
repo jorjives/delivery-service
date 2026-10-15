@@ -99,8 +99,6 @@ export { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE } from "./prompt-assem
 export type { AssembledPrompt, PromptEvidence, PromptSetback } from "./prompt-assembly.js";
 export { invoke, runSession, DID_NOT_COMPLETE, sessionErrorRef, buildSessionOptions, createAgentPort } from "./agent-invoke.js";
 export type { SessionEnvironment, RoleConfigs } from "./agent-invoke.js";
-export { createToolAuthority, refusalSentence, outsideWorktreeSentence, authorityRefusal } from "./tool-authority.js";
-export type { ToolAuthority } from "./tool-authority.js";
 export { createAgentTriage, needsJudgement, toTriageVerdict, legalVerdicts } from "./triage.js";
 export { buildEscalationPacket, resolveEscalationPacket, POPULATION_LABELS, SETBACK_LABELS, NO_PRIOR_ATTEMPTS } from "./escalation-packet.js";
 export type { PacketFacts } from "./escalation-packet.js";

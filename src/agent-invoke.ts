@@ -1,4 +1,4 @@
-import { query, type CanUseTool, type Options, type SDKAssistantMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, type Options, type SDKAssistantMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { load, writeRef } from "./case-file.js";
 import { assemblePrompt, resolveEvidence, type AssembledPrompt } from "./prompt-assembly.js";
@@ -6,7 +6,6 @@ import { validateRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
 import type { AgentContext, AgentPort, DispatchedRole, RoleHandle, Incomplete, Metered } from "./ports.js";
 import { USAGE_LIMIT_WORDS } from "./ports.js";
-import { authorityRefusal, createToolAuthority } from "./tool-authority.js";
 import { messageOf } from "./gate-support.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
 import type { UsageLimit, SessionUsage } from "./schema.js";
@@ -155,12 +154,9 @@ async function recordFailureCause(
 }
 
 /**
- * The only session settings a caller may supply: where the CLI binary is, and
- * what environment it runs with. Deliberately an allowlist rather than a
- * `Partial<Options>` with the permission fields written back over it — a
- * deny-list silently widens the day the SDK adds an option, and the whole
- * point of this seam is that a role's authority cannot be widened from
- * outside.
+ * What a caller supplies about where a session runs: the CLI binary, and the
+ * environment it runs with. What the agent may do is not decided here: the
+ * operator's own Claude Code settings decide it, and acceptance judges the result.
  */
 export interface SessionEnvironment {
   pathToClaudeCodeExecutable?: string;
@@ -199,22 +195,18 @@ function asApiRoot(schema: JsonSchema): JsonSchema {
 }
 
 /**
- * Assemble the session's options field by field.
- *
- * `tools` is left alone on purpose: narrowing it to the role's list removes
- * out-of-role tools from the session entirely, so the model never issues the
- * call and there is nothing to refuse or report. `allowedTools` is left unset
- * for the mirror-image reason — a bare entry auto-approves before `canUseTool`
- * is consulted. Authority is decided in exactly one place, and the surrounding
- * routes to a decision are pinned shut: no filesystem settings, a fixed
- * permission mode, prompts answered by this process, no hooks, no plugins.
+ * Assemble the session's options field by field. The session runs as the
+ * operator's own Claude Code would: Claude Code's own system prompt with the
+ * harness's context appended, every setting source (user, project, local, so
+ * CLAUDE.md, skills, plugins, hooks and MCP servers load), and every tool.
+ * Nothing here narrows what the agent may do: the trust boundary is
+ * acceptance (the gate, the guards, the integrity checks), not the session.
  */
 export function buildSessionOptions(
   roleCfg: RoleConfig<unknown>,
   ctx: AgentContext,
   session: SessionEnvironment,
-  canUseTool: CanUseTool,
-  systemPrompt = "",
+  append = "",
 ): Options {
   // Zod stamps a `$schema` meta-schema URI on the root, which the Claude Code
   // binary cannot resolve and rejects outright, failing every session before
@@ -223,12 +215,10 @@ export function buildSessionOptions(
   delete schema.$schema;
   return {
     cwd: ctx.worktreePath,
-    systemPrompt,
+    systemPrompt: { type: "preset", preset: "claude_code", append },
     outputFormat: { type: "json_schema", schema },
-    canUseTool,
-    settingSources: [],
-    permissionMode: "default",
-    permissionPrompts: "host",
+    permissionMode: "bypassPermissions",
+    allowDangerouslySkipPermissions: true,
     pathToClaudeCodeExecutable: session.pathToClaudeCodeExecutable,
     env: session.env,
   };
@@ -270,9 +260,8 @@ export async function invoke<E>(
  * One agent session from a prompt the caller has already assembled: `invoke`
  * assembles it from a case file; a review, which has no case file, builds its
  * own. Everything about the session itself lives here, so every role, with or
- * without a case file, gets the same tool guard, the same structured-output
- * enforcement and re-validation, and the same failure evidence, written to
- * `ctx.dir`'s refs.
+ * without a case file, gets the same structured-output enforcement and
+ * re-validation, and the same failure evidence, written to `ctx.dir`'s refs.
  */
 export async function runSession<E>(
   roleCfg: RoleConfig<E>,
@@ -281,8 +270,7 @@ export async function runSession<E>(
   session: SessionEnvironment = {},
 ): Promise<Metered<E | Incomplete>> {
   validateRoleConfig(roleCfg);
-  const authority = createToolAuthority(roleCfg, ctx.worktreePath);
-  const options = buildSessionOptions(roleCfg, ctx, session, authority.canUseTool, systemPrompt);
+  const options = buildSessionOptions(roleCfg, ctx, session, systemPrompt);
 
   let result: SDKResultMessage | undefined;
   let apiError: SDKAssistantMessage["error"];
@@ -290,15 +278,12 @@ export async function runSession<E>(
     ({ result, apiError } = await sessionEnd(prompt, options));
   } catch (err) {
     await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.notRun, { cause: messageOf(err) });
-    return authorityRefusal(roleCfg, authority.refusals, []) ?? incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
+    return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   }
 
   // Whatever the session ended as, if it produced a result the runtime said what it cost and took.
   const usage = result === undefined ? undefined : usageOf(result);
   const metered = <T>(terminus: T): Metered<T> => (usage === undefined ? terminus : { ...terminus, usage }) as Metered<T>;
-
-  const refusal = authorityRefusal(roleCfg, authority.refusals, result?.permission_denials ?? []);
-  if (refusal) return metered(refusal);
 
   if (!result) return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
   if (result.subtype !== "success" || result.is_error) {

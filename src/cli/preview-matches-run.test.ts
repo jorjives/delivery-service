@@ -43,7 +43,7 @@ interface Sent {
 
 interface Frame {
   type?: string;
-  request?: { subtype?: string; systemPrompt?: string[] };
+  request?: { subtype?: string; appendSystemPrompt?: string };
   message?: { content?: Array<{ type?: string; text?: string }> | string };
 }
 
@@ -54,7 +54,7 @@ function sessionsSent(capture: string): Sent[] {
     .filter((line) => line !== "")
     .map((line) => JSON.parse(line) as Frame);
   const systemPrompts = frames.flatMap((f) =>
-    f.type === "control_request" && f.request?.subtype === "initialize" ? [(f.request.systemPrompt ?? []).join("")] : [],
+    f.type === "control_request" && f.request?.subtype === "initialize" ? [f.request.appendSystemPrompt ?? ""] : [],
   );
   const prompts = frames.flatMap((f) => {
     const content = f.type === "user" ? f.message?.content : undefined;

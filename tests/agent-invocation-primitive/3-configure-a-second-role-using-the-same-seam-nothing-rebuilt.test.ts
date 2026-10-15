@@ -8,11 +8,6 @@
 //
 // The demo's clean-completion scenario runs against claude-mock, vendored in vendor/claude-mock and
 // installed by `npm install`, so this test never skips.
-//
-// Per the slice's own documented limit, `claude-mock` models no tool permissions, so the "tries to
-// edit a project check" scenario drives the harness's own decision path (createToolAuthority,
-// authorityRefusal) directly rather than through a scripted mock session — the demo's section 3.
-// Full end-to-end enforcement rests on the real agent runtime (same gap as Slice 2).
 
 import { readFileSync } from "node:fs";
 import { describe, it, expect } from "vitest";
@@ -41,22 +36,10 @@ describe("UAT: configure a second role using the same seam, nothing rebuilt", ()
   it(
     "AC: a gate-maintenance session that repairs the environment cleanly returns a completed result, exactly as the worker's clean-completion case does",
     () => {
-      const s = section("2. Scenario: repair", "3. Scenario: try to edit");
+      const s = section("2. Scenario: repair", "3. What this shows");
       expect(s).toContain('Before: .env = "PORT=\\n"');
       expect(s).toContain('After:  .env = "PORT=8080\\n"');
       expect(s).toContain("Result: completed");
-    },
-  );
-
-  it(
-    "AC: gate-maintenance's config grants it Edit, but it cannot reach the project's actual checks — only the surrounding environment — even though Edit is within its permitted tools",
-    () => {
-      const s = section("3. Scenario: try to edit", "4. What this shows");
-      expect(s).toContain("(Edit IS in this role's permitted tools)");
-      expect(s).toContain("Decision: deny");
-      expect(s).toContain("Result:   incomplete");
-      expect(s).toContain("which is outside the worktree, so the harness refused the call before it ran");
-      expect(s).toContain("Check file unchanged: yes");
     },
   );
 

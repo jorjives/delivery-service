@@ -9,7 +9,6 @@ import { invoke, runSession, DID_NOT_COMPLETE, buildSessionOptions, createAgentP
 import { workerRoleConfig, gateMaintenanceRoleConfig, type RoleConfig } from "./role-config.js";
 import { Ajv } from "ajv";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
-import { createToolAuthority } from "./tool-authority.js";
 import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
 import { CorruptCaseFile, FileNotFound, InvalidRoleConfig } from "./errors.js";
 import { USAGE_LIMIT_WORDS } from "./ports.js";
@@ -294,48 +293,35 @@ describe("invoke over a case file it cannot read", () => {
 
 describe("the session options the primitive builds", () => {
   function options() {
-    return buildSessionOptions(
-      workerRoleConfig,
-      ctx,
-      { pathToClaudeCodeExecutable: "/path/to/claude", env: { A: "1" } },
-      createToolAuthority(workerRoleConfig, worktreePath).canUseTool,
-    );
+    return buildSessionOptions(workerRoleConfig, ctx, { pathToClaudeCodeExecutable: "/path/to/claude", env: { A: "1" } }, "harness context");
   }
 
-  it("installs the role's guard as the permission decision point", () => {
-    expect(typeof options().canUseTool).toBe("function");
+  it("keeps Claude Code's own system prompt and appends the harness's context to it", () => {
+    expect(options().systemPrompt).toEqual({ type: "preset", preset: "claude_code", append: "harness context" });
   });
 
-  it("does not narrow the session's base tool set, which would silence the guard", () => {
-    expect(options().tools).toBeUndefined();
-  });
-
-  it("does not auto-approve the role's tools, which would make the guard dead code", () => {
-    expect(options().allowedTools).toBeUndefined();
-  });
-
-  it("closes every route round the guard by construction", () => {
+  it("loads the operator's own settings, CLAUDE.md, skills, plugins, hooks and MCP servers, as their own session would", () => {
     const built = options();
-    expect(built.settingSources).toEqual([]);
-    expect(built.permissionMode).toBe("default");
-    expect(built.permissionPrompts).toBe("host");
-    expect(built.hooks).toBeUndefined();
+    expect(built.settingSources).toBeUndefined();
+    expect(built.settings).toBeUndefined();
     expect(built.plugins).toBeUndefined();
-    expect(built.permissionPromptToolName).toBeUndefined();
-    expect(built.allowDangerouslySkipPermissions).toBeUndefined();
+    expect(built.hooks).toBeUndefined();
+    expect(built.mcpServers).toBeUndefined();
   });
 
-  it("takes only the executable and its environment from the caller", () => {
-    const built = buildSessionOptions(
-      workerRoleConfig,
-      ctx,
-      // A caller reaching for a permission field cannot: the parameter type has no
-      // such field, and nothing is spread. Cast to prove the runtime behaviour too.
-      { pathToClaudeCodeExecutable: "/path/to/claude", permissionMode: "bypassPermissions" } as never,
-      createToolAuthority(workerRoleConfig, worktreePath).canUseTool,
-    );
+  it("gives the session every tool, leaving refusals to the operator's own settings", () => {
+    const built = options();
+    expect(built.permissionMode).toBe("bypassPermissions");
+    expect(built.allowDangerouslySkipPermissions).toBe(true);
+    expect(built.canUseTool).toBeUndefined();
+    expect(built.allowedTools).toBeUndefined();
+    expect(built.tools).toBeUndefined();
+  });
+
+  it("takes the executable and its environment from the caller", () => {
+    const built = options();
     expect(built.pathToClaudeCodeExecutable).toBe("/path/to/claude");
-    expect(built.permissionMode).toBe("default");
+    expect(built.env).toEqual({ A: "1" });
   });
 
   it("still points the session at the run's worktree", () => {
@@ -366,7 +352,7 @@ describe("the session options the primitive builds", () => {
   ];
 
   function apiSchemaOf(roleCfg: RoleConfig<unknown>) {
-    const schema = buildSessionOptions(roleCfg, ctx, {}, createToolAuthority(roleCfg, worktreePath).canUseTool).outputFormat?.schema;
+    const schema = buildSessionOptions(roleCfg, ctx, {}).outputFormat?.schema;
     if (!schema) throw new Error(`no reply schema for ${roleCfg.role}`);
     return schema;
   }
@@ -398,12 +384,7 @@ describe("the session options the primitive builds", () => {
       const home = await mkdtemp(join(tmpdir(), "invoke-runtime-home-"));
       const session = query({
         prompt: new PassThrough({ objectMode: true }),
-        options: buildSessionOptions(
-          roleCfg,
-          ctx,
-          { env: { PATH: process.env.PATH, HOME: home, CLAUDE_CONFIG_DIR: home } },
-          createToolAuthority(roleCfg, worktreePath).canUseTool,
-        ),
+        options: buildSessionOptions(roleCfg, ctx, { env: { PATH: process.env.PATH, HOME: home, CLAUDE_CONFIG_DIR: home } }),
       });
       try {
         await expect(session.initializationResult()).resolves.toBeDefined();
@@ -413,18 +394,6 @@ describe("the session options the primitive builds", () => {
     },
     30_000,
   );
-});
-
-describe("invoke with the guard installed", () => {
-  it("still drives a scripted session to a clean terminus", async () => {
-    await script([{ json: { status: "completed", rationale: "guard installed, run unaffected" } }]);
-    const terminus = await invoke(workerRoleConfig, ctx, useMock());
-    expect(terminus).toEqual({
-      status: "completed",
-      rationale: "guard installed, run unaffected",
-      usage: NO_COST,
-    });
-  });
 });
 
 describe("invoking gate-maintenance through the same seam as the worker", () => {
