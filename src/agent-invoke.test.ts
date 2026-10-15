@@ -328,6 +328,20 @@ describe("the session options the primitive builds", () => {
     expect(options().cwd).toBe(worktreePath);
   });
 
+  it("passes the operator's agent options through, without the harness's own text", () => {
+    const built = buildSessionOptions(workerRoleConfig, ctx, { env: { A: "1" }, agent: { model: "opus", effort: "high", append: "x", env: { B: "2" } } });
+    expect(built.model).toBe("opus");
+    expect(built.effort).toBe("high");
+    expect(built).not.toHaveProperty("append");
+    expect(built.env).toEqual({ A: "1", B: "2" });
+  });
+
+  it("keeps the harness's own options whatever the agent options say", () => {
+    const built = buildSessionOptions(workerRoleConfig, ctx, { agent: { cwd: "/elsewhere", permissionMode: "plan" } as never });
+    expect(built.cwd).toBe(worktreePath);
+    expect(built.permissionMode).toBe("bypassPermissions");
+  });
+
   // The runtime hands the reply schema to the API as a tool's input schema. The API
   // refuses a root not typed as an object, or one carrying oneOf, anyOf or allOf,
   // failing every session at its first turn; the handshake test below stops before

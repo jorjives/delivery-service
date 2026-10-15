@@ -99,12 +99,12 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
     return EXIT.ok;
   }
 
-  const { gateRef, closerRef, domainPrompt, budgets, roleOverrides } = project;
+  const { gateRef, closerRef, domainPrompt, agent, budgets, roleOverrides } = project;
   // The id is fixed rather than made from the clock, as a real run's is: it
   // is not part of what an agent is told, and a fixed one keeps two previews
   // of the same project identical.
   const standIn = initialCaseFile(
-    { surfaceId: "preview", taskDef: chosen.taskDef, gateRef, closerRef, domainPrompt, roleOverrides },
+    { surfaceId: "preview", taskDef: chosen.taskDef, gateRef, closerRef, domainPrompt, ...(agent === undefined ? {} : { agent }), roleOverrides },
     budgets,
   );
   // The roles from the record, as a run takes them, not from the file.

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { create, load, appendEntry, writeRef } from "./case-file.js";
+import { create, load, appendEntry, writeRef, initialCaseFile } from "./case-file.js";
 import { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE } from "./prompt-assembly.js";
 import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
@@ -88,6 +88,12 @@ describe("assemblePrompt", () => {
     const { prompt } = assemblePrompt(caseFile, workerRoleConfig, await resolveEvidence(dir, caseFile));
     expect(prompt).toContain("test_greeting");
     expect(prompt).toContain("AssertionError: expected 'hi' to equal 'hello'");
+  });
+
+  it("appends the operator's own added instructions after the role's context and the project's description", () => {
+    const caseFile = initialCaseFile({ surfaceId: "s", taskDef: { intent: "t" }, gateRef, domainPrompt: "A tool.", agent: { append: "Use British English." } }, budgets);
+    const { systemPrompt } = assemblePrompt(caseFile, workerRoleConfig, { brief: null, newFailures: [], setback: null });
+    expect(systemPrompt).toBe(`${workerRoleConfig.systemPromptFragment}\n\nA tool.\n\nUse British English.`);
   });
 
   it("produces a byte-identical request for the same case file", async () => {

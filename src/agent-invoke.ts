@@ -8,7 +8,7 @@ import type { AgentContext, AgentPort, DispatchedRole, RoleHandle, Incomplete, M
 import { USAGE_LIMIT_WORDS } from "./ports.js";
 import { messageOf } from "./gate-support.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
-import type { UsageLimit, SessionUsage } from "./schema.js";
+import type { UsageLimit, SessionUsage, AgentOptions } from "./schema.js";
 import type { JsonSchema } from "./report/json-schema.js";
 
 /**
@@ -161,6 +161,8 @@ async function recordFailureCause(
 export interface SessionEnvironment {
   pathToClaudeCodeExecutable?: string;
   env?: Record<string, string | undefined>;
+  /** The project's agent options, passed through to the session (see `AgentOptions`). */
+  agent?: AgentOptions;
 }
 
 /**
@@ -213,14 +215,20 @@ export function buildSessionOptions(
   // the model is reached. The schema itself is unchanged by dropping it.
   const schema = asApiRoot(z.toJSONSchema(roleCfg.envelopeSchema));
   delete schema.$schema;
+  const agentOptions = { ...session.agent };
+  delete agentOptions.append;
+  const agentEnv = session.agent?.env;
   return {
+    // The operator's options first, so every harness-owned option below wins over a stray one.
+    ...(agentOptions as Partial<Options>),
     cwd: ctx.worktreePath,
     systemPrompt: { type: "preset", preset: "claude_code", append },
     outputFormat: { type: "json_schema", schema },
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     pathToClaudeCodeExecutable: session.pathToClaudeCodeExecutable,
-    env: session.env,
+    // The SDK's `env` replaces the process's own, so a merge starts from it.
+    env: agentEnv === undefined ? session.env : { ...(session.env ?? process.env), ...agentEnv },
   };
 }
 

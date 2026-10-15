@@ -111,6 +111,19 @@ describe("what a config file may contain", () => {
   });
 });
 
+describe("the agent block", () => {
+  it("takes any session option the harness does not set, and added instructions", () => {
+    expect(DeliveryConfig.safeParse({ agent: { model: "opus", effort: "high", maxTurns: 40, append: "Use British English." } }).success).toBe(true);
+  });
+
+  it.each(["cwd", "systemPrompt", "outputFormat", "resume", "sessionId", "permissionMode", "allowDangerouslySkipPermissions", "pathToClaudeCodeExecutable"])(
+    "refuses %s by name, as the harness sets it",
+    (key) => {
+      expect(problemFor({ agent: { [key]: "x" } })).toBe(`I can't use ${FILE}: \`agent.${key}\` is set by the harness for every session, so it can't be changed here. Remove it.`);
+    },
+  );
+});
+
 describe("turning what someone wrote into a task", () => {
   it("makes a sentence the same shape --task already makes, without its surrounding space", () => {
     expect(structureTask("  add a page that shows who's on call today  ")).toEqual({
@@ -233,7 +246,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `roles`, `gate`, `closer`, `budgets` and `concurrency`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `roles`, `gate`, `closer`, `budgets` and `concurrency`.",
     );
   });
 
@@ -304,7 +317,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names a file that holds something other than one object of settings", () => {
     expect(problemFor(["add a page"])).toBe(
-      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `roles`, `gate`, `closer`, `budgets` and `concurrency`. " +
+      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `roles`, `gate`, `closer`, `budgets` and `concurrency`. " +
         "A `.js` or `.mjs` file exports that object as its default.",
     );
   });
@@ -491,7 +504,7 @@ describe("reading a config file", () => {
     const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
     const refusal = await refusalOf(found(repo, repo));
     expect(refusal.message).toBe(
-      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`roles\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`roles\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
     );
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });
@@ -614,7 +627,7 @@ describe("every problem with a config file's shape, at once", () => {
       },
       {
         field: "foo",
-        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`roles\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
+        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`roles\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`.`,
       },
     ]);
     expect(problemsFor({ foo: 1, bar: 2 }).map((problem) => problem.field)).toEqual(["foo", "bar"]);
@@ -624,7 +637,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor("add a page")).toEqual([
       {
         field: null,
-        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`roles\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
+        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`roles\`, \`gate\`, \`closer\`, \`budgets\` and \`concurrency\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
       },
     ]);
   });

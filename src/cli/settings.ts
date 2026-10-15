@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { CloserRef } from "../schema.js";
-import type { BudgetSet, CaseFileHeader, GateRef, RoleOverrides, TaskDef } from "../schema.js";
+import type { AgentOptions, BudgetSet, CaseFileHeader, GateRef, RoleOverrides, TaskDef } from "../schema.js";
 import { loadCustomCloser } from "../custom-closer.js";
 import { loadCustomGate } from "../custom-gate.js";
 import { Concurrency, unknownCloser, type DeliveryConfig } from "./config.js";
@@ -48,6 +48,8 @@ export interface ProjectSettings {
   concurrency: number;
   /** What this project is, from the config file, pinned into the run when it starts. Absent when the project didn't say. */
   domainPrompt?: string;
+  /** The config file's agent options, pinned into the run when it starts. Absent when it sets none. */
+  agent?: AgentOptions;
   /** What the config file changes about the worker and gate maintenance, pinned into the run when it starts. Absent when it changes nothing. */
   roleOverrides?: RoleOverrides;
   /** The ready-made check the file named, when that is where `gateRef` came from: kept only to describe it by name. A run pins `gateRef` alone. */
@@ -206,6 +208,8 @@ export async function resolveProject(
     // repository, not something a person retypes per run, so there is no flag
     // and no environment variable to lay over it.
     domainPrompt: config.domain,
+    // Likewise for the agent options: they are part of the project, reviewed with it.
+    ...(config.agent === undefined ? {} : { agent: config.agent }),
     // Likewise for the roles: they are part of the project, reviewed with it.
     roleOverrides: config.roles,
   };

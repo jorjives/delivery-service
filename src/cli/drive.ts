@@ -36,7 +36,7 @@ export interface RunStart extends ProjectSettings {
  * so from here on there is a record on disk for whatever happens next.
  */
 export async function startRun(
-  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, roleOverrides, runId: chosenId }: RunStart,
+  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, agent, roleOverrides, runId: chosenId }: RunStart,
   session: SessionEnvironment,
   ctx: CommandContext,
 ): Promise<ExitCode> {
@@ -44,7 +44,7 @@ export async function startRun(
   const runId = chosenId ?? runIdFor(intent, new Date());
   const { dir } = runPlace(repoPath, runId, ctx.env);
   await prepareRunDir(repoPath, dir);
-  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt, roleOverrides }, budgets);
+  const caseFile = await create(dir, { surfaceId: runId, taskDef, gateRef, closerRef, domainPrompt, agent, roleOverrides }, budgets);
   ctx.report.note(`Starting run ${runId}: ${intent}`);
   ctx.report.step({ state: "PROVISIONING", done: false });
   return driveToOutcome({ runId, repoPath, dir, caseFile }, session, ctx);
@@ -71,7 +71,7 @@ export async function driveToOutcome(
   // The roles come from the run's own record, as its check and closing action
   // do, so a resumed run is told what it was told before, whatever the file
   // says now, and never regains a tool its project took away.
-  const agent = createAgentPort(rolesFor(header.roleOverrides), session);
+  const agent = createAgentPort(rolesFor(header.roleOverrides), { ...session, agent: header.agent });
   const ports: SurfacePorts = {
     agent,
     triage: deterministicRouter,
@@ -98,7 +98,7 @@ export async function driveToOutcome(
  */
 export async function dispatchRepair(record: RunRecord, sessionKey: string, session: SessionEnvironment, env: NodeJS.ProcessEnv): Promise<RepairOutcome> {
   const { location } = runPlace(record.repoPath, record.runId, env);
-  const agent = createAgentPort(rolesFor(record.caseFile.header.roleOverrides), session);
+  const agent = createAgentPort(rolesFor(record.caseFile.header.roleOverrides), { ...session, agent: record.caseFile.header.agent });
   const worktreePath = record.caseFile.cursor.worktreeRef || location.worktreePath;
   const { result: terminus, changes } = await captureRepair(
     worktreePath,

@@ -91,6 +91,7 @@ export function checkedLines(config: DeliveryConfig, project: ProjectSettings): 
     `gate: ${gateLine(project)}`,
     `closer: ${closerPhrase(project.closerRef)}`,
     ...roleLines(config),
+    ...(config.agent === undefined ? [] : [`agent options: ${Object.keys(config.agent).join(", ")}`]),
   ].map((line) => `✓ ${line}`);
 }
 

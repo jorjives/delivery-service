@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
-import { CloserRef, RoleOverrides, TaskDef, Written } from "../schema.js";
+import { AgentOptions, CloserRef, RoleOverrides, TaskDef, Written } from "../schema.js";
 import { latestPlanFile } from "../packs/review-record.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
@@ -15,8 +15,8 @@ import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
-/** The eight keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `roles`, `gate`, `closer`, `budgets` and `concurrency`";
+/** The keys a config file takes, as the sentence a refusal ends with. */
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `roles`, `gate`, `closer`, `budgets` and `concurrency`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -119,6 +119,9 @@ export const DeliveryConfig = z
     // every run of it. One string at both altitudes: a long one is written in
     // the `.js` form with a template literal, not in a file of its own.
     domain: Prose.optional(),
+    // Options for every agent session, passed to Claude Code as written, and
+    // `append`, text added to what every agent is told.
+    agent: AgentOptions.optional(),
     // What this project changes about the worker and gate maintenance: their
     // instructions and the tools they may use, each field laid over the
     // built-in role. Triage is not here: it is the harness's own.
@@ -161,6 +164,9 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     "For a list of sentences, use `tasks`.",
   tasks: "It is a list of the things you want done, one sentence each, in the order you want them.",
   domain: "It is a sentence or two describing your project.",
+  agent:
+    'It is a set of options for the agent\'s sessions, passed to Claude Code as written, for example `{ "model": "opus", "effort": "high" }`, ' +
+    "and `append`, text added to what every agent is told.",
   roles:
     'It changes what the worker, or the agent that repairs your check, is told and which tools it may use, for example `{ "worker": { "allowedTools": ["Read", "Edit"] } }`: see docs/configuring-a-role.md.',
   gate:
@@ -243,6 +249,7 @@ function describeIssue(file: string, issue: Issue, raw: unknown): string {
     if (said !== undefined) return said;
   }
 
+  if (issue.path[0] === "agent" && issue.code === "custom") return `I can't use ${file}: ${issue.message}`;
   if (where === "gate.type") return unknownGate(valueAt(raw, issue.path));
   const gateType = valueAt(raw, ["gate", "type"]);
   if (issue.path[0] === "gate" && isPresetName(gateType)) return presetProblem(file, issue, gateType);

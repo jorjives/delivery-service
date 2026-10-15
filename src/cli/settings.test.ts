@@ -115,6 +115,11 @@ describe("what the run is told about the project", () => {
   it("leaves them unset when the file changes no role, so the run is exactly what it was before", async () => {
     expect((await settings({ task: TASK })).roleOverrides).toBeUndefined();
   });
+
+  it("carries the file's agent options through to the run's settings, unchanged", async () => {
+    const agent = { model: "opus", append: "Use British English." };
+    expect((await settings({ task: TASK }, { config: { agent } })).agent).toEqual(agent);
+  });
 });
 
 describe("what checks the work", () => {

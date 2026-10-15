@@ -111,11 +111,9 @@ export function assemblePrompt(
   roleCfg: RoleConfig<unknown>,
   evidence: PromptEvidence,
 ): AssembledPrompt {
-  const domain = caseFile.header.domainPrompt;
-
-  const systemPrompt = domain
-    ? `${roleCfg.systemPromptFragment}\n\n${domain}`
-    : roleCfg.systemPromptFragment;
+  const systemPrompt = [roleCfg.systemPromptFragment, caseFile.header.domainPrompt, caseFile.header.agent?.append]
+    .filter((part): part is string => part !== undefined && part !== "")
+    .join("\n\n");
 
   const brief =
     evidence.brief === null

@@ -253,6 +253,20 @@ describe("delivery run", () => {
       expect(caseJson.header.domainPrompt).toBe(domain);
     },
   );
+
+  it(
+    "pins the project's agent options into the run's record when the run starts",
+    async () => {
+      const agent = { model: "opus", append: "Use British English." };
+      const repo = initTempRepo("run-command-agent-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ agent }) });
+      const { exitCode, stdout } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      expect(exitCode).toBe(EXIT.ok);
+      const runId = branchIn(stdout).replace("surface/", "");
+      const caseJson = JSON.parse(readFileSync(join(repo, ".delivery", "runs", runId, "case.json"), "utf-8")) as { header: { agent?: unknown } };
+      expect(caseJson.header.agent).toEqual(agent);
+    },
+    RUN_TIMEOUT,
+  );
 });
 
 const configIn = (repo: string, config: unknown): void => writeFileSync(join(repo, "delivery.config.json"), JSON.stringify(config));

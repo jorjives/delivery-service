@@ -101,6 +101,10 @@ describe("what validate says a project is set up to do", () => {
     expect(checkedLines({}, project())).toHaveLength(4);
   });
 
+  it("names the agent options the file sets", () => {
+    expect(checkedLines({ agent: { model: "opus", append: "x" } }, project({ agent: { model: "opus", append: "x" } }))).toContain("✓ agent options: model, append");
+  });
+
   it("says how many tasks run at once, with how many are queued, when more than one may", () => {
     const tasks = Array.from({ length: 10 }, (_, i) => `task ${i + 1}`);
     expect(checkedLines({ tasks }, project({ concurrency: 3 }))[1]).toBe("✓ concurrency: up to 3 tasks at once (10 queued)");

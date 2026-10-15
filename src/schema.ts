@@ -159,6 +159,25 @@ export const RoleOverrides = z
   .strict();
 export type RoleOverrides = z.infer<typeof RoleOverrides>;
 
+/** The session options the harness sets itself for every session. The `agent` block may not name them. */
+export const HARNESS_OWNED = ["cwd", "systemPrompt", "outputFormat", "resume", "sessionId", "permissionMode", "allowDangerouslySkipPermissions", "pathToClaudeCodeExecutable"] as const;
+
+export const harnessOwned = (key: string): string => `\`agent.${key}\` is set by the harness for every session, so it can't be changed here. Remove it.`;
+
+/**
+ * Options for every agent session, passed to Claude Code unchanged: any SDK
+ * option the harness does not own (model, effort, maxTurns, plugins, mcpServers,
+ * settings, sandbox, ...), so an option is usable the day the SDK ships it. Plus
+ * `append`, text added to what every agent is told. `env` is merged with the
+ * run's own environment, the harness's own keys winning.
+ */
+export const AgentOptions = z
+  .looseObject({ append: Written.optional(), env: z.record(z.string(), z.string()).optional() })
+  .superRefine((options, ctx) => {
+    for (const key of HARNESS_OWNED) if (key in options) ctx.addIssue({ code: "custom", path: [key], message: harnessOwned(key) });
+  });
+export type AgentOptions = z.infer<typeof AgentOptions>;
+
 export const CaseFileHeader = z.object({
   surfaceId: z.string(),
   taskDef: TaskDef,
@@ -169,6 +188,9 @@ export const CaseFileHeader = z.object({
   // stay valid, and they carry a caller-supplied closer instead.
   closerRef: CloserRef.optional(),
   domainPrompt: z.string().optional(),
+  // The project's agent options, pinned at CREATE like domainPrompt so a resumed
+  // run's sessions are set up as they were. Optional: older records stay valid.
+  agent: AgentOptions.optional(),
   // What the project changed about the worker and gate maintenance, pinned at
   // CREATE like domainPrompt so a resumed run is told what it was told before
   // and can never regain a tool its project had taken away. Only the plain
