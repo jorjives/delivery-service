@@ -7,6 +7,7 @@ import { z } from "zod";
 import { messageOf } from "../gate-support.js";
 import { AgentOptions, CloserRef, GuardName, TaskDef, Written } from "../schema.js";
 import { GuardSwitches } from "../guards.js";
+import { FixTask } from "../packs/fix-task.js";
 import { latestPlanFile } from "../packs/review-record.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
@@ -149,13 +150,16 @@ export const DeliveryConfig = z
   })
   .superRefine((config, ctx) => {
     // A task's guards are checked here, not in the entry's own schema, so a wrong name gets its own sentence
-    // rather than the whole entry being quoted back as the wrong kind.
+    // rather than the whole entry being quoted back as the wrong kind. A review's own fix task carries the
+    // full lists its fix is bound by, not a switch by name, and is left alone: a review's plan is loaded
+    // through this same schema (`orPlan`), and its `guards` was never the owner's to write by hand.
     const entries: [PropertyKey[], unknown][] = [
       ...(config.task === undefined ? [] : [[["task"], config.task] as [PropertyKey[], unknown]]),
       ...(config.tasks ?? []).map((entry, index): [PropertyKey[], unknown] => [["tasks", index], entry]),
     ];
     for (const [path, entry] of entries) {
       if (typeof entry !== "object" || entry === null || !("guards" in entry)) continue;
+      if (FixTask.safeParse(entry).success) continue;
       if (!GuardSwitches.safeParse(entry.guards).success) ctx.addIssue({ code: "custom", path: [...path, "guards"], message: "guards" });
     }
   });
