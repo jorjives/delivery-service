@@ -2,9 +2,11 @@ import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { runSession, type SessionEnvironment } from "../agent-invoke.js";
+import { containedSession } from "../containment.js";
 import { git, tryGit } from "../git-exec.js";
 import { isEnoent } from "../journal.js";
 import type { Incomplete } from "../ports.js";
+import type { FenceRecord } from "../schema.js";
 import { branchName, provisionWorktree, resolveBaseRef } from "../provision.js";
 import { prepareDeliveryDir, runIdFor, runPlace } from "../run-location.js";
 import { confirmFindings, inScope } from "./confirm.js";
@@ -26,6 +28,11 @@ export async function filesToReview(repoPath: string, commit: string, scope?: st
 export interface ReviewOptions {
   /** The agent session to use, asked for only when a new session is needed, so finishing an interrupted review needs no sign-in. */
   session: () => Promise<SessionEnvironment>;
+  /**
+   * The write fence the scanner starts in, asked for only when a new session is needed (so finishing an interrupted
+   * review probes nothing). Required: no scanner starts without its fence having been asked for.
+   */
+  fence: () => Promise<FenceRecord>;
   /** Where the scratch working copy goes (`XDG_STATE_HOME`). */
   env: NodeJS.ProcessEnv;
   now?: () => Date;
@@ -75,18 +82,21 @@ async function takenIds(repoPath: string): Promise<Set<string>> {
 
 /**
  * Review `repoPath` through `pack`. Finishes this pack's interrupted review
- * from its saved reply if there is one; otherwise runs one read-only session
- * in a scratch working copy of the last commit, records the reply, confirms it
- * and saves the list. The owner's files, branches and working copy are never
- * touched: the scratch copy and its branch are removed however the session ends.
+ * from its saved reply if there is one; otherwise runs one session, inside the
+ * write fence where it can be had, in a scratch working copy of the last
+ * commit, records the reply, confirms it and saves the list. The owner's
+ * files, branches and working copy are never touched: the scratch copy and
+ * its branch are removed however the session ends.
  */
-export async function runReview(repoPath: string, pack: Pack, { session, env, now = () => new Date(), noTests = false, scope }: ReviewOptions): Promise<ReviewOutcome> {
+export async function runReview(repoPath: string, pack: Pack, { session, fence, env, now = () => new Date(), noTests = false, scope }: ReviewOptions): Promise<ReviewOutcome> {
   const pending = (await listReviews(repoPath)).find((entry) => entry.state === "unfinished" && entry.header.pack.name === pack.manifest.name);
   if (pending !== undefined) return { kind: "done", review: await finishReview(repoPath, pending.dir), recovered: true };
   // Checked before anything is set up or signed in to, so a mistyped part costs nothing.
   if (scope !== undefined && (await filesToReview(repoPath, (await resolveBaseRef(repoPath)).ref, scope)).length === 0) return { kind: "empty_scope", scope };
 
   const started = now();
+  // Before the session, so a fence that is required and absent refuses before anything is signed in to or set up.
+  const fenceRecord = await fence();
   const sessionEnv = await session();
   await prepareDeliveryDir(repoPath);
   const surfaceId = scratchId(pack.manifest.name);
@@ -97,7 +107,9 @@ export async function runReview(repoPath: string, pack: Pack, { session, env, no
     const commit = await git(worktreePath, ["rev-parse", "HEAD"]);
     const files = await filesToReview(repoPath, commit, scope);
     const reviewId = runIdFor(pack.manifest.name, started, await takenIds(repoPath));
-    const terminus = await runSession(scannerRoleConfig(pack), { worktreePath, dir: errors, sessionKey: `scanner-${reviewId}` }, scanSession(pack, files, scope), sessionEnv);
+    // The scanner has every tool, so it starts like every session: inside the fence when the probe found one.
+    const contained = await containedSession(sessionEnv, { header: { fence: fenceRecord }, repoPath, worktreePath, env });
+    const terminus = await runSession(scannerRoleConfig(pack), { worktreePath, dir: errors, sessionKey: `scanner-${reviewId}` }, scanSession(pack, files, scope), contained);
     if ("status" in terminus) return { kind: "failed", terminus };
     const { usage, ...envelope } = terminus;
     const header: ReviewHeader = { reviewId, pack: pinned(pack), repoPath, commit, fileCount: files.length, startedAt: started.toISOString(), endedAt: now().toISOString(), ...(noTests ? { noTests: true as const } : {}), ...(scope === undefined ? {} : { path: scope }) };

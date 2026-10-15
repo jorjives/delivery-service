@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,6 +7,8 @@ import { initTempRepo } from "../temp-repo.js";
 import { mockSessionEnvironment, promptsSent, readJournal, writeMockScript, type MockScript } from "../testing.js";
 import { provisionWorktree } from "../provision.js";
 import { runPlace } from "../run-location.js";
+import { probeFence, fencePaths } from "../fence.js";
+import type { FenceRecord } from "../schema.js";
 import { BUILT_IN_PACKS, loadPack, resolvePack } from "./manifest.js";
 import { listReviews, packsRoot } from "./review-record.js";
 import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, scanScript } from "./review-fixtures.js";
@@ -25,11 +27,24 @@ const NEVER = (): Promise<never> => Promise.reject(new Error("no session should 
 const state = () => ({ XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "review-state-")) });
 const branches = (repo: string) => git(repo, ["branch", "--list"]);
 
+/** No fence: what a review is given when the project turns it off. */
+const UNFENCED = (): Promise<FenceRecord> => Promise.resolve({ mode: "off", devices: [], state: { present: false, reason: "turned off in your configuration" } });
+const NO_PROBE = (): Promise<never> => Promise.reject(new Error("no fence should be probed"));
+
+/** A stand-in runtime that tries to write to `repo`'s main folder, as the agent's Bash tool could, and records how that went. */
+function writingClaude(repo: string): { claude: string; said: () => string } {
+  const dir = mkdtempSync(join(tmpdir(), "review-fence-"));
+  const claude = join(dir, "claude");
+  writeFileSync(claude, `#!/bin/sh\nif touch '${join(repo, "scanner-was-here")}' 2>/dev/null; then echo wrote; else echo refused; fi > '${join(dir, "said")}'\nexit 1\n`);
+  chmodSync(claude, 0o755);
+  return { claude, said: () => readFileSync(join(dir, "said"), "utf-8").trim() };
+}
+
 describe("running a review", () => {
   it("reviews the last commit in one read-only session and saves the confirmed list", async () => {
     const repo = exampleRepo();
     const { session, journalPath } = await scripted(scanScript(EXAMPLE_SCAN));
-    const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env: state() });
+    const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env: state(), fence: UNFENCED });
 
     expect(outcome.kind).toBe("done");
     if (outcome.kind !== "done") return;
@@ -50,7 +65,7 @@ describe("running a review", () => {
     const repo = exampleRepo();
     const before = { head: git(repo, ["rev-parse", "HEAD"]), branches: branches(repo) };
     const { session } = await scripted(scanScript(EXAMPLE_SCAN));
-    await runReview(repo, await resolvePack("code", "/"), { session, env: state() });
+    await runReview(repo, await resolvePack("code", "/"), { session, env: state(), fence: UNFENCED });
 
     expect(git(repo, ["status", "--porcelain"])).toBe("");
     expect(git(repo, ["rev-parse", "HEAD"])).toBe(before.head);
@@ -61,7 +76,7 @@ describe("running a review", () => {
   it("saves no review when the agent does not reply with a usable list, and keeps why for an engineer", async () => {
     const repo = exampleRepo();
     const { session } = await scripted({ expectations: [{ fail: { message: "the network went away" } }] });
-    const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env: state() });
+    const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env: state(), fence: UNFENCED });
 
     expect(outcome).toMatchObject({ kind: "failed", terminus: { status: "incomplete" } });
     expect(await listReviews(repo)).toEqual([]);
@@ -71,21 +86,21 @@ describe("running a review", () => {
 
   it("saves no review when the session cannot start at all", async () => {
     const repo = exampleRepo();
-    const outcome = await runReview(repo, await resolvePack("code", "/"), { session: () => Promise.resolve({ pathToClaudeCodeExecutable: "/no/such/claude" }), env: state() });
+    const outcome = await runReview(repo, await resolvePack("code", "/"), { session: () => Promise.resolve({ pathToClaudeCodeExecutable: "/no/such/claude" }), env: state(), fence: UNFENCED });
     expect(outcome).toMatchObject({ kind: "failed", terminus: { notRun: true } });
     expect(await listReviews(repo)).toEqual([]);
   });
 
   it("sets nothing up when the session cannot be had, such as when nobody is signed in", async () => {
     const repo = exampleRepo();
-    await expect(runReview(repo, await resolvePack("code", "/"), { session: NEVER, env: state() })).rejects.toThrow("no session should be started");
+    await expect(runReview(repo, await resolvePack("code", "/"), { session: NEVER, env: state(), fence: UNFENCED })).rejects.toThrow("no session should be started");
     expect(existsSync(packsRoot(repo))).toBe(false);
   });
 
   it("pins what the security pack says about holding, explaining and its categories", async () => {
     const repo = exampleRepo("review-security-");
     const { session } = await scripted(scanScript(EXAMPLE_SECURITY_SCAN));
-    const outcome = await runReview(repo, await resolvePack("security", "/"), { session, env: state() });
+    const outcome = await runReview(repo, await resolvePack("security", "/"), { session, env: state(), fence: UNFENCED });
     expect(outcome.kind === "done" && outcome.review.header.pack).toMatchObject({
       name: "security",
       hold: "high",
@@ -96,8 +111,8 @@ describe("running a review", () => {
 
   it("records in the review that the project has no tests when told so, and nothing when not", async () => {
     const pack = await resolvePack("code", "/");
-    const told = await runReview(exampleRepo(), pack, { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state(), noTests: true });
-    const untold = await runReview(exampleRepo(), pack, { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state() });
+    const told = await runReview(exampleRepo(), pack, { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state(), fence: UNFENCED, noTests: true });
+    const untold = await runReview(exampleRepo(), pack, { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state(), fence: UNFENCED });
     expect(told.kind === "done" && told.review.header.noTests).toBe(true);
     expect(untold.kind === "done" && "noTests" in untold.review.header).toBe(false);
   });
@@ -108,8 +123,22 @@ describe("running a review", () => {
     const manifest = JSON.parse(readFileSync(join(dir, "pack.json"), "utf-8")) as { scan: Record<string, unknown> };
     manifest.scan.requireCheck = true;
     writeFileSync(join(dir, "pack.json"), JSON.stringify(manifest));
-    const outcome = await runReview(exampleRepo(), await loadPack(dir), { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state() });
+    const outcome = await runReview(exampleRepo(), await loadPack(dir), { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, env: state(), fence: UNFENCED });
     expect(outcome.kind === "done" && outcome.review.header.pack.requireCheck).toBe(true);
+  });
+
+  it("starts its scanner as it is when there is no fence", async () => {
+    const repo = exampleRepo();
+    const { claude, said } = writingClaude(repo);
+    await runReview(repo, await resolvePack("code", "/"), { session: () => Promise.resolve({ pathToClaudeCodeExecutable: claude }), fence: UNFENCED, env: state() });
+    expect(said()).toBe("wrote");
+  });
+
+  it("asks for its fence before its session, so a fence it cannot have stops it before sign-in or set-up", async () => {
+    const repo = exampleRepo();
+    const refused = (): Promise<never> => Promise.reject(new Error("fence required and absent"));
+    await expect(runReview(repo, await resolvePack("code", "/"), { session: NEVER, fence: refused, env: state() })).rejects.toThrow("fence required and absent");
+    expect(existsSync(packsRoot(repo))).toBe(false);
   });
 });
 
@@ -119,11 +148,11 @@ describe("a review that was interrupted", () => {
     const env = state();
     const { session } = await scripted(scanScript(EXAMPLE_SCAN));
     const pack = await resolvePack("code", "/");
-    const first = await runReview(repo, pack, { session, env });
+    const first = await runReview(repo, pack, { session, env, fence: UNFENCED });
     if (first.kind !== "done") throw new Error("expected the first review to finish");
     rmSync(join(first.review.dir, "refs", "scan.json"));
 
-    const again = await runReview(repo, pack, { session: NEVER, env });
+    const again = await runReview(repo, pack, { session: NEVER, env, fence: NO_PROBE });
 
     expect(again).toMatchObject({ kind: "done", recovered: true });
     if (again.kind === "done") expect(again.review.result).toEqual(first.review.result);
@@ -137,7 +166,7 @@ describe("a review that was interrupted", () => {
     mkdirSync(join(packsRoot(repo), "code-20261005T000000Z"), { recursive: true });
     const { session, journalPath } = await scripted(scanScript(EXAMPLE_SCAN));
 
-    const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env });
+    const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env, fence: UNFENCED });
 
     expect(outcome).toMatchObject({ kind: "done", recovered: false });
     expect(promptsSent(await readJournal(journalPath))).toHaveLength(1);
@@ -152,7 +181,7 @@ describe("reviewing one part of the project", () => {
     if (!first) throw new Error("the example scan has no findings");
     const inside = { ...first, title: "Sessions never expire", where: { path: "auth/session.js" }, anchor: "return now - startedAt > 60 * 60 * 1000;" };
     const { session, journalPath } = await scripted(scanScript({ findings: [first, inside], notes: "" }));
-    const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env: state(), scope: "auth" });
+    const outcome = await runReview(repo, await resolvePack("code", "/"), { session, env: state(), fence: UNFENCED, scope: "auth" });
 
     if (outcome.kind !== "done") throw new Error(outcome.kind);
     expect(outcome.review.header).toMatchObject({ path: "auth", fileCount: 1 });
@@ -165,8 +194,24 @@ describe("reviewing one part of the project", () => {
 
   it("starts no session and sets nothing up when nothing is in that part", async () => {
     const repo = exampleRepo();
-    const outcome = await runReview(repo, await resolvePack("code", "/"), { session: NEVER, env: state(), scope: "nowhere" });
+    const outcome = await runReview(repo, await resolvePack("code", "/"), { session: NEVER, env: state(), fence: NO_PROBE, scope: "nowhere" });
     expect(outcome).toEqual({ kind: "empty_scope", scope: "nowhere" });
     expect(existsSync(packsRoot(repo))).toBe(false);
+  });
+});
+
+// Real bubblewrap, where this machine can run it; skipped where it cannot.
+const probeRepo = initTempRepo("review-fence-probe-", { "a.txt": "a\n" });
+const usable = (await probeFence("bwrap", await fencePaths(probeRepo, undefined, []), process.env)).present;
+
+describe.skipIf(!usable)("a review inside the fence", () => {
+  it("starts its scanner where it cannot write to the main folder", async () => {
+    const repo = exampleRepo();
+    const { claude, said } = writingClaude(repo);
+    const fence = (): Promise<FenceRecord> => Promise.resolve({ mode: "preferred", devices: [], state: { present: true } });
+    const outcome = await runReview(repo, await resolvePack("code", "/"), { session: () => Promise.resolve({ pathToClaudeCodeExecutable: claude }), fence, env: state() });
+    expect(outcome.kind).toBe("failed");
+    expect(said()).toBe("refused");
+    expect(existsSync(join(repo, "scanner-was-here"))).toBe(false);
   });
 });

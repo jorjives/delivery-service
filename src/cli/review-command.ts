@@ -17,6 +17,7 @@ import { git } from "../git-exec.js";
 import type { Ask, ChoiceQuestion, PickQuestion } from "./init.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
 import { fixSettings } from "./fix-command.js";
+import { fenceAtStart } from "./drive.js";
 
 /** Which problems to fix: every one that can be checked and that no earlier review settled, each picked to start with. */
 export const pickQuestion = ({ header, result }: SavedReview, states: readonly FindingState[]): PickQuestion => ({
@@ -99,8 +100,14 @@ export async function reviewCommand(packArg: string, repoArg: string | undefined
   // The same question `delivery fix` asks, so what the review promises is what the fix does; but a review only reads,
   // so a JavaScript config is never run. ponytail: such a project may be warned it has no tests when its config
   // names a check; `delivery fix` asks again with the whole config, and a wrong warning only holds more fixes.
-  const { verify } = await fixSettings({}, startDir, repoPath, ctx, true);
-  const outcome = await runReview(repoPath, pack, { session: () => agentSession(ctx.env), env: ctx.env, noTests: verify === null, ...(scope === undefined ? {} : { scope }) });
+  const { project, verify } = await fixSettings({}, startDir, repoPath, ctx, true);
+  const outcome = await runReview(repoPath, pack, {
+    session: () => agentSession(ctx.env),
+    fence: () => fenceAtStart(project.fence, repoPath, ctx),
+    env: ctx.env,
+    noTests: verify === null,
+    ...(scope === undefined ? {} : { scope }),
+  });
   if (outcome.kind === "failed") throw new Refusal(failureSentence(outcome.terminus, packArg), EXIT.agentRuntime);
   if (outcome.kind === "empty_scope") throw new Refusal(nothingInPart(outcome.scope), EXIT.configuration);
 

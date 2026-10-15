@@ -13,7 +13,9 @@ import { UNDECIDED } from "../packs/fix-state.js";
 import { EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, exampleRepo, sampleFinding, PACK_FORBIDDEN, PAYMENTS_PASSWORD, scanScript, NO_TESTS_DIR, NO_TESTS_SCAN, SCOPED_SCAN } from "../packs/review-fixtures.js";
 import { plainReporter } from "./report.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
-import { delivery, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
+import { delivery, NO_BWRAP, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
+import { FENCE_ABSENT } from "./drive.js";
+import { TEST_BWRAP } from "../fence.js";
 import { EXIT } from "./failures.js";
 import { scriptedAsk } from "./init-fixtures.js";
 import { UNCOMMITTED_NOTE } from "./project.js";
@@ -31,7 +33,7 @@ async function atTerminal(repo: string, ask: ReturnType<typeof scriptedAsk>["ask
   const writeLine = (line: string): void => void lines.push(line);
   const ctx: CommandContext = {
     cwd: repo,
-    env: { ...process.env, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "review-state-")), ...(await mocked()) },
+    env: { ...process.env, XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "review-state-")), [TEST_BWRAP]: NO_BWRAP, ...(await mocked()) },
     colour: false,
     json: false,
     interactive: true,
@@ -323,5 +325,32 @@ describe("delivery review --preview", () => {
     const repo = exampleRepo();
     const { stdout } = await delivery(["review", "code", "--preview", "--json"], { cwd: repo, env: unsigned() });
     expect(Object.keys(JSON.parse(stdout) as object)).toEqual(["systemPrompt", "prompt"]);
+  }, RUN_TIMEOUT);
+});
+
+describe("delivery review and the write fence", () => {
+  it("goes ahead without it, saying so after its opening and before the review", async () => {
+    const { exitCode, stdout } = await delivery(["review", "code"], { cwd: exampleRepo(), env: await mocked() });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.indexOf(FENCE_ABSENT)).toBeGreaterThan(stdout.indexOf(READS_ONLY));
+    expect(stdout.indexOf(FENCE_ABSENT)).toBeLessThan(stdout.search(/^Review finished/m));
+  }, RUN_TIMEOUT);
+
+  it("refuses to start when the file requires it and it is absent, reviewing nothing", async () => {
+    const repo = exampleRepo();
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ fence: "required" }));
+    const { exitCode, stderr } = await delivery(["review", "code"], { cwd: repo, env: await mocked() });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("bubblewrap (bwrap) is not installed");
+    expect(stderr).toContain('`fence` is "required"');
+    expect(reviewDirs(repo)).toEqual([]);
+  });
+
+  it("says nothing of it when the file turns it off", async () => {
+    const repo = exampleRepo();
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ fence: "off" }));
+    const { exitCode, stdout } = await delivery(["review", "code"], { cwd: repo, env: await mocked() });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).not.toContain(FENCE_ABSENT);
   }, RUN_TIMEOUT);
 });

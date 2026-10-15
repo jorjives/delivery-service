@@ -17,6 +17,11 @@ Code review of your project.
 This reads your project and writes nothing to it. It can take a few minutes.
 ```
 
+The review's agent works inside the same fence as a task's agent, which keeps your main folder
+read-only while it reads a scratch copy. Where the fence cannot be had on your machine, the review
+says so first: "Your main folder is not protected on this machine. Commit or save your work before
+the run starts." With `"fence": "required"` in your configuration it will not start without it.
+
 An agent then reads your **last commit**. It can read files and nothing else: it cannot change a file, run a command, or read anything outside your project. If you have uncommitted changes, the review says so, because it does not see them.
 
 When it finishes, you get a numbered list. Each problem says how serious it is (critical, high, medium or low), where it is, what is wrong, why it matters and what fixed looks like, and then **How we will know**, which is one of:

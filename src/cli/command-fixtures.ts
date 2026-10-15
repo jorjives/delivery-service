@@ -66,6 +66,9 @@ export interface DeliveryIo {
   exitOnInterrupt?: ExitOnInterrupt;
 }
 
+/** A `bwrap` that does not exist: the fence is absent in every command test, whatever the machine. */
+export const NO_BWRAP = join(tmpdir(), "delivery-no-bwrap", "bwrap");
+
 /**
  * Test support: run `delivery <args>` in process, capturing what it prints. Working copies go under a scratch state
  * folder unless the caller names one. The real runtime is signed out unless the caller names a config folder, so a
@@ -81,7 +84,7 @@ export async function delivery(args: string[], { cwd, env = {}, isTTY = false, a
     env: {
       ...signedOut(process.env),
       XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "command-state-")),
-      [TEST_BWRAP]: join(tmpdir(), "delivery-no-bwrap", "bwrap"),
+      [TEST_BWRAP]: NO_BWRAP,
       ...env,
     },
     stdin: Object.assign(Readable.from(answers.map((answer) => `${answer}\n`)), { isTTY: answers.length > 0 || undefined }),
