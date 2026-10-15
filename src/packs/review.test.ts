@@ -1,4 +1,5 @@
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -139,6 +140,22 @@ describe("running a review", () => {
     const refused = (): Promise<never> => Promise.reject(new Error("fence required and absent"));
     await expect(runReview(repo, await resolvePack("code", "/"), { session: NEVER, fence: refused, env: state() })).rejects.toThrow("fence required and absent");
     expect(existsSync(packsRoot(repo))).toBe(false);
+  });
+
+  it("leaves no hooks folder behind once the review is done", async () => {
+    const repo = exampleRepo();
+    await runReview(repo, await resolvePack("code", "/"), { session: (await scripted(scanScript(EXAMPLE_SCAN))).session, fence: UNFENCED, env: state() });
+    expect((await readdir(scanErrorsDir(repo))).filter((name) => name.startsWith("hooks-"))).toEqual([]);
+  });
+
+  it("starts its scanner with the landing boundary's git settings", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "review-env-"));
+    const claude = join(dir, "claude");
+    writeFileSync(claude, `#!/bin/sh\nenv > '${join(dir, "env")}'\nexit 1\n`);
+    chmodSync(claude, 0o755);
+    const outcome = await runReview(exampleRepo(), await resolvePack("code", "/"), { session: () => Promise.resolve({ pathToClaudeCodeExecutable: claude }), fence: UNFENCED, env: state() });
+    expect(outcome.kind).toBe("failed");
+    expect(readFileSync(join(dir, "env"), "utf-8")).toMatch(/^GIT_CONFIG_KEY_\d+=includeIf\.gitdir:.*\/worktrees\/\*\.path$/m);
   });
 });
 

@@ -113,7 +113,7 @@ export async function driveToOutcome(
   const { dir, repoPath, runId } = record;
   const { header } = record.caseFile;
   const { location } = runPlace(repoPath, runId, ctx.env);
-  const contained = await containedSession({ ...session, agent: header.agent }, { header, repoPath, worktreePath: location.worktreePath, env: ctx.env });
+  const contained = await containedSession({ ...session, agent: header.agent }, { header, repoPath, dir, worktreePath: location.worktreePath, env: ctx.env });
   const agent = createAgentPort(DEFAULT_ROLES, contained);
   const ports: SurfacePorts = {
     agent,
@@ -144,7 +144,7 @@ export async function dispatchRepair(record: RunRecord, sessionKey: string, sess
   const worktreePath = record.caseFile.cursor.worktreeRef || location.worktreePath;
   const contained = await containedSession(
     { ...session, agent: record.caseFile.header.agent },
-    { header: record.caseFile.header, repoPath: record.repoPath, worktreePath, env },
+    { header: record.caseFile.header, repoPath: record.repoPath, dir: record.dir, worktreePath, env },
   );
   const agent = createAgentPort(DEFAULT_ROLES, contained);
   const { result: judged, verdict } = await judgedRepair(

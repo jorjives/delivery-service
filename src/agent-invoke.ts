@@ -164,6 +164,8 @@ export interface SessionEnvironment {
   env?: Record<string, string | undefined>;
   /** The project's agent options, passed through to the session (see `AgentOptions`). */
   agent?: AgentOptions;
+  /** The harness's own environment for the session (the landing boundary's git settings). Wins over every other value. */
+  harnessEnv?: Record<string, string>;
 }
 
 /**
@@ -228,8 +230,8 @@ export function buildSessionOptions(
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
     pathToClaudeCodeExecutable: session.pathToClaudeCodeExecutable,
-    // The SDK's `env` replaces the process's own, so a merge starts from it.
-    env: agentEnv === undefined ? session.env : { ...(session.env ?? process.env), ...agentEnv },
+    // The SDK's `env` replaces the process's own, so a merge starts from it. The harness's own keys win.
+    env: agentEnv === undefined && session.harnessEnv === undefined ? session.env : { ...(session.env ?? process.env), ...agentEnv, ...session.harnessEnv },
   };
 }
 

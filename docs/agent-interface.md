@@ -228,6 +228,19 @@ the gate, the test-weakening guards and the gate's integrity check, all outside 
 alter. The main checkout is protected by a write fence, and the branch is the deliverable: the
 agent cannot merge, push or open a pull request itself.
 
+Every session also carries the landing boundary: its git environment points at a hooks folder in
+the run's own record, whose `reference-transaction` hook refuses any change to a branch other than
+the task's and any tag, and whose `pre-push` hook refuses every push; each named remote's push
+address is replaced for the session too, by a real empty bare repository under the state folder
+whose own `pre-receive` hook says the sentence, so `--no-verify` does not get round it and the
+refusal is the sentence, not a transport error. (The repository has to be real: git connects
+before it runs any client-side hook. Its hook has to be its own: git's local transport clears the
+session's git settings.) The project's own hooks still run, chained from the run's folder. The
+settings are included only for the project's git folder and its worktrees (`includeIf.gitdir:`),
+so any other repository the session's processes touch, such as a temp repository made by the
+project's tests or a dependency clone, keeps its own hooks, branches, tags and pushes. The
+operator's own git, and the closers, never carry this environment.
+
 ## Relationship to the mock
 
 This seam is precisely what claude-mock fakes, and the

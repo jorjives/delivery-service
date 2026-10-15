@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { runSession, type SessionEnvironment } from "../agent-invoke.js";
@@ -107,8 +107,8 @@ export async function runReview(repoPath: string, pack: Pack, { session, fence, 
     const commit = await git(worktreePath, ["rev-parse", "HEAD"]);
     const files = await filesToReview(repoPath, commit, scope);
     const reviewId = runIdFor(pack.manifest.name, started, await takenIds(repoPath));
-    // The scanner has every tool, so it starts like every session: inside the fence when the probe found one.
-    const contained = await containedSession(sessionEnv, { header: { fence: fenceRecord }, repoPath, worktreePath, env });
+    // The scanner keeps to its scratch branch like any session: it may not land anything.
+    const contained = await containedSession(sessionEnv, { header: { surfaceId, fence: fenceRecord }, repoPath, dir: join(errors, `hooks-${surfaceId}`), worktreePath, env });
     const terminus = await runSession(scannerRoleConfig(pack), { worktreePath, dir: errors, sessionKey: `scanner-${reviewId}` }, scanSession(pack, files, scope), contained);
     if ("status" in terminus) return { kind: "failed", terminus };
     const { usage, ...envelope } = terminus;
@@ -119,5 +119,6 @@ export async function runReview(repoPath: string, pack: Pack, { session, fence, 
     await tryGit(repoPath, ["worktree", "remove", "--force", "--", worktreePath]);
     await tryGit(repoPath, ["worktree", "prune"]);
     await tryGit(repoPath, ["branch", "-D", "--", branchName(surfaceId)]);
+    await rm(join(errors, `hooks-${surfaceId}`), { recursive: true, force: true });
   }
 }

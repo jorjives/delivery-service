@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { chmod, mkdir, realpath, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { git } from "./git-exec.js";
@@ -87,7 +88,9 @@ export async function refusingRemote(env: NodeJS.ProcessEnv): Promise<string> {
   await mkdir(root, { recursive: true });
   await git(root, ["init", "--bare", "-q", "--", repo]);
   const hook = join(repo, "hooks", "pre-receive");
-  const staged = `${hook}.${process.pid}`;
+  // Suffixed with a random token, not just the pid: two tasks of one run calling this concurrently share a
+  // process, so a pid-only suffix still lets one's rename find the file the other already moved away.
+  const staged = `${hook}.${process.pid}.${randomBytes(6).toString("hex")}`;
   await writeFile(staged, `#!/bin/sh\n# Written by delivery: nothing is ever pushed anywhere from an agent's session.\ncat > /dev/null\n${REFUSE}\n`);
   await chmod(staged, 0o755);
   await rename(staged, hook);

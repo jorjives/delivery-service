@@ -336,6 +336,11 @@ describe("the session options the primitive builds", () => {
     expect(built.env).toEqual({ A: "1", B: "2" });
   });
 
+  it("gives the harness's own environment the last word over the operator's", () => {
+    const built = buildSessionOptions(workerRoleConfig, ctx, { env: { A: "1", GIT_CONFIG_COUNT: "0" }, agent: { env: { GIT_CONFIG_COUNT: "9", B: "2" } }, harnessEnv: { GIT_CONFIG_COUNT: "1" } });
+    expect(built.env).toEqual({ A: "1", B: "2", GIT_CONFIG_COUNT: "1" });
+  });
+
   it("keeps the harness's own options whatever the agent options say", () => {
     const built = buildSessionOptions(workerRoleConfig, ctx, { agent: { cwd: "/elsewhere", permissionMode: "plan" } as never });
     expect(built.cwd).toBe(worktreePath);
