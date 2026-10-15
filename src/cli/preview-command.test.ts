@@ -8,7 +8,7 @@ import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { noSuchTask, RULE, SINGLE_TASK, TASK_NUMBER } from "./preview-command.js";
+import { agentOptionsLine, noSuchTask, OWN_SETUP, previewIntro, RULE, SINGLE_TASK, TASK_NUMBER } from "./preview-command.js";
 import { EVERY_TASK_DONE } from "./queue.js";
 import { NO_TASK } from "./settings.js";
 
@@ -45,11 +45,11 @@ describe("delivery preview", () => {
     expect(stderr).toBe("");
     expect(exitCode).toBe(EXIT.ok);
     const lines = stdout.split("\n");
-    expect(lines.slice(0, 4)).toEqual([`Next up is Task 1 of 3: ${FIRST}`, "", "What the worker will be told (before any run starts):", RULE]);
+    expect(lines.slice(0, 4)).toEqual([`Next up is Task 1 of 3: ${FIRST}`, "", previewIntro("worker"), RULE]);
     expect(lines[4]).toBe(workerRoleConfig.systemPromptFragment.split("\n")[0]);
     expect(stdout).toContain(`${workerRoleConfig.systemPromptFragment}\n\n${DOMAIN}\n\n## Task`);
     expect(stdout).toContain(`"intent": "${FIRST}"`);
-    expect(stdout.endsWith(`${RULE}\n`)).toBe(true);
+    expect(stdout.endsWith(`${[...OWN_SETUP, agentOptionsLine(undefined)].join("\n")}\n`)).toBe(true);
   });
 
   it("passes over a task whose run was delivered, as delivery run would", async () => {
@@ -78,9 +78,9 @@ describe("delivery preview", () => {
     const repo = repoWith(PROJECT);
     const { stdout, exitCode } = await delivery(["preview", "--role", "gate-maintenance"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain("What the agent that repairs your check will be told (before any run starts):");
+    expect(stdout).toContain(previewIntro("gate-maintenance"));
     expect(stdout).toContain(`${gateMaintenanceRoleConfig.systemPromptFragment}\n\n${DOMAIN}`);
-    expect(stdout.endsWith(`${RULE}\n`)).toBe(true);
+    expect(stdout.endsWith(`${[...OWN_SETUP, agentOptionsLine(undefined)].join("\n")}\n`)).toBe(true);
   });
 
   it("refuses a role it cannot show, naming the two it can", async () => {
@@ -233,5 +233,31 @@ describe("delivery preview --queue-index", () => {
     const { stderr, exitCode } = await delivery(["preview", "--queue-index", "1"], { cwd: repo });
     expect(stderr).toBe(`${NO_TASK}\n`);
     expect(exitCode).toBe(EXIT.configuration);
+  });
+});
+
+describe("what a preview says beside the instructions", () => {
+  it("says the instructions are added to Claude Code's own", () => {
+    expect(previewIntro("worker")).toBe("What the worker will be told (before any run starts), added to Claude Code's own instructions:");
+  });
+
+  it("says the operator's own setup also applies, and that every tool it allows is there", () => {
+    expect(OWN_SETUP).toEqual([
+      "Your own Claude Code settings, CLAUDE.md, skills, plugins, hooks and MCP servers also apply.",
+      "It can use every tool your setup allows.",
+    ]);
+  });
+
+  it("names the agent options the run will pass, without the added text it has already shown", () => {
+    expect(agentOptionsLine(undefined)).toBe("Agent options: none.");
+    expect(agentOptionsLine({ append: "x" })).toBe("Agent options: none.");
+    expect(agentOptionsLine({ model: "opus", effort: "high", maxTurns: 40, append: "x" })).toBe('Agent options: model "opus", effort "high", maxTurns 40.');
+  });
+
+  it("prints them after the instructions", async () => {
+    const repo = initTempRepo("preview-setup-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ task: { intent: FIRST }, agent: { model: "opus" } }) });
+    const { stdout } = await delivery(["preview"], { cwd: repo });
+    const lines = stdout.trimEnd().split("\n");
+    expect(lines.slice(-3)).toEqual([...OWN_SETUP, 'Agent options: model "opus".']);
   });
 });

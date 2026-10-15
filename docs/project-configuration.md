@@ -157,13 +157,23 @@ your description in place. The middle is long, so it is shortened here:
 
 ```text
 Next up is Task 1 of 2: add a function that turns a title into a URL slug, with a test
-What the worker will be told (before any run starts):
+What the worker will be told (before any run starts), added to Claude Code's own instructions:
 ─────────────────────────────────────────────────────
 You are carrying out one task for a delivery harness, in a working copy and branch it made for this task.
 …
 A small library of text helpers that our team's Node.js scripts share. Plain JavaScript modules with no dependencies, each function tested with node:test.
 …
+## Acceptance
+Your work is judged by the project's check: the command `npm test`, run in this working copy, where it passes or fails as a whole, by its exit code. You may read what it runs and run it yourself. A check that passed before your work must still pass.
+
+The harness also checks your change against the commit this task started from: no existing test deleted or renamed; no change to how tests run (test-runner settings, CI files, the test command, .gitignore, and the Makefile or equivalent build file, since each can hide or redefine what the tests do); no new skip or only marker added to a test file; no test setting, or test that switches others off, left out of git. A failure names what it found.
+
+Your branch is the deliverable. The harness merges or opens a PR after acceptance. Do not merge, push, or open a PR, even if a skill says to.
+…
 ─────────────────────────────────────────────────────
+Your own Claude Code settings, CLAUDE.md, skills, plugins, hooks and MCP servers also apply.
+It can use every tool your setup allows.
+Agent options: none.
 ```
 
 `delivery preview --queue-index 2` shows the second task instead. Like `delivery

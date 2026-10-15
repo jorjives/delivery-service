@@ -2,7 +2,7 @@ import { InvalidArgumentError } from "commander";
 import { DEFAULT_ROLES } from "../agent-invoke.js";
 import { initialCaseFile } from "../case-file.js";
 import { assemblePrompt, type PromptEvidence } from "../prompt-assembly.js";
-import type { TaskDef } from "../schema.js";
+import type { AgentOptions, TaskDef } from "../schema.js";
 import type { DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
@@ -45,6 +45,23 @@ const WHO: Record<PreviewRole, string> = {
   worker: "the worker",
   "gate-maintenance": "the agent that repairs your check",
 };
+
+/** The line above the instructions: whose they are, and that they are added to Claude Code's own rather than replacing them. */
+export const previewIntro = (role: PreviewRole): string => `What ${WHO[role]} will be told (before any run starts), added to Claude Code's own instructions:`;
+
+/** What a run has besides the instructions shown, in the operator's terms. */
+export const OWN_SETUP = [
+  "Your own Claude Code settings, CLAUDE.md, skills, plugins, hooks and MCP servers also apply.",
+  "It can use every tool your setup allows.",
+];
+
+/** The options passed to every session, as written in the file. `append` is left out: it is already in the instructions above. */
+export function agentOptionsLine(agent: AgentOptions | undefined): string {
+  const named = Object.entries(agent ?? {})
+    .filter(([key]) => key !== "append")
+    .map(([key, value]) => `${key} ${JSON.stringify(value)}`);
+  return `Agent options: ${named.length === 0 ? "none" : named.join(", ")}.`;
+}
 
 /**
  * What a run's first dispatch has to go on besides its record: nothing yet.
@@ -112,9 +129,10 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
 
   ctx.writeLine(chosen.heading);
   ctx.writeLine("");
-  ctx.writeLine(`What ${WHO[options.role]} will be told (before any run starts):`);
+  ctx.writeLine(previewIntro(options.role));
   ctx.writeLine(RULE);
   ctx.writeLine(`${systemPrompt}\n\n${prompt}`);
   ctx.writeLine(RULE);
+  for (const line of [...OWN_SETUP, agentOptionsLine(project.agent)]) ctx.writeLine(line);
   return EXIT.ok;
 }

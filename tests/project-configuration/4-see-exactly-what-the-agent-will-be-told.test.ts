@@ -13,7 +13,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NO_CONFIG } from "../../src/cli/validate-command.js";
-import { noSuchTask, RULE, SINGLE_TASK, TASK_NUMBER } from "../../src/cli/preview-command.js";
+import { noSuchTask, previewIntro, RULE, SINGLE_TASK, TASK_NUMBER } from "../../src/cli/preview-command.js";
 import { NO_TASK } from "../../src/cli/settings.js";
 import { EXIT } from "../../src/cli/failures.js";
 import { git, runDelivery } from "../helpers.js";
@@ -51,7 +51,7 @@ describe("UAT: see exactly what the agent will be told", () => {
     expect(first.status).toBe(EXIT.ok);
     const firstLines = first.stdout.split("\n");
     expect(firstLines[0]).toBe(`Next up is Task 1 of 3: ${COMPLETE.tasks[0]}`);
-    expect(firstLines[2]).toBe("What the worker will be told (before any run starts):");
+    expect(firstLines[2]).toBe(previewIntro("worker"));
     expect(firstLines[3]).toBe(RULE);
     expect(first.stdout).toContain(COMPLETE.domain);
     expect(first.stdout).toContain(`"intent": "${COMPLETE.tasks[0]}"`);
@@ -82,7 +82,7 @@ describe("acceptance criteria", () => {
     const repo = freshRepo(COMPLETE, "uat-slice-4-role-");
     const { stdout, status } = runDelivery(["preview", "--role", "gate-maintenance"], { cwd: repo });
     expect(status).toBe(EXIT.ok);
-    expect(stdout).toContain("What the agent that repairs your check will be told (before any run starts):");
+    expect(stdout).toContain(previewIntro("gate-maintenance"));
   });
 
   it("previews a single `task` and refuses a task number for it", () => {
