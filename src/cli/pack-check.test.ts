@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -134,4 +134,32 @@ describe("sandboxedEnv", () => {
   it("omits PATH when the caller's environment has none", () => {
     expect(sandboxedEnv({}, "/scratch/home")).toEqual({ HOME: "/scratch/home" });
   });
+});
+
+describe("what a pack's own code can see while it is checked", () => {
+  it("never sees a credential from the caller's environment, in the fixture project's tests or anywhere else it runs", async () => {
+    const dir = packCopy();
+    const seen = join(mkdtempSync(join(tmpdir(), "pack-check-seen-")), "env.json");
+    const probe = join(dir, FIXTURES.project, "total.test.js");
+    writeFileSync(probe, `import { appendFileSync } from "node:fs";\nappendFileSync(${JSON.stringify(seen)}, JSON.stringify(process.env) + "\\n");\n${readFileSync(probe, "utf-8")}`);
+    const result = await checkPack(dir, { env: { ...process.env, ANTHROPIC_API_KEY: "sk-leak", AWS_SECRET_ACCESS_KEY: "leak" } });
+    expect(result.problems).toEqual([]);
+    const runs = readFileSync(seen, "utf-8").trim().split("\n");
+    expect(runs.length).toBeGreaterThan(0);
+    for (const run of runs) expect(Object.keys(JSON.parse(run))).not.toContain("ANTHROPIC_API_KEY");
+    for (const run of runs) expect(Object.keys(JSON.parse(run))).not.toContain("AWS_SECRET_ACCESS_KEY");
+  }, CHECK_TIMEOUT);
+});
+
+describe("a pack's fixture project", () => {
+  it("cannot carry git's own control files, which would run its commands with the caller's credentials", async () => {
+    const dir = packCopy();
+    const seen = join(mkdtempSync(join(tmpdir(), "pack-check-seen-")), "ran");
+    mkdirSync(join(dir, FIXTURES.project, ".git"));
+    writeFileSync(join(dir, FIXTURES.project, ".git", "config"), `[core]\n\tfsmonitor = touch ${seen}; echo\n`);
+    const result = await checkPack(dir, { env: { ...process.env, ANTHROPIC_API_KEY: "sk-leak" } });
+    expect(result).toMatchObject({ ready: false, run: null });
+    expect(result.problems).toContainEqual({ file: join(dir, FIXTURES.project), field: ".git/config", message: "is inside .git: a project's own git files would run commands the harness never chose" });
+    expect(existsSync(seen)).toBe(false);
+  }, CHECK_TIMEOUT);
 });
