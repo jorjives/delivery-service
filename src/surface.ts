@@ -413,7 +413,12 @@ async function dispatchSession(
   const briefRef = await currentBriefRef(dir, caseFile.history, role);
   await appendEntry(dir, { t: "dispatch", role, attempt, sessionKey, ...(briefRef ? { briefRef } : {}) });
   const worktreePath = worktreeOf(caseFile, location);
-  const session = () => ports.agent.invoke({ role }, { worktreePath, dir, sessionKey });
+  // A continuing step's first dispatch picks up the previous step's session. Any retry starts fresh: after a
+  // correction, and after an incomplete first dispatch, so a resume that failed is not repeated.
+  const opening = caseFile.history[0];
+  const firstDispatch = attempt === 1 && retriesOf(caseFile.history, role, attempt) === 0;
+  const resume = role === "worker" && firstDispatch && opening?.t === "step" ? opening.resume : undefined;
+  const session = () => ports.agent.invoke({ role }, { worktreePath, dir, sessionKey, ...(resume === undefined ? {} : { resume }) });
   // A repair may edit the very check that guards the work: what it changed is kept, before its terminus, so a
   // crash leaves at most an orphan ref (the recovered retry gets a new session key, so a new ref). Only kept,
   // never judged: nothing below reads it. The repair is also judged, straight after it ends, on its own change
@@ -445,6 +450,8 @@ async function dispatchSession(
     ...(terminus.status === "incomplete" && terminus.limit ? { limit: terminus.limit } : {}),
     ...(changesRef === undefined ? {} : { changesRef }),
     ...(terminus.usage === undefined ? {} : { usage: terminus.usage }),
+    ...(ended.sessionId === undefined ? {} : { sessionId: ended.sessionId }),
+    ...(ended.resumeFellBack === true ? { resumeFellBack: true as const } : {}),
     ...(pullRequest === null ? {} : { landedOutside: { pullRequest } }),
     rationale: terminus.rationale,
   };

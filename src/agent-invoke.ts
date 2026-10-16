@@ -240,6 +240,7 @@ export function buildSessionOptions(
     // The operator's options first, so every harness-owned option below wins over a stray one.
     ...(agentOptions as Partial<Options>),
     cwd: ctx.worktreePath,
+    ...(ctx.resume === undefined ? {} : { resume: ctx.resume }),
     systemPrompt: { type: "preset", preset: "claude_code", append },
     outputFormat: { type: "json_schema", schema },
     permissionMode: "bypassPermissions",
@@ -292,10 +293,27 @@ export async function invoke<E>(
 export async function runSession<E>(
   roleCfg: RoleConfig<E>,
   ctx: AgentContext,
-  { systemPrompt, prompt }: AssembledPrompt,
+  assembled: AssembledPrompt,
   session: SessionEnvironment = {},
 ): Promise<Metered<E | Incomplete>> {
   validateRoleConfig(roleCfg);
+  const first = await attempt(roleCfg, ctx, assembled, session);
+  if (ctx.resume === undefined || !first.nothingCame) return first.terminus;
+  // The session to continue is gone (its transcript no longer exists): the runtime ended without a result. Start a
+  // fresh session on the same prompt, in the same working copy, and say so. If that one also produces nothing, it is
+  // an ordinary notRun and escalates as it always has.
+  const fresh: AgentContext = { worktreePath: ctx.worktreePath, dir: ctx.dir, sessionKey: ctx.sessionKey };
+  const second = await attempt(roleCfg, fresh, assembled, session);
+  return { ...second.terminus, resumeFellBack: true } as Metered<E | Incomplete>;
+}
+
+/** One session run, and whether the runtime ended it without any result message (so a resume did not take). */
+async function attempt<E>(
+  roleCfg: RoleConfig<E>,
+  ctx: AgentContext,
+  { systemPrompt, prompt }: AssembledPrompt,
+  session: SessionEnvironment,
+): Promise<{ terminus: Metered<E | Incomplete>; nothingCame: boolean }> {
   const options = buildSessionOptions(roleCfg, ctx, session, systemPrompt);
 
   let result: SDKResultMessage | undefined;
@@ -304,24 +322,27 @@ export async function runSession<E>(
     ({ result, apiError } = await sessionEnd(prompt, options));
   } catch (err) {
     await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.notRun, { cause: messageOf(err) });
-    return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
+    return { terminus: incomplete(roleCfg, DID_NOT_COMPLETE.notRun), nothingCame: true };
   }
 
-  // Whatever the session ended as, if it produced a result the runtime said what it cost and took.
+  // Whatever the session ended as, if it produced a result the runtime said what it cost and took, and which session it was.
   const usage = result === undefined ? undefined : usageOf(result);
-  const metered = <T>(terminus: T): Metered<T> => (usage === undefined ? terminus : { ...terminus, usage }) as Metered<T>;
+  const sessionId = result?.session_id;
+  const metered = <T>(terminus: T): Metered<T> =>
+    ({ ...terminus, ...(usage === undefined ? {} : { usage }), ...(sessionId === undefined ? {} : { sessionId }) }) as Metered<T>;
+  const done = (terminus: Metered<E | Incomplete>) => ({ terminus, nothingCame: false });
 
-  if (!result) return incomplete(roleCfg, DID_NOT_COMPLETE.notRun);
+  if (!result) return { terminus: incomplete(roleCfg, DID_NOT_COMPLETE.notRun), nothingCame: true };
   if (result.subtype !== "success" || result.is_error) {
     const cause = errorTextOf(result);
     const limit = usageLimitOf({ apiError, status: result.subtype === "success" ? result.api_error_status : undefined, text: cause });
     const reason = limit ? USAGE_LIMIT_WORDS[limit] : DID_NOT_COMPLETE.errored;
     await recordFailureCause(roleCfg, ctx, reason, { cause });
-    return metered(incomplete(roleCfg, reason, limit));
+    return done(metered(incomplete(roleCfg, reason, limit)));
   }
   if (result.structured_output === undefined) {
     await recordFailureCause(roleCfg, ctx, DID_NOT_COMPLETE.noEnvelope, { agentReply: result.result });
-    return metered(incomplete(roleCfg, DID_NOT_COMPLETE.noEnvelope));
+    return done(metered(incomplete(roleCfg, DID_NOT_COMPLETE.noEnvelope)));
   }
 
   const envelope = roleCfg.envelopeSchema.safeParse(result.structured_output);
@@ -330,11 +351,11 @@ export async function runSession<E>(
       cause: z.prettifyError(envelope.error),
       agentReply: JSON.stringify(result.structured_output),
     });
-    return metered(incomplete(roleCfg, DID_NOT_COMPLETE.wrongShape));
+    return done(metered(incomplete(roleCfg, DID_NOT_COMPLETE.wrongShape)));
   }
 
   // A valid envelope IS the terminus — see `Envelope` in role-config.ts.
-  return metered(envelope.data);
+  return done(metered(envelope.data));
 }
 
 /**

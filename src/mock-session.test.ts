@@ -113,7 +113,7 @@ describe("a session driven through the helper", () => {
       mockSessionEnvironment({ scriptPath, journalPath }),
     );
 
-    expect(terminus).toEqual({ status: "completed", rationale: "added the greeting", usage: NO_COST });
+    expect(terminus).toEqual({ status: "completed", rationale: "added the greeting", usage: NO_COST, sessionId: expect.any(String) });
     expect(promptsSent(await readJournal(journalPath))[0]).toContain("add a greeting");
   });
 

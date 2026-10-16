@@ -27,6 +27,8 @@ export interface AgentContext {
   worktreePath: string;
   dir: string;
   sessionKey: string;
+  /** The runtime session to continue instead of starting a new one: a workflow step with `continue`. */
+  resume?: string;
 }
 
 export type Terminus =
@@ -64,7 +66,7 @@ export type Incomplete = Extract<Terminus, { status: "incomplete" }>;
  * agent may say: the harness adds it after the reply is validated. Read only by
  * what records it; no routing decision reads it.
  */
-export type Metered<T> = T & { usage?: SessionUsage };
+export type Metered<T> = T & { usage?: SessionUsage; sessionId?: string; resumeFellBack?: true };
 
 /** The plain words a usage limit is always described with. One table, so every place that names a limit names it the same way. */
 export const USAGE_LIMIT_WORDS: Record<UsageLimit, string> = {

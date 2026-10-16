@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { advance, run } from "./surface.js";
-import { create, load } from "./case-file.js";
+import { stepView } from "./workflow-step.js";
+import { create, deriveBudgetsFromLog, load } from "./case-file.js";
 import { initTempRepo } from "./temp-repo.js";
 import { ensureCommitted } from "./git-exec.js";
 import { deterministicRouter } from "./router.js";
@@ -158,5 +159,42 @@ describe("step guards", () => {
     };
     const { dir, location, ports } = await surfaceWith(guarded, { "a.test.js": "// original\n" }, [write("PLAN.md"), editTest, editTest, editTest, editTest]);
     expect((await run(dir, location, ports)).outcome?.kind).not.toBe("closed");
+  });
+});
+
+describe("continue", () => {
+  const planned = (ctx: AgentContext): Terminus & { sessionId: string } => ({ ...write("PLAN.md")(ctx), sessionId: "sess-plan" });
+  const continuing: PinnedWorkflow = { ...workflow, steps: [{ name: "plan", prompt: "write PLAN.md", gateRef: planGate }, { name: "build", prompt: "carry out PLAN.md", continue: true as const }] };
+
+  it("resumes step 1's last worker session in step 2, and only when the step says so", async () => {
+    const { dir, location, ports, seen } = await surfaceWith(continuing, { "README.md": "hi\n" }, [planned, write("BUILT.md")]);
+    await run(dir, location, ports);
+    expect(seen.map((ctx) => ctx.resume)).toEqual([undefined, "sess-plan"]);
+    const { history } = await load(dir);
+    expect(history.find((e) => e.t === "terminus")).toMatchObject({ sessionId: "sess-plan" });
+  });
+
+  it("starts a continuing step's retry fresh, so a resume that failed is not repeated", async () => {
+    const incomplete = (): Terminus => ({ status: "incomplete", rationale: "the session ended without a result" });
+    const { dir, location, ports, seen } = await surfaceWith(continuing, { "README.md": "hi\n" }, [planned, incomplete, write("BUILT.md")]);
+    await run(dir, location, ports);
+    expect(seen.map((ctx) => ctx.resume)).toEqual([undefined, "sess-plan", undefined]);
+  });
+
+  it("records a resume that fell back, spends no budget, and does not escalate", async () => {
+    const fellBack = (ctx: AgentContext): Terminus & { resumeFellBack: true } => ({ ...write("BUILT.md")(ctx), resumeFellBack: true });
+    const { dir, location, ports } = await surfaceWith(continuing, { "README.md": "hi\n" }, [planned, fellBack]);
+    const outcome = await run(dir, location, ports);
+    const record = await load(dir);
+    expect(outcome.outcome?.kind).toBe("closed");
+    expect(record.history.filter((e) => e.t === "terminus")[1]).toMatchObject({ status: "completed", resumeFellBack: true });
+    expect(record.history.some((e) => e.t === "terminus" && e.notRun === true)).toBe(false);
+    expect(deriveBudgetsFromLog(stepView(record).history, record.cursor.budgets).terminus.used).toBe(0);
+  });
+
+  it("starts step 2 fresh without continue", async () => {
+    const { dir, location, ports, seen } = await surface([planned, write("BUILT.md")]);
+    await run(dir, location, ports);
+    expect(seen.map((ctx) => ctx.resume)).toEqual([undefined, undefined]);
   });
 });

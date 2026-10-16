@@ -60,7 +60,7 @@ describe("invoke against a scripted agent session", () => {
   it("returns one completed terminus carrying the agent's explanation", async () => {
     await script([{ json: { status: "completed", rationale: "added the greeting endpoint" } }]);
     const terminus = await invoke(workerRoleConfig, ctx, useMock());
-    expect(terminus).toEqual({ status: "completed", rationale: "added the greeting endpoint", usage: NO_COST });
+    expect(terminus).toEqual({ status: "completed", rationale: "added the greeting endpoint", usage: NO_COST, sessionId: expect.any(String) });
   });
 
   it("returns one escalate terminus naming the category", async () => {
@@ -73,6 +73,7 @@ describe("invoke against a scripted agent session", () => {
       category: "authority",
       rationale: "needs a credential I was not given",
       usage: NO_COST,
+      sessionId: expect.any(String),
     });
   });
 
@@ -113,6 +114,7 @@ describe("invoke against a scripted agent session", () => {
       status: "incomplete",
       rationale: `worker session did not complete: ${DID_NOT_COMPLETE.wrongShape}`,
       usage: NO_COST,
+      sessionId: expect.any(String),
     });
   });
 
@@ -241,7 +243,7 @@ describe("invoke without a runnable session", () => {
 describe("what a session cost and took", () => {
   it("carries the cost and time the runtime reported on the terminus", async () => {
     await script([{ json: { status: "completed", rationale: "added it" }, costUsd: 0.42, durationMs: 1500 }]);
-    expect(await invoke(workerRoleConfig, ctx, useMock())).toEqual({ status: "completed", rationale: "added it", usage: { costUsd: 0.42, durationMs: 1500 } });
+    expect(await invoke(workerRoleConfig, ctx, useMock())).toEqual({ status: "completed", rationale: "added it", usage: { costUsd: 0.42, durationMs: 1500 }, sessionId: expect.any(String) });
   });
 
   it("carries them on a session that gave no usable reply: it still ran, and still cost", async () => {
@@ -437,6 +439,7 @@ describe("invoking gate-maintenance through the same seam as the worker", () => 
       status: "completed",
       rationale: "set the missing PORT in .env so the service can start",
       usage: NO_COST,
+      sessionId: expect.any(String),
     });
     expect(await readFile(join(worktreePath, ".env"), "utf-8")).toBe("PORT=8080\n");
   });
@@ -473,7 +476,7 @@ describe("createAgentPort against a scripted session", () => {
     expect(TriageEnvelope.safeParse(triaged).success).toBe(true);
 
     const worked = await port.invoke({ role: "worker" }, ctx);
-    expect(worked).toEqual({ status: "completed", rationale: "done", usage: NO_COST });
+    expect(worked).toEqual({ status: "completed", rationale: "done", usage: NO_COST, sessionId: expect.any(String) });
   });
 });
 
@@ -489,6 +492,7 @@ describe("a session stopped by a usage limit", () => {
       rationale: "worker session did not complete: the AI service is limiting requests",
       limit: "rate",
       usage: NO_COST,
+      sessionId: expect.any(String),
     });
   });
 
@@ -499,6 +503,7 @@ describe("a session stopped by a usage limit", () => {
       rationale: "worker session did not complete: the spending limit has been reached",
       limit: "spend",
       usage: NO_COST,
+      sessionId: expect.any(String),
     });
   });
 
@@ -508,6 +513,7 @@ describe("a session stopped by a usage limit", () => {
       status: "incomplete",
       rationale: `worker session did not complete: ${DID_NOT_COMPLETE.errored}`,
       usage: NO_COST,
+      sessionId: expect.any(String),
     });
   });
 
@@ -553,7 +559,7 @@ describe("runSession: one session from a prompt the caller assembled, with no ca
       useMock(),
     );
 
-    expect(terminus).toEqual({ status: "completed", rationale: "read the files", usage: NO_COST });
+    expect(terminus).toEqual({ status: "completed", rationale: "read the files", usage: NO_COST, sessionId: expect.any(String) });
     expect(promptsSent(await readJournal(journalPath))).toEqual(["Review the project."]);
   });
 
@@ -597,5 +603,22 @@ describe("the session a workflow step's agent gets", () => {
     expect(stepSession(step2, {}).harnessEnv).toMatchObject({ DELIVERY_STEP_START: "c1" });
     expect(stepSession(record({ startCommit: "c0" }), {}).harnessEnv).toMatchObject({ DELIVERY_STEP_START: "c0" });
     expect(stepSession(record({}), {}).harnessEnv).toBeUndefined();
+  });
+});
+
+describe("continuing a session", () => {
+  it("asks the runtime to resume the session the context names", () => {
+    const options = buildSessionOptions(workerRoleConfig, { worktreePath: "/w", dir: "/d", sessionKey: "k", resume: "sess-1" }, {});
+    expect(options.resume).toBe("sess-1");
+  });
+
+  it("starts a new session when the context names none", () => {
+    expect(buildSessionOptions(workerRoleConfig, { worktreePath: "/w", dir: "/d", sessionKey: "k" }, {}).resume).toBeUndefined();
+  });
+
+  it("carries the runtime's session id on the terminus, so a later step can continue it", async () => {
+    await script([{ json: { status: "completed", rationale: "done" } }]);
+    const terminus = await invoke(workerRoleConfig, ctx, useMock());
+    expect(typeof (terminus as { sessionId?: string }).sessionId).toBe("string");
   });
 });

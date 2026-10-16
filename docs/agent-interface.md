@@ -71,6 +71,15 @@ end, validate whatever it emitted against the envelope + role payload schema, an
 map the result to a terminus. Nothing about this loop varies by role; only the
 config it is handed does.
 
+A context may name `resume`, a runtime session id; the session then continues that
+session (the SDK's own `resume` option) instead of starting fresh. A workflow step
+with `continue: true` passes its previous step's last worker session on its first
+attempt. Each session's id is kept on its terminus entry as `sessionId`. If the
+session to continue can no longer be resumed (the runtime ends without a result),
+`runSession` runs the same prompt once as a fresh session in the same working copy
+and marks the terminus `resumeFellBack`; that is recorded, spends no budget and is
+not an escalation.
+
 ## Roles as configs
 
 | Role | Blast radius | Payload on the happy path | Notable statuses |
