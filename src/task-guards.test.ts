@@ -80,3 +80,18 @@ describe("a gate joined to the guards", () => {
     expect((await guardedGate(passing, { branch: "main" }).check(ctxOf(repo))).status).toBe("FAIL");
   });
 });
+
+describe("a workflow step's guards", () => {
+  it("adds and turns off guards for the step, over the task's own", () => {
+    const { on } = activeGuards({ intent: "x", guards: { off: ["ignored"] } }, { add: ["tests-unchanged"], off: ["no-skips"] });
+    expect(on).toEqual(["tests-untouched", "tests-unchanged", "check-untouched"]);
+  });
+
+  it("leaves the task's guards alone when the step changes none", () => {
+    expect(activeGuards({ intent: "x" }, undefined)).toEqual(activeGuards({ intent: "x" }));
+  });
+
+  it("reports the step's changes from the defaults", () => {
+    expect(guardChanges({ intent: "x" }, { add: ["tests-unchanged"] })).toEqual({ added: ["tests-unchanged"], off: [] });
+  });
+});

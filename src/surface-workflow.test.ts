@@ -134,3 +134,29 @@ describe("a task with no workflow", () => {
     expect(history.find((e) => e.t === "dispatch")).toMatchObject({ sessionKey: "worker-1-0" });
   });
 });
+
+describe("step guards", () => {
+  const guarded: PinnedWorkflow = { ...workflow, steps: [workflow.steps[0] as PinnedWorkflow["steps"][number], { ...(workflow.steps[1] as PinnedWorkflow["steps"][number]), guards: { add: ["tests-unchanged"] } }] };
+
+  it("does not blame step 2 for a test step 1 changed", async () => {
+    // Step 1 edits an existing test file; step 2 turns tests-unchanged on and touches no test.
+    // Step 2 diffs from step 1's accepted commit, so it passes.
+    const editTest = (ctx: AgentContext): Terminus => {
+      writeFileSync(join(ctx.worktreePath, "a.test.js"), "// changed\n");
+      writeFileSync(join(ctx.worktreePath, "PLAN.md"), "plan\n");
+      return { status: "completed", rationale: "planned and changed a test" };
+    };
+    const { dir, location, ports } = await surfaceWith(guarded, { "a.test.js": "// original\n" }, [editTest, write("BUILT.md")]);
+    expect((await run(dir, location, ports)).outcome?.kind).toBe("closed");
+  });
+
+  it("holds step 2 to tests-unchanged when it changes a test itself", async () => {
+    const editTest = (ctx: AgentContext): Terminus => {
+      writeFileSync(join(ctx.worktreePath, "a.test.js"), "// changed in step 2\n");
+      writeFileSync(join(ctx.worktreePath, "BUILT.md"), "built\n");
+      return { status: "completed", rationale: "built and changed a test" };
+    };
+    const { dir, location, ports } = await surfaceWith(guarded, { "a.test.js": "// original\n" }, [write("PLAN.md"), editTest, editTest, editTest, editTest]);
+    expect((await run(dir, location, ports)).outcome?.kind).not.toBe("closed");
+  });
+});

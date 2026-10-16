@@ -13,12 +13,22 @@ const switchesOf = (taskDef: TaskDef): GuardSwitches => {
 };
 
 /**
+ * The guards that judge a task, and, in a workflow, the step it is on: the task's own, then the step's switches.
+ */
+export function activeGuards(taskDef: TaskDef, step?: GuardSwitches): ActiveGuards {
+  const own = taskGuards(taskDef);
+  if (step === undefined) return own;
+  const { add = [], off = [] } = step;
+  return { lists: own.lists, on: GuardName.options.filter((name) => (own.on.includes(name) || add.includes(name)) && !off.includes(name)) };
+}
+
+/**
  * The guards a task's run is judged by. A fix of a problem a review found keeps every guard, by the lists it was
  * authorised with, and may change an existing test only when the problem is in one or its owner allowed it. Any
  * other task gets the defaults, with what its own `guards` adds and turns off. In `GuardName` order, so the same
  * task always yields the same list.
  */
-export function activeGuards(taskDef: TaskDef): ActiveGuards {
+function taskGuards(taskDef: TaskDef): ActiveGuards {
   const fix = FixTask.safeParse(taskDef);
   if (fix.success) {
     const { guards, authorisation } = fix.data;
@@ -31,8 +41,8 @@ export function activeGuards(taskDef: TaskDef): ActiveGuards {
 }
 
 /** How a task's guards differ from the defaults, for a reader of its record; null when they do not. */
-export function guardChanges(taskDef: TaskDef): { added: GuardName[]; off: GuardName[] } | null {
-  const { on } = activeGuards(taskDef);
+export function guardChanges(taskDef: TaskDef, step?: GuardSwitches): { added: GuardName[]; off: GuardName[] } | null {
+  const { on } = activeGuards(taskDef, step);
   const added = on.filter((name) => !DEFAULT_ON.includes(name));
   const off = DEFAULT_ON.filter((name) => !on.includes(name));
   return added.length === 0 && off.length === 0 ? null : { added, off };
@@ -69,7 +79,7 @@ export function guardedGate(gate: Gate, base: GuardBase, accepted: AcceptedSetti
       const report = await gate.baseline(ctx);
       if (report.status === "ERROR") return report;
       try {
-        return { ...report, assertions: [...report.assertions, ...(await ignoredAssertions(ctx.worktreePath, activeGuards(ctx.taskDef)))] };
+        return { ...report, assertions: [...report.assertions, ...(await ignoredAssertions(ctx.worktreePath, activeGuards(ctx.taskDef, ctx.guards)))] };
       } catch (err) {
         return errorReport(`which files git ignores could not be checked: ${messageOf(err)}`);
       }
@@ -77,7 +87,7 @@ export function guardedGate(gate: Gate, base: GuardBase, accepted: AcceptedSetti
     async check(ctx) {
       let guards: Assertion[];
       try {
-        guards = await guardAssertions(ctx.worktreePath, await commitOf(ctx.worktreePath, base), activeGuards(ctx.taskDef), verifyOf(ctx.taskDef, ctx.gateRef), accepted);
+        guards = await guardAssertions(ctx.worktreePath, await commitOf(ctx.worktreePath, base), activeGuards(ctx.taskDef, ctx.guards), verifyOf(ctx.taskDef, ctx.gateRef), accepted);
       } catch (err) {
         return errorReport(`whether this work changed the project's tests could not be checked: ${messageOf(err)}`);
       }

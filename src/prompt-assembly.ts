@@ -7,6 +7,7 @@ import { SharpenedBrief } from "./triage-role-config.js";
 import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
 import type { GuardName } from "./guards.js";
 import { activeGuards } from "./task-guards.js";
+import { currentStep } from "./workflow-step.js";
 
 export interface PromptSetback extends Setback {
   /** Log-derived used/max per population at the moment of the setback. */
@@ -95,7 +96,7 @@ function gateLines(gateRef: GateRef): string {
 
 /** What will judge the work: the check, the guards in one paragraph, and where the work ends. Pure: read from the header alone. */
 function acceptance(caseFile: CaseFile): string {
-  const { on } = activeGuards(caseFile.header.taskDef);
+  const { on } = activeGuards(caseFile.header.taskDef, currentStep(caseFile)?.guards);
   const guards =
     on.length === 0
       ? []

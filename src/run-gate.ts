@@ -1,5 +1,5 @@
 import { load, setBaseline, appendEntry, writeRef } from "./case-file.js";
-import { stepIndexOf, stepKey, stepView } from "./workflow-step.js";
+import { currentStep, stepIndexOf, stepKey, stepView } from "./workflow-step.js";
 import { resolveGate } from "./resolve-gate.js";
 import { computeDelta } from "./delta-rule.js";
 import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
@@ -18,7 +18,8 @@ function gateContext(view: CaseFile, worktreePath: string, env?: NodeJS.ProcessE
   const { header } = view;
   // Every gate command can see where the work started, so a check can judge what was added since.
   const withStart = header.startCommit === undefined ? env : { ...(env ?? process.env), DELIVERY_STEP_START: header.startCommit };
-  return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, env: withStart };
+  const guards = currentStep(view)?.guards;
+  return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, env: withStart, ...(guards === undefined ? {} : { guards }) };
 }
 
 // The gate measures the worktree but is loaded from the repo root: a relative

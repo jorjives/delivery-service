@@ -1,5 +1,5 @@
 import { execFile as execFileCb } from "node:child_process";
-import type { GateReport, GateRef, TaskDef, Assertion } from "./schema.js";
+import type { GateReport, GateRef, GuardSwitches, TaskDef, Assertion } from "./schema.js";
 import { parseTap, parseJunit, parseExitCode } from "./parsers.js";
 import { ParseError } from "./errors.js";
 import { errorReport, messageOf, duplicateIdReport } from "./gate-support.js";
@@ -12,6 +12,8 @@ export interface GateContext {
   baseBranch?: string | null;
   /** The environment the gate's command runs with. Unset: it inherits the process's own, which is right for an ordinary fix or sign-off; a caller that needs the command sandboxed (`packs check`, against a pack's own fixture code) sets it instead. */
   env?: NodeJS.ProcessEnv;
+  /** A workflow step's own guard switches, laid over the task's. Unset outside a workflow. */
+  guards?: GuardSwitches;
 }
 
 export interface Gate {
