@@ -156,7 +156,7 @@ describe("what checks the work", () => {
   it("turns a ready-made check in the file into the gate it stands for, and remembers which it was", async () => {
     const gate = { type: "file-exists", path: "CHANGES.md" } as const;
     const resolved = await settings({ task: TASK }, { config: { gate } });
-    expect(resolved.gateRef).toEqual({ type: "command", command: "test -f 'CHANGES.md'", parseMode: "exitcode" });
+    expect(resolved.gateRef).toEqual({ type: "command", command: "test -f 'CHANGES.md'", parseMode: "exitcode", checkOnly: true });
     expect(resolved.gatePreset).toEqual(gate);
   });
 
