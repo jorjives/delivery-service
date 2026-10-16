@@ -237,7 +237,7 @@ describe("delivery validate on a configuration with a problem", () => {
     [
       "a misspelt ready-made check",
       { ...COMPLETE, gate: { type: "file-exist", path: "CHANGES.md" } },
-      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds` and `schema-validates`. To write one out in full, see docs/writing-a-gate.md.",
+      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds`, `schema-validates` and `commits-ahead`. To write one out in full, see docs/writing-a-gate.md.",
     ],
     [
       "a ready-made check missing its detail",
