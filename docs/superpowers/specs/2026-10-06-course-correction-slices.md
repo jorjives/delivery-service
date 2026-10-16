@@ -119,6 +119,7 @@ checked.
 ## Slice 2: Define Workflows With More Than One Step
 
 **Status:** ✅ Complete — 2026-10-16 — `7086afb`
+**Tests:** ✅ Recorded — 2026-10-16 — `152e013` — cli (vitest) — 1 UAT + 5 AC, 2 skipped
 
 **Delivers:** An operator defines a named workflow as an ordered list of steps instead of being
 limited to one fixed worker step, and runs any task through any named workflow.
