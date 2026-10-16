@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { checkConfig, configCandidates, configProblems, DeliveryConfig, findConfig, loadConfig, NO_SUCH_CONFIG, structureTask, unknownCloser, unknownGate } from "./config.js";
+import { CONFIG_KEYS, checkConfig, configCandidates, configProblems, DeliveryConfig, findConfig, firstStepContinues, loadConfig, NO_SUCH_CONFIG, sameStep, structureTask, unknownCloser, unknownGate } from "./config.js";
+import { harnessOwned } from "../schema.js";
 import { EXIT, Refusal } from "./failures.js";
 import { planConfig, writePlan } from "../packs/plan.js";
 import { fixTaskFor } from "../packs/fix-task.js";
@@ -188,7 +189,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency` and `fence`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence` and `workflows`.",
     );
   });
 
@@ -259,7 +260,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names a file that holds something other than one object of settings", () => {
     expect(problemFor(["add a page"])).toBe(
-      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency` and `fence`. " +
+      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence` and `workflows`. " +
         "A `.js` or `.mjs` file exports that object as its default.",
     );
   });
@@ -646,5 +647,41 @@ describe("the fence setting", () => {
   it("refuses anything else, saying what it takes", () => {
     expect(problemFor({ fence: "always" })).toContain("`fence`");
     expect(problemFor({ fence: "always" })).toContain('"preferred", "required" or "off"');
+  });
+});
+
+const TWO_STEPS = {
+  plan: {
+    steps: [
+      { name: "plan", prompt: "Write a short plan to PLAN.md.", gate: { type: "file-exists", path: "PLAN.md" } },
+      { name: "build", prompt: "Carry out PLAN.md.", continue: true, guards: { add: ["tests-unchanged"] }, agent: { model: "opus" } },
+    ],
+  },
+};
+
+describe("workflows", () => {
+  it("accepts named workflows of ordered steps", () => {
+    const config = DeliveryConfig.parse({ workflows: TWO_STEPS });
+    expect(config.workflows?.["plan"]?.steps.map((step) => step.name)).toEqual(["plan", "build"]);
+  });
+
+  it("refuses two steps with the same name in one workflow", () => {
+    expect(problemFor({ workflows: { plan: { steps: [{ name: "a", prompt: "x" }, { name: "a", prompt: "y" }] } } })).toContain(sameStep("plan", "a"));
+  });
+
+  it("refuses a first step that continues, as there is no session before it", () => {
+    expect(problemFor({ workflows: { plan: { steps: [{ name: "a", prompt: "x", continue: true }] } } })).toContain(firstStepContinues("plan"));
+  });
+
+  it("refuses a workflow with no steps, in plain words", () => {
+    expect(problemFor({ workflows: { plan: { steps: [] } } })).toContain("`workflows.plan.steps`");
+  });
+
+  it("refuses a harness-owned agent option on a step, naming it", () => {
+    expect(problemFor({ workflows: { plan: { steps: [{ name: "a", prompt: "x", agent: { resume: "s" } }] } } })).toContain(harnessOwned("resume"));
+  });
+
+  it("lists workflows among the settings a config file takes", () => {
+    expect(CONFIG_KEYS).toBe("`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence` and `workflows`");
   });
 });

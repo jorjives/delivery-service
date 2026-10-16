@@ -5,9 +5,8 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
-import { AgentOptions, CloserRef, GuardName, TaskDef, Written } from "../schema.js";
+import { AgentOptions, CloserRef, GuardName, GuardSwitches, TaskDef, Written } from "../schema.js";
 import { FenceSetting } from "../fence.js";
-import { GuardSwitches } from "../guards.js";
 import { FixTask } from "../packs/fix-task.js";
 import { latestPlanFile } from "../packs/review-record.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
@@ -19,7 +18,7 @@ export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
 /** The keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency` and `fence`";
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence` and `workflows`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -27,7 +26,7 @@ export const BUILT_IN_CLOSERS: string[] = CloserRef.options
   .filter((type) => type !== "custom");
 
 /** Names as a sentence lists them, each in code: `a`, `b` and `c`. */
-function andList(names: readonly string[]): string {
+export function andList(names: readonly string[]): string {
   const quoted = names.map((name) => `\`${name}\``);
   return quoted.length < 2 ? (quoted[0] ?? "") : `${quoted.slice(0, -1).join(", ")} and ${quoted.at(-1) ?? ""}`;
 }
@@ -104,6 +103,32 @@ export const sameTask = (first: number, second: number): string =>
  */
 export const Concurrency = z.number().int().positive();
 
+export const sameStep = (workflow: string, step: string): string =>
+  `the workflow \`${workflow}\` has two steps called \`${step}\`. Give each step its own name.`;
+export const firstStepContinues = (workflow: string): string =>
+  `the first step of the workflow \`${workflow}\` has \`continue\`, but there is no step before it to continue from. Remove it.`;
+
+/** One step of a workflow, as the file writes it. Its gate is resolved, and its options pinned, when a run starts. */
+export const StepConfig = z
+  .object({
+    name: Written,
+    // What this step's agent is asked to do. The task itself is still in front of it.
+    prompt: Prose,
+    // How this step is checked; the project's own `gate` when left out.
+    gate: GateChoice.optional(),
+    // Laid over the project's `agent` for this step only.
+    agent: AgentOptions.optional(),
+    // Pick up the previous step's agent session instead of starting a new one.
+    continue: z.boolean().optional(),
+    // Guards added or turned off for this step only.
+    guards: GuardSwitches.optional(),
+  })
+  .strict();
+export type StepConfig = z.infer<typeof StepConfig>;
+
+export const WorkflowConfig = z.object({ steps: z.array(StepConfig).min(1) }).strict();
+export type WorkflowConfig = z.infer<typeof WorkflowConfig>;
+
 /**
  * The whole of a `delivery.config.json`. `task`, `gate` and `closer` are the
  * library's own schemas, composed rather than restated, so the file can never
@@ -136,6 +161,8 @@ export const DeliveryConfig = z
     concurrency: Concurrency.optional(),
     // Whether every agent session runs inside the write fence: `preferred`, `required` or `off`, or an object with `mode` and `devices`.
     fence: FenceSetting.optional(),
+    // Named ways of doing a task in more than one checked step, chosen with `delivery run --workflow <name>`.
+    workflows: z.record(Written, WorkflowConfig).optional(),
   })
   .strict()
   .superRefine((config, ctx) => {
@@ -165,6 +192,18 @@ export const DeliveryConfig = z
       if (FixTask.safeParse(entry).success) continue;
       if (!GuardSwitches.safeParse(entry.guards).success) ctx.addIssue({ code: "custom", path: [...path, "guards"], message: "guards" });
     }
+  })
+  .superRefine((config, ctx) => {
+    for (const [name, { steps }] of Object.entries(config.workflows ?? {})) {
+      steps.forEach((step, index) => {
+        if (steps.findIndex((other) => other.name === step.name) !== index) {
+          ctx.addIssue({ code: "custom", path: ["workflows", name, "steps", index, "name"], message: sameStep(name, step.name) });
+        }
+      });
+      if (steps[0]?.continue === true) {
+        ctx.addIssue({ code: "custom", path: ["workflows", name, "steps", 0, "continue"], message: firstStepContinues(name) });
+      }
+    }
   });
 export type DeliveryConfig = z.infer<typeof DeliveryConfig>;
 
@@ -192,6 +231,10 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
   fence:
     'It says whether the agent works inside a fence that keeps your main folder read-only: "preferred", "required" or "off", ' +
     'or an object such as `{ "mode": "required", "devices": ["/dev/kvm"] }`.',
+  workflows:
+    'It names ways of doing a task in steps, each a list of `steps` run in order, for example ' +
+    '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +
+    "see docs/project-configuration.md.",
 };
 
 /** The roles a config file could once change, in the order a refusal checks them. */
@@ -242,6 +285,7 @@ function describeIssue(file: string, issue: Issue, raw: unknown): string {
   if (issue.code === "unrecognized_keys" && issue.path.length === 0 && issue.keys.includes("roles")) return rolesRemoved(file, raw);
 
   if (issue.path[0] === "agent" && issue.code === "custom") return `I can't use ${file}: ${issue.message}`;
+  if (issue.path[0] === "workflows" && issue.code === "custom") return `I can't use ${file}: ${issue.message}`;
   if (where === "gate.type") return unknownGate(valueAt(raw, issue.path));
   const gateType = valueAt(raw, ["gate", "type"]);
   if (issue.path[0] === "gate" && isPresetName(gateType)) return presetProblem(file, issue, gateType);
