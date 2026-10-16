@@ -83,9 +83,10 @@ async function projectFiles(dir: string): Promise<Record<string, string> | PackP
   const files = entries.filter((entry) => entry.isFile());
   if (files.length === 0) return [{ file: root, field: null, message: `is empty: it holds ${HOLDS.project}` }];
   // Seeded into the repository after `git init`, a `.git/config` or hook would run its commands in every later git call.
-  const inGit = files.map((entry) => relative(root, join(entry.parentPath, entry.name))).filter((path) => path.split(sep).some((part) => part.toLowerCase() === ".git"));
-  if (inGit.length > 0) return inGit.map((path) => ({ file: root, field: path.split(sep).join("/"), message: "is inside .git: a project's own git files would run commands the harness never chose" }));
-  const pairs = await Promise.all(files.map(async (entry) => [relative(root, join(entry.parentPath, entry.name)), await readFile(join(entry.parentPath, entry.name), "utf-8")] as const));
+  const paths = files.map((entry) => ({ abs: join(entry.parentPath, entry.name), rel: relative(root, join(entry.parentPath, entry.name)).split(sep) }));
+  const inGit = paths.filter(({ rel }) => rel.some((part) => part.toLowerCase() === ".git"));
+  if (inGit.length > 0) return inGit.map(({ rel }) => ({ file: root, field: rel.join("/"), message: "is inside .git: a project's own git files would run commands the harness never chose" }));
+  const pairs = await Promise.all(paths.map(async ({ abs, rel }) => [rel.join("/"), await readFile(abs, "utf-8")] as const));
   return Object.fromEntries(pairs.sort(([a], [b]) => a.localeCompare(b)));
 }
 

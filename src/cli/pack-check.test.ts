@@ -146,8 +146,11 @@ describe("what a pack's own code can see while it is checked", () => {
     expect(result.problems).toEqual([]);
     const runs = readFileSync(seen, "utf-8").trim().split("\n");
     expect(runs.length).toBeGreaterThan(0);
-    for (const run of runs) expect(Object.keys(JSON.parse(run))).not.toContain("ANTHROPIC_API_KEY");
-    for (const run of runs) expect(Object.keys(JSON.parse(run))).not.toContain("AWS_SECRET_ACCESS_KEY");
+    for (const run of runs) {
+      const names = Object.keys(JSON.parse(run));
+      expect(names).not.toContain("ANTHROPIC_API_KEY");
+      expect(names).not.toContain("AWS_SECRET_ACCESS_KEY");
+    }
   }, CHECK_TIMEOUT);
 });
 
