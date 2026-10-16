@@ -41,7 +41,7 @@ describe("the ready-made checks", () => {
 describe("what each ready-made check stands for", () => {
   it.each<[GatePreset, GateRef]>([
     [{ type: "test-runner", command: "npx vitest run" }, byExitCode("npx vitest run")],
-    [{ type: "file-exists", path: "CHANGES.md" }, { ...byExitCode("test -f 'CHANGES.md'"), checkOnly: true }],
+    [{ type: "file-exists", path: "CHANGES.md" }, { type: "command", command: "test -f 'CHANGES.md'", parseMode: "exitcode", checkOnly: true }],
     [{ type: "command-succeeds", command: "npm run lint" }, byExitCode("npm run lint")],
     [
       { type: "schema-validates", file: "data.json", schema: "data.schema.json" },
