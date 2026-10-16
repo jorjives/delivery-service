@@ -149,6 +149,8 @@ export const ReportSurface = z.object({
   fence: z.object({ mode: FenceMode, present: z.boolean(), reason: z.string().nullable() }).nullable(),
   /** How the task's test guards differ from the defaults: what it added and what it turned off; null when they do not. */
   guards: z.object({ added: z.array(GuardName), off: z.array(GuardName) }).nullable(),
+  /** The workflow step the task is on, by place and name; null for a task run without a workflow, or with no run. */
+  workflow: z.object({ name: z.string(), step: z.number().int().positive(), of: z.number().int().positive(), stepName: z.string() }).nullable(),
   /** How many times the agent was set to work on the task. */
   attempts: z.number().int().nonnegative(),
   budgets: z.array(BudgetRow),

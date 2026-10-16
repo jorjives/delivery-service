@@ -651,3 +651,22 @@ describe("a task's test guards", () => {
     expect(guardsOf({ intent: FOOTER, guards: { add: ["tests-unchanged"], off: ["no-skips"] } })).toEqual({ added: ["tests-unchanged"], off: ["no-skips"] });
   });
 });
+
+describe("a task run through a workflow", () => {
+  const workflow = { name: "plan-then-build", steps: [{ name: "plan", prompt: "p" }, { name: "build", prompt: "b", guards: { add: ["tests-unchanged" as const] } }] };
+  const stepTwo: HistoryEntry = { t: "step", step: 2, startCommit: "c1" };
+  const surfaceFor = (history: HistoryEntry[], header: object = { workflow }) =>
+    deriveReport(snapshotOf({ subject: { kind: "task", runId: ID.footer }, records: [recordOf({ runId: ID.footer, task: FOOTER, history, header })] })).surfaces[0];
+
+  it("names the workflow step it is on, and counts its budgets and attempts from that step", () => {
+    const surface = surfaceFor([...attempt(1, "planned"), ...failedCheck(1, "reroute"), ...attempt(2, "planned again"), stepTwo]);
+    expect(surface?.workflow).toEqual({ name: "plan-then-build", step: 2, of: 2, stepName: "build" });
+    expect(surface?.budgets.find((b) => b.population === "correction")?.used).toBe(0);
+    expect(surface?.attempts).toBe(0);
+    expect(surface?.guards).toEqual({ added: ["tests-unchanged"], off: [] });
+  });
+
+  it("has no workflow for a task run without one", () => {
+    expect(surfaceFor(attempt(1, "done"), {})?.workflow).toBeNull();
+  });
+});

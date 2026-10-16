@@ -332,7 +332,8 @@ function taskName(task: ViewTask): string {
 function inFlight(surface: ReportSurface | undefined): string | undefined {
   const step = surface === undefined ? null : stepOf(surface);
   if (surface === undefined || step === null) return undefined;
-  return `${STEP_PHRASES[step.state]}${surface.attempts > 0 ? `, attempt ${surface.attempts}` : ""}${step.at === null ? "" : `, since ${readableUtc(step.at)}`}`;
+  const where = surface.workflow === null ? "" : `step ${surface.workflow.step} of ${surface.workflow.of} (${surface.workflow.stepName}): `;
+  return `${where}${STEP_PHRASES[step.state]}${surface.attempts > 0 ? `, attempt ${surface.attempts}` : ""}${step.at === null ? "" : `, since ${readableUtc(step.at)}`}`;
 }
 
 /**

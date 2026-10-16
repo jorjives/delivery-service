@@ -23,6 +23,7 @@ import { appendRunEntry, setRunOutcome } from "../run-file.js";
 import { STOPPED_PART_WAY } from "./queue.js";
 import { takeRepoLock } from "../repo-lock.js";
 import { WAITING_FOR_A_SLOT } from "./status-command.js";
+import { STEP_PHRASES } from "./output.js";
 
 const AT = "2026-09-14T21:05:09.123Z";
 const RUN_ID = "add-a-hello-function-20260914T210309Z";
@@ -1142,6 +1143,31 @@ describe("delivery status for a run of several tasks at once", () => {
       `  [2/3] ${GREETING} (${IDS.greeting}): not finished yet`,
       `  [3/3] ${GOODBYE}: queued`,
     ]);
+  });
+
+  it("says which workflow step a task under way is on, and that it is being checked", async () => {
+    const repo = initTempRepo("status-supervised-workflow-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ concurrency: 2, tasks: [HELLO, GREETING] }),
+    });
+    const workflow = { name: "plan-then-build", steps: [{ name: "plan", prompt: "p" }, { name: "build", prompt: "b" }] };
+    await writeRecord(repo, {
+      runId: IDS.hello,
+      task: HELLO,
+      header: { workflow },
+      history: [...attempt(1, "planned"), { t: "step", step: 2, startCommit: "c1" }, ...attempt(1, "built")],
+      state: "GATING",
+    });
+    await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 2, runBudgetMax: { gateMaintenance: 2 } }, [fill(1, IDS.hello, HELLO)]);
+    const release = await takeRepoLock(repo);
+    let stdout: string;
+    try {
+      ({ stdout } = await delivery(["status", SUPERVISED], { cwd: repo }));
+    } finally {
+      await release?.();
+    }
+
+    expect(taskLines(stdout)[0]).toBe(`  [1/2] ${HELLO} (${IDS.hello}): step 2 of 2 (build): ${STEP_PHRASES.GATING}, attempt 1`);
   });
 
   it("says since when a task under way has been in its step, and the run's last recorded activity, once steps carry a time", async () => {

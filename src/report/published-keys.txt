@@ -160,6 +160,11 @@ delivery.report/1.surfaces[].usage: null|object
 delivery.report/1.surfaces[].usageRecorded.recorded: integer
 delivery.report/1.surfaces[].usageRecorded.sessions: integer
 delivery.report/1.surfaces[].usageRecorded: object
+delivery.report/1.surfaces[].workflow.name: string
+delivery.report/1.surfaces[].workflow.of: integer
+delivery.report/1.surfaces[].workflow.step: integer
+delivery.report/1.surfaces[].workflow.stepName: string
+delivery.report/1.surfaces[].workflow: null|object
 delivery.report/1.surfaces[].escalation.dead_ends: string
 delivery.report/1.surfaces[].escalation.decision: string
 delivery.report/1.surfaces[].escalation.evidence: string

@@ -71,6 +71,7 @@ Each entry of `surfaces`:
 | `closer`, `branch`, `base` | How its work is landed, and where |
 | `fence` | Whether the task's agent sessions ran inside the write fence: the `mode` the run was set to, whether it was `present`, and the `reason` when it was not. `null` for a run recorded before the fence was |
 | `guards` | How the task's test guards differ from the defaults: the guards it `added` and those it turned `off`. `null` when it kept the defaults |
+| `workflow` | The workflow step the task is on: the workflow's `name`, the `step` number, how many steps it is `of`, and the step's name as `stepName`. `null` for a task run without a workflow. A task in a workflow reports its `budgets` for the step it is on |
 | `attempts` | How many times the agent was set to work on it |
 | `budgets` | Each kind of retry: its `population`, how many were `used` and the `max` allowed |
 | `decisions` | Every triage round, oldest first: `afterAttempt`, `trigger`, `verdict`, the `rationale` word for word, and the `brief` or `packet` the round produced. `recorded` is `false` when what the round wrote can no longer be read |

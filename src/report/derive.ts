@@ -8,6 +8,7 @@ import { CloserRef, Population, RepairChanges, type HistoryEntry, type RepairSta
 import { claimedBy, supervisedView } from "../supervised-view.js";
 import { findQueueRun, queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
 import { guardChanges } from "../task-guards.js";
+import { currentStep, stepIndexOf, stepView } from "../workflow-step.js";
 import { BriefRef } from "../prompt-assembly.js";
 import { PacketRef } from "../surface.js";
 import { EscalationPacket } from "../triage-role-config.js";
@@ -162,6 +163,7 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
     base: null,
     fence: null,
     guards: guardChanges(taskDef),
+    workflow: null,
     attempts: 0,
     budgets: [],
     decisions: [],
@@ -243,9 +245,12 @@ const lastActivityOf = (record: RunRecord): string | null => latestOf([record.ca
 /** One task from its own record. The retries are the log's, by the fold resuming uses, so a report and a resume cannot disagree. */
 function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePosition | null, standing: Standing): ReportSurface {
   const { header, history, outcome, cursor } = record.caseFile;
-  const budgets = deriveBudgetsFromLog(history, cursor.budgets);
+  // Budgets and attempts are the current step's, as the run itself judges them. A run with no workflow projects to itself.
+  const view = stepView(record.caseFile);
+  const step = currentStep(record.caseFile);
+  const budgets = deriveBudgetsFromLog(view.history, cursor.budgets);
   const lastSession = history.findLast((entry) => entry.t === "terminus");
-  const attempts = history.filter((entry) => entry.t === "dispatch" && (entry.role ?? "worker") === "worker").length;
+  const attempts = view.history.filter((entry) => entry.t === "dispatch" && (entry.role ?? "worker") === "worker").length;
   const limit = lastSession?.limit ?? null;
   const cause = outcome?.cause ?? null;
   // A session that ended without a result has no words of the agent's: its rationale is the harness's own.
@@ -268,7 +273,11 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     branch: branchName(header.surfaceId),
     base: header.baseBranch ?? null,
     fence: header.fence === undefined ? null : { mode: header.fence.mode, present: header.fence.state.present, reason: header.fence.state.reason ?? null },
-    guards: guardChanges(header.taskDef),
+    guards: guardChanges(header.taskDef, step?.guards),
+    workflow:
+      header.workflow === undefined || step === undefined
+        ? null
+        : { name: header.workflow.name, step: stepIndexOf(record.caseFile), of: header.workflow.steps.length, stepName: step.name },
     attempts,
     budgets: Population.options.map((population) => ({ population, used: budgets[population].used, max: budgets[population].max })),
     decisions: decisionsOf(record, snapshot.refs[record.runId] ?? {}),
