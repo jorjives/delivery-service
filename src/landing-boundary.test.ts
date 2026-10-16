@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFile, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -152,6 +152,20 @@ describe("the refusing remote", () => {
     expect(hook.stderr).toContain(LANDING_BOUNDARY);
     expect(spawnSync("git", ["rev-parse", "--is-bare-repository"], { cwd: first, env: cleanGitEnv(), encoding: "utf-8" }).stdout.trim()).toBe("true");
   });
+
+  it("can be made by many processes at once, existing or not", async () => {
+    // Separate processes: one process's git calls are serialised, so only these can race.
+    const code = `import { refusingRemote } from ${JSON.stringify(new URL("./landing-boundary.ts", import.meta.url).href)}; console.log(await refusingRemote(process.env));`;
+    const env = { ...cleanGitEnv(), XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "landing-state-")) };
+    const run = () => new Promise<{ code: number | null; out: string; err: string }>((resolve) => {
+      execFile(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { env }, (error, out, err) => resolve({ code: error ? 1 : 0, out: out.trim(), err }));
+    });
+    for (let round = 0; round < 2; round++) {
+      const results = await Promise.all(Array.from({ length: 16 }, run));
+      expect(results.filter((r) => r.code !== 0).map((r) => r.err)).toEqual([]);
+      expect(new Set(results.map((r) => r.out)).size).toBe(1);
+    }
+  }, 120_000);
 
   it("refuses with the sentence by the repository's own hook, whatever git settings the pushing process carries", async () => {
     const place = taskCopy();

@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { chmod, mkdir, realpath, rename, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { chmod, mkdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { git } from "./git-exec.js";
 import { LANDING_BOUNDARY } from "./prompt-assembly.js";
@@ -86,7 +87,15 @@ export async function refusingRemote(env: NodeJS.ProcessEnv): Promise<string> {
   const root = join(stateHome(env), "delivery-service");
   const repo = join(root, "landing-refused.git");
   await mkdir(root, { recursive: true });
-  await git(root, ["init", "--bare", "-q", "--", repo]);
+  if (!existsSync(join(repo, "HEAD"))) {
+    // `git init` on a repository that exists locks its config, so two processes initialising it at once fail.
+    // Initialise a private copy and move it into place instead: the rename is atomic, and the loser finds it taken.
+    const fresh = `${repo}.${process.pid}.${randomBytes(6).toString("hex")}`;
+    await git(root, ["init", "--bare", "-q", "--", fresh]);
+    await rename(fresh, repo).catch((err: NodeJS.ErrnoException) => {
+      if (err.code !== "ENOTEMPTY" && err.code !== "EEXIST") throw err;
+    }).finally(() => rm(fresh, { recursive: true, force: true }));
+  }
   const hook = join(repo, "hooks", "pre-receive");
   // Suffixed with a random token, not just the pid: two tasks of one run calling this concurrently share a
   // process, so a pid-only suffix still lets one's rename find the file the other already moved away.
