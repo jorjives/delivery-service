@@ -13,7 +13,7 @@ import { deterministicRouter } from "./router.js";
 import { fakeAgentPort } from "./testing.js";
 import { cleanGitEnv } from "./git-env.js";
 import type { AgentContext, CloserPort, SurfacePorts, Terminus } from "./ports.js";
-import type { BudgetSet, GateRef, PinnedWorkflow } from "./schema.js";
+import type { BudgetSet, GateReport, GateRef, PinnedWorkflow } from "./schema.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 }, gateError: { used: 0, max: 3 }, gateMaintenance: { used: 0, max: 2 }, terminus: { used: 0, max: 5 }, close: { used: 0, max: 3 },
@@ -212,7 +212,7 @@ describe("a run that carries on an earlier run's work", () => {
     const from = gitIn(repo, ["rev-parse", "surface/earlier-1"]);
     gitIn(repo, ["worktree", "remove", "--force", "--", earlierCopy]);
     // The gate fails on the start commit, so a baseline taken now would FAIL: only the carried one PASSes.
-    const carried = { status: "PASS", assertions: [] } as const;
+    const carried = { status: "PASS", assertions: [] } as GateReport;
 
     const dir = await mkdtemp(join(tmpdir(), "surface-continue-case-"));
     await create(dir, {

@@ -9,9 +9,10 @@ import { appendEntry, create, setBaseBranch, setBaseline, setOutcome, updateCurs
 import { readRun } from "./cli/runs.js";
 import { prepareRunDir, runPlace, runsRoot } from "./run-location.js";
 import { prepareContinuation } from "./continuation.js";
+import type { GateReport } from "./schema.js";
 
 const GATE = { type: "command", command: "npm test", parseMode: "exitcode" } as const;
-const BASELINE = { status: "PASS", assertions: [] } as const;
+const BASELINE = { status: "PASS", assertions: [] } as GateReport;
 const RUN = "greet-20261016T090000Z";
 
 async function stoppedRun(repo: string, runId: string) {
