@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { GateRef, CloserRef, CloseReport, HistoryEntry, RunEntry, SessionUsage, TerminusEntry, TriageEntry } from "./schema.js";
+import { GateRef, CloserRef, CloseReport, HistoryEntry, RunEntry, SessionUsage, TerminusEntry, TriageEntry, countsNewAssertions } from "./schema.js";
 
 describe("GateRef", () => {
   it("accepts a command ref with a supported parse mode", () => {
@@ -158,5 +158,14 @@ describe("GuardSwitches", () => {
   it("takes add and off lists of guard names, and nothing else", () => {
     expect(SchemaGuardSwitches.safeParse({ add: ["tests-unchanged"], off: ["no-skips"] }).success).toBe(true);
     expect(SchemaGuardSwitches.safeParse({ on: ["no-skips"] }).success).toBe(false);
+  });
+});
+
+describe("countsNewAssertions", () => {
+  it("is true when the gate says so, or the gate is check-only", () => {
+    expect(countsNewAssertions({ type: "command", command: "x", parseMode: "exitcode" })).toBe(false);
+    expect(countsNewAssertions({ type: "command", command: "x", parseMode: "exitcode", failOnNewAssertions: true })).toBe(true);
+    expect(countsNewAssertions({ type: "command", command: "x", parseMode: "exitcode", checkOnly: true })).toBe(true);
+    expect(countsNewAssertions({ type: "custom", modulePath: "g.js" })).toBe(false);
   });
 });

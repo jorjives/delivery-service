@@ -77,7 +77,7 @@ export async function presetGate(preset: GatePreset, repoPath: string): Promise<
       return byExitCode(command);
     }
     case "file-exists":
-      return byExitCode(`test -f ${quoted(preset.path)}`);
+      return { ...byExitCode(`test -f ${quoted(preset.path)}`), checkOnly: true };
     case "command-succeeds":
       return byExitCode(preset.command);
     case "schema-validates":

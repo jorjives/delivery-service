@@ -9,6 +9,7 @@ import type { GateContext } from "./command-gate.js";
 import type { SurfaceLocation } from "./ports.js";
 import type { AcceptedSettings } from "./guards.js";
 import type { CaseFileHeader, GateEntry, GateReport, DeltaResult, NewFailure } from "./schema.js";
+import { countsNewAssertions } from "./schema.js";
 
 export { GATE_GUARD, gateDigestOf } from "./gate-digest.js";
 
@@ -72,7 +73,7 @@ export async function runCheck(
       ? { ...checked, status: "FAIL", assertions: [...checked.assertions, ...integrity] }
       : { ...checked, assertions: [...checked.assertions, ...integrity] };
   const delta = computeDelta(header.baseline, report, {
-    failOnNewAssertions: header.gateRef.failOnNewAssertions,
+    failOnNewAssertions: countsNewAssertions(header.gateRef),
   });
 
   // A gate-level error produces no reliable assertions, so every baseline

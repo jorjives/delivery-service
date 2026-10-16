@@ -1,7 +1,7 @@
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { deriveBudgetsFromLog, logTail, readRef, setbackOf, type Setback } from "./case-file.js";
-import { NewFailure, type BudgetSet, type CaseFile, type GateRef } from "./schema.js";
+import { NewFailure, countsNewAssertions, type BudgetSet, type CaseFile, type GateRef } from "./schema.js";
 import type { RoleConfig } from "./role-config.js";
 import { SharpenedBrief } from "./triage-role-config.js";
 import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
@@ -75,7 +75,7 @@ const GUARD_WORDS: Record<GuardName, string> = {
 /** The check that judges the work, and how the agent can run it itself. */
 function gateLines(gateRef: GateRef): string {
   if (gateRef.type === "command") {
-    const counted = gateRef.failOnNewAssertions === true ? ", and a new check that fails counts against it" : "";
+    const counted = countsNewAssertions(gateRef) ? ", and a new check that fails counts against it" : "";
     return (
       `Your work is judged by the project's check: the command \`${gateRef.command}\`, run in this working copy, where ${READ_AS[gateRef.parseMode]}. ` +
       `You may read what it runs and run it yourself. A check that passed before your work must still pass${counted}.`

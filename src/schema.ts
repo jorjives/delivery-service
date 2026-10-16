@@ -47,6 +47,8 @@ export const GateRef = z.discriminatedUnion("type", [
     command: z.string(),
     parseMode: z.enum(["tap", "junit", "exitcode"]),
     failOnNewAssertions: z.boolean().optional(),
+    // Judged only after the work: the baseline runs nothing, so whatever the check finds is new and counts.
+    checkOnly: z.literal(true).optional(),
   }),
   z.object({
     type: z.literal("custom"),
@@ -56,6 +58,10 @@ export const GateRef = z.discriminatedUnion("type", [
   }),
 ]);
 export type GateRef = z.infer<typeof GateRef>;
+
+/** Whether a new failing assertion counts against the work: the gate says so, or it is judged only after the work. */
+export const countsNewAssertions = (gateRef: GateRef): boolean =>
+  gateRef.failOnNewAssertions === true || (gateRef.type === "command" && gateRef.checkOnly === true);
 
 /**
  * Which closer this surface uses, as data. A project names a built-in strategy

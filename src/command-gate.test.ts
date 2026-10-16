@@ -247,3 +247,17 @@ describe("createCommandGate", () => {
     expect(ids1).toEqual(ids2);
   });
 });
+
+describe("a check-only command gate", () => {
+  it("runs nothing at baseline and records no assertions", async () => {
+    const gate = createCommandGate("test-cmd", "exitcode", undefined, { checkOnly: true });
+    expect(await gate.baseline(stubCtx())).toEqual({ status: "PASS", assertions: [] });
+    expect(execFile).not.toHaveBeenCalled();
+  });
+
+  it("runs the command at check", async () => {
+    mockExecFile("", "", 1);
+    const gate = createCommandGate("test-cmd", "exitcode", undefined, { checkOnly: true });
+    expect((await gate.check(stubCtx())).assertions.map((a) => a.outcome)).toEqual(["FAIL"]);
+  });
+});

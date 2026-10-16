@@ -95,6 +95,10 @@ Prefer `"tap"` or `"junit"` whenever your runner can emit them. With
 `"exitcode"` the whole suite is a single assertion, so a suite that was already
 red at baseline can never show a new failure.
 
+`"checkOnly": true` judges the work only after it is done: the baseline runs nothing, so every
+assertion the check reports is new, and a new failing one counts against the work. The
+`file-exists` ready-made check is written out this way.
+
 A test that fails does not make the report `"ERROR"`; it is a `"FAIL"`
 assertion in a `"PASS"` report. The report is `"ERROR"` only when the gate could
 not measure: the command could not be run, it ran past the five-minute timeout,

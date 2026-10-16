@@ -7,6 +7,8 @@ import { resolveGate } from "../resolve-gate.js";
 import { EXIT, Refusal } from "./failures.js";
 import { GatePreset, isPreset, NO_TEST_COMMAND, PRESET_DETAILS, PRESET_NAMES, presetGate } from "./gate-presets.js";
 import { inferGate } from "./project.js";
+import { computeDelta } from "../delta-rule.js";
+import { countsNewAssertions } from "../schema.js";
 
 /** A folder standing in for a repository, holding just the files given. */
 function folder(files: Record<string, string> = {}): string {
@@ -39,7 +41,7 @@ describe("the ready-made checks", () => {
 describe("what each ready-made check stands for", () => {
   it.each<[GatePreset, GateRef]>([
     [{ type: "test-runner", command: "npx vitest run" }, byExitCode("npx vitest run")],
-    [{ type: "file-exists", path: "CHANGES.md" }, byExitCode("test -f 'CHANGES.md'")],
+    [{ type: "file-exists", path: "CHANGES.md" }, { ...byExitCode("test -f 'CHANGES.md'"), checkOnly: true }],
     [{ type: "command-succeeds", command: "npm run lint" }, byExitCode("npm run lint")],
     [
       { type: "schema-validates", file: "data.json", schema: "data.schema.json" },
@@ -66,13 +68,17 @@ describe("what each ready-made check stands for", () => {
 });
 
 describe("a ready-made check judges work as its written-out gate does", () => {
-  it.each([["CHANGES.md"], ["it's the notes.md"]])("file-exists %j fails before the file is there and passes once it is", async (path) => {
+  it.each([["CHANGES.md"], ["it's the notes.md"]])("file-exists %j fails a check that finds no file, and passes once it is there", async (path) => {
     const worktreePath = folder();
     const gateRef = await presetGate({ type: "file-exists", path }, worktreePath);
     const gate = resolveGate(gateRef, worktreePath);
     const ctx = { worktreePath, taskDef: { intent: "add the file" }, gateRef };
-    expect((await gate.baseline(ctx)).assertions.map((a) => a.outcome)).toEqual(["FAIL"]);
+    const baseline = await gate.baseline(ctx);
+    expect(baseline).toEqual({ status: "PASS", assertions: [] });
+    const missing = await gate.check(ctx);
+    expect(computeDelta(baseline, missing, { failOnNewAssertions: countsNewAssertions(gateRef) }).pass).toBe(false);
     writeFileSync(join(worktreePath, path), "one line\n");
-    expect((await gate.check(ctx)).assertions.map((a) => a.outcome)).toEqual(["PASS"]);
+    const present = await gate.check(ctx);
+    expect(computeDelta(baseline, present, { failOnNewAssertions: countsNewAssertions(gateRef) }).pass).toBe(true);
   });
 });

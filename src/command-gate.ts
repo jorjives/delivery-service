@@ -99,11 +99,20 @@ async function run(
   };
 }
 
+/** How a command gate runs besides its command. */
+export interface CommandGateOptions {
+  /** Judge only after the work: the baseline runs nothing and records nothing. */
+  checkOnly?: true;
+}
+
+const NOTHING_YET: GateReport = { status: "PASS", assertions: [] };
+
 export function createCommandGate(
   command: string,
   parseMode: "tap" | "junit" | "exitcode",
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  options: CommandGateOptions = {},
 ): Gate {
   const execute = (ctx: GateContext) => run(command, parseMode, ctx.worktreePath, timeoutMs, ctx.env);
-  return { baseline: execute, check: execute };
+  return { baseline: options.checkOnly === true ? () => Promise.resolve(NOTHING_YET) : execute, check: execute };
 }

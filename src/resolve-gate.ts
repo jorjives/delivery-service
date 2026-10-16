@@ -23,6 +23,6 @@ export function resolveGate(gateRef: GateRef, repoPath: string): Gate {
 
   const ref = parsed.data;
   return ref.type === "command"
-    ? createCommandGate(ref.command, ref.parseMode)
+    ? createCommandGate(ref.command, ref.parseMode, undefined, ref)
     : createCustomGate(repoPath, ref.modulePath, ref.exportName);
 }

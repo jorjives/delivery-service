@@ -93,7 +93,7 @@ That runs your project's own tests with `npm test` and passes when they succeed.
 four ready-made checks, and each takes only the detail it needs:
 
 - `test-runner` runs your tests. Add `"command"` if they are not run with `npm test`.
-- `file-exists` checks that a file is there: `{ "type": "file-exists", "path": "CHANGES.md" }`.
+- `file-exists` checks that a file is there once the work is done: `{ "type": "file-exists", "path": "CHANGES.md" }`. It is judged only after the work, so a file that is still missing fails it.
 - `command-succeeds` checks that a command succeeds: `{ "type": "command-succeeds", "command": "npm run lint" }`.
 - `schema-validates` checks that a JSON file has the shape another file describes:
   `{ "type": "schema-validates", "file": "data.json", "schema": "data.schema.json" }`. It
