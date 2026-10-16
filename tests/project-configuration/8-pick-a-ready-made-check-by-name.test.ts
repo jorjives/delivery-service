@@ -86,7 +86,7 @@ describe("UAT: pick a ready-made check by name", () => {
       writeConfig(repo, { ...config, gate: { type: "flie-exists", path: "CHANGES.md" } });
       const misspelled = runDelivery(["validate"], { cwd: repo });
       expect(misspelled.stderr.trimEnd()).toBe(
-        "I don't know the check `flie-exists`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds` and `schema-validates`. To write one out in full, see docs/writing-a-gate.md.",
+        "I don't know the check `flie-exists`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds`, `schema-validates` and `commits-ahead`. To write one out in full, see docs/writing-a-gate.md.",
       );
       expect(misspelled.status).toBe(EXIT.configuration);
     },
@@ -135,7 +135,7 @@ describe("acceptance criteria", () => {
   it("refuses an unknown preset name, and separately a preset missing the one detail it needs", () => {
     const unknown = runDelivery(["validate"], { cwd: freshRepo({ type: "not-a-real-preset" }) });
     expect(unknown.stderr.trimEnd()).toBe(
-      "I don't know the check `not-a-real-preset`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds` and `schema-validates`. To write one out in full, see docs/writing-a-gate.md.",
+      "I don't know the check `not-a-real-preset`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds`, `schema-validates` and `commits-ahead`. To write one out in full, see docs/writing-a-gate.md.",
     );
     expect(unknown.status).toBe(EXIT.configuration);
 

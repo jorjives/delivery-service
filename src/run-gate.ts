@@ -1,19 +1,21 @@
 import { load, setBaseline, appendEntry, writeRef } from "./case-file.js";
+import { stepIndexOf, stepKey, stepView } from "./workflow-step.js";
 import { resolveGate } from "./resolve-gate.js";
 import { computeDelta } from "./delta-rule.js";
-import { MissingBaseline } from "./errors.js";
+import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
 import { guardedGate, guardBase } from "./task-guards.js";
 import { integrityOf } from "./gate-digest.js";
 import { acceptedOf } from "./repair-guards.js";
 import type { GateContext } from "./command-gate.js";
 import type { SurfaceLocation } from "./ports.js";
 import type { AcceptedSettings } from "./guards.js";
-import type { CaseFileHeader, GateEntry, GateReport, DeltaResult, NewFailure } from "./schema.js";
-import { countsNewAssertions } from "./schema.js";
+import type { CaseFile, CaseFileHeader, GateEntry, DeltaResult, NewFailure } from "./schema.js";
+import { countsNewAssertions, GateReport } from "./schema.js";
 
 export { GATE_GUARD, gateDigestOf } from "./gate-digest.js";
 
-function gateContext(header: CaseFileHeader, worktreePath: string, env?: NodeJS.ProcessEnv): GateContext {
+function gateContext(view: CaseFile, worktreePath: string, env?: NodeJS.ProcessEnv): GateContext {
+  const { header } = view;
   // Every gate command can see where the work started, so a check can judge what was added since.
   const withStart = header.startCommit === undefined ? env : { ...(env ?? process.env), DELIVERY_STEP_START: header.startCommit };
   return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, env: withStart };
@@ -44,11 +46,15 @@ export async function recordBaseline(
   location: SurfaceLocation,
   env?: NodeJS.ProcessEnv,
 ): Promise<GateReport> {
-  const { header } = await load(dir);
-  const report = await gateOf(header, location).baseline(gateContext(header, location.worktreePath, env));
+  const view = stepView(await load(dir));
+  const first = stepIndexOf(view) === 1;
+  // A later step's baseline is its own entry: header.baseline is set once and stays step 1's.
+  if (!first && view.header.baseline !== null) throw new ImmutabilityViolation(dir, "baseline");
+  const report = await gateOf(view.header, location).baseline(gateContext(view, location.worktreePath, env));
 
   if (report.status !== "ERROR") {
-    await setBaseline(dir, report);
+    if (first) await setBaseline(dir, report);
+    else await appendEntry(dir, { t: "baseline", status: report.status, report: GateReport.parse(report) });
   }
 
   return report;
@@ -65,10 +71,11 @@ export async function runCheck(
   attempt: number,
   env?: NodeJS.ProcessEnv,
 ): Promise<{ report: GateReport; delta: DeltaResult }> {
-  const { header, history } = await load(dir);
+  const view = stepView(await load(dir));
+  const { header, history } = view;
   if (header.baseline === null) throw new MissingBaseline(dir);
 
-  const checked = await gateOf(header, location, acceptedOf(history)).check(gateContext(header, location.worktreePath, env));
+  const checked = await gateOf(header, location, acceptedOf(history)).check(gateContext(view, location.worktreePath, env));
   const integrity = await integrityOf(header, location.repoPath);
   const report: GateReport =
     integrity.some((a) => a.outcome === "FAIL")
@@ -96,7 +103,7 @@ export async function runCheck(
   const newFailures: GateEntry["newFailures"] = await Promise.all(
     failures.map(async (failure, index) => ({
       id: failure.id,
-      detailRef: await writeRef(dir, `gate-${attempt}-${recheckCount}-${index}`, failure),
+      detailRef: await writeRef(dir, stepKey(view, `gate-${attempt}-${recheckCount}-${index}`), failure),
     })),
   );
 

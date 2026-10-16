@@ -4,6 +4,8 @@ import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree, branchName } from "./provision.js";
 import { messageOf } from "./gate-support.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
+import { currentStep, nextStepOf, stepIndexOf, stepKey, stepView } from "./workflow-step.js";
+import { ensureCommitted, git } from "./git-exec.js";
 import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
@@ -12,7 +14,7 @@ import { captureRepair, checkFilesOf } from "./repair-changes.js";
 import { judgedRepair } from "./repair-guards.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext } from "./ports.js";
 import { OutcomeCause } from "./schema.js";
-import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry } from "./schema.js";
+import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry, TerminusEntry, WorkflowStep } from "./schema.js";
 
 export interface AdvanceResult {
   state: SurfaceState;
@@ -189,7 +191,7 @@ async function escalate(
 
 /** The harness's packet for a cause, over the log as it now stands on disk. */
 async function packetFor(dir: string, cause: EscalationCause): Promise<EscalationPacket> {
-  return resolveEscalationPacket(dir, await load(dir), cause);
+  return resolveEscalationPacket(dir, stepView(await load(dir)), cause);
 }
 
 /** What the outcome records of an in-memory cause: its kind and what a reader switches on, never its prose. */
@@ -406,7 +408,7 @@ async function dispatchSession(
   role: "worker" | "gate-maintenance",
   attempt: number,
 ): Promise<AdvanceResult> {
-  const sessionKey = `${role}-${attempt}-${retriesOf(caseFile.history, role, attempt)}`;
+  const sessionKey = stepKey(caseFile, `${role}-${attempt}-${retriesOf(caseFile.history, role, attempt)}`);
 
   const briefRef = await currentBriefRef(dir, caseFile.history, role);
   await appendEntry(dir, { t: "dispatch", role, attempt, sessionKey, ...(briefRef ? { briefRef } : {}) });
@@ -729,6 +731,10 @@ async function closing(
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
+  // Accepting a step that is not the last opens the next one; only the last step's work is landed.
+  const next = nextStepOf(caseFile);
+  if (next !== undefined) return nextStep(dir, caseFile, location, next);
+
   // Inlined rather than passed on as a ref: a closer has no later reader to
   // defer to. Only a retry_close round can precede a close, so the latest one
   // is the round that ordered this retry.
@@ -737,7 +743,7 @@ async function closing(
   const report = await onSharedGround(ports, caseFile, () => ports.closer.close(ctx, { kind: "accepted" }));
 
   const priorCloses = caseFile.history.filter((e) => e.t === "close").length;
-  const detailRef = await writeRef(dir, `close-${priorCloses}`, report);
+  const detailRef = await writeRef(dir, stepKey(caseFile, `close-${priorCloses}`), report);
   await appendEntry(dir, { t: "close", status: report.status, detailRef });
 
   if (report.status !== "DONE") {
@@ -746,6 +752,26 @@ async function closing(
   }
 
   return closed(dir, report.detail);
+}
+
+/**
+ * A workflow step accepted, and another to come: its work is committed on the task's branch so the next step,
+ * its guards and its baseline start from it, and the next step is opened. Idempotent on resume: a crash before
+ * the step entry finds nothing left to commit and the same HEAD.
+ */
+async function nextStep(dir: string, caseFile: CaseFile, location: SurfaceLocation, next: WorkflowStep): Promise<AdvanceResult> {
+  const worktreePath = worktreeOf(caseFile, location);
+  await ensureCommitted(worktreePath, `Step ${currentStep(caseFile)?.name ?? stepIndexOf(caseFile)} accepted`);
+  const startCommit = await git(worktreePath, ["rev-parse", "HEAD"]);
+  const resume = next.continue === true ? lastWorkerSession(caseFile.history) : undefined;
+  await appendEntry(dir, { t: "step", step: stepIndexOf(caseFile) + 1, startCommit, ...(resume === undefined ? {} : { resume }) });
+  await updateCursor(dir, { state: "PRE_GATING" });
+  return { state: "PRE_GATING", done: false };
+}
+
+/** The runtime id of the step's last worker session, for a next step that continues it. */
+function lastWorkerSession(history: HistoryEntry[]): string | undefined {
+  return history.findLast((e): e is TerminusEntry => e.t === "terminus" && (e.role ?? "worker") === "worker" && e.sessionId !== undefined)?.sessionId;
 }
 
 /**
@@ -803,7 +829,9 @@ async function triage(
   const { trigger, category } = triageTrigger(dir, logTail(caseFile));
   const remainingBudgets = deriveBudgetsFromLog(caseFile.history, caseFile.cursor.budgets);
 
+  // Budgets above are counted from the step's own log, so each step is corrected on its own limits.
   const priorTriages = caseFile.history.filter((e) => e.t === "triage").length;
+  const roundKey = stepKey(caseFile, `triage-${priorTriages}`);
   const verdict = await ports.triage.triage({
     trigger,
     ...(category ? { category } : {}),
@@ -811,7 +839,7 @@ async function triage(
     remainingBudgets,
     // The session key is the round's ref key: one string per round, derived from
     // the log, so a resumed triage mints the same session it would have run.
-    ctx: { worktreePath: worktreeOf(caseFile, location), dir, sessionKey: `triage-${priorTriages}` },
+    ctx: { worktreePath: worktreeOf(caseFile, location), dir, sessionKey: roundKey },
   });
 
   // Every escalate carries a packet a person can act on. It goes into the
@@ -822,7 +850,7 @@ async function triage(
   const packet = verdict.verdict === "escalate" ? await packetForVerdict(dir, caseFile, verdict) : undefined;
   const cause = packet ? triageCause(verdict) : undefined;
   const artifact = packet ?? verdict.artifact;
-  const artifactRef = await writeRef(dir, `triage-${priorTriages}`, {
+  const artifactRef = await writeRef(dir, roundKey, {
     trigger,
     rationale: verdict.rationale,
     ...(artifact ? { artifact } : {}),
@@ -863,7 +891,8 @@ export async function advance(
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
-  const caseFile = await load(dir);
+  // Every handler works on the current workflow step: a run with no workflow projects to itself.
+  const caseFile = stepView(await load(dir));
 
   // Terminal surfaces are recognised before any position is derived: escalation
   // and abort do not always append an entry, so a terminal surface's log tail

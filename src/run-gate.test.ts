@@ -280,6 +280,20 @@ describe("what a gate is told", () => {
   });
 });
 
+describe("a workflow step's baseline", () => {
+  it("refuses a second baseline for the same workflow step", async () => {
+    const repo = initTempRepo("run-gate-step-", { "a.txt": "a\n" });
+    const startCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, env: cleanGitEnv() }).toString().trim();
+    const dir = await mkdtemp(join(tmpdir(), "run-gate-case-"));
+    const gateRef: GateRef = { type: "command", command: "true", parseMode: "exitcode", checkOnly: true };
+    const workflow = { name: "w", steps: [{ name: "one", prompt: "x" }, { name: "two", prompt: "y" }] };
+    await create(dir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef, startCommit, workflow }, budgets);
+    await appendEntry(dir, { t: "step", step: 2, startCommit });
+    await appendEntry(dir, { t: "baseline", status: "PASS", report: { status: "PASS", assertions: [] } });
+    await expect(recordBaseline(dir, { repoPath: repo, worktreePath: repo })).rejects.toBeInstanceOf(ImmutabilityViolation);
+  });
+});
+
 describe("DELIVERY_STEP_START", () => {
   it("is set on every gate command to the commit the work started from", async () => {
     const repo = initTempRepo("run-gate-start-", { "a.txt": "a\n" });

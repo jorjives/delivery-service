@@ -272,6 +272,11 @@ closer.close(ctx, outcome) -> CloseReport { status: DONE | FAIL | ERROR, detail 
   teardown, handled by invoking the closer with that outcome, but as a fire-and-log
   step: they are already terminal or human-owned, so a teardown failure there is
   surfaced, not re-triaged. Only the accept-path close routes back into triage.
+- **In a workflow, a step that is not the last does not call the closer.** `CLOSING`
+  on such a step has the harness commit the step's work on the task's branch
+  ("Step <name> accepted"), append a `step` entry naming the next step and the commit
+  it starts from, and move to `PRE_GATING`, where the next step takes its own
+  baseline. Only the last step's acceptance calls the closer, so a task lands once.
 
 ## Triage
 
@@ -433,7 +438,17 @@ Entry =
   | { t:"close",
         status: DONE|FAIL|ERROR,
         detail_ref }                         # written after the closer runs
+  | { t:"step", step, start_commit, resume? }
+        # a workflow only: opens step 2 onwards, with the commit the step starts from and,
+        # when it continues, the session it picks up. The header then also holds `workflow`.
+  # A `baseline` entry may carry `report` (step 2 onwards: that step's own baseline) and a
+  # terminus may carry `session_id`, the runtime's id for the session.
 ```
+
+Each step reads the record through `stepView`: its own log from its `step` entry, its own
+gate, baseline and start commit. Budgets, attempts and ref and session keys (prefixed
+`step<n>-` from step 2) are therefore per step. A run with no workflow is one step and
+projects to itself.
 
 ### The log tail is the crash detector
 
