@@ -199,6 +199,10 @@ export type WorkflowStep = z.infer<typeof WorkflowStep>;
 export const PinnedWorkflow = z.object({ name: z.string(), steps: z.array(WorkflowStep).min(1) });
 export type PinnedWorkflow = z.infer<typeof PinnedWorkflow>;
 
+/** The work-source item a run delivers, pinned at CREATE. `resolve`: the backlog file CLOSING marks resolved. */
+export const WorkItemRef = z.object({ key: z.string(), source: z.string(), id: z.string(), resolve: z.string().optional() });
+export type WorkItemRef = z.infer<typeof WorkItemRef>;
+
 export const CaseFileHeader = z.object({
   surfaceId: z.string(),
   taskDef: TaskDef,
@@ -232,6 +236,8 @@ export const CaseFileHeader = z.object({
   // The workflow the run was started with, pinned at CREATE so a config change cannot reshape a run under way.
   // Absent for a run given no workflow, and for every record made before workflows existed.
   workflow: PinnedWorkflow.optional(),
+  // The work-source item this run delivers. Optional so records made before items were pinned stay valid.
+  item: WorkItemRef.optional(),
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 

@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
+import { execFileSync } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,11 +12,14 @@ import { advance, run, type AdvanceResult } from "./surface.js";
 import { resolveCloser } from "./resolve-closer.js";
 import { deterministicRouter } from "./router.js";
 import { createMergeBackCloser } from "./merge-back-closer.js";
+import { createCommitToBranchCloser } from "./commit-to-branch-closer.js";
 import { createAgentTriage } from "./triage.js";
 import { EscalationPacket } from "./triage-role-config.js";
 import { fakeAgentPort } from "./testing.js";
 import type { AgentContext, AgentPort, CloseContext, SurfaceLocation, SurfacePorts, TriagePort, TriageTerminus, Terminus } from "./ports.js";
 import type { BudgetSet, CloserRef, GateRef, HistoryEntry } from "./schema.js";
+
+type CreateHeaderInput = Parameters<typeof create>[1];
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -303,5 +307,36 @@ describe("an accepted surface closed by opening a pull request", () => {
     expect(git(origin, ["show", `${BRANCH}:feature.txt`])).toBe("the feature");
     expect(standIn.pullRequests()).toEqual([expect.objectContaining({ head: BRANCH, base: "main" })]);
     expect(existsSync(location.worktreePath)).toBe(true);
+  });
+});
+
+describe("a backlog item's run", () => {
+  const ITEM = ".delivery/backlog/20261016T090000Z-greet.md";
+
+  /** Drive a fresh surface to CLOSED with the commit-to-branch closer, its header given extra fields and the repo the given files. */
+  async function closeWith(options: { files: Record<string, string>; header?: Partial<CreateHeaderInput> }): Promise<{ repo: string; branch: string }> {
+    const dir = await mkdtemp(join(tmpdir(), "surface-close-case-"));
+    const repo = initTempRepo("surface-close-repo-", { "report.tap": PASSING_TAP, ...options.files });
+    const location = { repoPath: repo, worktreePath: join(await mkdtemp(join(tmpdir(), "surface-close-tree-")), "wt") };
+    await create(dir, { surfaceId: "surface-7", taskDef: { intent: "add the feature" }, gateRef, ...options.header }, budgets);
+    const result = await run(dir, location, { agent: worker, triage: deterministicRouter, closer: createCommitToBranchCloser() });
+    expect(result.state).toBe("CLOSED");
+    return { repo, branch: BRANCH };
+  }
+
+  it("marks the item resolved in its own commit on the task's branch, before the work lands", async () => {
+    const { repo, branch } = await closeWith({
+      files: { [ITEM]: "---\nstatus: open # todo\n---\nGreet people.\n" },
+      header: { item: { key: "backlog:20261016T090000Z-greet.md", source: "backlog", id: "20261016T090000Z-greet.md", resolve: ITEM } },
+    });
+    // Raw read: the git helper trims output, which would drop the file's final newline.
+    expect(execFileSync("git", ["show", `${branch}:${ITEM}`], { cwd: repo, encoding: "utf-8" })).toBe("---\nstatus: resolved # todo\n---\nGreet people.\n");
+    expect(git(repo, ["log", "--format=%s", branch])).toContain("Resolve backlog item 20261016T090000Z-greet.md");
+    expect(git(repo, ["show", "--name-only", "--format=", `${branch}~1`]).trim()).toBe(ITEM);
+  });
+
+  it("adds no resolution commit for a run with no item", async () => {
+    const { repo, branch } = await closeWith({ files: {} });
+    expect(git(repo, ["log", "--format=%s", branch])).not.toContain("Resolve backlog item");
   });
 });

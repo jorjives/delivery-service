@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, readRef, setbackOf, setBaseBranch } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree, branchName } from "./provision.js";
@@ -10,6 +12,7 @@ import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
 import { EscalationPacket, type SharpenedBrief } from "./triage-role-config.js";
+import { resolvedText } from "./backlog.js";
 import { captureRepair, checkFilesOf } from "./repair-changes.js";
 import { judgedRepair } from "./repair-guards.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext } from "./ports.js";
@@ -751,6 +754,10 @@ async function closing(
   const next = nextStepOf(caseFile);
   if (next !== undefined) return nextStep(dir, caseFile, location, next);
 
+  // A backlog item's completion travels with the work that completes it (spec §5.5): its own commit, before the closer.
+  const resolve = caseFile.header.item?.resolve;
+  if (resolve !== undefined) await resolveItem(worktreeOf(caseFile, location), resolve, caseFile.header.item?.id ?? resolve);
+
   // Inlined rather than passed on as a ref: a closer has no later reader to
   // defer to. Only a retry_close round can precede a close, so the latest one
   // is the round that ordered this retry.
@@ -768,6 +775,17 @@ async function closing(
   }
 
   return closed(dir, report.detail);
+}
+
+/** Commit `status: resolved` for the item at `path`, and nothing else. Idempotent, so a retried close adds no second commit. */
+async function resolveItem(worktreePath: string, path: string, id: string): Promise<void> {
+  const file = join(worktreePath, path);
+  const text = await readFile(file, "utf-8");
+  const resolved = resolvedText(text);
+  if (resolved === text) return;
+  await writeFile(file, resolved);
+  await git(worktreePath, ["add", "--", path]);
+  await git(worktreePath, ["commit", "-m", `Resolve backlog item ${id}`, "--", path]);
 }
 
 /**
