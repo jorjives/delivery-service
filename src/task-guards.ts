@@ -1,9 +1,9 @@
-import { DEFAULT_GUARDS, DEFAULT_ON, GuardName, GuardSwitches, guardAssertions, ignoredAssertions, type ActiveGuards, type AcceptedSettings } from "./guards.js";
+import { DEFAULT_GUARDS, DEFAULT_ON, guardAssertions, ignoredAssertions, type ActiveGuards, type AcceptedSettings } from "./guards.js";
 import { FixTask } from "./packs/fix-task.js";
 import type { Gate } from "./command-gate.js";
 import { errorReport, messageOf } from "./gate-support.js";
 import { git } from "./git-exec.js";
-import type { GateRef, TaskDef, CaseFileHeader, Assertion, GateReport } from "./schema.js";
+import { GuardName, GuardSwitches, type GateRef, type TaskDef, type CaseFileHeader, type Assertion, type GateReport } from "./schema.js";
 
 /** Only the switches a task's own `guards` names: the config file refuses anything else, so a record holding more is read as holding none. */
 const SwitchesOf = GuardSwitches.partial();

@@ -40,7 +40,6 @@ export const DEFAULT_GUARDS: GuardLists = {
   skipMarkers: [".skip(", ".only(", "xit(", "xdescribe(", "xtest(", "@Ignore", "@Disabled", "pytest.mark.skip", "pytest.mark.xfail", "unittest.skip", "t.Skip(", "#[ignore]"],
 };
 
-export { GuardSwitches } from "./schema.js";
 
 /**
  * The guards every run is judged by unless its task says otherwise: those that catch weakening and never block

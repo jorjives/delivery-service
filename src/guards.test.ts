@@ -3,7 +3,7 @@ import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cleanGitEnv } from "./git-env.js";
-import type { GateRef } from "./schema.js";
+import { GuardSwitches, type GateRef } from "./schema.js";
 import { initTempRepo } from "./temp-repo.js";
 import { FILE_LIMIT } from "./packs/confirm.js";
 import {
@@ -14,7 +14,6 @@ import {
   guardAssertions,
   guardListsFor,
   GuardName,
-  GuardSwitches,
   ignoredAssertions,
   ignoredId,
   needsTestChange,

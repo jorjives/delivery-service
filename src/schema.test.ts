@@ -148,13 +148,8 @@ describe("what a session cost and took", () => {
 });
 
 import { GuardSwitches as SchemaGuardSwitches } from "./schema.js";
-import { GuardSwitches as GuardsGuardSwitches } from "./guards.js";
 
 describe("GuardSwitches", () => {
-  it("is defined once, in the schema, and re-exported by the guards", () => {
-    expect(GuardsGuardSwitches).toBe(SchemaGuardSwitches);
-  });
-
   it("takes add and off lists of guard names, and nothing else", () => {
     expect(SchemaGuardSwitches.safeParse({ add: ["tests-unchanged"], off: ["no-skips"] }).success).toBe(true);
     expect(SchemaGuardSwitches.safeParse({ on: ["no-skips"] }).success).toBe(false);
