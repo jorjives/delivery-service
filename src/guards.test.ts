@@ -7,6 +7,7 @@ import { GuardSwitches, type GateRef } from "./schema.js";
 import { initTempRepo } from "./temp-repo.js";
 import { FILE_LIMIT } from "./packs/confirm.js";
 import {
+  BACKLOG_GUARD,
   CHECK_GUARD,
   DEFAULT_GUARDS,
   DEFAULT_ON,
@@ -62,14 +63,14 @@ describe("whether a change touched the tests", () => {
     const repo = initTempRepo("guards-", PROJECT);
     put(repo, "checkout.js", "export const total = (p, d) => Math.max(0, p - d);\n");
     put(repo, "clamp.test.js", "import { test } from 'node:test';\ntest('never below zero', () => {});\n");
-    expect(await outcomes(repo)).toEqual({ [TESTS_GUARD]: "PASS", [EDIT_GUARD]: "PASS", [CHECK_GUARD]: "PASS", [SKIP_GUARD]: "PASS" });
+    expect(await outcomes(repo)).toEqual({ [TESTS_GUARD]: "PASS", [EDIT_GUARD]: "PASS", [CHECK_GUARD]: "PASS", [SKIP_GUARD]: "PASS", [BACKLOG_GUARD]: "PASS" });
   });
 
   it("passes a change to the code alone where an ignore rule matches a tracked test file", async () => {
     const repo = initTempRepo("guards-", PROJECT);
     exclude(repo, "*.test.js");
     put(repo, "checkout.js", "export const total = (p, d) => Math.max(0, p - d);\n");
-    expect(await outcomes(repo)).toEqual({ [TESTS_GUARD]: "PASS", [EDIT_GUARD]: "PASS", [CHECK_GUARD]: "PASS", [SKIP_GUARD]: "PASS" });
+    expect(await outcomes(repo)).toEqual({ [TESTS_GUARD]: "PASS", [EDIT_GUARD]: "PASS", [CHECK_GUARD]: "PASS", [SKIP_GUARD]: "PASS", [BACKLOG_GUARD]: "PASS" });
   });
 
   it.each([["left uncommitted", false], ["committed", true]])("refuses a deleted test file, %s", async (_, committed) => {
@@ -252,7 +253,7 @@ describe("whether a change touched the tests", () => {
 
 describe("which guards are judged", () => {
   it("are, by default, the ones that catch weakening and never block honest work", () => {
-    expect(DEFAULT_ON).toEqual(["tests-untouched", "check-untouched", "no-skips", "ignored"]);
+    expect(DEFAULT_ON).toEqual(["tests-untouched", "check-untouched", "no-skips", "ignored", "backlog"]);
   });
 
   it("leaves out a guard that is off: an edit to an existing test is no failure by default", async () => {
@@ -274,6 +275,43 @@ describe("which guards are judged", () => {
     expect(GuardSwitches.safeParse({ add: ["tests-unchanged"], off: ["no-skips"] }).success).toBe(true);
     expect(GuardSwitches.safeParse({ off: ["tests"] }).success).toBe(false);
     expect(GuardSwitches.safeParse({ remove: ["no-skips"] }).success).toBe(false);
+  });
+});
+
+describe("the backlog guard", () => {
+  const ITEM = ".delivery/backlog/20261016T090000Z-greet.md";
+  const GOOD = "---\nstatus: open\nworkflow: build\n---\nGreet people.\n";
+  const on = { lists: DEFAULT_GUARDS, on: DEFAULT_ON };
+  const backlogOf = async (repo: string) => (await guardAssertions(repo, "main", on, null)).find((a) => a.id === BACKLOG_GUARD);
+
+  it("passes a new, valid follow-up item", async () => {
+    const repo = initTempRepo("guards-", PROJECT);
+    put(repo, ".delivery/backlog/20261016T100000Z-follow-up.md", GOOD);
+    expect((await backlogOf(repo))?.outcome).toBe("PASS");
+  });
+
+  it("refuses an edit to an existing item", async () => {
+    const repo = initTempRepo("guards-", { ...PROJECT, [ITEM]: GOOD });
+    put(repo, ITEM, GOOD.replace("open", "resolved"));
+    const found = await backlogOf(repo);
+    expect(found?.outcome).toBe("FAIL");
+    expect(found?.detail).toContain(`${ITEM} changed`);
+  });
+
+  it("refuses the removal of an existing item", async () => {
+    const repo = initTempRepo("guards-", { ...PROJECT, [ITEM]: GOOD });
+    rmSync(join(repo, ITEM));
+    expect((await backlogOf(repo))?.detail).toContain(`${ITEM} removed`);
+  });
+
+  it("refuses a new item that does not match the item format, saying why", async () => {
+    const repo = initTempRepo("guards-", PROJECT);
+    put(repo, ".delivery/backlog/20261016T100000Z-bad.md", "no front matter\n");
+    expect((await backlogOf(repo))?.detail).toContain(".delivery/backlog/20261016T100000Z-bad.md (it does not start with front matter between --- lines)");
+  });
+
+  it("is on by default", () => {
+    expect(DEFAULT_ON).toContain("backlog");
   });
 });
 

@@ -1,5 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { BACKLOG_DIR, parseItem } from "./backlog.js";
 import { git } from "./git-exec.js";
 import { isEnoent } from "./journal.js";
 import { checkFilesOf, treeOf } from "./repair-changes.js";
@@ -45,7 +46,8 @@ export const DEFAULT_GUARDS: GuardLists = {
  * The guards every run is judged by unless its task says otherwise: those that catch weakening and never block
  * honest work. `tests-unchanged` is not among them, because test-first work and refactoring change existing tests.
  */
-export const DEFAULT_ON: readonly GuardName[] = ["tests-untouched", "check-untouched", "no-skips", "ignored"];
+export const DEFAULT_ON: readonly GuardName[] = ["tests-untouched", "check-untouched", "no-skips", "ignored", "backlog"];
+export const BACKLOG_GUARD = "guard:backlog";
 
 /** The guards one run is judged by: what they look at, and which of them are on. */
 export interface ActiveGuards {
@@ -103,6 +105,20 @@ async function touched(cwd: string, base: string, tree: string, patterns: string
   const pairs: { status: string; path: string }[] = [];
   for (let index = 0; index + 1 < fields.length; index += 2) pairs.push({ status: fields[index] ?? "", path: fields[index + 1] ?? "" });
   return pairs;
+}
+
+/** What a change did to the backlog that it may not: an existing item edited or removed, or a new one that is not a valid item. */
+async function backlogFindings(cwd: string, base: string, tree: string): Promise<string[]> {
+  const found: string[] = [];
+  for (const { status, path } of await touched(cwd, base, tree, [glob(`${BACKLOG_DIR}/**`)])) {
+    if (status === "M" || status === "T") found.push(`${path} changed`);
+    else if (status === "D") found.push(`${path} removed`);
+    else if (status === "A") {
+      const parsed = parseItem(path.slice(BACKLOG_DIR.length + 1), await git(cwd, ["cat-file", "blob", `${tree}:${path}`], { raw: true, maxBuffer: FILE_LIMIT }));
+      if (!parsed.ok) found.push(`${path} (${parsed.reason})`);
+    }
+  }
+  return found;
 }
 
 /** How a revision's package.json says tests run: its test scripts and its test runners' settings. Empty when it has none or cannot be read. */
@@ -276,6 +292,8 @@ export async function guardAssertions(worktreePath: string, base: string, guards
     assertion(EDIT_GUARD, edited, "changed existing tests", `${PUT_BACK} If only a change to an existing test would fix the problem, stop and say so.`),
     assertion(CHECK_GUARD, settings, "changed how the tests are run"),
     assertion(SKIP_GUARD, await addedSkips(worktreePath, base, tree, lists.skipMarkers, lists.testGlobs), "skipped tests"),
+    assertion(BACKLOG_GUARD, await backlogFindings(worktreePath, base, tree), "changed the backlog in a way it may not",
+      "Existing backlog items may not be edited or removed; add a new item file for a follow-up, in the item format (see docs/project-configuration.md)."),
     ...(await ignoredAssertions(worktreePath, guards)),
   ];
   return all.filter((found) => judged(on, found.id));

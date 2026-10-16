@@ -610,7 +610,7 @@ describe("a task's guards", () => {
 
   it("name an unknown guard back, with the names there are", () => {
     expect(problemFor({ tasks: ["add a page", { intent: "tidy", guards: { off: ["tests"] } }] })).toBe(
-      `I can't use ${FILE}: \`tasks.1.guards\` names a guard I don't know. The guards are \`tests-untouched\`, \`tests-unchanged\`, \`check-untouched\`, \`no-skips\` and \`ignored\`, and \`add\` and \`off\` each take a list of them.`,
+      `I can't use ${FILE}: \`tasks.1.guards\` names a guard I don't know. The guards are \`tests-untouched\`, \`tests-unchanged\`, \`check-untouched\`, \`no-skips\`, \`ignored\` and \`backlog\`, and \`add\` and \`off\` each take a list of them.`,
     );
   });
 });

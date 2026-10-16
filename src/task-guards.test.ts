@@ -13,17 +13,17 @@ import { git } from "../tests/helpers.js";
 
 const NPM: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
 const PROJECT_TESTS: GateRef = { type: "command", command: "node --test", parseMode: "exitcode" };
-const ALL = ["tests-untouched", "tests-unchanged", "check-untouched", "no-skips", "ignored"];
+const ALL = ["tests-untouched", "tests-unchanged", "check-untouched", "no-skips", "ignored", "backlog"];
 
 describe("the guards a task's run is judged by", () => {
   it("are the defaults for a task that names none", () => {
-    expect(activeGuards({ intent: "add a page" })).toEqual({ lists: DEFAULT_GUARDS, on: ["tests-untouched", "check-untouched", "no-skips", "ignored"] });
+    expect(activeGuards({ intent: "add a page" })).toEqual({ lists: DEFAULT_GUARDS, on: ["tests-untouched", "check-untouched", "no-skips", "ignored", "backlog"] });
     expect(guardChanges({ intent: "add a page" })).toBeNull();
   });
 
   it("add and turn off by name, in a fixed order, and the change from the defaults is told", () => {
     const task = { intent: "tidy the tests", guards: { add: ["tests-unchanged"], off: ["no-skips"] } };
-    expect(activeGuards(task).on).toEqual(["tests-untouched", "tests-unchanged", "check-untouched", "ignored"]);
+    expect(activeGuards(task).on).toEqual(["tests-untouched", "tests-unchanged", "check-untouched", "ignored", "backlog"]);
     expect(guardChanges(task)).toEqual({ added: ["tests-unchanged"], off: ["no-skips"] });
   });
 
@@ -84,7 +84,7 @@ describe("a gate joined to the guards", () => {
 describe("a workflow step's guards", () => {
   it("adds and turns off guards for the step, over the task's own", () => {
     const { on } = activeGuards({ intent: "x", guards: { off: ["ignored"] } }, { add: ["tests-unchanged"], off: ["no-skips"] });
-    expect(on).toEqual(["tests-untouched", "tests-unchanged", "check-untouched"]);
+    expect(on).toEqual(["tests-untouched", "tests-unchanged", "check-untouched", "backlog"]);
   });
 
   it("leaves the task's guards alone when the step changes none", () => {

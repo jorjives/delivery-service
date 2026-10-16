@@ -172,7 +172,7 @@ A small library of text helpers that our team's Node.js scripts share. Plain Jav
 ## Acceptance
 Your work is judged by the project's check: the command `npm test`, run in this working copy, where it passes or fails as a whole, by its exit code. You may read what it runs and run it yourself. A check that passed before your work must still pass.
 
-The harness also checks your change against the commit this task started from: no existing test deleted or renamed; no change to how tests run (test-runner settings, CI files, the test command, .gitignore, and the Makefile or equivalent build file, since each can hide or redefine what the tests do); no new skip or only marker added to a test file; no test setting, or test that switches others off, left out of git. A failure names what it found.
+The harness also checks your change against the commit this task started from: no existing test deleted or renamed; no change to how tests run (test-runner settings, CI files, the test command, .gitignore, and the Makefile or equivalent build file, since each can hide or redefine what the tests do); no new skip or only marker added to a test file; no test setting, or test that switches others off, left out of git; no existing backlog item in `.delivery/backlog/` edited or removed, and any new item you add there (a follow-up) in the item format. A failure names what it found.
 
 Your branch is the deliverable. The harness merges or opens a PR after acceptance. Do not merge, push, or open a PR, even if a skill says to.
 …
