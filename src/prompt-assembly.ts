@@ -7,7 +7,7 @@ import { SharpenedBrief } from "./triage-role-config.js";
 import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
 import type { GuardName } from "./guards.js";
 import { activeGuards } from "./task-guards.js";
-import { currentStep } from "./workflow-step.js";
+import { currentStep, stepIndexOf } from "./workflow-step.js";
 
 export interface PromptSetback extends Setback {
   /** Log-derived used/max per population at the moment of the setback. */
@@ -82,26 +82,30 @@ const hooksOf = (gateRef: Extract<GateRef, { type: "command" }>): string => {
   return parts.length === 0 ? "" : ` ${parts.join("; ").replace(/^a/, "A")}.`;
 };
 
-function gateLines(gateRef: GateRef): string {
+function gateLines(gateRef: GateRef, whose = "the project's"): string {
   if (gateRef.type === "command") {
     const counted = countsNewAssertions(gateRef) ? ", and a new check that fails counts against it" : "";
     return (
-      `Your work is judged by the project's check: the command \`${gateRef.command}\`, run in this working copy, where ${READ_AS[gateRef.parseMode]}. ` +
+      `Your work is judged by ${whose} check: the command \`${gateRef.command}\`, run in this working copy, where ${READ_AS[gateRef.parseMode]}. ` +
       `You may read what it runs and run it yourself. A check that passed before your work must still pass${counted}.${hooksOf(gateRef)}`
     );
   }
   const where = isAbsolute(gateRef.modulePath) ? "" : " in the project's main folder";
-  return `Your work is judged by the project's check: the module \`${gateRef.modulePath}\`${where}. You may read it. It is verified unchanged when your work is judged.`;
+  return `Your work is judged by ${whose} check: the module \`${gateRef.modulePath}\`${where}. You may read it. It is verified unchanged when your work is judged.`;
 }
 
 /** What will judge the work: the check, the guards in one paragraph, and where the work ends. Pure: read from the header alone. */
 function acceptance(caseFile: CaseFile): string {
-  const { on } = activeGuards(caseFile.header.taskDef, currentStep(caseFile)?.guards);
+  const step = currentStep(caseFile);
+  const { on } = activeGuards(caseFile.header.taskDef, step?.guards);
+  // Inside a workflow the check and the guards belong to the step: its own check when it names one, and its own start.
+  const whose = step?.gateRef === undefined ? "the project's" : "this step's";
+  const since = step === undefined ? "task" : "step";
   const guards =
     on.length === 0
       ? []
-      : [`The harness also checks your change against the commit this task started from: ${on.map((name) => GUARD_WORDS[name]).join("; ")}. A failure names what it found.`, ""];
-  return [gateLines(caseFile.header.gateRef), "", ...guards, LANDING_BOUNDARY].join("\n");
+      : [`The harness also checks your change against the commit this ${since} started from: ${on.map((name) => GUARD_WORDS[name]).join("; ")}. A failure names what it found.`, ""];
+  return [gateLines(caseFile.header.gateRef, whose), "", ...guards, LANDING_BOUNDARY].join("\n");
 }
 
 /**
@@ -198,10 +202,18 @@ export function assemblePrompt(
   // The roles that change the work are told what will judge it; triage changes nothing and judges nothing.
   const acceptanceSlot = roleCfg.role === "triage" ? [] : ["## Acceptance", acceptance(caseFile), ""];
 
+  // A workflow step's own instruction, after the task it serves. A run with no workflow has no step slot.
+  const step = currentStep(caseFile);
+  const stepSlot =
+    step === undefined
+      ? []
+      : ["## Step", `Step ${stepIndexOf(caseFile)} of ${caseFile.header.workflow?.steps.length}, "${step.name}":`, step.prompt, ""];
+
   const prompt = [
     "## Task",
     JSON.stringify(caseFile.header.taskDef, null, 2),
     "",
+    ...stepSlot,
     ...acceptanceSlot,
     "## Brief",
     brief,

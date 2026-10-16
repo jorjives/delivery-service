@@ -7,7 +7,8 @@ import { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE, LANDING_BOUNDARY, typ
 import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { triageRoleConfig } from "./triage-role-config.js";
-import type { BudgetSet, GateRef } from "./schema.js";
+import type { BudgetSet, GateRef, HistoryEntry } from "./schema.js";
+import { stepView } from "./workflow-step.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -452,5 +453,37 @@ describe("a command gate's setup and teardown", () => {
     const caseFile = await load(dir);
     const { prompt } = assemblePrompt({ ...caseFile, header: { ...caseFile.header, gateRef: hooked } }, workerRoleConfig, await resolveEvidence(dir, caseFile));
     expect(prompt).toContain("Before it runs, `docker compose up -d` sets up; afterwards, `docker compose down` tears down, whatever the result.");
+  });
+});
+
+describe("the Step slot", () => {
+  const workflow = { name: "w", steps: [{ name: "plan", prompt: "Write PLAN.md." }, { name: "build", prompt: "Carry out PLAN.md.", agent: { append: "Be brief." } }] };
+  const NOTHING: PromptEvidence = { brief: null, newFailures: [], setback: null };
+  const caseFileWith = (header: Partial<Parameters<typeof initialCaseFile>[0]>) =>
+    initialCaseFile({ surfaceId: "s", taskDef: { intent: "add a greeting" }, gateRef, ...header }, budgets);
+  const withHistory = (cf: ReturnType<typeof caseFileWith>, history: HistoryEntry[]) => ({ ...cf, history });
+
+  it("follows the task with the current step's instruction", () => {
+    const cf = stepView(withHistory(caseFileWith({ workflow }), [{ t: "step", step: 2, startCommit: "c1" }]));
+    const { prompt, systemPrompt } = assemblePrompt(cf, workerRoleConfig, NOTHING);
+    expect(prompt).toContain('## Step\nStep 2 of 2, "build":\nCarry out PLAN.md.\n\n## Acceptance');
+    expect(systemPrompt.endsWith("Be brief.")).toBe(true);
+  });
+
+  it("is absent, and the prompt unchanged, for a run with no workflow", () => {
+    const cf = caseFileWith({});
+    expect(assemblePrompt(stepView(cf), workerRoleConfig, NOTHING)).toEqual(assemblePrompt(cf, workerRoleConfig, NOTHING));
+    expect(assemblePrompt(cf, workerRoleConfig, NOTHING).prompt).not.toContain("## Step");
+  });
+
+  it("says the check is the step's own only when the step names one, and the guards diff from the step's start", () => {
+    const own: GateRef = { type: "command", command: "test -f PLAN.md", parseMode: "exitcode", checkOnly: true };
+    const named = { ...workflow, steps: [{ name: "plan", prompt: "Write PLAN.md.", gateRef: own }, workflow.steps[1] as (typeof workflow.steps)[number]] };
+    const first = assemblePrompt(stepView(caseFileWith({ workflow: named })), workerRoleConfig, NOTHING).prompt;
+    expect(first).toContain("Your work is judged by this step's check: the command `test -f PLAN.md`");
+    expect(first).toContain("against the commit this step started from");
+    const second = assemblePrompt(stepView(withHistory(caseFileWith({ workflow: named }), [{ t: "step", step: 2, startCommit: "c1" }])), workerRoleConfig, NOTHING).prompt;
+    expect(second).toContain("Your work is judged by the project's check: the command `cat report.tap`");
+    expect(second).toContain("against the commit this step started from");
   });
 });

@@ -5,7 +5,9 @@ import { tmpdir } from "node:os";
 import { PassThrough } from "node:stream";
 import { join } from "node:path";
 import { create, readRef } from "./case-file.js";
-import { invoke, runSession, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef, usageLimitOf, usageOf } from "./agent-invoke.js";
+import { invoke, runSession, DID_NOT_COMPLETE, buildSessionOptions, createAgentPort, sessionErrorRef, stepSession, usageLimitOf, usageOf } from "./agent-invoke.js";
+import { initialCaseFile } from "./case-file.js";
+import { stepView } from "./workflow-step.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig, type RoleConfig } from "./role-config.js";
 import { Ajv } from "ajv";
 import { mockSessionEnvironment, promptsSent, readJournal } from "./testing.js";
@@ -13,7 +15,7 @@ import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
 import { CorruptCaseFile, FileNotFound, InvalidRoleConfig } from "./errors.js";
 import { USAGE_LIMIT_WORDS } from "./ports.js";
 import type { AgentContext } from "./ports.js";
-import type { BudgetSet, GateRef } from "./schema.js";
+import type { BudgetSet, GateRef, HistoryEntry } from "./schema.js";
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 },
@@ -570,5 +572,30 @@ describe("runSession: one session from a prompt the caller assembled, with no ca
     await expect(
       runSession({ ...workerRoleConfig, systemPromptFragment: "" }, { worktreePath, dir: bare, sessionKey: "scan-1" }, { systemPrompt: "", prompt: "x" }, useMock()),
     ).rejects.toBeInstanceOf(InvalidRoleConfig);
+  });
+});
+
+describe("the session a workflow step's agent gets", () => {
+  const workflow = { name: "w", steps: [{ name: "plan", prompt: "p" }, { name: "build", prompt: "b", agent: { model: "opus" } }] };
+  const record = (header: Partial<Parameters<typeof initialCaseFile>[0]>, history: HistoryEntry[] = []) => ({
+    ...initialCaseFile({ surfaceId: "s", taskDef: { intent: "x" }, gateRef, ...header }, budgets),
+    history,
+  });
+
+  it("lays the step's agent options over the project's", () => {
+    const view = stepView(record({ workflow }, [{ t: "step", step: 2, startCommit: "c1" }]));
+    expect(stepSession(view, { agent: { model: "sonnet", effort: "high" } }).agent).toEqual({ model: "opus", effort: "high" });
+  });
+
+  it("leaves a run with no workflow's agent options as they were", () => {
+    const session = { agent: { model: "sonnet" } };
+    expect(stepSession(record({}), session).agent).toBe(session.agent);
+  });
+
+  it("tells the session where the step started, so the agent can run the check it is shown", () => {
+    const step2 = stepView(record({ workflow, startCommit: "c0" }, [{ t: "step", step: 2, startCommit: "c1" }]));
+    expect(stepSession(step2, {}).harnessEnv).toMatchObject({ DELIVERY_STEP_START: "c1" });
+    expect(stepSession(record({ startCommit: "c0" }), {}).harnessEnv).toMatchObject({ DELIVERY_STEP_START: "c0" });
+    expect(stepSession(record({}), {}).harnessEnv).toBeUndefined();
   });
 });

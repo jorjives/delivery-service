@@ -1,6 +1,7 @@
 import { query, type Options, type SDKAssistantMessage, type SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import { load, writeRef } from "./case-file.js";
+import { currentStep, mergeAgent, stepView } from "./workflow-step.js";
 import { assemblePrompt, resolveEvidence, type AssembledPrompt } from "./prompt-assembly.js";
 import { gateMaintenanceRoleConfig, validateRoleConfig, workerRoleConfig } from "./role-config.js";
 import type { RoleConfig } from "./role-config.js";
@@ -9,7 +10,7 @@ import { USAGE_LIMIT_WORDS } from "./ports.js";
 import { messageOf } from "./gate-support.js";
 import { triageRoleConfig } from "./triage-role-config.js";
 import type { TriageEnvelope } from "./triage-role-config.js";
-import type { UsageLimit, SessionUsage, AgentOptions } from "./schema.js";
+import type { UsageLimit, SessionUsage, AgentOptions, CaseFile } from "./schema.js";
 import type { JsonSchema } from "./report/json-schema.js";
 
 /**
@@ -200,6 +201,20 @@ function asApiRoot(schema: JsonSchema): JsonSchema {
 }
 
 /**
+ * The session a step's agent gets: the step's own agent options laid over the run's, and the commit the step (or,
+ * with no workflow, the task) started from as `DELIVERY_STEP_START`, so the agent can run the check it is shown.
+ */
+export function stepSession(caseFile: CaseFile, session: SessionEnvironment): SessionEnvironment {
+  const agent = currentStep(caseFile)?.agent;
+  const start = caseFile.header.startCommit;
+  return {
+    ...session,
+    ...(agent === undefined ? {} : { agent: mergeAgent(session.agent, agent) }),
+    ...(start === undefined ? {} : { harnessEnv: { ...session.harnessEnv, DELIVERY_STEP_START: start } }),
+  };
+}
+
+/**
  * Assemble the session's options field by field. The session runs as the
  * operator's own Claude Code would: Claude Code's own system prompt with the
  * harness's context appended, every setting source (user, project, local, so
@@ -262,9 +277,9 @@ export async function invoke<E>(
 ): Promise<Metered<E | Incomplete>> {
   // Validated before the case file is read, so a config typo is reported as itself, never as a missing record.
   validateRoleConfig(roleCfg);
-  const caseFile = await load(ctx.dir);
+  const caseFile = stepView(await load(ctx.dir));
   const assembled = assemblePrompt(caseFile, roleCfg, await resolveEvidence(ctx.dir, caseFile));
-  return runSession(roleCfg, ctx, assembled, session);
+  return runSession(roleCfg, ctx, assembled, stepSession(caseFile, session));
 }
 
 /**

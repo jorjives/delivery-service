@@ -110,6 +110,7 @@ The template per role, every slot read from the case file:
 ```
 [ appended context ]           # role context + domain + agent.append, appended to Claude Code's own system prompt
 [ task_def ]                   # original intent, from the immutable header
+[ step ]                       # a workflow run only: which step this is, and its own instruction
 [ acceptance ]                 # worker and gate maintenance: the check and how to run it, the guards, the landing boundary
 [ distilled brief ]            # SharpenedBrief on a reroute, raw delta otherwise
 [ verbatim gate evidence ]     # the newly-failing assertions, unparaphrased
@@ -126,6 +127,7 @@ The template per role, every slot read from the case file:
   module) and how its result is read, the guards the task is judged by, and the
   landing boundary, word for word. The agent may read and run the check; it is kept
   honest by the integrity check and the guards, not by being hidden.
+- **The Step slot carries a workflow step's own instruction.** In a run given a workflow, `## Step` follows `## Task` and says which step this is ("Step 2 of 3, \"build\":") and what it asks. The step's agent options are laid over the project's for its sessions (the step wins; `env` is merged; the project's `append` is kept and the step's added after it). A run with no workflow has no Step slot. Every session can read `DELIVERY_STEP_START`, the commit the step (or the task) started from, so the agent can run the check it is shown.
 - **The brief is rendered as labelled fields** (problem, dead ends, scope, references, diagnosis), with the diagnosis labelled as a hypothesis. Worker and gate-maintenance prompts carry no setback slot.
 - **The domain system-prompt fragment lives in the immutable header**, alongside
   `task_def` and `gate_ref`. It is pinned run-identity ("this is a Python service,
