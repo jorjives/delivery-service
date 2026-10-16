@@ -183,6 +183,22 @@ export type FenceState = z.infer<typeof FenceState>;
 export const FenceRecord = z.object({ mode: FenceMode, devices: z.array(z.string()), state: FenceState });
 export type FenceRecord = z.infer<typeof FenceRecord>;
 
+/** One step of a workflow as a run pinned it: its gate already resolved from any ready-made name, and digested if custom. */
+export const WorkflowStep = z.object({
+  name: z.string(),
+  prompt: z.string(),
+  gateRef: GateRef.optional(),
+  gateDigest: z.string().optional(),
+  agent: AgentOptions.optional(),
+  continue: z.literal(true).optional(),
+  guards: GuardSwitches.optional(),
+});
+export type WorkflowStep = z.infer<typeof WorkflowStep>;
+
+/** The workflow a run was started with, pinned at CREATE like gateRef. Absent: the run is one step, the task, the project's gate. */
+export const PinnedWorkflow = z.object({ name: z.string(), steps: z.array(WorkflowStep).min(1) });
+export type PinnedWorkflow = z.infer<typeof PinnedWorkflow>;
+
 export const CaseFileHeader = z.object({
   surfaceId: z.string(),
   taskDef: TaskDef,
@@ -213,6 +229,9 @@ export const CaseFileHeader = z.object({
   // The write fence the run started with, as probed before its first session.
   // A resumed run keeps it. Absent on a record made before the fence existed.
   fence: FenceRecord.optional(),
+  // The workflow the run was started with, pinned at CREATE so a config change cannot reshape a run under way.
+  // Absent for a run given no workflow, and for every record made before workflows existed.
+  workflow: PinnedWorkflow.optional(),
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 
@@ -291,6 +310,11 @@ export const TerminusEntry = z.object({
   changesRef: z.string().optional(),
   // What the runtime reported the session cost and took. Absent for a record made before it was kept, a session that never ran, or one whose end was recovered. No routing decision reads it.
   usage: SessionUsage.optional(),
+  // The runtime's id for the session, so a later workflow step can continue it. Absent when the runtime gave none.
+  sessionId: z.string().optional(),
+  // The session was asked to continue an earlier one that could no longer be resumed, so it started fresh instead
+  // (spec section 7). Recorded, never counted as a failure; no routing decision reads it.
+  resumeFellBack: z.literal(true).optional(),
   // A pull request was found open for the task's branch after this session: the task stops for the operator.
   // Optional, so every record written before it was looked for stays valid.
   landedOutside: z.object({ pullRequest: z.string() }).optional(),
@@ -358,6 +382,8 @@ export type CloseEntry = z.infer<typeof CloseEntry>;
 export const BaselineEntry = z.object({
   t: z.literal("baseline"),
   status: GateStatus,
+  // A workflow's second step onwards: that step's baseline, which header.baseline (set once, step 1's) cannot hold.
+  report: GateReport.optional(),
   at: At.optional(),
 });
 export type BaselineEntry = z.infer<typeof BaselineEntry>;
@@ -383,6 +409,17 @@ export const TriageAcceptedEntry = z.object({
 });
 export type TriageAcceptedEntry = z.infer<typeof TriageAcceptedEntry>;
 
+// A workflow step accepted and the next one opened: the commit the next step starts from (its guards and its
+// `commits-ahead` check diff from it), and, when the next step continues, the session it picks up.
+export const StepEntry = z.object({
+  t: z.literal("step"),
+  step: z.number().int().min(2),
+  startCommit: z.string(),
+  resume: z.string().optional(),
+  at: At.optional(),
+});
+export type StepEntry = z.infer<typeof StepEntry>;
+
 export const HistoryEntry = z.discriminatedUnion("t", [
   DispatchEntry,
   TerminusEntry,
@@ -392,6 +429,7 @@ export const HistoryEntry = z.discriminatedUnion("t", [
   BaselineEntry,
   RepairAcceptedEntry,
   TriageAcceptedEntry,
+  StepEntry,
 ]);
 export type HistoryEntry = z.infer<typeof HistoryEntry>;
 

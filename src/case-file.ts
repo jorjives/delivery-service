@@ -296,6 +296,8 @@ export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
     // Written before the round's own triage entry (Task 8B); the gate FAIL
     // entry it follows already put the surface in TRIAGE.
     case "triage_accepted": return "TRIAGE";
+    // The next workflow step opens: it takes its own baseline before its first worker.
+    case "step": return "PRE_GATING";
   }
 }
 
@@ -424,5 +426,8 @@ export function resumeAction(tail: HistoryEntry | undefined): ResumeAction {
     // them means the verdict itself was never recorded, so triage runs again.
     case "triage_accepted":
       return "triage";
+    // Unconsumed by the driver, like "baseline": a step tail is ready to take the next step's baseline.
+    case "step":
+      return "start";
   }
 }

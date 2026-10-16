@@ -1146,3 +1146,54 @@ describe("setBaseBranch", () => {
     expect((await load(dir)).history).toEqual([]);
   });
 });
+
+describe("a workflow's records", () => {
+  const header = { surfaceId: "wf-1", taskDef: { intent: "x" }, gateRef };
+  const workflow = {
+    name: "plan-then-build",
+    steps: [
+      { name: "plan", prompt: "write PLAN.md" },
+      { name: "build", prompt: "carry it out", continue: true as const },
+    ],
+  };
+
+  it("pins the workflow into the header at create", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-workflow-"));
+    await create(dir, { ...header, workflow }, budgetDefaults);
+    expect((await load(dir)).header.workflow).toEqual(workflow);
+  });
+
+  it("reads a step entry as the next step about to take its baseline", () => {
+    const entry: HistoryEntry = { t: "step", step: 2, startCommit: "abc" };
+    expect(deriveStateFromEntry(entry)).toBe("PRE_GATING");
+    expect(resumeAction(entry)).toBe("start");
+  });
+
+  it("burns no budget for a step entry", () => {
+    expect(deriveBudgetsFromLog([{ t: "step", step: 2, startCommit: "abc" }], budgetDefaults)).toEqual(budgetDefaults);
+  });
+
+  it("keeps a later step's baseline report and a session's id in the log", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-workflow-"));
+    await create(dir, header, budgetDefaults);
+    const report: GateReport = { status: "PASS", assertions: [{ id: "a", outcome: "PASS", detail: "ok" }] };
+    await appendEntry(dir, { t: "baseline", status: "PASS", report });
+    await appendEntry(dir, { t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "completed", rationale: "done", sessionId: "sess-1" });
+    const { history } = await load(dir);
+    expect(history[0]).toMatchObject({ t: "baseline", report });
+    expect(history[1]).toMatchObject({ sessionId: "sess-1" });
+  });
+
+  it("keeps the record that a session could not be resumed", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-workflow-"));
+    await create(dir, header, budgetDefaults);
+    await appendEntry(dir, { t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "completed", rationale: "done", resumeFellBack: true });
+    expect((await load(dir)).history[0]).toMatchObject({ resumeFellBack: true });
+  });
+
+  it("loads a record made before workflows existed unchanged", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "cf-workflow-"));
+    await create(dir, header, budgetDefaults);
+    expect((await load(dir)).header.workflow).toBeUndefined();
+  });
+});
