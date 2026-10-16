@@ -310,3 +310,29 @@ To start a configuration for a project of your own, run `delivery init` in it: i
 project is, what checks the work, what happens to work that passes, and what you would like
 done, one thing at a time, and writes the file for you. The [readme](../README.md#configure-it-once)
 lists every setting.
+
+### A backlog of work items
+
+Rather than a fixed list, a project can keep its work as items in `.delivery/backlog/`. Each item
+is a markdown file, committed to the repository, named `<timestamp>-<slug>.md` (for example
+`20261016T090000Z-greet-people.md`) so that items added at the same time never collide. Its front
+matter says how it is done, and the text below it is the brief the agent receives:
+
+    ---
+    status: open
+    workflow: plan-then-build
+    priority: 10
+    cadence: 7d
+    spec: docs/greeting-spec.md
+    ---
+    Tidy the greeting copy so it matches the spec.
+
+`status` is one of `open`, `idea`, `resolved` or `declined`; only `open` items are worked, and an
+`idea` is material for other work rather than a task. `workflow` names the workflow that delivers
+it. `priority` orders items, lower first, with unprioritised items last. `cadence` (`30m`, `12h`,
+`7d` or `2w`) makes an item recur: it is due again once that long has passed since it last closed.
+Any other field is available to the step prompts as `{{task.<field>}}`, such as `spec` above.
+
+Items are read from your base branch's last commit: `origin`'s, when the project has one. So commit
+an item, and push it if there is an origin, for it to be worked. Item files on disk that the base
+does not yet hold are named, and not worked.
