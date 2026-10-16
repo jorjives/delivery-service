@@ -16,6 +16,7 @@ export const GatePreset = z.discriminatedUnion("type", [
   z.object({ type: z.literal("file-exists"), path: Written }).strict(),
   z.object({ type: z.literal("command-succeeds"), command: Written }).strict(),
   z.object({ type: z.literal("schema-validates"), file: Written, schema: Written }).strict(),
+  z.object({ type: z.literal("commits-ahead") }).strict(),
 ]);
 export type GatePreset = z.infer<typeof GatePreset>;
 export type PresetName = GatePreset["type"];
@@ -29,7 +30,11 @@ export const PRESET_DETAILS: Record<PresetName, Record<string, string>> = {
   "file-exists": { path: "the file that should exist" },
   "command-succeeds": { command: "the command that should succeed" },
   "schema-validates": { file: "the JSON file to check", schema: "the file describing the shape it should have" },
+  "commits-ahead": {},
 };
+
+/** Passes once the work has added a commit since it started: `DELIVERY_STEP_START` is set by the harness on every gate run. */
+export const COMMITS_AHEAD = 'test -n "$(git rev-list "$DELIVERY_STEP_START"..HEAD)"';
 
 /**
  * Everything a config file's `gate` may be: a written-out gate, exactly as the
@@ -80,6 +85,8 @@ export async function presetGate(preset: GatePreset, repoPath: string): Promise<
       return { ...byExitCode(`test -f ${quoted(preset.path)}`), checkOnly: true };
     case "command-succeeds":
       return byExitCode(preset.command);
+    case "commits-ahead":
+      return { ...byExitCode(COMMITS_AHEAD), checkOnly: true };
     case "schema-validates":
       return byExitCode(`${SHAPE_CHECKER} -s ${quoted(preset.schema)} -d ${quoted(preset.file)}`);
   }
@@ -98,6 +105,8 @@ export function presetPhrase(preset: GatePreset, command: string): string {
       return `checks that ${preset.path} exists`;
     case "command-succeeds":
       return `checks that \`${preset.command}\` succeeds`;
+    case "commits-ahead":
+      return "checks that the work added at least one commit";
     case "schema-validates":
       return `checks that ${preset.file} matches the shape in ${preset.schema}`;
   }

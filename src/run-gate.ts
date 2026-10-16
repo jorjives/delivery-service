@@ -14,7 +14,9 @@ import { countsNewAssertions } from "./schema.js";
 export { GATE_GUARD, gateDigestOf } from "./gate-digest.js";
 
 function gateContext(header: CaseFileHeader, worktreePath: string, env?: NodeJS.ProcessEnv): GateContext {
-  return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, env };
+  // Every gate command can see where the work started, so a check can judge what was added since.
+  const withStart = header.startCommit === undefined ? env : { ...(env ?? process.env), DELIVERY_STEP_START: header.startCommit };
+  return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, env: withStart };
 }
 
 // The gate measures the worktree but is loaded from the repo root: a relative

@@ -99,6 +99,8 @@ red at baseline can never show a new failure.
 assertion the check reports is new, and a new failing one counts against the work. The
 `file-exists` ready-made check is written out this way.
 
+Every gate command runs with `DELIVERY_STEP_START` set to the commit the work started from (in a workflow, the commit the current step started from), so a check can judge what was added since.
+
 A written-out command gate may also name `setup` and `teardown`:
 
     { "type": "command", "command": "npm test", "parseMode": "exitcode",

@@ -280,6 +280,19 @@ describe("what a gate is told", () => {
   });
 });
 
+describe("DELIVERY_STEP_START", () => {
+  it("is set on every gate command to the commit the work started from", async () => {
+    const repo = initTempRepo("run-gate-start-", { "a.txt": "a\n" });
+    const startCommit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, env: cleanGitEnv() }).toString().trim();
+    surfaceDir = await mkdtemp(join(tmpdir(), "run-gate-case-"));
+    location = { repoPath: repo, worktreePath: repo };
+    const gateRef: GateRef = { type: "command", command: `printf '1..1\\nok 1 - %s\\n' "$DELIVERY_STEP_START"`, parseMode: "tap" };
+    await create(surfaceDir, { surfaceId: "surface-1", taskDef: { intent: "x" }, gateRef, startCommit }, budgets);
+    const report = await recordBaseline(surfaceDir, location);
+    expect(report.assertions.map((a) => a.id)).toContain(`1 - ${startCommit}`);
+  });
+});
+
 describe("the guards on every run", () => {
   const TEST = "import { test } from 'node:test';\ntest('adds', () => {});\n";
 

@@ -90,7 +90,7 @@ is never taken as proof. The simplest way to choose one is by name:
 ```
 
 That runs your project's own tests with `npm test` and passes when they succeed. There are
-four ready-made checks, and each takes only the detail it needs:
+five ready-made checks, and each takes only the detail it needs:
 
 - `test-runner` runs your tests. Add `"command"` if they are not run with `npm test`.
 - `file-exists` checks that a file is there once the work is done: `{ "type": "file-exists", "path": "CHANGES.md" }`. It is judged only after the work, so a file that is still missing fails it.
@@ -98,9 +98,10 @@ four ready-made checks, and each takes only the detail it needs:
 - `schema-validates` checks that a JSON file has the shape another file describes:
   `{ "type": "schema-validates", "file": "data.json", "schema": "data.schema.json" }`. It
   fetches its checker the first time it runs, so that run needs the network.
+- `commits-ahead` checks that the work added at least one commit: `{ "type": "commits-ahead" }`. Useful for a workflow step whose job is to commit something other than passing tests.
 
 `delivery validate` says in plain words what the check you chose does, and if you misspell a
-name it lists the four.
+name it lists the five.
 
 The example writes its check out in full instead, which does exactly the same as
 `test-runner`: `"command": "npm test"` runs the tests, and `"parseMode": "exitcode"` means the
