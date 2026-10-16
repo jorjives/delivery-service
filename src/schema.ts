@@ -37,6 +37,10 @@ export type TaskDef = z.infer<typeof TaskDef>;
 export const GuardName = z.enum(["tests-untouched", "tests-unchanged", "check-untouched", "no-skips", "ignored"]);
 export type GuardName = z.infer<typeof GuardName>;
 
+/** A task's (or a workflow step's) change to which guards judge it: guards added to the defaults, and defaults turned off. */
+export const GuardSwitches = z.strictObject({ add: z.array(GuardName).optional(), off: z.array(GuardName).optional() });
+export type GuardSwitches = z.infer<typeof GuardSwitches>;
+
 export const GateRef = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("command"),

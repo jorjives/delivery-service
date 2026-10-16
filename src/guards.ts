@@ -40,9 +40,7 @@ export const DEFAULT_GUARDS: GuardLists = {
   skipMarkers: [".skip(", ".only(", "xit(", "xdescribe(", "xtest(", "@Ignore", "@Disabled", "pytest.mark.skip", "pytest.mark.xfail", "unittest.skip", "t.Skip(", "#[ignore]"],
 };
 
-/** A task's change to which guards judge it: guards added to the defaults, and defaults turned off. */
-export const GuardSwitches = z.strictObject({ add: z.array(GuardName).optional(), off: z.array(GuardName).optional() });
-export type GuardSwitches = z.infer<typeof GuardSwitches>;
+export { GuardSwitches } from "./schema.js";
 
 /**
  * The guards every run is judged by unless its task says otherwise: those that catch weakening and never block
