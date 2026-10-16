@@ -99,6 +99,17 @@ red at baseline can never show a new failure.
 assertion the check reports is new, and a new failing one counts against the work. The
 `file-exists` ready-made check is written out this way.
 
+A written-out command gate may also name `setup` and `teardown`:
+
+    { "type": "command", "command": "npm test", "parseMode": "exitcode",
+      "setup": "docker compose up -d", "teardown": "docker compose down" }
+
+`setup` runs before the command, in the same working copy. If it fails, the gate reports an error
+(the check could not run), never that the work failed its checks. `teardown` runs after the
+command whatever happened, including after a setup that failed; a failing teardown is warned about
+and does not change the verdict. Both are shown to the agent and by `delivery validate`. The
+ready-made checks take neither.
+
 A test that fails does not make the report `"ERROR"`; it is a `"FAIL"`
 assertion in a `"PASS"` report. The report is `"ERROR"` only when the gate could
 not measure: the command could not be run, it ran past the five-minute timeout,

@@ -261,3 +261,49 @@ describe("a check-only command gate", () => {
     expect((await gate.check(stubCtx())).assertions.map((a) => a.outcome)).toEqual(["FAIL"]);
   });
 });
+
+describe("a command gate's setup and teardown", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const ran = (): string[] =>
+    (execFile as unknown as ReturnType<typeof vi.fn>).mock.calls.map((call) => (call[1] as string[])[1] ?? "");
+
+  function scripted(exitCodes: Record<string, number>): void {
+    (execFile as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (_cmd: string, args: string[], _opts: unknown, cb: ExecFileCallback) => {
+        const code = exitCodes[args[1] ?? ""] ?? 0;
+        if (code === 0) cb(null, "", "");
+        else cb(Object.assign(new Error("Command failed"), { code }), "", "boom");
+      },
+    );
+  }
+
+  it("runs setup before the check and teardown after it", async () => {
+    scripted({});
+    const gate = createCommandGate("check", "exitcode", undefined, { setup: "up", teardown: "down" });
+    await gate.check(stubCtx());
+    expect(ran()).toEqual(["up", "check", "down"]);
+  });
+
+  it("runs teardown after a check that fails", async () => {
+    scripted({ check: 1 });
+    const gate = createCommandGate("check", "exitcode", undefined, { setup: "up", teardown: "down" });
+    expect((await gate.check(stubCtx())).assertions.map((a) => a.outcome)).toEqual(["FAIL"]);
+    expect(ran()).toEqual(["up", "check", "down"]);
+  });
+
+  it("reports a failing setup as a gate error, skips the check, and still tears down", async () => {
+    scripted({ up: 3 });
+    const gate = createCommandGate("check", "exitcode", undefined, { setup: "up", teardown: "down" });
+    const report = await gate.baseline(stubCtx());
+    expect(report.status).toBe("ERROR");
+    expect(report.detail).toContain("setup `up` failed");
+    expect(ran()).toEqual(["up", "down"]);
+  });
+
+  it("keeps the check's verdict when teardown fails", async () => {
+    scripted({ down: 1 });
+    const gate = createCommandGate("check", "exitcode", undefined, { teardown: "down" });
+    expect((await gate.check(stubCtx())).assertions.map((a) => a.outcome)).toEqual(["PASS"]);
+  });
+});

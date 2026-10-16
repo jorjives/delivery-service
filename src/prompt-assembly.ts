@@ -73,12 +73,20 @@ const GUARD_WORDS: Record<GuardName, string> = {
 };
 
 /** The check that judges the work, and how the agent can run it itself. */
+const hooksOf = (gateRef: Extract<GateRef, { type: "command" }>): string => {
+  const parts = [
+    ...(gateRef.setup === undefined ? [] : [`Before it runs, \`${gateRef.setup}\` sets up`]),
+    ...(gateRef.teardown === undefined ? [] : [`afterwards, \`${gateRef.teardown}\` tears down, whatever the result`]),
+  ];
+  return parts.length === 0 ? "" : ` ${parts.join("; ").replace(/^a/, "A")}.`;
+};
+
 function gateLines(gateRef: GateRef): string {
   if (gateRef.type === "command") {
     const counted = countsNewAssertions(gateRef) ? ", and a new check that fails counts against it" : "";
     return (
       `Your work is judged by the project's check: the command \`${gateRef.command}\`, run in this working copy, where ${READ_AS[gateRef.parseMode]}. ` +
-      `You may read what it runs and run it yourself. A check that passed before your work must still pass${counted}.`
+      `You may read what it runs and run it yourself. A check that passed before your work must still pass${counted}.${hooksOf(gateRef)}`
     );
   }
   const where = isAbsolute(gateRef.modulePath) ? "" : " in the project's main folder";

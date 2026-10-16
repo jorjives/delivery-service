@@ -22,8 +22,11 @@ export const READY = "Ready to run.";
 /** What the check does, as a person reads it. Total over the gate types, so a new one does not compile until it can be described. */
 function gatePhrase(gateRef: GateRef): string {
   switch (gateRef.type) {
-    case "command":
-      return `runs \`${gateRef.command}\``;
+    case "command": {
+      const after = gateRef.setup === undefined ? "" : `, after \`${gateRef.setup}\``;
+      const then = gateRef.teardown === undefined ? "" : `, then \`${gateRef.teardown}\``;
+      return `runs \`${gateRef.command}\`${after}${then}`;
+    }
     case "custom":
       return `your own check, in \`${gateRef.modulePath}\``;
   }

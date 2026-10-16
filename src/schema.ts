@@ -49,6 +49,10 @@ export const GateRef = z.discriminatedUnion("type", [
     failOnNewAssertions: z.boolean().optional(),
     // Judged only after the work: the baseline runs nothing, so whatever the check finds is new and counts.
     checkOnly: z.literal(true).optional(),
+    // Run before the command; a setup that fails is a gate error, never the work failing its checks.
+    setup: z.string().optional(),
+    // Run after the command, whatever its result.
+    teardown: z.string().optional(),
   }),
   z.object({
     type: z.literal("custom"),

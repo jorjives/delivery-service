@@ -66,6 +66,11 @@ describe("what validate says a project is set up to do", () => {
     expect(checkedLines({}, project({ gateRef }))[2]).toBe("✓ gate: your own check, in `./gates/mine.mjs`");
   });
 
+  it("names a command gate's setup and teardown in its gate line", () => {
+    const gateRef: GateRef = { type: "command", command: "npm test", parseMode: "exitcode", setup: "make db", teardown: "make clean" };
+    expect(checkedLines({}, project({ gateRef }))[2]).toBe("✓ gate: runs `npm test`, after `make db`, then `make clean`");
+  });
+
   it.each<[CloserRef, string]>([
     [{ type: "commit-to-branch" }, "✓ closer: commits to a new branch"],
     [{ type: "merge-back" }, "✓ closer: merges into your base branch"],

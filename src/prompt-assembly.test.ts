@@ -445,3 +445,12 @@ describe("the triage prompt's setback slot", () => {
     expect(setback).not.toContain("listed under Gate evidence above");
   });
 });
+
+describe("a command gate's setup and teardown", () => {
+  it("tells the agent in the Acceptance slot", async () => {
+    const hooked: GateRef = { type: "command", command: "npm test", parseMode: "exitcode", setup: "docker compose up -d", teardown: "docker compose down" };
+    const caseFile = await load(dir);
+    const { prompt } = assemblePrompt({ ...caseFile, header: { ...caseFile.header, gateRef: hooked } }, workerRoleConfig, await resolveEvidence(dir, caseFile));
+    expect(prompt).toContain("Before it runs, `docker compose up -d` sets up; afterwards, `docker compose down` tears down, whatever the result.");
+  });
+});

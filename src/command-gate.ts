@@ -103,9 +103,25 @@ async function run(
 export interface CommandGateOptions {
   /** Judge only after the work: the baseline runs nothing and records nothing. */
   checkOnly?: true;
+  /** Run before the command, in the same working copy and environment. Exiting non-zero is a gate error. */
+  setup?: string;
+  /** Run after the command (and after a failed setup), whatever the result. */
+  teardown?: string;
 }
 
 const NOTHING_YET: GateReport = { status: "PASS", assertions: [] };
+
+/** The last few lines of what a command said, for an error a person reads. */
+const lastLines = (text: string): string => text.trim().split("\n").slice(-5).join("\n");
+
+async function setupProblem(setup: string, ctx: GateContext, timeoutMs: number): Promise<string | undefined> {
+  try {
+    const result = await exec(setup, ctx.worktreePath, timeoutMs, ctx.env);
+    return result.exitCode === 0 ? undefined : `setup \`${setup}\` failed (exit ${result.exitCode}): ${lastLines(result.stderr || result.stdout)}`;
+  } catch (err) {
+    return `setup \`${setup}\` could not run: ${messageOf(err)}`;
+  }
+}
 
 export function createCommandGate(
   command: string,
@@ -113,6 +129,19 @@ export function createCommandGate(
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
   options: CommandGateOptions = {},
 ): Gate {
-  const execute = (ctx: GateContext) => run(command, parseMode, ctx.worktreePath, timeoutMs, ctx.env);
+  const execute = async (ctx: GateContext): Promise<GateReport> => {
+    try {
+      const problem = options.setup === undefined ? undefined : await setupProblem(options.setup, ctx, timeoutMs);
+      if (problem !== undefined) return errorReport(problem);
+      return await run(command, parseMode, ctx.worktreePath, timeoutMs, ctx.env);
+    } finally {
+      // ponytail: a teardown failure is warned about and never changes the verdict; record it on the gate entry if operators need it.
+      if (options.teardown !== undefined) {
+        await exec(options.teardown, ctx.worktreePath, timeoutMs, ctx.env)
+          .then((r) => { if (r.exitCode !== 0) console.warn(`gate teardown \`${options.teardown}\` exited ${r.exitCode}`); })
+          .catch((err: unknown) => console.warn(`gate teardown \`${options.teardown}\` could not run: ${messageOf(err)}`));
+      }
+    }
+  };
   return { baseline: options.checkOnly === true ? () => Promise.resolve(NOTHING_YET) : execute, check: execute };
 }
