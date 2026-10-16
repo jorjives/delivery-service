@@ -108,6 +108,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .description("work down the list of tasks in your config file, or start a single run, or pick up a run that didn't finish: the agent works on the task, your check decides whether it is good, and the result is delivered the way your config file asks (by default, committed to a new branch)")
     .option("--task <text>", "what you want done, in plain English")
     .option("--task-file <path>", "read what you want done from a file")
+    .option("--workflow <name>", "do the task in the steps of this workflow, as named under `workflows` in your config file")
     .option("--gate-command <command>", "the command that checks the agent's work: it passes when the command exits 0")
     .option("--closer <type>", "what happens to accepted work: commit-to-branch, merge-back or open-pr")
     .option("--concurrency <n>", "how many tasks from your list may run at once (default 1: one after another)")

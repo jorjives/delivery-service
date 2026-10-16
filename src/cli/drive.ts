@@ -5,7 +5,7 @@ import { deterministicRouter } from "../router.js";
 import { advance, type AdvanceResult } from "../surface.js";
 import type { SessionEnvironment } from "../agent-invoke.js";
 import type { SurfacePorts } from "../ports.js";
-import type { FenceRecord, TaskDef } from "../schema.js";
+import type { FenceRecord, PinnedWorkflow, TaskDef } from "../schema.js";
 import { captureRepair, checkFilesOf } from "../repair-changes.js";
 import type { RepairOutcome } from "../breaker.js";
 import { agentSession } from "./agent-session.js";
@@ -31,6 +31,8 @@ export interface RunStart extends ProjectSettings {
   runId?: string;
   /** The fence probed for this run before it started; absent for a caller that started none. */
   fenceRecord?: FenceRecord;
+  /** The workflow to do the task in, already pinned; absent for a run in one step. */
+  workflow?: PinnedWorkflow;
 }
 
 /** Said before a run starts on a machine where the fence cannot be had. Word for word as the design gives it. */
@@ -68,7 +70,7 @@ export async function fenceAtStart(setting: FenceSetting | undefined, repoPath: 
  * so from here on there is a record on disk for whatever happens next.
  */
 export async function startRun(
-  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, agent, runId: chosenId, fenceRecord }: RunStart,
+  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, agent, runId: chosenId, fenceRecord, workflow }: RunStart,
   session: SessionEnvironment,
   ctx: CommandContext,
 ): Promise<ExitCode> {
@@ -88,6 +90,7 @@ export async function startRun(
       agent,
       ...(gateDigest === undefined ? {} : { gateDigest }),
       ...(fenceRecord === undefined ? {} : { fence: fenceRecord }),
+      ...(workflow === undefined ? {} : { workflow }),
     },
     budgets,
   );

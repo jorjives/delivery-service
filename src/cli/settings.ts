@@ -3,10 +3,11 @@ import { resolve } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { CloserRef } from "../schema.js";
 import type { FenceSetting } from "../fence.js";
-import type { AgentOptions, BudgetSet, CaseFileHeader, GateRef, TaskDef } from "../schema.js";
+import type { AgentOptions, BudgetSet, CaseFileHeader, GateRef, PinnedWorkflow, TaskDef, WorkflowStep } from "../schema.js";
 import { loadCustomCloser } from "../custom-closer.js";
 import { loadCustomGate } from "../custom-gate.js";
-import { Concurrency, unknownCloser, type DeliveryConfig } from "./config.js";
+import { gateDigestOf } from "../gate-digest.js";
+import { andList, Concurrency, unknownCloser, type DeliveryConfig, type StepConfig } from "./config.js";
 import { isPreset, presetGate, type GatePreset } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
 import { inferGate } from "./project.js";
@@ -37,6 +38,7 @@ export interface RunFlags {
   config?: string;
   repo?: string;
   fresh?: boolean;
+  workflow?: string;
 }
 
 /** What a project asks of every run of it: how work is checked, what happens to it, how many attempts a setback gets, and what the project is. */
@@ -59,6 +61,8 @@ export interface ProjectSettings {
 /** Everything a run needs to be created: what this one is being asked to do, and everything the project asks of all of them. */
 export interface Settings extends ProjectSettings {
   taskDef: TaskDef;
+  /** The workflow this run does the task in, pinned as it will run. Absent for a run in one step. */
+  workflow?: PinnedWorkflow;
 }
 
 /**
@@ -80,6 +84,36 @@ export async function explicitIntent(flags: RunFlags, env: NodeJS.ProcessEnv, cw
   }
 
   return (flags.task ?? fromFile ?? env.DELIVERY_TASK)?.trim() || undefined;
+}
+
+export const unknownWorkflow = (name: string, known: string[]): string =>
+  known.length === 0
+    ? `There's no workflow called \`${name}\`: your config file defines none. Add one under \`workflows\`, or leave out \`--workflow\`.`
+    : `There's no workflow called \`${name}\`. Your config file defines ${andList(known)}.`;
+
+export const WORKFLOW_NEEDS_TASK = "A workflow runs a task you name with `--task`. Add one, or leave out `--workflow` to work down your list.";
+
+/** One step as a run pins it: a ready-made gate resolved to the gate it stands for, a custom one digested. */
+async function pinnedStep(step: StepConfig, repoPath: string): Promise<WorkflowStep> {
+  const gateRef = step.gate === undefined ? undefined : isPreset(step.gate) ? await presetGate(step.gate, repoPath) : step.gate;
+  const gateDigest = gateRef === undefined ? undefined : await gateDigestOf(gateRef, repoPath);
+  return {
+    name: step.name,
+    prompt: step.prompt,
+    ...(gateRef === undefined ? {} : { gateRef }),
+    ...(gateDigest === undefined ? {} : { gateDigest }),
+    ...(step.agent === undefined ? {} : { agent: step.agent }),
+    ...(step.continue === true ? { continue: true as const } : {}),
+    ...(step.guards === undefined ? {} : { guards: step.guards }),
+  };
+}
+
+/** The workflow a run will pin, from its name. Resolved before anything is provisioned, so a mistake stops the command. */
+export async function workflowFrom(name: string | undefined, config: DeliveryConfig, repoPath: string): Promise<PinnedWorkflow | undefined> {
+  if (name === undefined) return undefined;
+  const workflow = config.workflows?.[name];
+  if (workflow === undefined) throw new Refusal(unknownWorkflow(name, Object.keys(config.workflows ?? {})), EXIT.configuration, "workflow");
+  return { name, steps: await Promise.all(workflow.steps.map((step) => pinnedStep(step, repoPath))) };
 }
 
 function taskFrom(intent: string | undefined, config: DeliveryConfig): TaskDef {
@@ -140,6 +174,8 @@ export function ignoredSettings(flags: RunFlags, env: NodeJS.ProcessEnv, header:
   if (closer !== undefined && closer !== (header.closerRef ?? DEFAULT_CLOSER).type) {
     ignored.push(flags.closer !== undefined ? "--closer" : "DELIVERY_CLOSER");
   }
+  // The workflow was pinned when the run started; naming another now cannot reshape it.
+  if (flags.workflow !== undefined && flags.workflow !== header.workflow?.name) ignored.push("--workflow");
   // A config file only ever reaches a run that is starting, so naming it is the
   // only way someone who pointed at one learns that it changed nothing.
   if (flags.config !== undefined) ignored.push("--config");
@@ -221,7 +257,8 @@ export async function resolveSettings(
     config,
   }: { env: NodeJS.ProcessEnv; intent: string | undefined; repoPath: string; config: DeliveryConfig },
 ): Promise<Settings> {
-  return { taskDef: taskFrom(intent, config), ...(await resolveProject(flags, { env, repoPath, config })) };
+  const workflow = await workflowFrom(flags.workflow, config, repoPath);
+  return { taskDef: taskFrom(intent, config), ...(await resolveProject(flags, { env, repoPath, config })), ...(workflow === undefined ? {} : { workflow }) };
 }
 
 /**
@@ -233,7 +270,10 @@ export async function resolveSettings(
  * provisioned, with the path and the guide named. Loading twice costs nothing:
  * Node caches the module.
  */
-export async function checkCustomModules(gateRef: GateRef, closerRef: CloserRef, repoPath: string): Promise<void> {
+export async function checkCustomModules(gateRef: GateRef, closerRef: CloserRef, repoPath: string, workflow?: PinnedWorkflow): Promise<void> {
   if (gateRef.type === "custom") await loadCustomGate(repoPath, gateRef.modulePath, gateRef.exportName);
   if (closerRef.type === "custom") await loadCustomCloser(repoPath, closerRef.modulePath, closerRef.exportName);
+  for (const step of workflow?.steps ?? []) {
+    if (step.gateRef?.type === "custom") await loadCustomGate(repoPath, step.gateRef.modulePath, step.gateRef.exportName);
+  }
 }

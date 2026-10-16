@@ -221,6 +221,9 @@ something else is ignored with a note saying so. Asking for a different task whi
 unfinished stops the command: finish that run with `delivery resume`, or add `--fresh` to start
 the new task and leave the old run to pick up later.
 
+`--workflow <name>` does the task in the steps of a workflow from your config file; see
+[Workflows](docs/project-configuration.md#workflows).
+
 ## Come back to your task list
 
 After a list of tasks has run, overnight or while you were elsewhere, one command says what

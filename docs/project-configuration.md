@@ -279,6 +279,31 @@ guide of its own:
 - [Configuring a role](configuring-a-role.md#from-the-configuration-file): changing an agent's instructions as well as its tools, and why a misspelled tool name only shows up during a run.
 - [Testing your delivery pipeline](testing-your-pipeline.md): proving your own check, closing action and roles together against a scripted agent.
 
+### Workflows
+
+A workflow does a task in more than one checked step, in the order you give. Name it under
+`workflows`:
+
+    "workflows": {
+      "plan-then-build": {
+        "steps": [
+          { "name": "plan", "prompt": "Write a short plan to PLAN.md.",
+            "gate": { "type": "file-exists", "path": "PLAN.md" } },
+          { "name": "build", "prompt": "Carry out PLAN.md.", "continue": true }
+        ]
+      }
+    }
+
+and run a task through it with `delivery run --task "add a rota page" --workflow plan-then-build`.
+
+Each step is told the task and its own `prompt`. A step is checked by the project's `gate` unless it
+names its own (any ready-made check works, including `commits-ahead`). A step that fails is
+corrected on its own, on its own limits; the next step starts only once it is accepted, from the
+commit its work was saved in. The task is delivered once, after the last step. A step may also set
+`agent` options (laid over the project's), `guards` (`add` or `off`, for that step only), and
+`continue: true` to pick up the previous step's agent session. `delivery preview --step <name>`
+shows what a step will be told. A task run without `--workflow` is one step, as before.
+
 To start a configuration for a project of your own, run `delivery init` in it: it asks what the
 project is, what checks the work, what happens to work that passes, and what you would like
 done, one thing at a time, and writes the file for you. The [readme](../README.md#configure-it-once)

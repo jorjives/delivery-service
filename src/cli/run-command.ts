@@ -14,6 +14,7 @@ import {
   ignoredSettings,
   resolveProject,
   resolveSettings,
+  WORKFLOW_NEEDS_TASK,
   type RunFlags,
 } from "./settings.js";
 import { taskIntent } from "../task-list.js";
@@ -45,6 +46,7 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
   const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
   const list = queueTasks(config);
   if (intent === undefined && config.tasks) {
+    if (options.workflow !== undefined) throw new Refusal(WORKFLOW_NEEDS_TASK, EXIT.configuration, "workflow");
     const exitCode = await startQueue(options, { repoPath, config }, ctx);
     await closingReport(repoPath, { kind: "list" }, list, ctx);
     return exitCode;
@@ -93,7 +95,7 @@ async function startOne(
   ctx: CommandContext,
 ): Promise<ExitCode> {
   const settings = await resolveSettings(options, { env: ctx.env, intent, repoPath, config });
-  await checkCustomModules(settings.gateRef, settings.closerRef, repoPath);
+  await checkCustomModules(settings.gateRef, settings.closerRef, repoPath, settings.workflow);
   const session = await agentSession(ctx.env);
   const fenceRecord = await fenceAtStart(settings.fence, repoPath, ctx);
   if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);

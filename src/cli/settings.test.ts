@@ -18,6 +18,8 @@ import {
   NO_TASK,
   NO_TASK_FILE,
   resolveSettings,
+  unknownWorkflow,
+  workflowFrom,
   type RunFlags,
 } from "./settings.js";
 import { taskIntent } from "../task-list.js";
@@ -397,5 +399,60 @@ describe("a number of tasks at once that arrives as text", () => {
 
   it.each(["", "   ", "0", "-2", "1.5", "three", "1e2", "0x10", "99999999999999999999"])("finds no number in %j", (typed) => {
     expect(concurrencyNamed(typed)).toBeUndefined();
+  });
+});
+
+describe("workflowFrom", () => {
+  const config = DeliveryConfig.parse({
+    workflows: {
+      "plan-then-build": {
+        steps: [
+          { name: "plan", prompt: "Write PLAN.md.", gate: { type: "file-exists", path: "PLAN.md" } },
+          { name: "build", prompt: "Carry it out.", continue: true, guards: { add: ["tests-unchanged"] } },
+          { name: "tidy", prompt: "Tidy up.", continue: false },
+        ],
+      },
+    },
+  });
+
+  it("pins the named workflow with ready-made gates resolved", async () => {
+    expect(await workflowFrom("plan-then-build", config, project())).toEqual({
+      name: "plan-then-build",
+      steps: [
+        { name: "plan", prompt: "Write PLAN.md.", gateRef: { type: "command", command: "test -f 'PLAN.md'", parseMode: "exitcode", checkOnly: true } },
+        { name: "build", prompt: "Carry it out.", continue: true, guards: { add: ["tests-unchanged"] } },
+        { name: "tidy", prompt: "Tidy up." },
+      ],
+    });
+  });
+
+  it("is undefined when no workflow is asked for", async () => {
+    expect(await workflowFrom(undefined, config, project())).toBeUndefined();
+  });
+
+  it("refuses a workflow the file does not define, naming the ones it does", async () => {
+    await expect(workflowFrom("ship", config, project())).rejects.toMatchObject({
+      message: unknownWorkflow("ship", ["plan-then-build"]),
+      exitCode: EXIT.configuration,
+    });
+    expect(unknownWorkflow("ship", ["plan-then-build"])).toBe("There's no workflow called `ship`. Your config file defines `plan-then-build`.");
+    expect(unknownWorkflow("ship", [])).toBe("There's no workflow called `ship`: your config file defines none. Add one under `workflows`, or leave out `--workflow`.");
+  });
+});
+
+describe("ignoredSettings and --workflow", () => {
+  const header: CaseFileHeader = {
+    surfaceId: "s",
+    taskDef: { intent: "x" },
+    gateRef: { type: "command", command: "npm test", parseMode: "exitcode" },
+    closerRef: { type: "commit-to-branch" },
+    baseline: null,
+    baseBranch: null,
+    workflow: { name: "plan-then-build", steps: [{ name: "a", prompt: "x" }] },
+  };
+
+  it("names --workflow when it differs from the run being picked up", () => {
+    expect(ignoredSettings({ workflow: "other" }, {}, header)).toContain("--workflow");
+    expect(ignoredSettings({ workflow: "plan-then-build" }, {}, header)).not.toContain("--workflow");
   });
 });
