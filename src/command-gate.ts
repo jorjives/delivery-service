@@ -1,8 +1,8 @@
-import { execFile as execFileCb } from "node:child_process";
 import type { GateReport, GateRef, GuardSwitches, TaskDef, Assertion } from "./schema.js";
 import { parseTap, parseJunit, parseExitCode } from "./parsers.js";
 import { ParseError } from "./errors.js";
 import { errorReport, messageOf, duplicateIdReport } from "./gate-support.js";
+import { runShell, type ShellResult } from "./shell.js";
 
 export interface GateContext {
   worktreePath: string;
@@ -21,43 +21,7 @@ export interface Gate {
   check(ctx: GateContext): Promise<GateReport>;
 }
 
-interface ExecResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
 const DEFAULT_TIMEOUT_MS = 300_000; // 5 minutes
-
-function exec(command: string, cwd: string, timeoutMs: number, env?: NodeJS.ProcessEnv): Promise<ExecResult> {
-  return new Promise((resolve, reject) => {
-    execFileCb(
-      "/bin/sh",
-      ["-c", command],
-      { cwd, timeout: timeoutMs, maxBuffer: 50 * 1024 * 1024, env },
-      (err, stdout, stderr) => {
-        if (err && "code" in err && typeof err.code === "string") {
-          // System-level error (ENOENT, ETIMEDOUT, etc.) — not a command exit code
-          reject(err);
-          return;
-        }
-        if (err && "killed" in err && (err as { killed: boolean }).killed) {
-          // Process was killed (timeout or signal)
-          reject(new Error("Command timed out"));
-          return;
-        }
-        const exitCode = err && "code" in err && typeof err.code === "number"
-          ? err.code
-          : err ? 1 : 0;
-        resolve({
-          stdout: typeof stdout === "string" ? stdout : "",
-          stderr: typeof stderr === "string" ? stderr : "",
-          exitCode,
-        });
-      },
-    );
-  });
-}
 
 async function run(
   command: string,
@@ -66,9 +30,9 @@ async function run(
   timeoutMs: number,
   env?: NodeJS.ProcessEnv,
 ): Promise<GateReport> {
-  let result: ExecResult;
+  let result: ShellResult;
   try {
-    result = await exec(command, cwd, timeoutMs, env);
+    result = await runShell(command, [], { cwd, timeoutMs, env });
   } catch (err) {
     return errorReport(`Command execution failed: ${messageOf(err)}`);
   }
@@ -118,7 +82,7 @@ const lastLines = (text: string): string => text.trim().split("\n").slice(-5).jo
 
 async function setupProblem(setup: string, ctx: GateContext, timeoutMs: number): Promise<string | undefined> {
   try {
-    const result = await exec(setup, ctx.worktreePath, timeoutMs, ctx.env);
+    const result = await runShell(setup, [], { cwd: ctx.worktreePath, timeoutMs, env: ctx.env });
     return result.exitCode === 0 ? undefined : `setup \`${setup}\` failed (exit ${result.exitCode}): ${lastLines(result.stderr || result.stdout)}`;
   } catch (err) {
     return `setup \`${setup}\` could not run: ${messageOf(err)}`;
@@ -139,7 +103,7 @@ export function createCommandGate(
     } finally {
       // ponytail: a teardown failure is warned about and never changes the verdict; record it on the gate entry if operators need it.
       if (options.teardown !== undefined) {
-        await exec(options.teardown, ctx.worktreePath, timeoutMs, ctx.env)
+        await runShell(options.teardown, [], { cwd: ctx.worktreePath, timeoutMs, env: ctx.env })
           .then((r) => { if (r.exitCode !== 0) console.warn(`gate teardown \`${options.teardown}\` exited ${r.exitCode}`); })
           .catch((err: unknown) => console.warn(`gate teardown \`${options.teardown}\` could not run: ${messageOf(err)}`));
       }
