@@ -283,7 +283,7 @@ The flagged code and a check's pattern are never in it: either may hold a secret
 
 ## Where a review is kept
 
-Each review is a folder under `.delivery/packs/` in your project. `.delivery/` ignores itself, so nothing shows up in `git status`. If a review is interrupted after the agent has replied, run the same command again: the review is finished from the saved reply without asking the agent again. If it is interrupted while the agent is working, running it again starts the review afresh. If a review could not run (not signed in, no connection, a usage limit, or a reply the harness could not read), it says so in one sentence and saves nothing.
+Each review is a folder under `.delivery/packs/` in your project. `.delivery/` ignores everything in it except `backlog/`, so nothing a review keeps shows up in `git status`. If a review is interrupted after the agent has replied, run the same command again: the review is finished from the saved reply without asking the agent again. If it is interrupted while the agent is working, running it again starts the review afresh. If a review could not run (not signed in, no connection, a usage limit, or a reply the harness could not read), it says so in one sentence and saves nothing.
 
 A password, key or token a review finds is never shown: not in the review, `delivery findings`, `--json`, `delivery status`, `delivery report` or any error. It is shown as its first four characters, an ellipsis and its length, such as `pay-… (21 characters)`. The records that must hold it to check the fix stay under `.delivery/`, readable only by you.
 

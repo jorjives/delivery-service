@@ -33,7 +33,7 @@ You need Node 22 or later, git, and a signed-in Claude Code (`claude auth login`
 follow [Getting started](docs/getting-started.md): it packs this checkout and installs the
 result, because the package is not on the public registry until a licence is chosen.
 
-Each run keeps its record in `.delivery/runs/` in your repository (the folder ignores itself,
+Each run keeps its record in `.delivery/runs/` in your repository (the folder ignores everything in it except `.delivery/backlog/`, your work items,
 so `git status` does not change) and its working copy under
 `~/.local/state/delivery-service/worktrees/` (or `$XDG_STATE_HOME`, when set).
 

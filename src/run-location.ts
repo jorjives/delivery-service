@@ -54,10 +54,13 @@ export function supervisorLockPath(repoPath: string): string {
   return join(repoPath, ".delivery", "supervisor.lock");
 }
 
-/** Make `.delivery/`, and make it ignore itself, so nothing the harness keeps there ever shows in `git status`. The repository's own `.gitignore` is never touched. */
+/** Ignore everything the harness keeps in `.delivery/` (run records, locks, saved reports, this file) except the backlog, which is the project's own. */
+export const DELIVERY_IGNORE = "*\n!backlog/\n!backlog/**\n";
+
+/** Make `.delivery/`, and make it ignore everything in it but `backlog/`, so nothing the harness keeps there shows in `git status`. The repository's own `.gitignore` is never touched. */
 export async function prepareDeliveryDir(repoPath: string): Promise<void> {
   await mkdir(join(repoPath, ".delivery"), { recursive: true });
-  await writeFile(join(repoPath, ".delivery", ".gitignore"), "*\n");
+  await writeFile(join(repoPath, ".delivery", ".gitignore"), DELIVERY_IGNORE);
 }
 
 /**

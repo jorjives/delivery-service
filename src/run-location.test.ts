@@ -3,9 +3,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { git } from "../tests/helpers.js";
 import { cleanGitEnv } from "./git-env.js";
 import { initTempRepo } from "./temp-repo.js";
-import { prepareRunDir, repoKey, runIdFor, runPlace, runsRoot, stateHome, supervisedPlace, supervisedRunId } from "./run-location.js";
+import { DELIVERY_IGNORE, prepareDeliveryDir, prepareRunDir, repoKey, runIdFor, runPlace, runsRoot, stateHome, supervisedPlace, supervisedRunId } from "./run-location.js";
 import { startedInstant } from "./run-records.js";
 
 const AT = new Date("2026-09-14T21:03:09.123Z");
@@ -88,7 +89,7 @@ describe("prepareRunDir", () => {
     await prepareRunDir(repo, dir);
 
     expect(existsSync(dir)).toBe(true);
-    expect(readFileSync(join(repo, ".delivery", ".gitignore"), "utf-8")).toBe("*\n");
+    expect(readFileSync(join(repo, ".delivery", ".gitignore"), "utf-8")).toBe(DELIVERY_IGNORE);
     expect(execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf-8", env: cleanGitEnv() })).toBe("");
   });
 
@@ -105,6 +106,19 @@ describe("prepareRunDir", () => {
     writeFileSync(join(dir, "case.json"), "{}");
     await expect(prepareRunDir(repo, dir)).rejects.toThrow(/EEXIST/);
     expect(readFileSync(join(dir, "case.json"), "utf-8")).toBe("{}");
+  });
+});
+
+describe("the .delivery folder", () => {
+  it("ignores the harness's own records but lets the backlog be tracked", async () => {
+    const repo = initTempRepo("delivery-dir-", { "package.json": "{}" });
+    await prepareDeliveryDir(repo);
+    mkdirSync(join(repo, ".delivery", "runs", "r1"), { recursive: true });
+    writeFileSync(join(repo, ".delivery", "runs", "r1", "case.json"), "{}");
+    mkdirSync(join(repo, ".delivery", "backlog"), { recursive: true });
+    writeFileSync(join(repo, ".delivery", "backlog", "20261016T090000Z-x.md"), "---\nstatus: open\n---\nx\n");
+
+    expect(git(repo, ["status", "--porcelain", "--untracked-files=all"])).toBe("?? .delivery/backlog/20261016T090000Z-x.md");
   });
 });
 
