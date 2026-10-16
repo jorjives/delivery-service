@@ -8,7 +8,7 @@ import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { agentOptionsLine, noSuchTask, OWN_SETUP, previewIntro, RULE, SINGLE_TASK, TASK_NUMBER } from "./preview-command.js";
+import { agentOptionsLine, CONTINUES, noSuchStep, noSuchTask, OWN_SETUP, previewIntro, RULE, SINGLE_TASK, stepHeading, stepInMany, TASK_NUMBER } from "./preview-command.js";
 import { EVERY_TASK_DONE } from "./queue.js";
 import { NO_TASK } from "./settings.js";
 
@@ -259,5 +259,64 @@ describe("what a preview says beside the instructions", () => {
     const { stdout } = await delivery(["preview"], { cwd: repo });
     const lines = stdout.trimEnd().split("\n");
     expect(lines.slice(-3)).toEqual([...OWN_SETUP, 'Agent options: model "opus".']);
+  });
+});
+
+const WORKFLOWS = {
+  "plan-then-build": {
+    steps: [
+      { name: "plan", prompt: "Write a short plan to PLAN.md.", gate: { type: "file-exists", path: "PLAN.md" } },
+      { name: "build", prompt: "Carry out PLAN.md.", continue: true, agent: { model: "opus" } },
+    ],
+  },
+};
+
+describe("delivery preview --step", () => {
+  it("prints the step's exact instructions and its effective agent options", async () => {
+    const repo = repoWith({ ...PROJECT, agent: { effort: "high" }, workflows: WORKFLOWS });
+    const { stdout, exitCode } = await delivery(["preview", "--step", "build"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(stepHeading(2, 2, "plan-then-build", "build"));
+    expect(stdout).toContain('## Step\nStep 2 of 2, "build":\nCarry out PLAN.md.');
+    expect(stdout).toContain("the command `npm test`"); // build names no gate: the project's
+    expect(stdout.endsWith(`${agentOptionsLine({ effort: "high", model: "opus" })}\n`)).toBe(true);
+  });
+
+  it("says when a step continues the previous step's session, and only then", async () => {
+    const repo = repoWith({ ...PROJECT, workflows: WORKFLOWS });
+    expect((await delivery(["preview", "--step", "build"], { cwd: repo })).stdout).toContain(CONTINUES);
+    expect((await delivery(["preview", "--step", "plan"], { cwd: repo })).stdout).not.toContain(CONTINUES);
+  });
+
+  it("shows a step's own gate in its Acceptance", async () => {
+    const repo = repoWith({ ...PROJECT, workflows: WORKFLOWS });
+    const { stdout } = await delivery(["preview", "--step", "plan"], { cwd: repo });
+    expect(stdout).toContain("test -f 'PLAN.md'");
+  });
+
+  it("previews a task typed on the command line", async () => {
+    const repo = repoWith({ gate: PROJECT.gate, workflows: WORKFLOWS });
+    const { stdout } = await delivery(["preview", "--task", "add a rota page", "--step", "plan"], { cwd: repo });
+    expect(stdout).toContain('"intent": "add a rota page"');
+  });
+
+  it("refuses a step no workflow has", async () => {
+    const repo = repoWith({ ...PROJECT, workflows: WORKFLOWS });
+    const { stderr, exitCode } = await delivery(["preview", "--step", "ship"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(noSuchStep("ship"));
+  });
+
+  it("asks which workflow when two have the step", async () => {
+    const repo = repoWith({ ...PROJECT, workflows: { ...WORKFLOWS, other: { steps: [{ name: "plan", prompt: "x" }] } } });
+    const { stderr, exitCode } = await delivery(["preview", "--step", "plan"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(stepInMany("plan", ["plan-then-build", "other"]));
+    expect((await delivery(["preview", "--step", "plan", "--workflow", "other"], { cwd: repo })).exitCode).toBe(EXIT.ok);
+  });
+
+  it("leaves a preview without --step unchanged", async () => {
+    const repo = repoWith({ ...PROJECT, workflows: WORKFLOWS });
+    expect((await delivery(["preview"], { cwd: repo })).stdout).not.toContain("## Step");
   });
 });

@@ -178,6 +178,9 @@ export async function runCli(io: CliIo): Promise<number> {
     .description(
       "show exactly what the agent will be told for the next task on your list, before anything runs: no agent, no sign-in, and nothing on disk changes",
     )
+    .option("--task <text>", "preview this task, as `delivery run --task` would take it")
+    .option("--step <name>", "show what this step of a workflow will be told, and the agent options it runs with")
+    .option("--workflow <name>", "the workflow --step is in, when more than one has a step of that name")
     .option("--queue-index <n>", 'show this task on your list instead, counted from 1 as in "Task 1 of 3"', taskNumber)
     .addOption(
       new Option("--role <role>", "whose instructions to show: the worker doing the task, or gate-maintenance, the agent that repairs your check when it can't run")

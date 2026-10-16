@@ -777,6 +777,8 @@ check can't run. A project with a single `task` shows that one. Like `delivery v
 needs no agent, no sign-in and no network, changes nothing on disk, reports a problem with your
 configuration in the same words, and takes `--config` and `--repo`.
 
+For a workflow, `delivery preview --step build` shows what that step's agent will be told, with its own instruction and check, and the agent options it runs with (yours, with the step's laid over them). Add `--workflow <name>` when two workflows have a step of that name, and `--task "..."` to preview a task you would type.
+
 ## Review your project for problems
 
 With nothing configured, ask for a code review:

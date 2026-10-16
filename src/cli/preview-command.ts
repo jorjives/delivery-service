@@ -2,14 +2,15 @@ import { InvalidArgumentError } from "commander";
 import { DEFAULT_ROLES } from "../agent-invoke.js";
 import { initialCaseFile } from "../case-file.js";
 import { assemblePrompt, type PromptEvidence } from "../prompt-assembly.js";
-import type { AgentOptions, TaskDef } from "../schema.js";
-import type { DeliveryConfig } from "./config.js";
+import type { AgentOptions, PinnedWorkflow, TaskDef } from "../schema.js";
+import { stepView } from "../workflow-step.js";
+import { andList, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { EVERY_TASK_DONE, nextQueueTask, queueTasks, taskHeading } from "./queue.js";
 import { allRuns } from "./runs.js";
 import { taskIntent } from "../task-list.js";
-import { NO_TASK } from "./settings.js";
+import { NO_TASK, unknownWorkflow, workflowFrom } from "./settings.js";
 import { locateConfig, readProject, type ValidateOptions } from "./validate-command.js";
 
 /** The roles an owner can see the instructions of. Triage is the harness's own and is not configurable from the file. */
@@ -21,6 +22,38 @@ export interface PreviewOptions extends ValidateOptions {
   /** Which task on the list, counted from 1 as "Task N of M" counts. */
   queueIndex?: number;
   role: PreviewRole;
+  /** A workflow step to show instead of the task's single step. */
+  step?: string;
+  /** Which workflow `step` is in, when more than one has a step of that name. */
+  workflow?: string;
+  /** A task typed now, as `delivery run --task` takes it, instead of one from the file. */
+  task?: string;
+}
+
+export const noSuchStep = (step: string): string => `None of your workflows has a step called \`${step}\`.`;
+export const stepInMany = (step: string, workflows: string[]): string =>
+  `More than one workflow has a step called \`${step}\` (${andList(workflows)}). Add \`--workflow <name>\` to say which.`;
+export const stepHeading = (index: number, of: number, workflow: string, step: string): string =>
+  `Step ${index} of ${of} of the workflow \`${workflow}\`: ${step}`;
+export const CONTINUES = "This step continues the previous step's agent session on its first attempt; a retry starts fresh.";
+
+/** The workflow and the step in it to preview, or undefined when no step was asked for. */
+async function chooseStep(config: DeliveryConfig, repoPath: string, options: PreviewOptions): Promise<{ workflow: PinnedWorkflow; index: number } | undefined> {
+  if (options.step === undefined && options.workflow === undefined) return undefined;
+  const known = Object.keys(config.workflows ?? {});
+  if (options.workflow !== undefined && !known.includes(options.workflow)) {
+    throw new Refusal(unknownWorkflow(options.workflow, known), EXIT.configuration);
+  }
+  const named = options.workflow === undefined ? known : [options.workflow];
+  // `--workflow` alone shows its first step.
+  const wanted = options.step ?? config.workflows?.[named[0] ?? ""]?.steps[0]?.name;
+  const holding = named.filter((name) => config.workflows?.[name]?.steps.some((step) => step.name === wanted));
+  const [only] = holding;
+  if (only === undefined || wanted === undefined) throw new Refusal(noSuchStep(options.step ?? ""), EXIT.configuration);
+  if (holding.length > 1) throw new Refusal(stepInMany(wanted, holding), EXIT.configuration);
+  const workflow = await workflowFrom(only, config, repoPath);
+  if (workflow === undefined) return undefined;
+  return { workflow, index: workflow.steps.findIndex((step) => step.name === wanted) + 1 };
 }
 
 export const noSuchTask = (n: number, of: number): string => `There's no task ${n}; your queue has ${of}.`;
@@ -78,7 +111,9 @@ async function chooseTask(
   config: DeliveryConfig,
   repoPath: string,
   queueIndex: number | undefined,
+  task: string | undefined,
 ): Promise<{ heading: string; taskDef: TaskDef } | undefined> {
+  if (task !== undefined) return { heading: `Your task: ${task}`, taskDef: { intent: task } };
   if (config.tasks) {
     const tasks = queueTasks(config);
     if (queueIndex !== undefined) {
@@ -110,7 +145,7 @@ async function chooseTask(
 export async function previewCommand(options: PreviewOptions, ctx: CommandContext): Promise<ExitCode> {
   const { repoPath, file } = await locateConfig(options, ctx);
   const { config, project } = await readProject(file, repoPath, ctx.env);
-  const chosen = await chooseTask(config, repoPath, options.queueIndex);
+  const chosen = await chooseTask(config, repoPath, options.queueIndex, options.task);
   if (chosen === undefined) {
     ctx.writeLine(EVERY_TASK_DONE);
     return EXIT.ok;
@@ -120,19 +155,27 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
   // The id is fixed rather than made from the clock, as a real run's is: it
   // is not part of what an agent is told, and a fixed one keeps two previews
   // of the same project identical.
+  const stepped = await chooseStep(config, repoPath, options);
   const standIn = initialCaseFile(
-    { surfaceId: "preview", taskDef: chosen.taskDef, gateRef, closerRef, domainPrompt, ...(agent === undefined ? {} : { agent }) },
+    { surfaceId: "preview", taskDef: chosen.taskDef, gateRef, closerRef, domainPrompt, ...(agent === undefined ? {} : { agent }), ...(stepped === undefined ? {} : { workflow: stepped.workflow }) },
     budgets,
   );
+  // The record as it stands when the step starts: step 1 has no step entry, a later one opens with its own. The start
+  // commit is not part of what an agent is told, so a fixed one keeps two previews identical.
+  const atStep = stepped === undefined || stepped.index === 1 ? standIn : { ...standIn, history: [{ t: "step" as const, step: stepped.index, startCommit: "preview" }] };
+  const view = stepView(atStep);
   const roleCfg = DEFAULT_ROLES[options.role];
-  const { systemPrompt, prompt } = assemblePrompt(standIn, roleCfg, FIRST_DISPATCH);
+  const { systemPrompt, prompt } = assemblePrompt(view, roleCfg, FIRST_DISPATCH);
+  const previewed = stepped?.workflow.steps[stepped.index - 1];
 
   ctx.writeLine(chosen.heading);
+  if (stepped !== undefined && previewed !== undefined) ctx.writeLine(stepHeading(stepped.index, stepped.workflow.steps.length, stepped.workflow.name, previewed.name));
   ctx.writeLine("");
   ctx.writeLine(previewIntro(options.role));
   ctx.writeLine(RULE);
   ctx.writeLine(`${systemPrompt}\n\n${prompt}`);
   ctx.writeLine(RULE);
-  for (const line of [...OWN_SETUP, agentOptionsLine(project.agent)]) ctx.writeLine(line);
+  // `continue` is part of how the step's session is set up, so the preview says so, before the options line.
+  for (const line of [...OWN_SETUP, ...(previewed?.continue === true ? [CONTINUES] : []), agentOptionsLine(view.header.agent)]) ctx.writeLine(line);
   return EXIT.ok;
 }
