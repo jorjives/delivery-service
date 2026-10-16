@@ -1,0 +1,143 @@
+import { describe, expect, it } from "vitest";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { git } from "../tests/helpers.js";
+import { initTempRepo } from "./temp-repo.js";
+import { awaitsMerge, classOf, foldLedger, ledgerPath, parkedItems, readItemLedger, recordAnswer, recordDispatched, recordUnpark, settleRun } from "./item-ledger.js";
+import type { CaseFile, CaseFileOutcome } from "./schema.js";
+import type { RunRecord } from "./run-records.js";
+
+const KEY = "backlog:20261016T090000Z-greet.md";
+const at = "2026-10-16T09:00:00.000Z";
+const recordWith = (runId: string, outcome: CaseFileOutcome, repoPath = "repo"): RunRecord =>
+  ({ runId, repoPath, dir: "dir", caseFile: { header: {}, cursor: {}, history: [], outcome } as unknown as CaseFile });
+const escalated = (cause: CaseFileOutcome["cause"]): CaseFileOutcome => ({ kind: "escalated", source: "worker", reason: "r", at, ...(cause ? { cause } : {}) });
+const scratch = () => join(mkdtempSync(join(tmpdir(), "ledger-")), "items.jsonl");
+
+describe("classOf", () => {
+  it.each([
+    [{ kind: "closed", source: "closer", reason: "r", at } as CaseFileOutcome, "delivered"],
+    [escalated({ kind: "budget", population: "terminus" }), "interrupted"],
+    [escalated({ kind: "budget", population: "correction" }), "exhausted"],
+    [escalated({ kind: "budget", population: "gateError" }), "exhausted"],
+    [escalated({ kind: "budget", population: "close" }), "escalated"],
+    [{ kind: "aborted", source: "triage", reason: "r", at, cause: { kind: "triage_abort" } } as CaseFileOutcome, "exhausted"],
+    [escalated({ kind: "decision", question: "Which?" }), "decision"],
+    [escalated({ kind: "authority", role: "worker" }), "escalated"],
+    [escalated(undefined), "escalated"],
+  ])("classes %j as %s", (outcome, expected) => {
+    expect(classOf(recordWith("r1", outcome).caseFile)).toBe(expected);
+  });
+});
+
+describe("the ledger", () => {
+  it("lives beside the worktrees, keyed by repository", () => {
+    expect(ledgerPath("/srv/app", { XDG_STATE_HOME: "/state" })).toBe(join("/state", "delivery-service", "ledger", "srv-app", "items.jsonl"));
+  });
+
+  it("is empty when nothing was ever recorded", async () => {
+    expect((await readItemLedger(scratch())).size).toBe(0);
+  });
+
+  it("counts consecutive unsuccessful runs and parks after parkAfter of them", async () => {
+    const path = scratch();
+    for (const runId of ["r1", "r2"]) {
+      await recordDispatched(path, KEY, runId, "Greet people.");
+      expect((await settleRun(path, KEY, recordWith(runId, escalated({ kind: "budget", population: "correction" })), 3)).parked).toBeNull();
+    }
+    await recordDispatched(path, KEY, "r3", "Greet people.");
+    const state = await settleRun(path, KEY, recordWith("r3", escalated({ kind: "budget", population: "correction" })), 3);
+    expect(state).toMatchObject({ attempts: 3, lastClass: "exhausted", parked: "attempts", settled: true });
+  });
+
+  it("parks a decision at once, with its question, and an answer unparks it", async () => {
+    const path = scratch();
+    await recordDispatched(path, KEY, "r1", "Greet people.");
+    expect(await settleRun(path, KEY, recordWith("r1", escalated({ kind: "decision", question: "Formal?" })), 3)).toMatchObject({ parked: "decision", question: "Formal?" });
+    await recordAnswer(path, KEY, "Formal, please.");
+    expect((await readItemLedger(path)).get(KEY)).toMatchObject({ parked: null, answer: "Formal, please.", question: "Formal?", lastClass: "decision", attempts: 0 });
+  });
+
+  it("parks any other escalation at once", async () => {
+    const path = scratch();
+    await recordDispatched(path, KEY, "r1", "Greet people.");
+    expect((await settleRun(path, KEY, recordWith("r1", escalated({ kind: "authority", role: "worker" })), 3)).parked).toBe("escalated");
+  });
+
+  it("resets on delivery and remembers when it last closed, the branch it landed on and that branch's tip", async () => {
+    const repo = initTempRepo("ledger-", { "package.json": "{}" });
+    const path = scratch();
+    await recordDispatched(path, KEY, "r1", "Greet people.");
+    await settleRun(path, KEY, recordWith("r1", escalated({ kind: "budget", population: "correction" })), 3);
+    git(repo, ["checkout", "-q", "-b", "surface/greet-20261016T090000Z"]);
+    git(repo, ["commit", "-q", "--allow-empty", "-m", "work"]);
+    const tip = git(repo, ["rev-parse", "HEAD"]);
+    git(repo, ["checkout", "-q", "main"]);
+    await recordDispatched(path, KEY, "greet-20261016T090000Z", "Greet people.");
+    const state = await settleRun(path, KEY, recordWith("greet-20261016T090000Z", { kind: "closed", source: "closer", reason: "r", at }, repo), 3);
+    expect(state).toMatchObject({ attempts: 0, lastClass: "delivered", branch: "surface/greet-20261016T090000Z", commit: tip, parked: null });
+    expect(state.lastClosedAt).not.toBeNull();
+  });
+
+  it("records the base tip as the delivered commit when a closer already merged the work and deleted the branch", async () => {
+    const repo = initTempRepo("ledger-", { "package.json": "{}" });
+    const path = scratch();
+    await recordDispatched(path, KEY, "gone", "Greet people.");
+    const state = await settleRun(path, KEY, recordWith("gone", { kind: "closed", source: "closer", reason: "r", at }, repo), 3);
+    expect(state.commit).toBe(git(repo, ["rev-parse", "main"]));
+  });
+
+  it("drops an unparked item's state back to fresh", async () => {
+    const path = scratch();
+    await recordDispatched(path, KEY, "r1", "Greet people.");
+    await settleRun(path, KEY, recordWith("r1", escalated({ kind: "authority", role: "worker" })), 3);
+    await recordUnpark(path, KEY);
+    expect((await readItemLedger(path)).get(KEY)).toMatchObject({ parked: null, attempts: 0, lastClass: null, question: null, answer: null });
+  });
+
+  it("marks a dispatched run unsettled, and consumes a recorded answer", () => {
+    const state = foldLedger([
+      { t: "answered", key: KEY, answer: "Yes.", at },
+      { t: "dispatched", key: KEY, runId: "r2", intent: "Greet people.", at },
+    ]).get(KEY);
+    expect(state).toMatchObject({ lastRunId: "r2", settled: false, answer: null });
+  });
+
+  describe("awaitsMerge", () => {
+    const delivered = (over: { branch: string | null; commit: string | null }) => ({ key: KEY, lastClass: "delivered" as const, ...over }) as never;
+
+    it("is true while the delivered branch still exists", async () => {
+      const repo = initTempRepo("await-", { "package.json": "{}" });
+      git(repo, ["branch", "surface/kept"]);
+      expect(await awaitsMerge(repo, delivered({ branch: "surface/kept", commit: null }))).toBe(true);
+    });
+
+    it("is true once the branch is gone but its commit is on the local base branch (merged, not yet pushed)", async () => {
+      const repo = initTempRepo("await-", { "package.json": "{}" });
+      expect(await awaitsMerge(repo, delivered({ branch: "surface/merged", commit: git(repo, ["rev-parse", "main"]) }))).toBe(true);
+    });
+
+    it("is false when the branch was deleted without the work reaching the base", async () => {
+      const repo = initTempRepo("await-", { "package.json": "{}" });
+      git(repo, ["checkout", "-q", "-b", "stray"]);
+      git(repo, ["commit", "-q", "--allow-empty", "-m", "stray work"]);
+      const stray = git(repo, ["rev-parse", "HEAD"]);
+      git(repo, ["checkout", "-q", "main"]);
+      git(repo, ["branch", "-D", "stray"]);
+      expect(await awaitsMerge(repo, delivered({ branch: "surface/stray", commit: stray }))).toBe(false);
+    });
+
+    it("is false for an item that was never delivered", async () => {
+      const repo = initTempRepo("await-", { "package.json": "{}" });
+      expect(await awaitsMerge(repo, undefined)).toBe(false);
+    });
+  });
+
+  it("lists what is parked", async () => {
+    const path = scratch();
+    await recordDispatched(path, KEY, "r1", "Greet people.");
+    await settleRun(path, KEY, recordWith("r1", escalated({ kind: "authority", role: "worker" })), 3);
+    expect(parkedItems(await readItemLedger(path)).map((s) => s.key)).toEqual([KEY]);
+  });
+});

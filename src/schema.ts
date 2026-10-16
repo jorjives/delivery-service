@@ -439,8 +439,8 @@ export type HistoryEntry = z.infer<typeof HistoryEntry>;
 
 /**
  * Why a task stopped, as a closed set a reader can switch on. Written with the
- * outcome and read only by reporting: nothing that decides what a run does
- * next reads it.
+ * outcome and read by reporting, and once by the item ledger when a run of an
+ * item settles, to decide whether the item is parked.
  */
 export const OutcomeCause = z.object({
   kind: z.enum([
