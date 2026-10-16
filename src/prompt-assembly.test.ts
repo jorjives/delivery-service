@@ -221,10 +221,17 @@ describe("worker and gate-maintenance prompts carry no setback", () => {
                 "type": "string",
                 "enum": [
                   "exhaustion",
-                  "authority"
-                ]
+                  "authority",
+                  "decision"
+                ],
+                "description": "exhaustion: you are stuck; authority: the work needs permission you were not given; decision: you need the operator to choose something before you can go on"
               },
               "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "question": {
+                "description": "decision only: the one question the operator must answer, written for them to read",
                 "type": "string",
                 "minLength": 1
               }
@@ -302,10 +309,17 @@ describe("worker and gate-maintenance prompts carry no setback", () => {
                 "type": "string",
                 "enum": [
                   "exhaustion",
-                  "authority"
-                ]
+                  "authority",
+                  "decision"
+                ],
+                "description": "exhaustion: you are stuck; authority: the work needs permission you were not given; decision: you need the operator to choose something before you can go on"
               },
               "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "question": {
+                "description": "decision only: the one question the operator must answer, written for them to read",
                 "type": "string",
                 "minLength": 1
               }

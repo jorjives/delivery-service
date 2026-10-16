@@ -95,6 +95,11 @@ describe("deterministicRouter", () => {
     });
   });
 
+  it("never retries a decision escalation: it names the question as the cause", async () => {
+    const verdict = await deterministicRouter.triage(input("worker_escalate", fresh, "decision"));
+    expect(verdict).toMatchObject({ verdict: "escalate", cause: { kind: "decision" } });
+  });
+
   it("names an authority limit as the cause of its escalation", async () => {
     expect((await deterministicRouter.triage(input("worker_escalate", fresh, "authority"))).cause)
       .toEqual({ kind: "authority", role: "worker" });

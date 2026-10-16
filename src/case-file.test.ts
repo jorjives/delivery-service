@@ -971,6 +971,13 @@ describe("deriveStateFromEntry", () => {
     })).toBe("ESCALATED");
   });
 
+  it("sends a decision escalation straight to ESCALATED, as an authority limit is", () => {
+    expect(deriveStateFromEntry({
+      t: "terminus", attempt: 1, sessionKey: "worker-1-0", status: "escalate",
+      category: "decision", question: "Which?", rationale: "unsure",
+    })).toBe("ESCALATED");
+  });
+
   it("derives TRIAGE from an exhaustion-class worker escalate", () => {
     // The deterministic router still gets first look at an exhaustion-class
     // escalate; only an authority limit is terminal on the spot.

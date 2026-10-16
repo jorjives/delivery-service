@@ -102,7 +102,7 @@ ABORTED    (terminal) — infra failure; worktree may be torn down
 Notes:
 
 - **The terminus is a discriminated union**, not a boolean: `completed` vs
-  `escalate`, and `escalate` carries a category (`exhaustion` vs `authority`).
+  `escalate`, and `escalate` carries a category (`exhaustion`, `authority` or `decision`).
 - **"Agent finished" and "structured output received" are different events.** A
   session can end without valid output. That is `INCOMPLETE_TERMINUS`, distinct
   from both escalation and gate failure, and it doubles as the crash-recovery path.
@@ -420,7 +420,7 @@ Entry =
         # worker, on the gate_maintenance budget rather than the worker's.
   | { t:"terminus", attempt, session_key,
         status: completed|escalate|incomplete,
-        category?,             # for escalate: exhaustion | authority
+        category?,             # for escalate: exhaustion | authority | decision
         rationale, role?,      # role as above; must match its dispatch
         limit?,                # for incomplete: rate | spend, the usage limit that stopped the
                                # session. Read only by reporting, never by routing.

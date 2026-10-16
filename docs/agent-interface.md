@@ -201,6 +201,8 @@ produce a valid, role-legal, schema-conforming envelope. This is what lets the
 control flow treat "the agent never cleanly signalled" as one edge, whether the
 cause was a crash or a schema violation.
 
+An `escalate` with the category `decision` carries a `question` for the operator, and goes straight to `ESCALATED`, as an `authority` limit does: it is never retried.
+
 One end of the list is not uniform in what the edge *does* with it. A session the
 runtime refused to start never happened, so no retry of it can land differently;
 the primitive marks that terminus `notRun`, and the edge escalates it after one

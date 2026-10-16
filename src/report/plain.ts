@@ -22,6 +22,7 @@ type Stop =
   | "say_so"
   | "say_so_in_repair"
   | "asked"
+  | "asked_you"
   | "could_not_start"
   | "check_still_fails"
   | "agent_stuck"
@@ -45,6 +46,8 @@ function stopOf({ cause, agentStuck, limit }: PlainFacts): Stop {
       return cause.role === "gate-maintenance" ? "say_so_in_repair" : "say_so";
     case "triage_escalated":
       return "asked";
+    case "decision":
+      return "asked_you";
     case "session_not_run":
       return "could_not_start";
     case "triage_abort":
@@ -79,6 +82,7 @@ const GROUP: Record<Stop, PlainGroup> = {
   say_so: "needs_your_decision",
   say_so_in_repair: "needs_your_decision",
   asked: "needs_your_decision",
+  asked_you: "needs_your_decision",
   could_not_start: "needs_your_decision",
   check_still_fails: "failed_after_attempts",
   agent_stuck: "failed_after_attempts",
@@ -113,6 +117,7 @@ const SENTENCE: Record<Stop, (facts: PlainFacts) => string> = {
   say_so: () => "Needs your decision. The agent stopped and said it could not go on without your say-so.",
   say_so_in_repair: () => "Needs your decision. While repairing the check, the agent stopped and said it could not go on without your say-so.",
   asked: () => "Needs your decision. The agent stopped and asked for a person to decide.",
+  asked_you: ({ cause }) => `Needs your answer. The agent asked: ${cause?.kind === "decision" ? cause.question : "the question was not recorded"}`,
   could_not_start: () => "Needs you. The agent could not be started, which usually means a sign-in or credential only you can supply.",
   check_still_fails: ({ attempts }) =>
     `Failed after ${attemptsWord(attempts)}. The agent tried ${timesWord(attempts)} and the check you set up still does not pass.`,
@@ -133,12 +138,13 @@ const SENTENCE: Record<Stop, (facts: PlainFacts) => string> = {
 };
 
 /** The route that works for each kind of stop. A finished task is never resumed, and running an unchanged list again only retells it. */
-type Route = "decide" | "reword" | "sign_in" | "wait" | "engineer" | "landed" | "none";
+type Route = "decide" | "answer" | "reword" | "sign_in" | "wait" | "engineer" | "landed" | "none";
 
 const ROUTE: Record<Stop, Route> = {
   say_so: "decide",
   say_so_in_repair: "decide",
   asked: "decide",
+  asked_you: "answer",
   could_not_start: "sign_in",
   check_still_fails: "reword",
   agent_stuck: "reword",
@@ -168,6 +174,10 @@ const NEXT: Record<Route, (facts: PlainFacts) => string[]> = {
     listed
       ? ["Decide. To say yes, add the permission to the task wording. To say no, remove the task from your list.", RUN_LIST]
       : [`Decide. To say yes, run the task again with the permission in its wording: ${RUN_REWORDED}. To say no, do nothing more.`],
+  answer: ({ listed }) =>
+    listed
+      ? ["Answer it by adding your answer to the task's wording in your list.", RUN_LIST]
+      : [`Run the task again with your answer in its wording: ${RUN_REWORDED}`],
   reword: ({ listed }) =>
     listed ? ["Reword the task, or remove it from your list.", RUN_LIST] : [`Reword the task and run it again: ${RUN_REWORDED}`],
   sign_in: ({ listed }) => ["Check that the agent can sign in on this machine.", RUN_AGAIN_ALONE, ...(listed ? [THEN_THE_LIST] : [])],

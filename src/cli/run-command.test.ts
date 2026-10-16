@@ -105,6 +105,21 @@ describe("delivery run", () => {
   );
 
   it(
+    "stops a run whose agent asks a question, and shows the question in the packet",
+    async () => {
+      const repo = initTempRepo("run-command-decision-", { "package.json": PACKAGE });
+      const asks: MockScript = { expectations: [{ json: { status: "escalate", category: "decision", question: "Formal or casual greeting?", rationale: "the task does not say" } }] };
+      const { exitCode, stdout } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(asks) } });
+
+      expect(exitCode).toBe(EXIT.escalated);
+      expect(stdout).toContain("It asked: Formal or casual greeting?");
+      const [record] = await allRuns(repo);
+      expect(record?.caseFile.outcome?.cause).toEqual({ kind: "decision", question: "Formal or casual greeting?" });
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
     "exits aborted when the run cannot start, as in a repository with no commits",
     async () => {
       const repo = mkdtempSync(join(tmpdir(), "run-command-aborted-"));

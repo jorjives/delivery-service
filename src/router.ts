@@ -41,6 +41,17 @@ export const deterministicRouter: TriagePort = {
       });
     }
 
+    // A question for the operator is never retried. The live path never routes
+    // one through here (deriveStateFromEntry sends it straight to ESCALATED), so
+    // this is reached only by a crash-recovered tail, which keeps no question.
+    if (input.trigger === "worker_escalate" && input.category === "decision") {
+      return Promise.resolve({
+        verdict: "escalate",
+        rationale: "decision: the worker asked the operator a question",
+        cause: { kind: "decision", question: "the question was not recorded" },
+      });
+    }
+
     if (input.trigger === "gate_error") {
       const { used, max } = input.remainingBudgets.gateError;
       if (used < max) {

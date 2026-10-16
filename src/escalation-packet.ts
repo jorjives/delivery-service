@@ -61,6 +61,8 @@ export function buildEscalationPacket(cause: EscalationCause, facts: PacketFacts
 
 function decisionFor(cause: EscalationCause): string {
   switch (cause.kind) {
+    case "decision":
+      return `The agent needs your answer before it can go on. It asked: ${cause.question}`;
     case "authority":
       return `The ${ROLE_LABELS[cause.role]} stopped because it judged it lacked authority. Decide whether to grant that authority or take the action yourself.`;
     case "repair_gave_up":
@@ -87,6 +89,8 @@ function decisionFor(cause: EscalationCause): string {
 
 function reasonFor(cause: EscalationCause): string {
   switch (cause.kind) {
+    case "decision":
+      return "The agent asked a question only a person can answer; a question goes straight to a person and is never retried.";
     case "authority":
       return `The ${ROLE_LABELS[cause.role]} reported that it lacks the authority to go on; an authority limit goes straight to a person and is never retried.`;
     case "repair_gave_up":

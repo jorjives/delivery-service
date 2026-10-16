@@ -144,7 +144,7 @@ Always exactly one of three results:
 | `status` | Meaning | What the harness does next |
 |---|---|---|
 | `completed` | The agent finished and says why, in `rationale`. | Runs the gate to judge the work. The agent's word is never taken as proof. |
-| `escalate` | The agent says it cannot go on, with a `category` of `exhaustion` or `authority`. | Stops retrying that step and escalates. |
+| `escalate` | The agent says it cannot go on, with a `category` of `exhaustion`, `authority` or `decision`. | Stops retrying that step and escalates. A `decision` also carries a `question` for the operator and goes straight to them, as `authority` does. |
 | `incomplete` | The session produced nothing usable. `rationale` says which of these it was, in plain English: it crashed, it ended without a reply, it replied in the wrong shape, it could not be started, or it tried something it is not allowed to do. | Retries, within the run's budget. |
 
 You will never get a stack trace or raw error text in `rationale`. When a session

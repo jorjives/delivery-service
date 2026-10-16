@@ -293,7 +293,9 @@ export const TerminusEntry = z.object({
   attempt: z.number().int().positive(),
   sessionKey: z.string(),
   status: z.enum(["completed", "escalate", "incomplete"]),
-  category: z.enum(["exhaustion", "authority"]).optional(),
+  category: z.enum(["exhaustion", "authority", "decision"]).optional(),
+  // Decision escalations only: the question for the operator, word for word.
+  question: z.string().optional(),
   rationale: z.string(),
   role: z.enum(["worker", "gate-maintenance"]).optional(),
   // Incomplete only: no session happened at all. Persisted because the routing
@@ -443,6 +445,7 @@ export type HistoryEntry = z.infer<typeof HistoryEntry>;
 export const OutcomeCause = z.object({
   kind: z.enum([
     "authority",
+    "decision",
     "repair_gave_up",
     "session_not_run",
     "budget",
@@ -454,6 +457,8 @@ export const OutcomeCause = z.object({
   ]),
   // authority and session_not_run only: whose session it was.
   role: z.enum(["worker", "gate-maintenance"]).optional(),
+  // decision only: the question the agent asked the operator.
+  question: z.string().optional(),
   // budget only: which retries ran out.
   population: Population.optional(),
   // landed_outside_closer only: the pull request found open for the task's branch.

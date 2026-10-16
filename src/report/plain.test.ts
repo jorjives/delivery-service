@@ -32,6 +32,7 @@ const EVERY_CAUSE: OutcomeCause[] = [
   { kind: "budget", population: "close" },
   { kind: "budget" },
   { kind: "landed_outside_closer", pullRequest: "https://github.com/example/project/pull/7" },
+  { kind: "decision", question: "Formal or casual greeting?" },
 ];
 
 describe("who a stopped task is for", () => {
@@ -59,6 +60,15 @@ describe("who a stopped task is for", () => {
 
   it("gives no advice either for a cause too incomplete to explain", () => {
     expect(plainOf(facts({ kind: "budget" }))).toMatchObject({ group: "stopped", audience: "unknown", next: [] });
+  });
+});
+
+describe("a question the agent asked the operator", () => {
+  it("puts it under needs your decision, and says how to answer it on an ad hoc run", () => {
+    const plain = plainOf(facts({ kind: "decision", question: "Formal or casual greeting?" }, { listed: false }));
+    expect(plain.group).toBe("needs_your_decision");
+    expect(plain.sentence).toBe("Needs your answer. The agent asked: Formal or casual greeting?");
+    expect(plain.next).toEqual(['Run the task again with your answer in its wording: delivery run --task "the reworded task"']);
   });
 });
 

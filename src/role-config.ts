@@ -24,11 +24,23 @@ export const WorkerEnvelope = z.discriminatedUnion("status", [
     status: z.literal("completed"),
     rationale: z.string().min(1),
   }),
-  z.object({
-    status: z.literal("escalate"),
-    category: z.enum(["exhaustion", "authority"]),
-    rationale: z.string().min(1),
-  }),
+  z
+    .object({
+      status: z.literal("escalate"),
+      category: z
+        .enum(["exhaustion", "authority", "decision"])
+        .describe("exhaustion: you are stuck; authority: the work needs permission you were not given; decision: you need the operator to choose something before you can go on"),
+      rationale: z.string().min(1),
+      question: z
+        .string()
+        .min(1)
+        .optional()
+        .describe("decision only: the one question the operator must answer, written for them to read"),
+    })
+    .refine((reply) => reply.category !== "decision" || reply.question !== undefined, {
+      message: "a decision escalation must carry its question",
+      path: ["question"],
+    }),
 ]) satisfies z.ZodType<Envelope>;
 
 /**

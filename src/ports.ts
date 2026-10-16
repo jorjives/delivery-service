@@ -33,7 +33,7 @@ export interface AgentContext {
 
 export type Terminus =
   | { status: "completed"; rationale: string }
-  | { status: "escalate"; category: "exhaustion" | "authority"; rationale: string }
+  | { status: "escalate"; category: "exhaustion" | "authority" | "decision"; rationale: string; question?: string }
   | {
       status: "incomplete";
       rationale: string;
@@ -91,6 +91,7 @@ export interface AgentPort {
 /** Why a surface escalated, when no agent wrote the packet. The surface builds the packet from it. */
 export type EscalationCause =
   | { kind: "authority"; role: "worker" | "gate-maintenance" }
+  | { kind: "decision"; question: string }
   | { kind: "repair_gave_up" }
   | { kind: "session_not_run"; role: "worker" | "gate-maintenance" }
   | { kind: "budget"; population: BudgetPopulation; budget: Budget; detail: string }
@@ -99,7 +100,7 @@ export type EscalationCause =
 
 export interface TriageInput {
   trigger: "gate_fail" | "gate_error" | "worker_escalate" | "close_failure";
-  category?: "exhaustion" | "authority";
+  category?: "exhaustion" | "authority" | "decision";
   caseFile: CaseFile;
   /** Log-derived {used, max} per population, computed immediately before the call. */
   remainingBudgets: BudgetSet;

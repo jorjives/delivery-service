@@ -25,6 +25,15 @@ describe("WorkerEnvelope", () => {
     });
   });
 
+  it("accepts a decision escalation that carries its question", () => {
+    expect(WorkerEnvelope.parse({ status: "escalate", category: "decision", question: "Formal or casual greeting?", rationale: "the task does not say" }))
+      .toEqual({ status: "escalate", category: "decision", question: "Formal or casual greeting?", rationale: "the task does not say" });
+  });
+
+  it("refuses a decision escalation with no question, so the operator is never asked nothing", () => {
+    expect(WorkerEnvelope.safeParse({ status: "escalate", category: "decision", rationale: "unsure" }).success).toBe(false);
+  });
+
   it("rejects a triage-only status, so a worker cannot route itself", () => {
     expect(WorkerEnvelope.safeParse({ status: "reroute", rationale: "try again" }).success)
       .toBe(false);

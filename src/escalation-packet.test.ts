@@ -54,6 +54,12 @@ describe("buildEscalationPacket", () => {
     },
   );
 
+  it("asks the operator the agent's question, word for word", () => {
+    const packet = buildEscalationPacket({ kind: "decision", question: "Formal or casual greeting?" }, facts);
+    expect(packet.decision).toBe("The agent needs your answer before it can go on. It asked: Formal or casual greeting?");
+    expect(packet.why_now).toContain("a question goes straight to a person and is never retried");
+  });
+
   it("states a decision for a person, and a different one for each cause", () => {
     const decisions = all.map((cause) => buildEscalationPacket(cause, facts).decision);
     for (const decision of decisions) expect(decision).toMatch(/Decide (whether|how)/);

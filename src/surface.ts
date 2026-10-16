@@ -200,6 +200,8 @@ function outcomeCause(cause: EscalationCause): OutcomeCause {
     case "authority":
     case "session_not_run":
       return { kind: cause.kind, role: cause.role };
+    case "decision":
+      return { kind: "decision", question: cause.question };
     case "budget":
       return { kind: "budget", population: cause.population };
     case "repair_gave_up":
@@ -301,9 +303,11 @@ async function escalateFromTail(
     return escalateFor(dir, caseFile, location, ports, source, `a pull request was found open for the task's branch: ${pullRequest}`, { kind: "landed_outside_closer", pullRequest, sessionKey: terminus.sessionKey });
   }
   const cause: EscalationCause =
-    terminus?.category === "authority"
-      ? { kind: "authority", role: terminus.role ?? "worker" }
-      : { kind: "repair_gave_up" };
+    terminus?.category === "decision"
+      ? { kind: "decision", question: terminus.question ?? terminus.rationale }
+      : terminus?.category === "authority"
+        ? { kind: "authority", role: terminus.role ?? "worker" }
+        : { kind: "repair_gave_up" };
   return escalateFor(dir, caseFile, location, ports, source, terminus ? terminus.rationale : "the session escalated", cause);
 }
 
@@ -446,6 +450,7 @@ async function dispatchSession(
     sessionKey,
     status: terminus.status,
     ...(terminus.status === "escalate" ? { category: terminus.category } : {}),
+    ...(terminus.status === "escalate" && terminus.question !== undefined ? { question: terminus.question } : {}),
     ...(terminus.status === "incomplete" && terminus.notRun ? { notRun: true as const } : {}),
     ...(terminus.status === "incomplete" && terminus.limit ? { limit: terminus.limit } : {}),
     ...(changesRef === undefined ? {} : { changesRef }),
@@ -462,7 +467,11 @@ async function dispatchSession(
     if (pullRequest !== null) {
       return escalateFor(dir, caseFile, location, ports, role, `a pull request was found open for the task's branch: ${pullRequest}`, { kind: "landed_outside_closer", pullRequest, sessionKey });
     }
-    return escalateFor(dir, caseFile, location, ports, role, terminus.rationale, { kind: "authority", role });
+    const cause: EscalationCause =
+      terminus.status === "escalate" && terminus.category === "decision"
+        ? { kind: "decision", question: terminus.question ?? terminus.rationale }
+        : { kind: "authority", role };
+    return escalateFor(dir, caseFile, location, ports, role, terminus.rationale, cause);
   }
   await updateCursor(dir, { state });
   return { state, done: false };

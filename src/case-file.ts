@@ -276,11 +276,12 @@ export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
       // A repair sessions terminus of ANY status stays inside GATE_MAINTENANCE:
       // its edge decides between re-baselining, redispatching and escalating.
       if (entry.role === "gate-maintenance") return "GATE_MAINTENANCE";
-      // An authority limit is terminal on the spot; an exhaustion-class
-      // escalate still gets the deterministic routers first look, so a crash
-      // between the terminus and the triage entry cannot skip triage entirely.
+      // An authority limit or a question for the operator is terminal on the
+      // spot; an exhaustion-class escalate still gets the deterministic routers
+      // first look, so a crash between the terminus and the triage entry
+      // cannot skip triage entirely.
       if (entry.status === "escalate") {
-        return entry.category === "authority" ? "ESCALATED" : "TRIAGE";
+        return entry.category === "authority" || entry.category === "decision" ? "ESCALATED" : "TRIAGE";
       }
       return terminusState[entry.status] as SurfaceState;
     case "gate": return gateState[entry.status] as SurfaceState;

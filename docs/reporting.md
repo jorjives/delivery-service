@@ -67,7 +67,7 @@ Each entry of `surfaces`:
 | `standing` | Where the task stands, by the names `counts` uses |
 | `state`, `states` | The step the record is in, and every step it entered, oldest first, each with the time `at` it was entered |
 | `startedAt`, `finishedAt`, `lastActivityAt` | When it started and ended, and the latest time its record holds |
-| `reason`, `cause` | The recorded reason for a stop, and its cause: a `kind`, with the `role` or `population` it concerns, and for `"landed_outside_closer"` (the agent opened a pull request for the task's branch itself) the `pullRequest` it opened; each of these the kind does not have is `null`. `cause` is `null` for a stop recorded before causes were |
+| `reason`, `cause` | The recorded reason for a stop, and its cause: a `kind`, with the `role` or `population` it concerns, for `"landed_outside_closer"` (the agent opened a pull request for the task's branch itself) the `pullRequest` it opened; and for `"decision"` (the agent asked the operator a question) the `question`, word for word; each of these the kind does not have is `null`. `cause` is `null` for a stop recorded before causes were |
 | `closer`, `branch`, `base` | How its work is landed, and where |
 | `fence` | Whether the task's agent sessions ran inside the write fence: the `mode` the run was set to, whether it was `present`, and the `reason` when it was not. `null` for a run recorded before the fence was |
 | `guards` | How the task's test guards differ from the defaults: the guards it `added` and those it turned `off`. `null` when it kept the defaults |
