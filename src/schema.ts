@@ -203,6 +203,28 @@ export type PinnedWorkflow = z.infer<typeof PinnedWorkflow>;
 export const WorkItemRef = z.object({ key: z.string(), source: z.string(), id: z.string(), resolve: z.string().optional() });
 export type WorkItemRef = z.infer<typeof WorkItemRef>;
 
+/** Why a run carries on an earlier run's work: the operator answered its question, or the session was interrupted. */
+export const ContinueTurn = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("answer"), question: z.string(), answer: z.string() }),
+  z.object({ kind: z.literal("interrupted") }),
+]);
+export type ContinueTurn = z.infer<typeof ContinueTurn>;
+
+/**
+ * The earlier run whose work this run carries on, pinned at CREATE. Its working copy is where this run works, so a
+ * resumed session is found there (Claude Code looks a session up by its working directory).
+ */
+export const Continues = z.object({
+  runId: z.string(),
+  worktreePath: z.string(),
+  from: z.string(),
+  startCommit: z.string(),
+  baseline: GateReport.nullable(),
+  sessionId: z.string().optional(),
+  turn: ContinueTurn,
+});
+export type Continues = z.infer<typeof Continues>;
+
 export const CaseFileHeader = z.object({
   surfaceId: z.string(),
   taskDef: TaskDef,
@@ -238,6 +260,8 @@ export const CaseFileHeader = z.object({
   workflow: PinnedWorkflow.optional(),
   // The work-source item this run delivers. Optional so records made before items were pinned stay valid.
   item: WorkItemRef.optional(),
+  // The earlier run this one carries on, pinned at CREATE. Absent for a run that starts afresh.
+  continues: Continues.optional(),
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 

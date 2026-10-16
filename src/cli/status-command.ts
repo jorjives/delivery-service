@@ -23,6 +23,7 @@ import { BREAKER_PHRASES, nextStepPhrase, STEP_PHRASES } from "./output.js";
 import { queueTasks, shapeOf, STOPPED_PART_WAY } from "./queue.js";
 import { repoLocked } from "../repo-lock.js";
 import { runPlace } from "../run-location.js";
+import { worktreeOf } from "../surface.js";
 import { newestFirstBy, startedInstant, type RunRecord } from "../run-records.js";
 import { queuePositionOf, taskIntent, type QueuePosition } from "../task-list.js";
 import { allRuns, allSupervisedRuns, describeRun, NOTHING_HERE, readableUtc, readRun, readSupervisedRun, startedAt, touchedAt, type SupervisedRecord } from "./runs.js";
@@ -59,15 +60,15 @@ function packetLines(packet: EscalationPacket): string[] {
  * copy that did survive is worth naming, and the run's own record is always there.
  */
 async function whereToLook(record: RunRecord, ctx: CommandContext): Promise<string[]> {
-  const { location } = runPlace(record.repoPath, record.runId, ctx.env);
+  const worktreePath = worktreeOf(record.caseFile, runPlace(record.repoPath, record.runId, ctx.env).location);
   const branch = branchName(record.caseFile.header.surfaceId);
   const kept = await branchExists(record.repoPath, branch);
   return [
     "",
     "Where to look:",
     kept ? `  The branch ${branch} was kept.` : "  No branch was kept: the agent had changed nothing.",
-    existsSync(location.worktreePath)
-      ? `  The agent's working copy is still at ${location.worktreePath}.`
+    existsSync(worktreePath)
+      ? `  The agent's working copy is still at ${worktreePath}.`
       : "  The agent's working copy has been cleared away.",
     `  Everything this run recorded is in ${record.dir}.`,
   ];
@@ -179,7 +180,7 @@ export function runSummary(record: RunRecord): RunSummary {
 export async function statusDocument(record: RunRecord, ctx: CommandContext, position?: QueuePosition): Promise<RunStatusDocument> {
   const { caseFile, dir, runId } = record;
   const { outcome } = caseFile;
-  const { location } = runPlace(record.repoPath, runId, ctx.env);
+  const worktreePath = worktreeOf(caseFile, runPlace(record.repoPath, runId, ctx.env).location);
   const packet = outcome?.kind === "escalated" ? await packetOf(dir, outcome.packetRef) : undefined;
   // Read once, as the report reads it, so the two can never say different things.
   const summary = outcome ? await summariseOutcome(dir, caseFile) : undefined;
@@ -194,7 +195,7 @@ export async function statusDocument(record: RunRecord, ctx: CommandContext, pos
     branch: branchName(caseFile.header.surfaceId),
     base: caseFile.header.baseBranch ?? null,
     dir,
-    worktree: existsSync(location.worktreePath) ? location.worktreePath : null,
+    worktree: existsSync(worktreePath) ? worktreePath : null,
     escalation: packet ?? null,
     queue: position ?? null,
   };

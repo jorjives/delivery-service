@@ -501,3 +501,31 @@ describe("the Step slot", () => {
     expect(second).toContain("against the commit this step started from");
   });
 });
+
+describe("the Continuing section", () => {
+  const CONTINUES = { runId: "r1", worktreePath: "wt", from: "abc", startCommit: "abc", baseline: null } as const;
+  const caseFileWith = (header: Partial<Parameters<typeof initialCaseFile>[0]>) =>
+    initialCaseFile({ surfaceId: "s", taskDef: { intent: "add a greeting" }, gateRef, ...header }, budgets);
+  const NOTHING: PromptEvidence = { brief: null, newFailures: [], setback: null };
+
+  it("tells a continued session the operator's answer, after the step", () => {
+    const { prompt } = assemblePrompt(
+      caseFileWith({ continues: { ...CONTINUES, turn: { kind: "answer", question: "Formal?", answer: "Yes, formal." } } }),
+      workerRoleConfig, NOTHING,
+    );
+    expect(prompt).toContain("## Continuing\nYou stopped to ask the operator: Formal?\nTheir answer: Yes, formal.\nThe work so far is in this working copy. Carry on from where it got to, using their answer.");
+  });
+
+  it("tells a continued session it was interrupted", () => {
+    const { prompt } = assemblePrompt(caseFileWith({ continues: { ...CONTINUES, turn: { kind: "interrupted" } } }), workerRoleConfig, NOTHING);
+    expect(prompt).toContain("## Continuing\nAn earlier session on this task was interrupted before it finished. The work so far is in this working copy. Carry on from where it got to.");
+  });
+
+  it("sits after the step, and is not given to triage", () => {
+    const named = { name: "plan-then-build", steps: [{ name: "plan", prompt: "write PLAN.md" }] };
+    const continued = caseFileWith({ workflow: named, continues: { ...CONTINUES, turn: { kind: "interrupted" } } });
+    const { prompt } = assemblePrompt(continued, workerRoleConfig, NOTHING);
+    expect(prompt.indexOf("## Step")).toBeLessThan(prompt.indexOf("## Continuing"));
+    expect(assemblePrompt(continued, triageRoleConfig, NOTHING).prompt).not.toContain("## Continuing");
+  });
+});

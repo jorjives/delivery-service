@@ -156,8 +156,9 @@ async function resolveSetback(dir: string, caseFile: CaseFile): Promise<PromptSe
 }
 
 /**
- * The slots of `docs/agent-interface.md`: task, acceptance (worker and gate maintenance),
- * brief, gate evidence, setback (triage only) and reply format, in fixed order, split across the
+ * The slots of `docs/agent-interface.md`: task, step (a workflow's, when there is one), continuing (a run carrying
+ * on an earlier run's work, not triage), acceptance (worker and gate maintenance), brief, gate evidence, setback
+ * (triage only) and reply format, in fixed order, split across the
  * two fields the SDK takes. The project supplies content — the task, the domain
  * fragment — never the structure: if a project could reorder or drop a slot it
  * could tell a worker not to emit an envelope, and INCOMPLETE_TERMINUS would
@@ -210,11 +211,25 @@ export function assemblePrompt(
       ? []
       : ["## Step", `Step ${stepIndexOf(caseFile)} of ${caseFile.header.workflow?.steps.length}, "${step.name}":`, step.prompt, ""];
 
+  // A run carrying on an earlier run's work says why, so a resumed session takes it as its next turn and a fresh one is not lost.
+  const continues = caseFile.header.continues;
+  const continuingSlot =
+    continues === undefined || roleCfg.role === "triage"
+      ? []
+      : [
+          "## Continuing",
+          ...(continues.turn.kind === "answer"
+            ? [`You stopped to ask the operator: ${continues.turn.question}`, `Their answer: ${continues.turn.answer}`, "The work so far is in this working copy. Carry on from where it got to, using their answer."]
+            : ["An earlier session on this task was interrupted before it finished. The work so far is in this working copy. Carry on from where it got to."]),
+          "",
+        ];
+
   const prompt = [
     "## Task",
     JSON.stringify(caseFile.header.taskDef, null, 2),
     "",
     ...stepSlot,
+    ...continuingSlot,
     ...acceptanceSlot,
     "## Brief",
     brief,

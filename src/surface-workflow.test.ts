@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mkdtemp } from "node:fs/promises";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -196,5 +196,47 @@ describe("continue", () => {
     const { dir, location, ports, seen } = await surface([planned, write("BUILT.md")]);
     await run(dir, location, ports);
     expect(seen.map((ctx) => ctx.resume)).toEqual([undefined, undefined]);
+  });
+});
+
+describe("a run that carries on an earlier run's work", () => {
+  it("works in the earlier run's working copy, on its work, judged from its start against its baseline, resuming its session there", async () => {
+    const repo = initTempRepo("surface-continue-repo-", { "README.md": "hi\n" });
+    const gitIn = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, env: cleanGitEnv(), encoding: "utf-8" }).trim();
+    const start = gitIn(repo, ["rev-parse", "HEAD"]);
+    // The earlier run: its branch holds its half-done work, its working copy has been cleared away.
+    const earlierCopy = join(await mkdtemp(join(tmpdir(), "surface-continue-earlier-")), "wt");
+    gitIn(repo, ["worktree", "add", "-q", "-b", "surface/earlier-1", "--", earlierCopy, start]);
+    writeFileSync(join(earlierCopy, "partial.js"), "// half done\n");
+    await ensureCommitted(earlierCopy, "Unfinished work");
+    const from = gitIn(repo, ["rev-parse", "surface/earlier-1"]);
+    gitIn(repo, ["worktree", "remove", "--force", "--", earlierCopy]);
+    // The gate fails on the start commit, so a baseline taken now would FAIL: only the carried one PASSes.
+    const carried = { status: "PASS", assertions: [] } as const;
+
+    const dir = await mkdtemp(join(tmpdir(), "surface-continue-case-"));
+    await create(dir, {
+      surfaceId: "later-1", taskDef: { intent: "build" }, gateRef: projectGate,
+      continues: { runId: "earlier-1", worktreePath: earlierCopy, from, startCommit: start, baseline: carried, sessionId: "sess-1", turn: { kind: "interrupted" } },
+    }, budgets);
+    const seen: { worktreePath: string; resume: string | undefined; hadPartial: boolean }[] = [];
+    const agent = fakeAgentPort({
+      worker: (ctx) => {
+        seen.push({ worktreePath: ctx.worktreePath, resume: ctx.resume, hadPartial: existsSync(join(ctx.worktreePath, "partial.js")) });
+        return Promise.resolve(write("BUILT.md")(ctx));
+      },
+    });
+    // This run's own path is never used: it carries on where the earlier run worked.
+    const ownCopy = join(await mkdtemp(join(tmpdir(), "surface-continue-own-")), "wt");
+
+    const result = await run(dir, { repoPath: repo, worktreePath: ownCopy }, { agent, triage: deterministicRouter, closer: countingCloser() });
+
+    expect(result.outcome?.kind).toBe("closed");
+    expect(seen[0]).toEqual({ worktreePath: earlierCopy, resume: "sess-1", hadPartial: true });
+    const { header, cursor } = await load(dir);
+    expect(cursor.worktreeRef).toBe(earlierCopy);
+    expect(header.startCommit).toBe(start);
+    expect(header.baseline).toEqual(carried);
+    expect(existsSync(ownCopy)).toBe(false);
   });
 });

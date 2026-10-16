@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, readRef, setbackOf, setBaseBranch } from "./case-file.js";
+import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, readRef, setbackOf, setBaseBranch, setBaseline } from "./case-file.js";
 import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree, branchName } from "./provision.js";
 import { messageOf } from "./gate-support.js";
@@ -31,9 +31,10 @@ export interface AdvanceResult {
   recovery?: string;
 }
 
-function worktreeOf(caseFile: CaseFile, location: SurfaceLocation): string {
+/** The working copy a run works in: the one it provisioned; else, before provisioning, the earlier run's it carries on (spec §5.11: the same worktree, so its session can be resumed); else its own. */
+export function worktreeOf(caseFile: CaseFile, location: SurfaceLocation): string {
   // `create` writes worktreeRef: "" — the "not yet provisioned" sentinel.
-  return caseFile.cursor.worktreeRef || location.worktreePath;
+  return caseFile.cursor.worktreeRef || caseFile.header.continues?.worktreePath || location.worktreePath;
 }
 
 /**
@@ -424,7 +425,13 @@ async function dispatchSession(
   // correction, and after an incomplete first dispatch, so a resume that failed is not repeated.
   const opening = caseFile.history[0];
   const firstDispatch = attempt === 1 && retriesOf(caseFile.history, role, attempt) === 0;
-  const resume = role === "worker" && firstDispatch && opening?.t === "step" ? opening.resume : undefined;
+  // A continued run's first step resumes the session of the run it carries on, in the same working copy.
+  const resume =
+    role === "worker" && firstDispatch
+      ? opening?.t === "step"
+        ? opening.resume
+        : caseFile.header.continues?.sessionId
+      : undefined;
   const session = () => ports.agent.invoke({ role }, { worktreePath, dir, sessionKey, ...(resume === undefined ? {} : { resume }) });
   // A repair may edit the very check that guards the work: what it changed is kept, before its terminus, so a
   // crash leaves at most an orphan ref (the recovered retry gets a new session key, so a new ref). Only kept,
@@ -523,6 +530,13 @@ async function preGating(
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
+  // Carried-on work keeps the baseline of the run it continues: one taken now would be of half-done work.
+  const carried = caseFile.header.continues?.baseline;
+  if (carried && caseFile.header.baseline === null && stepIndexOf(caseFile) === 1) {
+    await setBaseline(dir, carried);
+    await updateCursor(dir, { state: "AGENT_ACTIVE" });
+    return { state: "AGENT_ACTIVE", done: false };
+  }
   const report = await onSharedGround(ports, caseFile, () => recordBaseline(dir, locationOf(caseFile, location), ports.env));
   if (report.status !== "ERROR") {
     await updateCursor(dir, { state: "AGENT_ACTIVE" });
@@ -618,8 +632,9 @@ async function provisioning(
   let baseBranch: string;
   let startCommit: string;
   try {
+    // A continued run starts from the earlier branch's tip (its work), not the commit it started from.
     ({ restarted, baseBranch, startCommit } = await provisionWorktree(
-      dir, location.repoPath, worktreePath, caseFile.header.surfaceId, caseFile.header.startCommit,
+      dir, location.repoPath, worktreePath, caseFile.header.surfaceId, caseFile.header.continues?.from ?? caseFile.header.startCommit,
     ));
   } catch (err) {
     if (!(err instanceof ProvisioningFailure)) throw err;
@@ -630,7 +645,8 @@ async function provisioning(
 
   // Guarded rather than unconditional: provisioning legitimately runs twice
   // when a crash lands before the cursor advance, and the pin is set-once.
-  if (caseFile.header.baseBranch === null) await setBaseBranch(dir, baseBranch, startCommit);
+  // A continued run is judged from the commit its earlier run started from, so the guards see all the work.
+  if (caseFile.header.baseBranch === null) await setBaseBranch(dir, baseBranch, caseFile.header.continues?.startCommit ?? startCommit);
 
   // The cursor advance is the commit point for "the worktree exists and belongs
   // to this surface" — provisioning has no history representation.
@@ -804,7 +820,7 @@ async function nextStep(dir: string, caseFile: CaseFile, location: SurfaceLocati
 }
 
 /** The runtime id of the step's last worker session, for a next step that continues it. */
-function lastWorkerSession(history: HistoryEntry[]): string | undefined {
+export function lastWorkerSession(history: HistoryEntry[]): string | undefined {
   return history.findLast((e): e is TerminusEntry => e.t === "terminus" && (e.role ?? "worker") === "worker" && e.sessionId !== undefined)?.sessionId;
 }
 
