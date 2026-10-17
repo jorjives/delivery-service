@@ -2,10 +2,12 @@ import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { branchExists, git, tryGit } from "./git-exec.js";
+import { deliveryLedgerPath, recordDelivery } from "./delivery-ledger.js";
 import { appendLine, isEnoent, parseLines } from "./journal.js";
 import { branchName, resolveBaseRef } from "./provision.js";
 import { repoKey, stateHome } from "./run-location.js";
 import type { RunRecord } from "./run-records.js";
+import { taskIntent } from "./task-list.js";
 import type { CaseFile } from "./schema.js";
 
 /** Autoloop's retry budget: how many runs in a row an item may end undelivered before it is set aside. */
@@ -126,12 +128,12 @@ function parkReasonOf(state: ItemState, parkAfter: number): ParkReason | null {
 }
 
 /**
- * The tip of the work a delivered run landed: its branch while that exists; otherwise a closer has merged it and
+ * The tip of the work a delivered run landed: its delivery branch, or its own branch, while that exists; otherwise a closer has merged it and
  * deleted the branch, and the local base branch's tip is it (a fast-forward merge-back leaves the two equal).
  * ponytail: read at settle time, straight after the close; a base that moved on in between still contains the work.
  */
 async function deliveredCommit(record: RunRecord): Promise<string> {
-  const branch = branchName(record.runId);
+  const branch = record.caseFile.header.delivery?.branch ?? branchName(record.runId);
   if (await branchExists(record.repoPath, branch)) return git(record.repoPath, ["rev-parse", branch]);
   return git(record.repoPath, ["rev-parse", (await resolveBaseRef(record.repoPath)).localBranch]);
 }
@@ -141,10 +143,16 @@ export async function settleRun(path: string, key: string, record: RunRecord, pa
   const kind = classOf(record.caseFile);
   if (kind === undefined) throw new Error(`run ${record.runId} has not ended`);
   const question = record.caseFile.outcome?.cause?.question;
+  const delivery = record.caseFile.header.delivery;
+  const commit = kind === "delivered" ? await deliveredCommit(record) : undefined;
+  // Landed before it is settled, so a crash between the two leaves the landing recorded and the run settled on the next run.
+  if (delivery !== undefined && commit !== undefined) {
+    await recordDelivery(deliveryLedgerPath(path), { t: "landed", branch: delivery.branch, runId: record.runId, key, intent: taskIntent(record.caseFile.header.taskDef), commit });
+  }
   await append(path, {
     t: "ended", key, runId: record.runId, class: kind, at: now(),
     ...(kind === "decision" && question !== undefined ? { question } : {}),
-    ...(kind === "delivered" ? { branch: branchName(record.runId), commit: await deliveredCommit(record) } : {}),
+    ...(commit === undefined ? {} : { branch: delivery?.branch ?? branchName(record.runId), commit }),
   });
   const state = (await readItemLedger(path)).get(key) ?? fresh(key);
   const reason = parkReasonOf(state, parkAfter);
@@ -166,15 +174,16 @@ export function parkedItems(ledger: Map<string, ItemState>): ItemState[] {
 }
 
 /**
- * Delivered work still on its way to the base: its branch exists, or its commit is already on the local base branch
+ * Delivered work still on its way to the base: its commit is on the branch it landed on, or its commit is already on the local base branch
  * (a merge-back closer lands locally, pushes nothing and deletes the branch, while the backlog is read from `origin`
  * when there is one, so the item still reads `open` there). Neither holds when the branch was deleted without the work
  * reaching the base: then the item is for another run.
  */
 export async function awaitsMerge(repoPath: string, state: ItemState | undefined): Promise<boolean> {
   if (state?.lastClass !== "delivered") return false;
-  if (state.branch !== null && (await branchExists(repoPath, state.branch))) return true;
   if (state.commit === null) return false;
+  // On its way while the branch it landed on still holds it: a delivery branch outlives the runs that land on it.
+  if (state.branch !== null && (await tryGit(repoPath, ["merge-base", "--is-ancestor", state.commit, state.branch]))) return true;
   const { localBranch } = await resolveBaseRef(repoPath);
   return tryGit(repoPath, ["merge-base", "--is-ancestor", state.commit, localBranch]);
 }

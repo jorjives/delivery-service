@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { git } from "../tests/helpers.js";
 import { initTempRepo } from "./temp-repo.js";
 import { awaitsMerge, classOf, foldLedger, ledgerPath, parkedItems, readItemLedger, recordAnswer, recordDispatched, recordUnpark, settleRun } from "./item-ledger.js";
+import { deliveryLedgerPath, readDelivery } from "./delivery-ledger.js";
 import type { CaseFile, CaseFileOutcome } from "./schema.js";
 import type { RunRecord } from "./run-records.js";
 
@@ -104,13 +105,43 @@ describe("the ledger", () => {
     expect(state).toMatchObject({ lastRunId: "r2", settled: false, answer: null });
   });
 
+  it("records a delivered item's landing on its delivery branch, with that branch and its tip", async () => {
+    const repo = initTempRepo("ledger-delivery-", { "seed.txt": "seed\n" });
+    git(repo, ["branch", "delivery/main"]);
+    const tip = git(repo, ["rev-parse", "delivery/main"]);
+    const path = scratch();
+    const record = {
+      runId: "greet-20261016T090000Z", repoPath: repo, dir: "dir",
+      caseFile: { header: { taskDef: { intent: "greet people" }, delivery: { branch: "delivery/main" } }, cursor: {}, history: [], outcome: { kind: "closed", source: "closer", reason: "r", at } },
+    } as unknown as RunRecord;
+
+    const state = await settleRun(path, KEY, record, 3);
+
+    expect(state).toMatchObject({ lastClass: "delivered", branch: "delivery/main", commit: tip });
+    const delivery = await readDelivery(deliveryLedgerPath(path), "delivery/main");
+    expect(delivery.landed).toMatchObject([{ runId: "greet-20261016T090000Z", key: KEY, intent: "greet people", commit: tip }]);
+  });
+
   describe("awaitsMerge", () => {
     const delivered = (over: { branch: string | null; commit: string | null }) => ({ key: KEY, lastClass: "delivered" as const, ...over }) as never;
 
-    it("is true while the delivered branch still exists", async () => {
-      const repo = initTempRepo("await-", { "package.json": "{}" });
-      git(repo, ["branch", "surface/kept"]);
-      expect(await awaitsMerge(repo, delivered({ branch: "surface/kept", commit: null }))).toBe(true);
+    it("is true while the delivered commit is on its branch", async () => {
+      const repo = initTempRepo("awaits-", { "seed.txt": "seed\n" });
+      git(repo, ["checkout", "-q", "-b", "delivery/main"]);
+      git(repo, ["commit", "-q", "--allow-empty", "-m", "landed"]);
+      const commit = git(repo, ["rev-parse", "HEAD"]);
+      git(repo, ["checkout", "-q", "main"]);
+      expect(await awaitsMerge(repo, delivered({ branch: "delivery/main", commit }))).toBe(true);
+    });
+
+    it("is false once the branch no longer holds the delivered commit and the base never got it", async () => {
+      const repo = initTempRepo("awaits-", { "seed.txt": "seed\n" });
+      git(repo, ["checkout", "-q", "-b", "delivery/main"]);
+      git(repo, ["commit", "-q", "--allow-empty", "-m", "landed"]);
+      const commit = git(repo, ["rev-parse", "HEAD"]);
+      git(repo, ["checkout", "-q", "main"]);
+      git(repo, ["branch", "-f", "delivery/main", "main"]);
+      expect(await awaitsMerge(repo, delivered({ branch: "delivery/main", commit }))).toBe(false);
     });
 
     it("is true once the branch is gone but its commit is on the local base branch (merged, not yet pushed)", async () => {
