@@ -189,7 +189,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence` and `workflows`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `parkAfter` and `notify`.",
     );
   });
 
@@ -260,7 +260,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names a file that holds something other than one object of settings", () => {
     expect(problemFor(["add a page"])).toBe(
-      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence` and `workflows`. " +
+      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `parkAfter` and `notify`. " +
         "A `.js` or `.mjs` file exports that object as its default.",
     );
   });
@@ -459,7 +459,7 @@ describe("reading a config file", () => {
     const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
     const refusal = await refusalOf(found(repo, repo));
     expect(refusal.message).toBe(
-      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\` and \`workflows\`.`,
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`parkAfter\` and \`notify\`.`,
     );
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });
@@ -578,7 +578,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor({ foo: 1, roles: {} })).toEqual([
       {
         field: "foo",
-        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\` and \`workflows\`.`,
+        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`parkAfter\` and \`notify\`.`,
       },
       {
         field: "roles",
@@ -592,7 +592,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor("add a page")).toEqual([
       {
         field: null,
-        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\` and \`workflows\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
+        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`parkAfter\` and \`notify\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
       },
     ]);
   });
@@ -659,6 +659,24 @@ const TWO_STEPS = {
   },
 };
 
+describe("work sources", () => {
+  it("accepts backlog, list and command sources, in order, one marked as a fallback", () => {
+    expect(DeliveryConfig.parse({ sources: [{ type: "backlog" }, { type: "command", command: "./next-slice.sh" }, { type: "list", fallback: true }], parkAfter: 2, notify: "./tell-me.sh" }).sources).toHaveLength(3);
+  });
+
+  it("refuses a command source with no command, saying what one takes", () => {
+    expect(problemFor({ sources: [{ type: "command" }] })).toContain("It is the list of places work comes from");
+  });
+
+  it("refuses two sources with the same name", () => {
+    expect(problemFor({ sources: [{ type: "backlog" }, { type: "backlog" }] })).toContain("`sources` names backlog twice");
+  });
+
+  it("refuses a parkAfter that is not a whole number above zero", () => {
+    expect(problemFor({ parkAfter: 0 })).toContain("how many runs in a row an item may end without being delivered");
+  });
+});
+
 describe("workflows", () => {
   it("accepts named workflows of ordered steps", () => {
     const config = DeliveryConfig.parse({ workflows: TWO_STEPS });
@@ -682,6 +700,6 @@ describe("workflows", () => {
   });
 
   it("lists workflows among the settings a config file takes", () => {
-    expect(CONFIG_KEYS).toBe("`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence` and `workflows`");
+    expect(CONFIG_KEYS).toBe("`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `parkAfter` and `notify`");
   });
 });

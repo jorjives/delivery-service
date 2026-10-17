@@ -336,3 +336,36 @@ Any other field is available to the step prompts as `{{task.<field>}}`, such as 
 Items are read from your base branch's last commit: `origin`'s, when the project has one. So commit
 an item, and push it if there is an origin, for it to be worked. Item files on disk that the base
 does not yet hold are named, and not worked.
+
+### Work sources
+
+`sources` says where `delivery run --sources` finds work, in order. Each source is an object with a
+`type`:
+
+- `backlog`: the items in `.delivery/backlog/`, as above.
+- `list`: the `tasks` you wrote in this file.
+- `command`: a command of your own, which takes a `command` string.
+
+Any source may also take a `name`, which tells its entries apart in a run's report (it defaults to
+the `type`), and `"fallback": true`, which reads it only when no other source has any work. Two
+sources with the same name are refused, so give one of them its own `name`.
+
+    "sources": [
+      { "type": "backlog" },
+      { "type": "command", "command": "./next-slice.sh", "name": "slices" },
+      { "type": "list", "fallback": true }
+    ]
+
+A command source is run twice, through its own command line:
+
+- `<command> list` prints a JSON array of tasks. Each task is an object with a string `id`, and may
+  also have an `intent` sentence, a `body`, a `workflow`, and any other fields, which are available
+  to the step prompts as `{{task.<field>}}`.
+- `<command> complete <id>` runs once that task has been delivered, so the command can mark it done
+  in whatever keeps its list.
+
+`parkAfter` is how many runs in a row an item may end without being delivered before it is set
+aside. It is a whole number, 1 or more, and defaults to 3.
+
+`notify` is a command run at the end of every run, with the run's report as JSON on its standard
+input, for example to tell you what was done.

@@ -18,7 +18,7 @@ export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
 /** The keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence` and `workflows`";
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `parkAfter` and `notify`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -129,6 +129,19 @@ export type StepConfig = z.infer<typeof StepConfig>;
 export const WorkflowConfig = z.object({ steps: z.array(StepConfig).min(1) }).strict();
 export type WorkflowConfig = z.infer<typeof WorkflowConfig>;
 
+/** One place `delivery run --sources` finds work. A `fallback` is read only when no other source has any. */
+export const SourceConfig = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("backlog"), name: Written.optional(), fallback: z.boolean().optional() }).strict(),
+  z.object({ type: z.literal("list"), name: Written.optional(), fallback: z.boolean().optional() }).strict(),
+  z.object({ type: z.literal("command"), command: Written, name: Written.optional(), fallback: z.boolean().optional() }).strict(),
+]);
+export type SourceConfig = z.infer<typeof SourceConfig>;
+
+/** A source's name as the run's report and its duplicate check know it: its `name`, or else its type. */
+export const sourceName = (source: SourceConfig): string => source.name ?? source.type;
+
+export const DEFAULT_SOURCES: SourceConfig[] = [{ type: "backlog" }];
+
 /**
  * The whole of a `delivery.config.json`. `task`, `gate` and `closer` are the
  * library's own schemas, composed rather than restated, so the file can never
@@ -163,6 +176,12 @@ export const DeliveryConfig = z
     fence: FenceSetting.optional(),
     // Named ways of doing a task in more than one checked step, chosen with `delivery run --workflow <name>`.
     workflows: z.record(Written, WorkflowConfig).optional(),
+    // Where `delivery run --sources` finds work, in order; a fallback is read only when nothing else has any.
+    sources: z.array(SourceConfig).min(1).optional(),
+    // How many runs in a row an item may end undelivered before it is set aside (default 3).
+    parkAfter: z.number().int().positive().optional(),
+    // A command run at the end of every run with the run's report JSON on its standard input.
+    notify: Written.optional(),
   })
   .strict()
   .superRefine((config, ctx) => {
@@ -204,6 +223,17 @@ export const DeliveryConfig = z
         ctx.addIssue({ code: "custom", path: ["workflows", name, "steps", 0, "continue"], message: firstStepContinues(name) });
       }
     }
+  })
+  .superRefine((config, ctx) => {
+    // Two sources with one name would be one source in the run's report, so the second is refused and asked to be named.
+    const seen = new Set<string>();
+    for (const [index, source] of (config.sources ?? []).entries()) {
+      const name = sourceName(source);
+      if (seen.has(name)) {
+        ctx.addIssue({ code: "custom", path: ["sources", index], message: `\`sources\` names ${name} twice. Give one of them its own \`name\`.` });
+      }
+      seen.add(name);
+    }
   });
 export type DeliveryConfig = z.infer<typeof DeliveryConfig>;
 
@@ -235,6 +265,13 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     'It names ways of doing a task in steps, each a list of `steps` run in order, for example ' +
     '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +
     "see docs/project-configuration.md.",
+  sources:
+    'It is the list of places work comes from, in order, for `delivery run --sources`: each one an object with a `type` of "backlog", "list" or "command" ' +
+    '(a command source also takes `command`), for example `[{ "type": "backlog" }, { "type": "command", "command": "./next-slice.sh" }]`. ' +
+    'Add `"fallback": true` to one that is used only when nothing else has work.',
+  parkAfter:
+    "It is how many runs in a row an item may end without being delivered before it is set aside: a whole number, 1 or more, such as `3`.",
+  notify: 'It is a command run at the end of every run with the run\'s report on its standard input, such as `"./tell-me.sh"`.',
 };
 
 /** The roles a config file could once change, in the order a refusal checks them. */
@@ -286,6 +323,7 @@ function describeIssue(file: string, issue: Issue, raw: unknown): string {
 
   if (issue.path[0] === "agent" && issue.code === "custom") return `I can't use ${file}: ${issue.message}`;
   if (issue.path[0] === "workflows" && issue.code === "custom") return `I can't use ${file}: ${issue.message}`;
+  if (issue.path[0] === "sources" && issue.code === "custom") return `I can't use ${file}: ${issue.message}`;
   if (where === "gate.type") return unknownGate(valueAt(raw, issue.path));
   const gateType = valueAt(raw, ["gate", "type"]);
   if (issue.path[0] === "gate" && isPresetName(gateType)) return presetProblem(file, issue, gateType);
