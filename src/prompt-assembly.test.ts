@@ -529,3 +529,17 @@ describe("the Continuing section", () => {
     expect(assemblePrompt(continued, triageRoleConfig, NOTHING).prompt).not.toContain("## Continuing");
   });
 });
+
+describe("evidence after a conflicting landing", () => {
+  it("shows the conflict as the newest failure, not an older gate round's", async () => {
+    const old = await writeRef(dir, "gate-1-0-0", { id: "t1", baselineOutcome: "PASS", checkOutcome: "FAIL", detail: "an old failure" });
+    await appendEntry(dir, { t: "gate", attempt: 1, status: "FAIL", newFailures: [{ id: "t1", detailRef: old }] });
+    const detail = "Rebuilding this task on delivery/main conflicts in shared.txt.";
+    const ref = await writeRef(dir, "landing-1", { id: "landing:conflict", baselineOutcome: "PASS", checkOutcome: "FAIL", detail });
+    await appendEntry(dir, { t: "landing", onto: "tip", baseline: { status: "PASS", assertions: [] }, conflict: { files: ["shared.txt"], kept: "surface/s-1-conflict-1" }, newFailures: [{ id: "landing:conflict", detailRef: ref }] });
+
+    const evidence = await resolveEvidence(dir, await load(dir));
+
+    expect(evidence.newFailures.map((f) => f.detail)).toEqual([detail]);
+  });
+});

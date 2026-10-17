@@ -1214,3 +1214,11 @@ describe("a landing entry", () => {
     expect(resumeAction({ t: "landing", onto: "tip", baseline, conflict: { files: ["a"], kept: "k" }, newFailures: [] })).toBe("triage");
   });
 });
+
+describe("a conflicting landing as a setback", () => {
+  const baseline = { status: "PASS" as const, assertions: [] };
+  it("is a gate_fail setback when it conflicts, and no setback when it is clean", () => {
+    expect(setbackOf({ t: "landing", onto: "tip", baseline, conflict: { files: ["a"], kept: "k" }, newFailures: [] })).toEqual({ trigger: "gate_fail" });
+    expect(setbackOf({ t: "landing", onto: "tip", baseline })).toBeUndefined();
+  });
+});

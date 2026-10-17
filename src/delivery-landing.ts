@@ -1,11 +1,11 @@
-import { appendEntry, load } from "./case-file.js";
+import { appendEntry, load, writeRef } from "./case-file.js";
 import { closeError } from "./closer-support.js";
 import { inDetachedWorktree } from "./disposable-copy.js";
 import { git, tryGit } from "./git-exec.js";
 import { takeBaseline } from "./run-gate.js";
-import { stepView } from "./workflow-step.js";
+import { stepKey, stepView } from "./workflow-step.js";
 import type { CloseContext, CloseReport } from "./ports.js";
-import type { LandingEntry } from "./schema.js";
+import type { HistoryEntry, LandingEntry } from "./schema.js";
 
 /** A close on a moved delivery branch: a landing entry, already appended, or a report for the close entry. */
 export type Rebuilt = { entry: LandingEntry } | { report: CloseReport };
@@ -51,7 +51,34 @@ export async function rebuildIfMoved(dir: string, ctx: CloseContext, env?: NodeJ
   return { entry: await recordConflict(dir, ctx, raw.history.filter((e) => e.t === "landing" && e.conflict !== undefined).length + 1, tip, baseline, files) };
 }
 
-// Replaced in the next change, which makes a conflict the next attempt's evidence.
-async function recordConflict(_dir: string, ctx: CloseContext, _n: number, tip: string, _baseline: LandingEntry["baseline"], files: string[]): Promise<LandingEntry> {
-  throw new Error(`rebuilding ${ctx.branch} on ${tip} conflicts in ${files.join(", ")}`);
+/**
+ * Keep the task's work on its own branch for the next attempt to read, and record the conflict as the failure that
+ * attempt is shown. The entry is the commit point: the kept branch and the ref before it are both safe to redo.
+ */
+async function recordConflict(dir: string, ctx: CloseContext, n: number, tip: string, baseline: LandingEntry["baseline"], files: string[]): Promise<LandingEntry> {
+  const kept = `${ctx.branch}-conflict-${n}`;
+  await git(ctx.repoPath, ["branch", "-f", "--", kept, ctx.branch]);
+  const detail =
+    `Rebuilding this task on ${ctx.baseBranch}, which another task moved to ${tip.slice(0, 7)}, conflicts in ${files.join(", ")}. ` +
+    `Your earlier work is kept on ${kept}: read it with git show ${kept}:<file>. This attempt starts again from the current tip of ${ctx.baseBranch}; ` +
+    `make the change so it fits the work already there.`;
+  const failure = { id: "landing:conflict", baselineOutcome: "PASS" as const, checkOutcome: "FAIL" as const, detail };
+  const detailRef = await writeRef(dir, stepKey(stepView(await load(dir)), `landing-${n}`), failure);
+  const entry: LandingEntry = { t: "landing", onto: tip, baseline, conflict: { files, kept }, newFailures: [{ id: failure.id, detailRef }] };
+  await appendEntry(dir, entry);
+  return entry;
+}
+
+/** The tip a conflicting landing said to start again from, while no attempt has started since. */
+export function restartFrom(history: readonly HistoryEntry[]): string | undefined {
+  const at = history.findLastIndex((e) => e.t === "landing" && e.conflict !== undefined);
+  const entry = history[at];
+  return entry?.t === "landing" && at > history.findLastIndex((e) => e.t === "dispatch") ? entry.onto : undefined;
+}
+
+/** The branches earlier attempts were kept on, deleted once the task has landed. */
+export async function dropKeptBranches(repoPath: string, branch: string): Promise<void> {
+  for (const kept of lines(await git(repoPath, ["for-each-ref", "--format=%(refname:short)", `refs/heads/${branch}-conflict-*`]))) {
+    await tryGit(repoPath, ["branch", "-D", "--", kept]);
+  }
 }

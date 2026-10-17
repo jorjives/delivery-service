@@ -117,9 +117,11 @@ function acceptance(caseFile: CaseFile): string {
 export async function resolveEvidence(dir: string, caseFile: CaseFile): Promise<PromptEvidence> {
   const history = [...caseFile.history].reverse();
 
-  const gate = history.find((entry) => entry.t === "gate");
+  // The newest failure shown to the next attempt: a gate round's, or a landing that conflicted.
+  const failed = history.find((entry) => entry.t === "gate" || (entry.t === "landing" && entry.conflict !== undefined));
+  const refs = failed?.t === "gate" || failed?.t === "landing" ? (failed.newFailures ?? []) : [];
   const parsedFailures = await Promise.all(
-    (gate?.newFailures ?? []).map((failure) =>
+    refs.map((failure) =>
       readRef(dir, failure.detailRef).then((raw) => NewFailure.safeParse(raw)),
     ),
   );

@@ -9,7 +9,7 @@ import { recordBaseline, runCheck } from "./run-gate.js";
 import { currentStep, nextStepOf, stepIndexOf, stepKey, stepView } from "./workflow-step.js";
 import { ensureCommitted, git } from "./git-exec.js";
 import { commitAccepted } from "./closer-support.js";
-import { rebuildIfMoved } from "./delivery-landing.js";
+import { dropKeptBranches, rebuildIfMoved, restartFrom } from "./delivery-landing.js";
 import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
@@ -671,12 +671,22 @@ async function provisioning(
  * limit straight out, an exhaustion-class escalate to the deterministic
  * router, and a session that ended without a result to INCOMPLETE_TERMINUS.
  */
-function agentActive(
+async function agentActive(
   dir: string,
   caseFile: CaseFile,
   location: SurfaceLocation,
   ports: SurfacePorts,
 ): Promise<AdvanceResult> {
+  // A rebuild that conflicted is started again at the tip it conflicted with, its earlier work kept on a branch (spec §5.7).
+  const onto = restartFrom(caseFile.history);
+  if (onto !== undefined) {
+    try {
+      await provisionWorktree(dir, location.repoPath, worktreeOf(caseFile, location), caseFile.header.surfaceId, onto);
+    } catch (err) {
+      if (!(err instanceof ProvisioningFailure)) throw err;
+      return abort(dir, caseFile, location, ports, "provisioning", err.detail, { kind: "provisioning" });
+    }
+  }
   return dispatchSession(
     dir, caseFile, location, ports, "worker", workerAttempt(caseFile.history),
   );
@@ -789,7 +799,7 @@ async function closing(
   if (caseFile.header.delivery !== undefined) {
     await commitAccepted(ctx);
     const rebuilt = await onSharedGround(ports, caseFile, () => rebuildIfMoved(dir, ctx, ports.env));
-    if (rebuilt !== undefined && "report" in rebuilt) return recordClose(dir, caseFile, rebuilt.report);
+    if (rebuilt !== undefined && "report" in rebuilt) return recordClose(dir, caseFile, location, rebuilt.report);
     if (rebuilt !== undefined) {
       const state = deriveStateFromEntry(rebuilt.entry);
       await updateCursor(dir, { state });
@@ -798,11 +808,11 @@ async function closing(
   }
 
   const report = await onSharedGround(ports, caseFile, () => ports.closer.close(ctx, { kind: "accepted" }));
-  return recordClose(dir, caseFile, report);
+  return recordClose(dir, caseFile, location, report);
 }
 
 /** Record what the close did: a refusal goes to triage, an accepted close ends the run. */
-async function recordClose(dir: string, caseFile: CaseFile, report: CloseReport): Promise<AdvanceResult> {
+async function recordClose(dir: string, caseFile: CaseFile, location: SurfaceLocation, report: CloseReport): Promise<AdvanceResult> {
   const priorCloses = caseFile.history.filter((e) => e.t === "close").length;
   const detailRef = await writeRef(dir, stepKey(caseFile, `close-${priorCloses}`), report);
   await appendEntry(dir, { t: "close", status: report.status, detailRef });
@@ -812,6 +822,7 @@ async function recordClose(dir: string, caseFile: CaseFile, report: CloseReport)
     return { state: "TRIAGE", done: false };
   }
 
+  if (caseFile.header.delivery !== undefined) await dropKeptBranches(location.repoPath, branchName(caseFile.header.surfaceId));
   return closed(dir, report.detail);
 }
 

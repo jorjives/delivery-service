@@ -313,6 +313,8 @@ export type Setback = Pick<TriageInput, "trigger" | "category">;
  * TRIAGE and the prompt shown to triage classify the same tail identically.
  */
 export function setbackOf(tail: HistoryEntry | undefined): Setback | undefined {
+  // A conflicting rebuild is a rejected attempt, corrected like any other (slice 4 AC4).
+  if (tail?.t === "landing" && tail.conflict !== undefined) return { trigger: "gate_fail" };
   if (tail?.t === "gate") return { trigger: tail.status === "ERROR" ? "gate_error" : "gate_fail" };
   if (tail?.t === "close") return { trigger: "close_failure" };
   if (tail?.t === "terminus" && tail.status === "escalate") {

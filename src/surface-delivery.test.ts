@@ -126,3 +126,35 @@ describe("landing on a delivery branch that has moved", () => {
     for (const tip of new Set(tips)) expect(() => git(repo, ["show", `${tip}:feature.txt`])).toThrow();
   });
 });
+
+describe("a rebuild that conflicts", () => {
+  it("is never landed: the next attempt starts afresh at the tip, can read the kept work, and lands", async () => {
+    const repo = deliveryRepo();
+    let attempt = 0;
+    let tipThen = "";
+    let seen: { head: string; shared: string; kept: string } | undefined;
+    const ports = portsWith((ctx) => {
+      attempt++;
+      if (attempt === 1) return writes("shared.txt", "mine\n")(ctx);
+      seen = {
+        head: git(ctx.worktreePath, ["rev-parse", "HEAD"]),
+        shared: git(ctx.worktreePath, ["show", "HEAD:shared.txt"]),
+        kept: git(repo, ["show", `${BRANCH}-conflict-1:shared.txt`]),
+      };
+      return writes("shared.txt", "theirs\nmine\n")(ctx);
+    });
+    const { dir, location } = await toClosing(ports, repo);
+    tipThen = await commitOn(repo, DELIVERY, "shared.txt", "theirs\n");
+
+    const result = await run(dir, location, ports);
+
+    expect(result.state).toBe("CLOSED");
+    expect(seen).toEqual({ head: tipThen, shared: "theirs", kept: "mine" });
+    const { history } = await load(dir);
+    expect(history.find((e) => e.t === "landing")).toMatchObject({ onto: tipThen, conflict: { files: ["shared.txt"], kept: `${BRANCH}-conflict-1` } });
+    expect(history.filter((e) => e.t === "triage").map((e) => e.t === "triage" && e.verdict)).toEqual(["reroute"]);
+    expect(git(repo, ["show", `${DELIVERY}:shared.txt`])).toBe("theirs\nmine");
+    // Kept only until the task lands.
+    expect(git(repo, ["branch", "--list", `${BRANCH}-conflict-*`])).toBe("");
+  });
+});
