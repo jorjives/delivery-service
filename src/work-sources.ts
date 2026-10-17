@@ -30,11 +30,7 @@ export const COMMAND_TASKS = z.array(z.looseObject({ id: z.string().min(1), inte
 export const sourceSkipped = (name: string, reason: string): string => `Skipped the ${name} source for this run: ${reason}`;
 
 const LIST_TIMEOUT_MS = 60_000;
-const workflowOf = (taskDef: TaskDef): string | undefined => (typeof taskDef.workflow === "string" ? taskDef.workflow : undefined);
-const withWorkflow = (taskDef: TaskDef): { workflow?: string } => {
-  const workflow = workflowOf(taskDef);
-  return workflow === undefined ? {} : { workflow };
-};
+const withWorkflow = ({ workflow }: TaskDef): { workflow?: string } => (typeof workflow === "string" ? { workflow } : {});
 
 async function listCommand(source: Extract<SourceConfig, { type: "command" }>, name: string, repoPath: string, env: NodeJS.ProcessEnv): Promise<Listed> {
   const skip = (reason: string): Listed => ({ items: [], notes: [sourceSkipped(name, reason)] });
