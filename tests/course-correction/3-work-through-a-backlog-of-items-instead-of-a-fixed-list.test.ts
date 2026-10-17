@@ -60,8 +60,10 @@ async function project(files: Record<string, string>, script: MockScript, config
   return { repo, env };
 }
 
+// Delivered work lands on the one delivery branch; a task that did not deliver keeps its own surface branch.
 const branches = (repo: string) => git(repo, ["branch", "--list", "surface/*", "--format=%(refname:short)"]).split("\n").filter(Boolean);
-const delivered = (repo: string, file: string) => branches(repo).find((b) => git(repo, ["ls-tree", "-r", "--name-only", b]).split("\n").includes(file));
+const deliveryBranches = (repo: string) => git(repo, ["branch", "--list", "delivery/*", "--format=%(refname:short)"]).split("\n").filter(Boolean);
+const delivered = (repo: string, file: string) => [...deliveryBranches(repo), ...branches(repo)].find((b) => git(repo, ["ls-tree", "-r", "--name-only", b]).split("\n").includes(file));
 
 describe("UAT: work through a backlog on its own", () => {
   it("delivers each item in priority order, marks each resolved, and then has nothing left to do", async () => {
@@ -78,18 +80,21 @@ describe("UAT: work through a backlog on its own", () => {
     const hello = delivered(repo, "hello.js");
     expect(goodbye).toBeDefined();
     expect(hello).toBeDefined();
-    expect(goodbye).not.toBe(hello);
+    expect(goodbye).toBe("delivery/main");
+    expect(hello).toBe("delivery/main");
     expect(git(repo, ["show", `${goodbye}:${backlogPath(SECOND)}`])).toContain("status: resolved");
     expect(git(repo, ["show", `${hello}:${backlogPath(FIRST)}`])).toContain("status: resolved");
-    // Run ids sort by start time, so the priority-1 item's run is the earlier one.
-    expect(branches(repo).sort()[0]).toBe(goodbye);
+    // Landed in the order they finished, one built on the other: the priority-1 item's work is the older commit.
+    const subjects = git(repo, ["log", "--format=%s", "main..delivery/main"]).split("\n");
+    expect(subjects.findIndex((s) => s.includes("goodbye"))).toBeGreaterThan(subjects.findIndex((s) => s.includes("hello")));
 
     const status = runDelivery(["status"], { cwd: repo, env });
     expect(status.status).toBe(0);
 
     const again = runDelivery(["run", "--sources"], { cwd: repo, env });
     expect(again.status).toBe(0);
-    expect(branches(repo)).toHaveLength(2);
+    expect(branches(repo)).toHaveLength(0);
+    expect(deliveryBranches(repo)).toEqual(["delivery/main"]);
   }, 180_000);
 
   it("parks an item that needs the operator, shows its question, and carries on once it is answered", async () => {

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
 import { initTempRepo } from "./temp-repo.js";
-import { readDeliveryEntries } from "./delivery-ledger.js";
-import { baseTip, reconcileDeliveryBranch } from "./delivery-branch.js";
+import { readDelivery, readDeliveryEntries } from "./delivery-ledger.js";
+import { baseTip, closeDeliveryBranch, reconcileDeliveryBranch } from "./delivery-branch.js";
 import { commitOn } from "./delivery-fixtures.js";
 import type { GateRef } from "./schema.js";
 
@@ -118,5 +118,22 @@ describe("baseTip", () => {
   it("is the local base branch, unless its remote-tracking branch is strictly ahead", async () => {
     const repo = project();
     expect(await baseTip(repo)).toEqual({ base: "main", commit: git(repo, ["rev-parse", "main"]) });
+  });
+});
+
+describe("closeDeliveryBranch", () => {
+  it("runs the project's closer once on the delivery branch, records what it did, and removes its scratch copy", async () => {
+    const repo = project();
+    const path = ledger();
+    await reconcileDeliveryBranch(repo, passes, path);
+    await commitOn(repo, D, "feature.txt", "work\n");
+
+    const report = await closeDeliveryBranch({ repoPath: repo, closerRef: { type: "merge-back" }, ledger: path, branch: D, base: "main" }, []);
+
+    expect(report.status).toBe("DONE");
+    expect(git(repo, ["show", "main:feature.txt"])).toBe("work");
+    expect(git(repo, ["branch", "--list", D])).toBe("");
+    expect(git(repo, ["worktree", "list"]).split("\n")).toHaveLength(1);
+    expect((await readDelivery(path, D)).closer).toMatchObject({ status: "DONE" });
   });
 });

@@ -610,7 +610,7 @@ harness builds.
 `delivery run --sources` takes its items from the backlog and the other work sources, and keeps
 what it knows about each item in the item ledger under the state folder. To try it without
 spending a session, point `DELIVERY_TEST_MOCK_SCRIPT` at a script and give every invocation the
-same `XDG_STATE_HOME`, since the ledger lives there: a second invocation then sees what the first
+same `XDG_STATE_HOME`, since the ledger lives there, as does the record of what landed on the delivery branch: a second invocation then sees what the first
 did, as a real one would.
 
 ## When the test itself is wrong

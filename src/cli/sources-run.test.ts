@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
 import { promptsSent, readJournal, type MockScript } from "../mock-script.js";
 import { addLocalOrigin, initTempRepo } from "../temp-repo.js";
+import { deliveryLedgerPath, readDelivery, readDeliveryEntries } from "../delivery-ledger.js";
 import { ledgerPath, readItemLedger, recordDispatched } from "../item-ledger.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { completes, delivery, interruptedRun, PACKAGE, RUN_TIMEOUT, scriptFile, writesHello } from "./command-fixtures.js";
@@ -35,7 +36,7 @@ const writesThenStops: MockScript = {
 };
 
 describe("delivery run --sources", () => {
-  it("picks up a backlog item, delivers it, and marks it resolved on its branch", async () => {
+  it("picks up a backlog item, delivers it onto the delivery branch, and marks it resolved there", async () => {
     const repo = project();
     const state = stateDir();
     const { exitCode } = await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
@@ -43,10 +44,106 @@ describe("delivery run --sources", () => {
     expect(exitCode).toBe(EXIT.ok);
     const [record] = await allRuns(repo);
     expect(record?.caseFile.header.item).toEqual({ key: KEY, source: "backlog", id: ITEM, resolve: ITEM_PATH });
-    const branch = `surface/${record?.runId}`;
+    expect(record?.runId).toBeDefined();
+    const branch = "delivery/main";
     expect(git(repo, ["show", `${branch}:${ITEM_PATH}`])).toContain("status: resolved");
+    expect(git(repo, ["branch", "--list", "surface/*"])).toBe("");
     expect((await readItemLedger(ledgerPath(repo, { XDG_STATE_HOME: state }))).get(KEY)).toMatchObject({ lastClass: "delivered", attempts: 0 });
   }, RUN_TIMEOUT);
+
+  it("lands several items one after another on one delivery branch, and hands it to the closer once", async () => {
+    const SECOND = "20261016T090100Z-say-goodbye.md";
+    const repo = project({ [`.delivery/backlog/${SECOND}`]: "---\nstatus: open\npriority: 2\n---\nAdd a function that says goodbye.\n" });
+    const state = stateDir();
+    const script: MockScript = {
+      expectations: [
+        { when: { promptContains: "says hello" }, effects: [{ write: { path: "hello.js", content: "export const hello = 1;\n" } }], json: { status: "completed", rationale: "hello" } },
+        { when: { promptContains: "says goodbye" }, effects: [{ write: { path: "goodbye.js", content: "export const goodbye = 1;\n" } }], json: { status: "completed", rationale: "goodbye" } },
+      ],
+    };
+
+    const { exitCode, stdout } = await delivery(["run", "--sources", "--max", "2"], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(script) } });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(git(repo, ["branch", "--list", "surface/*"])).toBe("");
+    expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("hello");
+    expect(git(repo, ["show", "delivery/main:goodbye.js"])).toContain("goodbye");
+    const delivered = await readDelivery(deliveryLedgerPath(ledgerPath(repo, { XDG_STATE_HOME: state })), "delivery/main");
+    expect(delivered.landed).toHaveLength(2);
+    expect(delivered.closer).toMatchObject({ status: "DONE" });
+    expect(stdout).toContain("delivery/main");
+  }, RUN_TIMEOUT * 2);
+
+  it("never lands an item that escalates, and still lands the others", async () => {
+    const SECOND = "20261016T090100Z-say-goodbye.md";
+    const repo = project({ [`.delivery/backlog/${SECOND}`]: "---\nstatus: open\npriority: 2\n---\nAdd a function that says goodbye.\n" });
+    const state = stateDir();
+    const script: MockScript = {
+      expectations: [
+        { when: { promptContains: "says hello" }, effects: [{ write: { path: "hello.js", content: "export const hello = 1;\n" } }], json: { status: "escalate", rationale: "cannot tell what hello means here" } },
+        { when: { promptContains: "says goodbye" }, effects: [{ write: { path: "goodbye.js", content: "export const goodbye = 1;\n" } }], json: { status: "completed", rationale: "goodbye" } },
+      ],
+    };
+
+    await delivery(["run", "--sources", "--max", "2"], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(script) } });
+
+    expect(git(repo, ["show", "delivery/main:goodbye.js"])).toContain("goodbye");
+    expect(() => git(repo, ["show", "delivery/main:hello.js"])).toThrow();
+    const delivered = await readDelivery(deliveryLedgerPath(ledgerPath(repo, { XDG_STATE_HOME: state })), "delivery/main");
+    expect(delivered.landed.map((e) => e.intent)).toEqual([expect.stringContaining("goodbye")]);
+  }, RUN_TIMEOUT * 2);
+
+  it("starts no task, and says what blocks it, when the owner's base commits cannot be brought in; and does not try again until something moves", async () => {
+    const repo = project({ "shared.txt": "one\n" });
+    git(repo, ["branch", "delivery/main"]);
+    const scratch = join(mkdtempSync(join(tmpdir(), "sources-blocked-")), "wt");
+    git(repo, ["worktree", "add", "-q", scratch, "delivery/main"]);
+    writeFileSync(join(scratch, "shared.txt"), "delivered\n");
+    git(scratch, ["commit", "-q", "-am", "delivered"]);
+    git(repo, ["worktree", "remove", "--force", scratch]);
+    writeFileSync(join(repo, "shared.txt"), "the owner's\n");
+    git(repo, ["commit", "-q", "-am", "the owner's"]);
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+
+    const first = await delivery(["run", "--sources"], { cwd: repo, env });
+    const second = await delivery(["run", "--sources"], { cwd: repo, env });
+
+    expect(first.exitCode).toBe(EXIT.escalated);
+    expect(first.stdout).toContain("No task was started");
+    expect(first.stdout).toContain("shared.txt");
+    expect(second.stdout).toContain("shared.txt");
+    expect(await allRuns(repo)).toHaveLength(0);
+    const entries = readFileSync(deliveryLedgerPath(ledgerPath(repo, env)), "utf-8").trim().split("\n");
+    expect(entries.filter((line) => line.includes('"blocked"'))).toHaveLength(1);
+  }, RUN_TIMEOUT);
+
+  it("retries a closer that failed last run, on a run with nothing to work, after bringing the owner's base commits in", async () => {
+    const repo = project({ "delivery.config.json": JSON.stringify({ closer: { type: "merge-back" } }) });
+    addLocalOrigin(repo);
+    git(repo, ["remote", "set-head", "origin", "main"]);
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+    // main is held by another worktree, so merge-back cannot move it: the first run's closer is refused.
+    git(repo, ["checkout", "-q", "-b", "elsewhere"]);
+    const holder = join(mkdtempSync(join(tmpdir(), "sources-holder-")), "main");
+    git(repo, ["worktree", "add", "-q", holder, "main"]);
+    const first = await delivery(["run", "--sources"], { cwd: repo, env });
+    expect(first.exitCode).toBe(EXIT.escalated);
+    expect(git(repo, ["branch", "--list", "delivery/main"])).not.toBe("");
+    git(repo, ["worktree", "remove", "--force", holder]);
+    git(repo, ["checkout", "-q", "main"]);
+    writeFileSync(join(repo, "unrelated.txt"), "the owner's own commit\n");
+    git(repo, ["add", "unrelated.txt"]);
+    git(repo, ["commit", "-q", "-m", "the owner's own commit"]);
+
+    const second = await delivery(["run", "--sources"], { cwd: repo, env });
+
+    expect(second.stdout).toContain("Handed delivery/main to your closer");
+    expect(git(repo, ["show", "main:hello.js"])).toContain("hello");
+    expect(git(repo, ["show", "main:unrelated.txt"])).toBe("the owner's own commit");
+    const kinds = (await readDeliveryEntries(deliveryLedgerPath(ledgerPath(repo, env)))).map((e) => e.t === "closed" ? `closed ${e.status}` : e.t);
+    expect(kinds.indexOf("base_merged")).toBeGreaterThan(-1);
+    expect(kinds.indexOf("base_merged")).toBeLessThan(kinds.lastIndexOf("closed DONE"));
+  }, RUN_TIMEOUT * 2);
 
   it("does not take a delivered item again while its branch waits to be merged (commit-to-branch, no origin)", async () => {
     const repo = project();
@@ -111,13 +208,16 @@ describe("delivery run --sources", () => {
     const second = await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: script } });
     expect(second.exitCode).toBe(EXIT.ok);
 
-    const [earlier, later] = (await allRuns(repo)).sort((a, b) => (a.runId < b.runId ? -1 : 1));
+    // Run ids can tie within a second (the second gets a "-2" slug suffix), so the later run is the one that continues the other.
+    const runs = await allRuns(repo);
+    const later = runs.find((r) => r.caseFile.header.continues !== undefined);
+    const earlier = runs.find((r) => r !== later);
     expect(later?.caseFile.header.continues).toMatchObject({ runId: earlier?.runId, worktreePath: earlier?.caseFile.cursor.worktreeRef, turn: { kind: "interrupted" } });
     // The same working copy, so a real agent's session transcript (found by its working directory) can be resumed.
     expect(later?.caseFile.cursor.worktreeRef).toBe(earlier?.caseFile.cursor.worktreeRef);
     // What the interrupted run wrote is in the delivered work, beside what the carried-on run added.
-    expect(git(repo, ["show", `surface/${later?.runId}:partial.js`])).toBe("export const partial = true;");
-    expect(git(repo, ["show", `surface/${later?.runId}:hello.js`])).toContain("hello");
+    expect(git(repo, ["show", "delivery/main:partial.js"])).toBe("export const partial = true;");
+    expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("hello");
     expect(promptsSent(await readJournal(`${script}.journal.jsonl`)).some((p) => p.includes("was interrupted before it finished"))).toBe(true);
   }, RUN_TIMEOUT * 2);
 
@@ -179,8 +279,8 @@ describe("delivery run --sources", () => {
     expect(latest?.caseFile.header.continues).toMatchObject({ runId: earlier?.runId, turn: { kind: "answer", question: "Formal or casual greeting?", answer: "Formal, please." } });
     expect(latest?.caseFile.cursor.worktreeRef).toBe(earlier?.caseFile.cursor.worktreeRef);
     // The draft written before the question is still there once the answer is acted on.
-    expect(git(repo, ["show", `surface/${latest?.runId}:draft.md`])).toBe("A first draft of the greeting.");
-    expect(git(repo, ["show", `surface/${latest?.runId}:hello.js`])).toContain("Good day");
+    expect(git(repo, ["show", "delivery/main:draft.md"])).toBe("A first draft of the greeting.");
+    expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("Good day");
   }, RUN_TIMEOUT * 2);
 
   it("runs the notify command with the report, parked items included, on its standard input", async () => {

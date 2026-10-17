@@ -348,7 +348,7 @@ How an item is carried on depends on how its last run ended:
 - A run that was interrupted (its session stopped before it finished) carries on in the same
   working copy. Anything left uncommitted there is committed onto the earlier run's branch first,
   so the work it had done is kept, and its agent session can be resumed.
-- A run that used up its corrections starts afresh from the base branch. Its old branch is kept.
+- A run that used up its corrections starts afresh from the delivery branch. Its old branch is kept.
 - A question the agent asked parks the item until you answer it with `delivery answer`, and the
   next run carries on with your answer.
 - An item that ends undelivered `parkAfter` runs in a row (3 by default) is parked, and skipped
@@ -356,8 +356,29 @@ How an item is carried on depends on how its last run ended:
 
 The record of each item (its last run, how that ended, and whether it is parked) is kept in the
 item ledger, `ledger/` under your state folder (`~/.local/state/delivery-service/`, or
-`$XDG_STATE_HOME`), beside the working copies. It is on this machine only: another clone of the
-repository keeps its own.
+`$XDG_STATE_HOME`), beside the working copies. What landed on the delivery branch, and what your
+closer did with it, is kept beside it, in the same folder. It is on this machine only: another
+clone of the repository keeps its own.
+
+#### The delivery branch
+
+Every item the run delivers lands on one branch, `delivery/<base>` (for example `delivery/main`), not
+on a branch of its own. Each item starts from that branch's latest work, so it sees everything
+delivered before it. When another item lands while one is still working, the later one is rebuilt
+on top and its check is run again before it lands; if that rebuild conflicts or the check fails,
+the item gets a fresh attempt from the latest work, shown what went wrong, within its usual
+corrections. Nothing that conflicts or fails is ever added to the delivery branch.
+
+Your `closer` then acts once per run, on the delivery branch, once at least one item has landed:
+`merge-back` merges it into your base branch and deletes it, `commit-to-branch` leaves it for you
+to merge, and `open-pr` opens one pull request for it, updating that pull request's list of items
+on later runs. If the closer does not succeed, the delivery branch stays as it is and the next
+run tries again.
+
+If you commit to your base branch yourself, the next run brings those commits into the delivery
+branch first, and runs your check on the result. If that conflicts or the check fails, the run
+starts no task and says what is in the way; it says so again on later runs, without trying the
+same thing again, until your base branch or the delivery branch moves.
 
 ### Work sources
 

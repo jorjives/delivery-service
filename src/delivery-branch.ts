@@ -1,10 +1,16 @@
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { closeError } from "./closer-support.js";
 import { computeDelta } from "./delta-rule.js";
 import { inDetachedWorktree } from "./disposable-copy.js";
 import { readDelivery, recordDelivery } from "./delivery-ledger.js";
 import { branchExists, git, tryGit } from "./git-exec.js";
 import { resolveBaseRef } from "./provision.js";
+import { resolveCloser } from "./resolve-closer.js";
 import { resolveGate } from "./resolve-gate.js";
-import { countsNewAssertions, type GateRef } from "./schema.js";
+import { countsNewAssertions, type CloserRef, type GateRef } from "./schema.js";
+import type { CloseReport, DeliveredTask } from "./ports.js";
 import type { GateContext } from "./command-gate.js";
 
 /** The one delivery branch per base branch (spec §5.7). */
@@ -90,4 +96,26 @@ async function mergeBaseIn(
     return { reason: `With ${base}'s new commits brought in, the checks fail on ${branch}${failing === "" ? "" : `: ${failing}`}. ${owner}` };
   }
   return { commit: await git(scratch, ["rev-parse", "HEAD"]) };
+}
+
+/**
+ * The project's closer, once, on the delivery branch (spec §5.7): given a scratch worktree of the branch's tip, removed
+ * afterwards, and every task landed on it since it opened. What it did is recorded either way: a branch it did not take
+ * stands, and the next run tries again.
+ */
+export async function closeDeliveryBranch(
+  { repoPath, closerRef, ledger, branch, base }: { repoPath: string; closerRef: CloserRef; ledger: string; branch: string; base: string },
+  landed: readonly DeliveredTask[],
+): Promise<CloseReport> {
+  const scratch = join(await mkdtemp(join(tmpdir(), "delivery-close-")), "tree");
+  try {
+    const report = (await tryGit(repoPath, ["worktree", "add", "--", scratch, branch]))
+      ? await resolveCloser(closerRef, repoPath).close({ worktreePath: scratch, dir: dirname(ledger), repoPath, branch, baseBranch: base, delivery: { landed } }, { kind: "accepted" })
+      : closeError(`${branch} could not be checked out in a scratch copy for your closer, most often because it is checked out somewhere else. Nothing was handed off; check out another branch there and run again.`);
+    await recordDelivery(ledger, { t: "closed", branch, status: report.status, detail: report.detail });
+    return report;
+  } finally {
+    await tryGit(repoPath, ["worktree", "remove", "--force", "--", scratch]);
+    await tryGit(repoPath, ["worktree", "prune"]);
+  }
 }

@@ -160,6 +160,8 @@ about each. See [Come back to your task list](../README.md#come-back-to-your-tas
   complete example project. For a project of your own, `delivery init` writes a
   `delivery.config.json` by asking what the project is, what checks the work, what happens
   to work that passes, and what you would like done; the [readme](../README.md) lists every setting.
+- [Running the backlog](project-configuration.md#running-the-backlog): have the harness work
+  through a backlog of items on its own, each landing on one delivery branch you review once.
 - [Writing a gate](writing-a-gate.md): use a check other than `npm test`, or write
   your own.
 - [Writing a closer](writing-a-closer.md): merge the work back, open a pull

@@ -1,8 +1,11 @@
 import { prepareContinuation } from "../continuation.js";
+import { baseTip, closeDeliveryBranch, deliveryBranchOf, reconcileDeliveryBranch } from "../delivery-branch.js";
+import { deliveryLedgerPath, readDelivery } from "../delivery-ledger.js";
 import { DEFAULT_PARK_AFTER, ledgerPath, readItemLedger, recordDispatched, settleRun, type ItemState } from "../item-ledger.js";
 import { runIdFor } from "../run-location.js";
+import type { CloseReport } from "../ports.js";
 import type { RunRecord } from "../run-records.js";
-import type { Continues } from "../schema.js";
+import type { CloserRef, Continues } from "../schema.js";
 import { runShell } from "../shell.js";
 import { taskIntent } from "../task-list.js";
 import { chooseWork, type WorkItem } from "../work-sources.js";
@@ -28,6 +31,10 @@ export function parkedNote(state: ItemState): string {
       return `Parked ${state.key}: it stopped for you. When you have dealt with it: delivery unpark ${state.key}`;
   }
 }
+
+export const blockedNote = (reason: string): string => `No task was started: ${reason}`;
+export const deliveryClosedNote = (branch: string, report: CloseReport): string =>
+  report.status === "DONE" ? `Handed ${branch} to your closer: ${report.detail}` : `${branch} was not handed off: ${report.detail} The next run tries again.`;
 
 export const unknownItemWorkflow = (key: string, name: string): string => `Left ${key} alone: it names the workflow "${name}", which your config file does not define.`;
 const completeFailed = (key: string, detail: string): string => `${key} was delivered, but marking it done failed: ${detail}`;
@@ -57,6 +64,8 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const ledger = await readItemLedger(path);
   records = await allRuns(repoPath);
 
+  // The one branch every task of this run lands on, named after the base before any task is claimed.
+  const branch = deliveryBranchOf((await baseTip(repoPath)).base);
   const now = new Date();
   const taken = new Set(records.map((r) => r.runId));
   const claims: (QueueClaim & { key: string })[] = [];
@@ -72,12 +81,23 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const chosen = await chooseWork(sources, { repoPath, config, env: ctx.env, ledger, records, now, max: max - claims.length, taken: new Set(claims.map((c) => c.key)) });
   for (const note of chosen.notes) ctx.report.note(note);
   for (const item of chosen.items) {
-    const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken }, ctx);
+    const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch }, ctx);
     if (claim !== undefined) claims.push(claim);
+  }
+  const deliveryLedger = deliveryLedgerPath(path);
+  // Readied before any task starts, so every task builds on the owner's latest commits (spec §5.7). Also readied when
+  // nothing is to be worked but earlier landings still wait for the closer: the closer is retried "after bringing in
+  // any base commits" (spec §5.7), since a moved base is the usual reason a merge-back failed. A run with neither
+  // opens no branch.
+  const waiting = (await readDelivery(deliveryLedger, branch)).pending.length > 0;
+  const reconciled = claims.length === 0 && !waiting ? undefined : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env);
+  if (reconciled?.ready === false) {
+    ctx.report.note(blockedNote(reconciled.reason));
+    return EXIT.escalated;
   }
   if (claims.length === 0) {
     ctx.report.note(NOTHING_TO_WORK);
-    return EXIT.ok;
+    return handOff(repoPath, project.closerRef, deliveryLedger, EXIT.ok, ctx);
   }
   claims.forEach((claim, index) => (claim.position = { task: index + 1, of: claims.length }));
 
@@ -93,8 +113,20 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
     },
   };
   const exitCode = await runQueue(claims.map((c) => c.taskDef), project, { repoPath, carryOn: true, claims: source }, ctx);
+  const handedOff = await handOff(repoPath, project.closerRef, deliveryLedger, exitCode, ctx);
   await closingReport(repoPath, { kind: "list" }, claims.map((c) => c.taskDef), ctx, config.notify);
-  return exitCode;
+  return handedOff;
+}
+
+/** The project's closer, once per run, when tasks have landed on the delivery branch since it last took it. A failed closer leaves the branch for the next run, and the run reports a stop. */
+async function handOff(repoPath: string, closerRef: CloserRef, ledger: string, exitCode: ExitCode, ctx: CommandContext): Promise<ExitCode> {
+  const { base } = await baseTip(repoPath);
+  const branch = deliveryBranchOf(base);
+  const { pending, landed } = await readDelivery(ledger, branch);
+  if (pending.length === 0) return exitCode;
+  const report = await closeDeliveryBranch({ repoPath, closerRef, ledger, branch, base }, landed.map((e) => ({ intent: e.intent, item: e.key, run: e.runId, at: e.at })));
+  ctx.report.note(deliveryClosedNote(branch, report));
+  return report.status === "DONE" || exitCode !== EXIT.ok ? exitCode : EXIT.escalated;
 }
 
 /** The claim a chosen item becomes: carried on from its last run, or a fresh run, with its workflow and item pinned. */
@@ -102,7 +134,7 @@ async function claimFor(
   item: WorkItem,
   state: ItemState | undefined,
   records: RunRecord[],
-  { repoPath, config, project, now, taken }: { repoPath: string; config: DeliveryConfig; project: ProjectSettings; now: Date; taken: Set<string> },
+  { repoPath, config, project, now, taken, branch }: { repoPath: string; config: DeliveryConfig; project: ProjectSettings; now: Date; taken: Set<string>; branch: string },
   ctx: CommandContext,
 ): Promise<(QueueClaim & { key: string }) | undefined> {
   // Only an undefined workflow is the item's own problem (left out with a note); any other refusal stops the command.
@@ -128,6 +160,7 @@ async function claimFor(
     existing: undefined,
     start: {
       item: ref,
+      delivery: { branch },
       ...(carried === undefined ? (workflow === undefined ? {} : { workflow }) : { continues: carried.continues, ...(carried.workflow === undefined ? {} : { workflow: carried.workflow }) }),
     },
   };
