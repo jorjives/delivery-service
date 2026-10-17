@@ -73,6 +73,12 @@ describe("a question the agent asked the operator", () => {
   });
 });
 
+describe("a question holding terminal control sequences", () => {
+  it("is shown without them", () => {
+    expect(plainOf(facts({ kind: "decision", question: "Formal?\u001B[2J" })).sentence).toBe("Needs your answer. The agent asked: Formal?");
+  });
+});
+
 describe("a question for an item from a work source", () => {
   it("says how to answer it, and to carry on with the sources", () => {
     const plain = plainOf(facts({ kind: "decision", question: "Formal?" }, { item: "backlog:x.md" }));

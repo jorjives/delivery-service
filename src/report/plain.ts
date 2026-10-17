@@ -1,6 +1,7 @@
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import type { CloserRef, OutcomeCause, Population, UsageLimit } from "../schema.js";
 import type { Audience, Plain, PlainGroup } from "./document.js";
+import { stripControl } from "./text.js";
 
 /** What `plainOf` reads of a stopped task: facts from its record, never prose to paraphrase. */
 export interface PlainFacts {
@@ -119,7 +120,7 @@ const SENTENCE: Record<Stop, (facts: PlainFacts) => string> = {
   say_so: () => "Needs your decision. The agent stopped and said it could not go on without your say-so.",
   say_so_in_repair: () => "Needs your decision. While repairing the check, the agent stopped and said it could not go on without your say-so.",
   asked: () => "Needs your decision. The agent stopped and asked for a person to decide.",
-  asked_you: ({ cause }) => `Needs your answer. The agent asked: ${cause?.kind === "decision" ? cause.question : "the question was not recorded"}`,
+  asked_you: ({ cause }) => `Needs your answer. The agent asked: ${cause?.kind === "decision" ? stripControl(cause.question ?? "the question was not recorded") : "the question was not recorded"}`,
   could_not_start: () => "Needs you. The agent could not be started, which usually means a sign-in or credential only you can supply.",
   check_still_fails: ({ attempts }) =>
     `Failed after ${attemptsWord(attempts)}. The agent tried ${timesWord(attempts)} and the check you set up still does not pass.`,

@@ -60,6 +60,11 @@ describe("buildEscalationPacket", () => {
     expect(packet.why_now).toContain("a question goes straight to a person and is never retried");
   });
 
+  it("shows the agent's question without anything that could drive the terminal", () => {
+    const packet = buildEscalationPacket({ kind: "decision", question: "Formal?\u001B[2J\u0007" }, facts);
+    expect(packet.decision).toBe("The agent needs your answer before it can go on. It asked: Formal?");
+  });
+
   it("states a decision for a person, and a different one for each cause", () => {
     const decisions = all.map((cause) => buildEscalationPacket(cause, facts).decision);
     for (const decision of decisions) expect(decision).toMatch(/Decide (whether|how)/);

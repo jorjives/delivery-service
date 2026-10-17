@@ -3,6 +3,7 @@ import { deriveBudgetsFromLog, readRef } from "./case-file.js";
 import { NewFailure, type BudgetPopulation, type BudgetSet, type CaseFile, type HistoryEntry } from "./schema.js";
 import type { EscalationCause, TriageInput } from "./ports.js";
 import type { EscalationPacket } from "./triage-role-config.js";
+import { stripControl } from "./report/text.js";
 
 /** Budget populations as a person reads them. Key order is the order they are listed in. */
 export const POPULATION_LABELS: Record<BudgetPopulation, string> = {
@@ -62,7 +63,7 @@ export function buildEscalationPacket(cause: EscalationCause, facts: PacketFacts
 function decisionFor(cause: EscalationCause): string {
   switch (cause.kind) {
     case "decision":
-      return `The agent needs your answer before it can go on. It asked: ${cause.question}`;
+      return `The agent needs your answer before it can go on. It asked: ${stripControl(cause.question)}`;
     case "authority":
       return `The ${ROLE_LABELS[cause.role]} stopped because it judged it lacked authority. Decide whether to grant that authority or take the action yourself.`;
     case "repair_gave_up":
