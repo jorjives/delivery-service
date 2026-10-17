@@ -42,7 +42,8 @@ export function worktreeOf(caseFile: CaseFile, location: SurfaceLocation): strin
  * fire-and-log teardown path can never disagree about what a closer is given.
  * `baseBranch` is empty only if provisioning never completed, which no state
  * that reaches a closer can be; a closer that needs it reports the gap itself
- * rather than the driver guessing a branch.
+ * rather than the driver guessing a branch. A task pinned to a delivery branch
+ * lands there, so that is its closer's base.
  */
 function closeContextOf(dir: string, caseFile: CaseFile, location: SurfaceLocation): CloseContext {
   return {
@@ -50,7 +51,7 @@ function closeContextOf(dir: string, caseFile: CaseFile, location: SurfaceLocati
     dir,
     repoPath: location.repoPath,
     branch: branchName(caseFile.header.surfaceId),
-    baseBranch: caseFile.header.baseBranch ?? "",
+    baseBranch: caseFile.header.delivery?.branch ?? caseFile.header.baseBranch ?? "",
   };
 }
 
@@ -632,9 +633,11 @@ async function provisioning(
   let baseBranch: string;
   let startCommit: string;
   try {
-    // A continued run starts from the earlier branch's tip (its work), not the commit it started from.
+    // A continued run starts from the earlier branch's tip (its work), not the commit it started from. A task pinned
+    // to a delivery branch starts from its tip, so it sees every task landed before it.
     ({ restarted, baseBranch, startCommit } = await provisionWorktree(
-      dir, location.repoPath, worktreePath, caseFile.header.surfaceId, caseFile.header.continues?.from ?? caseFile.header.startCommit,
+      dir, location.repoPath, worktreePath, caseFile.header.surfaceId,
+      caseFile.header.continues?.from ?? caseFile.header.startCommit ?? caseFile.header.delivery?.branch,
     ));
   } catch (err) {
     if (!(err instanceof ProvisioningFailure)) throw err;

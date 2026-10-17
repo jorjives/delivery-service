@@ -262,6 +262,9 @@ export const CaseFileHeader = z.object({
   item: WorkItemRef.optional(),
   // The earlier run this one carries on, pinned at CREATE. Absent for a run that starts afresh.
   continues: Continues.optional(),
+  // The delivery branch this run starts from and lands on (spec §5.7), pinned at CREATE. Absent for a run that lands
+  // through the project's closer on its own, and for every record made before delivery branches existed.
+  delivery: z.object({ branch: z.string() }).optional(),
 });
 export type CaseFileHeader = z.infer<typeof CaseFileHeader>;
 

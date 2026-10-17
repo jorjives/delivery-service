@@ -1,6 +1,7 @@
 import { createAgentPort, DEFAULT_ROLES } from "../agent-invoke.js";
 import { create, load, appendEntry } from "../case-file.js";
 import { resolveCloser } from "../resolve-closer.js";
+import { createMergeBackCloser } from "../merge-back-closer.js";
 import { deterministicRouter } from "../router.js";
 import { advance, worktreeOf, type AdvanceResult } from "../surface.js";
 import type { SessionEnvironment } from "../agent-invoke.js";
@@ -37,6 +38,8 @@ export interface RunStart extends ProjectSettings {
   item?: WorkItemRef;
   /** The earlier run whose work this run carries on, in that run's working copy. */
   continues?: Continues;
+  /** The delivery branch the run starts from and lands on, for --sources runs. */
+  delivery?: { branch: string };
 }
 
 /** Said before a run starts on a machine where the fence cannot be had. Word for word as the design gives it. */
@@ -74,7 +77,7 @@ export async function fenceAtStart(setting: FenceSetting | undefined, repoPath: 
  * so from here on there is a record on disk for whatever happens next.
  */
 export async function startRun(
-  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, agent, runId: chosenId, fenceRecord, workflow, item, continues }: RunStart,
+  { repoPath, taskDef, gateRef, closerRef, budgets, domainPrompt, agent, runId: chosenId, fenceRecord, workflow, item, continues, delivery }: RunStart,
   session: SessionEnvironment,
   ctx: CommandContext,
 ): Promise<ExitCode> {
@@ -97,6 +100,7 @@ export async function startRun(
       ...(workflow === undefined ? {} : { workflow }),
       ...(item === undefined ? {} : { item }),
       ...(continues === undefined ? {} : { continues }),
+      ...(delivery === undefined ? {} : { delivery }),
     },
     budgets,
   );
@@ -129,7 +133,8 @@ export async function driveToOutcome(
   const ports: SurfacePorts = {
     agent,
     triage: deterministicRouter,
-    closer: resolveCloser(header.closerRef ?? DEFAULT_CLOSER, repoPath),
+    // A task on a delivery branch lands there by merge-back; the project's closer acts once per run, on the branch (spec §5.7).
+    closer: header.delivery === undefined ? resolveCloser(header.closerRef ?? DEFAULT_CLOSER, repoPath) : createMergeBackCloser(),
     env: ctx.env,
     landed: pullRequestFinder(repoPath),
     ...(ctx.repairCoordinator === undefined ? {} : { repairCoordinator: ctx.repairCoordinator }),

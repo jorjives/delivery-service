@@ -141,8 +141,8 @@ export interface QueueClaim {
   surfaceId: string;
   position: QueuePosition;
   existing: RunRecord | undefined;
-  /** What a run started for this claim pins besides the task: its workflow, work item and carried-on work. */
-  start?: Pick<RunStart, "workflow" | "item" | "continues">;
+  /** What a run started for this claim pins besides the task: its workflow, work item, carried-on work and the delivery branch it lands on. */
+  start?: Pick<RunStart, "workflow" | "item" | "continues" | "delivery">;
 }
 
 /** Where a run's work comes from when it is not the project's list. `next` must not consume: it is asked again with what is claimed. */
