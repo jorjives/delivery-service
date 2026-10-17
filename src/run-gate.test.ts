@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { rmSync, writeFileSync } from "node:fs";
 import { create, load, readRef, setBaseBranch, appendEntry } from "./case-file.js";
-import { recordBaseline, runCheck, GATE_GUARD, gateDigestOf } from "./run-gate.js";
+import { recordBaseline, runCheck, takeBaseline, GATE_GUARD, gateDigestOf } from "./run-gate.js";
 import { ImmutabilityViolation, MissingBaseline } from "./errors.js";
 import type { BudgetSet, GateRef } from "./schema.js";
 import { withoutAt } from "./without-at.js";
@@ -397,5 +397,20 @@ describe("the gate's own module", () => {
 
   it("is not looked for on a command gate, whose command the guards already compare", async () => {
     expect(await gateDigestOf(TAP_GATE, "/unused")).toBeUndefined();
+  });
+});
+
+describe("takeBaseline", () => {
+  beforeEach(async () => {
+    await newSurface();
+    await tap(GREEN);
+  });
+
+  it("runs the gate's baseline and records nothing", async () => {
+    const report = await takeBaseline(await load(surfaceDir), location);
+
+    expect(report.status).toBe("PASS");
+    expect(report.assertions.map((a) => a.id)).toEqual(["1 - alpha", "2 - beta"]);
+    expect((await load(surfaceDir)).header.baseline).toBeNull();
   });
 });

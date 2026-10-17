@@ -21,9 +21,13 @@ export function taskSummary(taskDef: TaskDef): string | undefined {
 /**
  * Commit whatever the worker left in the worktree, titled with the task it
  * delivers so the branch's history says what was asked for. A task with no
- * text to title it with is named by its branch instead.
+ * text to title it with is named by its branch instead. A worktree with
+ * nothing to commit is left alone without reading the case file, so a close
+ * of the delivery branch (whose `dir` holds no case file) can call it too.
  */
 export async function commitAccepted(ctx: CloseContext): Promise<void> {
+  await git(ctx.worktreePath, ["add", "-A"]);
+  if ((await git(ctx.worktreePath, ["status", "--porcelain"])) === "") return;
   const { header } = await load(ctx.dir);
   const summary = taskSummary(header.taskDef);
   const message = summary

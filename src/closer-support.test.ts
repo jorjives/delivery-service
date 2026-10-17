@@ -4,7 +4,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
-import { teardownWorktree } from "./closer-support.js";
+import { commitAccepted, teardownWorktree } from "./closer-support.js";
 import { provisionWorktree } from "./provision.js";
 import { initTempRepo } from "./temp-repo.js";
 import type { CloseContext } from "./ports.js";
@@ -65,5 +65,17 @@ describe("teardownWorktree", () => {
 
     expect(second.status).toBe("DONE");
     expect(git(repo, ["branch", "--list", "surface/surface-42"])).toBe("");
+  });
+});
+
+describe("commitAccepted", () => {
+  it("does nothing, and reads no case file, when the worktree holds nothing to commit", async () => {
+    const repo = initTempRepo("commit-accepted-", { "seed.txt": "seed\n" });
+    const before = git(repo, ["rev-parse", "HEAD"]);
+    const noCaseFile = await mkdtemp(join(tmpdir(), "no-case-"));
+
+    await commitAccepted({ worktreePath: repo, dir: noCaseFile, repoPath: repo, branch: "main", baseBranch: "main" });
+
+    expect(git(repo, ["rev-parse", "HEAD"])).toBe(before);
   });
 });

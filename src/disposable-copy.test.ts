@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { inDisposableCopy } from "./disposable-copy.js";
+import { inDetachedWorktree, inDisposableCopy } from "./disposable-copy.js";
 import { git } from "./git-exec.js";
 import { initTempRepo } from "./temp-repo.js";
 
@@ -43,5 +43,24 @@ describe("a disposable copy of a working copy", () => {
       return Promise.reject(new Error("triage failed"));
     })).rejects.toThrow("triage failed");
     expect(existsSync(where)).toBe(false);
+  });
+});
+
+describe("inDetachedWorktree", () => {
+  it("runs work in a detached copy of a commit, and removes the copy however work ends", async () => {
+    const repo = initTempRepo("detached-", { "seed.txt": "seed\n" });
+    const commit = await git(repo, ["rev-parse", "HEAD"]);
+    let seen = "";
+
+    await expect(
+      inDetachedWorktree(repo, commit, async (copy) => {
+        seen = copy;
+        expect(await git(copy, ["rev-parse", "HEAD"])).toBe(commit);
+        throw new Error("boom");
+      }),
+    ).rejects.toThrow("boom");
+
+    expect(existsSync(seen)).toBe(false);
+    expect(await git(repo, ["worktree", "list"])).not.toContain(seen);
   });
 });

@@ -32,6 +32,11 @@ function gateOf(header: CaseFileHeader, location: SurfaceLocation, accepted: Acc
   return base === null ? gate : guardedGate(gate, base, accepted);
 }
 
+/** The view's gate baseline, run in `location.worktreePath` and recorded nowhere. */
+export function takeBaseline(view: CaseFile, location: SurfaceLocation, env?: NodeJS.ProcessEnv): Promise<GateReport> {
+  return gateOf(view.header, location).baseline(gateContext(view, location.worktreePath, env));
+}
+
 /**
  * Run the surface's pinned gate's `baseline` and store the report in the case
  * file. Set-once: a second call for a surface that already has a baseline
@@ -51,7 +56,7 @@ export async function recordBaseline(
   const first = stepIndexOf(view) === 1;
   // A later step's baseline is its own entry: header.baseline is set once and stays step 1's.
   if (!first && view.header.baseline !== null) throw new ImmutabilityViolation(dir, "baseline");
-  const report = await gateOf(view.header, location).baseline(gateContext(view, location.worktreePath, env));
+  const report = await takeBaseline(view, location, env);
 
   if (report.status !== "ERROR") {
     if (first) await setBaseline(dir, report);
