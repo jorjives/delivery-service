@@ -1,6 +1,19 @@
+import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { newestFirst, type RunRecord } from "./run-records.js";
 import type { TaskDef } from "./schema.js";
+
+const canonical = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map(canonical)
+    : value !== null && typeof value === "object"
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)).map(([key, inner]) => [key, canonical(inner)]))
+      : value;
+
+/** A task's identity for the item ledger: what the task says, never where it sits in a list that gets edited. */
+export function taskId(taskDef: TaskDef): string {
+  return createHash("sha256").update(JSON.stringify(canonical(taskDef))).digest("hex").slice(0, 12);
+}
 
 /** Where a task sits in the list as it is written now, counted from one, which is how "Task N of M" reads. */
 export interface QueuePosition {
