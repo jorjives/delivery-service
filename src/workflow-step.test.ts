@@ -97,3 +97,21 @@ describe("mergeAgent", () => {
     expect(mergeAgent({ append: "Project." }, { model: "b" })).toEqual({ append: "Project.", model: "b" });
   });
 });
+
+describe("stepView after a landing", () => {
+  it("judges the work from the tip it was rebuilt on, against that tip's baseline", () => {
+    const base = initialCaseFile({ surfaceId: "s", taskDef: { intent: "x" }, gateRef: { type: "command", command: "true", parseMode: "exitcode" } }, budgets);
+    const baseline = { status: "PASS" as const, assertions: [{ id: "a", outcome: "PASS" as const, detail: "ok" }] };
+    const caseFile = {
+      ...base,
+      header: { ...base.header, startCommit: "start", baseline: { status: "PASS" as const, assertions: [] } },
+      history: [{ t: "landing" as const, onto: "tip", baseline }],
+    };
+
+    const view = stepView(caseFile);
+
+    expect(view.header.startCommit).toBe("tip");
+    expect(view.header.baseline).toEqual(baseline);
+    expect(view.history).toEqual(caseFile.history);
+  });
+});

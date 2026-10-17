@@ -1204,3 +1204,13 @@ describe("a workflow's records", () => {
     expect((await load(dir)).header.workflow).toBeUndefined();
   });
 });
+
+describe("a landing entry", () => {
+  const baseline = { status: "PASS" as const, assertions: [] };
+  it("re-checks a clean rebuild and triages a conflicting one", () => {
+    expect(deriveStateFromEntry({ t: "landing", onto: "tip", baseline })).toBe("GATING");
+    expect(deriveStateFromEntry({ t: "landing", onto: "tip", baseline, conflict: { files: ["a"], kept: "k" }, newFailures: [] })).toBe("TRIAGE");
+    expect(resumeAction({ t: "landing", onto: "tip", baseline })).toBe("gate");
+    expect(resumeAction({ t: "landing", onto: "tip", baseline, conflict: { files: ["a"], kept: "k" }, newFailures: [] })).toBe("triage");
+  });
+});

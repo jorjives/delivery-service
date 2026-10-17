@@ -45,7 +45,7 @@ export function stepKey(caseFile: CaseFile, key: string): string {
  * The record as the current step sees it: its own gate (or the project's), its own agent options laid over the
  * project's, and from the second step on only its own log, its own baseline and the commit it started from.
  */
-export function stepView(caseFile: CaseFile): CaseFile {
+function ownStep(caseFile: CaseFile): CaseFile {
   const step = currentStep(caseFile);
   if (step === undefined) return caseFile;
   const own: Partial<CaseFileHeader> = {
@@ -58,4 +58,15 @@ export function stepView(caseFile: CaseFile): CaseFile {
   const history = caseFile.history.slice(opened);
   const baseline = history.find((entry) => entry.t === "baseline")?.report ?? null;
   return { ...caseFile, header: { ...caseFile.header, ...own, baseline, startCommit: opening.startCommit }, history };
+}
+
+/**
+ * The case file as the current step sees it. After a landing rebuilt the work on a newer delivery tip, the work is
+ * judged from that tip, against its baseline (spec §5.7).
+ * ponytail: a multi-step workflow is re-checked as a whole with its last step's gate and guards; per-step re-checks if that proves too coarse.
+ */
+export function stepView(caseFile: CaseFile): CaseFile {
+  const view = ownStep(caseFile);
+  const landing = view.history.findLast((entry) => entry.t === "landing");
+  return landing?.t === "landing" ? { ...view, header: { ...view.header, baseline: landing.baseline, startCommit: landing.onto } } : view;
 }

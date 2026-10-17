@@ -8,6 +8,8 @@ import { messageOf } from "./gate-support.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
 import { currentStep, nextStepOf, stepIndexOf, stepKey, stepView } from "./workflow-step.js";
 import { ensureCommitted, git } from "./git-exec.js";
+import { commitAccepted } from "./closer-support.js";
+import { rebuildIfMoved } from "./delivery-landing.js";
 import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
@@ -15,7 +17,7 @@ import { EscalationPacket, type SharpenedBrief } from "./triage-role-config.js";
 import { resolvedText } from "./backlog.js";
 import { captureRepair, checkFilesOf } from "./repair-changes.js";
 import { judgedRepair } from "./repair-guards.js";
-import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext } from "./ports.js";
+import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext, CloseReport } from "./ports.js";
 import { OutcomeCause } from "./schema.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry, TerminusEntry, WorkflowStep } from "./schema.js";
 
@@ -782,8 +784,25 @@ async function closing(
   // is the round that ordered this retry.
   const repairBrief = (await briefStartedBy(dir, caseFile.history, "retry_close"))?.brief;
   const ctx: CloseContext = { ...closeContextOf(dir, caseFile, location), ...(repairBrief ? { repairBrief } : {}) };
-  const report = await onSharedGround(ports, caseFile, () => ports.closer.close(ctx, { kind: "accepted" }));
 
+  // A task on a delivery branch is rebuilt and re-checked first if the branch moved after it started (spec §5.7).
+  if (caseFile.header.delivery !== undefined) {
+    await commitAccepted(ctx);
+    const rebuilt = await onSharedGround(ports, caseFile, () => rebuildIfMoved(dir, ctx, ports.env));
+    if (rebuilt !== undefined && "report" in rebuilt) return recordClose(dir, caseFile, rebuilt.report);
+    if (rebuilt !== undefined) {
+      const state = deriveStateFromEntry(rebuilt.entry);
+      await updateCursor(dir, { state });
+      return { state, done: false };
+    }
+  }
+
+  const report = await onSharedGround(ports, caseFile, () => ports.closer.close(ctx, { kind: "accepted" }));
+  return recordClose(dir, caseFile, report);
+}
+
+/** Record what the close did: a refusal goes to triage, an accepted close ends the run. */
+async function recordClose(dir: string, caseFile: CaseFile, report: CloseReport): Promise<AdvanceResult> {
   const priorCloses = caseFile.history.filter((e) => e.t === "close").length;
   const detailRef = await writeRef(dir, stepKey(caseFile, `close-${priorCloses}`), report);
   await appendEntry(dir, { t: "close", status: report.status, detailRef });

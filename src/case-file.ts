@@ -299,6 +299,8 @@ export function deriveStateFromEntry(entry: HistoryEntry): SurfaceState {
     case "triage_accepted": return "TRIAGE";
     // The next workflow step opens: it takes its own baseline before its first worker.
     case "step": return "PRE_GATING";
+    // A clean rebuild is re-checked; a conflicting one is a rejected attempt.
+    case "landing": return entry.conflict === undefined ? "GATING" : "TRIAGE";
   }
 }
 
@@ -430,5 +432,7 @@ export function resumeAction(tail: HistoryEntry | undefined): ResumeAction {
     // Unconsumed by the driver, like "baseline": a step tail is ready to take the next step's baseline.
     case "step":
       return "start";
+    case "landing":
+      return tail.conflict === undefined ? "gate" : "triage";
   }
 }

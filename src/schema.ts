@@ -455,6 +455,19 @@ export const StepEntry = z.object({
 });
 export type StepEntry = z.infer<typeof StepEntry>;
 
+// The task rebuilt, at its close, on a delivery branch tip that moved after it started (spec §5.7): the tip it was
+// rebased onto and that tip's baseline, which the re-check is judged against. A rebuild that conflicted carries the
+// conflicting files, the branch its earlier work was kept on, and the failure the next attempt is shown.
+export const LandingEntry = z.object({
+  t: z.literal("landing"),
+  onto: z.string(),
+  baseline: GateReport,
+  conflict: z.object({ files: z.array(z.string()), kept: z.string() }).optional(),
+  newFailures: z.array(z.object({ id: z.string(), detailRef: z.string() })).optional(),
+  at: At.optional(),
+});
+export type LandingEntry = z.infer<typeof LandingEntry>;
+
 export const HistoryEntry = z.discriminatedUnion("t", [
   DispatchEntry,
   TerminusEntry,
@@ -465,6 +478,7 @@ export const HistoryEntry = z.discriminatedUnion("t", [
   RepairAcceptedEntry,
   TriageAcceptedEntry,
   StepEntry,
+  LandingEntry,
 ]);
 export type HistoryEntry = z.infer<typeof HistoryEntry>;
 
