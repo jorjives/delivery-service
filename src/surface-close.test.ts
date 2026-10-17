@@ -1,7 +1,7 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtemp } from "node:fs/promises";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
 import { git } from "../tests/helpers.js";
@@ -151,7 +151,11 @@ describe("a close that cannot complete, with the real merge-back closer", () => 
 
   it.each([
     ["a refusal", "FAIL", moveMainOn],
-    ["an environment error", "ERROR", (repo: string) => git(repo, ["checkout", "-q", "-b", "elsewhere"])],
+    ["an environment error", "ERROR", (repo: string) => {
+      // main stays held by another checkout, which merge-back still refuses to touch.
+      git(repo, ["checkout", "-q", "-b", "elsewhere"]);
+      git(repo, ["worktree", "add", "-q", join(mkdtempSync(join(tmpdir(), "surface-close-holder-")), "holder"), "main"]);
+    }],
   ] as const)("routes %s to close-failure handling and never back to a worker", async (_kind, status, breakIt) => {
     const { dir, repo, location } = await toClosing(ports);
     breakIt(repo);
