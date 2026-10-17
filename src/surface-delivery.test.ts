@@ -131,7 +131,6 @@ describe("a rebuild that conflicts", () => {
   it("is never landed: the next attempt starts afresh at the tip, can read the kept work, and lands", async () => {
     const repo = deliveryRepo();
     let attempt = 0;
-
     let seen: { head: string; shared: string; kept: string } | undefined;
     const ports = portsWith((ctx) => {
       attempt++;
