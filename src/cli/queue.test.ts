@@ -31,6 +31,19 @@ async function writeRun(repoPath: string, runId: string, taskDef: TaskDef, finis
 
 const scratchRepo = () => mkdtemp(join(tmpdir(), "queue-"));
 
+/** A command context whose lines go into `lines`, run in process. */
+const contextIn = (cwd: string, lines: string[], env: NodeJS.ProcessEnv = process.env): CommandContext => ({
+  cwd,
+  env,
+  colour: false,
+  json: false,
+  stdin: Readable.from([]),
+  writeLine: (line) => lines.push(line),
+  report: plainReporter((line) => lines.push(line), false),
+});
+
+const project = { gateRef: GATE, closerRef: DEFAULT_CLOSER, budgets: DEFAULT_BUDGETS, concurrency: 1 };
+
 describe("the tasks a project's list asks for", () => {
   it("is empty for a project that listed none", () => {
     expect(queueTasks({})).toEqual([]);
@@ -222,16 +235,6 @@ describe("what a run of several at once says when it gives up on its shared envi
 
 describe("working down a list that carries on", () => {
   const ESCALATED = { kind: "escalated", source: "worker", reason: "authority limit", at: "2026-09-17T09:05:00.000Z" } as const;
-  const contextIn = (cwd: string, lines: string[]): CommandContext => ({
-    cwd,
-    env: process.env,
-    colour: false,
-    json: false,
-    stdin: Readable.from([]),
-    writeLine: (line) => lines.push(line),
-    report: plainReporter((line) => lines.push(line), false),
-  });
-  const project = { gateRef: GATE, closerRef: DEFAULT_CLOSER, budgets: DEFAULT_BUDGETS, concurrency: 1 };
 
   async function twoStopped(): Promise<string> {
     const repo = initTempRepo("queue-carry-on-", { "a.js": "x\n" });
