@@ -38,7 +38,9 @@ export async function resumeCommand(runId: string | undefined, options: ResumeOp
 
   const record = runId === undefined ? await discover(repoPath, options, ctx) : await readRun(repoPath, runId);
   if (record.caseFile.outcome) throw new Refusal(alreadyFinished(record.runId), EXIT.configuration);
+  // Read before the agent runs: what the session leaves behind is not to be trusted to name a command.
+  const notify = await projectNotify(startDir, repoPath, ctx);
   const exitCode = await resumeRun(record, ctx);
-  await closingReport(repoPath, { kind: "task", runId: record.runId }, await listTasks(startDir, repoPath, ctx), ctx, await projectNotify(startDir, repoPath, ctx));
+  await closingReport(repoPath, { kind: "task", runId: record.runId }, await listTasks(startDir, repoPath, ctx), ctx, notify);
   return exitCode;
 }
