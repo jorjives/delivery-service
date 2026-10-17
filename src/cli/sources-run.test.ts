@@ -162,4 +162,21 @@ describe("delivery run --sources", () => {
     expect((await delivery(["run", "--sources", "--task", "x"], { cwd: repo })).stderr).toContain(SOURCES_AND_TASK);
     expect((await delivery(["run", "--max", "2"], { cwd: repo })).stderr).toContain(MAX_NEEDS_SOURCES);
   });
+
+  it("carries on a parked question's work once it is answered", async () => {
+    const repo = project();
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(asks) };
+    await delivery(["run", "--sources"], { cwd: repo, env });
+
+    expect((await delivery(["answer", KEY, "Formal, please."], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const carried = await delivery(["run", "--sources"], { cwd: repo, env });
+    expect(carried.exitCode).toBe(EXIT.ok);
+
+    const [latest, earlier] = (await allRuns(repo)).sort((a, b) => (a.runId < b.runId ? 1 : -1));
+    expect(latest?.caseFile.header.continues).toMatchObject({ runId: earlier?.runId, turn: { kind: "answer", question: "Formal or casual greeting?", answer: "Formal, please." } });
+    expect(latest?.caseFile.cursor.worktreeRef).toBe(earlier?.caseFile.cursor.worktreeRef);
+    // The draft written before the question is still there once the answer is acted on.
+    expect(git(repo, ["show", `surface/${latest?.runId}:draft.md`])).toBe("A first draft of the greeting.");
+    expect(git(repo, ["show", `surface/${latest?.runId}:hello.js`])).toContain("Good day");
+  }, RUN_TIMEOUT * 2);
 });

@@ -9,6 +9,7 @@ import { decideCommand, findingsCommand, type DecideOptions, type FindingsOption
 import type { SignOffOptions } from "./sign-off-command.js";
 import type { ReviewCommandOptions } from "./review-command.js";
 import type { FixOptions } from "./fix-command.js";
+import { answerCommand, unparkCommand, type ItemOptions } from "./item-commands.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
@@ -120,6 +121,25 @@ export async function runCli(io: CliIo): Promise<number> {
     .action(async (options: RunOptions, command: Command) => {
       // A throw here rejects parseAsync with the original error, rendered once below.
       exitCode = await runCommand(options, ctxFor(command));
+    });
+
+  program
+    .command("answer")
+    .description("answer the question a parked backlog item is waiting on; the next `delivery run --sources` carries on its work with your answer")
+    .argument("<item>", "the item, as `delivery status` names it, such as backlog:20261016T090000Z-greet.md")
+    .argument("<answer>", "your answer, in plain words")
+    .option("--repo <path>", "the git repository the item belongs to (default: the current folder)")
+    .action(async (item: string, answer: string, options: ItemOptions, command: Command) => {
+      exitCode = await answerCommand(item, answer, options, ctxFor(command));
+    });
+
+  program
+    .command("unpark")
+    .description("put a parked item back in the queue; the next `delivery run --sources` starts it afresh")
+    .argument("<item>", "the item, as `delivery status` names it")
+    .option("--repo <path>", "the git repository the item belongs to (default: the current folder)")
+    .action(async (item: string, options: ItemOptions, command: Command) => {
+      exitCode = await unparkCommand(item, options, ctxFor(command));
     });
 
   program
