@@ -81,6 +81,15 @@ describe("what a report says of one task", () => {
     expect(deriveReport(snapshotOf({ records: [old] })).surfaces[0]?.closer).toBe("commit-to-branch");
   });
 
+  it("tells a task pinned to a delivery branch as landing there, and has no delivery section of its own", () => {
+    const pinned = recordOf({ runId: ID.form, task: FORM, history: attempt(1, "done"), outcome: closedAt("2026-10-01T02:19:10.000Z"), header: { delivery: { branch: "delivery/main" } } });
+
+    const doc = deriveReport(snapshotOf({ records: [pinned] }));
+
+    expect(doc.surfaces[0]).toMatchObject({ closer: "delivery-branch", base: "delivery/main" });
+    expect(doc.delivery).toBeNull();
+  });
+
   it("gives a delivered task no plain block: there is nothing to act on", () => {
     expect(deriveReport(snapshotOf({ records: [formDone] })).surfaces[0]?.plain).toBeNull();
   });

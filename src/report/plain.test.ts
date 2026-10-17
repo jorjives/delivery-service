@@ -221,6 +221,11 @@ describe("where the work is", () => {
     expect(landedWords("custom", "surface/x", "main")).toBe("your own closer handled this task; check what it did");
   });
 
+  it("says a task on the delivery branch landed there", () => {
+    expect(landedWords("delivery-branch", "surface/x", "delivery/main")).toBe("landed on delivery/main");
+    expect(completedWords("delivery-branch", 2)).toBe("completed and landed on the delivery branch");
+  });
+
   it("says what completed meant when every delivered task landed the same way", () => {
     expect(completedWords("merge-back", 3)).toBe("completed and merged");
     expect(completedWords("commit-to-branch", 3)).toBe("completed and committed to their own branches");

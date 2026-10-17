@@ -44,6 +44,7 @@ kind has none.
 | `trips` | Each time the setup a run's tasks share broke: the `cause` (its `kind`, the `surfaceId` of the task whose report tripped it, and either a `reason` or the `surfaceIds` of every task counted, whichever the kind does not have being `null`), the tasks `held`, every one of the `repairs` tried, how it `ended`, the `reason` and any usage `limit`. Empty when there is no run of several tasks |
 | `usage`, `usageRecorded` | What the agent sessions behind everything the document reports took and cost, and how many sessions that covers. See "Time and cost" below |
 | `parked` | The backlog items this machine's item ledger has set aside, oldest key first, each with its `item` key, its `intent`, the `reason` it is parked (`"decision"`, `"escalated"` or `"attempts"`), the `question` it is waiting on, its `attempts`, and the `lastRun` that ended it. Empty when nothing is parked or the machine has no ledger |
+| `delivery` | The delivery branch this machine's `delivery run --sources` runs land their tasks on, or `null` when none was ever opened: its `branch` and the `base` it is for, `openedAt`, its `tip` (`null` once your closer has merged and deleted it), every task `landed` on it since it opened (each with its `run`, `item` key, `intent`, the delivery branch's `commit` that holds it, and `at`), what your `closer` last did with it (`status`, `detail`, `at`, or `null`), and what `blocked` it (`reason`, `at`, or `null`) |
 
 `run`, when there is one:
 
@@ -69,7 +70,7 @@ Each entry of `surfaces`:
 | `state`, `states` | The step the record is in, and every step it entered, oldest first, each with the time `at` it was entered |
 | `startedAt`, `finishedAt`, `lastActivityAt` | When it started and ended, and the latest time its record holds |
 | `reason`, `cause` | The recorded reason for a stop, and its cause: a `kind`, with the `role` or `population` it concerns, for `"landed_outside_closer"` (the agent opened a pull request for the task's branch itself) the `pullRequest` it opened; and for `"decision"` (the agent asked the operator a question) the `question`, word for word; each of these the kind does not have is `null`. `cause` is `null` for a stop recorded before causes were |
-| `closer`, `branch`, `base` | How its work is landed, and where |
+| `closer`, `branch`, `base` | How its work is landed, and where. `closer` is `"delivery-branch"` for a task a `--sources` run landed on the delivery branch, whose `base` is then that branch |
 | `fence` | Whether the task's agent sessions ran inside the write fence: the `mode` the run was set to, whether it was `present`, and the `reason` when it was not. `null` for a run recorded before the fence was |
 | `guards` | How the task's test guards differ from the defaults: the guards it `added` and those it turned `off`. `null` when it kept the defaults |
 | `workflow` | The workflow step the task is on: the workflow's `name`, the `step` number, how many steps it is `of`, and the step's name as `stepName`. `null` for a task run without a workflow. A task in a workflow reports its `budgets` for the step it is on |

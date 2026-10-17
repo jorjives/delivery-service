@@ -283,6 +283,23 @@ describe("delivery run --sources", () => {
     expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("Good day");
   }, RUN_TIMEOUT * 2);
 
+  it("names the delivery branch in status and report, with what landed on it and what the closer did", async () => {
+    const repo = project();
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+    await delivery(["run", "--sources"], { cwd: repo, env });
+
+    const status = await delivery(["status"], { cwd: repo, env });
+    const report = await delivery(["report"], { cwd: repo, env });
+    const json = JSON.parse((await delivery(["report", "--json"], { cwd: repo, env })).stdout) as { delivery: { branch: string; landed: { item: string }[]; closer: { status: string } } };
+
+    for (const out of [status.stdout, report.stdout]) {
+      expect(out).toContain("Delivery branch delivery/main");
+      expect(out).toContain(KEY);
+      expect(out).toContain("Your closer");
+    }
+    expect(json.delivery).toMatchObject({ branch: "delivery/main", landed: [{ item: KEY }], closer: { status: "DONE" } });
+  }, RUN_TIMEOUT);
+
   it("runs the notify command with the report, parked items included, on its standard input", async () => {
     const repo = project({ "delivery.config.json": JSON.stringify({ notify: "cat > notified.json" }) });
     await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(asks) } });

@@ -200,7 +200,7 @@ export function plainOf(facts: PlainFacts): Plain {
 }
 
 /** How a project lands its work. `ReportSurface.closer`, without the null a task with no run has. */
-export type Landing = CloserRef["type"];
+export type Landing = CloserRef["type"] | "delivery-branch";
 
 const NOT_RECORDED = "not recorded";
 
@@ -215,6 +215,8 @@ export function landedWords(closer: Landing, branch: string | null, base: string
       return `on branch ${branch ?? NOT_RECORDED}, with a pull request open`;
     case "custom":
       return "your own closer handled this task; check what it did";
+    case "delivery-branch":
+      return `landed on ${base ?? `the delivery branch (${NOT_RECORDED})`}`;
   }
 }
 
@@ -229,6 +231,8 @@ export function completedWords(closer: Landing, count: number): string {
       return count === 1 ? "completed, with a pull request open" : "completed, each with a pull request open";
     case "custom":
       return "completed";
+    case "delivery-branch":
+      return "completed and landed on the delivery branch";
   }
 }
 

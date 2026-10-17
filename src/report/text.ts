@@ -1,7 +1,7 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { Population } from "../schema.js";
-import { lastActivity, type BudgetRow, type DamagedRecord, type ParkedItem, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type UsageCoverage, type UsageTotal } from "./document.js";
+import { lastActivity, type BudgetRow, type DamagedRecord, type ParkedItem, type ReportDelivery, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type UsageCoverage, type UsageTotal } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
 export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery run";
@@ -212,6 +212,21 @@ export function parkedLines(parked: readonly ParkedItem[]): string[] {
     }
   };
   return ["", "Parked, skipped until you deal with them:", ...parked.map(line)];
+}
+
+/** The delivery branch: what landed on it since it opened, what the closer last did with it, and what blocks it. */
+export function deliveryLines(delivery: ReportDelivery | null): string[] {
+  if (delivery === null) return [];
+  const when = (at: string): string => `${dayAndMinute(at)} UTC`;
+  return [
+    "",
+    `Delivery branch ${pathName(delivery.branch)}, for ${pathName(delivery.base)}, open since ${when(delivery.openedAt)}:`,
+    ...(delivery.landed.length === 0
+      ? ["- nothing has landed on it yet"]
+      : delivery.landed.map((task) => `- ${when(task.at)}: ${stripControl(task.intent)} (${pathName(task.item)}, run ${pathName(task.run)})`)),
+    delivery.closer === null ? "Your closer has not taken it yet." : `Your closer, ${when(delivery.closer.at)}: ${stripControl(delivery.closer.detail)}`,
+    ...(delivery.blocked === null ? [] : [`Blocked, ${when(delivery.blocked.at)}: ${stripControl(delivery.blocked.reason)}`]),
+  ];
 }
 
 export function incompleteLines(doc: ReportDocument): string[] {
@@ -492,6 +507,7 @@ export function renderText(doc: ReportDocument, { colour, saved, review }: { col
     ...worthALookLines(doc, colour),
     ...tuningLines(doc, colour, saved, review),
     ...parkedLines(doc.parked),
+    ...deliveryLines(doc.delivery),
     "",
     review?.next ?? nextLine(doc),
   ];

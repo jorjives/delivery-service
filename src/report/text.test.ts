@@ -25,7 +25,7 @@ import {
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 import type { FenceRecord, HistoryEntry } from "../schema.js";
-import { closingSentence, costLine, durationWords, parkedLines, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
+import { closingSentence, costLine, deliveryLines, durationWords, parkedLines, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
 
 const report = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false });
 
@@ -664,5 +664,41 @@ describe("parked items", () => {
 
   it("says nothing when nothing is parked", () => {
     expect(parkedLines([])).toEqual([]);
+  });
+});
+
+describe("the delivery branch", () => {
+  const delivery = {
+    branch: "delivery/main", base: "main", openedAt: "2026-10-17T09:00:00.000Z", tip: "abc1234",
+    landed: [
+      { run: "add-a-hello-1", item: "backlog:hello.md", intent: "Add a hello.", commit: "c1", at: "2026-10-17T09:10:00.000Z" },
+      { run: "add-a-goodbye-1", item: "backlog:goodbye.md", intent: "Add a goodbye.", commit: "c2", at: "2026-10-17T09:20:00.000Z" },
+    ],
+    closer: { status: "DONE" as const, detail: "Committed on delivery/main.", at: "2026-10-17T09:21:00.000Z" },
+    blocked: null,
+  };
+
+  it("names the branch, what landed on it since it opened and when, and what the closer did", () => {
+    expect(deliveryLines(delivery)).toEqual([
+      "",
+      "Delivery branch delivery/main, for main, open since 17 Oct 09:00 UTC:",
+      "- 17 Oct 09:10 UTC: Add a hello. (backlog:hello.md, run add-a-hello-1)",
+      "- 17 Oct 09:20 UTC: Add a goodbye. (backlog:goodbye.md, run add-a-goodbye-1)",
+      "Your closer, 17 Oct 09:21 UTC: Committed on delivery/main.",
+    ]);
+  });
+
+  it("says when nothing has landed yet, when the closer has not run, and what blocks the branch", () => {
+    expect(deliveryLines({ ...delivery, landed: [], closer: null, blocked: { reason: "main has new commits that conflict.", at: "2026-10-17T10:00:00.000Z" } })).toEqual([
+      "",
+      "Delivery branch delivery/main, for main, open since 17 Oct 09:00 UTC:",
+      "- nothing has landed on it yet",
+      "Your closer has not taken it yet.",
+      "Blocked, 17 Oct 10:00 UTC: main has new commits that conflict.",
+    ]);
+  });
+
+  it("says nothing when there is no delivery branch", () => {
+    expect(deliveryLines(null)).toEqual([]);
   });
 });

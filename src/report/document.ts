@@ -33,6 +33,21 @@ export const ParkedItem = z.object({
 });
 export type ParkedItem = z.infer<typeof ParkedItem>;
 
+/**
+ * The delivery branch a `--sources` run lands its tasks on: what has landed on it since it opened, what the closer last
+ * did with it, and what blocks it. From this machine's ledger.
+ */
+export const ReportDelivery = z.object({
+  branch: z.string(),
+  base: z.string(),
+  openedAt: z.string(),
+  tip: z.string().nullable(),
+  landed: z.array(z.object({ run: z.string(), item: z.string(), intent: z.string(), commit: z.string(), at: z.string() })),
+  closer: z.object({ status: z.enum(["DONE", "FAIL", "ERROR"]), detail: z.string(), at: z.string() }).nullable(),
+  blocked: z.object({ reason: z.string(), at: z.string() }).nullable(),
+});
+export type ReportDelivery = z.infer<typeof ReportDelivery>;
+
 /** A stopped task in the owner's words: every sentence fixed, except the agent's own, which is quoted. */
 export const Plain = z.object({
   group: PlainGroup,
@@ -154,7 +169,7 @@ export const ReportSurface = z.object({
   reason: z.string().nullable(),
   cause: SurfaceCause.nullable(),
   /** How this task's work is landed, as its run pinned it. */
-  closer: z.enum(["merge-back", "commit-to-branch", "open-pr", "custom"]).nullable(),
+  closer: z.enum(["merge-back", "commit-to-branch", "open-pr", "custom", "delivery-branch"]).nullable(),
   branch: z.string().nullable(),
   base: z.string().nullable(),
   /** Whether the task's sessions ran inside the write fence, how the run was set, and why not when they did not; null for a run recorded before the fence was. */
@@ -271,5 +286,7 @@ export const ReportDocument = z.object({
   usageRecorded: UsageCoverage,
   /** Items the item ledger has set aside on this machine, oldest key first; empty when none or no ledger. */
   parked: z.array(ParkedItem),
+  /** The delivery branch this machine's runs land on, or null when none was ever opened. */
+  delivery: ReportDelivery.nullable(),
 });
 export type ReportDocument = z.infer<typeof ReportDocument>;

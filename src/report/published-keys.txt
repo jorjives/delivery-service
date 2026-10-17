@@ -470,3 +470,26 @@ delivery.event/1<triage_decision>.verdict = "recheck_gate"
 delivery.event/1<triage_decision>.verdict = "reroute"
 delivery.event/1<triage_decision>.verdict = "retry_close"
 delivery.event/1<triage_decision>.verdict: string
+delivery.report/1.delivery: null|object
+delivery.report/1.delivery.branch: string
+delivery.report/1.delivery.base: string
+delivery.report/1.delivery.openedAt: string
+delivery.report/1.delivery.tip: null|string
+delivery.report/1.delivery.landed: array
+delivery.report/1.delivery.landed[]: object
+delivery.report/1.delivery.landed[].run: string
+delivery.report/1.delivery.landed[].item: string
+delivery.report/1.delivery.landed[].intent: string
+delivery.report/1.delivery.landed[].commit: string
+delivery.report/1.delivery.landed[].at: string
+delivery.report/1.delivery.closer: null|object
+delivery.report/1.delivery.closer.status: string
+delivery.report/1.delivery.closer.status = "DONE"
+delivery.report/1.delivery.closer.status = "ERROR"
+delivery.report/1.delivery.closer.status = "FAIL"
+delivery.report/1.delivery.closer.detail: string
+delivery.report/1.delivery.closer.at: string
+delivery.report/1.delivery.blocked: null|object
+delivery.report/1.delivery.blocked.reason: string
+delivery.report/1.delivery.blocked.at: string
+delivery.report/1.surfaces[].closer = "delivery-branch"

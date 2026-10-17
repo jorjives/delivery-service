@@ -25,6 +25,7 @@ const PinnedRelease = z.object({ authorisation: z.object({ hold: z.boolean().opt
  * project's way, so that delegated closer is what is reported.
  */
 function landingOf(header: RunRecord["caseFile"]["header"]): NonNullable<ReportSurface["closer"]> {
+  if (header.delivery !== undefined) return "delivery-branch";
   // A run that pinned no closer predates closers being pinned, and was committed to its branch.
   const closer = header.closerRef ?? { type: "commit-to-branch" as const };
   if (closer.type !== "custom" || !/finding-closer\.[jt]s$/.test(closer.modulePath)) return closer.type;
@@ -272,7 +273,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
     // A run that pinned no closer predates closers being pinned, and was committed to its branch.
     closer: landingOf(header),
     branch: branchName(header.surfaceId),
-    base: header.baseBranch ?? null,
+    base: header.delivery?.branch ?? header.baseBranch ?? null,
     fence: header.fence === undefined ? null : { mode: header.fence.mode, present: header.fence.state.present, reason: header.fence.state.reason ?? null },
     guards: guardChanges(header.taskDef, step?.guards),
     workflow:
@@ -331,7 +332,7 @@ function document(
 ): ReportDocument {
   const counts = Object.fromEntries(Standing.options.map((standing) => [standing, 0])) as Record<Standing, number>;
   for (const surface of parts.surfaces) counts[surface.standing] += 1;
-  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts, ...addUp([...parts.surfaces, ...(runFile ? [runUsage(runFile)] : [])]), trips: runFile ? tripsOf(runFile.history).map(tripOf) : [], parked: [] };
+  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts, ...addUp([...parts.surfaces, ...(runFile ? [runUsage(runFile)] : [])]), trips: runFile ? tripsOf(runFile.history).map(tripOf) : [], parked: [], delivery: null };
 }
 
 const asIncomplete = (damaged: DamagedFile, list: TaskDef[]): DamagedRecord => ({
