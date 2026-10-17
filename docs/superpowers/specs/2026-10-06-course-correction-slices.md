@@ -255,6 +255,7 @@ can actually read, edit and extend.
 ## Slice 4: Land Several Tasks in Turn on One Branch You Review Once
 
 **Status:** ✅ Complete — 2026-10-17 — `8336ca3`
+**Tests:** ✅ Recorded — 2026-10-17 — `cdc56c5` — cli (vitest) — 1 UAT + 2 AC, 4 skipped
 **Delivers:** Accepted tasks land one after another on a single open delivery branch for the
 project, each built on the work before it and re-checked if the branch moved underneath it, so the
 operator reviews and merges one clean branch per base branch instead of reconciling several
