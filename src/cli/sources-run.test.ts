@@ -172,7 +172,10 @@ describe("delivery run --sources", () => {
     const carried = await delivery(["run", "--sources"], { cwd: repo, env });
     expect(carried.exitCode).toBe(EXIT.ok);
 
-    const [latest, earlier] = (await allRuns(repo)).sort((a, b) => (a.runId < b.runId ? 1 : -1));
+    // Run ids can tie within a second (the second gets a "-2" slug suffix), so the later run is the one that continues the other.
+    const runs = await allRuns(repo);
+    const latest = runs.find((r) => r.caseFile.header.continues !== undefined);
+    const earlier = runs.find((r) => r !== latest);
     expect(latest?.caseFile.header.continues).toMatchObject({ runId: earlier?.runId, turn: { kind: "answer", question: "Formal or casual greeting?", answer: "Formal, please." } });
     expect(latest?.caseFile.cursor.worktreeRef).toBe(earlier?.caseFile.cursor.worktreeRef);
     // The draft written before the question is still there once the answer is acted on.
