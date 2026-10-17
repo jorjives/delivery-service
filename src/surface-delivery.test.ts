@@ -131,7 +131,7 @@ describe("a rebuild that conflicts", () => {
   it("is never landed: the next attempt starts afresh at the tip, can read the kept work, and lands", async () => {
     const repo = deliveryRepo();
     let attempt = 0;
-    let tipThen = "";
+
     let seen: { head: string; shared: string; kept: string } | undefined;
     const ports = portsWith((ctx) => {
       attempt++;
@@ -144,7 +144,7 @@ describe("a rebuild that conflicts", () => {
       return writes("shared.txt", "theirs\nmine\n")(ctx);
     });
     const { dir, location } = await toClosing(ports, repo);
-    tipThen = await commitOn(repo, DELIVERY, "shared.txt", "theirs\n");
+    const tipThen = await commitOn(repo, DELIVERY, "shared.txt", "theirs\n");
 
     const result = await run(dir, location, ports);
 
