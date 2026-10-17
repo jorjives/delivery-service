@@ -8,7 +8,7 @@ import { createRunFile, loadRunFile, setRunOutcome } from "../run-file.js";
 import { agentSession } from "./agent-session.js";
 import { structureTask, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
-import { dispatchRepair, fenceAtStart, resumeRun, startRun } from "./drive.js";
+import { dispatchRepair, fenceAtStart, resumeRun, startRun, type RunStart } from "./drive.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
 import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "../run-location.js";
@@ -136,11 +136,22 @@ export function taskEnded(position: QueuePosition, outcome: SlotOutcome): string
 }
 
 /** A task a slot has taken from the list: where it sits, the run that already answers for it if any, and the id its run has or will have. */
-interface QueueClaim {
+export interface QueueClaim {
   taskDef: TaskDef;
   surfaceId: string;
   position: QueuePosition;
   existing: RunRecord | undefined;
+  /** What a run started for this claim pins besides the task: its workflow, work item and carried-on work. */
+  start?: Pick<RunStart, "workflow" | "item" | "continues">;
+}
+
+/** Where a run's work comes from when it is not the project's list. `next` must not consume: it is asked again with what is claimed. */
+export interface ClaimSource {
+  next(claimed: readonly QueueClaim[]): Promise<QueueClaim | undefined>;
+  /** Called just before a claim's new run is created: the commit point for anything recorded about it. */
+  starting?(claim: QueueClaim): Promise<void>;
+  /** Called once a claim's run has ended (not when the command is stopped part way). */
+  ended?(claim: QueueClaim, outcome: SlotOutcome): Promise<void>;
 }
 
 /** How a task's run ended, from the exit code its end was reported with. */
@@ -195,7 +206,12 @@ async function stopForEnvironment(repoPath: string, dir: string, runId: string, 
 export async function runQueue(
   tasks: TaskDef[],
   project: ProjectSettings,
-  { repoPath, carryOn = false, skip }: { repoPath: string; carryOn?: boolean; skip?: (task: TaskDef) => Promise<boolean> },
+  {
+    repoPath,
+    carryOn = false,
+    skip,
+    claims,
+  }: { repoPath: string; carryOn?: boolean; skip?: (task: TaskDef) => Promise<boolean>; claims?: ClaimSource },
   ctx: CommandContext,
 ): Promise<ExitCode> {
   // One promise, not one session: slots that start together share one check rather than racing to make two.
@@ -231,6 +247,7 @@ export async function runQueue(
     const passedOver: TaskDef[] = [];
     const next = async (claimed: readonly QueueClaim[]): Promise<QueueClaim | undefined> => {
       if (breaker?.gaveUp !== undefined) return undefined;
+      if (claims !== undefined) return claims.next(claimed);
       for (;;) {
         const records = await allRuns(repoPath);
         const position = nextQueueTask(records, tasks, [...claimed.map((claim) => claim.taskDef), ...passedOver]);
@@ -281,7 +298,8 @@ export async function runQueue(
       });
     }
 
-    const drive = async ({ taskDef, surfaceId, position, existing }: QueueClaim): Promise<SlotOutcome> => {
+    const drive = async (claim: QueueClaim): Promise<SlotOutcome> => {
+      const { taskDef, surfaceId, position, existing } = claim;
       const report =
         runId === undefined ? ctx.report : ctx.report.forTask({ runId, ordinal: position.task, of: position.of, id: surfaceId });
       const taskCtx: CommandContext = { ...ctx, report, ...(breaker === undefined ? {} : { repairCoordinator: breaker }) };
@@ -292,14 +310,19 @@ export async function runQueue(
 
       const exitCode =
         existing === undefined
-          ? await startRun({ repoPath, taskDef, runId: surfaceId, ...project, fenceRecord: await fence() }, await agent(), taskCtx)
+          ? await (async () => {
+              await claims?.starting?.(claim);
+              return startRun({ repoPath, taskDef, runId: surfaceId, ...project, ...claim.start, fenceRecord: await fence() }, await agent(), taskCtx);
+            })()
           : existing.caseFile.outcome
             ? // What a run that already ended did, said again for whoever is looking at the list today rather than watching that run.
               await reportOutcome(existing.dir, existing.caseFile, taskCtx)
             : await resumeRun(existing, taskCtx, await agent());
 
       if (runId === undefined && !carryOn && exitCode !== EXIT.ok) report.note(listStopped(position, exitCode));
-      return slotOutcome(exitCode);
+      const outcome = slotOutcome(exitCode);
+      await claims?.ended?.(claim, outcome);
+      return outcome;
     };
 
     // With several at once, a stop ends the command immediately with the stopped code. Immediately, because Ctrl-C

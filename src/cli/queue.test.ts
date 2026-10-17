@@ -6,11 +6,12 @@ import { join } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { create, setOutcome } from "../case-file.js";
 import type { GateRef, TaskDef } from "../schema.js";
-import { writeRunRecord } from "./command-fixtures.js";
-import { allRuns } from "./runs.js";
+import { completes, PACKAGE, RUN_TIMEOUT, scriptFile, TASK, writeRunRecord } from "./command-fixtures.js";
+import { allRuns, readRun } from "./runs.js";
 import { runsRoot } from "../run-location.js";
 import { findQueueRun, queuePositionOf } from "../task-list.js";
-import { environmentGaveUp, listExitCode, listStandings, liveRunFound, nextQueueTask, queueTasks, runPickedUp, runShape, taskEnded, EVERY_TASK_DONE, listStopped, runQueue } from "./queue.js";
+import { environmentGaveUp, listExitCode, listStandings, liveRunFound, nextQueueTask, queueTasks, runPickedUp, runShape, taskEnded, EVERY_TASK_DONE, listStopped, runQueue, type ClaimSource, type QueueClaim } from "./queue.js";
+import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { EXIT } from "./failures.js";
 import { plainReporter } from "./report.js";
 import { DEFAULT_CLOSER } from "./settings.js";
@@ -283,4 +284,38 @@ describe("working down a list that carries on", () => {
     expect(exitCode).toBe(EXIT.escalated);
     expect(lines.slice(-1)).toEqual([taskEnded({ task: 2, of: 2 }, "escalated")]);
   });
+});
+
+describe("runQueue with a claim source", () => {
+  it(
+    "drives the claims it is given, starting each with what the claim pins, and says when each ended",
+    async () => {
+      const repo = initTempRepo("queue-claims-", { "package.json": PACKAGE });
+      const claim: QueueClaim = {
+        taskDef: { intent: TASK },
+        surfaceId: "say-hello-20261016T090000Z",
+        position: { task: 1, of: 1 },
+        existing: undefined,
+        start: { item: { key: "backlog:x.md", source: "backlog", id: "x.md" } },
+      };
+      const events: string[] = [];
+      const claims: ClaimSource = {
+        next: async (claimed) => (claimed.some((c) => c.surfaceId === claim.surfaceId) ? undefined : claim),
+        starting: async (c) => {
+          events.push(`starting ${c.surfaceId}`);
+        },
+        ended: async (c, outcome) => {
+          events.push(`ended ${c.surfaceId} ${outcome}`);
+        },
+      };
+      const ctx = contextIn(repo, [], { [TEST_MOCK_SCRIPT]: await scriptFile(completes) });
+
+      const exitCode = await runQueue([claim.taskDef], project, { repoPath: repo, carryOn: true, claims }, ctx);
+
+      expect(exitCode).toBe(EXIT.ok);
+      expect(events).toEqual(["starting say-hello-20261016T090000Z", "ended say-hello-20261016T090000Z closed"]);
+      expect((await readRun(repo, claim.surfaceId)).caseFile.header.item?.key).toBe("backlog:x.md");
+    },
+    RUN_TIMEOUT,
+  );
 });
