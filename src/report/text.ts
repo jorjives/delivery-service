@@ -28,6 +28,12 @@ export function pathName(path: string): string {
   return stripControl(path).replace(/\n/g, "\\n");
 }
 
+/** A word for a shell command line to be pasted: left alone when it is plain, single-quoted otherwise. */
+function shellQuoted(word: string): string {
+  const clean = stripControl(word);
+  return /^[\w.:@%+=,/-]+$/.test(clean) ? clean : `'${clean.replace(/'/g, `'\\''`)}'`;
+}
+
 /** Words from the record, in quotation marks, with later lines set under the first. */
 export function quoted(text: string, indent: string): string {
   return `"${stripControl(text).trim().split("\n").join(`\n${indent}`)}"`;
@@ -193,14 +199,16 @@ function opening(doc: ReportDocument, carryOn?: string): string[] {
 export function parkedLines(parked: readonly ParkedItem[]): string[] {
   if (parked.length === 0) return [];
   const line = ({ item, intent, reason, question, attempts }: ParkedItem): string => {
-    const name = intent === null ? item : `${item} (${intent})`;
+    const shown = pathName(item);
+    const name = intent === null ? shown : `${shown} (${pathName(intent)})`;
+    const key = shellQuoted(item);
     switch (reason) {
       case "decision":
-        return `- ${name}: asked "${question ?? "the question was not recorded"}". Answer with: delivery answer ${item} "your answer"`;
+        return `- ${name}: asked "${question === null ? "the question was not recorded" : stripControl(question)}". Answer with: delivery answer ${key} "your answer"`;
       case "attempts":
-        return `- ${name}: ended without being delivered ${attempts} runs in a row. To try again: delivery unpark ${item}`;
+        return `- ${name}: ended without being delivered ${attempts} runs in a row. To try again: delivery unpark ${key}`;
       case "escalated":
-        return `- ${name}: stopped for you. When you have dealt with it: delivery unpark ${item}`;
+        return `- ${name}: stopped for you. When you have dealt with it: delivery unpark ${key}`;
     }
   };
   return ["", "Parked, skipped until you deal with them:", ...parked.map(line)];

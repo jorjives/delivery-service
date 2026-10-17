@@ -182,6 +182,15 @@ async function backdate(dir: string): Promise<void> {
 }
 
 describe("delivery status", () => {
+  it("shows a backlog item's key without anything that could drive the terminal", async () => {
+    const repo = initTempRepo("status-item-hostile-", { "package.json": PACKAGE });
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED, item: { key: "backlog:b.md\u001B[2J", source: "backlog", id: "b.md" } });
+
+    const { stdout } = await delivery(["status", RUN_ID], { cwd: repo, env: { XDG_STATE_HOME: await mkdtemp(join(tmpdir(), "status-state-")) } });
+
+    expect(stdout.split("\n")).toContain("Item: backlog:b.md");
+  });
+
   it("names the backlog item the run works on, and lists the items parked on this machine", async () => {
     const repo = initTempRepo("status-item-", { "package.json": PACKAGE });
     const env = { XDG_STATE_HOME: await mkdtemp(join(tmpdir(), "status-state-")) };

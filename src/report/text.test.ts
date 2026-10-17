@@ -653,6 +653,15 @@ describe("parked items", () => {
     ]);
   });
 
+  it("shows a hostile item name and question as plain text, and quotes the name in the commands", () => {
+    const [, , asked, stuck] = parkedLines([
+      { item: "backlog:a b;rm -rf ~.md\u001B[2J", intent: null, reason: "decision", question: "Formal?\u001B[2J", attempts: 0, lastRun: "r1" },
+      { item: "backlog:it's.md", intent: null, reason: "attempts", question: null, attempts: 3, lastRun: "r2" },
+    ]);
+    expect(asked).toBe(`- backlog:a b;rm -rf ~.md: asked "Formal?". Answer with: delivery answer 'backlog:a b;rm -rf ~.md' "your answer"`);
+    expect(stuck).toBe(`- backlog:it's.md: ended without being delivered 3 runs in a row. To try again: delivery unpark 'backlog:it'\\''s.md'`);
+  });
+
   it("says nothing when nothing is parked", () => {
     expect(parkedLines([])).toEqual([]);
   });

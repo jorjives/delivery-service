@@ -14,7 +14,7 @@ import { RunFileNotFound } from "../errors.js";
 import { deriveReport } from "../report/derive.js";
 import { detailLines, repairLines, rollUpLines, roundLines } from "../report/detail.js";
 import { latestOf, stepOf, type ReportDocument, type ReportSurface } from "../report/document.js";
-import { headlineCounts, parkedLines } from "../report/text.js";
+import { headlineCounts, parkedLines, pathName } from "../report/text.js";
 import { parkedIn } from "./report-command.js";
 import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { findRepository } from "./project.js";
@@ -85,7 +85,7 @@ async function whereToLook(record: RunRecord, ctx: CommandContext): Promise<stri
 export async function statusReport(record: RunRecord, ctx: CommandContext, position?: QueuePosition): Promise<string[]> {
   return [
     `Run ${record.runId}, started ${startedAt(record.runId)}: ${taskIntent(record.caseFile.header.taskDef)}`,
-    ...(record.caseFile.header.item ? [`Item: ${record.caseFile.header.item.key}`] : []),
+    ...(record.caseFile.header.item ? [`Item: ${pathName(record.caseFile.header.item.key)}`] : []),
     ...(position ? [`It is task ${position.task} of ${position.of} on your list.`] : []),
     ...(await statusBody(record, ctx)),
   ];
