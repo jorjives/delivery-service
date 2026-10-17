@@ -35,7 +35,9 @@ result, because the package is not on the public registry until a licence is cho
 
 Each run keeps its record in `.delivery/runs/` in your repository (the folder ignores everything in it except `.delivery/backlog/`, your work items,
 so `git status` does not change) and its working copy under
-`~/.local/state/delivery-service/worktrees/` (or `$XDG_STATE_HOME`, when set).
+`~/.local/state/delivery-service/worktrees/` (or `$XDG_STATE_HOME`, when set). The item ledger,
+which remembers how each backlog item's runs ended, is kept beside them in
+`~/.local/state/delivery-service/ledger/`, on this machine only.
 
 | Exit code | Meaning |
 |---|---|
@@ -188,6 +190,25 @@ The list is yours to edit between runs. A new entry anywhere runs in its place; 
 changes only the order they are visited in; deleting an entry leaves its run in the history; and
 rewording an entry makes it a new task, which is also how you deliberately run a finished task
 again. `delivery run --task "..."` always runs exactly that one task and leaves the list alone.
+
+## Work through a backlog
+
+Items you keep in `.delivery/backlog/` (see [A backlog of work items](docs/project-configuration.md#a-backlog-of-work-items))
+are worked by `delivery run --sources`, along with the other work sources in your config file, in
+order: due recurring items first, then each source in turn, and a fallback source only when nothing
+else has work.
+
+```sh
+delivery run --sources          # take one item
+delivery run --sources --max 3  # take up to three items in this run
+```
+
+The command remembers each item between runs. An interrupted item carries on in the same working
+copy, with the work it had done. An item whose run used up its corrections starts afresh, and its
+old branch is kept to look at. An item that keeps ending undelivered, or that asks you a question,
+is set aside: answer it with `delivery answer <item> "your answer"`, or deal with it and run
+`delivery unpark <item>`. `delivery status` shows what is parked. Once an item is delivered, it is
+marked `resolved` on its branch and is not taken again until that branch is merged.
 
 ## Pick up a run that was interrupted
 

@@ -605,6 +605,14 @@ tool calls: its effects are written by the scripted agent itself, inside the wor
 settings is proved in `src/agent-invoke.test.ts`, which hands the real runtime the options the
 harness builds.
 
+## Running `--sources` against the scripted agent
+
+`delivery run --sources` takes its items from the backlog and the other work sources, and keeps
+what it knows about each item in the item ledger under the state folder. To try it without
+spending a session, point `DELIVERY_TEST_MOCK_SCRIPT` at a script and give every invocation the
+same `XDG_STATE_HOME`, since the ledger lives there: a second invocation then sees what the first
+did, as a real one would.
+
 ## When the test itself is wrong
 
 | What went wrong | What you see |

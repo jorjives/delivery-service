@@ -295,6 +295,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
             limit,
             agentSaid,
             listed: queue !== null,
+            item: header.item?.key ?? null,
           })
         : null,
   };

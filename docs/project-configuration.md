@@ -337,6 +337,28 @@ Items are read from your base branch's last commit: `origin`'s, when the project
 an item, and push it if there is an origin, for it to be worked. Item files on disk that the base
 does not yet hold are named, and not worked.
 
+### Running the backlog
+
+`delivery run --sources` works through the backlog and the other work sources (`sources` in your
+config file) in order. `--max N` takes up to N items in one run; one is the default. Each item
+becomes a run of its own, with its workflow, and is delivered the same way as a task.
+
+How an item is carried on depends on how its last run ended:
+
+- A run that was interrupted (its session stopped before it finished) carries on in the same
+  working copy. Anything left uncommitted there is committed onto the earlier run's branch first,
+  so the work it had done is kept, and its agent session can be resumed.
+- A run that used up its corrections starts afresh from the base branch. Its old branch is kept.
+- A question the agent asked parks the item until you answer it with `delivery answer`, and the
+  next run carries on with your answer.
+- An item that ends undelivered `parkAfter` runs in a row (3 by default) is parked, and skipped
+  until you run `delivery unpark <item>`. An item that stopped for you is parked the same way.
+
+The record of each item (its last run, how that ended, and whether it is parked) is kept in the
+item ledger, `ledger/` under your state folder (`~/.local/state/delivery-service/`, or
+`$XDG_STATE_HOME`), beside the working copies. It is on this machine only: another clone of the
+repository keeps its own.
+
 ### Work sources
 
 `sources` says where `delivery run --sources` finds work, in order. Each source is an object with a

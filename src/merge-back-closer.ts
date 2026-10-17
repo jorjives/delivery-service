@@ -32,8 +32,10 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
     // presence.
     await removeWorktree(ctx);
     if (deleteBranch) {
-      // Lower-case -d is git's own "is this merged?" guard.
-      await tryGit(ctx.repoPath, ["branch", "-d", "--", ctx.branch]);
+      // Both callers have just verified the branch is an ancestor of the base. -d would
+      // instead check against the branch's upstream (origin/main), which a local-only
+      // fast-forward has not reached, and would refuse.
+      await tryGit(ctx.repoPath, ["branch", "-D", "--", ctx.branch]);
     }
   }
 

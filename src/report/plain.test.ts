@@ -11,6 +11,7 @@ const facts = (cause: OutcomeCause | null, over: Partial<PlainFacts> = {}): Plai
   limit: null,
   agentSaid: "I could not do it.",
   listed: true,
+  item: null,
   ...over,
 });
 
@@ -69,6 +70,13 @@ describe("a question the agent asked the operator", () => {
     expect(plain.group).toBe("needs_your_decision");
     expect(plain.sentence).toBe("Needs your answer. The agent asked: Formal or casual greeting?");
     expect(plain.next).toEqual(['Run the task again with your answer in its wording: delivery run --task "the reworded task"']);
+  });
+});
+
+describe("a question for an item from a work source", () => {
+  it("says how to answer it, and to carry on with the sources", () => {
+    const plain = plainOf(facts({ kind: "decision", question: "Formal?" }, { item: "backlog:x.md" }));
+    expect(plain.next).toEqual(['Answer it: delivery answer backlog:x.md "your answer"', "Then run: delivery run --sources"]);
   });
 });
 

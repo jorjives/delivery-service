@@ -15,6 +15,8 @@ export interface PlainFacts {
   agentSaid: string | null;
   /** Whether the project's list asks for this task, so the owner can amend or remove it there. */
   listed: boolean;
+  /** The work-source item this task was, e.g. "backlog:x.md"; null for an ad hoc or list run. */
+  item: string | null;
 }
 
 /** Every kind of stop the report has words for. Closed, so each table below is total over it. */
@@ -174,10 +176,12 @@ const NEXT: Record<Route, (facts: PlainFacts) => string[]> = {
     listed
       ? ["Decide. To say yes, add the permission to the task wording. To say no, remove the task from your list.", RUN_LIST]
       : [`Decide. To say yes, run the task again with the permission in its wording: ${RUN_REWORDED}. To say no, do nothing more.`],
-  answer: ({ listed }) =>
-    listed
-      ? ["Answer it by adding your answer to the task's wording in your list.", RUN_LIST]
-      : [`Run the task again with your answer in its wording: ${RUN_REWORDED}`],
+  answer: ({ listed, item }) =>
+    item !== null
+      ? [`Answer it: delivery answer ${item} "your answer"`, "Then run: delivery run --sources"]
+      : listed
+        ? ["Answer it by adding your answer to the task's wording in your list.", RUN_LIST]
+        : [`Run the task again with your answer in its wording: ${RUN_REWORDED}`],
   reword: ({ listed }) =>
     listed ? ["Reword the task, or remove it from your list.", RUN_LIST] : [`Reword the task and run it again: ${RUN_REWORDED}`],
   sign_in: ({ listed }) => ["Check that the agent can sign in on this machine.", RUN_AGAIN_ALONE, ...(listed ? [THEN_THE_LIST] : [])],

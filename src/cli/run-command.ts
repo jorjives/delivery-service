@@ -12,14 +12,17 @@ import {
   explicitIntent,
   ignoredNote,
   ignoredSettings,
+  MAX_NEEDS_SOURCES,
   resolveProject,
   resolveSettings,
+  SOURCES_AND_TASK,
   WORKFLOW_NEEDS_TASK,
   type RunFlags,
 } from "./settings.js";
 import { taskIntent } from "../task-list.js";
 import { closingReport } from "./report-command.js";
 import { runIdFor } from "../run-location.js";
+import { runSources } from "./sources-run.js";
 
 export { NO_TASK } from "./settings.js";
 
@@ -41,6 +44,15 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
 
   // Whatever this run would be, it would drive git in the checkout a live run of several at once is using.
   await refuseIfRunGoing(repoPath);
+
+  if (options.max !== undefined && !options.sources) throw new Refusal(MAX_NEEDS_SOURCES, EXIT.configuration, "max");
+  if (options.sources) {
+    if (options.task !== undefined || options.taskFile !== undefined || options.workflow !== undefined) {
+      throw new Refusal(SOURCES_AND_TASK, EXIT.configuration);
+    }
+    const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
+    return runSources(options, { repoPath, config }, ctx);
+  }
 
   const intent = await explicitIntent(options, ctx.env, ctx.cwd);
   const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });

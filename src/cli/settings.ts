@@ -28,6 +28,13 @@ export const DEFAULT_CONCURRENCY = 1;
 export const NOT_A_CONCURRENCY = (source: string, value: string): string =>
   `I can't use ${source} \`${value}\`: it says how many tasks from your list may run at once, so it is a whole number, 1 or more, such as 3.`;
 
+export const SOURCES_AND_TASK =
+  "Use either `--sources` or a task (`--task`, `--task-file`, `--workflow`), not both: I can't tell which you mean.";
+
+export const MAX_NEEDS_SOURCES = "`--max` says how many items `--sources` takes. Add `--sources`, or leave out `--max`.";
+
+export const NOT_A_MAX = (value: string): string => `\`--max\` is "${value}", but it takes a whole number, 1 or more, such as 3.`;
+
 /** What `delivery run` was given on the command line. */
 export interface RunFlags {
   task?: string;
@@ -39,6 +46,18 @@ export interface RunFlags {
   repo?: string;
   fresh?: boolean;
   workflow?: string;
+  /** Work through the work sources in the config file, instead of one task or the list. */
+  sources?: boolean;
+  /** With `sources`, how many items to take in this run. */
+  max?: string;
+}
+
+/** How many items `--sources` takes: a whole number, 1 or more; one when not given. */
+export function maxItems(flags: RunFlags): number {
+  if (flags.max === undefined) return 1;
+  const max = Number(flags.max);
+  if (!Number.isInteger(max) || max < 1) throw new Refusal(NOT_A_MAX(flags.max), EXIT.configuration, "max");
+  return max;
 }
 
 /** What a project asks of every run of it: how work is checked, what happens to it, how many attempts a setback gets, and what the project is. */
