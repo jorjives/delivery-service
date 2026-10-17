@@ -252,9 +252,9 @@ describe("why a task stopped, as the document tells it", () => {
     deriveReport(snapshotOf({ records: [formDone, recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "x"), outcome: stoppedAt("2026-10-01T02:58:00.000Z", cause) })] })).surfaces[1]?.cause;
 
   it("names every key, null where its kind has none, so a reader never meets a missing one", () => {
-    expect(causeOf({ kind: "authority", role: "worker" })).toEqual({ kind: "authority", role: "worker", population: null, pullRequest: null });
-    expect(causeOf({ kind: "budget", population: "correction" })).toEqual({ kind: "budget", role: null, population: "correction", pullRequest: null });
-    expect(causeOf({ kind: "provisioning" })).toEqual({ kind: "provisioning", role: null, population: null, pullRequest: null });
+    expect(causeOf({ kind: "authority", role: "worker" })).toEqual({ kind: "authority", role: "worker", population: null, pullRequest: null, question: null });
+    expect(causeOf({ kind: "budget", population: "correction" })).toEqual({ kind: "budget", role: null, population: "correction", pullRequest: null, question: null });
+    expect(causeOf({ kind: "provisioning" })).toEqual({ kind: "provisioning", role: null, population: null, pullRequest: null, question: null });
   });
 
   it("is null for a task that stopped before causes were recorded", () => {
@@ -263,7 +263,7 @@ describe("why a task stopped, as the document tells it", () => {
 
   it("names the pull request of a task flagged for one the agent opened itself", () => {
     const PR = "https://github.com/example/project/pull/7";
-    expect(causeOf({ kind: "landed_outside_closer", pullRequest: PR })).toEqual({ kind: "landed_outside_closer", role: null, population: null, pullRequest: PR });
+    expect(causeOf({ kind: "landed_outside_closer", pullRequest: PR })).toEqual({ kind: "landed_outside_closer", role: null, population: null, pullRequest: PR, question: null });
   });
 });
 
