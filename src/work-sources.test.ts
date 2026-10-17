@@ -47,7 +47,7 @@ describe("the list source", () => {
 
   it("carries a parked flag and an answer with the task through a reorder", async () => {
     const [first, second] = await keysOf(["first task", "second task"]);
-    const ledger = foldLedger([{ t: "parked", key: first!, reason: "escalated", at }]);
+    const ledger = foldLedger([{ t: "parked", key: first ?? "", reason: "escalated", at }]);
     const repo = repoWith({});
     const chosen = await chooseWork([{ type: "list" }], { ...base, repoPath: repo, config: { tasks: ["second task", "first task"] }, ledger });
     expect(chosen.items.map((i) => i.key)).toEqual([second]);
