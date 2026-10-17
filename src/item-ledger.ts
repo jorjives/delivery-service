@@ -181,7 +181,7 @@ export function parkedItems(ledger: Map<string, ItemState>): ItemState[] {
  */
 export async function awaitsMerge(repoPath: string, state: ItemState | undefined): Promise<boolean> {
   if (state?.lastClass !== "delivered") return false;
-  if (state.commit === null) return false;
+  if (state.commit === null) return state.branch !== null && (await branchExists(repoPath, state.branch));
   // On its way while the branch it landed on still holds it: a delivery branch outlives the runs that land on it.
   if (state.branch !== null && (await tryGit(repoPath, ["merge-base", "--is-ancestor", state.commit, state.branch]))) return true;
   const { localBranch } = await resolveBaseRef(repoPath);
