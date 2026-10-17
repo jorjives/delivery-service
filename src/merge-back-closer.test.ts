@@ -109,17 +109,45 @@ describe("the merge-back closer", () => {
     expect(report.detail).toMatch(/already closed/i);
   });
 
-  it("refuses, without switching the checkout, when the repo is not on the base branch", async () => {
+  it("lands by moving the base branch when no checkout holds it, leaving the checkout as it was", async () => {
     writeFileSync(join(tree, "feature.txt"), "the work\n");
     git(repo, ["checkout", "-q", "-b", "elsewhere"]);
 
     const report = await createMergeBackCloser().close(ctx, accepted);
 
-    expect(report.status).toBe("ERROR");
-    expect(report.detail).toContain("elsewhere");
-    expect(report.detail).toContain("main");
+    expect(report.status).toBe("DONE");
+    expect(git(repo, ["show", "main:feature.txt"])).toBe("the work");
     expect(git(repo, ["symbolic-ref", "--short", "HEAD"])).toBe("elsewhere");
-    expect(existsSync(tree)).toBe(true);
+    expect(existsSync(join(repo, "feature.txt"))).toBe(false);
+    expect(report.detail).toContain(git(repo, ["rev-parse", "--short", "main"]));
+  });
+
+  it("refuses, changing nothing, when another worktree has the base branch checked out", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+    git(repo, ["checkout", "-q", "-b", "elsewhere"]);
+    const holder = join(await mkdtemp(join(tmpdir(), "merge-back-holder-")), "main");
+    git(repo, ["worktree", "add", "-q", holder, "main"]);
+    const tip = git(repo, ["rev-parse", "main"]);
+
+    const report = await createMergeBackCloser().close(ctx, accepted);
+
+    expect(report.status).toBe("ERROR");
+    expect(report.detail).toContain(holder);
+    expect(git(repo, ["rev-parse", "main"])).toBe(tip);
+  });
+
+  it("refuses with FAIL, changing nothing, when a base branch no checkout holds has moved on", async () => {
+    writeFileSync(join(tree, "feature.txt"), "the work\n");
+    git(repo, ["checkout", "-q", "-b", "elsewhere"]);
+    git(repo, ["commit", "-q", "--allow-empty", "-m", "elsewhere"]);
+    git(repo, ["update-ref", "refs/heads/main", "HEAD"]);
+    const tip = git(repo, ["rev-parse", "main"]);
+
+    const report = await createMergeBackCloser().close(ctx, accepted);
+
+    expect(report.status).toBe("FAIL");
+    expect(report.detail).toContain("main has moved on");
+    expect(git(repo, ["rev-parse", "main"])).toBe(tip);
   });
 
   it("reports a diverged base branch as a refusal naming its tip, leaving the repo and worktree untouched", async () => {

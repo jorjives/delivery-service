@@ -69,6 +69,18 @@ describe("the 'writing a closer' guide", () => {
       expect(replay.detail).toMatch(/already/i);
     });
 
+    it("lands by moving the base branch when no checkout holds it", async () => {
+      writeFileSync(join(ctx.worktreePath, "feature.txt"), "the work");
+      git(repo, ["checkout", "-q", "-b", "elsewhere"]);
+      const closer = resolveCloser(ref, repo);
+
+      const report = await closer.close(ctx, { kind: "accepted" });
+
+      expect(report.status).toBe("DONE");
+      expect(git(repo, ["show", "main:feature.txt"])).toBe("the work");
+      expect(git(repo, ["symbolic-ref", "--short", "HEAD"])).toBe("elsewhere");
+    });
+
     it("refuses with FAIL, changing nothing, when the base branch has moved on", async () => {
       writeFileSync(join(ctx.worktreePath, "feature.txt"), "the work\n");
       writeFileSync(join(repo, "hotfix.txt"), "moved on\n");

@@ -197,10 +197,8 @@ Its order matters, and every step is safe to replay:
 4. **Detect a finished merge.** If `baseBranch` already contains `branch`, clean
    up and report `"DONE"`. This check comes after the commit: before it, the
    uncommitted work is invisible and the branch looks already merged.
-5. **Check the shared checkout** is on `baseBranch`. Switching it is not the
-   closer's call: `"ERROR"`.
-6. **Fast-forward or refuse.** A fast-forward that git refuses changes nothing:
-   `"FAIL"`, naming where the base branch now is.
+5. **Find where the base branch is checked out.** In the main checkout: fast-forward there. In another worktree: that checkout is not the closer's to change, `"ERROR"`. Nowhere (as for a delivery branch): no files need updating, so move the branch itself, giving git the tip you read so it refuses if the branch moved meanwhile.
+6. **Fast-forward or refuse.** A fast-forward, or a branch move, that git refuses changes nothing: `"FAIL"`, naming where the base branch now is.
 7. **Clean up**: the worktree first, then the branch.
 
 Stopped surfaces remove the worktree and keep the branch.
@@ -266,11 +264,26 @@ async function land(ctx) {
     return { status: "DONE", detail: `Already merged: ${ctx.baseBranch} has everything from ${ctx.branch}.` };
   }
 
-  const head = await git(ctx.repoPath, ["symbolic-ref", "--short", "HEAD"]);
-  if (head !== ctx.baseBranch) {
+  const listing = await git(ctx.repoPath, ["worktree", "list", "--porcelain"]);
+  const holder = listing.split("\n\n").find((block) => block.split("\n").includes(`branch refs/heads/${ctx.baseBranch}`))?.split("\n")[0].replace(/^worktree /, "");
+
+  if (holder === undefined) {
+    // No checkout has the base branch: move it, naming the tip read here so git refuses if it moved since.
+    const old = await git(ctx.repoPath, ["rev-parse", `refs/heads/${ctx.baseBranch}`]);
+    const work = await git(ctx.repoPath, ["rev-parse", `refs/heads/${ctx.branch}`]);
+    if (!(await succeeds(ctx.repoPath, ["merge-base", "--is-ancestor", old, work])) || !(await succeeds(ctx.repoPath, ["update-ref", `refs/heads/${ctx.baseBranch}`, work, old]))) {
+      const tip = await git(ctx.repoPath, ["rev-parse", "--short", ctx.baseBranch]);
+      return { status: "FAIL", detail: `${ctx.baseBranch} has moved on to ${tip} and cannot be fast-forwarded onto ${ctx.branch}. Nothing was changed; the work is still on ${ctx.branch}.` };
+    }
+    const sha = await git(ctx.repoPath, ["rev-parse", "--short", ctx.baseBranch]);
+    await cleanUp(ctx);
+    return { status: "DONE", detail: `Moved ${ctx.baseBranch} to ${sha} and removed ${ctx.branch}.` };
+  }
+
+  if (holder !== (await git(ctx.repoPath, ["rev-parse", "--show-toplevel"]))) {
     return {
       status: "ERROR",
-      detail: `The main checkout is on ${head}, not ${ctx.baseBranch}, so nothing was changed. Check out ${ctx.baseBranch} there and close again.`,
+      detail: `${ctx.baseBranch} is checked out at ${holder}, so nothing was changed. Merge ${ctx.branch} there yourself, or check out another branch there, and close again.`,
     };
   }
 
@@ -334,7 +347,9 @@ against one checkout. Every git call the harness itself makes there takes its tu
 including every call the built-in closers make, so their merges never overlap. The
 merge-back closer's `--ff-only` merge also checks the base afresh when it runs: if another
 task moved the base on first, it reports `"FAIL"`, and triage and the `close` budget handle
-it as for any close that failed.
+it as for any close that failed. When no checkout holds the base branch, as for the delivery
+branch a `--sources` run lands its tasks on, the closer moves the branch with `git update-ref`,
+giving the tip it read as the old value, which is the same check made in the same command.
 
 A closer of your own that runs git in the shared checkout through its own child process is
 outside that turn-taking. Write it so another task's git call landing between two of yours

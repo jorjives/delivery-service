@@ -3,6 +3,24 @@ import type { CloseContext, CloseReport, CloserPort } from "./ports.js";
 import { branchExists, git, tryGit } from "./git-exec.js";
 import { closerFromAcceptedHandler, commitAccepted, removeWorktree } from "./closer-support.js";
 
+/** The worktree that has `branch` checked out, or null when none does. */
+async function checkoutOf(repoPath: string, branch: string): Promise<string | null> {
+  const listing = await git(repoPath, ["worktree", "list", "--porcelain"]);
+  const holder = listing.split("\n\n").find((block) => block.split("\n").includes(`branch refs/heads/${branch}`));
+  return holder?.split("\n")[0]?.replace(/^worktree /, "") ?? null;
+}
+
+function movedOn(ctx: CloseContext, tip: string): CloseReport {
+  return {
+    status: "FAIL",
+    detail:
+      `${ctx.baseBranch} has moved on since this surface started: it is now at ${tip}, which ${ctx.branch} ` +
+      `does not include, so ${ctx.baseBranch} cannot be fast-forwarded onto the work. Nothing was changed and ` +
+      `the work is still on ${ctx.branch}. Bring ${ctx.branch} up to date with ${ctx.baseBranch}, or undo the ` +
+      `new commits on ${ctx.baseBranch}, and close again; or choose a different close.`,
+  };
+}
+
 /**
  * Land the accepted work on the branch the surface was started from.
  *
@@ -20,7 +38,7 @@ import { closerFromAcceptedHandler, commitAccepted, removeWorktree } from "./clo
  * `deleteBranch: false` replay skip straight to the ancestry probe once the
  * worktree is gone but the branch survived cleanup.
  *
- * The merge lands on the local base branch only. Nothing is pushed.
+ * The merge lands on the local base branch only: through the checkout that has it, or, when none does, by moving the branch itself. Nothing is pushed.
  */
 export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}): CloserPort {
   const deleteBranch = options.deleteBranch ?? true;
@@ -37,6 +55,26 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
       // fast-forward has not reached, and would refuse.
       await tryGit(ctx.repoPath, ["branch", "-D", "--", ctx.branch]);
     }
+  }
+
+  // No checkout holds the base, so no files need updating: moving its ref is the whole fast-forward.
+  // The old value makes the move its own check, as --ff-only is: a base moved since it was read is refused, changing nothing.
+  async function moveBase(ctx: CloseContext): Promise<CloseReport> {
+    const old = await git(ctx.repoPath, ["rev-parse", `refs/heads/${ctx.baseBranch}`]);
+    const work = await git(ctx.repoPath, ["rev-parse", `refs/heads/${ctx.branch}`]);
+    const fastForward = await tryGit(ctx.repoPath, ["merge-base", "--is-ancestor", old, work]);
+    if (!fastForward || !(await tryGit(ctx.repoPath, ["update-ref", `refs/heads/${ctx.baseBranch}`, work, old]))) {
+      return movedOn(ctx, await git(ctx.repoPath, ["rev-parse", "--short", ctx.baseBranch]));
+    }
+    const sha = await git(ctx.repoPath, ["rev-parse", "--short", ctx.baseBranch]);
+    await cleanup(ctx);
+    const branchNote = deleteBranch ? `, and deleted ${ctx.branch}` : `. ${ctx.branch} was kept`;
+    return {
+      status: "DONE",
+      detail:
+        `Fast-forwarded ${ctx.baseBranch} to ${sha}. No checkout has ${ctx.baseBranch}, so no files were touched ` +
+        `(nothing was pushed). Removed the scratch worktree${branchNote}.`,
+    };
   }
 
   async function closeAccepted(ctx: CloseContext): Promise<CloseReport> {
@@ -73,14 +111,16 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
       };
     }
 
-    const head = await git(ctx.repoPath, ["symbolic-ref", "--short", "HEAD"]);
-    if (head !== ctx.baseBranch) {
+    const holder = await checkoutOf(ctx.repoPath, ctx.baseBranch);
+    if (holder === null) return moveBase(ctx);
+    const here = await git(ctx.repoPath, ["rev-parse", "--show-toplevel"]);
+    if (holder !== here) {
       return {
         status: "ERROR",
         detail:
-          `The main checkout is on ${head}, not the base branch ${ctx.baseBranch}. ` +
-          `Switching a checkout someone else may be using is not this closer's call, so nothing was changed. ` +
-          `Check out ${ctx.baseBranch} there and close again.`,
+          `${ctx.baseBranch} is checked out at ${holder}, so only a merge there could move it, and that checkout is ` +
+          `not this closer's to change. Nothing was changed and the work is still on ${ctx.branch}. ` +
+          `Check out another branch there, or merge ${ctx.branch} there yourself, and close again.`,
       };
     }
 
@@ -94,16 +134,7 @@ export function createMergeBackCloser(options: { deleteBranch?: boolean } = {}):
     if (!merged) {
       const tip = await git(ctx.repoPath, ["rev-parse", "--short", ctx.baseBranch]);
       const diverged = !(await tryGit(ctx.repoPath, ["merge-base", "--is-ancestor", ctx.baseBranch, ctx.branch]));
-      if (diverged) {
-        return {
-          status: "FAIL",
-          detail:
-            `${ctx.baseBranch} has moved on since this surface started: it is now at ${tip}, which ${ctx.branch} ` +
-            `does not include, so ${ctx.baseBranch} cannot be fast-forwarded onto the work. Nothing was changed and ` +
-            `the work is still on ${ctx.branch}. Bring ${ctx.branch} up to date with ${ctx.baseBranch}, or undo the ` +
-            `new commits on ${ctx.baseBranch}, and close again; or choose a different close.`,
-        };
-      }
+      if (diverged) return movedOn(ctx, tip);
       return {
         status: "ERROR",
         detail:
