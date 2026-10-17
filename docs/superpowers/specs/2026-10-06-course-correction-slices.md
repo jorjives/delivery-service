@@ -181,6 +181,7 @@ task, a report that must simply exist — is now expressible without changing th
 ## Slice 3: Work Through a Backlog of Items Instead of a Fixed List
 
 **Status:** ✅ Complete — 2026-10-17 — `0d806aa`
+**Tests:** ✅ Recorded — 2026-10-17 — `f3b68ad` — cli (vitest) — 2 UAT + 5 AC, 3 skipped
 **Delivers:** An operator keeps a backlog of work items in their project, and `delivery run
 --sources` works through them in priority order on its own, carrying each item that needs more
 attempts or a decision through to the next run instead of losing track of it.
