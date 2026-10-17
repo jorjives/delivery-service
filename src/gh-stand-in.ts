@@ -6,8 +6,8 @@ import { join } from "node:path";
  * Test and demo support: a stand-in for the GitHub CLI, so the open-pr closer
  * can be exercised with no network and no GitHub account. It is the same
  * swap-the-executable approach claude-mock takes for the agent: a real
- * executable named `gh`, honouring the argv and output of the two commands the
- * closer uses (`gh pr list --json url`, `gh pr create`), with its failure
+ * executable named `gh`, honouring the argv and output of the three commands the
+ * closer uses (`gh pr list --json url`, `gh pr create`, `gh pr edit --body`), with its failure
  * messages and exit codes copied from gh 2.94 itself.
  */
 
@@ -94,6 +94,15 @@ if (group === "pr" && command === "create") {
   state.pullRequests.push({ url, head: flags.head, base: flags.base, title: flags.title, body: flags.body });
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
   process.stdout.write(url + "\n");
+  process.exit(0);
+}
+
+if (group === "pr" && command === "edit") {
+  const pr = state.pullRequests.find((p) => p.url === rest[0]);
+  if (!pr) fail("no pull requests found for " + rest[0], 1);
+  if (flags.body !== undefined) pr.body = flags.body;
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  process.stdout.write(pr.url + "\n");
   process.exit(0);
 }
 

@@ -6,7 +6,7 @@ import { load } from "./case-file.js";
 import { closeError, closerFromAcceptedHandler, commitAccepted, taskSummary } from "./closer-support.js";
 import { cleanGitEnv } from "./git-env.js";
 import { tryGit } from "./git-exec.js";
-import type { CloseContext, CloseReport, CloserPort } from "./ports.js";
+import type { CloseContext, CloseReport, CloserPort, DeliveredTask } from "./ports.js";
 import type { TaskDef } from "./schema.js";
 
 const execFile = promisify(execFileCb);
@@ -93,6 +93,17 @@ function describePullRequest(surfaceId: string, taskDef: TaskDef, ctx: CloseCont
   return { title, body };
 }
 
+/** Title and body for the one pull request a delivery branch has: every task landed on it. */
+function describeDelivery(ctx: CloseContext, landed: readonly DeliveredTask[]): { title: string; body: string } {
+  const count = landed.length === 1 ? "1 item" : `${landed.length} items`;
+  const body = [
+    `The delivery harness landed these on ${ctx.branch}, each checked on top of the ones before it, for you to merge into ${ctx.baseBranch} as one:`,
+    "",
+    ...landed.map((task) => `- ${task.intent} (${task.item}, run ${task.run})`),
+  ].join("\n");
+  return { title: `Delivered work on ${ctx.branch} (${count})`, body };
+}
+
 /**
  * Open a GitHub pull request for the accepted work, for owners who want a
  * person to review before anything merges.
@@ -156,6 +167,16 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
     }
     const existing = OpenPullRequests.parse(JSON.parse(listed))[0];
     if (existing) {
+      // A delivery branch's pull request is its own from an earlier run: bring its list up to date (spec §5.7).
+      if (ctx.delivery !== undefined) {
+        try {
+          await gh(ctx.repoPath, ["pr", "edit", existing.url, `--body=${describeDelivery(ctx, ctx.delivery.landed).body}`]);
+        } catch (err) {
+          const failure = ghFailureOf(err);
+          return accessProblem(failure) ?? closeError(`gh could not update ${existing.url} with what has landed on ${ctx.branch}: ${reasonOf(failure)}. The work is pushed to it. Close again.`);
+        }
+        return { status: "DONE", detail: `${existing.url}: updated this pull request from ${ctx.branch} with everything landed on it so far, and pushed the new work.` };
+      }
       return {
         status: "DONE",
         detail:
@@ -164,8 +185,10 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
       };
     }
 
-    const { header } = await load(ctx.dir);
-    const { title, body } = describePullRequest(header.surfaceId, header.taskDef, ctx);
+    const { title, body } =
+      ctx.delivery === undefined
+        ? await load(ctx.dir).then(({ header }) => describePullRequest(header.surfaceId, header.taskDef, ctx))
+        : describeDelivery(ctx, ctx.delivery.landed);
     let created: string;
     try {
       created = await gh(ctx.repoPath, [

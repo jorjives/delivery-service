@@ -236,4 +236,42 @@ describe("the open-pr closer", () => {
       expect(report.detail).toContain("[redacted]");
     });
   });
+  describe("on a delivery branch", () => {
+    const landed = [
+      { intent: "Add a hello.", item: "backlog:hello.md", run: "add-a-hello-1", at: "2026-10-17T09:00:00.000Z" },
+      { intent: "Add a goodbye.", item: "backlog:goodbye.md", run: "add-a-goodbye-1", at: "2026-10-17T09:05:00.000Z" },
+    ];
+
+    async function deliveryContext(): Promise<CloseContext> {
+      git(repo, ["branch", "delivery/main"]);
+      const noCaseFile = await mkdtemp(join(tmpdir(), "no-case-"));
+      const scratch = join(await mkdtemp(join(tmpdir(), "pr-delivery-")), "wt");
+      git(repo, ["worktree", "add", "-q", scratch, "delivery/main"]);
+      return { worktreePath: scratch, dir: noCaseFile, repoPath: repo, branch: "delivery/main", baseBranch: "main" };
+    }
+
+    it("opens one pull request listing every item landed on the branch", async () => {
+      const base = await deliveryContext();
+
+      const report = await closer().close({ ...base, delivery: { landed } }, accepted);
+
+      expect(report.status).toBe("DONE");
+      const [pr] = standIn.pullRequests();
+      expect(pr).toMatchObject({ head: "delivery/main", base: "main" });
+      expect(pr?.title).toContain("2 items");
+      expect(pr?.body).toContain("Add a hello. (backlog:hello.md, run add-a-hello-1)");
+      expect(pr?.body).toContain("Add a goodbye. (backlog:goodbye.md, run add-a-goodbye-1)");
+    });
+
+    it("updates the open pull request's list on a later run instead of opening another", async () => {
+      const base = await deliveryContext();
+      await closer().close({ ...base, delivery: { landed: landed.slice(0, 1) } }, accepted);
+
+      const report = await closer().close({ ...base, delivery: { landed } }, accepted);
+
+      expect(report.status).toBe("DONE");
+      expect(standIn.pullRequests()).toHaveLength(1);
+      expect(standIn.pullRequests()[0]?.body).toContain("Add a goodbye.");
+    });
+  });
 });

@@ -147,6 +147,14 @@ export interface TriagePort {
  * set only on a close retried by triage's agent, which wrote it; a first close
  * and a deterministic retry have none. No built-in closer reads it.
  */
+/** A task that landed on a delivery branch, as the closer of that branch is told of it. */
+export interface DeliveredTask {
+  intent: string;
+  item: string;
+  run: string;
+  at: string;
+}
+
 export interface CloseContext {
   worktreePath: string;
   dir: string;
@@ -154,6 +162,8 @@ export interface CloseContext {
   branch: string;
   baseBranch: string;
   repairBrief?: CloseRepairBrief;
+  /** Set when the closer acts on a delivery branch: every task landed on it since it opened, oldest first. `dir` then holds no case file. */
+  delivery?: { landed: readonly DeliveredTask[] };
 }
 
 export interface CloseOutcome {

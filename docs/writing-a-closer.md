@@ -109,11 +109,12 @@ interface Closer {
 | Field | What it is | When it is set |
 |---|---|---|
 | `worktreePath` | The surface's scratch worktree, holding the accepted work. It may already be gone on a replay (see below). | Always |
-| `dir` | The surface's case file directory. `load(dir)` gives its header, whose `taskDef` is what was asked for; the built-in closers title their commit with it. | Always |
+| `dir` | The surface's case file directory. `load(dir)` gives its header, whose `taskDef` is what was asked for; the built-in closers title their commit with it. When `delivery` is set there is no case file in it. | Always |
 | `repoPath` | The repository checkout the worktree was created from. It is shared with the people using that checkout: act on it, but never switch its checked-out branch. | Always |
-| `branch` | The surface's own branch, for example `surface/surface-7`. The worktree has it checked out. | Always |
+| `branch` | The branch to land: the surface's own, for example `surface/surface-7`, or, when `delivery` is set, the delivery branch, for example `delivery/main`. The worktree has it checked out. | Always |
 | `baseBranch` | The local branch the surface was started from, pinned when it was provisioned, for example `main`. The branch to merge into or open a pull request against. | Always; the empty string only if provisioning never completed, which a closer should report as `"ERROR"` |
 | `repairBrief` | Guidance written by triage's agent: `{ problem, dead_ends, scope, references, diagnosis }`. You may surface it, in a pull request body or a notification. The built-in closers ignore it. | Only on a close retried by triage's agent; absent on a first close and on a deterministic retry |
+| `delivery` | `{ landed }`: every task landed on the delivery branch since it opened, oldest first, each with its `intent`, `item` key, `run` id and the time `at` which it landed. Your closer is then called once per `delivery run --sources` run, for the delivery branch, and again on later runs while the branch stays open: treat a branch or pull request you made for it earlier as your own. | Only when the closer acts on a delivery branch |
 
 an `outcome`, `{ kind: "accepted" | "escalated" | "aborted" }`, and must return a
 `CloseReport`:

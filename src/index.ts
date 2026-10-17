@@ -32,6 +32,7 @@ export type {
   TriageVerdict,
   TriagePort,
   CloseContext,
+  DeliveredTask,
   CloseOutcome,
   CloseReport,
   CloserPort,
