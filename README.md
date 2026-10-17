@@ -706,6 +706,7 @@ same object works too, for a project that needs to compute a value.
 | `concurrency` | How many tasks from your list may run at once, a whole number. The default, 1, works down the list one task at a time. 2 or more starts that many, each on its own copy with its own branch and record, and starts the next task on the list as soon as one finishes. |
 | `fence` | Whether the agent works inside a fence that keeps your main folder read-only while it works in its own copy: `"preferred"` (the default: used wherever it works, otherwise the run goes ahead and says so first), `"required"` (a run will not start without it), or `"off"`. An object such as `{ "mode": "required", "devices": ["/dev/kvm"] }` also passes host devices through. The fence needs bubblewrap (`bwrap`), on Linux. |
 | `workflows` | Named ways of doing a task in more than one checked step. Each is a list of `steps` run in order; a step has a `name`, a `prompt`, and optionally its own `gate`, `agent` options, `guards`, and `continue: true` to pick up the previous step's session. Run one with `delivery run --task "..." --workflow <name>`. See [Setting up a project](docs/project-configuration.md#workflows). |
+| `notify` | A command of your own, run at the end of every run with the run's report as JSON on its standard input, parked items and their questions included, so you can send it wherever you read messages. |
 
 A gate or closer of your own is named here rather than on the command line, because it needs a
 module path: `{ "type": "custom", "modulePath": "./gates/mine.mjs" }`.

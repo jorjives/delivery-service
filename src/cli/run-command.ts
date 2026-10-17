@@ -60,7 +60,7 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
   if (intent === undefined && config.tasks) {
     if (options.workflow !== undefined) throw new Refusal(WORKFLOW_NEEDS_TASK, EXIT.configuration, "workflow");
     const exitCode = await startQueue(options, { repoPath, config }, ctx);
-    await closingReport(repoPath, { kind: "list" }, list, ctx);
+    await closingReport(repoPath, { kind: "list" }, list, ctx, config.notify);
     return exitCode;
   }
 
@@ -77,7 +77,7 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
     const ignored = ignoredSettings(options, ctx.env, resuming.caseFile.header);
     if (ignored.length > 0) ctx.report.note(ignoredNote(ignored));
     const exitCode = await resumeRun(resuming, ctx);
-    await closingReport(repoPath, { kind: "task", runId: resuming.runId }, list, ctx);
+    await closingReport(repoPath, { kind: "task", runId: resuming.runId }, list, ctx, config.notify);
     return exitCode;
   }
   return startOne(options, { repoPath, intent, config }, ctx);
@@ -114,6 +114,6 @@ async function startOne(
   // The id is chosen here rather than left to `startRun`, so the report at the end knows which run to tell.
   const runId = runIdFor(taskIntent(settings.taskDef), new Date());
   const exitCode = await startRun({ repoPath, ...settings, runId, fenceRecord }, session, ctx);
-  await closingReport(repoPath, { kind: "task", runId }, queueTasks(config), ctx);
+  await closingReport(repoPath, { kind: "task", runId }, queueTasks(config), ctx, config.notify);
   return exitCode;
 }

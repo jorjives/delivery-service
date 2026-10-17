@@ -182,4 +182,12 @@ describe("delivery run --sources", () => {
     expect(git(repo, ["show", `surface/${latest?.runId}:draft.md`])).toBe("A first draft of the greeting.");
     expect(git(repo, ["show", `surface/${latest?.runId}:hello.js`])).toContain("Good day");
   }, RUN_TIMEOUT * 2);
+
+  it("runs the notify command with the report, parked items included, on its standard input", async () => {
+    const repo = project({ "delivery.config.json": JSON.stringify({ notify: "cat > notified.json" }) });
+    await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(asks) } });
+    const sent = JSON.parse(readFileSync(join(repo, "notified.json"), "utf-8")) as { schema: string; parked: { item: string; question: string }[] };
+    expect(sent.schema).toBe("delivery.report/1");
+    expect(sent.parked).toEqual([expect.objectContaining({ item: KEY, question: "Formal or casual greeting?" })]);
+  }, RUN_TIMEOUT);
 });

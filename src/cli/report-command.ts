@@ -13,7 +13,8 @@ import { findRepository } from "./project.js";
 import { repoLocked } from "../repo-lock.js";
 import { isSaved, notSaved, SAVED_TO, saveReport } from "./saved-report.js";
 import { listTasks } from "./status-command.js";
-import { findConfig } from "./config.js";
+import { findConfig, loadConfig } from "./config.js";
+import { runShell } from "../shell.js";
 import { deriveFindings, earlierChoices, fixRunsOf } from "../packs/fix-state.js";
 import { readLedger } from "../packs/ledger.js";
 import { reviewOfPlan, uncheckable, type SavedReview } from "../packs/review-record.js";
@@ -156,14 +157,42 @@ export async function reportCommand(runId: string | undefined, options: ReportOp
  * ends: a report that cannot be read or saved is said in one line, and the run's
  * own outcome and exit code stand.
  */
-export async function closingReport(repoPath: string, subject: ReportSubject, list: TaskDef[], ctx: CommandContext): Promise<void> {
+export async function closingReport(repoPath: string, subject: ReportSubject, list: TaskDef[], ctx: CommandContext, notify?: string): Promise<void> {
   try {
     const report = await readReport(repoPath, subject, list, { env: ctx.env });
     if (report.empty) return;
     ctx.report.note(closingSentence(report.doc));
     ctx.report.note(reportPointer(report.doc));
     await saveReport(repoPath, report.doc, report.lines({ colour: false, saved: SAVED_TO }));
+    if (notify !== undefined) await notifyWith(notify, report.doc, repoPath, ctx);
   } catch (err) {
     ctx.report.note(notSaved(err));
+  }
+}
+
+export const notifyFailed = (detail: string): string => `Your notify command did not work: ${detail}. The run itself is unaffected.`;
+
+const NOTIFY_TIMEOUT_MS = 60_000;
+
+/** Hand the report to the operator's own command. Never changes how the run ends. */
+async function notifyWith(command: string, doc: ReportDocument, repoPath: string, ctx: CommandContext): Promise<void> {
+  try {
+    const result = await runShell(command, [], { cwd: repoPath, timeoutMs: NOTIFY_TIMEOUT_MS, env: ctx.env, input: JSON.stringify(doc) });
+    if (result.exitCode !== 0) ctx.report.note(notifyFailed(result.stderr.trim() || `it exited with code ${result.exitCode}`));
+  } catch (err) {
+    ctx.report.note(notifyFailed((err as Error).message));
+  }
+}
+
+/**
+ * The project's `notify` command, read from its config the way `listTasks` reads the list; a configuration that cannot
+ * be found means none, as it means no list.
+ */
+export async function projectNotify(startDir: string, repoPath: string, ctx: CommandContext): Promise<string | undefined> {
+  try {
+    return (await loadConfig({ startDir, repoPath, flag: undefined, env: ctx.env, orPlan: true })).notify;
+  } catch (err) {
+    if (err instanceof Refusal) return undefined;
+    throw err;
   }
 }

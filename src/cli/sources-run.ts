@@ -93,7 +93,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
     },
   };
   const exitCode = await runQueue(claims.map((c) => c.taskDef), project, { repoPath, carryOn: true, claims: source }, ctx);
-  await closingReport(repoPath, { kind: "list" }, claims.map((c) => c.taskDef), ctx);
+  await closingReport(repoPath, { kind: "list" }, claims.map((c) => c.taskDef), ctx, config.notify);
   return exitCode;
 }
 

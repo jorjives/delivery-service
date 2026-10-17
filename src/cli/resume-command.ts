@@ -6,7 +6,7 @@ import { findRepository } from "./project.js";
 import { refuseIfRunGoing } from "./queue.js";
 import type { RunRecord } from "../run-records.js";
 import { alreadyFinished, chooseRun, readRun, unfinishedRuns } from "./runs.js";
-import { closingReport } from "./report-command.js";
+import { closingReport, projectNotify } from "./report-command.js";
 import { listTasks } from "./status-command.js";
 
 /** What `delivery resume` was given on the command line, besides the run id. */
@@ -39,6 +39,6 @@ export async function resumeCommand(runId: string | undefined, options: ResumeOp
   const record = runId === undefined ? await discover(repoPath, options, ctx) : await readRun(repoPath, runId);
   if (record.caseFile.outcome) throw new Refusal(alreadyFinished(record.runId), EXIT.configuration);
   const exitCode = await resumeRun(record, ctx);
-  await closingReport(repoPath, { kind: "task", runId: record.runId }, await listTasks(startDir, repoPath, ctx), ctx);
+  await closingReport(repoPath, { kind: "task", runId: record.runId }, await listTasks(startDir, repoPath, ctx), ctx, await projectNotify(startDir, repoPath, ctx));
   return exitCode;
 }

@@ -29,7 +29,7 @@ import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeParkedItem, writeSupervisedRun } from "./command-fixtures.js";
 import { takeRepoLock } from "../repo-lock.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
-import { SCHEMA_AND_REPORT } from "./report-command.js";
+import { notifyFailed, SCHEMA_AND_REPORT } from "./report-command.js";
 import { EXIT } from "./failures.js";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { planConfig, writePlan } from "../packs/plan.js";
@@ -59,6 +59,22 @@ const everything = (repo: string): string =>
     .map((args) => execFileSync("git", args.split(" "), { cwd: repo, env: cleanGitEnv(), encoding: "utf-8" }))
     .concat(execFileSync("sh", ["-c", "find .delivery -type f | sort | xargs cksum"], { cwd: repo, encoding: "utf-8" }))
     .join("\n");
+
+describe("delivery run notify", () => {
+  it("says in one line when the notify command fails, and the run's exit code stands", async () => {
+    const task = "add a hello function that greets a name, with a test";
+    const repo = initTempRepo("report-notify-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ tasks: [task], notify: "echo broke >&2; exit 1" }),
+    });
+    const env = { [TEST_MOCK_SCRIPT]: await scriptFile({ expectations: [{ effects: [{ write: { path: "hello.js", content: "export const hello = (name) => `hello ${name}`;\n" } }], json: { status: "completed", rationale: "added hello.js" } }] }) };
+
+    const { exitCode, stdout } = await delivery(["run"], { cwd: repo, env });
+
+    expect(exitCode).toBe(0);
+    expect(stdout.split("\n")).toContain(notifyFailed("broke"));
+  }, RUN_TIMEOUT * 2);
+});
 
 describe("delivery report", () => {
   it("reports the project's task list: what landed, what needs the owner, and what was not started", async () => {
