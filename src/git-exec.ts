@@ -85,3 +85,8 @@ export async function ensureCommitted(worktreePath: string, message: string): Pr
   if ((await git(worktreePath, ["status", "--porcelain"])) === "") return;
   await git(worktreePath, ["commit", "-m", message]);
 }
+
+/** The files a merge or rebase in `cwd` left conflicted. */
+export async function conflictedFiles(cwd: string): Promise<string[]> {
+  return (await git(cwd, ["diff", "--name-only", "--diff-filter=U"])).split("\n").filter(Boolean);
+}

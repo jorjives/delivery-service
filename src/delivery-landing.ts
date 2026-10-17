@@ -1,7 +1,7 @@
 import { appendEntry, load, writeRef } from "./case-file.js";
 import { closeError } from "./closer-support.js";
 import { inDetachedWorktree } from "./disposable-copy.js";
-import { git, tryGit } from "./git-exec.js";
+import { conflictedFiles, git, tryGit } from "./git-exec.js";
 import { takeBaseline } from "./run-gate.js";
 import { stepKey, stepView } from "./workflow-step.js";
 import type { CloseContext, CloseReport } from "./ports.js";
@@ -43,7 +43,7 @@ export async function rebuildIfMoved(dir: string, ctx: CloseContext, env?: NodeJ
     return { entry };
   }
 
-  const files = lines(await git(ctx.worktreePath, ["diff", "--name-only", "--diff-filter=U"]));
+  const files = await conflictedFiles(ctx.worktreePath);
   await tryGit(ctx.worktreePath, ["rebase", "--abort"]);
   if (files.length === 0) {
     return { report: closeError(`git could not rebuild ${ctx.branch} on ${ctx.baseBranch} at ${short}, although nothing conflicts. Nothing was landed and the work is still on ${ctx.branch}.`) };

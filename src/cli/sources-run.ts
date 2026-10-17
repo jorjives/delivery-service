@@ -65,7 +65,8 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   records = await allRuns(repoPath);
 
   // The one branch every task of this run lands on, named after the base before any task is claimed.
-  const branch = deliveryBranchOf((await baseTip(repoPath)).base);
+  const { base } = await baseTip(repoPath);
+  const branch = deliveryBranchOf(base);
   const now = new Date();
   const taken = new Set(records.map((r) => r.runId));
   const claims: (QueueClaim & { key: string })[] = [];
@@ -97,7 +98,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   }
   if (claims.length === 0) {
     ctx.report.note(NOTHING_TO_WORK);
-    return handOff(repoPath, project.closerRef, deliveryLedger, EXIT.ok, ctx);
+    return handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base }, EXIT.ok, ctx);
   }
   claims.forEach((claim, index) => (claim.position = { task: index + 1, of: claims.length }));
 
@@ -113,18 +114,17 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
     },
   };
   const exitCode = await runQueue(claims.map((c) => c.taskDef), project, { repoPath, carryOn: true, claims: source }, ctx);
-  const handedOff = await handOff(repoPath, project.closerRef, deliveryLedger, exitCode, ctx);
+  const handedOff = await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base }, exitCode, ctx);
   await closingReport(repoPath, { kind: "list" }, claims.map((c) => c.taskDef), ctx, config.notify);
   return handedOff;
 }
 
 /** The project's closer, once per run, when tasks have landed on the delivery branch since it last took it. A failed closer leaves the branch for the next run, and the run reports a stop. */
-async function handOff(repoPath: string, closerRef: CloserRef, ledger: string, exitCode: ExitCode, ctx: CommandContext): Promise<ExitCode> {
-  const { base } = await baseTip(repoPath);
-  const branch = deliveryBranchOf(base);
-  const { pending, landed } = await readDelivery(ledger, branch);
+async function handOff(target: { repoPath: string; closerRef: CloserRef; ledger: string; branch: string; base: string }, exitCode: ExitCode, ctx: CommandContext): Promise<ExitCode> {
+  const { branch } = target;
+  const { pending, landed } = await readDelivery(target.ledger, branch);
   if (pending.length === 0) return exitCode;
-  const report = await closeDeliveryBranch({ repoPath, closerRef, ledger, branch, base }, landed.map((e) => ({ intent: e.intent, item: e.key, run: e.runId, at: e.at })));
+  const report = await closeDeliveryBranch(target, landed.map((e) => ({ intent: e.intent, item: e.key, run: e.runId, at: e.at })));
   ctx.report.note(deliveryClosedNote(branch, report));
   return report.status === "DONE" || exitCode !== EXIT.ok ? exitCode : EXIT.escalated;
 }

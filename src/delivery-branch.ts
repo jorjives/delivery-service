@@ -5,7 +5,7 @@ import { closeError } from "./closer-support.js";
 import { computeDelta } from "./delta-rule.js";
 import { inDetachedWorktree } from "./disposable-copy.js";
 import { readDelivery, recordDelivery } from "./delivery-ledger.js";
-import { branchExists, git, tryGit } from "./git-exec.js";
+import { branchExists, conflictedFiles, git, tryGit } from "./git-exec.js";
 import { resolveBaseRef } from "./provision.js";
 import { resolveCloser } from "./resolve-closer.js";
 import { resolveGate } from "./resolve-gate.js";
@@ -86,7 +86,7 @@ async function mergeBaseIn(
   const before = await gate.baseline(gateCtx);
   if (before.status === "ERROR") return { reason: `The checks could not run on ${branch}, so ${base}'s new commits could not be brought in. ${owner}` };
   if (!(await tryGit(scratch, ["merge", "--no-ff", "-m", `Bring ${base} into ${branch}`, baseCommit]))) {
-    const files = (await git(scratch, ["diff", "--name-only", "--diff-filter=U"])).split("\n").filter(Boolean);
+    const files = await conflictedFiles(scratch);
     await tryGit(scratch, ["merge", "--abort"]);
     return { reason: `${base} has new commits that conflict with work on ${branch}${files.length > 0 ? ` in ${files.join(", ")}` : ""}. ${owner}` };
   }
