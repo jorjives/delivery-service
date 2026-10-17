@@ -1,9 +1,10 @@
 import { mkdtempSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { DEFAULT_BUDGETS } from "../budgets.js";
+import { ledgerPath } from "../item-ledger.js";
 import { create, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
 import { writeMockScript, type MockScript } from "../mock-script.js";
 import { signedOut } from "../mock-session.js";
@@ -14,7 +15,7 @@ import { fakeAgentPort } from "../agent-port-double.js";
 import type { AgentContext, Terminus } from "../ports.js";
 import { appendLine } from "../journal.js";
 import { createRunFile } from "../run-file.js";
-import { RunEntry, type AgentOptions, type CaseFileOutcome, type FenceRecord, type GateRef, type RunHeader } from "../schema.js";
+import { RunEntry, type AgentOptions, type CaseFileOutcome, type FenceRecord, type GateRef, type RunHeader, type WorkItemRef } from "../schema.js";
 import { TEST_BWRAP } from "../fence.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { ExitOnInterrupt } from "./context.js";
@@ -170,17 +171,32 @@ export const ESCALATION: EscalationPacket = {
  */
 export async function writeRunRecord(
   repoPath: string,
-  { runId, task = TASK, outcome, packet, gate = GATE }: { runId: string; task?: string; outcome?: CaseFileOutcome; packet?: EscalationPacket; gate?: GateRef },
+  { runId, task = TASK, outcome, packet, gate = GATE, item }: { runId: string; task?: string; outcome?: CaseFileOutcome; packet?: EscalationPacket; gate?: GateRef; item?: WorkItemRef },
 ): Promise<string> {
   const dir = join(runsRoot(repoPath), runId);
   await mkdir(dir, { recursive: true });
-  await create(dir, { surfaceId: runId, taskDef: { intent: task }, gateRef: gate, closerRef: DEFAULT_CLOSER }, DEFAULT_BUDGETS);
+  await create(dir, { surfaceId: runId, taskDef: { intent: task }, gateRef: gate, closerRef: DEFAULT_CLOSER, ...(item === undefined ? {} : { item }) }, DEFAULT_BUDGETS);
   await setBaseBranch(dir, "main");
   if (outcome) {
     const packetRef = packet === undefined ? undefined : await writeRef(dir, "escalation", packet);
     await setOutcome(dir, { ...outcome, ...(packetRef === undefined ? {} : { packetRef }) });
   }
   return dir;
+}
+
+/**
+ * Test support: the item ledger on this machine with one backlog item parked, as a run whose agent asked a question
+ * leaves it once the question is set aside. `env` is the state folder the command under test is given.
+ */
+export async function writeParkedItem(repoPath: string, env: NodeJS.ProcessEnv): Promise<void> {
+  const path = ledgerPath(repoPath, env);
+  await mkdir(dirname(path), { recursive: true });
+  const entries = [
+    { t: "dispatched", key: "backlog:a.md", runId: "add-a-greeting-20261016T090000Z", intent: "Greet people.", at: "2026-10-16T09:00:00.000Z" },
+    { t: "ended", key: "backlog:a.md", runId: "add-a-greeting-20261016T090000Z", class: "decision", question: "Formal?", at: "2026-10-16T09:01:00.000Z" },
+    { t: "parked", key: "backlog:a.md", reason: "decision", at: "2026-10-16T09:01:00.000Z" },
+  ];
+  await writeFile(path, entries.map((entry) => `${JSON.stringify(entry)}\n`).join(""));
 }
 
 /**

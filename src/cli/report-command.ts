@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { deriveReport, mostRecentSubject } from "../report/derive.js";
-import type { ReportDocument } from "../report/document.js";
+import type { ParkedItem, ReportDocument } from "../report/document.js";
 import { publishedSchema } from "../report/json-schema.js";
 import { holdsNoRun, loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { closingSentence, NO_RUNS_YET, NO_TASK_LIST, renderText, reportPointer } from "../report/text.js";
@@ -18,6 +18,22 @@ import { deriveFindings, earlierChoices, fixRunsOf } from "../packs/fix-state.js
 import { readLedger } from "../packs/ledger.js";
 import { reviewOfPlan, uncheckable, type SavedReview } from "../packs/review-record.js";
 import { reviewPart } from "../packs/review-report.js";
+import { ledgerPath, parkedItems, readItemLedger, type ItemState } from "../item-ledger.js";
+
+/** An item the ledger has set aside, as the report carries it. */
+export const parkedOf = (state: ItemState): ParkedItem => ({
+  item: state.key,
+  intent: state.intent,
+  reason: state.parked ?? "escalated",
+  question: state.question,
+  attempts: state.attempts,
+  lastRun: state.lastRunId,
+});
+
+/** The items this machine's ledger has set aside, as a report carries them. */
+export async function parkedIn(repoPath: string, env: NodeJS.ProcessEnv): Promise<ParkedItem[]> {
+  return parkedItems(await readItemLedger(ledgerPath(repoPath, env))).map(parkedOf);
+}
 
 /** What `delivery report` was given on the command line besides the run id. */
 export interface ReportOptions {
@@ -63,12 +79,17 @@ async function listReview(startDir: string, repoPath: string, ctx: CommandContex
  * snapshot, so the two cannot differ. The one reading behind what `delivery report` prints, as text or as data, and
  * what is saved.
  */
-export async function readReport(repoPath: string, named: ReportSubject | undefined, list: TaskDef[], review?: SavedReview): Promise<Report> {
+export async function readReport(
+  repoPath: string,
+  named: ReportSubject | undefined,
+  list: TaskDef[],
+  { review, env }: { review?: SavedReview; env: NodeJS.ProcessEnv },
+): Promise<Report> {
   const snapshot = await loadSnapshot(repoPath, named ?? { kind: "list" }, { live: await repoLocked(repoPath), list });
   const told = named === undefined ? review : undefined;
   // A review's plan is told by its problems even when no fix is left to run, never swapped for the most recent run.
   const recent = named === undefined && list.length === 0 && told === undefined ? mostRecentSubject(snapshot) : undefined;
-  const doc = deriveReport(recent ? { ...snapshot, subject: recent } : snapshot);
+  const doc = { ...deriveReport(recent ? { ...snapshot, subject: recent } : snapshot), parked: await parkedIn(repoPath, env) };
   const states = told === undefined ? undefined : deriveFindings(told.result.findings, await readLedger(told.dir), fixRunsOf(snapshot, doc), (finding) => uncheckable(told.header, finding), await earlierChoices(repoPath, told));
   return {
     doc,
@@ -104,7 +125,7 @@ export async function reportCommand(runId: string | undefined, options: ReportOp
   const repoPath = await findRepository(startDir);
   const list = await listTasks(startDir, repoPath, ctx);
   const review = runId === undefined ? await listReview(startDir, repoPath, ctx) : undefined;
-  const report = await readReport(repoPath, runId === undefined ? undefined : namedSubject(repoPath, runId), list, review);
+  const report = await readReport(repoPath, runId === undefined ? undefined : namedSubject(repoPath, runId), list, { review, env: ctx.env });
   // The saved text names itself, so what is on disk is what is printed, line for line.
   const asSaved = report.lines({ colour: false, saved: SAVED_TO });
 
@@ -137,7 +158,7 @@ export async function reportCommand(runId: string | undefined, options: ReportOp
  */
 export async function closingReport(repoPath: string, subject: ReportSubject, list: TaskDef[], ctx: CommandContext): Promise<void> {
   try {
-    const report = await readReport(repoPath, subject, list);
+    const report = await readReport(repoPath, subject, list, { env: ctx.env });
     if (report.empty) return;
     ctx.report.note(closingSentence(report.doc));
     ctx.report.note(reportPointer(report.doc));

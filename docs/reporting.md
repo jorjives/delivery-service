@@ -43,6 +43,7 @@ kind has none.
 | `surfaces` | One entry for each task |
 | `trips` | Each time the setup a run's tasks share broke: the `cause` (its `kind`, the `surfaceId` of the task whose report tripped it, and either a `reason` or the `surfaceIds` of every task counted, whichever the kind does not have being `null`), the tasks `held`, every one of the `repairs` tried, how it `ended`, the `reason` and any usage `limit`. Empty when there is no run of several tasks |
 | `usage`, `usageRecorded` | What the agent sessions behind everything the document reports took and cost, and how many sessions that covers. See "Time and cost" below |
+| `parked` | The backlog items this machine's item ledger has set aside, oldest key first, each with its `item` key, its `intent`, the `reason` it is parked (`"decision"`, `"escalated"` or `"attempts"`), the `question` it is waiting on, its `attempts`, and the `lastRun` that ended it. Empty when nothing is parked or the machine has no ledger |
 
 `run`, when there is one:
 
@@ -77,6 +78,7 @@ Each entry of `surfaces`:
 | `decisions` | Every triage round, oldest first: `afterAttempt`, `trigger`, `verdict`, the `rationale` word for word, and the `brief` or `packet` the round produced. `recorded` is `false` when what the round wrote can no longer be read |
 | `repairs` | Every repair that ran in the task's working copy, oldest first. See below |
 | `usage`, `usageRecorded` | The same for the task's own agent sessions. See "Time and cost" below |
+| `item` | The work-source item the task was, such as `backlog:x.md`; `null` for any other task |
 | `limit` | The usage limit that stopped its last session, when one did |
 | `escalation` | The packet the task stopped with, word for word: `decision`, `evidence`, `dead_ends`, `why_now`, `references` |
 | `plain` | For a stopped task, the stop in plain words: the `group` it is reported under, the `audience` who must act (`owner`, `engineer` or `unknown`), the `sentence`, what the agent last said as `agentSaid`, and what to do `next` |

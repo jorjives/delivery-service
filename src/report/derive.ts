@@ -172,6 +172,7 @@ function withoutRun(taskDef: TaskDef, queue: QueuePosition | null, standing: Sta
     limit: null,
     escalation: null,
     plain: null,
+    item: null,
   };
 }
 
@@ -298,6 +299,7 @@ function withRun(snapshot: RecordSnapshot, record: RunRecord, queue: QueuePositi
             item: header.item?.key ?? null,
           })
         : null,
+    item: header.item?.key ?? null,
   };
 }
 
@@ -329,7 +331,7 @@ function document(
 ): ReportDocument {
   const counts = Object.fromEntries(Standing.options.map((standing) => [standing, 0])) as Record<Standing, number>;
   for (const surface of parts.surfaces) counts[surface.standing] += 1;
-  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts, ...addUp([...parts.surfaces, ...(runFile ? [runUsage(runFile)] : [])]), trips: runFile ? tripsOf(runFile.history).map(tripOf) : [] };
+  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts, ...addUp([...parts.surfaces, ...(runFile ? [runUsage(runFile)] : [])]), trips: runFile ? tripsOf(runFile.history).map(tripOf) : [], parked: [] };
 }
 
 const asIncomplete = (damaged: DamagedFile, list: TaskDef[]): DamagedRecord => ({

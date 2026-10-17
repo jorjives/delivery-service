@@ -14,7 +14,8 @@ import { RunFileNotFound } from "../errors.js";
 import { deriveReport } from "../report/derive.js";
 import { detailLines, repairLines, rollUpLines, roundLines } from "../report/detail.js";
 import { latestOf, stepOf, type ReportDocument, type ReportSurface } from "../report/document.js";
-import { headlineCounts } from "../report/text.js";
+import { headlineCounts, parkedLines } from "../report/text.js";
+import { parkedIn } from "./report-command.js";
 import { loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { findRepository } from "./project.js";
 import { packetOf, summariseOutcome } from "./outcome.js";
@@ -84,6 +85,7 @@ async function whereToLook(record: RunRecord, ctx: CommandContext): Promise<stri
 export async function statusReport(record: RunRecord, ctx: CommandContext, position?: QueuePosition): Promise<string[]> {
   return [
     `Run ${record.runId}, started ${startedAt(record.runId)}: ${taskIntent(record.caseFile.header.taskDef)}`,
+    ...(record.caseFile.header.item ? [`Item: ${record.caseFile.header.item.key}`] : []),
     ...(position ? [`It is task ${position.task} of ${position.of} on your list.`] : []),
     ...(await statusBody(record, ctx)),
   ];
@@ -585,7 +587,7 @@ async function documentOf(repoPath: string, startDir: string, subject: ReportSub
   // ponytail: this reads every record once more than the account above it needed. Serve the account from the
   // same snapshot if a repository with thousands of runs makes `status` slow.
   const [list, live] = await Promise.all([listTasks(startDir, repoPath, ctx), repoLocked(repoPath)]);
-  return deriveReport(await loadSnapshot(repoPath, subject, { live, list }));
+  return { ...deriveReport(await loadSnapshot(repoPath, subject, { live, list })), parked: await parkedIn(repoPath, ctx.env) };
 }
 
 /** Where to go from here: the triage rounds in full and the repairs' patches, when there are any and they were not just printed, and the report. */
@@ -627,7 +629,7 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
       ctx.writeLine(JSON.stringify({ ...(await supervisedDocument(view, ctx)), report: doc }, null, 2));
       return EXIT.ok;
     }
-    for (const line of await supervisedReport(view, ctx, doc, { full, patches })) ctx.writeLine(line);
+    for (const line of [...(await supervisedReport(view, ctx, doc, { full, patches })), ...parkedLines(doc.parked)]) ctx.writeLine(line);
     return EXIT.ok;
   }
   const doc = await documentOf(repoPath, startDir, { kind: "task", runId: record.runId }, ctx);
@@ -641,6 +643,7 @@ export async function statusCommand(runId: string | undefined, options: StatusOp
   const lines = [
     ...(await statusReport(record, ctx, surface?.queue ?? undefined)),
     ...(surface ? ["", ...detailLines(surface, { full, patches })] : []),
+    ...parkedLines(doc.parked),
     "",
     nextLine(record.runId, "delivery report (your task list)", { rounds: surface?.decisions.length ?? 0, full, changed: anyChanged(doc.surfaces), patches }),
   ];

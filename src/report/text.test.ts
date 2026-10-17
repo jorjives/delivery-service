@@ -25,7 +25,7 @@ import {
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 import type { FenceRecord, HistoryEntry } from "../schema.js";
-import { closingSentence, costLine, durationWords, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
+import { closingSentence, costLine, durationWords, parkedLines, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
 
 const report = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false });
 
@@ -637,5 +637,23 @@ describe("a task that turned test guards off", () => {
   it("is not, for one that only added a guard", () => {
     const lines = report(snapshotOf({ records: [recordOf({ runId: ID.footer, task: FOOTER, history: attempt(1, "x"), outcome: closedAt("2026-10-01T02:58:00.000Z"), header: { taskDef: { intent: FOOTER, guards: { add: ["tests-unchanged"] } } } })] }));
     expect(lines).not.toContain("WORTH A LOOK");
+  });
+});
+
+describe("parked items", () => {
+  it("says what each is waiting on and how to deal with it", () => {
+    expect(parkedLines([
+      { item: "backlog:a.md", intent: "Greet people.", reason: "decision", question: "Formal?", attempts: 0, lastRun: "r1" },
+      { item: "backlog:b.md", intent: "Add a page.", reason: "attempts", question: null, attempts: 3, lastRun: "r2" },
+    ])).toEqual([
+      "",
+      "Parked, skipped until you deal with them:",
+      '- backlog:a.md (Greet people.): asked "Formal?". Answer with: delivery answer backlog:a.md "your answer"',
+      "- backlog:b.md (Add a page.): ended without being delivered 3 runs in a row. To try again: delivery unpark backlog:b.md",
+    ]);
+  });
+
+  it("says nothing when nothing is parked", () => {
+    expect(parkedLines([])).toEqual([]);
   });
 });

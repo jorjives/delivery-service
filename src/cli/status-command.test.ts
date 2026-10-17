@@ -7,7 +7,7 @@ import { Readable } from "node:stream";
 import type { CaseFileOutcome, RunEntry, SlotOutcome } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
-import { ESCALATION, delivery, PACKAGE, writeRunRecord, writeSupervisedRun } from "./command-fixtures.js";
+import { ESCALATION, delivery, PACKAGE, writeParkedItem, writeRunRecord, writeSupervisedRun } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { runPlace, runsRoot, supervisedPlace } from "../run-location.js";
 import { writeRef } from "../case-file.js";
@@ -182,6 +182,23 @@ async function backdate(dir: string): Promise<void> {
 }
 
 describe("delivery status", () => {
+  it("names the backlog item the run works on, and lists the items parked on this machine", async () => {
+    const repo = initTempRepo("status-item-", { "package.json": PACKAGE });
+    const env = { XDG_STATE_HOME: await mkdtemp(join(tmpdir(), "status-state-")) };
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED, item: { key: "backlog:b.md", source: "backlog", id: "b.md" } });
+    await writeParkedItem(repo, env);
+
+    const { stdout, exitCode } = await delivery(["status", RUN_ID], { cwd: repo, env });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.split("\n")).toEqual(expect.arrayContaining([
+      "Item: backlog:b.md",
+      "",
+      "Parked, skipped until you deal with them:",
+      '- backlog:a.md (Greet people.): asked "Formal?". Answer with: delivery answer backlog:a.md "your answer"',
+    ]));
+  });
+
   it("reports on the run whose id it is given", async () => {
     const repo = initTempRepo("status-named-", { "package.json": PACKAGE });
     await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED });

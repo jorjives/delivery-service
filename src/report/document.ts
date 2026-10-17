@@ -22,6 +22,17 @@ export type PlainGroup = z.infer<typeof PlainGroup>;
 export const Audience = z.enum(["owner", "engineer", "unknown"]);
 export type Audience = z.infer<typeof Audience>;
 
+/** An item the item ledger has set aside on this machine, and what it waits on. */
+export const ParkedItem = z.object({
+  item: z.string(),
+  intent: z.string().nullable(),
+  reason: z.enum(["decision", "escalated", "attempts"]),
+  question: z.string().nullable(),
+  attempts: z.number().int().nonnegative(),
+  lastRun: z.string().nullable(),
+});
+export type ParkedItem = z.infer<typeof ParkedItem>;
+
 /** A stopped task in the owner's words: every sentence fixed, except the agent's own, which is quoted. */
 export const Plain = z.object({
   group: PlainGroup,
@@ -169,6 +180,8 @@ export const ReportSurface = z.object({
   escalation: EscalationPacket.nullable(),
   /** Stopped tasks only. */
   plain: Plain.nullable(),
+  /** The work-source item the task was, such as backlog:x.md; null for any other task. */
+  item: z.string().nullable(),
 });
 export type ReportSurface = z.infer<typeof ReportSurface>;
 
@@ -256,5 +269,7 @@ export const ReportDocument = z.object({
   usage: UsageTotal.nullable(),
   /** How many of those sessions `usage` covers, of how many ran. */
   usageRecorded: UsageCoverage,
+  /** Items the item ledger has set aside on this machine, oldest key first; empty when none or no ledger. */
+  parked: z.array(ParkedItem),
 });
 export type ReportDocument = z.infer<typeof ReportDocument>;

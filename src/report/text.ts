@@ -1,7 +1,7 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { Population } from "../schema.js";
-import { lastActivity, type BudgetRow, type DamagedRecord, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type UsageCoverage, type UsageTotal } from "./document.js";
+import { lastActivity, type BudgetRow, type DamagedRecord, type ParkedItem, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type UsageCoverage, type UsageTotal } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
 export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery run";
@@ -187,6 +187,23 @@ function opening(doc: ReportDocument, carryOn?: string): string[] {
   const unfinished = doc.surfaces.find((surface) => surface.standing === "unfinished");
   const resume = carryOn ?? (unfinished?.run ? `delivery resume ${unfinished.run}` : undefined);
   return [`${words.unknown} (${tally(doc)}); nothing records whether it is still going.${resume ? ` If it is not, carry on with: ${resume}` : ""}`];
+}
+
+/** Items set aside on this machine: what each waits on, and the one command that deals with it. */
+export function parkedLines(parked: readonly ParkedItem[]): string[] {
+  if (parked.length === 0) return [];
+  const line = ({ item, intent, reason, question, attempts }: ParkedItem): string => {
+    const name = intent === null ? item : `${item} (${intent})`;
+    switch (reason) {
+      case "decision":
+        return `- ${name}: asked "${question ?? "the question was not recorded"}". Answer with: delivery answer ${item} "your answer"`;
+      case "attempts":
+        return `- ${name}: ended without being delivered ${attempts} runs in a row. To try again: delivery unpark ${item}`;
+      case "escalated":
+        return `- ${name}: stopped for you. When you have dealt with it: delivery unpark ${item}`;
+    }
+  };
+  return ["", "Parked, skipped until you deal with them:", ...parked.map(line)];
 }
 
 export function incompleteLines(doc: ReportDocument): string[] {
@@ -466,6 +483,7 @@ export function renderText(doc: ReportDocument, { colour, saved, review }: { col
     ...(review === undefined ? SECTIONS.flatMap((section) => sectionLines(doc, section, colour)) : review.sections),
     ...worthALookLines(doc, colour),
     ...tuningLines(doc, colour, saved, review),
+    ...parkedLines(doc.parked),
     "",
     review?.next ?? nextLine(doc),
   ];

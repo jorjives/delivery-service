@@ -26,10 +26,11 @@ import { ReportDocument } from "../report/document.js";
 import { NO_TASK_LIST } from "../report/text.js";
 import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
-import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeSupervisedRun } from "./command-fixtures.js";
+import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeParkedItem, writeSupervisedRun } from "./command-fixtures.js";
 import { takeRepoLock } from "../repo-lock.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
 import { SCHEMA_AND_REPORT } from "./report-command.js";
+import { EXIT } from "./failures.js";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { planConfig, writePlan } from "../packs/plan.js";
 import { fixTaskFor } from "../packs/fix-task.js";
@@ -448,6 +449,19 @@ describe("delivery report", () => {
 describe("delivery report --json", () => {
   /** Standard output read back as the document it is: output that is not one valid document fails here. */
   const documentIn = (stdout: string): ReportDocument => ReportDocument.parse(JSON.parse(stdout));
+
+  it("lists the items parked on this machine, with the question each is waiting on", async () => {
+    const repo = await project("report-parked-", LIST, [formDone]);
+    const env = { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "report-state-")) };
+    await writeParkedItem(repo, env);
+
+    const { exitCode, stdout } = await delivery(["report", "--json"], { cwd: repo, env });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(documentIn(stdout).parked).toEqual([
+      expect.objectContaining({ item: "backlog:a.md", intent: "Greet people.", reason: "decision", question: "Formal?", attempts: 1 }),
+    ]);
+  });
 
   it("prints the report as one document that names its format and version: the counts, and each task with why it stopped and who must act", async () => {
     const repo = await project("report-json-", LIST, [formDone, footerFailed]);

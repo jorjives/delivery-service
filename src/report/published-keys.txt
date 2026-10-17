@@ -12,6 +12,17 @@ delivery.report/1.kind = "run"
 delivery.report/1.kind = "task"
 delivery.report/1.kind: string
 delivery.report/1.live: boolean|null
+delivery.report/1.parked: array
+delivery.report/1.parked[]: object
+delivery.report/1.parked[].attempts: integer
+delivery.report/1.parked[].intent: null|string
+delivery.report/1.parked[].item: string
+delivery.report/1.parked[].lastRun: null|string
+delivery.report/1.parked[].question: null|string
+delivery.report/1.parked[].reason = "attempts"
+delivery.report/1.parked[].reason = "decision"
+delivery.report/1.parked[].reason = "escalated"
+delivery.report/1.parked[].reason: string
 delivery.report/1.run.breaker = "DEGRADED"
 delivery.report/1.run.breaker = "HEALTHY"
 delivery.report/1.run.breaker = "REPAIRING"
@@ -117,6 +128,7 @@ delivery.report/1.surfaces[].fence.present: boolean
 delivery.report/1.surfaces[].fence.reason: null|string
 delivery.report/1.surfaces[].fence: null|object
 delivery.report/1.surfaces[].guards.added: array
+delivery.report/1.surfaces[].guards.added[] = "backlog"
 delivery.report/1.surfaces[].guards.added[] = "check-untouched"
 delivery.report/1.surfaces[].guards.added[] = "ignored"
 delivery.report/1.surfaces[].guards.added[] = "no-skips"
@@ -124,6 +136,7 @@ delivery.report/1.surfaces[].guards.added[] = "tests-unchanged"
 delivery.report/1.surfaces[].guards.added[] = "tests-untouched"
 delivery.report/1.surfaces[].guards.added[]: string
 delivery.report/1.surfaces[].guards.off: array
+delivery.report/1.surfaces[].guards.off[] = "backlog"
 delivery.report/1.surfaces[].guards.off[] = "check-untouched"
 delivery.report/1.surfaces[].guards.off[] = "ignored"
 delivery.report/1.surfaces[].guards.off[] = "no-skips"
@@ -175,6 +188,7 @@ delivery.report/1.surfaces[].escalation.references[]: string
 delivery.report/1.surfaces[].escalation.why_now: string
 delivery.report/1.surfaces[].escalation: null|object
 delivery.report/1.surfaces[].finishedAt: null|string
+delivery.report/1.surfaces[].item: null|string
 delivery.report/1.surfaces[].lastActivityAt: null|string
 delivery.report/1.surfaces[].limit = "rate"
 delivery.report/1.surfaces[].limit = "spend"
