@@ -10,6 +10,7 @@ import type { SignOffOptions } from "./sign-off-command.js";
 import type { ReviewCommandOptions } from "./review-command.js";
 import type { FixOptions } from "./fix-command.js";
 import { answerCommand, unparkCommand, type ItemOptions } from "./item-commands.js";
+import { dropAfterCommand } from "./after-command.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
@@ -140,6 +141,15 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the item belongs to (default: the current folder)")
     .action(async (item: string, options: ItemOptions, command: Command) => {
       exitCode = await unparkCommand(item, options, ctxFor(command));
+    });
+
+  program
+    .command("drop-after")
+    .description("give up the after-landing steps that are waiting, such as a deploy you cannot fix; the next `delivery run --sources` will not try them, and work that landed stays landed")
+    .argument("[batch]", "only the steps of this batch, as `delivery status` names it (default: every batch with steps waiting)")
+    .option("--repo <path>", "the git repository the steps belong to (default: the current folder)")
+    .action(async (batch: string | undefined, options: ItemOptions, command: Command) => {
+      exitCode = await dropAfterCommand(batch, options, ctxFor(command));
     });
 
   program
