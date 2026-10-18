@@ -22,7 +22,11 @@ async function batchOf(steps: PlannedStep[], followUps: { run: string; source: s
     landFollowUps: async () => undefined,
     note: (line) => notes.push(line),
   };
-  const state = async () => (await readAfter(ledger))[0]!;
+  const state = async () => {
+    const [first] = await readAfter(ledger);
+    if (!first) throw new Error("no batch recorded");
+    return first;
+  };
   return { repo, ledger, commit, deps, notes, raisedCalls, state };
 }
 
@@ -108,12 +112,15 @@ describe("running a batch of after steps", () => {
     await recordAfter(ledger, { t: "batch", batch: "b2", branch: "delivery/main", base: "main", commit, landed: [], followUps: [], steps: [{ for: "project", label: "deploy", step: { run: "touch deployed-2", in: "base" } }] });
     const states = await readAfter(ledger);
 
-    expect(await supersedeOlder(ledger, states, states[1]!.batch)).toBe(1);
+    const newer = states[1];
+    if (!newer) throw new Error("no second batch");
+    expect(await supersedeOlder(ledger, states, newer.batch)).toBe(1);
 
     const [older] = await readAfter(ledger);
     expect(older?.steps.map((s) => s.status)).toEqual(["pending", "skipped", "pending", "pending"]);
     expect(older?.steps[1]?.detail).toBe("superseded by b2, which runs the same steps on a later commit");
-    expect(await runBatch(older!, deps)).toBe(true);
+    if (!older) throw new Error("no older batch");
+    expect(await runBatch(older, deps)).toBe(true);
     expect(raisedCalls).toEqual(["a.md"]);
     expect(existsSync(join(repo, "deployed-1"))).toBe(false);
     expect(existsSync(join(repo, "other"))).toBe(true);

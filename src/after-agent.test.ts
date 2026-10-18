@@ -20,7 +20,9 @@ async function passWith(script: MockScript) {
   const scriptPath = join(mkdtempSync(join(tmpdir(), "after-agent-script-")), "script.json");
   await writeMockScript(scriptPath, script);
   const journalPath = `${scriptPath}.journal.jsonl`;
-  const result = await runAgentPass("Write release notes.", { state: (await readAfter(ledger))[0]!, index: 0 }, {
+  const [state] = await readAfter(ledger);
+  if (!state) throw new Error("no batch recorded");
+  const result = await runAgentPass("Write release notes.", { state, index: 0 }, {
     repoPath: repo, env: process.env, session: mockSessionEnvironment({ scriptPath, journalPath }), fence: OFF,
   });
   return { repo, result, journalPath };
