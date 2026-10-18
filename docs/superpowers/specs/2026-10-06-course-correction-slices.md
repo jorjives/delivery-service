@@ -329,6 +329,7 @@ from the same run branching independently and conflicting with each other.
 ## Slice 5: Run Something After Work Lands, and Be Told What Happened
 
 **Status:** ✅ Complete — 2026-10-18 — `f9e154d`
+**Tests:** ✅ Recorded — 2026-10-18 — `35d8408` — cli — 1 UAT + 1 AC, 4 skipped
 **Delivers:** Once a run's tasks have landed, the operator's own after-landing steps run
 automatically — a deploy command, an agent writing release notes, raising follow-ups discovered
 during the work — and the operator is notified of the outcome through their own usual channel.
