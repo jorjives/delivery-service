@@ -55,10 +55,12 @@ export function issueItem(issue: Issue, source: GithubSource, name: string): { i
   const label = source.label ?? DEFAULT_LABEL;
   const skip = (reason: string) => ({ skip: `Left GitHub issue #${issue.number} alone: ${reason}` });
   // The label is the trust boundary: text changed after it was added was never approved (spec §5.5).
+  // Fail closed: no label event means no approval to measure edits against, and an edit in the label's own instant cannot be ordered after it.
+  const skipUnapproved = (why: string) => skip(`${why}. Remove the label and add it again to approve it.`);
+  if (issue.labelledAt === null) return skipUnapproved(`no record of when it was labelled ${label}, so it is not approved`);
   const changed = later(issue.lastEditedAt, issue.renamedAt);
-  const approved = issue.labelledAt ?? issue.createdAt;
-  if (changed !== null && Date.parse(changed) > Date.parse(approved)) {
-    return skip(`its text was changed after it was labelled ${label}, so it is not approved as it reads now. Remove the label and add it again to approve it.`);
+  if (changed !== null && Date.parse(changed) >= Date.parse(issue.labelledAt)) {
+    return skipUnapproved(`its text was changed after it was labelled ${label}, so it is not approved as it reads now`);
   }
   const split = machineFields(issue.body);
   if ("error" in split) return skip(`${split.error}.`);

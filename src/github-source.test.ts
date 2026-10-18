@@ -50,6 +50,12 @@ describe("reading an issue as a work item", () => {
     expect(issueItem(issue({ lastEditedAt: "2026-10-18T10:00:00Z", labelledAt: "2026-10-18T11:00:00Z" }), SOURCE, "github")).toHaveProperty("item");
   });
 
+  it("fails closed: an edit in the same instant as the label, or no label event at all, is not approved", () => {
+    expect(issueItem(issue({ lastEditedAt: "2026-10-18T09:00:00Z" }), SOURCE, "github")).toHaveProperty("skip");
+    expect(issueItem(issue({ renamedAt: "2026-10-18T09:00:00Z" }), SOURCE, "github")).toHaveProperty("skip");
+    expect(issueItem(issue({ labelledAt: null }), SOURCE, "github")).toEqual({ skip: "Left GitHub issue #12 alone: no record of when it was labelled delivery, so it is not approved. Remove the label and add it again to approve it." });
+  });
+
   it("notes a parked label, and refuses a delivery block that is not YAML", () => {
     expect(issueItem(issue({ labels: ["delivery", "delivery:parked"] }), SOURCE, "github")).toMatchObject({ item: { issue: { number: 12, parked: true } } });
     expect(machineFields("x\n\n```delivery\n: : :\n```\n")).toEqual({ error: "its delivery block is not valid YAML" });
