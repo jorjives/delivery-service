@@ -9,8 +9,8 @@
  * call that means "operate on this `cwd`, not on whatever repo the parent
  * process is in" must pass this as its `env`.
  */
-export function cleanGitEnv(): NodeJS.ProcessEnv {
+export function cleanGitEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return Object.fromEntries(
-    Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")),
+    Object.entries(env).filter(([key]) => !key.startsWith("GIT_")),
   );
 }

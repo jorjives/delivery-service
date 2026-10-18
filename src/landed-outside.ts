@@ -1,10 +1,6 @@
-import { execFile as execFileCb } from "node:child_process";
-import { promisify } from "node:util";
-import { cleanGitEnv } from "./git-env.js";
 import { git } from "./git-exec.js";
+import { runGh } from "./gh.js";
 import { OpenPullRequests } from "./open-pr-closer.js";
-
-const execFile = promisify(execFileCb);
 
 /** An origin that is a folder on this machine: no pull request can be open on it. */
 const isLocal = (url: string): boolean => url.startsWith("/") || url.startsWith(".") || url.startsWith("file:");
@@ -21,7 +17,7 @@ export function pullRequestFinder(repoPath: string, gh = "gh"): (branch: string)
     try {
       const origin = await git(repoPath, ["remote", "get-url", "origin"]);
       if (isLocal(origin)) return null;
-      const { stdout } = await execFile(gh, ["pr", "list", `--head=${branch}`, "--state=open", "--json=url"], { cwd: repoPath, env: cleanGitEnv() });
+      const stdout = await runGh(["pr", "list", `--head=${branch}`, "--state=open", "--json=url"], { cwd: repoPath, command: gh });
       return OpenPullRequests.parse(JSON.parse(stdout))[0]?.url ?? null;
     } catch {
       return null;
