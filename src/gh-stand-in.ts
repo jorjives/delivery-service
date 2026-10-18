@@ -6,9 +6,11 @@ import { join } from "node:path";
  * Test and demo support: a stand-in for the GitHub CLI, so the open-pr closer
  * can be exercised with no network and no GitHub account. It is the same
  * swap-the-executable approach claude-mock takes for the agent: a real
- * executable named `gh`, honouring the argv and output of the three commands the
- * closer uses (`gh pr list --json url`, `gh pr create`, `gh pr edit --body`), with its failure
- * messages and exit codes copied from gh 2.94 itself.
+ * executable named `gh`, honouring the argv and output of the commands the
+ * closer uses (`gh pr list --json url`, `gh pr create`, `gh pr edit --body`) and
+ * the issue commands the github work source uses (`gh api graphql` listing
+ * issues by label, `gh issue create|close|comment|edit`, `gh label create`), with
+ * their failure messages and exit codes copied from gh 2.94 itself.
  */
 
 export type GhStandInMode = "signed-in" | "signed-out" | "expired" | "forbidden" | "offline";
@@ -21,6 +23,20 @@ export interface StandInPullRequest {
   body: string;
 }
 
+export type StandInEvent = { type: "labeled"; label: string; at: string } | { type: "renamed"; at: string };
+
+export interface StandInIssue {
+  number: number;
+  title: string;
+  body: string;
+  state: "OPEN" | "CLOSED";
+  labels: string[];
+  createdAt: string;
+  lastEditedAt: string | null;
+  events: StandInEvent[];
+  comments: string[];
+}
+
 export interface GhStandIn {
   /** Absolute path of the stand-in executable, named `gh`. */
   command: string;
@@ -30,12 +46,22 @@ export interface GhStandIn {
   /** Make every later `gh pr create` fail with this message, as GitHub refusing the pull request would. */
   refuseCreate(message: string): void;
   pullRequests(): StandInPullRequest[];
+  openIssue(issue: { title: string; body: string; labels?: string[]; at?: string }): number;
+  labelIssue(number: number, label: string, at: string): void;
+  editIssue(number: number, change: { title?: string; body?: string }, at: string): void;
+  issues(): StandInIssue[];
+  repoLabels(): string[];
+  /** From then on `label create` and `issue edit` fail with 403, as for an account that can read but not triage. */
+  refuseLabels(): void;
 }
 
 interface StandInState {
   mode: GhStandInMode;
   refusal: string | null;
   pullRequests: StandInPullRequest[];
+  issues: StandInIssue[];
+  labels: string[];
+  refuseLabels?: boolean;
 }
 
 // CommonJS, because an extensionless file outside any package is loaded as
@@ -106,6 +132,94 @@ if (group === "pr" && command === "edit") {
   process.exit(0);
 }
 
+// gh api's -f/-F (and --raw-field/--field) take "key=value" as the next argument.
+function fieldsOf(args) {
+  const fields = {};
+  for (let i = 0; i < args.length; i++) {
+    if (["-f", "-F", "--raw-field", "--field"].includes(args[i])) {
+      const pair = args[++i] || "";
+      const eq = pair.indexOf("=");
+      fields[pair.slice(0, eq)] = pair.slice(eq + 1);
+    }
+  }
+  return fields;
+}
+function save() { fs.writeFileSync(statePath, JSON.stringify(state, null, 2)); }
+function issueAt(n) {
+  const issue = state.issues.find((i) => String(i.number) === String(n));
+  if (!issue) fail("GraphQL: Could not resolve to an issue or pull request with the number of " + n + ". (repository.issue)", 1);
+  return issue;
+}
+
+if (group === "api" && command === "graphql") {
+  const label = fieldsOf(rest).label;
+  const nodes = state.issues
+    .filter((i) => i.state === "OPEN" && i.labels.includes(label))
+    .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : a.number - b.number))
+    .map((i) => ({
+      number: i.number, title: i.title, body: i.body, createdAt: i.createdAt, lastEditedAt: i.lastEditedAt,
+      labels: { nodes: i.labels.map((name) => ({ name })) },
+      timelineItems: { nodes: i.events.map((e) => (e.type === "labeled" ? { __typename: "LabeledEvent", createdAt: e.at, label: { name: e.label } } : { __typename: "RenamedTitleEvent", createdAt: e.at })) },
+    }));
+  process.stdout.write(JSON.stringify({ data: { repository: { issues: { nodes } } } }) + "\n");
+  process.exit(0);
+}
+
+if (group === "issue" && command === "create") {
+  const number = state.issues.length + 1;
+  const at = new Date().toISOString();
+  state.issues.push({ number, title: flags.title, body: flags.body, state: "OPEN", labels: [], createdAt: at, lastEditedAt: null, events: [], comments: [] });
+  save();
+  process.stdout.write("https://github.com/example/project/issues/" + number + "\n");
+  process.exit(0);
+}
+
+if (group === "issue" && command === "close") {
+  const issue = issueAt(rest[0]);
+  if (issue.state === "CLOSED") {
+    process.stderr.write("! Issue #" + issue.number + " (" + issue.title + ") is already closed\n");
+    process.exit(0);
+  }
+  if (flags.comment !== undefined) issue.comments.push(flags.comment);
+  issue.state = "CLOSED";
+  save();
+  process.exit(0);
+}
+
+if (group === "issue" && command === "comment") {
+  const issue = issueAt(rest[0]);
+  issue.comments.push(flags.body);
+  save();
+  process.stdout.write("https://github.com/example/project/issues/" + issue.number + "#issuecomment-" + issue.comments.length + "\n");
+  process.exit(0);
+}
+
+if (state.refuseLabels && ((group === "issue" && command === "edit") || (group === "label" && command === "create"))) {
+  fail("HTTP 403: Resource not accessible by integration (https://api.github.com/graphql)", 1);
+}
+
+if (group === "issue" && command === "edit") {
+  const issue = issueAt(rest[0]);
+  const add = flags["add-label"];
+  const remove = flags["remove-label"];
+  if (add !== undefined) {
+    if (!state.labels.includes(add)) fail("'" + add + "' not found", 1);
+    if (!issue.labels.includes(add)) issue.labels.push(add);
+  }
+  if (remove !== undefined) issue.labels = issue.labels.filter((l) => l !== remove);
+  save();
+  process.stdout.write("https://github.com/example/project/issues/" + issue.number + "\n");
+  process.exit(0);
+}
+
+if (group === "label" && command === "create") {
+  const name = rest[0];
+  if (state.labels.includes(name) && !rest.includes("--force")) fail("label with name \"" + name + "\" already exists; use --force to update its color and description", 1);
+  if (!state.labels.includes(name)) state.labels.push(name);
+  save();
+  process.exit(0);
+}
+
 fail("gh stand-in: unsupported command: " + process.argv.slice(2).join(" "), 1);
 `;
 
@@ -119,7 +233,7 @@ export function createGhStandIn(): GhStandIn {
   };
 
   writeFileSync(command, SCRIPT, { mode: 0o755 });
-  write({ mode: "signed-in", refusal: null, pullRequests: [] });
+  write({ mode: "signed-in", refusal: null, pullRequests: [], issues: [], labels: ["delivery"] });
 
   return {
     command,
@@ -127,5 +241,33 @@ export function createGhStandIn(): GhStandIn {
     setMode: (mode) => write({ ...read(), mode }),
     refuseCreate: (message) => write({ ...read(), refusal: message }),
     pullRequests: () => read().pullRequests,
+    openIssue: ({ title, body, labels = [], at = new Date().toISOString() }) => {
+      const state = read();
+      const number = state.issues.length + 1;
+      state.issues.push({ number, title, body, state: "OPEN", labels: [...labels], createdAt: at, lastEditedAt: null, events: labels.map((label) => ({ type: "labeled" as const, label, at })), comments: [] });
+      state.labels = [...new Set([...state.labels, ...labels])];
+      write(state);
+      return number;
+    },
+    labelIssue: (number, label, at) => {
+      const state = read();
+      const issue = state.issues.find((i) => i.number === number);
+      if (!issue) throw new Error(`no issue #${number}`);
+      if (!issue.labels.includes(label)) issue.labels.push(label);
+      issue.events.push({ type: "labeled", label, at });
+      state.labels = [...new Set([...state.labels, label])];
+      write(state);
+    },
+    editIssue: (number, { title, body }, at) => {
+      const state = read();
+      const issue = state.issues.find((i) => i.number === number);
+      if (!issue) throw new Error(`no issue #${number}`);
+      if (title !== undefined) { issue.title = title; issue.events.push({ type: "renamed", at }); }
+      if (body !== undefined) { issue.body = body; issue.lastEditedAt = at; }
+      write(state);
+    },
+    issues: () => read().issues,
+    repoLabels: () => read().labels,
+    refuseLabels: () => write({ ...read(), refuseLabels: true }),
   };
 }
