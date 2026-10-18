@@ -439,6 +439,7 @@ A workflow's own `after` replaces this list for the items it delivers.
 - `backlog`: the items in `.delivery/backlog/`, as above.
 - `list`: the `tasks` you wrote in this file.
 - `command`: a command of your own, which takes a `command` string.
+- `github`: open issues on your GitHub repository that carry a label (see "GitHub issues" below).
 
 Any source may also take a `name`, which tells its entries apart in a run's report (it defaults to
 the `type`), and `"fallback": true`, which reads it only when no other source has any work. Two
@@ -470,6 +471,27 @@ tracker:
   `body`), and prints the new item's id. A follow-up is raised once only, even if raising is
   retried; one whose task did not land is never raised. Existing command sources are unaffected:
   turn `tracker` on only when the script implements `raise`.
+
+#### GitHub issues
+
+A `github` source reads your repository's open issues through the GitHub command-line tool, `gh`,
+signed in as whoever runs `delivery`. Nothing else is needed: no token in the config file and no
+script of your own.
+
+    "sources": [{ "type": "github", "label": "delivery", "workflow": "resolve-issue" }]
+
+- An open issue carrying the label (`delivery` unless you set `label`) is an item. Adding the label
+  is what approves it; an issue without it is left alone.
+- The issue's title is the task's intent, and its title and body together are the brief, the
+  `{{task.body}}` the step prompts receive.
+- A `workflow:<name>` label chooses the workflow that delivers it; without one, the source's
+  `workflow` does. A `priority:<n>` label orders it, lower first; otherwise the oldest issue goes
+  first.
+- An issue whose title or body is changed after the label was added is left alone, and the run says
+  so, until you remove the label and add it again. On a public repository anyone can write an issue,
+  but only people you allow can label one, so the label is what approves the text as it reads.
+- If `gh` is not installed, is not signed in, or cannot reach GitHub, the source is skipped for that
+  run with the reason, and your other sources still run.
 
 `parkAfter` is how many runs in a row an item may end without being delivered before it is set
 aside. It is a whole number, 1 or more, and defaults to 3.

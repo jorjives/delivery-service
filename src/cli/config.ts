@@ -160,6 +160,8 @@ export const SourceConfig = z.discriminatedUnion("type", [
     // `tracker`: the script is a tracker and also answers `<command> raise`; follow-ups its items' agents write are raised through it instead of landing in the backlog (spec §5.5)
     tracker: z.boolean().optional(),
   }).strict(),
+  // `github`: open issues carrying `label` (default "delivery"), read through the gh CLI; `workflow` delivers an issue with no workflow: label (spec §5.5).
+  z.object({ type: z.literal("github"), label: Written.optional(), workflow: Written.optional(), name: Written.optional(), fallback: z.boolean().optional() }).strict(),
 ]);
 export type SourceConfig = z.infer<typeof SourceConfig>;
 
@@ -294,8 +296,9 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +
     "see docs/project-configuration.md.",
   sources:
-    'It is the list of places work comes from, in order, for `delivery run --sources`: each one an object with a `type` of "backlog", "list" or "command" ' +
-    '(a command source also takes `command`, and `"tracker": true` when it can `raise` follow-ups), for example `[{ "type": "backlog" }, { "type": "command", "command": "./next-slice.sh" }]`. ' +
+    'It is the list of places work comes from, in order, for `delivery run --sources`: each one an object with a `type` of "backlog", "list", "command" or "github" ' +
+    '(a command source also takes `command`, and `"tracker": true` when it can `raise` follow-ups; a github source may take a `label` and a default `workflow`), ' +
+    'for example `[{ "type": "github", "label": "delivery" }, { "type": "command", "command": "./next-slice.sh" }]`. ' +
     'Add `"fallback": true` to one that is used only when nothing else has work.',
   after:
     "It is a list of steps run once a run's work has landed and your closer has taken it: each one a command, such as " +

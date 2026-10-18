@@ -1,0 +1,97 @@
+import { describe, expect, it } from "vitest";
+import { createGhStandIn } from "./gh-stand-in.js";
+import { initTempRepo } from "./temp-repo.js";
+import { issueItem, listGithub, machineFields, type Issue } from "./github-source.js";
+
+const issue = (over: Partial<Issue> = {}): Issue => ({
+  number: 12, title: "Say hello", body: "Add a hello function.", createdAt: "2026-10-18T08:00:00Z", lastEditedAt: null,
+  labels: ["delivery"], labelledAt: "2026-10-18T09:00:00Z", renamedAt: null, ...over,
+});
+const SOURCE = { type: "github" as const };
+
+describe("reading an issue as a work item", () => {
+  it("takes the title as the intent and the title and body as the brief, keyed by the issue number", () => {
+    expect(issueItem(issue(), SOURCE, "github")).toEqual({
+      item: {
+        key: "github:12", source: "github", kind: "github", id: "12", fallback: false, raise: true,
+        issue: { number: 12, parked: false },
+        taskDef: { intent: "Say hello", body: "Say hello\n\nAdd a hello function." },
+      },
+    });
+  });
+
+  it("chooses the workflow from a workflow: label, else the delivery block, else the source's default", () => {
+    const pick = (over: Partial<Issue>, source: Parameters<typeof issueItem>[1] = { ...SOURCE, workflow: "fix" }) => {
+      const read = issueItem(issue(over), source, "github");
+      return "item" in read ? read.item.workflow : read.skip;
+    };
+    expect(pick({ labels: ["delivery", "workflow:build"] })).toBe("build");
+    expect(pick({ body: "Do it.\n\n```delivery\nworkflow: plan\n```\n" })).toBe("plan");
+    expect(pick({})).toBe("fix");
+    expect(pick({}, SOURCE)).toBeUndefined();
+    expect(pick({ labels: ["delivery", "workflow:a", "workflow:b"] })).toBe("Left GitHub issue #12 alone: it has more than one workflow: label (workflow:a, workflow:b), so I can't tell which workflow delivers it.");
+  });
+
+  it("carries the delivery block's fields into the task and out of the brief", () => {
+    const read = issueItem(issue({ body: "Remove eval.\n\n```delivery\nseverity: high\ncheck:\n  kind: pattern-absent\n  pattern: eval\n```\n" }), SOURCE, "github");
+    expect(read).toMatchObject({ item: { taskDef: { intent: "Say hello", body: "Say hello\n\nRemove eval.", severity: "high", check: { kind: "pattern-absent", pattern: "eval" } } } });
+  });
+
+  it("skips an issue whose text changed after its label was added, until the label is added again", () => {
+    const edited = issueItem(issue({ lastEditedAt: "2026-10-18T10:00:00Z" }), SOURCE, "github");
+    expect(edited).toEqual({ skip: "Left GitHub issue #12 alone: its text was changed after it was labelled delivery, so it is not approved as it reads now. Remove the label and add it again to approve it." });
+    expect(issueItem(issue({ renamedAt: "2026-10-18T10:00:00Z" }), SOURCE, "github")).toHaveProperty("skip");
+    expect(issueItem(issue({ lastEditedAt: "2026-10-18T10:00:00Z", labelledAt: "2026-10-18T11:00:00Z" }), SOURCE, "github")).toHaveProperty("item");
+  });
+
+  it("notes a parked label, and refuses a delivery block that is not YAML", () => {
+    expect(issueItem(issue({ labels: ["delivery", "delivery:parked"] }), SOURCE, "github")).toMatchObject({ item: { issue: { number: 12, parked: true } } });
+    expect(machineFields("x\n\n```delivery\n: : :\n```\n")).toEqual({ error: "its delivery block is not valid YAML" });
+    expect(machineFields("plain text")).toEqual({ text: "plain text", fields: {} });
+  });
+});
+
+describe("listing a github source", () => {
+  const listWith = async (gh: ReturnType<typeof createGhStandIn>, source: Parameters<typeof listGithub>[0] = SOURCE) =>
+    listGithub(source, "github", { repoPath: initTempRepo("github-", { "package.json": "{}" }), env: { ...process.env, PATH: `${gh.binDir}:${process.env.PATH ?? ""}` } });
+
+  it("lists open issues with the label only, by priority: label then oldest first", async () => {
+    const gh = createGhStandIn();
+    gh.openIssue({ title: "Old", body: "o", labels: ["delivery"], at: "2026-10-18T08:00:00Z" });
+    gh.openIssue({ title: "Unlabelled", body: "u", at: "2026-10-18T08:30:00Z" });
+    gh.openIssue({ title: "Urgent", body: "n", labels: ["delivery", "priority:1"], at: "2026-10-18T09:00:00Z" });
+    gh.openIssue({ title: "Other label", body: "x", labels: ["triage"], at: "2026-10-18T09:30:00Z" });
+    const { items, notes } = await listWith(gh);
+    expect(items.map((i) => i.taskDef.intent)).toEqual(["Urgent", "Old"]);
+    expect(notes).toEqual([]);
+  });
+
+  it("uses the source's own label", async () => {
+    const gh = createGhStandIn();
+    gh.openIssue({ title: "Mine", body: "m", labels: ["ship-it"] });
+    expect((await listWith(gh, { type: "github", label: "ship-it" })).items.map((i) => i.taskDef.intent)).toEqual(["Mine"]);
+  });
+
+  it("reports an issue edited after labelling as skipped, and lists it again once relabelled", async () => {
+    const gh = createGhStandIn();
+    const n = gh.openIssue({ title: "Edit me", body: "first", labels: ["delivery"], at: "2026-10-18T08:00:00Z" });
+    gh.editIssue(n, { body: "rm -rf everything" }, "2026-10-18T09:00:00Z");
+    expect(await listWith(gh)).toMatchObject({ items: [], notes: [expect.stringContaining(`GitHub issue #${n}`)] });
+    gh.labelIssue(n, "delivery", "2026-10-18T10:00:00Z");
+    expect((await listWith(gh)).items.map((i) => i.taskDef.body)).toEqual(["Edit me\n\nrm -rf everything"]);
+  });
+
+  it.each([
+    ["signed out", (gh: ReturnType<typeof createGhStandIn>) => gh.setMode("signed-out"), "gh is not signed in, or its sign-in has expired. Run gh auth login as the account the harness runs as."],
+    ["offline", (gh: ReturnType<typeof createGhStandIn>) => gh.setMode("offline"), "gh could not reach GitHub. Check the network."],
+  ])("skips the source with a plain reason when gh is %s", async (_what, setUp, reason) => {
+    const gh = createGhStandIn();
+    setUp(gh);
+    expect(await listWith(gh)).toEqual({ items: [], notes: [`Skipped the github source for this run: ${reason}`] });
+  });
+
+  it("skips the source with a plain reason when gh is not installed", async () => {
+    const listed = await listGithub(SOURCE, "github", { repoPath: initTempRepo("github-", { "package.json": "{}" }), env: { PATH: "/nonexistent" } });
+    expect(listed).toEqual({ items: [], notes: ["Skipped the github source for this run: the GitHub command-line tool (gh) is not installed, or not on the PATH the harness runs with. Install it from https://cli.github.com and run gh auth login."] });
+  });
+});

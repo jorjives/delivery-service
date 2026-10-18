@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BACKLOG_DIR, isDue, itemTask, parseItem, readBacklog } from "./backlog.js";
 import { sourceName, structureTask, type DeliveryConfig, type SourceConfig } from "./cli/config.js";
+import { listGithub } from "./github-source.js";
 import type { HeldItem } from "./follow-ups.js";
 import { awaitsMerge, type ItemState } from "./item-ledger.js";
 import type { RunRecord } from "./run-records.js";
@@ -18,8 +19,10 @@ export interface WorkItem {
   resolve?: string;
   cadenceMs?: number;
   fallback: boolean;
-  /** Set only for a command source that says it is a tracker: follow-ups its items add are raised through it, not landed (spec §5.5). */
+  /** Set for a github source's items, and for a command source that says it is a tracker: follow-ups its items add are raised through it, not landed (spec §5.5). */
   raise?: true;
+  /** Set only for an item from a github source: its issue, and whether it carries the parked label. */
+  issue?: { number: number; parked: boolean };
 }
 
 export interface Listed {
@@ -95,6 +98,8 @@ export async function listSource(source: SourceConfig, { repoPath, config, env }
       };
     case "command":
       return listCommand(source, name, repoPath, env);
+    case "github":
+      return listGithub(source, name, { repoPath, env });
   }
 }
 

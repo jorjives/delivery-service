@@ -100,6 +100,11 @@ describe("what a config file may contain", () => {
   it("accepts how many tasks from the list may run at once", () => {
     expect(DeliveryConfig.parse({ tasks: ["add a page"], concurrency: 3 })).toEqual({ tasks: ["add a page"], concurrency: 3 });
   });
+
+  it("accepts a github source with a label and a default workflow, and refuses an unknown key on it", () => {
+    expect(DeliveryConfig.safeParse({ sources: [{ type: "github", label: "ship-it", workflow: "fix" }] }).success).toBe(true);
+    expect(DeliveryConfig.safeParse({ sources: [{ type: "github", repo: "x/y" }] }).success).toBe(false);
+  });
 });
 
 describe("the agent block", () => {

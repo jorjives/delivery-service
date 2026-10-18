@@ -174,3 +174,12 @@ describe("raising a follow-up through a command source", () => {
     expect(await raiseThrough({ type: "command", command: "sh silent.sh" }, ITEM, { repoPath: repo, env: process.env })).toEqual({ error: NOT_A_TRACKER("command") });
   });
 });
+
+describe("the github source", () => {
+  it("is dispatched like any other source, and a failing one does not stop the others", async () => {
+    const repo = repoWith({ ".delivery/backlog/20261016T090000Z-a.md": item("open") });
+    const chosen = await chooseWork([{ type: "github" }, { type: "backlog" }], { ...base, repoPath: repo, env: { ...process.env, PATH: "/nonexistent" } });
+    expect(chosen.items.map((i) => i.key)).toEqual(["backlog:20261016T090000Z-a.md"]);
+    expect(chosen.notes[0]).toMatch(/^Skipped the github source for this run: the GitHub command-line tool \(gh\) is not installed/);
+  });
+});

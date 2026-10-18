@@ -211,6 +211,10 @@ is set aside: answer it with `delivery answer <item> "your answer"`, or deal wit
 
 Each item's work lands on one delivery branch, `delivery/main` (named after your base branch), built on everything landed before it: an item that finishes after another is rebuilt on top of it and checked again first, and one that conflicts is given a fresh attempt from the latest work. Your closer then takes the delivery branch once per run: `merge-back` merges it into `main`, `open-pr` opens one pull request for it (and updates that pull request's list on later runs), and `commit-to-branch` leaves it for you. A delivered item is marked `resolved` on the delivery branch and is not taken again until that branch is merged.
 
+A project that already tracks its work in GitHub issues can use them instead: add a `github`
+source, and label an issue `delivery` to have it worked (see
+[GitHub issues](docs/project-configuration.md#github-issues)).
+
 ## Run it on a schedule
 
 Turn on a schedule once and `delivery run --sources` runs by itself for this project from then on:
