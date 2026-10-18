@@ -48,6 +48,8 @@ export function machineFields(body: string): { text: string; fields: Record<stri
 
 const later = (a: string | null, b: string | null): string | null => (a === null ? b : b === null ? a : Date.parse(a) >= Date.parse(b) ? a : b);
 
+const BLOCK_TASK_FIELDS = ["severity", "check"];
+
 /** One issue as a work item, or the one reason it is left alone. Pure. */
 export function issueItem(issue: Issue, source: GithubSource, name: string): { item: WorkItem } | { skip: string } {
   const label = source.label ?? DEFAULT_LABEL;
@@ -61,8 +63,9 @@ export function issueItem(issue: Issue, source: GithubSource, name: string): { i
   const split = machineFields(issue.body);
   if ("error" in split) return skip(`${split.error}.`);
   // The block's workflow and priority are read elsewhere; the rest travel on the task.
-  const { workflow: blockWorkflow, ...withPriority } = split.fields;
-  const fields = Object.fromEntries(Object.entries(withPriority).filter(([key]) => key !== "priority"));
+  const { workflow: blockWorkflow } = split.fields;
+  // Issue text is untrusted: only these fields may travel, so it can never switch off guards or claim an authorisation.
+  const fields = Object.fromEntries(Object.entries(split.fields).filter(([key]) => BLOCK_TASK_FIELDS.includes(key)));
   const workflowLabels = issue.labels.filter((l) => l.startsWith("workflow:")).sort();
   if (workflowLabels.length > 1) return skip(`it has more than one workflow: label (${workflowLabels.join(", ")}), so I can't tell which workflow delivers it.`);
   const workflow = workflowLabels[0]?.slice("workflow:".length) ?? (typeof blockWorkflow === "string" ? blockWorkflow : undefined) ?? source.workflow;
