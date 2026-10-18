@@ -384,6 +384,7 @@ Autoloop's deploy and notify scripts did, but as something any project can confi
 ## Slice 6: Let Delivery Run Itself on a Schedule
 
 **Status:** ✅ Complete — 2026-10-18 — `8c33cb9`
+**Tests:** ✅ Recorded — 2026-10-18 — `69dce0f` — cli (vitest) — 1 UAT + 2 AC, 2 skipped
 **Delivers:** An operator turns on a recurring schedule for a project, and `delivery run
 --sources` runs by itself from then on, with missed runs caught up automatically.
 
