@@ -9,9 +9,11 @@ export type DispatchedRole = "worker" | "triage" | "gate-maintenance";
 /**
  * Every role the harness configures: the three a surface dispatches, and the
  * scanner, which a review runs on its own, with no case file, through
- * `runSession`. The scanner is never dispatched through `AgentPort`.
+ * `runSession`, and the after pass, which a run's after steps start once work
+ * has landed, also through `runSession`. The scanner and the after pass are
+ * never dispatched through `AgentPort`.
  */
-export type AgentRole = DispatchedRole | "scanner";
+export type AgentRole = DispatchedRole | "scanner" | "after";
 
 /**
  * The driver's handle for "which role is being dispatched". The full pinned

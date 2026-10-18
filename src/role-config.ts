@@ -91,7 +91,7 @@ export const gateMaintenanceRoleConfig: RoleConfig = {
 };
 
 const RoleConfigShape = z.object({
-  role: z.enum(["worker", "triage", "gate-maintenance", "scanner"] as const satisfies readonly AgentRole[]),
+  role: z.enum(["worker", "triage", "gate-maintenance", "scanner", "after"] as const satisfies readonly AgentRole[]),
   systemPromptFragment: z.string().min(1),
   envelopeSchema: z.custom<z.ZodType<unknown>>((value) => value instanceof z.ZodType, {
     message: "must be a zod schema",

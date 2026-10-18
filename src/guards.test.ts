@@ -3,10 +3,12 @@ import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cleanGitEnv } from "./git-env.js";
+import { treeOf } from "./repair-changes.js";
 import { GuardSwitches, type GateRef } from "./schema.js";
 import { initTempRepo } from "./temp-repo.js";
 import { FILE_LIMIT } from "./packs/confirm.js";
 import {
+  addedBacklogItems,
   BACKLOG_GUARD,
   CHECK_GUARD,
   DEFAULT_GUARDS,
@@ -308,6 +310,14 @@ describe("the backlog guard", () => {
     const repo = initTempRepo("guards-", PROJECT);
     put(repo, ".delivery/backlog/20261016T100000Z-bad.md", "no front matter\n");
     expect((await backlogOf(repo))?.detail).toContain(".delivery/backlog/20261016T100000Z-bad.md (it does not start with front matter between --- lines)");
+  });
+
+  it("names the new items a change added, with their text", async () => {
+    const repo = initTempRepo("guards-backlog-items-", { [ITEM]: GOOD });
+    put(repo, ".delivery/backlog/20261016T100000Z-follow-up.md", GOOD);
+    const { items, findings } = await addedBacklogItems(repo, "main", await treeOf(repo));
+    expect(findings).toEqual([]);
+    expect(items).toEqual([{ file: "20261016T100000Z-follow-up.md", text: GOOD }]);
   });
 
   it("is on by default", () => {

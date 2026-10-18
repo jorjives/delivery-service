@@ -2,6 +2,7 @@ import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { BACKLOG_DIR, parseItem } from "./backlog.js";
 import { git } from "./git-exec.js";
+import type { HeldItem } from "./follow-ups.js";
 import { isEnoent } from "./journal.js";
 import { checkFilesOf, treeOf } from "./repair-changes.js";
 import type { Assertion, GateRef } from "./schema.js";
@@ -107,18 +108,26 @@ async function touched(cwd: string, base: string, tree: string, patterns: string
   return pairs;
 }
 
-/** What a change did to the backlog that it may not: an existing item edited or removed, or a new one that is not a valid item. */
-async function backlogFindings(cwd: string, base: string, tree: string): Promise<string[]> {
-  const found: string[] = [];
+/**
+ * What a change did to the backlog: the new items it added, each read from `tree`, and what it may not do (an
+ * existing item edited or removed, or a new file that is not a valid item). Shared by the backlog guard and the
+ * after agent pass, so a follow-up is judged the same wherever it comes from.
+ */
+export async function addedBacklogItems(cwd: string, base: string, tree: string): Promise<{ items: HeldItem[]; findings: string[] }> {
+  const items: HeldItem[] = [];
+  const findings: string[] = [];
   for (const { status, path } of await touched(cwd, base, tree, [glob(`${BACKLOG_DIR}/**`)])) {
-    if (status === "M" || status === "T") found.push(`${path} changed`);
-    else if (status === "D") found.push(`${path} removed`);
+    if (status === "M" || status === "T") findings.push(`${path} changed`);
+    else if (status === "D") findings.push(`${path} removed`);
     else if (status === "A") {
-      const parsed = parseItem(path.slice(BACKLOG_DIR.length + 1), await git(cwd, ["cat-file", "blob", `${tree}:${path}`], { raw: true, maxBuffer: FILE_LIMIT }));
-      if (!parsed.ok) found.push(`${path} (${parsed.reason})`);
+      const file = path.slice(BACKLOG_DIR.length + 1);
+      const text = await git(cwd, ["cat-file", "blob", `${tree}:${path}`], { raw: true, maxBuffer: FILE_LIMIT });
+      const parsed = parseItem(file, text);
+      if (parsed.ok) items.push({ file, text });
+      else findings.push(`${path} (${parsed.reason})`);
     }
   }
-  return found;
+  return { items, findings };
 }
 
 /** How a revision's package.json says tests run: its test scripts and its test runners' settings. Empty when it has none or cannot be read. */
@@ -292,7 +301,7 @@ export async function guardAssertions(worktreePath: string, base: string, guards
     assertion(EDIT_GUARD, edited, "changed existing tests", `${PUT_BACK} If only a change to an existing test would fix the problem, stop and say so.`),
     assertion(CHECK_GUARD, settings, "changed how the tests are run"),
     assertion(SKIP_GUARD, await addedSkips(worktreePath, base, tree, lists.skipMarkers, lists.testGlobs), "skipped tests"),
-    assertion(BACKLOG_GUARD, await backlogFindings(worktreePath, base, tree), "changed the backlog in a way it may not",
+    assertion(BACKLOG_GUARD, (await addedBacklogItems(worktreePath, base, tree)).findings, "changed the backlog in a way it may not",
       "Existing backlog items may not be edited or removed; add a new item file for a follow-up, in the item format (see docs/project-configuration.md)."),
     ...(await ignoredAssertions(worktreePath, guards)),
   ];
