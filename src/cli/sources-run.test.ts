@@ -526,4 +526,22 @@ describe("delivery run --sources", () => {
     expect(record?.caseFile.header.item).toEqual({ key: "github:1", source: "github", id: "1", raise: true, untrusted: true });
     expect(promptsSent(await readJournal(`${script}.journal.jsonl`)).some((p) => p.includes(UNTRUSTED_TASK))).toBe(true);
   }, RUN_TIMEOUT);
+
+  it("raises a follow-up from an issue's run as a new issue after landing, never on the delivered branch", async () => {
+    const gh = createGhStandIn();
+    gh.openIssue({ title: "Add a function that says hello to a name", body: "Please.", labels: ["delivery"] });
+    const repo = initTempRepo("sources-run-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ sources: [{ type: "github" }] }) });
+    const FOLLOW_UP = ".delivery/backlog/20261018T100000Z-say-goodbye.md";
+    const script: MockScript = {
+      expectations: [{ effects: [
+        { write: { path: "hello.js", content: "export const hello = 1;\n" } },
+        { write: { path: FOLLOW_UP, content: "---\nstatus: open\n---\nAdd a goodbye function too.\n" } },
+      ], json: { status: "completed", rationale: "hello, and a follow-up" } }],
+    };
+    const env = { XDG_STATE_HOME: stateDir(), PATH: `${gh.binDir}:${process.env.PATH ?? ""}`, [TEST_MOCK_SCRIPT]: await scriptFile(script) };
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    expect(gh.issues()).toHaveLength(2);
+    expect(gh.issues()[1]).toMatchObject({ title: "Add a goodbye function too.", labels: [], state: "OPEN" });
+    expect(git(repo, ["ls-tree", "-r", "--name-only", "delivery/main", "--", ".delivery/backlog/"])).toBe("");
+  }, RUN_TIMEOUT);
 });

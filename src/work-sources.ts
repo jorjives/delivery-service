@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { BACKLOG_DIR, isDue, itemTask, parseItem, readBacklog } from "./backlog.js";
 import { sourceName, structureTask, type DeliveryConfig, type SourceConfig } from "./cli/config.js";
-import { listGithub } from "./github-source.js";
+import { listGithub, raiseIssue } from "./github-source.js";
 import type { HeldItem } from "./follow-ups.js";
 import { awaitsMerge, type ItemState } from "./item-ledger.js";
 import type { RunRecord } from "./run-records.js";
@@ -178,6 +178,7 @@ const RAISE_TIMEOUT_MS = 60_000;
 
 /** Open a held follow-up in the source's tracker: `<command> raise`, the item as JSON on stdin, the new id on stdout (spec §5.5). */
 export async function raiseThrough(source: SourceConfig, item: HeldItem, { repoPath, env }: { repoPath: string; env: NodeJS.ProcessEnv }): Promise<Raised> {
+  if (source.type === "github") return raiseIssue(item, { repoPath, env });
   if (source.type !== "command" || source.tracker !== true) return { error: `the ${sourceName(source)} source is not a command source with "tracker": true, so it cannot raise items; drop the waiting step with \`delivery drop-after\` or set "tracker": true on it` };
   const parsed = parseItem(item.file, item.text);
   if (!parsed.ok) return { error: `${item.file} is not a valid item: ${parsed.reason}` };

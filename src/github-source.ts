@@ -1,9 +1,12 @@
-import { parse } from "yaml";
+import { parse, stringify } from "yaml";
 import { z } from "zod";
+import { itemTask, parseItem } from "./backlog.js";
 import type { SourceConfig } from "./cli/config.js";
+import type { HeldItem } from "./follow-ups.js";
 import { ghAccess, ghFailureOf, ghReason, runGh, type GhAccess } from "./gh.js";
 import type { TaskDef } from "./schema.js";
-import { sourceSkipped, type Listed, type WorkItem } from "./work-sources.js";
+import { taskIntent } from "./task-list.js";
+import { sourceSkipped, type Listed, type Raised, type WorkItem } from "./work-sources.js";
 
 export type GithubSource = Extract<SourceConfig, { type: "github" }>;
 
@@ -177,4 +180,29 @@ export async function listGithub(source: GithubSource, name: string, { repoPath,
     else notes.push(read.skip);
   }
   return { items, notes };
+}
+
+/** An issue body carrying machine fields in a trailing ```delivery block; the text alone when there are none. */
+export function withMachineFields(text: string, fields: Record<string, unknown>): string {
+  const trimmed = text.trim();
+  return Object.keys(fields).length === 0 ? `${trimmed}\n` : `${trimmed}\n\n\`\`\`delivery\n${stringify(fields)}\`\`\`\n`;
+}
+
+/**
+ * Open a held follow-up as an issue, unlabelled: an agent cannot approve work, so the owner labels it to have it
+ * worked (spec §5.13). Its brief's first line is the title, its whole brief the body, and its workflow, priority and
+ * other fields go in the delivery block that listing reads back.
+ */
+export async function raiseIssue(item: HeldItem, { repoPath, env }: { repoPath: string; env: NodeJS.ProcessEnv }): Promise<Raised> {
+  const parsed = parseItem(item.file, item.text);
+  if (!parsed.ok) return { error: `${item.file} is not a valid item: ${parsed.reason}` };
+  const { workflow, priority, fields, body } = parsed.item;
+  const machine = { ...(workflow === undefined ? {} : { workflow }), ...(priority === undefined ? {} : { priority }), ...fields };
+  try {
+    const out = await runGh(["issue", "create", "--title", taskIntent(itemTask(parsed.item)), "--body", withMachineFields(body, machine)], { cwd: repoPath, env, timeoutMs: GH_TIMEOUT_MS });
+    const number = /\/issues\/(\d+)\s*$/.exec(out)?.[1];
+    return number === undefined ? { error: `gh did not print the new issue's address: ${out || "it printed nothing"}` } : { id: number };
+  } catch (err) {
+    return { error: ghProblem(err) };
+  }
 }

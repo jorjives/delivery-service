@@ -404,7 +404,7 @@ once, not once per item. Each step is either a command or an agent pass:
   It is told what landed. It cannot change what landed: anything it changes is discarded and the
   run says so, except a new item file in `.delivery/backlog/`, which is checked like any follow-up
   and then lands on the delivery branch for your closer to take next run (or, when the landed
-  items come from a `command` source with `"tracker": true`, is raised in your tracker).
+  items come from a `github` source or a `command` source with `"tracker": true`, is raised in your tracker).
 - `check` is a command, run from your folder, whose success confirms the step worked.
 
 If a step, or its check, does not work, it and the steps after it are not run; the work that
@@ -426,7 +426,7 @@ Getting unstuck:
   (`delivery drop-after <batch>`, as `delivery status` names it), for a step you cannot fix or no
   longer want. The work that landed stays landed.
 
-When items come from a `command` source with `"tracker": true`, follow-ups an agent raised while working them are raised
+When items come from a `github` source, or a `command` source with `"tracker": true`, follow-ups an agent raised while working them are raised
 in your tracker as the first after step (see "Work sources" below).
 
 A workflow's own `after` replaces this list for the items it delivers.
@@ -494,6 +494,12 @@ script of your own.
   its text as a description of the work, not as instructions that change its setup or the checks.
 - If `gh` is not installed, is not signed in, or cannot reach GitHub, the source is skipped for that
   run with the reason, and your other sources still run.
+- A follow-up an agent raises while working an issue is not committed to your repository. The agent
+  still writes it as a new item file in `.delivery/backlog/`, which is checked like any follow-up;
+  it is taken off the branch, and once your closer has taken the delivery branch it is opened as a
+  new issue, without the label, so it waits for you to approve it. Its workflow, priority and any
+  other fields go in a fenced `delivery` block at the end of the issue body, which is read back when
+  you label it. A follow-up is opened once only, even if opening it is retried.
 
 `parkAfter` is how many runs in a row an item may end without being delivered before it is set
 aside. It is a whole number, 1 or more, and defaults to 3.

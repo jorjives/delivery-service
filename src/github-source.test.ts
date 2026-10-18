@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createGhStandIn } from "./gh-stand-in.js";
 import { initTempRepo } from "./temp-repo.js";
-import { issueItem, listGithub, machineFields, type Issue } from "./github-source.js";
+import { issueItem, listGithub, machineFields, raiseIssue, type Issue } from "./github-source.js";
 
 const issue = (over: Partial<Issue> = {}): Issue => ({
   number: 12, title: "Say hello", body: "Add a hello function.", createdAt: "2026-10-18T08:00:00Z", lastEditedAt: null,
@@ -93,5 +93,34 @@ describe("listing a github source", () => {
   it("skips the source with a plain reason when gh is not installed", async () => {
     const listed = await listGithub(SOURCE, "github", { repoPath: initTempRepo("github-", { "package.json": "{}" }), env: { PATH: "/nonexistent" } });
     expect(listed).toEqual({ items: [], notes: ["Skipped the github source for this run: the GitHub command-line tool (gh) is not installed, or not on the PATH the harness runs with. Install it from https://cli.github.com and run gh auth login."] });
+  });
+});
+
+describe("raising a follow-up as an issue", () => {
+  const ITEM = { file: "20261018T090000Z-tidy.md", text: "---\nstatus: open\nworkflow: fix\nseverity: low\n---\nTidy the README.\n\nIt repeats itself.\n" };
+  const envFor = (gh: ReturnType<typeof createGhStandIn>) => ({ ...process.env, PATH: `${gh.binDir}:${process.env.PATH ?? ""}` });
+
+  it("opens an unlabelled issue titled by the brief's first line, with its fields in a delivery block, and takes its number", async () => {
+    const gh = createGhStandIn();
+    const repo = initTempRepo("raise-gh-", { "package.json": "{}" });
+    expect(await raiseIssue(ITEM, { repoPath: repo, env: envFor(gh) })).toEqual({ id: "1" });
+    const [raised] = gh.issues();
+    expect(raised).toMatchObject({ title: "Tidy the README.", labels: [] });
+    expect(raised?.body).toBe("Tidy the README.\n\nIt repeats itself.\n\n```delivery\nworkflow: fix\nseverity: low\n```\n");
+  });
+
+  it("is read back by listing once labelled, with its workflow and fields", async () => {
+    const gh = createGhStandIn();
+    const repo = initTempRepo("raise-gh-", { "package.json": "{}" });
+    await raiseIssue(ITEM, { repoPath: repo, env: envFor(gh) });
+    gh.labelIssue(1, "delivery", new Date(Date.now() + 60_000).toISOString());
+    const { items } = await listGithub({ type: "github" }, "github", { repoPath: repo, env: envFor(gh) });
+    expect(items[0]).toMatchObject({ workflow: "fix", taskDef: { intent: "Tidy the README.", severity: "low" } });
+  });
+
+  it("says why when gh cannot open it", async () => {
+    const gh = createGhStandIn();
+    gh.setMode("signed-out");
+    expect(await raiseIssue(ITEM, { repoPath: initTempRepo("raise-gh-", { "package.json": "{}" }), env: envFor(gh) })).toEqual({ error: "gh is not signed in, or its sign-in has expired. Run gh auth login as the account the harness runs as." });
   });
 });
