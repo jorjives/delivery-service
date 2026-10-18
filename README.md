@@ -219,6 +219,11 @@ Turn on a schedule once and `delivery run --sources` runs by itself for this pro
 delivery schedule enable --every 30m   # or 1h, 6h, 12h, 1d (the default)
 ```
 
+```sh
+delivery schedule status    # on or off, and when it last ran and will next run
+delivery schedule disable   # turn it off; `delivery run --sources` still works by hand
+```
+
 It installs a systemd user timer for the project, `delivery-<key>.timer` in
 `~/.config/systemd/user/`. A run missed while the machine was off happens as soon as it is back.
 Each run's output goes to the journal (`journalctl --user -u delivery-<key>.service`), and the run

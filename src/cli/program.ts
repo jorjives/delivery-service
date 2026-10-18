@@ -11,7 +11,7 @@ import type { ReviewCommandOptions } from "./review-command.js";
 import type { FixOptions } from "./fix-command.js";
 import { answerCommand, unparkCommand, type ItemOptions } from "./item-commands.js";
 import { dropAfterCommand } from "./after-command.js";
-import { scheduleEnableCommand, type ScheduleOptions } from "./schedule-command.js";
+import { scheduleDisableCommand, scheduleEnableCommand, scheduleStatusCommand, type ScheduleOptions } from "./schedule-command.js";
 import { DEFAULT_INTERVAL } from "./schedule.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
@@ -165,6 +165,22 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository to schedule (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleEnableCommand(options, ctxFor(command));
+    });
+
+  schedule
+    .command("status")
+    .description("say whether this project runs on a schedule, and when it last ran and will next run")
+    .option("--repo <path>", "the git repository to read (default: the current folder)")
+    .action(async (options: ScheduleOptions, command: Command) => {
+      exitCode = await scheduleStatusCommand(options, ctxFor(command));
+    });
+
+  schedule
+    .command("disable")
+    .description("turn scheduling off for this project; you can still run it by hand, and a run already going finishes")
+    .option("--repo <path>", "the git repository to stop scheduling (default: the current folder)")
+    .action(async (options: ScheduleOptions, command: Command) => {
+      exitCode = await scheduleDisableCommand(options, ctxFor(command));
     });
 
   program

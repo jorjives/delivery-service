@@ -3,3 +3,5 @@
 ---
 
 `delivery schedule enable --every <interval>` has `delivery run --sources` run by itself for a project, on a systemd user timer, and runs a schedule missed while the machine was off as soon as it is back. On a machine without systemd user timers it refuses and prints the equivalent crontab line instead.
+
+`delivery schedule status` says whether a project runs on a schedule, and when it last ran and will next run; `delivery schedule disable` turns it off, leaving the project to run by hand.
