@@ -25,7 +25,7 @@ import {
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 import type { FenceRecord, HistoryEntry } from "../schema.js";
-import { closingSentence, costLine, deliveryLines, durationWords, parkedLines, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
+import { afterLines, closingSentence, costLine, deliveryLines, durationWords, parkedLines, renderText, reportPointer, stripControl, usageSentence, type ReviewPart } from "./text.js";
 
 const report = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false });
 
@@ -700,5 +700,30 @@ describe("the delivery branch", () => {
 
   it("says nothing when there is no delivery branch", () => {
     expect(deliveryLines(null)).toEqual([]);
+  });
+});
+
+describe("after-landing lines", () => {
+  it("says nothing when no after steps ever ran", () => {
+    expect(afterLines([])).toEqual([]);
+  });
+
+  it("names each step and what became of it, and what the next run does", () => {
+    const lines = afterLines([{
+      batch: "b1", branch: "delivery/main", commit: "0123456789abcdef", at: "2026-10-18T09:00:00.000Z", landed: [{ run: "r1", item: "backlog:a.md", intent: "say hello" }],
+      steps: [
+        { for: "project", label: "deploy", status: "failed", detail: "its check `curl -f http://x` exited with code 22.", at: "2026-10-18T09:01:00.000Z" },
+        { for: "project", label: "announce", status: "pending", detail: null, at: null },
+        { for: "project", label: "old notes", status: "skipped", detail: "superseded by b2, which runs the same steps on a later commit", at: "2026-10-18T09:02:00.000Z" },
+      ],
+    }]);
+    expect(lines).toEqual([
+      "",
+      "After landing 0123456 on delivery/main, 18 Oct 09:00 UTC (batch b1):",
+      "- deploy: did not work: its check `curl -f http://x` exited with code 22.",
+      "- announce: waiting",
+      "- old notes: skipped: superseded by b2, which runs the same steps on a later commit",
+      "The next `delivery run --sources` tries the waiting steps first, from the one that did not work; `delivery drop-after` gives them up.",
+    ]);
   });
 });

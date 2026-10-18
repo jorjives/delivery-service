@@ -492,4 +492,26 @@ delivery.report/1.delivery.closer.at: string
 delivery.report/1.delivery.blocked: null|object
 delivery.report/1.delivery.blocked.reason: string
 delivery.report/1.delivery.blocked.at: string
+delivery.report/1.after: array
+delivery.report/1.after[].at: string
+delivery.report/1.after[].batch: string
+delivery.report/1.after[].branch: string
+delivery.report/1.after[].commit: string
+delivery.report/1.after[].landed: array
+delivery.report/1.after[].landed[].intent: string
+delivery.report/1.after[].landed[].item: string
+delivery.report/1.after[].landed[].run: string
+delivery.report/1.after[].landed[]: object
+delivery.report/1.after[].steps: array
+delivery.report/1.after[].steps[].at: null|string
+delivery.report/1.after[].steps[].detail: null|string
+delivery.report/1.after[].steps[].for: string
+delivery.report/1.after[].steps[].label: string
+delivery.report/1.after[].steps[].status = "done"
+delivery.report/1.after[].steps[].status = "failed"
+delivery.report/1.after[].steps[].status = "pending"
+delivery.report/1.after[].steps[].status = "skipped"
+delivery.report/1.after[].steps[].status: string
+delivery.report/1.after[].steps[]: object
+delivery.report/1.after[]: object
 delivery.report/1.surfaces[].closer = "delivery-branch"

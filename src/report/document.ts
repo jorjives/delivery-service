@@ -48,6 +48,20 @@ export const ReportDelivery = z.object({
 });
 export type ReportDelivery = z.infer<typeof ReportDelivery>;
 
+/**
+ * One batch of after-landing steps (spec §5.7): the landed commit and the tasks it held, and each step with what
+ * became of it. From this machine's after ledger.
+ */
+export const ReportAfter = z.object({
+  batch: z.string(),
+  branch: z.string(),
+  commit: z.string(),
+  at: z.string(),
+  landed: z.array(z.object({ run: z.string(), item: z.string(), intent: z.string() })),
+  steps: z.array(z.object({ for: z.string(), label: z.string(), status: z.enum(["done", "failed", "skipped", "pending"]), detail: z.string().nullable(), at: z.string().nullable() })),
+});
+export type ReportAfter = z.infer<typeof ReportAfter>;
+
 /** A stopped task in the owner's words: every sentence fixed, except the agent's own, which is quoted. */
 export const Plain = z.object({
   group: PlainGroup,
@@ -288,5 +302,7 @@ export const ReportDocument = z.object({
   parked: z.array(ParkedItem),
   /** The delivery branch this machine's runs land on, or null when none was ever opened. */
   delivery: ReportDelivery.nullable(),
+  /** After-landing steps: every batch still waiting on a step, then the most recent, oldest first; empty when none ran on this machine. */
+  after: z.array(ReportAfter),
 });
 export type ReportDocument = z.infer<typeof ReportDocument>;

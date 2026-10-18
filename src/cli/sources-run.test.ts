@@ -371,6 +371,22 @@ describe("delivery run --sources", () => {
     expect(record?.caseFile.header.item).not.toHaveProperty("raise");
   }, RUN_TIMEOUT);
 
+  it("records the after steps and their outcome against the run, in report, status and the notify JSON", async () => {
+    const repo = project({ "delivery.config.json": JSON.stringify({ notify: "cat > notified.json", after: [{ name: "release notes", run: "echo notes", in: "base" }] }) });
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+    await delivery(["run", "--sources"], { cwd: repo, env });
+
+    const report = await delivery(["report"], { cwd: repo, env });
+    const status = await delivery(["status"], { cwd: repo, env });
+    for (const out of [report.stdout, status.stdout]) {
+      expect(out).toContain("After landing");
+      expect(out).toContain("- release notes: done");
+      expect(out).toContain("(batch ");
+    }
+    const sent = JSON.parse(readFileSync(join(repo, "notified.json"), "utf-8")) as { after: { steps: { label: string; status: string }[] }[] };
+    expect(sent.after.at(-1)?.steps).toEqual([expect.objectContaining({ label: "release notes", status: "done" })]);
+  }, RUN_TIMEOUT);
+
   it("runs the after steps once the closer has taken the delivery branch, and not on a run where nothing landed", async () => {
     const repo = project({ "delivery.config.json": JSON.stringify({ after: [{ run: 'echo "$DELIVERY_COMMIT" >> after.log', in: "base", check: "test -s after.log" }] }) });
     const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) };

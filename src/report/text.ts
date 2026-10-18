@@ -1,7 +1,7 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { Population } from "../schema.js";
-import { lastActivity, type BudgetRow, type DamagedRecord, type ParkedItem, type ReportDelivery, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type UsageCoverage, type UsageTotal } from "./document.js";
+import { lastActivity, type BudgetRow, type DamagedRecord, type ParkedItem, type ReportAfter, type ReportDelivery, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type UsageCoverage, type UsageTotal } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
 export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery run";
@@ -227,6 +227,25 @@ export function deliveryLines(delivery: ReportDelivery | null): string[] {
     delivery.closer === null ? "Your closer has not taken it yet." : `Your closer, ${when(delivery.closer.at)}: ${stripControl(delivery.closer.detail)}`,
     ...(delivery.blocked === null ? [] : [`Blocked, ${when(delivery.blocked.at)}: ${stripControl(delivery.blocked.reason)}`]),
   ];
+}
+
+const STEP_WORDS = { done: "done", failed: "did not work", skipped: "skipped", pending: "waiting" } as const;
+
+/** After-landing steps: for each batch shown, what landed and what became of each step, and what the next run does about any left. */
+export function afterLines(after: readonly ReportAfter[]): string[] {
+  if (after.length === 0) return [];
+  const lines: string[] = [];
+  for (const batch of after) {
+    lines.push("", `After landing ${batch.commit.slice(0, 7)} on ${pathName(batch.branch)}, ${dayAndMinute(batch.at)} UTC (batch ${stripControl(batch.batch)}):`);
+    for (const step of batch.steps) {
+      const words = STEP_WORDS[step.status];
+      lines.push(`- ${stripControl(step.label)}: ${step.detail === null || step.detail === "" ? words : `${words}: ${stripControl(step.detail)}`}`);
+    }
+  }
+  if (after.some((batch) => batch.steps.some((step) => step.status === "pending" || step.status === "failed"))) {
+    lines.push("The next `delivery run --sources` tries the waiting steps first, from the one that did not work; `delivery drop-after` gives them up.");
+  }
+  return lines;
 }
 
 export function incompleteLines(doc: ReportDocument): string[] {
@@ -508,6 +527,7 @@ export function renderText(doc: ReportDocument, { colour, saved, review }: { col
     ...tuningLines(doc, colour, saved, review),
     ...parkedLines(doc.parked),
     ...deliveryLines(doc.delivery),
+    ...afterLines(doc.after),
     "",
     review?.next ?? nextLine(doc),
   ];

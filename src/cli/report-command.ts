@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { deriveReport, mostRecentSubject } from "../report/derive.js";
-import type { ParkedItem, ReportDelivery, ReportDocument } from "../report/document.js";
+import type { ParkedItem, ReportAfter, ReportDelivery, ReportDocument } from "../report/document.js";
 import { publishedSchema } from "../report/json-schema.js";
 import { holdsNoRun, loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { closingSentence, NO_RUNS_YET, NO_TASK_LIST, renderText, reportPointer } from "../report/text.js";
@@ -22,6 +22,7 @@ import { reviewPart } from "../packs/review-report.js";
 import { deliveryLedgerPath, foldDelivery, readDeliveryEntries } from "../delivery-ledger.js";
 import { git } from "../git-exec.js";
 import { ledgerPath, parkedItems, readItemLedger, type ItemState } from "../item-ledger.js";
+import { afterLedgerPath, isPending, readAfter } from "../after-ledger.js";
 
 /** An item the ledger has set aside, as the report carries it. */
 export const parkedOf = (state: ItemState): ParkedItem => ({
@@ -36,6 +37,17 @@ export const parkedOf = (state: ItemState): ParkedItem => ({
 /** The items this machine's ledger has set aside, as a report carries them. */
 export async function parkedIn(repoPath: string, env: NodeJS.ProcessEnv): Promise<ParkedItem[]> {
   return parkedItems(await readItemLedger(ledgerPath(repoPath, env))).map(parkedOf);
+}
+
+/** The after-landing batches a report shows: every one still waiting on a step, then the latest, oldest first. */
+export async function afterIn(repoPath: string, env: NodeJS.ProcessEnv): Promise<ReportAfter[]> {
+  const states = await readAfter(afterLedgerPath(ledgerPath(repoPath, env)));
+  const latest = states.at(-1);
+  const shown = states.filter((s) => isPending(s) || s === latest);
+  return shown.map(({ batch, steps }) => ({
+    batch: batch.batch, branch: batch.branch, commit: batch.commit, at: batch.at, landed: batch.landed,
+    steps: batch.steps.map((planned, index) => ({ for: planned.for, label: planned.label, status: steps[index]?.status ?? "pending", detail: steps[index]?.detail ?? null, at: steps[index]?.at ?? null })),
+  }));
 }
 
 /** The delivery branch this machine's runs last opened, as a report carries it; null when none was ever opened. */
@@ -110,7 +122,7 @@ export async function readReport(
   const told = named === undefined ? review : undefined;
   // A review's plan is told by its problems even when no fix is left to run, never swapped for the most recent run.
   const recent = named === undefined && list.length === 0 && told === undefined ? mostRecentSubject(snapshot) : undefined;
-  const doc = { ...deriveReport(recent ? { ...snapshot, subject: recent } : snapshot), parked: await parkedIn(repoPath, env), delivery: await deliveryIn(repoPath, env) };
+  const doc = { ...deriveReport(recent ? { ...snapshot, subject: recent } : snapshot), parked: await parkedIn(repoPath, env), delivery: await deliveryIn(repoPath, env), after: await afterIn(repoPath, env) };
   const states = told === undefined ? undefined : deriveFindings(told.result.findings, await readLedger(told.dir), fixRunsOf(snapshot, doc), (finding) => uncheckable(told.header, finding), await earlierChoices(repoPath, told));
   return {
     doc,

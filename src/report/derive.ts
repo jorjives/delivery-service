@@ -332,7 +332,7 @@ function document(
 ): ReportDocument {
   const counts = Object.fromEntries(Standing.options.map((standing) => [standing, 0])) as Record<Standing, number>;
   for (const surface of parts.surfaces) counts[surface.standing] += 1;
-  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts, ...addUp([...parts.surfaces, ...(runFile ? [runUsage(runFile)] : [])]), trips: runFile ? tripsOf(runFile.history).map(tripOf) : [], parked: [], delivery: null };
+  return { schema: REPORT_SCHEMA, kind: snapshot.subject.kind, counts, ...parts, ...addUp([...parts.surfaces, ...(runFile ? [runUsage(runFile)] : [])]), trips: runFile ? tripsOf(runFile.history).map(tripOf) : [], parked: [], delivery: null, after: [] };
 }
 
 const asIncomplete = (damaged: DamagedFile, list: TaskDef[]): DamagedRecord => ({

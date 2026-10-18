@@ -9,3 +9,5 @@ A `command` source can now say `"tracker": true` and answer `<command> raise`: a
 Add `after` to your config file to run steps once a run's work has landed and your closer has taken it: a command such as a deploy, optionally confirmed by a `check`, or an agent pass such as writing release notes. A step that does not work stops the rest, which wait and are tried first on the next run, as your config then defines them; a later run that runs the same steps supersedes them, so an older commit is never redeployed over a newer one. A workflow can carry its own `after` in place of the project's.
 
 `delivery drop-after` gives up the after-landing steps that are waiting, for a step you cannot fix or no longer want.
+
+`delivery status` and `delivery report` show each after step and what became of it, and which are waiting; the report document, and so the JSON your `notify` command receives, carries the same as `after`.
