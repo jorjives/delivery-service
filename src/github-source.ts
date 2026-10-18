@@ -214,39 +214,34 @@ export function githubIssueOf(key: string, sources: readonly SourceConfig[]): nu
   return id !== undefined && /^\d+$/.test(id) ? Number(id) : undefined;
 }
 
-/** Close a delivered issue with a comment saying where the work is: undefined when done (or already closed), otherwise why not. */
-export async function closeIssue(number: number, comment: string, { repoPath, env }: { repoPath: string; env: NodeJS.ProcessEnv }): Promise<string | undefined> {
+type Where = { repoPath: string; env: NodeJS.ProcessEnv };
+
+/** Run gh calls against the repository: undefined when they all succeed, otherwise why not. */
+async function attempt({ repoPath, env }: Where, calls: (gh: (args: string[]) => Promise<string>) => Promise<unknown>): Promise<string | undefined> {
   try {
-    await runGh(["issue", "close", String(number), "--comment", comment], { cwd: repoPath, env, timeoutMs: GH_TIMEOUT_MS });
+    await calls((args) => runGh(args, { cwd: repoPath, env, timeoutMs: GH_TIMEOUT_MS }));
     return undefined;
   } catch (err) {
     return ghProblem(err);
   }
 }
+
+/** Close a delivered issue with a comment saying where the work is: undefined when done (or already closed), otherwise why not. */
+export const closeIssue = (number: number, comment: string, where: Where): Promise<string | undefined> =>
+  attempt(where, (gh) => gh(["issue", "close", String(number), "--comment", comment]));
 
 /**
  * Show on the issue that its item is parked (spec §5.5): the parked label, created first when the repository lacks it
  * (gh refuses to add a label that does not exist), and a comment saying why, the question included. The ledger stays
  * the record. Undefined when done, otherwise why not.
  */
-export async function markParked(number: number, why: string, { repoPath, env }: { repoPath: string; env: NodeJS.ProcessEnv }): Promise<string | undefined> {
-  const gh = (args: string[]) => runGh(args, { cwd: repoPath, env, timeoutMs: GH_TIMEOUT_MS });
-  try {
+export const markParked = (number: number, why: string, where: Where): Promise<string | undefined> =>
+  attempt(where, async (gh) => {
     await gh(["label", "create", PARKED_LABEL, "--color", "D93F0B", "--description", "Set aside by the delivery harness: see its comment", "--force"]);
     await gh(["issue", "edit", String(number), "--add-label", PARKED_LABEL]);
     await gh(["issue", "comment", String(number), "--body", why]);
-    return undefined;
-  } catch (err) {
-    return ghProblem(err);
-  }
-}
+  });
 
 /** Take the parked label off an issue that is being worked again. Undefined when done, otherwise why not. */
-export async function clearParked(number: number, { repoPath, env }: { repoPath: string; env: NodeJS.ProcessEnv }): Promise<string | undefined> {
-  try {
-    await runGh(["issue", "edit", String(number), "--remove-label", PARKED_LABEL], { cwd: repoPath, env, timeoutMs: GH_TIMEOUT_MS });
-    return undefined;
-  } catch (err) {
-    return ghProblem(err);
-  }
-}
+export const clearParked = (number: number, where: Where): Promise<string | undefined> =>
+  attempt(where, (gh) => gh(["issue", "edit", String(number), "--remove-label", PARKED_LABEL]));
