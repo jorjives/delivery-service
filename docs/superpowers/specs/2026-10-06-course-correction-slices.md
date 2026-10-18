@@ -432,6 +432,7 @@ moving", which is the whole premise of replacing Autoloop's timers.
 
 ## Slice 7: Use a GitHub Issue Tracker as Your Backlog
 
+**Status:** ✅ Complete — 2026-10-18 — `6ced5e7`
 **Delivers:** On a project that already tracks its work in GitHub issues, an operator labels an
 issue instead of writing a backlog file, and the harness works it, closes it (or has the pull
 request close it) when it lands, and mirrors parked or escalated work back onto the issue.
