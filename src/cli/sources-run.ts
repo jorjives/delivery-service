@@ -1,6 +1,7 @@
 import { prepareContinuation } from "../continuation.js";
 import { baseTip, closeDeliveryBranch, deliveryBranchOf, reconcileDeliveryBranch } from "../delivery-branch.js";
-import { deliveryLedgerPath, readDelivery } from "../delivery-ledger.js";
+import { deliveryLedgerPath, readDelivery, type LandedEntry } from "../delivery-ledger.js";
+import { git } from "../git-exec.js";
 import { DEFAULT_PARK_AFTER, ledgerPath, readItemLedger, recordDispatched, settleRun, type ItemState } from "../item-ledger.js";
 import { runIdFor } from "../run-location.js";
 import type { CloseReport } from "../ports.js";
@@ -9,6 +10,7 @@ import type { CloserRef, Continues, TaskDef } from "../schema.js";
 import { runShell } from "../shell.js";
 import { taskIntent } from "../task-list.js";
 import { chooseWork, type WorkItem } from "../work-sources.js";
+import { afterLanding } from "./after-landing.js";
 import { DEFAULT_SOURCES, sourceName, type DeliveryConfig, type SourceConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
@@ -71,6 +73,9 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   // The one branch every task of this run lands on, named after the base before any task is claimed.
   const { base } = await baseTip(repoPath);
   const branch = deliveryBranchOf(base);
+  const after = afterLanding({ repoPath, config, project, itemLedger: path, branch, base, records: () => allRuns(repoPath) }, ctx);
+  // Steps an earlier run left pending are tried first, from the one that failed (spec §5.7); they never stop new work.
+  let afterDone = await after.pending();
   const now = new Date();
   const taken = new Set(records.map((r) => r.runId));
   const claims: (QueueClaim & { key: string })[] = [];
@@ -90,6 +95,12 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
     if (claim !== undefined) claims.push(claim);
   }
   const deliveryLedger = deliveryLedgerPath(path);
+  const landAndFinish = async (exitCode: ExitCode, list: TaskDef[] = []): Promise<ExitCode> => {
+    const handed = await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base }, exitCode, ctx);
+    // Replaces, not combines with, the start-of-run answer: a step that failed then may since have been superseded.
+    if (handed.closed !== undefined) afterDone = await after.landed(handed.closed);
+    return finish(!afterDone && handed.exitCode === EXIT.ok ? EXIT.escalated : handed.exitCode, list);
+  };
   // Readied before any task starts, so every task builds on the owner's latest commits (spec §5.7). Also readied when
   // nothing is to be worked but earlier landings still wait for the closer: the closer is retried "after bringing in
   // any base commits" (spec §5.7), since a moved base is the usual reason a merge-back failed. A run with neither
@@ -102,7 +113,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   }
   if (claims.length === 0) {
     ctx.report.note(NOTHING_TO_WORK);
-    return finish(await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base }, EXIT.ok, ctx));
+    return landAndFinish(EXIT.ok);
   }
   claims.forEach((claim, index) => (claim.position = { task: index + 1, of: claims.length }));
 
@@ -118,18 +129,22 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
     },
   };
   const exitCode = await runQueue(claims.map((c) => c.taskDef), project, { repoPath, carryOn: true, claims: source }, ctx);
-  const handedOff = await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base }, exitCode, ctx);
-  return finish(handedOff, claims.map((c) => c.taskDef));
+  return landAndFinish(exitCode, claims.map((c) => c.taskDef));
 }
 
+type HandedOff = { exitCode: ExitCode; closed?: { landed: LandedEntry[]; commit: string } };
+
 /** The project's closer, once per run, when tasks have landed on the delivery branch since it last took it. A failed closer leaves the branch for the next run, and the run reports a stop. */
-async function handOff(target: { repoPath: string; closerRef: CloserRef; ledger: string; branch: string; base: string }, exitCode: ExitCode, ctx: CommandContext): Promise<ExitCode> {
+async function handOff(target: { repoPath: string; closerRef: CloserRef; ledger: string; branch: string; base: string }, exitCode: ExitCode, ctx: CommandContext): Promise<HandedOff> {
   const { branch } = target;
   const { pending, landed } = await readDelivery(target.ledger, branch);
-  if (pending.length === 0) return exitCode;
+  if (pending.length === 0) return { exitCode };
+  // Read before the closer acts: merge-back deletes the branch, and this is the commit every after step is about.
+  const commit = await git(target.repoPath, ["rev-parse", `refs/heads/${branch}`]);
   const report = await closeDeliveryBranch(target, landed.map((e) => ({ intent: e.intent, item: e.key, run: e.runId, at: e.at })));
   ctx.report.note(deliveryClosedNote(branch, report));
-  return report.status === "DONE" || exitCode !== EXIT.ok ? exitCode : EXIT.escalated;
+  if (report.status !== "DONE") return { exitCode: exitCode !== EXIT.ok ? exitCode : EXIT.escalated };
+  return { exitCode, closed: { landed: pending, commit } };
 }
 
 /** The claim a chosen item becomes: carried on from its last run, or a fresh run, with its workflow and item pinned. */

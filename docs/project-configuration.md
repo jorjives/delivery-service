@@ -384,6 +384,50 @@ branch first, and runs your check on the result. If that conflicts or the check 
 starts no task and says what is in the way; it says so again on later runs, without trying the
 same thing again, until your base branch or the delivery branch moves.
 
+#### After landing
+
+`after` lists steps to run once a run's work has landed and your closer has taken the delivery
+branch. They run once per run, in order, and only when at least one item landed: a deploy happens
+once, not once per item. Each step is either a command or an agent pass:
+
+    "after": [
+      { "name": "deploy", "run": "make deploy", "in": "base", "check": "curl -f http://localhost:8080/health" },
+      { "name": "release notes", "prompt": "Write release notes for the landed commits and post them to the project's discussion." }
+    ]
+
+- A command runs in a throwaway copy of what landed, or in your own folder with `"in": "base"`.
+  It sees the landed commit as `DELIVERY_COMMIT` and the delivery branch as `DELIVERY_BRANCH`.
+- An agent pass is a session with your own Claude Code setup, in a throwaway copy of what landed.
+  It is told what landed. It cannot change what landed: anything it changes is discarded and the
+  run says so, except a new item file in `.delivery/backlog/`, which is checked like any follow-up
+  and then lands on the delivery branch for your closer to take next run (or, when the landed
+  items come from a `command` source with `"tracker": true`, is raised in your tracker).
+- `check` is a command, run from your folder, whose success confirms the step worked.
+
+If a step, or its check, does not work, it and the steps after it are not run; the work that
+landed stays landed. They are shown as waiting in `delivery status` and `delivery report`, and the
+next `delivery run --sources` tries them first, starting from the one that did not work. Until
+they work, each run ends as stopped.
+
+Getting unstuck:
+
+- A waiting step is run as your config file defines it when it is tried, not as it was when the
+  work landed: it is found by its place in its `after` list (the project's, or the workflow's), so
+  correcting a typo in a command repairs the step on the next run. A step whose place has gone from
+  the list is skipped.
+- A later run that lands work and runs the same `after` list supersedes the waiting steps of
+  earlier runs from that list: they are skipped, never run afterwards, so a deploy that failed for
+  an older commit is not redone over a newer one that has since deployed. Raising held follow-ups
+  is never superseded.
+- `delivery drop-after` gives up every waiting step, or only those of one batch
+  (`delivery drop-after <batch>`, as `delivery status` names it), for a step you cannot fix or no
+  longer want. The work that landed stays landed.
+
+When items come from a `command` source with `"tracker": true`, follow-ups an agent raised while working them are raised
+in your tracker as the first after step (see "Work sources" below).
+
+A workflow's own `after` replaces this list for the items it delivers.
+
 ### Work sources
 
 `sources` says where `delivery run --sources` finds work, in order. Each source is an object with a

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
@@ -369,5 +369,131 @@ describe("delivery run --sources", () => {
     expect(git(repo, ["show", `delivery/main:${FOLLOW}`])).toContain("Tidy the README.");
     const [record] = await allRuns(repo);
     expect(record?.caseFile.header.item).not.toHaveProperty("raise");
+  }, RUN_TIMEOUT);
+
+  it("runs the after steps once the closer has taken the delivery branch, and not on a run where nothing landed", async () => {
+    const repo = project({ "delivery.config.json": JSON.stringify({ after: [{ run: 'echo "$DELIVERY_COMMIT" >> after.log', in: "base", check: "test -s after.log" }] }) });
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+
+    const first = await delivery(["run", "--sources"], { cwd: repo, env });
+    const second = await delivery(["run", "--sources"], { cwd: repo, env });
+
+    expect(first.exitCode).toBe(EXIT.ok);
+    expect(readFileSync(join(repo, "after.log"), "utf-8").trim()).toBe(git(repo, ["rev-parse", "delivery/main"]));
+    // The step has no name, so it is labelled by its command (stepLabel), not by its check.
+    expect(first.stdout).toContain("After landing, echo \"$DELIVERY_COMMIT\" >> after.log: done.");
+    expect(second.stdout).toContain(NOTHING_TO_WORK);
+    expect(readFileSync(join(repo, "after.log"), "utf-8").trim().split("\n")).toHaveLength(1);
+  }, RUN_TIMEOUT);
+
+  it("keeps a failed after step pending, and tries it first on the next run, from the step that failed", async () => {
+    const repo = project({ "delivery.config.json": JSON.stringify({ after: [{ name: "deploy", run: "echo deployed >> steps.log", in: "base", check: "test -f healthy" }, { name: "announce", run: "echo announced >> steps.log", in: "base" }] }) });
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+
+    const first = await delivery(["run", "--sources"], { cwd: repo, env });
+    expect(first.exitCode).toBe(EXIT.escalated);
+    expect(first.stdout).toContain("After landing, deploy did not work");
+    expect(readFileSync(join(repo, "steps.log"), "utf-8")).toBe("deployed\n");
+
+    writeFileSync(join(repo, "healthy"), "");
+    const second = await delivery(["run", "--sources"], { cwd: repo, env });
+    expect(second.exitCode).toBe(EXIT.ok);
+    expect(readFileSync(join(repo, "steps.log"), "utf-8")).toBe("deployed\ndeployed\nannounced\n");
+  }, RUN_TIMEOUT);
+
+  it("repairs a stuck step from the corrected config, and never redeploys an older commit over a newer one", async () => {
+    // Fails on a commit without second.js, so c1's deploy fails and c2's works.
+    const deploy = { name: "deploy", run: 'echo "$DELIVERY_COMMIT" >> deploys.log; git cat-file -e "$DELIVERY_COMMIT:second.js"', in: "base" };
+    const repo = project({ "delivery.config.json": JSON.stringify({ after: [deploy] }) });
+    const writes = (path: string): MockScript["expectations"][number] => ({ effects: [{ write: { path, content: "export const x = 1;\n" } }], json: { status: "completed", rationale: "done" } });
+    // Each session matches the script afresh, so each item's session is told apart by what its prompt says.
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile({ expectations: [{ when: { promptContains: "says hello" }, ...writes("hello.js") }, { when: { promptContains: "second function" }, ...writes("second.js") }] }) };
+    const deploys = () => readFileSync(join(repo, "deploys.log"), "utf-8").trim().split("\n");
+
+    const first = await delivery(["run", "--sources"], { cwd: repo, env });
+    expect(first.exitCode).toBe(EXIT.escalated);
+    const c1 = deploys()[0];
+
+    // A second item arrives; the next run retries c1's deploy (still failing), then lands c2 and deploys that.
+    mkdirSync(join(repo, ".delivery", "backlog"), { recursive: true });
+    writeFileSync(join(repo, ".delivery", "backlog", "20261018T110000Z-second.md"), "---\nstatus: open\n---\nAdd a second function.\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "second item"]);
+    const second = await delivery(["run", "--sources"], { cwd: repo, env });
+    expect(second.exitCode).toBe(EXIT.ok);
+    expect(second.stdout).toContain("Skipped one waiting after-landing step from an earlier run");
+    expect(deploys()).toHaveLength(3);
+
+    const third = await delivery(["run", "--sources"], { cwd: repo, env });
+    expect(third.stdout).toContain(NOTHING_TO_WORK);
+    expect(deploys()).toHaveLength(3);
+    expect(deploys().filter((commit) => commit === c1)).toHaveLength(2);
+  }, RUN_TIMEOUT * 3);
+
+  it("runs a corrected step on the next run in place of the one that was stuck", async () => {
+    const repo = project({ "delivery.config.json": JSON.stringify({ after: [{ name: "deploy", run: "make-deploy-typo", in: "base" }] }) });
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.escalated);
+
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ after: [{ name: "deploy", run: "touch deployed", in: "base" }] }));
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    expect(existsSync(join(repo, "deployed"))).toBe(true);
+  }, RUN_TIMEOUT * 2);
+
+  it("raises a tracker item's follow-up once the closer has succeeded, exactly once even when raising is retried", async () => {
+    const FOLLOW = ".delivery/backlog/20261018T090000Z-tidy-the-readme.md";
+    const script = [
+      "#!/bin/sh",
+      'case "$1" in',
+      " list) [ -f done ] && echo '[]' || echo '[{\"id\":\"t1\",\"intent\":\"say hello\"}]';;",
+      ' complete) echo "$2" > done;;',
+      " raise) [ -f tracker-up ] || exit 1; cat >> raised.jsonl; echo >> raised.jsonl; echo '#7';;",
+      "esac",
+    ].join("\n");
+    const repo = initTempRepo("sources-raise-", { "package.json": PACKAGE, "tasks.sh": script, "delivery.config.json": JSON.stringify({ sources: [{ type: "command", command: "sh tasks.sh", name: "tracker", tracker: true }] }) });
+    const writesFollowUp: MockScript = {
+      expectations: [{ effects: [{ write: { path: "hello.js", content: "export const hello = 1;\n" } }, { write: { path: FOLLOW, content: "---\nstatus: open\n---\nTidy the README.\n" } }], json: { status: "completed", rationale: "hello, and a follow-up" } }],
+    };
+    const env = { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(writesFollowUp) };
+
+    await delivery(["run", "--sources"], { cwd: repo, env });
+    expect(existsSync(join(repo, "raised.jsonl"))).toBe(false);
+
+    writeFileSync(join(repo, "tracker-up"), "");
+    await delivery(["run", "--sources"], { cwd: repo, env });
+    await delivery(["run", "--sources"], { cwd: repo, env });
+
+    const raised = readFileSync(join(repo, "raised.jsonl"), "utf-8").trim().split("\n");
+    expect(raised).toHaveLength(1);
+    expect(JSON.parse(raised[0] ?? "")).toMatchObject({ file: "20261018T090000Z-tidy-the-readme.md", body: "Tidy the README.\n" });
+  }, RUN_TIMEOUT * 2);
+
+  it("runs an after agent pass whose follow-up lands on the delivery branch and whose other changes are discarded", async () => {
+    const FOLLOW = ".delivery/backlog/20261018T100000Z-check-the-docs.md";
+    const repo = project({ "README.md": "hello\n", "delivery.config.json": JSON.stringify({ after: [{ name: "release notes", prompt: "Write release notes for the landed commits." }] }) });
+    const script: MockScript = {
+      expectations: [
+        { when: { promptContains: "Write release notes" }, effects: [{ write: { path: FOLLOW, content: "---\nstatus: open\n---\nCheck the docs.\n" } }, { edit: { path: "README.md", old: "hello", new: "changed" } }], json: { status: "completed", rationale: "notes written" } },
+        ...completes.expectations,
+      ],
+    };
+
+    const { stdout } = await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(script) } });
+
+    expect(stdout).toContain("After landing, release notes: done.");
+    expect(stdout).toContain("changed README.md; those changes were discarded");
+    expect(git(repo, ["show", `delivery/main:${FOLLOW}`])).toContain("Check the docs.");
+    expect(git(repo, ["show", "delivery/main:README.md"])).toBe("hello");
+  }, RUN_TIMEOUT);
+
+  it("runs a workflow's own after steps in place of the project's", async () => {
+    const repo = initTempRepo("sources-workflow-after-", {
+      "package.json": PACKAGE,
+      [ITEM_PATH]: "---\nstatus: open\nworkflow: quiet\n---\nAdd a function that says hello to a name.\n",
+      "delivery.config.json": JSON.stringify({ after: [{ run: "touch deployed", in: "base" }], workflows: { quiet: { steps: [{ name: "do", prompt: "do it" }], after: [] } } }),
+    });
+    await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+    expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("hello");
+    expect(existsSync(join(repo, "deployed"))).toBe(false);
   }, RUN_TIMEOUT);
 });
