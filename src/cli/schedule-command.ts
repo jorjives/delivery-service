@@ -37,6 +37,14 @@ export const scheduledOn = (description: string): string =>
   `Scheduling is on: ${description}. A run missed while this machine is off happens as soon as it is back.`;
 export const journalHint = (name: string): string => `Each scheduled run's output: journalctl --user -u ${name}.service`;
 
+export const scheduledOff = (repoPath: string): string =>
+  `Scheduling is off for ${repoPath}. Turn it on with: delivery schedule enable --every <interval>`;
+export const alreadyOff = (repoPath: string): string => `Scheduling is already off for ${repoPath}.`;
+export const turnedOff = (repoPath: string): string =>
+  `Scheduling is off for ${repoPath}. You can still run it by hand at any time: delivery run --sources`;
+export const lastRun = (when: string): string => `Last run: ${when}`;
+export const nextRun = (when: string): string => `Next run: ${when}`;
+
 /** `systemctl --user <args>`: its output, or why it could not answer. Never throws. */
 export async function systemctl(env: NodeJS.ProcessEnv, args: string[]): Promise<SystemctlResult> {
   try {
@@ -58,14 +66,6 @@ async function must(env: NodeJS.ProcessEnv, args: string[]): Promise<string> {
 
 /** This build's own entry point: `dist/cli/main.js` beside this file once built. */
 const MAIN = fileURLToPath(new URL("./main.js", import.meta.url));
-
-export const scheduledOff = (repoPath: string): string =>
-  `Scheduling is off for ${repoPath}. Turn it on with: delivery schedule enable --every <interval>`;
-export const alreadyOff = (repoPath: string): string => `Scheduling is already off for ${repoPath}.`;
-export const turnedOff = (repoPath: string): string =>
-  `Scheduling is off for ${repoPath}. You can still run it by hand at any time: delivery run --sources`;
-export const lastRun = (when: string): string => `Last run: ${when}`;
-export const nextRun = (when: string): string => `Next run: ${when}`;
 
 /** The project's repository, its units' name, and the path its timer would be installed at. */
 async function scheduled(options: ScheduleOptions, ctx: CommandContext) {
