@@ -508,6 +508,10 @@ script of your own.
   branch, with a comment naming the commit and the branch it is on. This is an after-landing step of
   its own, "Close delivered issues": if `gh` cannot close one, the run says so and the next run
   tries again, without closing any issue twice.
+- An item that is parked, whether it needs your answer or keeps ending undelivered, shows it on the
+  issue: it gets a `delivery:parked` label and a comment saying why, with the agent's question when
+  it asked one. Answer or unpark it as usual (`delivery answer`, `delivery unpark`); the label comes
+  off when the issue is next worked. `delivery status` still lists it.
 
 `parkAfter` is how many runs in a row an item may end without being delivered before it is set
 aside. It is a whole number, 1 or more, and defaults to 3.

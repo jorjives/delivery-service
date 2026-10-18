@@ -223,3 +223,30 @@ export async function closeIssue(number: number, comment: string, { repoPath, en
     return ghProblem(err);
   }
 }
+
+/**
+ * Show on the issue that its item is parked (spec §5.5): the parked label, created first when the repository lacks it
+ * (gh refuses to add a label that does not exist), and a comment saying why, the question included. The ledger stays
+ * the record. Undefined when done, otherwise why not.
+ */
+export async function markParked(number: number, why: string, { repoPath, env }: { repoPath: string; env: NodeJS.ProcessEnv }): Promise<string | undefined> {
+  const gh = (args: string[]) => runGh(args, { cwd: repoPath, env, timeoutMs: GH_TIMEOUT_MS });
+  try {
+    await gh(["label", "create", PARKED_LABEL, "--color", "D93F0B", "--description", "Set aside by the delivery harness: see its comment", "--force"]);
+    await gh(["issue", "edit", String(number), "--add-label", PARKED_LABEL]);
+    await gh(["issue", "comment", String(number), "--body", why]);
+    return undefined;
+  } catch (err) {
+    return ghProblem(err);
+  }
+}
+
+/** Take the parked label off an issue that is being worked again. Undefined when done, otherwise why not. */
+export async function clearParked(number: number, { repoPath, env }: { repoPath: string; env: NodeJS.ProcessEnv }): Promise<string | undefined> {
+  try {
+    await runGh(["issue", "edit", String(number), "--remove-label", PARKED_LABEL], { cwd: repoPath, env, timeoutMs: GH_TIMEOUT_MS });
+    return undefined;
+  } catch (err) {
+    return ghProblem(err);
+  }
+}

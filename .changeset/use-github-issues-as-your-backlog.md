@@ -9,3 +9,5 @@ A follow-up an agent raises while working an issue is opened as a new, unlabelle
 With the `open-pr` closer, the delivery branch's pull request closes each delivered issue when it merges.
 
 With any other closer, each delivered issue is closed with a comment naming the commit, once only.
+
+A parked issue gets a `delivery:parked` label and a comment saying why, with the agent's question when it asked one.

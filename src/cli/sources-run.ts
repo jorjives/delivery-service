@@ -8,7 +8,7 @@ import type { CloseReport } from "../ports.js";
 import type { RunRecord } from "../run-records.js";
 import type { CloserRef, Continues, TaskDef } from "../schema.js";
 import { runShell } from "../shell.js";
-import { githubIssueOf } from "../github-source.js";
+import { clearParked, githubIssueOf, markParked } from "../github-source.js";
 import { taskIntent } from "../task-list.js";
 import { chooseWork, type WorkItem } from "../work-sources.js";
 import { afterLanding } from "./after-landing.js";
@@ -23,6 +23,8 @@ import { checkCustomModules, maxItems, resolveProject, workflowFrom, type Projec
 
 export const NOTHING_TO_WORK =
   "Nothing to work on: every item is done, parked or not due yet. Add an item under .delivery/backlog/, or run `delivery status` to see what is parked.";
+
+export const mirrorFailed = (issue: number, what: string, detail: string): string => `Could not ${what} on GitHub issue #${issue}: ${detail} The item's state in \`delivery status\` is unaffected.`;
 
 export function parkedNote(state: ItemState): string {
   switch (state.parked) {
@@ -125,7 +127,14 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
     ended: async (claim) => {
       const record = await readRun(repoPath, claim.surfaceId);
       const state = await settleRun(path, keyOf(claim), record, parkAfter);
-      if (state.parked !== null) ctx.report.note(parkedNote(state));
+      if (state.parked !== null) {
+        ctx.report.note(parkedNote(state));
+        const issue = githubIssueOf(keyOf(claim), sources);
+        if (issue !== undefined) {
+          const failed = await markParked(issue, parkedNote(state), { repoPath, env: ctx.env });
+          if (failed !== undefined) ctx.report.note(mirrorFailed(issue, "show that it is parked", failed));
+        }
+      }
       if (state.lastClass === "delivered") await complete(keyOf(claim), record, sources, repoPath, ctx);
     },
   };
@@ -163,6 +172,11 @@ async function claimFor(
   if (item.workflow !== undefined && config.workflows?.[item.workflow] === undefined) {
     ctx.report.note(unknownItemWorkflow(item.key, item.workflow));
     return undefined;
+  }
+  // Worked again (answered or unparked): the issue stops saying it is parked.
+  if (item.issue?.parked === true) {
+    const failed = await clearParked(item.issue.number, { repoPath, env: ctx.env });
+    if (failed !== undefined) ctx.report.note(mirrorFailed(item.issue.number, "take the parked label off", failed));
   }
   const workflow = await workflowFrom(item.workflow, config, repoPath);
   // A wrong custom step-gate path stops the command before a run is spent, as `--workflow` does.

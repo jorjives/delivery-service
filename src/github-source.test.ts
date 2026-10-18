@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createGhStandIn } from "./gh-stand-in.js";
 import { initTempRepo } from "./temp-repo.js";
-import { issueItem, listGithub, machineFields, closeIssue, githubIssueOf, raiseIssue, type Issue } from "./github-source.js";
+import { issueItem, listGithub, machineFields, clearParked, closeIssue, githubIssueOf, markParked, raiseIssue, type Issue } from "./github-source.js";
 
 const issue = (over: Partial<Issue> = {}): Issue => ({
   number: 12, title: "Say hello", body: "Add a hello function.", createdAt: "2026-10-18T08:00:00Z", lastEditedAt: null,
@@ -144,5 +144,27 @@ describe("closing a delivered issue", () => {
     expect(gh.issues()[0]).toMatchObject({ state: "CLOSED", comments: ["Delivered."] });
     gh.setMode("offline");
     expect(await closeIssue(n, "Delivered.", { repoPath: repo, env })).toBe("gh could not reach GitHub. Check the network.");
+  });
+});
+
+describe("mirroring a park onto the issue", () => {
+  it("labels the issue parked, creating the label if the repository lacks it, says why in a comment, and clears the label", async () => {
+    const gh = createGhStandIn();
+    const n = gh.openIssue({ title: "Greet", body: "b", labels: ["delivery"] });
+    const repo = initTempRepo("park-gh-", { "package.json": "{}" });
+    const env = { ...process.env, PATH: `${gh.binDir}:${process.env.PATH ?? ""}` };
+    expect(gh.repoLabels()).not.toContain("delivery:parked");
+    expect(await markParked(n, "It needs your answer.", { repoPath: repo, env })).toBeUndefined();
+    expect(gh.issues()[0]).toMatchObject({ labels: ["delivery", "delivery:parked"], comments: ["It needs your answer."] });
+    expect(await markParked(n, "Again.", { repoPath: repo, env })).toBeUndefined();
+    expect(await clearParked(n, { repoPath: repo, env })).toBeUndefined();
+    expect(gh.issues()[0]?.labels).toEqual(["delivery"]);
+  });
+
+  it("says why when gh cannot mirror the park", async () => {
+    const gh = createGhStandIn();
+    const n = gh.openIssue({ title: "Greet", body: "b", labels: ["delivery"] });
+    gh.setMode("offline");
+    expect(await markParked(n, "why", { repoPath: initTempRepo("park-gh-", { "package.json": "{}" }), env: { ...process.env, PATH: `${gh.binDir}:${process.env.PATH ?? ""}` } })).toBe("gh could not reach GitHub. Check the network.");
   });
 });

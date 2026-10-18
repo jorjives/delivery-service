@@ -554,4 +554,34 @@ describe("delivery run --sources", () => {
     const tip = git(repo, ["rev-parse", "delivery/main"]);
     expect(gh.issues()[0]).toMatchObject({ state: "CLOSED", comments: [`Delivered by the delivery harness in ${tip}, on delivery/main.`] });
   }, RUN_TIMEOUT);
+
+  it("shows a parked issue's question on the issue, with the parked label, and takes the label off when it is worked again", async () => {
+    const gh = createGhStandIn();
+    gh.openIssue({ title: "Add a function that says hello to a name", body: "Please.", labels: ["delivery"] });
+    const repo = initTempRepo("sources-run-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ sources: [{ type: "github" }] }) });
+    const env = { XDG_STATE_HOME: stateDir(), PATH: `${gh.binDir}:${process.env.PATH ?? ""}`, [TEST_MOCK_SCRIPT]: await scriptFile(asks) };
+
+    await delivery(["run", "--sources"], { cwd: repo, env });
+    const [parked] = gh.issues();
+    expect(parked?.labels).toContain("delivery:parked");
+    expect(parked?.comments.join("\n")).toContain("Formal or casual greeting?");
+    expect((await delivery(["status"], { cwd: repo, env })).stdout).toContain("github:1");
+
+    await delivery(["answer", "github:1", "Formal, please."], { cwd: repo, env });
+    await delivery(["run", "--sources"], { cwd: repo, env });
+    expect(gh.issues()[0]?.labels).not.toContain("delivery:parked");
+  }, RUN_TIMEOUT);
+
+  it("still parks the item, and says so, when the issue cannot be labelled", async () => {
+    const gh = createGhStandIn();
+    gh.openIssue({ title: "Add a function that says hello to a name", body: "Please.", labels: ["delivery"] });
+    const repo = initTempRepo("sources-run-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ sources: [{ type: "github" }] }) });
+    const state = stateDir();
+    const env = { XDG_STATE_HOME: state, PATH: `${gh.binDir}:${process.env.PATH ?? ""}`, [TEST_MOCK_SCRIPT]: await scriptFile({ expectations: [{ json: { status: "escalate", category: "decision", question: "Which?", rationale: "unclear" } }] }) };
+    // Listing still works; only label changes are refused.
+    gh.refuseLabels();
+    const { stdout } = await delivery(["run", "--sources"], { cwd: repo, env });
+    expect((await readItemLedger(ledgerPath(repo, { XDG_STATE_HOME: state }))).get("github:1")?.parked).toBe("decision");
+    expect(stdout).toContain("Could not show that it is parked on GitHub issue #1: the account gh is signed in as lacks permission to change this repository's issues.");
+  }, RUN_TIMEOUT);
 });
