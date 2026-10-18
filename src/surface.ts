@@ -10,6 +10,7 @@ import { currentStep, nextStepOf, stepIndexOf, stepKey, stepView } from "./workf
 import { ensureCommitted, git } from "./git-exec.js";
 import { commitAccepted } from "./closer-support.js";
 import { dropKeptBranches, rebuildIfMoved, restartFrom } from "./delivery-landing.js";
+import { holdFollowUps } from "./follow-ups.js";
 import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
@@ -806,6 +807,10 @@ async function closing(
       return { state, done: false };
     }
   }
+
+  // Held only by an attempt about to land, after any rebuild, so a rejected or conflicting attempt raises nothing (spec §5.5).
+  const item = caseFile.header.item;
+  if (item?.raise === true && caseFile.header.delivery !== undefined) await holdFollowUps(dir, ctx.worktreePath, ctx.baseBranch, item.source);
 
   const report = await onSharedGround(ports, caseFile, () => ports.closer.close(ctx, { kind: "accepted" }));
   return recordClose(dir, caseFile, location, report);

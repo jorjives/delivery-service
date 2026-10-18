@@ -154,7 +154,12 @@ async function claimFor(
   const carried = turn !== undefined && last !== undefined ? await prepareContinuation(last, turn, ctx.env) : undefined;
   const surfaceId = runIdFor(taskIntent(item.taskDef), now, taken);
   taken.add(surfaceId);
-  const ref = { key: item.key, source: item.source, id: item.id, ...(item.resolve === undefined ? {} : { resolve: item.resolve }) };
+  // `raise` comes from the source's own `tracker` opt-in, never from its kind.
+  const ref = {
+    key: item.key, source: item.source, id: item.id,
+    ...(item.resolve === undefined ? {} : { resolve: item.resolve }),
+    ...(item.raise === true ? { raise: true as const } : {}),
+  };
   return {
     key: item.key,
     taskDef: item.taskDef,

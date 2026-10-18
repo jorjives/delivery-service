@@ -7,6 +7,7 @@ import { promptsSent, readJournal, type MockScript } from "../mock-script.js";
 import { addLocalOrigin, initTempRepo } from "../temp-repo.js";
 import { deliveryLedgerPath, readDelivery, readDeliveryEntries } from "../delivery-ledger.js";
 import { ledgerPath, readItemLedger, recordDispatched } from "../item-ledger.js";
+import { readRef } from "../case-file.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { completes, delivery, interruptedRun, PACKAGE, RUN_TIMEOUT, scriptFile, writesHello } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
@@ -334,5 +335,39 @@ describe("delivery run --sources", () => {
     // `deliveryIn` reports `delivery: null`: assert the notification arrived, not the blocked reason.
     const sent = JSON.parse(readFileSync(join(repo, "notified.json"), "utf-8")) as { schema: string };
     expect(sent.schema).toBe("delivery.report/1");
+  }, RUN_TIMEOUT);
+
+  it("keeps a tracker item's follow-up off the delivery branch and holds it in the run's record", async () => {
+    const FOLLOW = ".delivery/backlog/20261018T090000Z-tidy-the-readme.md";
+    const script = `#!/bin/sh\ncase "$1" in\n list) [ -f done ] && echo '[]' || echo '[{"id":"t1","intent":"say hello"}]';;\n complete) echo "$2" > done;;\nesac\n`;
+    const repo = initTempRepo("sources-hold-", { "package.json": PACKAGE, "tasks.sh": script, "delivery.config.json": JSON.stringify({ sources: [{ type: "command", command: "sh tasks.sh", name: "tracker", tracker: true }] }) });
+    const writesFollowUp: MockScript = {
+      expectations: [{ effects: [{ write: { path: "hello.js", content: "export const hello = 1;\n" } }, { write: { path: FOLLOW, content: "---\nstatus: open\n---\nTidy the README.\n" } }], json: { status: "completed", rationale: "hello, and a follow-up" } }],
+    };
+
+    await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(writesFollowUp) } });
+
+    expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("hello");
+    expect(() => git(repo, ["show", `delivery/main:${FOLLOW}`])).toThrow();
+    const [record] = await allRuns(repo);
+    expect(record?.caseFile.header.item).toMatchObject({ source: "tracker", raise: true });
+    expect(await readRef(record?.dir ?? "", "follow-ups")).toEqual([{ file: "20261018T090000Z-tidy-the-readme.md", text: "---\nstatus: open\n---\nTidy the README.\n" }]);
+  }, RUN_TIMEOUT);
+
+  it("leaves a command source that is not a tracker alone: its follow-up lands on the delivery branch and nothing is held", async () => {
+    const FOLLOW = ".delivery/backlog/20261018T090000Z-tidy-the-readme.md";
+    // The spec's own example of a command source: it lists and completes, and has no `raise`.
+    const script = `#!/bin/sh\ncase "$1" in\n list) [ -f done ] && echo '[]' || echo '[{"id":"t1","intent":"say hello"}]';;\n complete) echo "$2" > done;;\nesac\n`;
+    const repo = initTempRepo("sources-no-hold-", { "package.json": PACKAGE, "tasks.sh": script, "delivery.config.json": JSON.stringify({ sources: [{ type: "command", command: "sh tasks.sh", name: "earliest" }] }) });
+    const writesFollowUp: MockScript = {
+      expectations: [{ effects: [{ write: { path: "hello.js", content: "export const hello = 1;\n" } }, { write: { path: FOLLOW, content: "---\nstatus: open\n---\nTidy the README.\n" } }], json: { status: "completed", rationale: "hello, and a follow-up" } }],
+    };
+
+    const { exitCode } = await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(writesFollowUp) } });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(git(repo, ["show", `delivery/main:${FOLLOW}`])).toContain("Tidy the README.");
+    const [record] = await allRuns(repo);
+    expect(record?.caseFile.header.item).not.toHaveProperty("raise");
   }, RUN_TIMEOUT);
 });

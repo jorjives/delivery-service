@@ -403,13 +403,26 @@ sources with the same name are refused, so give one of them its own `name`.
       { "type": "list", "fallback": true }
     ]
 
-A command source is run twice, through its own command line:
+A command source is run through its own command line, and is a plain list unless it says it is a
+tracker:
 
 - `<command> list` prints a JSON array of tasks. Each task is an object with a string `id`, and may
   also have an `intent` sentence, a `body`, a `workflow`, and any other fields, which are available
   to the step prompts as `{{task.<field>}}`.
 - `<command> complete <id>` runs once that task has been delivered, so the command can mark it done
   in whatever keeps its list.
+- `<command> raise` opens a follow-up in your tracker, and is only ever run for a source with
+  `"tracker": true`, for example
+  `{ "type": "command", "command": "./tracker.sh", "tracker": true }`. Without `tracker`, a
+  command source needs only `list` and `complete`, and the follow-ups an agent writes for its
+  items land in the repository's `.delivery/backlog/` like any project's. With it, an agent
+  working a task from this source still raises a follow-up as a new item file in
+  `.delivery/backlog/`, but that file does not land with the work: it is taken off the branch,
+  and once your closer has taken the delivery branch, `raise` is run once for it, with the item
+  as JSON on its standard input (its `file` name, which is unique, its front matter and its
+  `body`), and prints the new item's id. A follow-up is raised once only, even if raising is
+  retried; one whose task did not land is never raised. Existing command sources are unaffected:
+  turn `tracker` on only when the script implements `raise`.
 
 `parkAfter` is how many runs in a row an item may end without being delivered before it is set
 aside. It is a whole number, 1 or more, and defaults to 3.

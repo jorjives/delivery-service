@@ -730,3 +730,14 @@ describe("after steps", () => {
     expect(stepLabel({ prompt: "x".repeat(80) })).toBe(`${"x".repeat(59)}…`);
   });
 });
+
+describe("a tracker-backed command source", () => {
+  it("opts in with `tracker`; a command source without it stays a plain list", () => {
+    const config = DeliveryConfig.parse({ sources: [{ type: "command", command: "./a.sh", name: "a", tracker: true }, { type: "command", command: "./b.sh", name: "b" }] });
+    expect(config.sources).toEqual([{ type: "command", command: "./a.sh", name: "a", tracker: true }, { type: "command", command: "./b.sh", name: "b" }]);
+  });
+
+  it("refuses `tracker` on a source that is not a command", () => {
+    expect(problemFor({ sources: [{ type: "backlog", tracker: true }] })).toContain("sources");
+  });
+});

@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { chmodSync, writeFileSync } from "node:fs";
+import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
 import { initTempRepo } from "./temp-repo.js";
 import { foldLedger } from "./item-ledger.js";
 import { addLocalOrigin } from "./temp-repo.js";
 import { taskId } from "./task-list.js";
-import { chooseWork, listSource } from "./work-sources.js";
+import { chooseWork, listSource, raiseThrough } from "./work-sources.js";
+import type { SourceConfig } from "./cli/config.js";
 
 const item = (status: string, extra = "") => `---\nstatus: ${status}\nworkflow: build\n${extra}---\nDo the thing.\n`;
 const at = "2026-10-16T09:00:00.000Z";
@@ -142,5 +143,34 @@ describe("chooseWork", () => {
     const chosen = await chooseWork([{ type: "command", command: "exit 1" }, { type: "backlog" }], { ...base, repoPath: repo, env: process.env });
     expect(chosen.items.map((i) => i.key)).toEqual(["backlog:20261016T090000Z-a.md"]);
     expect(chosen.notes[0]).toMatch(/^Skipped the command source for this run: /);
+  });
+});
+
+describe("the command source's tracker opt-in", () => {
+  it("marks an item to raise follow-ups only when its command source says it is a tracker", async () => {
+    const repo = repoWith({ "t.sh": `#!/bin/sh\n[ "$1" = list ] && echo '[{"id":"a"}]'\n` });
+    const listed = (source: SourceConfig) => listSource(source, { repoPath: repo, config: {}, env: process.env }).then((l) => l.items[0]);
+    expect(await listed({ type: "command", command: "sh t.sh", tracker: true })).toMatchObject({ raise: true });
+    expect(await listed({ type: "command", command: "sh t.sh" })).not.toHaveProperty("raise");
+  });
+});
+
+describe("raising a follow-up through a command source", () => {
+  const NOT_A_TRACKER = (name: string): string => `the ${name} source is not a command source with "tracker": true, so it cannot raise items; drop the waiting step with \`delivery drop-after\` or set "tracker": true on it`;
+  const ITEM = { file: "20261018T090000Z-tidy.md", text: "---\nstatus: open\npriority: 2\n---\nTidy the README.\n" };
+
+  it("runs `<command> raise` with the item as JSON on its standard input and takes the id it prints", async () => {
+    const repo = initTempRepo("raise-", { "t.sh": '#!/bin/sh\n[ "$1" = raise ] && cat > raised.json && echo "#42"\n' });
+    const raised = await raiseThrough({ type: "command", command: "sh t.sh", tracker: true }, ITEM, { repoPath: repo, env: process.env });
+    expect(raised).toEqual({ id: "#42" });
+    expect(JSON.parse(readFileSync(join(repo, "raised.json"), "utf-8"))).toEqual({ file: ITEM.file, status: "open", priority: 2, body: "Tidy the README.\n" });
+  });
+
+  it("says why when the command fails, prints no id, or the source cannot raise", async () => {
+    const repo = initTempRepo("raise-fail-", { "fails.sh": "echo down >&2; exit 3\n", "silent.sh": "exit 0\n" });
+    expect(await raiseThrough({ type: "command", command: "sh fails.sh", tracker: true }, ITEM, { repoPath: repo, env: process.env })).toEqual({ error: "`sh fails.sh raise` exited with code 3: down" });
+    expect(await raiseThrough({ type: "command", command: "sh silent.sh", tracker: true }, ITEM, { repoPath: repo, env: process.env })).toEqual({ error: "`sh silent.sh raise` printed no id" });
+    expect(await raiseThrough({ type: "backlog" }, ITEM, { repoPath: repo, env: process.env })).toEqual({ error: NOT_A_TRACKER("backlog") });
+    expect(await raiseThrough({ type: "command", command: "sh silent.sh" }, ITEM, { repoPath: repo, env: process.env })).toEqual({ error: NOT_A_TRACKER("command") });
   });
 });

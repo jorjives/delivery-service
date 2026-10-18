@@ -1,6 +1,7 @@
 import { z } from "zod";
-import { BACKLOG_DIR, isDue, itemTask, readBacklog } from "./backlog.js";
+import { BACKLOG_DIR, isDue, itemTask, parseItem, readBacklog } from "./backlog.js";
 import { sourceName, structureTask, type DeliveryConfig, type SourceConfig } from "./cli/config.js";
+import type { HeldItem } from "./follow-ups.js";
 import { awaitsMerge, type ItemState } from "./item-ledger.js";
 import type { RunRecord } from "./run-records.js";
 import type { TaskDef } from "./schema.js";
@@ -17,6 +18,8 @@ export interface WorkItem {
   resolve?: string;
   cadenceMs?: number;
   fallback: boolean;
+  /** Set only for a command source that says it is a tracker: follow-ups its items add are raised through it, not landed (spec §5.5). */
+  raise?: true;
 }
 
 export interface Listed {
@@ -53,6 +56,7 @@ async function listCommand(source: Extract<SourceConfig, { type: "command" }>, n
   return {
     items: tasks.data.map(({ id, ...taskDef }) => ({
       key: `${name}:${id}`, source: name, kind: "command" as const, id, taskDef, fallback: source.fallback === true, ...withWorkflow(taskDef),
+      ...(source.tracker === true ? { raise: true as const } : {}),
     })),
     notes: [],
   };
@@ -161,4 +165,26 @@ export async function chooseWork(
     }
   }
   return { items: chosen, notes };
+}
+
+export type Raised = { id: string } | { error: string };
+
+const RAISE_TIMEOUT_MS = 60_000;
+
+/** Open a held follow-up in the source's tracker: `<command> raise`, the item as JSON on stdin, the new id on stdout (spec §5.5). */
+export async function raiseThrough(source: SourceConfig, item: HeldItem, { repoPath, env }: { repoPath: string; env: NodeJS.ProcessEnv }): Promise<Raised> {
+  if (source.type !== "command" || source.tracker !== true) return { error: `the ${sourceName(source)} source is not a command source with "tracker": true, so it cannot raise items; drop the waiting step with \`delivery drop-after\` or set "tracker": true on it` };
+  const parsed = parseItem(item.file, item.text);
+  if (!parsed.ok) return { error: `${item.file} is not a valid item: ${parsed.reason}` };
+  const { file, status, workflow, priority, fields, body } = parsed.item;
+  const input = JSON.stringify({ file, status, ...(workflow === undefined ? {} : { workflow }), ...(priority === undefined ? {} : { priority }), ...fields, body });
+  const what = `\`${source.command} raise\``;
+  try {
+    const result = await runShell(source.command, ["raise"], { cwd: repoPath, timeoutMs: RAISE_TIMEOUT_MS, env, input });
+    if (result.exitCode !== 0) return { error: `${what} exited with code ${result.exitCode}: ${result.stderr.trim() || "it said nothing"}` };
+    const id = result.stdout.trim();
+    return id === "" ? { error: `${what} printed no id` } : { id };
+  } catch (err) {
+    return { error: `${what} could not be run: ${(err as Error).message}` };
+  }
 }
