@@ -155,6 +155,8 @@ export interface DeliveredTask {
   item: string;
   run: string;
   at: string;
+  /** The tracker reference a pull request for the delivery branch should close, such as "#12": set for an item from a github source. */
+  closes?: string;
 }
 
 export interface CloseContext {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createGhStandIn } from "./gh-stand-in.js";
 import { initTempRepo } from "./temp-repo.js";
-import { issueItem, listGithub, machineFields, raiseIssue, type Issue } from "./github-source.js";
+import { issueItem, listGithub, machineFields, githubIssueOf, raiseIssue, type Issue } from "./github-source.js";
 
 const issue = (over: Partial<Issue> = {}): Issue => ({
   number: 12, title: "Say hello", body: "Add a hello function.", createdAt: "2026-10-18T08:00:00Z", lastEditedAt: null,
@@ -122,5 +122,14 @@ describe("raising a follow-up as an issue", () => {
     const gh = createGhStandIn();
     gh.setMode("signed-out");
     expect(await raiseIssue(ITEM, { repoPath: initTempRepo("raise-gh-", { "package.json": "{}" }), env: envFor(gh) })).toEqual({ error: "gh is not signed in, or its sign-in has expired. Run gh auth login as the account the harness runs as." });
+  });
+});
+
+describe("which landed item is a GitHub issue", () => {
+  it("reads the issue number from a key of a github source, by the source's name", () => {
+    const sources = [{ type: "github" as const, name: "issues" }, { type: "backlog" as const }];
+    expect(githubIssueOf("issues:12", sources)).toBe(12);
+    expect(githubIssueOf("backlog:20261018T090000Z-a.md", sources)).toBeUndefined();
+    expect(githubIssueOf("github:12", sources)).toBeUndefined();
   });
 });

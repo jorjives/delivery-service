@@ -8,6 +8,7 @@ import type { CloseReport } from "../ports.js";
 import type { RunRecord } from "../run-records.js";
 import type { CloserRef, Continues, TaskDef } from "../schema.js";
 import { runShell } from "../shell.js";
+import { githubIssueOf } from "../github-source.js";
 import { taskIntent } from "../task-list.js";
 import { chooseWork, type WorkItem } from "../work-sources.js";
 import { afterLanding } from "./after-landing.js";
@@ -96,7 +97,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   }
   const deliveryLedger = deliveryLedgerPath(path);
   const landAndFinish = async (exitCode: ExitCode, list: TaskDef[] = []): Promise<ExitCode> => {
-    const handed = await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base }, exitCode, ctx);
+    const handed = await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base, sources }, exitCode, ctx);
     // Replaces, not combines with, the start-of-run answer: a step that failed then may since have been superseded.
     if (handed.closed !== undefined) afterDone = await after.landed(handed.closed);
     return finish(!afterDone && handed.exitCode === EXIT.ok ? EXIT.escalated : handed.exitCode, list);
@@ -135,13 +136,16 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
 type HandedOff = { exitCode: ExitCode; closed?: { landed: LandedEntry[]; commit: string } };
 
 /** The project's closer, once per run, when tasks have landed on the delivery branch since it last took it. A failed closer leaves the branch for the next run, and the run reports a stop. */
-async function handOff(target: { repoPath: string; closerRef: CloserRef; ledger: string; branch: string; base: string }, exitCode: ExitCode, ctx: CommandContext): Promise<HandedOff> {
+async function handOff(target: { repoPath: string; closerRef: CloserRef; ledger: string; branch: string; base: string; sources: readonly SourceConfig[] }, exitCode: ExitCode, ctx: CommandContext): Promise<HandedOff> {
   const { branch } = target;
   const { pending, landed } = await readDelivery(target.ledger, branch);
   if (pending.length === 0) return { exitCode };
   // Read before the closer acts: merge-back deletes the branch, and this is the commit every after step is about.
   const commit = await git(target.repoPath, ["rev-parse", `refs/heads/${branch}`]);
-  const report = await closeDeliveryBranch(target, landed.map((e) => ({ intent: e.intent, item: e.key, run: e.runId, at: e.at })));
+  const report = await closeDeliveryBranch(target, landed.map((e) => {
+    const issue = githubIssueOf(e.key, target.sources);
+    return { intent: e.intent, item: e.key, run: e.runId, at: e.at, ...(issue === undefined ? {} : { closes: `#${issue}` }) };
+  }));
   ctx.report.note(deliveryClosedNote(branch, report));
   if (report.status !== "DONE") return { exitCode: exitCode !== EXIT.ok ? exitCode : EXIT.escalated };
   return { exitCode, closed: { landed: pending, commit } };

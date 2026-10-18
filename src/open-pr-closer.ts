@@ -60,10 +60,12 @@ function describePullRequest(surfaceId: string, taskDef: TaskDef, ctx: CloseCont
 /** Title and body for the one pull request a delivery branch has: every task landed on it. */
 function describeDelivery(ctx: CloseContext, landed: readonly DeliveredTask[]): { title: string; body: string } {
   const count = landed.length === 1 ? "1 item" : `${landed.length} items`;
+  const closes = landed.flatMap((task) => (task.closes === undefined ? [] : [`Closes ${task.closes}`]));
   const body = [
     `The delivery harness landed these on ${ctx.branch}, each checked on top of the ones before it, for you to merge into ${ctx.baseBranch} as one:`,
     "",
     ...landed.map((task) => `- ${task.intent} (${task.item}, run ${task.run})`),
+    ...(closes.length === 0 ? [] : ["", ...closes]),
   ].join("\n");
   return { title: `Delivered work on ${ctx.branch} (${count})`, body };
 }

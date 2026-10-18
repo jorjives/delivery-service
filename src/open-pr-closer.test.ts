@@ -273,5 +273,20 @@ describe("the open-pr closer", () => {
       expect(standIn.pullRequests()).toHaveLength(1);
       expect(standIn.pullRequests()[0]?.body).toContain("Add a goodbye.");
     });
+
+    it("closes each landed issue when the delivery branch's pull request merges, and keeps the list current", async () => {
+      const issue12 = { intent: "Say hello", item: "github:12", run: "r1", at: "2026-10-18T09:00:00.000Z", closes: "#12" };
+      const tidy = { intent: "Tidy", item: "backlog:tidy.md", run: "r2", at: "2026-10-18T09:05:00.000Z" };
+      const issue13 = { intent: "Say goodbye", item: "github:13", run: "r3", at: "2026-10-18T09:10:00.000Z", closes: "#13" };
+      const base = await deliveryContext();
+
+      await closer().close({ ...base, delivery: { landed: [issue12, tidy] } }, accepted);
+      expect(standIn.pullRequests()[0]?.body).toContain("\n\nCloses #12");
+      expect(standIn.pullRequests()[0]?.body.match(/Closes #/g)).toHaveLength(1);
+
+      await closer().close({ ...base, delivery: { landed: [issue12, tidy, issue13] } }, accepted);
+      expect(standIn.pullRequests()).toHaveLength(1);
+      expect(standIn.pullRequests()[0]?.body).toContain("Closes #12\nCloses #13");
+    });
   });
 });

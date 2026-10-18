@@ -500,6 +500,10 @@ script of your own.
   new issue, without the label, so it waits for you to approve it. Its workflow, priority and any
   other fields go in a fenced `delivery` block at the end of the issue body, which is read back when
   you label it. A follow-up is opened once only, even if opening it is retried.
+- With the `open-pr` closer, the delivery branch's pull request has a `Closes #<n>` line for every
+  issue landed on it, so each issue closes when you merge the pull request. GitHub only acts on
+  `Closes` when the pull request is merged into the repository's default branch; into any other
+  branch, close the issues yourself.
 
 `parkAfter` is how many runs in a row an item may end without being delivered before it is set
 aside. It is a whole number, 1 or more, and defaults to 3.

@@ -1,7 +1,7 @@
 import { parse, stringify } from "yaml";
 import { z } from "zod";
 import { itemTask, parseItem } from "./backlog.js";
-import type { SourceConfig } from "./cli/config.js";
+import { sourceName, type SourceConfig } from "./cli/config.js";
 import type { HeldItem } from "./follow-ups.js";
 import { ghAccess, ghFailureOf, ghReason, runGh, type GhAccess } from "./gh.js";
 import type { TaskDef } from "./schema.js";
@@ -205,4 +205,11 @@ export async function raiseIssue(item: HeldItem, { repoPath, env }: { repoPath: 
   } catch (err) {
     return { error: ghProblem(err) };
   }
+}
+
+/** The issue a landed item's key names, when its source is a github source; undefined for any other item. */
+export function githubIssueOf(key: string, sources: readonly SourceConfig[]): number | undefined {
+  const source = sources.find((s) => s.type === "github" && key.startsWith(`${sourceName(s)}:`));
+  const id = source === undefined ? undefined : key.slice(sourceName(source).length + 1);
+  return id !== undefined && /^\d+$/.test(id) ? Number(id) : undefined;
 }
