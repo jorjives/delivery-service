@@ -57,6 +57,14 @@ test helper points it at a path that does not exist, so every command test sees 
 and prints the same output on every machine. `src/fence.test.ts` runs the real `bwrap` where it
 works and skips itself where it does not.
 
+`DELIVERY_TEST_SYSTEMCTL` names the `systemctl` that `delivery schedule` runs. The `delivery()` test
+helper points it at a path that does not exist and gives each command its own scratch
+`XDG_CONFIG_HOME`, so no test reaches your own systemd or writes into `~/.config/systemd/user`.
+A test that schedules something uses `createSystemctlStandIn()` from `src/systemctl-stand-in.ts`,
+which records each call and answers `show` with the properties the test sets.
+`src/cli/schedule.test.ts` checks the generated units with the real `systemd-analyze` where it is
+installed, and skips that check where it is not.
+
 The built-in reviews `delivery review` runs are data-only folders under `packs/` (a `pack.json` manifest, the agent's `scan.md` instructions and, optionally, its `fix.md` instructions for fixing a problem), shipped in the package; `src/packs/` is the engine. To see a review without an agent, run `npm run demo:packs-slice-1`: it reviews a copy of `examples/code-review-example` with the scripted reply `EXAMPLE_SCAN` from `src/packs/review-fixtures.ts`. Tests script a review the same way, with `scanScript(envelope)`, and write a review's record directly with `writeReview`. Every sentence a review prints comes from `src/packs/render.ts`; `src/packs/render.test.ts` holds them to the owner vocabulary.
 
 To prove a gate, a closer and role configurations work together, run one surface end to end

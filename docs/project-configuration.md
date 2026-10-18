@@ -364,6 +364,9 @@ item ledger, `ledger/` under your state folder (`~/.local/state/delivery-service
 closer did with it, is kept beside it, in the same folder. It is on this machine only: another
 clone of the repository keeps its own.
 
+To have `delivery run --sources` run by itself, on a timer, see `delivery schedule enable` in the
+[README](../README.md#run-it-on-a-schedule).
+
 #### The delivery branch
 
 Every item the run delivers lands on one branch, `delivery/<base>` (for example `delivery/main`), not

@@ -104,3 +104,10 @@ export function parseShow(text: string): Record<string, string> {
   }
   return properties;
 }
+
+/**
+ * Contributor-only test seam: the systemctl the harness runs. The `delivery()` test helper points it at a path that
+ * does not exist, so no command test can reach the contributor's own systemd. Documented in CONTRIBUTING.md.
+ */
+export const TEST_SYSTEMCTL = "DELIVERY_TEST_SYSTEMCTL";
+export const systemctlOf = (env: NodeJS.ProcessEnv): string => env[TEST_SYSTEMCTL] ?? "systemctl";

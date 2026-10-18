@@ -22,6 +22,7 @@ import type { ExitOnInterrupt } from "./context.js";
 import { runCli } from "./program.js";
 import { prepareRunDir, runIdFor, runPlace, runsRoot, supervisedPlace } from "../run-location.js";
 import { DEFAULT_CLOSER } from "./settings.js";
+import { TEST_SYSTEMCTL } from "./schedule.js";
 
 export { runsRoot };
 
@@ -70,6 +71,9 @@ export interface DeliveryIo {
 /** A `bwrap` that does not exist: the fence is absent in every command test, whatever the machine. */
 export const NO_BWRAP = join(tmpdir(), "delivery-no-bwrap", "bwrap");
 
+/** A `systemctl` that does not exist: no command test reaches the contributor's own systemd unless it names a stand-in. */
+export const NO_SYSTEMCTL_STAND_IN = join(tmpdir(), "delivery-no-systemctl", "systemctl");
+
 /**
  * Test support: run `delivery <args>` in process, capturing what it prints. Working copies go under a scratch state
  * folder unless the caller names one. The real runtime is signed out unless the caller names a config folder, so a
@@ -85,7 +89,9 @@ export async function delivery(args: string[], { cwd, env = {}, isTTY = false, a
     env: {
       ...signedOut(process.env),
       XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "command-state-")),
+      XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), "command-config-")),
       [TEST_BWRAP]: NO_BWRAP,
+      [TEST_SYSTEMCTL]: NO_SYSTEMCTL_STAND_IN,
       ...env,
     },
     stdin: Object.assign(Readable.from(answers.map((answer) => `${answer}\n`)), { isTTY: answers.length > 0 || undefined }),

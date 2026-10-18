@@ -211,6 +211,24 @@ is set aside: answer it with `delivery answer <item> "your answer"`, or deal wit
 
 Each item's work lands on one delivery branch, `delivery/main` (named after your base branch), built on everything landed before it: an item that finishes after another is rebuilt on top of it and checked again first, and one that conflicts is given a fresh attempt from the latest work. Your closer then takes the delivery branch once per run: `merge-back` merges it into `main`, `open-pr` opens one pull request for it (and updates that pull request's list on later runs), and `commit-to-branch` leaves it for you. A delivered item is marked `resolved` on the delivery branch and is not taken again until that branch is merged.
 
+## Run it on a schedule
+
+Turn on a schedule once and `delivery run --sources` runs by itself for this project from then on:
+
+```sh
+delivery schedule enable --every 30m   # or 1h, 6h, 12h, 1d (the default)
+```
+
+It installs a systemd user timer for the project, `delivery-<key>.timer` in
+`~/.config/systemd/user/`. A run missed while the machine was off happens as soon as it is back.
+Each run's output goes to the journal (`journalctl --user -u delivery-<key>.service`), and the run
+itself shows in `delivery status` and `delivery report` as if you had typed the command. Run
+`enable` again with a new `--every` to change how often. The timer runs while you are logged in;
+to have it run while you are logged out too, run `loginctl enable-linger` once.
+
+On a machine without systemd user timers, `enable` refuses and prints the equivalent line to add
+to your own crontab instead.
+
 ## Pick up a run that was interrupted
 
 If a run stops before it finishes, because you closed the terminal, pressed Ctrl-C or the

@@ -11,6 +11,8 @@ import type { ReviewCommandOptions } from "./review-command.js";
 import type { FixOptions } from "./fix-command.js";
 import { answerCommand, unparkCommand, type ItemOptions } from "./item-commands.js";
 import { dropAfterCommand } from "./after-command.js";
+import { scheduleEnableCommand, type ScheduleOptions } from "./schedule-command.js";
+import { DEFAULT_INTERVAL } from "./schedule.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
@@ -150,6 +152,19 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the steps belong to (default: the current folder)")
     .action(async (batch: string | undefined, options: ItemOptions, command: Command) => {
       exitCode = await dropAfterCommand(batch, options, ctxFor(command));
+    });
+
+  const schedule = program
+    .command("schedule")
+    .description("have `delivery run --sources` run on its own for this project, on a timer, catching up runs missed while the machine was off");
+
+  schedule
+    .command("enable")
+    .description("turn scheduling on for this project, or change how often it runs")
+    .option("--every <interval>", `how often to run: minutes that divide an hour (5m, 15m, 30m), hours that divide a day (1h, 6h, 12h), or 1d (default: ${DEFAULT_INTERVAL})`)
+    .option("--repo <path>", "the git repository to schedule (default: the current folder)")
+    .action(async (options: ScheduleOptions, command: Command) => {
+      exitCode = await scheduleEnableCommand(options, ctxFor(command));
     });
 
   program
