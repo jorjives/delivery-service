@@ -108,11 +108,13 @@ export function afterLanding(
       landFollowUps({ repoPath, ledger: deliveryLedgerPath(itemLedger), branch: state.batch.branch, base: state.batch.base, runId: `${state.batch.batch}-${index}` }, items),
     note: (line) => ctx.report.note(line),
   };
+  const noteStillPending = async (): Promise<void> =>
+    ctx.report.note(stillPending((await readAfter(ledger)).filter(isPending).reduce((n, s) => n + waiting(s), 0)));
   const runPending = async (): Promise<boolean> => {
     const left = (await readAfter(ledger)).filter(isPending);
     let done = true;
     for (const state of left) done = (await runBatch(state, deps)) && done;
-    if (!done) ctx.report.note(stillPending((await readAfter(ledger)).filter(isPending).reduce((n, s) => n + waiting(s), 0)));
+    if (!done) await noteStillPending();
     return done;
   };
   return {
@@ -127,9 +129,7 @@ export function afterLanding(
       const superseded = await supersedeOlder(ledger, older, batch);
       if (superseded > 0) ctx.report.note(`Skipped ${superseded === 1 ? "one waiting after-landing step" : `${superseded} waiting after-landing steps`} from an earlier run: this run's landing runs the same steps on a later commit.`);
       const state = (await readAfter(ledger)).find((s) => s.batch.batch === batch.batch);
-      if (state !== undefined && !(await runBatch(state, deps))) {
-        ctx.report.note(stillPending((await readAfter(ledger)).filter(isPending).reduce((n, s) => n + waiting(s), 0)));
-      }
+      if (state !== undefined && !(await runBatch(state, deps))) await noteStillPending();
       return nonePending();
     },
   };
