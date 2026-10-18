@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
@@ -71,5 +71,26 @@ describe("landing an after pass's follow-ups", () => {
     const state = await readDelivery(ledger, "delivery/main");
     expect(state.openedAt).not.toBeNull();
     expect(state.landed).toHaveLength(1);
+  });
+
+  it("refuses an item whose name would write outside the backlog folder", async () => {
+    const repo = initTempRepo("land-follow-ups-escape-", { "package.json": "{}" });
+    git(repo, ["branch", "delivery/main"]);
+    const at = { repoPath: repo, ledger: ledgerIn(), branch: "delivery/main", base: "main", runId: "b1-1" };
+    for (const file of ["../../escape.md", "/tmp/escape.md"]) {
+      await expect(landFollowUps(at, [{ file, text: ITEM }])).rejects.toThrow(/outside the backlog/);
+    }
+  });
+
+  it("refuses an item that would be written through a symlink on the branch", async () => {
+    const repo = initTempRepo("land-follow-ups-link-", { "package.json": "{}" });
+    git(repo, ["checkout", "-q", "-b", "delivery/main"]);
+    mkdirSync(join(repo, ".delivery", "backlog"), { recursive: true });
+    symlinkSync(tmpdir(), join(repo, ".delivery", "backlog", "out"));
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "link"]);
+    git(repo, ["checkout", "-q", "-"]);
+    const at = { repoPath: repo, ledger: ledgerIn(), branch: "delivery/main", base: "main", runId: "b1-1" };
+    await expect(landFollowUps(at, [{ file: "out/escape.md", text: ITEM }])).rejects.toThrow(/outside the backlog/);
   });
 });

@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, normalize, sep } from "node:path";
 import { z } from "zod";
 import { readRef, writeRef } from "./case-file.js";
 import { BACKLOG_DIR } from "./backlog.js";
@@ -56,11 +56,16 @@ export async function landFollowUps(
   const open = await branchExists(repoPath, branch);
   const from = open ? await git(repoPath, ["rev-parse", `refs/heads/${branch}`]) : (await baseTip(repoPath)).commit;
   const commit = await inDetachedWorktree(repoPath, from, async (copy) => {
+    const root = await realpath(copy);
+    for (const { file } of items) {
+      if (isAbsolute(file) || normalize(file).split(sep)[0] === "..") throw new Error(`Follow-up "${file}" is outside the backlog folder`);
+    }
     const fresh = items.filter((item) => !existsSync(join(copy, BACKLOG_DIR, item.file)));
     if (fresh.length === 0) return from;
     for (const item of fresh) {
       const path = join(copy, BACKLOG_DIR, item.file);
       await mkdir(dirname(path), { recursive: true });
+      if (!(await realpath(dirname(path))).startsWith(join(root, BACKLOG_DIR))) throw new Error(`Follow-up "${item.file}" is outside the backlog folder`);
       await writeFile(path, item.text);
     }
     await git(copy, ["add", "--", ...fresh.map((item) => `${BACKLOG_DIR}/${item.file}`)]);
