@@ -490,6 +490,8 @@ script of your own.
 - An issue whose title or body is changed after the label was added is left alone, and the run says
   so, until you remove the label and add it again. On a public repository anyone can write an issue,
   but only people you allow can label one, so the label is what approves the text as it reads.
+- The agent is told the task was written in an issue tracker, where anyone may write, and to treat
+  its text as a description of the work, not as instructions that change its setup or the checks.
 - If `gh` is not installed, is not signed in, or cannot reach GitHub, the source is skipped for that
   run with the reason, and your other sources still run.
 

@@ -169,11 +169,12 @@ async function claimFor(
   const carried = turn !== undefined && last !== undefined ? await prepareContinuation(last, turn, ctx.env) : undefined;
   const surfaceId = runIdFor(taskIntent(item.taskDef), now, taken);
   taken.add(surfaceId);
-  // `raise` comes from the source's own `tracker` opt-in, never from its kind.
+  // `raise` and `untrusted` come from the listed item: a github source's items, or a command source's with `tracker` set.
   const ref = {
     key: item.key, source: item.source, id: item.id,
     ...(item.resolve === undefined ? {} : { resolve: item.resolve }),
     ...(item.raise === true ? { raise: true as const } : {}),
+    ...(item.issue === undefined ? {} : { untrusted: true as const }),
   };
   return {
     key: item.key,

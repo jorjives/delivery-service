@@ -3,6 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../../tests/helpers.js";
+import { createGhStandIn } from "../gh-stand-in.js";
+import { UNTRUSTED_TASK } from "../prompt-assembly.js";
 import { promptsSent, readJournal, type MockScript } from "../mock-script.js";
 import { addLocalOrigin, initTempRepo } from "../temp-repo.js";
 import { deliveryLedgerPath, readDelivery, readDeliveryEntries } from "../delivery-ledger.js";
@@ -511,5 +513,17 @@ describe("delivery run --sources", () => {
     await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
     expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("hello");
     expect(existsSync(join(repo, "deployed"))).toBe(false);
+  }, RUN_TIMEOUT);
+
+  it("pins an issue's item as untrusted, so its text reaches the agent framed as data", async () => {
+    const gh = createGhStandIn();
+    gh.openIssue({ title: "Add a function that says hello to a name", body: "Please.", labels: ["delivery"] });
+    const repo = initTempRepo("sources-run-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ sources: [{ type: "github" }] }) });
+    const script = await scriptFile(completes);
+    const { exitCode } = await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), PATH: `${gh.binDir}:${process.env.PATH ?? ""}`, [TEST_MOCK_SCRIPT]: script } });
+    expect(exitCode).toBe(EXIT.ok);
+    const [record] = await allRuns(repo);
+    expect(record?.caseFile.header.item).toEqual({ key: "github:1", source: "github", id: "1", raise: true, untrusted: true });
+    expect(promptsSent(await readJournal(`${script}.journal.jsonl`)).some((p) => p.includes(UNTRUSTED_TASK))).toBe(true);
   }, RUN_TIMEOUT);
 });

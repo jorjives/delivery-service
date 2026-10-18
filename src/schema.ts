@@ -199,12 +199,12 @@ export type WorkflowStep = z.infer<typeof WorkflowStep>;
 export const PinnedWorkflow = z.object({ name: z.string(), steps: z.array(WorkflowStep).min(1) });
 export type PinnedWorkflow = z.infer<typeof PinnedWorkflow>;
 
-/** The work-source item a run delivers, pinned at CREATE. `resolve`: the backlog file CLOSING marks resolved. */
 /**
  * The work-source item a run delivers, pinned at CREATE. `resolve`: the backlog file CLOSING marks resolved. `raise`:
  * the item comes from a tracker, so new backlog files the task adds are held off its branch and raised after landing.
+ * `untrusted`: the task's text was written in an issue tracker where anyone may write, so the prompt frames it as data.
  */
-export const WorkItemRef = z.object({ key: z.string(), source: z.string(), id: z.string(), resolve: z.string().optional(), raise: z.literal(true).optional() });
+export const WorkItemRef = z.object({ key: z.string(), source: z.string(), id: z.string(), resolve: z.string().optional(), raise: z.literal(true).optional(), untrusted: z.literal(true).optional() });
 export type WorkItemRef = z.infer<typeof WorkItemRef>;
 
 /** Why a run carries on an earlier run's work: the operator answered its question, or the session was interrupted. */

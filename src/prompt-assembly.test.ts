@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { create, load, appendEntry, writeRef, initialCaseFile } from "./case-file.js";
-import { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE, LANDING_BOUNDARY, type PromptEvidence } from "./prompt-assembly.js";
+import { assemblePrompt, resolveEvidence, NO_PRIOR_TRIAGE, LANDING_BOUNDARY, UNTRUSTED_TASK, type PromptEvidence } from "./prompt-assembly.js";
 import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
 import { workerRoleConfig, gateMaintenanceRoleConfig } from "./role-config.js";
 import { triageRoleConfig } from "./triage-role-config.js";
@@ -102,6 +102,17 @@ describe("assemblePrompt", () => {
     const second = assemblePrompt(await load(dir), workerRoleConfig, await resolveEvidence(dir, await load(dir)));
     expect(second.prompt).toBe(first.prompt);
     expect(second.systemPrompt).toBe(first.systemPrompt);
+  });
+
+  it("frames a task from an issue tracker as data, and leaves every other prompt as it was", async () => {
+    const caseFile = await load(dir);
+    const evidence = await resolveEvidence(dir, caseFile);
+    const plain = assemblePrompt(caseFile, workerRoleConfig, evidence);
+    const fromIssue = { ...caseFile, header: { ...caseFile.header, item: { key: "github:12", source: "github", id: "12", raise: true as const, untrusted: true as const } } };
+    const framed = assemblePrompt(fromIssue, workerRoleConfig, evidence);
+    expect(framed.prompt).toContain(`## Task\n${UNTRUSTED_TASK}\n`);
+    expect(plain.prompt).not.toContain(UNTRUSTED_TASK);
+    expect(framed.prompt.replace(`${UNTRUSTED_TASK}\n`, "")).toBe(plain.prompt);
   });
 
   it("ignores the session key, so a retry re-sends the same request", async () => {
