@@ -1,8 +1,14 @@
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { z } from "zod";
 import { readRef, writeRef } from "./case-file.js";
 import { BACKLOG_DIR } from "./backlog.js";
+import { baseTip } from "./delivery-branch.js";
+import { recordDelivery } from "./delivery-ledger.js";
+import { inDetachedWorktree } from "./disposable-copy.js";
 import { FileNotFound } from "./errors.js";
-import { git } from "./git-exec.js";
+import { branchExists, git } from "./git-exec.js";
 
 /** A new backlog item file as an agent wrote it: its name and its whole text. */
 export const HeldItem = z.object({ file: z.string(), text: z.string() });
@@ -35,4 +41,36 @@ export async function holdFollowUps(dir: string, worktreePath: string, deliveryB
   await writeRef(dir, FOLLOW_UPS_REF, [...held.filter((item) => !added.some((a) => a.file === item.file)), ...added]);
   await git(worktreePath, ["rm", "-q", "--", ...paths]);
   await git(worktreePath, ["commit", "-q", "-m", `Hold follow-ups to raise in ${source}`]);
+}
+
+/**
+ * An after pass's follow-ups on a project whose backlog is its own folder: committed onto the delivery branch, which
+ * is opened again at the base's tip when the closer merged and deleted it, and recorded as landed so the next run's
+ * closer takes them (spec §5.7). Idempotent: an item already on the tip is not added again, and the landing is recorded
+ * once per `runId` (the delivery ledger keeps one landing per run).
+ */
+export async function landFollowUps(
+  { repoPath, ledger, branch, base, runId }: { repoPath: string; ledger: string; branch: string; base: string; runId: string },
+  items: readonly HeldItem[],
+): Promise<void> {
+  const open = await branchExists(repoPath, branch);
+  const from = open ? await git(repoPath, ["rev-parse", `refs/heads/${branch}`]) : (await baseTip(repoPath)).commit;
+  const commit = await inDetachedWorktree(repoPath, from, async (copy) => {
+    const fresh = items.filter((item) => !existsSync(join(copy, BACKLOG_DIR, item.file)));
+    if (fresh.length === 0) return from;
+    for (const item of fresh) {
+      const path = join(copy, BACKLOG_DIR, item.file);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, item.text);
+    }
+    await git(copy, ["add", "--", ...fresh.map((item) => `${BACKLOG_DIR}/${item.file}`)]);
+    await git(copy, ["commit", "-q", "-m", "Add follow-ups raised after landing"]);
+    return git(copy, ["rev-parse", "HEAD"]);
+  });
+  if (open && commit !== from) await git(repoPath, ["update-ref", `refs/heads/${branch}`, commit, from]);
+  if (!open) {
+    await git(repoPath, ["branch", "--", branch, commit]);
+    await recordDelivery(ledger, { t: "opened", branch, base, from });
+  }
+  await recordDelivery(ledger, { t: "landed", branch, runId, key: "after:follow-ups", intent: "Follow-ups raised after landing", commit });
 }

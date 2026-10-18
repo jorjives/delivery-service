@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
 import { initTempRepo } from "./temp-repo.js";
-import { heldFollowUps, holdFollowUps } from "./follow-ups.js";
+import { heldFollowUps, holdFollowUps, landFollowUps } from "./follow-ups.js";
+import { readDelivery } from "./delivery-ledger.js";
 
 const FOLLOW = "20261018T090000Z-tidy-the-readme.md";
 const ITEM = "---\nstatus: open\n---\nTidy the README.\n";
@@ -43,5 +44,32 @@ describe("holding a tracker task's follow-ups", () => {
 
   it("holds nothing for a case file that never held any", async () => {
     expect(await heldFollowUps(mkdtempSync(join(tmpdir(), "follow-ups-none-")))).toEqual([]);
+  });
+});
+
+describe("landing an after pass's follow-ups", () => {
+  const ledgerIn = () => join(mkdtempSync(join(tmpdir(), "follow-ups-ledger-")), "delivery.jsonl");
+
+  it("commits them onto the open delivery branch and records them as landed there", async () => {
+    const repo = initTempRepo("land-follow-ups-", { "package.json": "{}" });
+    git(repo, ["branch", "delivery/main"]);
+    const ledger = ledgerIn();
+    await landFollowUps({ repoPath: repo, ledger, branch: "delivery/main", base: "main", runId: "b1-1" }, [{ file: FOLLOW, text: ITEM }]);
+    expect(git(repo, ["show", `delivery/main:.delivery/backlog/${FOLLOW}`])).toBe(ITEM.trim());
+    expect((await readDelivery(ledger, "delivery/main")).pending).toEqual([expect.objectContaining({ runId: "b1-1", key: "after:follow-ups" })]);
+  });
+
+  it("opens the delivery branch again at the base when the closer deleted it, and adds nothing twice", async () => {
+    const repo = initTempRepo("land-follow-ups-reopen-", { "package.json": "{}" });
+    const ledger = ledgerIn();
+    const at = { repoPath: repo, ledger, branch: "delivery/main", base: "main", runId: "b1-1" };
+    await landFollowUps(at, [{ file: FOLLOW, text: ITEM }]);
+    const tip = git(repo, ["rev-parse", "delivery/main"]);
+    await landFollowUps(at, [{ file: FOLLOW, text: ITEM }]);
+    expect(git(repo, ["rev-parse", "delivery/main"])).toBe(tip);
+    expect(git(repo, ["rev-parse", "delivery/main~1"])).toBe(git(repo, ["rev-parse", "main"]));
+    const state = await readDelivery(ledger, "delivery/main");
+    expect(state.openedAt).not.toBeNull();
+    expect(state.landed).toHaveLength(1);
   });
 });
