@@ -410,7 +410,9 @@ A command source is run twice, through its own command line:
 `parkAfter` is how many runs in a row an item may end without being delivered before it is set
 aside. It is a whole number, 1 or more, and defaults to 3.
 
-`notify` is a command run at the end of every run, from the repository folder, with the run's report
-as JSON on its standard input: the same document `delivery report --json` prints, including
-`parked`, so it can tell you what was done and which item is waiting for your answer. A notify
-command that fails is reported in one line and never changes the run's outcome or exit code.
+`notify` is a command run at the end of every run, however it ended: work delivered, a stop, a run
+blocked before it started any task, or a run with nothing to do. It runs from the repository
+folder, with the run's report as JSON on its standard input: the same document
+`delivery report --json` prints, including `parked`, so it can tell you what was done and which
+item is waiting for your answer. A notify command that fails is reported in one line and never
+changes the run's outcome or exit code.

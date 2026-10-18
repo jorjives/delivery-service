@@ -5,7 +5,7 @@ import { DEFAULT_PARK_AFTER, ledgerPath, readItemLedger, recordDispatched, settl
 import { runIdFor } from "../run-location.js";
 import type { CloseReport } from "../ports.js";
 import type { RunRecord } from "../run-records.js";
-import type { CloserRef, Continues } from "../schema.js";
+import type { CloserRef, Continues, TaskDef } from "../schema.js";
 import { runShell } from "../shell.js";
 import { taskIntent } from "../task-list.js";
 import { chooseWork, type WorkItem } from "../work-sources.js";
@@ -54,6 +54,10 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const path = ledgerPath(repoPath, ctx.env);
   const parkAfter = config.parkAfter ?? DEFAULT_PARK_AFTER;
   const sources = config.sources ?? DEFAULT_SOURCES;
+  const finish = async (exitCode: ExitCode, list: TaskDef[] = []): Promise<ExitCode> => {
+    await closingReport(repoPath, { kind: "list" }, list, ctx, config.notify);
+    return exitCode;
+  };
 
   // A run that ended after its last ledger write is settled now, from its record.
   let records = await allRuns(repoPath);
@@ -94,11 +98,11 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const reconciled = claims.length === 0 && !waiting ? undefined : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env);
   if (reconciled?.ready === false) {
     ctx.report.note(blockedNote(reconciled.reason));
-    return EXIT.escalated;
+    return finish(EXIT.escalated);
   }
   if (claims.length === 0) {
     ctx.report.note(NOTHING_TO_WORK);
-    return handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base }, EXIT.ok, ctx);
+    return finish(await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base }, EXIT.ok, ctx));
   }
   claims.forEach((claim, index) => (claim.position = { task: index + 1, of: claims.length }));
 
@@ -115,8 +119,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   };
   const exitCode = await runQueue(claims.map((c) => c.taskDef), project, { repoPath, carryOn: true, claims: source }, ctx);
   const handedOff = await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base }, exitCode, ctx);
-  await closingReport(repoPath, { kind: "list" }, claims.map((c) => c.taskDef), ctx, config.notify);
-  return handedOff;
+  return finish(handedOff, claims.map((c) => c.taskDef));
 }
 
 /** The project's closer, once per run, when tasks have landed on the delivery branch since it last took it. A failed closer leaves the branch for the next run, and the run reports a stop. */

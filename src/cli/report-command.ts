@@ -175,19 +175,29 @@ export async function reportCommand(runId: string | undefined, options: ReportOp
  * counts in one sentence, where to read the rest, and the report itself saved
  * as the fixed pair for whoever was not there. It never changes how the command
  * ends: a report that cannot be read or saved is said in one line, and the run's
- * own outcome and exit code stand.
+ * own outcome and exit code stand. The project's `notify` command is run with the
+ * report whenever it could be read, even when there is nothing to say in words or
+ * the copy on disk could not be saved.
  */
 export async function closingReport(repoPath: string, subject: ReportSubject, list: TaskDef[], ctx: CommandContext, notify?: string): Promise<void> {
+  let report: Report;
   try {
-    const report = await readReport(repoPath, subject, list, { env: ctx.env });
-    if (report.empty) return;
-    ctx.report.note(closingSentence(report.doc));
-    ctx.report.note(reportPointer(report.doc));
-    await saveReport(repoPath, report.doc, report.lines({ colour: false, saved: SAVED_TO }));
-    if (notify !== undefined) await notifyWith(notify, report.doc, repoPath, ctx);
+    report = await readReport(repoPath, subject, list, { env: ctx.env });
   } catch (err) {
     ctx.report.note(notSaved(err));
+    return;
   }
+  // The operator hears about every run, however it ended, even one with nothing to tell in words (spec §5.7).
+  if (!report.empty) {
+    try {
+      ctx.report.note(closingSentence(report.doc));
+      ctx.report.note(reportPointer(report.doc));
+      await saveReport(repoPath, report.doc, report.lines({ colour: false, saved: SAVED_TO }));
+    } catch (err) {
+      ctx.report.note(notSaved(err));
+    }
+  }
+  if (notify !== undefined) await notifyWith(notify, report.doc, repoPath, ctx);
 }
 
 export const notifyFailed = (detail: string): string => `Your notify command did not work: ${detail}. The run itself is unaffected.`;

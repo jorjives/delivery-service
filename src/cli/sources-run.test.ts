@@ -307,4 +307,32 @@ describe("delivery run --sources", () => {
     expect(sent.schema).toBe("delivery.report/1");
     expect(sent.parked).toEqual([expect.objectContaining({ item: KEY, question: "Formal or casual greeting?" })]);
   }, RUN_TIMEOUT);
+
+  it("runs the notify command on a run with nothing to work", async () => {
+    const repo = initTempRepo("sources-notify-empty-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ notify: "cat > notified.json" }) });
+    const { stdout } = await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+    expect(stdout).toContain(NOTHING_TO_WORK);
+    const sent = JSON.parse(readFileSync(join(repo, "notified.json"), "utf-8")) as { schema: string };
+    expect(sent.schema).toBe("delivery.report/1");
+  }, RUN_TIMEOUT);
+
+  it("runs the notify command on a run that starts no task because the delivery branch is blocked", async () => {
+    const repo = project({ "shared.txt": "one\n", "delivery.config.json": JSON.stringify({ notify: "cat > notified.json" }) });
+    git(repo, ["branch", "delivery/main"]);
+    const scratch = join(mkdtempSync(join(tmpdir(), "sources-notify-blocked-")), "wt");
+    git(repo, ["worktree", "add", "-q", scratch, "delivery/main"]);
+    writeFileSync(join(scratch, "shared.txt"), "delivered\n");
+    git(scratch, ["commit", "-q", "-am", "delivered"]);
+    git(repo, ["worktree", "remove", "--force", scratch]);
+    writeFileSync(join(repo, "shared.txt"), "the owner's\n");
+    git(repo, ["commit", "-q", "-am", "the owner's"]);
+
+    const { exitCode } = await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+    expect(exitCode).toBe(EXIT.escalated);
+    // The branch was made by hand, so the delivery ledger holds a `blocked` entry but no `opened` one, and
+    // `deliveryIn` reports `delivery: null`: assert the notification arrived, not the blocked reason.
+    const sent = JSON.parse(readFileSync(join(repo, "notified.json"), "utf-8")) as { schema: string };
+    expect(sent.schema).toBe("delivery.report/1");
+  }, RUN_TIMEOUT);
 });
