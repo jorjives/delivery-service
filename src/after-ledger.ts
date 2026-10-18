@@ -12,15 +12,21 @@ export type FollowUp = z.infer<typeof FollowUp>;
 /** The built-in first step whenever landed tasks held follow-ups: raise them through their source (spec §5.7). */
 export const RAISE = { raise: true as const };
 
+/** The built-in step that closes delivered GitHub issues with a comment, for every closer but open-pr (spec §5.5). `where`: the branch the work is on once the closer has acted. */
+const CloseIssues = z.object({ closeIssues: z.array(z.object({ item: z.string(), number: z.number().int().positive() })).min(1), where: z.string() }).strict();
+
 /**
  * One step of a batch, as recorded when the batch began: which `after` list it came from (`project`, a workflow's
- * name, or `follow-ups`), how reports name it, the step itself, and, for an agent pass on a tracker-backed project,
+ * name, `follow-ups`, or `issues`), how reports name it, the step itself, and, for an agent pass on a tracker-backed project,
  * the source its new items are raised through (absent: they land on the delivery branch).
  * What is recorded is what was planned and what reports show; a step that is still to run is run as the config defines it
  * at that time (`currentStep`, Task 8), so fixing a typo repairs a stuck step.
  */
-export const PlannedStep = z.object({ for: z.string(), label: z.string(), step: z.union([AfterStep, z.object({ raise: z.literal(true) }).strict()]), raiseVia: z.string().optional() });
+export const PlannedStep = z.object({ for: z.string(), label: z.string(), step: z.union([AfterStep, z.object({ raise: z.literal(true) }).strict(), CloseIssues]), raiseVia: z.string().optional() });
 export type PlannedStep = z.infer<typeof PlannedStep>;
+
+/** A step the harness plans itself, never from the config: run as recorded and never superseded. */
+export const isBuiltIn = (step: PlannedStep["step"]): boolean => "raise" in step || "closeIssues" in step;
 
 /**
  * What happened after work landed (spec §5.7): a batch begun once the closer took the delivery branch, what an agent
@@ -33,6 +39,7 @@ export const AfterEntry = z.discriminatedUnion("t", [
   }),
   z.object({ t: z.literal("held"), batch: z.string(), index: z.number().int().nonnegative(), items: z.array(HeldItem), discarded: z.array(z.string()), at: z.string() }),
   z.object({ t: z.literal("raised"), batch: z.string(), file: z.string(), id: z.string(), at: z.string() }),
+  z.object({ t: z.literal("completed"), batch: z.string(), item: z.string(), at: z.string() }),
   z.object({ t: z.literal("step"), batch: z.string(), index: z.number().int().nonnegative(), status: z.enum(["done", "failed", "skipped"]), detail: z.string(), at: z.string() }),
 ]);
 export type AfterEntry = z.infer<typeof AfterEntry>;
@@ -50,6 +57,8 @@ export interface BatchState {
   next: number;
   steps: { status: StepStatus; detail: string | null; at: string | null }[];
   raised: Map<string, string>;
+  /** The items whose issues were closed in this batch, so a retry closes only the rest. */
+  completed: Set<string>;
   held: Map<number, { items: HeldItem[]; discarded: string[] }>;
 }
 
@@ -61,12 +70,13 @@ export function foldAfter(entries: readonly AfterEntry[]): BatchState[] {
   const states = new Map<string, BatchState>();
   for (const entry of entries) {
     if (entry.t === "batch") {
-      states.set(entry.batch, { batch: entry, next: 0, steps: entry.steps.map(() => ({ status: "pending", detail: null, at: null })), raised: new Map(), held: new Map() });
+      states.set(entry.batch, { batch: entry, next: 0, steps: entry.steps.map(() => ({ status: "pending", detail: null, at: null })), raised: new Map(), completed: new Set(), held: new Map() });
       continue;
     }
     const state = states.get(entry.batch);
     if (state === undefined) continue;
     if (entry.t === "raised") state.raised.set(entry.file, entry.id);
+    if (entry.t === "completed") state.completed.add(entry.item);
     if (entry.t === "held") state.held.set(entry.index, { items: entry.items, discarded: entry.discarded });
     if (entry.t === "step" && !finished(state.steps[entry.index]?.status)) state.steps[entry.index] = { status: entry.status, detail: entry.detail, at: entry.at };
   }

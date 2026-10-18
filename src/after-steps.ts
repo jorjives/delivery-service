@@ -1,5 +1,5 @@
 import { isCommandStep } from "./cli/config.js";
-import { finished, recordAfter, type BatchEntry, type BatchState, type PlannedStep } from "./after-ledger.js";
+import { finished, isBuiltIn, recordAfter, type BatchEntry, type BatchState, type PlannedStep } from "./after-ledger.js";
 import { inDetachedWorktree } from "./disposable-copy.js";
 import type { HeldItem } from "./follow-ups.js";
 import { runShell } from "./shell.js";
@@ -14,6 +14,7 @@ export interface AfterDeps {
   raise: (source: string, item: HeldItem) => Promise<Raised>;
   resolve: (planned: PlannedStep, index: number, state: BatchState) => PlannedStep["step"] | undefined;
   agentPass: (prompt: string, at: { state: BatchState; index: number }) => Promise<AgentPassResult>;
+  closeIssue: (number: number, comment: string) => Promise<string | undefined>;
   landFollowUps: (items: HeldItem[], at: { state: BatchState; index: number }) => Promise<void>;
   note: (line: string) => void;
 }
@@ -50,8 +51,21 @@ async function raiseEach(items: readonly (HeldItem & { source: string })[], stat
   return undefined;
 }
 
+/** Close each delivered issue not yet closed in this batch, recording each as it goes, so a retry closes only the rest. */
+async function closeEach(step: { closeIssues: { item: string; number: number }[]; where: string }, state: BatchState, deps: AfterDeps): Promise<string | undefined> {
+  for (const { item, number } of step.closeIssues) {
+    if (state.completed.has(item)) continue;
+    const failed = await deps.closeIssue(number, `Delivered by the delivery harness in ${state.batch.commit}, on ${step.where}.`);
+    if (failed !== undefined) return `closing GitHub issue #${number} failed: ${failed}`;
+    await recordAfter(deps.ledger, { t: "completed", batch: state.batch.batch, item });
+    state.completed.add(item);
+  }
+  return undefined;
+}
+
 /** One step's own work, without its check: undefined when it worked, otherwise why not. `step` is the step as the config defines it now. */
 async function work(planned: PlannedStep, step: PlannedStep["step"], index: number, state: BatchState, deps: AfterDeps): Promise<string | undefined> {
+  if ("closeIssues" in step) return closeEach(step, state, deps);
   if ("raise" in step) return raiseEach(state.batch.followUps, state, deps);
   if (isCommandStep(step)) {
     return step.in === "base"
@@ -109,16 +123,16 @@ export async function runBatch(state: BatchState, deps: AfterDeps): Promise<bool
  * A batch that has just begun supersedes the unfinished command and agent steps of older batches that came from the same
  * `after` list (the project's, or the same workflow's): it runs that list on a later commit, which holds everything the
  * older one did, and running the older step from its own commit would put older work back over newer. Kept: the built-in
- * raise (each held follow-up still has to be raised) and an agent step that has already left items to raise or land. Steps
+ * steps (each held follow-up still has to be raised, each delivered issue closed) and an agent step that has already left items to raise or land. Steps
  * from a list the new batch does not contain stay pending. Returns how many steps it skipped.
  */
 export async function supersedeOlder(ledger: string, older: readonly BatchState[], newer: Pick<BatchEntry, "batch" | "steps">): Promise<number> {
-  const lists = new Set(newer.steps.filter((planned) => !("raise" in planned.step)).map((planned) => planned.for));
+  const lists = new Set(newer.steps.filter((planned) => !isBuiltIn(planned.step)).map((planned) => planned.for));
   let skipped = 0;
   for (const state of older) {
     if (state.batch.batch === newer.batch) continue;
     for (const [index, planned] of state.batch.steps.entries()) {
-      if (finished(state.steps[index]?.status) || "raise" in planned.step || !lists.has(planned.for) || state.held.has(index)) continue;
+      if (finished(state.steps[index]?.status) || isBuiltIn(planned.step) || !lists.has(planned.for) || state.held.has(index)) continue;
       await recordAfter(ledger, { t: "step", batch: state.batch.batch, index, status: "skipped", detail: `superseded by ${newer.batch}, which runs the same steps on a later commit` });
       skipped += 1;
     }

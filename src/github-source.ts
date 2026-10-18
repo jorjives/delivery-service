@@ -213,3 +213,13 @@ export function githubIssueOf(key: string, sources: readonly SourceConfig[]): nu
   const id = source === undefined ? undefined : key.slice(sourceName(source).length + 1);
   return id !== undefined && /^\d+$/.test(id) ? Number(id) : undefined;
 }
+
+/** Close a delivered issue with a comment saying where the work is: undefined when done (or already closed), otherwise why not. */
+export async function closeIssue(number: number, comment: string, { repoPath, env }: { repoPath: string; env: NodeJS.ProcessEnv }): Promise<string | undefined> {
+  try {
+    await runGh(["issue", "close", String(number), "--comment", comment], { cwd: repoPath, env, timeoutMs: GH_TIMEOUT_MS });
+    return undefined;
+  } catch (err) {
+    return ghProblem(err);
+  }
+}

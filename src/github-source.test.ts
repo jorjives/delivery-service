@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createGhStandIn } from "./gh-stand-in.js";
 import { initTempRepo } from "./temp-repo.js";
-import { issueItem, listGithub, machineFields, githubIssueOf, raiseIssue, type Issue } from "./github-source.js";
+import { issueItem, listGithub, machineFields, closeIssue, githubIssueOf, raiseIssue, type Issue } from "./github-source.js";
 
 const issue = (over: Partial<Issue> = {}): Issue => ({
   number: 12, title: "Say hello", body: "Add a hello function.", createdAt: "2026-10-18T08:00:00Z", lastEditedAt: null,
@@ -131,5 +131,18 @@ describe("which landed item is a GitHub issue", () => {
     expect(githubIssueOf("issues:12", sources)).toBe(12);
     expect(githubIssueOf("backlog:20261018T090000Z-a.md", sources)).toBeUndefined();
     expect(githubIssueOf("github:12", sources)).toBeUndefined();
+  });
+});
+
+describe("closing a delivered issue", () => {
+  it("closes it with the comment, and says why when gh cannot", async () => {
+    const gh = createGhStandIn();
+    const n = gh.openIssue({ title: "Say hello", body: "b", labels: ["delivery"] });
+    const repo = initTempRepo("close-gh-", { "package.json": "{}" });
+    const env = { ...process.env, PATH: `${gh.binDir}:${process.env.PATH ?? ""}` };
+    expect(await closeIssue(n, "Delivered.", { repoPath: repo, env })).toBeUndefined();
+    expect(gh.issues()[0]).toMatchObject({ state: "CLOSED", comments: ["Delivered."] });
+    gh.setMode("offline");
+    expect(await closeIssue(n, "Delivered.", { repoPath: repo, env })).toBe("gh could not reach GitHub. Check the network.");
   });
 });

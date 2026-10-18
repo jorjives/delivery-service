@@ -1,12 +1,13 @@
 import type { SessionEnvironment } from "../agent-invoke.js";
 import { runAgentPass } from "../after-agent.js";
-import { afterLedgerPath, isPending, readAfter, recordAfter, waiting, RAISE, type BatchEntry, type BatchState, type FollowUp, type PlannedStep } from "../after-ledger.js";
+import { afterLedgerPath, isBuiltIn, isPending, readAfter, recordAfter, waiting, RAISE, type BatchEntry, type BatchState, type FollowUp, type PlannedStep } from "../after-ledger.js";
 import { runBatch, stillPending, supersedeOlder, type AfterDeps } from "../after-steps.js";
 import { deliveryLedgerPath, type LandedEntry } from "../delivery-ledger.js";
+import { githubIssueOf, closeIssue } from "../github-source.js";
 import { heldFollowUps, landFollowUps } from "../follow-ups.js";
 import type { RunRecord } from "../run-records.js";
 import { runIdFor } from "../run-location.js";
-import type { FenceRecord } from "../schema.js";
+import type { CloserRef, FenceRecord } from "../schema.js";
 import { raiseThrough } from "../work-sources.js";
 import { agentSession } from "./agent-session.js";
 import { DEFAULT_SOURCES, sourceName, stepLabel, type AfterStep, type DeliveryConfig } from "./config.js";
@@ -28,7 +29,7 @@ export function afterFor(record: RunRecord, config: DeliveryConfig): { key: stri
  */
 export function currentStep(config: DeliveryConfig, steps: readonly PlannedStep[], index: number): PlannedStep["step"] | undefined {
   const planned = steps[index] as PlannedStep;
-  if ("raise" in planned.step) return planned.step;
+  if (isBuiltIn(planned.step)) return planned.step;
   const position = steps.slice(0, index).filter((step) => step.for === planned.for).length;
   return (planned.for === "project" ? config.after : config.workflows?.[planned.for]?.after)?.[position];
 }
@@ -39,13 +40,19 @@ export function currentStep(config: DeliveryConfig, steps: readonly PlannedStep[
  * in the order they landed. Undefined when there is nothing to do.
  */
 export async function newBatch(
-  { landed, records, config, branch, base, commit, now }: { landed: readonly LandedEntry[]; records: readonly RunRecord[]; config: DeliveryConfig; branch: string; base: string; commit: string; now: Date },
+  { landed, records, config, branch, base, commit, now, closer }: { landed: readonly LandedEntry[]; records: readonly RunRecord[]; config: DeliveryConfig; branch: string; base: string; commit: string; now: Date; closer: CloserRef },
 ): Promise<Omit<BatchEntry, "at"> | undefined> {
   const tasks = landed.flatMap((entry) => {
     const record = records.find((r) => r.runId === entry.runId);
     return record === undefined ? [] : [{ entry, record }];
   });
   if (tasks.length === 0) return undefined;
+  const sources = config.sources ?? DEFAULT_SOURCES;
+  // With open-pr, the pull request's Closes lines close the issues when it merges; every other closer closes them here.
+  const issues = closer.type === "open-pr" ? [] : tasks.flatMap(({ entry }) => {
+    const number = githubIssueOf(entry.key, sources);
+    return number === undefined ? [] : [{ item: entry.key, number }];
+  });
   const followUps: FollowUp[] = [];
   for (const { record } of tasks) {
     const item = record.caseFile.header.item;
@@ -60,6 +67,7 @@ export async function newBatch(
   }
   const steps: PlannedStep[] = [
     ...(followUps.length === 0 ? [] : [{ for: "follow-ups", label: "Raise follow-ups", step: RAISE }]),
+    ...(issues.length === 0 ? [] : [{ for: "issues", label: "Close delivered issues", step: { closeIssues: issues, where: closer.type === "merge-back" ? base : branch } }]),
     ...groups.flatMap((g) => g.steps.map((step) => ({ for: g.key, label: stepLabel(step), step, ...(g.raiseVia === undefined ? {} : { raiseVia: g.raiseVia }) }))),
   ];
   if (steps.length === 0) return undefined;
@@ -104,6 +112,7 @@ export function afterLanding(
         ...(project.agent === undefined ? {} : { agent: project.agent }),
         ...(project.domainPrompt === undefined ? {} : { domain: project.domainPrompt }),
       }),
+    closeIssue: (number, comment) => closeIssue(number, comment, { repoPath, env: ctx.env }),
     landFollowUps: (items, { state, index }) =>
       landFollowUps({ repoPath, ledger: deliveryLedgerPath(itemLedger), branch: state.batch.branch, base: state.batch.base, runId: `${state.batch.batch}-${index}` }, items),
     note: (line) => ctx.report.note(line),
@@ -121,7 +130,7 @@ export function afterLanding(
     pending: runPending,
     landed: async ({ landed, commit }) => {
       const nonePending = async (): Promise<boolean> => !(await readAfter(ledger)).some(isPending);
-      const batch = await newBatch({ landed, records: await records(), config, branch, base, commit, now: new Date() });
+      const batch = await newBatch({ landed, records: await records(), config, branch, base, commit, now: new Date(), closer: project.closerRef });
       if (batch === undefined) return nonePending();
       const older = await readAfter(ledger);
       await recordAfter(ledger, batch);

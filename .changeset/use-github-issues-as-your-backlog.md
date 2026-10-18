@@ -7,3 +7,5 @@ A `github` work source reads your GitHub issues as the backlog, through the `gh`
 A follow-up an agent raises while working an issue is opened as a new, unlabelled issue once the work has landed, once only, rather than committed to the repository.
 
 With the `open-pr` closer, the delivery branch's pull request closes each delivered issue when it merges.
+
+With any other closer, each delivered issue is closed with a comment naming the commit, once only.

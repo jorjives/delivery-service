@@ -544,4 +544,14 @@ describe("delivery run --sources", () => {
     expect(gh.issues()[1]).toMatchObject({ title: "Add a goodbye function too.", labels: [], state: "OPEN" });
     expect(git(repo, ["ls-tree", "-r", "--name-only", "delivery/main", "--", ".delivery/backlog/"])).toBe("");
   }, RUN_TIMEOUT);
+
+  it("closes a delivered issue with a comment naming the commit once the closer has taken the work", async () => {
+    const gh = createGhStandIn();
+    gh.openIssue({ title: "Add a function that says hello to a name", body: "Please.", labels: ["delivery"] });
+    const repo = initTempRepo("sources-run-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ sources: [{ type: "github" }] }) });
+    const { exitCode } = await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), PATH: `${gh.binDir}:${process.env.PATH ?? ""}`, [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+    expect(exitCode).toBe(EXIT.ok);
+    const tip = git(repo, ["rev-parse", "delivery/main"]);
+    expect(gh.issues()[0]).toMatchObject({ state: "CLOSED", comments: [`Delivered by the delivery harness in ${tip}, on delivery/main.`] });
+  }, RUN_TIMEOUT);
 });

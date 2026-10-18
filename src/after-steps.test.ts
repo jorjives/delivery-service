@@ -14,11 +14,13 @@ async function batchOf(steps: PlannedStep[], followUps: { run: string; source: s
   await recordAfter(ledger, { t: "batch", batch: "b1", branch: "delivery/main", base: "main", commit, landed: [], followUps, steps });
   const notes: string[] = [];
   const raisedCalls: string[] = [];
+  const closedCalls: string[] = [];
   const deps: AfterDeps = {
     repoPath: repo, env: process.env, ledger,
     resolve: (planned) => planned.step,
     raise: async (_source, item) => { raisedCalls.push(item.file); return { id: `#${raisedCalls.length}` }; },
     agentPass: async () => ({ ok: true, items: [], discarded: [] }),
+    closeIssue: async (number, comment) => { closedCalls.push(`${number}: ${comment}`); return number === 99 ? "gh said: no" : undefined; },
     landFollowUps: async () => undefined,
     note: (line) => notes.push(line),
   };
@@ -27,7 +29,7 @@ async function batchOf(steps: PlannedStep[], followUps: { run: string; source: s
     if (!first) throw new Error("no batch recorded");
     return first;
   };
-  return { repo, ledger, commit, deps, notes, raisedCalls, state };
+  return { repo, ledger, commit, deps, notes, raisedCalls, closedCalls, state };
 }
 
 describe("running a batch of after steps", () => {
@@ -152,5 +154,24 @@ describe("running a batch of after steps", () => {
     deps.agentPass = async () => ({ ok: true, items: [{ file: "d.md", text: "d" }], discarded: [] });
     expect(await runBatch(await state(), deps)).toBe(true);
     expect(landed).toEqual(["d.md"]);
+  });
+});
+
+describe("closing delivered issues after landing", () => {
+  it("closes each issue once with a comment naming the commit, and a retry closes only the rest", async () => {
+    const step: PlannedStep = { for: "issues", label: "Close delivered issues", step: { closeIssues: [{ item: "github:12", number: 12 }, { item: "github:99", number: 99 }], where: "delivery/main" } };
+    const { commit, deps, closedCalls, state } = await batchOf([step]);
+    expect(await runBatch(await state(), deps)).toBe(false);
+    expect(closedCalls).toEqual([`12: Delivered by the delivery harness in ${commit}, on delivery/main.`, `99: Delivered by the delivery harness in ${commit}, on delivery/main.`]);
+    expect((await state()).steps[0]?.detail).toBe("closing GitHub issue #99 failed: gh said: no");
+    closedCalls.length = 0;
+    await runBatch(await state(), deps);
+    expect(closedCalls.map((c) => c.split(":")[0])).toEqual(["99"]);
+  });
+
+  it("is never superseded by a later batch", async () => {
+    const step: PlannedStep = { for: "issues", label: "Close delivered issues", step: { closeIssues: [{ item: "github:12", number: 12 }], where: "main" } };
+    const { ledger, state } = await batchOf([step]);
+    expect(await supersedeOlder(ledger, [await state()], { batch: "b2", steps: [step] })).toBe(0);
   });
 });
