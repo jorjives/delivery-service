@@ -311,6 +311,10 @@ project is, what checks the work, what happens to work that passes, and what you
 done, one thing at a time, and writes the file for you. The [readme](../README.md#configure-it-once)
 lists every setting.
 
+A workflow may also carry its own `after` list, which replaces the project's `after` steps for
+the items it delivers (see "After landing" below); `"after": []` runs none, for a workflow whose
+work has nothing to deploy or announce.
+
 ### A backlog of work items
 
 Rather than a fixed list, a project can keep its work as items in `.delivery/backlog/`. Each item

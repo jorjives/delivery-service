@@ -18,7 +18,7 @@ export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
 /** The keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `parkAfter` and `notify`";
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `after`, `parkAfter` and `notify`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -126,7 +126,29 @@ export const StepConfig = z
   .strict();
 export type StepConfig = z.infer<typeof StepConfig>;
 
-export const WorkflowConfig = z.object({ steps: z.array(StepConfig).min(1) }).strict();
+/**
+ * One thing done once a run's work has landed and the closer has taken it (spec §5.7): a command of the operator's,
+ * run in their own checkout (`base`) or in a throwaway copy of what landed (`worktree`, the default), or an agent pass.
+ * `check` is a command whose success confirms the step, such as `curl -f https://…/health` after a deploy.
+ */
+const CommandAfter = z.object({ name: Written.optional(), run: Written, in: z.enum(["base", "worktree"]).optional(), check: Written.optional() }).strict();
+const AgentAfter = z.object({ name: Written.optional(), prompt: Prose, check: Written.optional() }).strict();
+export const AfterStep = z.union([CommandAfter, AgentAfter]);
+export type AfterStep = z.infer<typeof AfterStep>;
+
+export const isCommandStep = (step: AfterStep): step is z.infer<typeof CommandAfter> => "run" in step;
+
+const LABEL_LIMIT = 60;
+/** How a report names a step: its `name`, else its command, else its prompt's first line. */
+export function stepLabel(step: AfterStep): string {
+  if (step.name !== undefined) return step.name;
+  if (isCommandStep(step)) return step.run;
+  const first = step.prompt.split("\n").find((line) => line.trim() !== "")?.trim() ?? "agent pass";
+  return first.length <= LABEL_LIMIT ? first : `${first.slice(0, LABEL_LIMIT - 1)}…`;
+}
+
+// `after` replaces the project's own after steps for a task delivered through this workflow; an empty list runs none.
+export const WorkflowConfig = z.object({ steps: z.array(StepConfig).min(1), after: z.array(AfterStep).optional() }).strict();
 export type WorkflowConfig = z.infer<typeof WorkflowConfig>;
 
 /** One place `delivery run --sources` finds work. A `fallback` is read only when no other source has any. */
@@ -180,6 +202,8 @@ export const DeliveryConfig = z
     sources: z.array(SourceConfig).min(1).optional(),
     // How many runs in a row an item may end undelivered before it is set aside (default 3).
     parkAfter: z.number().int().positive().optional(),
+    // Steps run once per run, after the closer has taken the delivery branch and only when a task landed (spec §5.7).
+    after: z.array(AfterStep).optional(),
     // A command run at the end of every run with the run's report JSON on its standard input.
     notify: Written.optional(),
   })
@@ -269,6 +293,10 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     'It is the list of places work comes from, in order, for `delivery run --sources`: each one an object with a `type` of "backlog", "list" or "command" ' +
     '(a command source also takes `command`), for example `[{ "type": "backlog" }, { "type": "command", "command": "./next-slice.sh" }]`. ' +
     'Add `"fallback": true` to one that is used only when nothing else has work.',
+  after:
+    "It is a list of steps run once a run's work has landed and your closer has taken it: each one a command, such as " +
+    '`{ "run": "make deploy", "check": "curl -f http://localhost/health" }` (add `"in": "base"` to run it in your own folder rather than a copy of what landed), ' +
+    'or an agent pass, such as `{ "prompt": "Write release notes for the landed commits." }`: see docs/project-configuration.md.',
   parkAfter:
     "It is how many runs in a row an item may end without being delivered before it is set aside: a whole number, 1 or more, such as `3`.",
   notify: 'It is a command run at the end of every run with the run\'s report on its standard input, such as `"./tell-me.sh"`.',

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { CONFIG_KEYS, checkConfig, configCandidates, configProblems, DeliveryConfig, findConfig, firstStepContinues, loadConfig, NO_SUCH_CONFIG, sameStep, structureTask, unknownCloser, unknownGate } from "./config.js";
+import { CONFIG_KEYS, checkConfig, configCandidates, configProblems, DeliveryConfig, findConfig, firstStepContinues, loadConfig, NO_SUCH_CONFIG, sameStep, stepLabel, structureTask, unknownCloser, unknownGate } from "./config.js";
 import { harnessOwned } from "../schema.js";
 import { EXIT, Refusal } from "./failures.js";
 import { planConfig, writePlan } from "../packs/plan.js";
@@ -189,7 +189,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `parkAfter` and `notify`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `after`, `parkAfter` and `notify`.",
     );
   });
 
@@ -260,7 +260,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names a file that holds something other than one object of settings", () => {
     expect(problemFor(["add a page"])).toBe(
-      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `parkAfter` and `notify`. " +
+      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `after`, `parkAfter` and `notify`. " +
         "A `.js` or `.mjs` file exports that object as its default.",
     );
   });
@@ -459,7 +459,7 @@ describe("reading a config file", () => {
     const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
     const refusal = await refusalOf(found(repo, repo));
     expect(refusal.message).toBe(
-      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`parkAfter\` and \`notify\`.`,
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
     );
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });
@@ -578,7 +578,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor({ foo: 1, roles: {} })).toEqual([
       {
         field: "foo",
-        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`parkAfter\` and \`notify\`.`,
+        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
       },
       {
         field: "roles",
@@ -592,7 +592,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor("add a page")).toEqual([
       {
         field: null,
-        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`parkAfter\` and \`notify\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
+        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
       },
     ]);
   });
@@ -700,6 +700,33 @@ describe("workflows", () => {
   });
 
   it("lists workflows among the settings a config file takes", () => {
-    expect(CONFIG_KEYS).toBe("`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `parkAfter` and `notify`");
+    expect(CONFIG_KEYS).toBe("`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `after`, `parkAfter` and `notify`");
+  });
+});
+
+describe("after steps", () => {
+  it("accepts a command, a command with a check and where it runs, and an agent pass, for the project and for a workflow", () => {
+    const config = DeliveryConfig.parse({
+      after: [{ run: "make deploy", in: "base", check: "curl -f http://localhost/health" }, { name: "release notes", prompt: "Write release notes for the landed commits." }],
+      workflows: { scan: { steps: [{ name: "scan", prompt: "look" }], after: [] } },
+    });
+    expect(config.after).toHaveLength(2);
+    expect(config.workflows?.scan?.after).toEqual([]);
+  });
+
+  it("refuses a step that is neither a command nor a prompt, and one that is both", () => {
+    expect(problemFor({ after: [{ check: "true" }] })).toContain("It is a list of steps run once a run's work has landed");
+    expect(problemFor({ after: [{ run: "a", prompt: "b" }] })).toContain("It is a list of steps run once a run's work has landed");
+  });
+
+  it("refuses a command that runs anywhere but the base checkout or a copy of what landed", () => {
+    expect(problemFor({ after: [{ run: "make deploy", in: "home" }] })).toContain("It is a list of steps run once a run's work has landed");
+  });
+
+  it("labels a step by its name, else its command, else its prompt's first line", () => {
+    expect(stepLabel({ name: "deploy", run: "make deploy" })).toBe("deploy");
+    expect(stepLabel({ run: "make deploy" })).toBe("make deploy");
+    expect(stepLabel({ prompt: "Write release notes.\nThen post them." })).toBe("Write release notes.");
+    expect(stepLabel({ prompt: "x".repeat(80) })).toBe(`${"x".repeat(59)}…`);
   });
 });
