@@ -10,6 +10,7 @@ import type { SignOffOptions } from "./sign-off-command.js";
 import type { ReviewCommandOptions } from "./review-command.js";
 import type { FixOptions } from "./fix-command.js";
 import { answerCommand, unparkCommand, type ItemOptions } from "./item-commands.js";
+import { approveCommand, declineCommand, type ChooseOptions } from "./backlog-commands.js";
 import { dropAfterCommand } from "./after-command.js";
 import { scheduleDisableCommand, scheduleEnableCommand, scheduleStatusCommand, type ScheduleOptions } from "./schedule-command.js";
 import { DEFAULT_INTERVAL } from "./schedule.js";
@@ -143,6 +144,28 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the item belongs to (default: the current folder)")
     .action(async (item: string, options: ItemOptions, command: Command) => {
       exitCode = await unparkCommand(item, options, ctxFor(command));
+    });
+
+  program
+    .command("approve")
+    .description("choose ideas in your backlog to be fixed: each becomes an open item, fixed by its workflow the next time you run `delivery run --sources`; commits only those item files")
+    .argument("[ids...]", "the ideas, as `delivery backlog` names them")
+    .option("--all", "every idea in your backlog")
+    .option("--workflow <name>", "the workflow to fix them through, for ideas that do not name one")
+    .option("--config <path>", "use this config file instead of looking for a delivery.config.json")
+    .option("--repo <path>", "the git repository the backlog belongs to (default: the current folder)")
+    .action(async (ids: string[], options: ChooseOptions, command: Command) => {
+      exitCode = await approveCommand(ids, options, ctxFor(command));
+    });
+
+  program
+    .command("decline")
+    .description("set ideas in your backlog aside: nothing will be done about them; commits only those item files")
+    .argument("[ids...]", "the ideas, as `delivery backlog` names them")
+    .option("--all", "every idea in your backlog")
+    .option("--repo <path>", "the git repository the backlog belongs to (default: the current folder)")
+    .action(async (ids: string[], options: ChooseOptions, command: Command) => {
+      exitCode = await declineCommand(ids, options, ctxFor(command));
     });
 
   program
