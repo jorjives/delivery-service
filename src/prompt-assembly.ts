@@ -224,7 +224,9 @@ export function assemblePrompt(
           "## Continuing",
           ...(continues.turn.kind === "answer"
             ? [`You stopped to ask the operator: ${continues.turn.question}`, `Their answer: ${continues.turn.answer}`, "The work so far is in this working copy. Carry on from where it got to, using their answer."]
-            : ["An earlier session on this task was interrupted before it finished. The work so far is in this working copy. Carry on from where it got to."]),
+            : continues.turn.kind === "signed_off"
+              ? ["The operator signed this work off, but it no longer passes its checks where it is to land. Put it right; it will wait for their sign-off again."]
+              : ["An earlier session on this task was interrupted before it finished. The work so far is in this working copy. Carry on from where it got to."]),
           "",
         ];
 

@@ -48,6 +48,7 @@ const completeFailed = (key: string, detail: string): string => `${key} was deli
 
 /** The turn a carried-on run opens with, or undefined when the item starts afresh (spec §5.11). */
 function turnFor(state: ItemState | undefined): Continues["turn"] | undefined {
+  if (state?.lastClass === "held" && state.signedOff) return { kind: "signed_off" };
   if (state?.lastClass === "interrupted") return { kind: "interrupted" };
   if (state?.lastClass === "decision" && state.answer !== null) return { kind: "answer", question: state.question ?? "", answer: state.answer };
   return undefined;
