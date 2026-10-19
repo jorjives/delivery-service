@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -63,6 +63,7 @@ describe("delivery unpark", () => {
   });
 });
 
+const SIGNED_OFF_TEXT = "The operator signed this work off, but it no longer passes its checks where it is to land.";
 const HELD = "20261019T120000Z-key-in-code.md";
 const HELD_KEY = `backlog:${HELD}`;
 const heldProject = () =>
@@ -94,10 +95,39 @@ describe("delivery sign-off", () => {
     expect((await readItemLedger(ledgerPath(repo, env))).get(HELD_KEY)).toMatchObject({ lastClass: "delivered", parked: null });
   }, RUN_TIMEOUT);
 
-  // Third case, required (see "Notes for the implementer"): a held item whose work no longer passes where it lands
-  // (a later item landed a conflicting change to the same line on delivery/main first) goes to triage and a worker
-  // with the signed_off turn text, and is held again rather than landed: assert the second prompt contains that text,
-  // `delivery/main` lacks the held work, and the ledger shows `parked: "held"` again.
+  it("holds the work again when it no longer passes where it lands, sending it to a worker with the sign-off text", async () => {
+    const repo = initTempRepo("sign-off-recheck-", {
+      "package.json": JSON.stringify({ name: "scratch", private: true, scripts: { test: "test ! -f blocker.txt || test ! -f hello.js || grep -q fixed hello.js" } }),
+      "delivery.config.json": JSON.stringify({ workflows: { fix: { steps: [{ name: "fix", prompt: "fix it" }], hold: "high" } } }),
+      [`.delivery/backlog/${HELD}`]: "---\nstatus: open\nworkflow: fix\nseverity: critical\n---\nAdd a function that says hello to a name.\n",
+    });
+    const state = mkdtempSync(join(tmpdir(), "sign-off-recheck-state-"));
+    const script = await scriptFile({
+      expectations: [
+        { when: { promptContains: SIGNED_OFF_TEXT }, effects: [{ write: { path: "hello.js", content: "// fixed for the later change\nexport const hello = (name) => `hello ${name}`;\n" } }], json: { status: "completed", rationale: "adjusted to the later change" } },
+        ...completes.expectations,
+      ],
+    });
+    const env = { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: script };
+    await delivery(["run", "--sources"], { cwd: repo, env });
+    expect((await readItemLedger(ledgerPath(repo, env))).get(HELD_KEY)).toMatchObject({ parked: "held" });
+
+    // A later item lands a change on delivery/main that makes the held work fail its check there.
+    const other = mkdtempSync(join(tmpdir(), "sign-off-later-"));
+    git(repo, ["worktree", "add", join(other, "wt"), "delivery/main"]);
+    writeFileSync(join(other, "wt", "blocker.txt"), "later work\n");
+    git(join(other, "wt"), ["add", "blocker.txt"]);
+    git(join(other, "wt"), ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "Later item"]);
+    git(repo, ["worktree", "remove", "--force", join(other, "wt")]);
+    const promptsBefore = promptsSent(await readJournal(`${script}.journal.jsonl`)).length;
+
+    await delivery(["sign-off", "key-in-code"], { cwd: repo, env });
+    const prompts = promptsSent(await readJournal(`${script}.journal.jsonl`));
+    expect(prompts.length).toBeGreaterThan(promptsBefore);
+    expect(prompts[promptsBefore]).toContain(SIGNED_OFF_TEXT);
+    expect(() => git(repo, ["show", "delivery/main:hello.js"])).toThrow();
+    expect((await readItemLedger(ledgerPath(repo, env))).get(HELD_KEY)).toMatchObject({ parked: "held" });
+  }, RUN_TIMEOUT * 2);
 
   it("refuses an item that is not held", async () => {
     const repo = heldProject();

@@ -73,6 +73,7 @@ export async function rejectCommand(item: string, options: ItemOptions, ctx: Com
   const config = await loadConfig({ startDir: repoPath, repoPath, flag: undefined, env: ctx.env });
   const [sourceKey, file] = [state.key.slice(0, state.key.indexOf(":")), state.key.slice(state.key.indexOf(":") + 1)];
   const source = (config.sources ?? DEFAULT_SOURCES).find((s) => sourceName(s) === sourceKey);
+  // ponytail: a tracker item is the owner's to close in the tracker; closing it from here needs a per-tracker write, add when a tracker source offers one.
   if (source?.type !== "backlog") throw new Refusal(rejectOnTracker(state.key), EXIT.configuration);
   const result = await commitItemFields(repoPath, [file], { status: "declined" }, `Reject ${file}`);
   if ("dirty" in result) throw new Refusal(uncommittedItems(result.dirty), EXIT.configuration);
