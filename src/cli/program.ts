@@ -21,6 +21,7 @@ import { statusCommand, type StatusOptions } from "./status-command.js";
 import { validateCommand, type ValidateOptions } from "./validate-command.js";
 import { intervalSeconds, watchCommand } from "./watch-command.js";
 import { packsCommand, type PacksOptions } from "./packs-command.js";
+import type { ReviewCommandOptions } from "./review-command.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
 export interface CliIo {
@@ -302,6 +303,18 @@ export async function runCli(io: CliIo): Promise<number> {
     .action(async (options: InitOptions, command: Command) => {
       const ctx = ctxFor(command);
       exitCode = await initCommand(options, ctx, inquirerAsk(ctx.colour));
+    });
+
+  program
+    .command("review")
+    .description("have an agent review your project, such as a code review: it adds one idea to your backlog for each problem it finds, in plain words, and changes nothing else")
+    .argument("<pack>", "which review: a name from `delivery packs`, such as code, or the path to a review folder of your own")
+    .argument("[repo]", "the git repository to review (default: the current folder)")
+    .option("--path <part>", "review only this part of your project, such as src/auth: a folder or file, relative to where you are")
+    .option("--preview", "show what the review agent would be told, and start nothing: no sign-in and no network needed")
+    .action(async (pack: string, repo: string | undefined, options: ReviewCommandOptions, command: Command) => {
+      const { reviewCommand } = await import("./review-command.js");
+      exitCode = await reviewCommand(pack, repo, options, ctxFor(command, repo));
     });
 
   program
