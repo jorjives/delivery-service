@@ -837,39 +837,14 @@ With nothing configured, ask for a code review:
 delivery review code
 ```
 
-An agent reads your last commit (it cannot change files or run commands) and the harness prints a
-numbered list of problems, each with where it is, what is wrong, why it matters, what fixed looks
-like, and how the harness would know it was fixed. Every problem is checked against your project
-first: one whose code cannot be found is not offered, and `delivery findings --unconfirmed` lists
-it. Nothing in your project changes.
+An agent reads your project and adds one idea to your backlog for each problem it finds, in plain words. It changes nothing else, and nothing is fixed until you choose. `delivery review security` looks for weaknesses someone could take advantage of, and `delivery review code --path src/auth` reviews only one part of your project.
 
-- `delivery review code --path src/auth` reviews only that part of your project.
-- `delivery review code --preview` prints what the review agent would be told, with no sign-in and no network.
-- `delivery findings` lists the latest review's problems and where each stands;
-  `delivery findings 2` shows one in full, with a part for engineers. With `--json`, it gives the
-  whole list as data.
-- `delivery findings approve 1 3` (or `--all`, or `--recommended` for the checked ones that need no
-  sign-off) and `delivery findings skip 2` choose what is fixed; `--allow-test-edits` lets a named
-  problem's fix change your tests (never delete one), and its fix waits for your sign-off. Run the
-  review again later and what you skipped or declined is not asked again (`delivery findings
-  --include-skipped` shows it); a fixed problem whose code is back is marked "came back".
-- `delivery fix` fixes each approved problem in its own copy, checks it against its own check and
-  your tests, and merges it. One that cannot be fixed is explained, and the rest carry on.
-  `--sign-off-threshold medium` (or critical, high, low, none) chooses which fixes wait for your
-  sign-off instead of the review's default.
-- `delivery report` then tells you, problem by problem, what was fixed, what is waiting for your
-  sign-off and what could not be fixed, under who must act, and what the review and its fixes cost.
-- `delivery packs` lists the reviews available (`--json` for a script); `delivery review ./my-review` runs one from a folder, and `delivery packs --schema` prints the JSON Schema of its `pack.json` for your editor.
-- `delivery packs check ./my-review` checks a review folder of your own and runs its fixtures against a scripted agent: see [Writing a pack](docs/writing-a-pack.md).
+- `delivery backlog` lists the ideas; `delivery approve <ids>` (or `--all`) chooses what is fixed, and `delivery decline <ids>` sets the rest aside.
+- `delivery run --sources` fixes each approved idea, and accepts it only once its problem is gone and your tests pass.
+- A fix of a serious problem waits on its own branch: `delivery sign-off <id>` lands it, and `delivery reject <id>` sets it aside.
+- `delivery packs` lists the reviews available; `delivery review ./my-review` runs one of your own.
 
-`delivery review security` does the same for weaknesses someone could take advantage of. A fix of
-a critical or high problem is checked but waits for you: see what it changed with
-`delivery findings <n> --changes`, then `delivery findings sign-off <n>` to check it again on your
-main copy and merge it, or `delivery findings reject <n>`. A password or key it finds is never
-shown.
-
-A review stopped part-way is finished by running the same command again, and so is a fix. See
-[Reviewing your project](docs/task-packs.md), and try it on `examples/code-review-example`, or on `examples/no-tests-example` to see a project with no tests, where every fix waits for your sign-off.
+See [Reviewing your project](docs/task-packs.md) for the whole of it, and [Writing a pack](docs/writing-a-pack.md) to write a review of your own.
 
 ## Documentation
 
