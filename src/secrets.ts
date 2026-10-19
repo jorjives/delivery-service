@@ -75,7 +75,7 @@ export function maskIn(text: string, literals: Iterable<string>): string {
 const cache = new Map<string, { stamp: string; literals: string[] }>();
 
 /**
- * Every secret a sensitive backlog item's check flags, read again only when the backlog folder changes (by name and
+ * Every secret a backlog item's check flags (every quoted value for a sensitive one), or that an unreadable item holds, read again only when the backlog folder changes (by name and
  * modification time), so a command that adds an idea masks it in the same breath.
  */
 export function knownSecrets(repoRoot: string): string[] {
@@ -90,9 +90,12 @@ export function knownSecrets(repoRoot: string): string[] {
   const hit = cache.get(root);
   if (hit?.stamp === stamp) return hit.literals;
   const literals = files.flatMap((file) => {
-    const parsed = parseItem(basename(file), readFileSync(file, "utf-8"));
-    const check = parsed.ok ? parsed.item.check : undefined;
-    return check?.kind === "anchor-gone" && check.sensitive === true ? secretLiterals(check.anchor, true) : [];
+    const text = readFileSync(file, "utf-8");
+    const parsed = parseItem(basename(file), text);
+    if (!parsed.ok) return secretLiterals(text, false);
+    const check = parsed.item.check;
+    if (check?.kind === "anchor-gone") return secretLiterals(check.anchor, check.sensitive === true);
+    return check?.kind === "pattern-absent" ? secretLiterals(check.pattern, false) : [];
   });
   cache.set(root, { stamp, literals });
   return literals;

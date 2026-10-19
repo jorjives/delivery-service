@@ -69,6 +69,16 @@ describe("the secrets a project's backlog holds", () => {
     expect(knownSecrets(repo)).toEqual(["plain words here"]);
   });
 
+  it("holds secret-shaped text from a non-sensitive anchor, a pattern, and an item that does not parse", () => {
+    const repo = initTempRepo("secrets-shapes-", { "a.js": "x\n" });
+    const folder = join(repo, ".delivery", "backlog");
+    mkdirSync(folder, { recursive: true });
+    writeIdea(repo, "20261006T101500Z-anchor.md", `const k = "${PAYMENTS_PASSWORD}";`, false);
+    writeFileSync(join(folder, "20261006T101600Z-pattern.md"), `---\nstatus: idea\ncheck:\n  kind: pattern-absent\n  pattern: "api_key: abcd1234efgh5678"\n  paths: [a.js]\n---\n# A key\n`);
+    writeFileSync(join(folder, "20261006T101700Z-broken.md"), `---\nstatus: nonsense\n---\n# Broken\n\ntoken=Zx81Qp0LmN4vB7tR2sKd9wYh\n`);
+    expect(knownSecrets(repo)).toEqual(expect.arrayContaining([PAYMENTS_PASSWORD, "abcd1234efgh5678", "Zx81Qp0LmN4vB7tR2sKd9wYh"]));
+  });
+
   it("changes nothing outside a repository", () => {
     expect(secretMasker(mkdtempSync(join(tmpdir(), "no-repo-")))("anything")).toBe("anything");
   });
