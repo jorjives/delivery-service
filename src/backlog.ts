@@ -1,10 +1,10 @@
-import { readdir } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { parse, parseDocument } from "yaml";
 import { git } from "./git-exec.js";
 import { resolveBaseRef } from "./provision.js";
-import type { TaskDef } from "./schema.js";
+import { ItemCheck, SEVERITIES, type Severity, type TaskDef } from "./schema.js";
 
 /** Where a project keeps its work items: tracked by git, beside the harness's own untracked records. */
 export const BACKLOG_DIR = ".delivery/backlog";
@@ -21,6 +21,8 @@ export interface BacklogItem {
   workflow?: string;
   priority?: number;
   cadenceMs?: number;
+  severity?: Severity;
+  check?: ItemCheck;
   fields: Record<string, unknown>;
   body: string;
 }
@@ -41,6 +43,12 @@ const FrontMatter = z
     workflow: z.string().min(1, "`workflow` must name a workflow").optional(),
     priority: z.number({ error: "`priority` must be a whole number" }).int("`priority` must be a whole number").optional(),
     cadence: z.string().refine((text) => cadenceMs(text) !== undefined, "`cadence` must be a number and a unit, such as 30m, 12h, 7d or 2w").optional(),
+    severity: z.enum(SEVERITIES, { error: "`severity` must be one of critical, high, medium or low" }).optional(),
+    check: z
+      .custom<ItemCheck>((value) => ItemCheck.safeParse(value).success, {
+        error: "`check` must be one of anchor-gone (with path and anchor), pattern-absent (with pattern and paths) or dependency-absent (with package and version)",
+      })
+      .optional(),
   })
   .catchall(z.unknown());
 
@@ -62,7 +70,9 @@ export function parseItem(file: string, text: string): ParsedItem {
   if (!parsed.success) return refuse(parsed.error.issues[0]?.message ?? "its front matter does not match the item format");
   const body = split[2] ?? "";
   if (body.trim() === "") return refuse("it has no brief below its front matter");
-  const { status, workflow, priority, cadence, ...fields } = parsed.data;
+  const { status, workflow, priority, cadence, severity, check, ...rest } = parsed.data;
+  // Severity and check stay in `fields` too, so `itemTask` hands them to the task as it does every other field.
+  const fields = { ...rest, ...(severity === undefined ? {} : { severity }), ...(check === undefined ? {} : { check }) };
   return {
     ok: true,
     item: {
@@ -71,6 +81,8 @@ export function parseItem(file: string, text: string): ParsedItem {
       ...(workflow === undefined ? {} : { workflow }),
       ...(priority === undefined ? {} : { priority }),
       ...(cadence === undefined ? {} : { cadenceMs: cadenceMs(cadence) }),
+      ...(severity === undefined ? {} : { severity }),
+      ...(check === undefined ? {} : { check }),
       fields,
       body,
     },
@@ -95,13 +107,40 @@ export function itemTask(item: BacklogItem): TaskDef {
   return { intent: first, body: item.body, ...item.fields };
 }
 
-/** The item's text with `status: resolved`, everything else (comments included) as it was. */
-export function resolvedText(text: string): string {
+/** The item's text with `fields` set, everything else (comments included) as it was. */
+export function setFields(text: string, fields: Record<string, unknown>): string {
   const split = SPLIT.exec(text);
   if (split === null) return text;
   const doc = parseDocument(split[1] ?? "");
-  doc.set("status", "resolved");
+  for (const [key, value] of Object.entries(fields)) doc.set(key, value);
   return `---\n${doc.toString()}---\n${split[2] ?? ""}`;
+}
+
+/** The items `name` could mean: its file name, with or without `.md`, else the part after the timestamp. */
+export function itemsCalled(name: string, items: readonly BacklogItem[]): BacklogItem[] {
+  const file = name.endsWith(".md") ? name : `${name}.md`;
+  const exact = items.filter((item) => item.file === file);
+  return exact.length > 0 ? exact : items.filter((item) => item.file.slice(item.file.indexOf("-") + 1) === file);
+}
+
+/** The named items' paths that have changes not yet committed. */
+export async function uncommittedItemFiles(repoPath: string, files: readonly string[]): Promise<string[]> {
+  const paths = files.map((file) => `${BACKLOG_DIR}/${file}`);
+  return (await git(repoPath, ["status", "--porcelain", "-z", "--", ...paths], { raw: true })).split("\0").filter(Boolean).map((entry) => entry.slice(3));
+}
+
+/**
+ * Set `fields` on the named items and commit those files alone on the current branch. Nothing is written when any
+ * of them has changes not yet committed: the owner's edit is never folded into the harness's commit.
+ */
+export async function commitItemFields(repoPath: string, files: readonly string[], fields: Record<string, unknown>, message: string): Promise<{ dirty: string[] } | { commit: string }> {
+  const paths = files.map((file) => `${BACKLOG_DIR}/${file}`);
+  const dirty = await uncommittedItemFiles(repoPath, files);
+  if (dirty.length > 0) return { dirty };
+  for (const path of paths) await writeFile(join(repoPath, path), setFields(await readFile(join(repoPath, path), "utf-8"), fields));
+  await git(repoPath, ["add", "--", ...paths]);
+  await git(repoPath, ["commit", "-q", "-m", message, "--", ...paths]);
+  return { commit: await git(repoPath, ["rev-parse", "HEAD"]) };
 }
 
 export interface Backlog {
@@ -114,8 +153,8 @@ export interface Backlog {
  * The backlog as the base commit holds it: what a run would start from, so an item and the work on it agree.
  * Item files in the checkout that the commit lacks are named, never read.
  */
-export async function readBacklog(repoPath: string): Promise<Backlog> {
-  const { ref } = await resolveBaseRef(repoPath);
+export async function readBacklog(repoPath: string, { at }: { at?: string } = {}): Promise<Backlog> {
+  const ref = at ?? (await resolveBaseRef(repoPath)).ref;
   const listed = (await git(repoPath, ["ls-tree", "-z", "--name-only", `${ref}:${BACKLOG_DIR}`], { raw: true }).catch(() => "")).split("\0").filter((name) => name.endsWith(".md"));
   const items: BacklogItem[] = [];
   const invalid: Backlog["invalid"] = [];

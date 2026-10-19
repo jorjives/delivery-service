@@ -335,6 +335,13 @@ matter says how it is done, and the text below it is the brief the agent receive
 `idea` is material for other work rather than a task. `workflow` names the workflow that delivers
 it. `priority` orders items, lower first, with unprioritised items last. `cadence` (`30m`, `12h`,
 `7d` or `2w`) makes an item recur: it is due again once that long has passed since it last closed.
+`severity` is how serious the item's problem is: `critical`, `high`, `medium` or `low`. A workflow
+with `hold` keeps a finished item at or above its threshold for your sign-off. `check` is how the
+harness knows the problem is gone, one of: `anchor-gone` (`path` and `anchor`, the flagged code
+copied exactly; add `scope: repo` and `sensitive: true` for a password or key, which is then looked
+for across the whole project), `pattern-absent` (`pattern`, an extended regular expression, and
+`paths`) or `dependency-absent` (`package` and `version` as `package-lock.json` installs them). Every
+step's check then also requires the problem to be gone, as `item:<id>:resolved`.
 Any other field is available to the step prompts as `{{task.<field>}}`, such as `spec` above.
 
 Items are read from your base branch's last commit: `origin`'s, when the project has one. So commit

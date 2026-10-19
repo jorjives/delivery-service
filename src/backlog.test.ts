@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
 import { addLocalOrigin, initTempRepo } from "./temp-repo.js";
-import { cadenceMs, isDue, itemTask, orderItems, parseItem, readBacklog, resolvedText, type BacklogItem } from "./backlog.js";
+import { cadenceMs, commitItemFields, isDue, itemsCalled, itemTask, orderItems, parseItem, readBacklog, setFields, type BacklogItem } from "./backlog.js";
 
 const FILE = "20261016T090000Z-greet-people.md";
 const TEXT = "---\nstatus: open\nworkflow: build\npriority: 10\nspec: docs/spec.md\n---\nGreet people by name.\n\nUse a friendly tone.\n";
@@ -67,9 +67,65 @@ describe("itemTask", () => {
   });
 });
 
-describe("resolvedText", () => {
+describe("setFields", () => {
   it("sets status to resolved and keeps everything else, comments included", () => {
-    expect(resolvedText("---\nstatus: open # todo\nworkflow: build\n---\nBody.\n")).toBe("---\nstatus: resolved # todo\nworkflow: build\n---\nBody.\n");
+    expect(setFields("---\nstatus: open # todo\nworkflow: build\n---\nBody.\n", { status: "resolved" })).toBe("---\nstatus: resolved # todo\nworkflow: build\n---\nBody.\n");
+  });
+});
+
+const IDEA = (extra = "") => `---\nstatus: idea\nworkflow: code:fix\nseverity: high\ncheck:\n  kind: anchor-gone\n  path: total.js\n  anchor: "return price - discount;"\n${extra}---\n# The total can go below zero\n`;
+
+describe("an item's severity and check", () => {
+  it("reads both, and passes them on to the task", () => {
+    const parsed = parseItem("20261019T120000Z-total.md", IDEA());
+    expect(parsed.ok && parsed.item.severity).toBe("high");
+    expect(parsed.ok && parsed.item.check).toEqual({ kind: "anchor-gone", path: "total.js", anchor: "return price - discount;" });
+    expect(parsed.ok && itemTask(parsed.item)).toMatchObject({ severity: "high", check: { kind: "anchor-gone" } });
+  });
+
+  it("refuses a severity or a check outside the closed sets, in words", () => {
+    expect(parseItem("20261019T120000Z-a.md", "---\nstatus: idea\nseverity: urgent\n---\n# a\n")).toEqual({ ok: false, file: "20261019T120000Z-a.md", reason: "`severity` must be one of critical, high, medium or low" });
+    expect(parseItem("20261019T120000Z-a.md", "---\nstatus: idea\ncheck:\n  kind: tests-pass\n---\n# a\n")).toMatchObject({ ok: false, reason: expect.stringContaining("`check` must be") });
+  });
+});
+
+describe("changing an item's fields", () => {
+  it("sets the named fields and keeps everything else, comments included", () => {
+    const text = "---\n# chosen by the review\nstatus: idea\nseverity: high\n---\n# a\n";
+    expect(setFields(text, { status: "open", workflow: "code:fix" })).toBe("---\n# chosen by the review\nstatus: open\nseverity: high\nworkflow: code:fix\n---\n# a\n");
+  });
+});
+
+describe("naming an item", () => {
+  const items = [{ file: "20261019T120000Z-total.md" }, { file: "20261019T120100Z-settings.md" }, { file: "20261019T120200Z-total.md" }] as BacklogItem[];
+  it("finds it by file name with or without .md, or by a slug only one item has", () => {
+    expect(itemsCalled("20261019T120000Z-total", items).map((i) => i.file)).toEqual(["20261019T120000Z-total.md"]);
+    expect(itemsCalled("settings", items).map((i) => i.file)).toEqual(["20261019T120100Z-settings.md"]);
+    expect(itemsCalled("total", items)).toHaveLength(2);
+  });
+});
+
+describe("committing an item's new fields", () => {
+  it("commits only the named items on the current branch", async () => {
+    const repo = initTempRepo("backlog-commit-", { ".delivery/backlog/20261019T120000Z-total.md": IDEA(), "other.txt": "x\n" });
+    writeFileSync(join(repo, "other.txt"), "changed\n");
+    const result = await commitItemFields(repo, ["20261019T120000Z-total.md"], { status: "open" }, "Approve 1 idea");
+    expect(result).toHaveProperty("commit");
+    expect(git(repo, ["show", "--name-only", "--format=%s", "HEAD"]).split("\n").filter(Boolean)).toEqual(["Approve 1 idea", ".delivery/backlog/20261019T120000Z-total.md"]);
+    expect(git(repo, ["show", "HEAD:.delivery/backlog/20261019T120000Z-total.md"])).toContain("status: open");
+    expect(readFileSync(join(repo, "other.txt"), "utf-8")).toBe("changed\n");
+  });
+
+  it("refuses, changing nothing, when a named item has uncommitted changes", async () => {
+    const repo = initTempRepo("backlog-dirty-", { ".delivery/backlog/20261019T120000Z-total.md": IDEA() });
+    writeFileSync(join(repo, ".delivery/backlog/20261019T120000Z-total.md"), IDEA("priority: 1\n"));
+    expect(await commitItemFields(repo, ["20261019T120000Z-total.md"], { status: "open" }, "x")).toEqual({ dirty: [".delivery/backlog/20261019T120000Z-total.md"] });
+    expect(git(repo, ["log", "--format=%s"]).split("\n")).toHaveLength(1);
+  });
+
+  it("reads the backlog at the current commit when asked", async () => {
+    const repo = initTempRepo("backlog-at-", { ".delivery/backlog/20261019T120000Z-total.md": IDEA() });
+    expect((await readBacklog(repo, { at: "HEAD" })).items.map((i) => i.status)).toEqual(["idea"]);
   });
 });
 

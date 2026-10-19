@@ -15,7 +15,7 @@ import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
 import { EscalationPacket, type SharpenedBrief } from "./triage-role-config.js";
-import { resolvedText } from "./backlog.js";
+import { setFields } from "./backlog.js";
 import { captureRepair, checkFilesOf } from "./repair-changes.js";
 import { judgedRepair } from "./repair-guards.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext, CloseReport } from "./ports.js";
@@ -835,7 +835,7 @@ async function recordClose(dir: string, caseFile: CaseFile, location: SurfaceLoc
 async function resolveItem(worktreePath: string, path: string, id: string): Promise<void> {
   const file = join(worktreePath, path);
   const text = await readFile(file, "utf-8");
-  const resolved = resolvedText(text);
+  const resolved = setFields(text, { status: "resolved" });
   if (resolved === text) return;
   await writeFile(file, resolved);
   await git(worktreePath, ["add", "--", path]);
