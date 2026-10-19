@@ -108,38 +108,11 @@ Your editor will flag unknown keys and invalid values as you type.
 The fixtures prove your pack works before you run it against a real project. They live in `fixtures/`:
 
 - `project/`: a small project with a `test` script (for example, `"test": "node --test"` in `package.json`). Committed fresh for each check run.
-- `review.json`: a claude-mock script that gives the scripted review reply. See the structure below.
-- `fixes.json`: a claude-mock script that gives the scripted fixes: one honest fix per problem, and one cheat per problem that should be refused.
-- `expect.json`: what the check must show: the problems found, which fix passes its check, and which cheat is refused.
+- `review.json`: a claude-mock script for the scan: its session writes your ideas into `.delivery/backlog/` with `effects` and replies `completed`. See `packs/code-review/fixtures/review.json` for a worked one.
+- `fixes.json`: a claude-mock script that scripts the fixes, honest and cheating: one honest fix per problem, and one cheat per problem that should be refused.
+- `expect.json`: names the titles the review adds (`found`), the fixes that pass (`fixed`) and the cheats that are refused (`refused`).
 
-### fixtures/review.json
-
-A claude-mock script with one expectation. Its reply is the review's structured JSON:
-
-```json
-{
-  "expectations": [
-    {
-      "json": {
-        "findings": [
-          {
-            "title": "The total can go below zero",
-            "category": "correctness",
-            "severity": "high",
-            "where": { "path": "total.js" },
-            "problem": "A discount larger than the price makes the total negative.",
-            "whyItMatters": "A negative total means paying the customer.",
-            "fixedLooksLike": "A total never goes below zero.",
-            "anchor": "return price - discount;",
-            "check": { "kind": "anchor-gone" }
-          }
-        ],
-        "notes": ""
-      }
-    }
-  ]
-}
-```
+`delivery packs check ./my-review` runs `delivery review`, `delivery approve --all` and `delivery run --sources` against those scripts in a scratch copy of `fixtures/project`, with nothing sent to a real agent.
 
 ### fixtures/fixes.json
 
@@ -149,7 +122,7 @@ A claude-mock script with multiple expectations. Each describes a file change (a
 {
   "expectations": [
     {
-      "when": { "promptContains": "-> FAIL)" },
+      "when": { "promptContains": "still there" },
       "json": { "status": "escalate", "category": "authority", "rationale": "Told its fix was refused, the scripted agent gives up." }
     },
     {
@@ -166,7 +139,7 @@ A claude-mock script with multiple expectations. Each describes a file change (a
 
 ### fixtures/expect.json
 
-What the check must show when the scripted review and fixes run:
+What the check must show when the scripted review and fixes run, with each title written exactly as the scripted review writes it:
 
 ```json
 {
@@ -176,7 +149,7 @@ What the check must show when the scripted review and fixes run:
 }
 ```
 
-- `found`: the problems the scripted review must find (in any order).
+- `found`: the problems the scripted review must add (in any order).
 - `fixed`: the problems whose honest fix must pass its check.
 - `refused`: the problems whose cheat must be refused (fail its check).
 
@@ -193,7 +166,7 @@ Running the fixtures runs the fixture project's own tests on your machine, as a 
 If there are problems with the manifest or fixtures, they are named by file and field:
 
 ```
-my-review/pack.json: "scan.checks.1" is "page-contains" but the available checks are: anchor-gone, pattern-absent, dependency-absent.
+my-review/pack.json: "scan.checks" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check.
 ```
 
 Exit code 2.
@@ -217,8 +190,8 @@ Exit code 0.
 - `"The scripted review found X problems, as fixtures/expect.json expects"`: success.
 - `"The scripted fix for X did not pass its check: it ended ..."`: the fix did not make the change it claimed, or broke a test.
 - `"The scripted cheat for X was not refused: it ended ..."`: the cheat passed its check when the fixtures say it should fail.
-- `"The scripted review did not find X"`: the review did not report this problem. If the problem was reported but could not be placed in the code, you see why: `"it could not be placed in fixtures/project (anchor not found in the code)"`.
-- `"The scripted review also found X, which found does not list"`: an unexpected problem.
+- `"The scripted review did not add X"`: the scripted review did not write an idea with this title.
+- `"The scripted review also added X, which found does not list"`: an unexpected idea.
 - `"The scripted review could not be used: ..."`: the reply was valid JSON but not a valid review (wrong category name, for example).
 
 Exit code 2 for any of these. Passing runs use exit code 0.

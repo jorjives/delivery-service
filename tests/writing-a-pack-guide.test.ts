@@ -39,7 +39,7 @@ describe("the 'writing a pack' guide", () => {
 
   it("says what a pack cannot do, how to end a refused cheat quickly, and how to run the check from a test suite", () => {
     expect(flat).toMatch(/cannot give the agent tools or commands/);
-    expect(guide).toContain('"-> FAIL)"');
+    expect(guide).toContain('"still there"');
     expect(guide).toContain('from "delivery-service/testing"');
     expect(guide).toContain("checkPack(");
   });

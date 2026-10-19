@@ -11,7 +11,7 @@ type FixturePart = keyof typeof FIXTURES;
 /** What each part holds, said when it is missing. */
 const HOLDS: Record<FixturePart, string> = {
   project: "the small project the scripted review reads and the scripted fixes change",
-  review: "the scripted review's reply, as a claude-mock script",
+  review: "the scripted review, as a claude-mock script whose session writes the ideas into .delivery/backlog/",
   fixes: "the scripted fixes, honest and cheating, as a claude-mock script",
   expect: "what the scripted run must show: the problems found, the fixes that pass and the cheats that are refused",
 };

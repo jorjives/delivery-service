@@ -1,7 +1,7 @@
 {
   "expectations": [
     {
-      "when": { "promptContains": "-> FAIL)" },
+      "when": { "promptContains": "still there" },
       "json": { "status": "escalate", "category": "authority", "rationale": "Told its fix was refused, the scripted agent gives up." }
     },
     {
