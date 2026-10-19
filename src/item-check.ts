@@ -228,9 +228,8 @@ async function anywhere(where: Where, literals: string[], own: string | undefine
  * Whether an item's problem is still there: its pattern still matches, its vulnerable
  * version is still in the lockfile, or its flagged code is still in its file
  * (commented out counts as still there). A secret is still there
- * while its text is anywhere in the project, another backlog item included: moving
- * it is not fixing it. Never read as gone when it cannot tell. `own` is the
- * backlog file of the item being checked.
+ * while its text is anywhere in the project: moving it is not fixing it. Never read
+ * as gone when it cannot tell. `own` is the backlog file of the item being checked.
  */
 export async function checkItem(check: ItemCheck, where: Where, own?: string): Promise<CheckResult> {
   if (check.kind === "dependency-absent") {
