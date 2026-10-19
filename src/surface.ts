@@ -91,7 +91,7 @@ async function onSharedGround<T>(ports: SurfacePorts, caseFile: CaseFile, work: 
  */
 function position(caseFile: CaseFile): SurfaceState {
   const tail = logTail(caseFile);
-  if (tail) return deriveStateFromEntry(tail);
+  if (tail) return tail.t === "baseline" && signedOffAsItStands(caseFile) ? "GATING" : deriveStateFromEntry(tail);
   return caseFile.cursor.state === "PROVISIONING" ? "PROVISIONING" : "PRE_GATING";
 }
 
@@ -540,9 +540,10 @@ async function preGating(
   // Carried-on work keeps the baseline of the run it continues: one taken now would be of half-done work.
   const carried = caseFile.header.continues?.baseline;
   if (carried && caseFile.header.baseline === null && stepIndexOf(caseFile) === 1) {
+    const next = signedOffAsItStands(caseFile) ? "GATING" : "AGENT_ACTIVE";
     await setBaseline(dir, carried);
-    await updateCursor(dir, { state: "AGENT_ACTIVE" });
-    return { state: "AGENT_ACTIVE", done: false };
+    await updateCursor(dir, { state: next });
+    return { state: next, done: false };
   }
   const report = await onSharedGround(ports, caseFile, () => recordBaseline(dir, locationOf(caseFile, location), ports.env));
   if (report.status !== "ERROR") {
@@ -771,11 +772,18 @@ async function gating(
   return { state, done: false };
 }
 
+/** Signed-off work not yet touched by an agent in this run: it is checked as it stands and, if it passes, landed. */
+function signedOffAsItStands(caseFile: CaseFile): boolean {
+  return caseFile.header.continues?.turn.kind === "signed_off" && !caseFile.history.some((entry) => entry.t === "dispatch");
+}
+
 /** Why a finished task waits for sign-off: its item is at or above its workflow's hold. Undefined when it lands. */
 function heldFor(caseFile: CaseFile): { severity: Severity; threshold: Severity } | undefined {
   const threshold = caseFile.header.workflow?.hold;
   const severity = Severity.safeParse(caseFile.header.taskDef.severity);
   if (threshold === undefined || !severity.success || !atOrAbove(severity.data, threshold)) return undefined;
+  // A re-check that fails sends the work to triage and a worker, after which it is held again.
+  if (signedOffAsItStands(caseFile)) return undefined;
   return { severity: severity.data, threshold };
 }
 
