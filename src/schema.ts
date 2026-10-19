@@ -229,10 +229,11 @@ export type PinnedWorkflow = z.infer<typeof PinnedWorkflow>;
 export const WorkItemRef = z.object({ key: z.string(), source: z.string(), id: z.string(), resolve: z.string().optional(), raise: z.literal(true).optional(), untrusted: z.literal(true).optional() });
 export type WorkItemRef = z.infer<typeof WorkItemRef>;
 
-/** Why a run carries on an earlier run's work: the operator answered its question, or the session was interrupted. */
+/** Why a run carries on an earlier run's work: the operator answered its question, the session was interrupted, or the operator signed held work off. */
 export const ContinueTurn = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("answer"), question: z.string(), answer: z.string() }),
   z.object({ kind: z.literal("interrupted") }),
+  z.object({ kind: z.literal("signed_off") }),
 ]);
 export type ContinueTurn = z.infer<typeof ContinueTurn>;
 

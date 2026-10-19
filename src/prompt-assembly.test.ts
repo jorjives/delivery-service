@@ -527,6 +527,11 @@ describe("the Continuing section", () => {
     expect(prompt).toContain("## Continuing\nYou stopped to ask the operator: Formal?\nTheir answer: Yes, formal.\nThe work so far is in this working copy. Carry on from where it got to, using their answer.");
   });
 
+  it("tells a continued session its signed-off work must pass again where it lands", () => {
+    const { prompt } = assemblePrompt(caseFileWith({ continues: { ...CONTINUES, turn: { kind: "signed_off" } } }), workerRoleConfig, NOTHING);
+    expect(prompt).toContain("The operator signed this work off, but it no longer passes its checks where it is to land. Put it right; it will wait for their sign-off again.");
+  });
+
   it("tells a continued session it was interrupted", () => {
     const { prompt } = assemblePrompt(caseFileWith({ continues: { ...CONTINUES, turn: { kind: "interrupted" } } }), workerRoleConfig, NOTHING);
     expect(prompt).toContain("## Continuing\nAn earlier session on this task was interrupted before it finished. The work so far is in this working copy. Carry on from where it got to.");

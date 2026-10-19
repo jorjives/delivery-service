@@ -30,6 +30,7 @@ export const LedgerEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("parked"), key: z.string(), reason: ParkReason, at: z.string() }),
   z.object({ t: z.literal("answered"), key: z.string(), answer: z.string().min(1), at: z.string() }),
   z.object({ t: z.literal("unparked"), key: z.string(), at: z.string() }),
+  z.object({ t: z.literal("signed_off"), key: z.string(), at: z.string() }),
 ]);
 export type LedgerEntry = z.infer<typeof LedgerEntry>;
 
@@ -43,13 +44,14 @@ export interface ItemState {
   question: string | null;
   answer: string | null;
   parked: ParkReason | null;
+  signedOff: boolean; // the operator signed held work off, and no run has dispatched since
   lastClosedAt: string | null;
   branch: string | null; // the delivered run's branch
   commit: string | null; // the delivered work's tip: the branch tip, or the base tip when a closer already merged and deleted the branch
 }
 
 const fresh = (key: string): ItemState => ({
-  key, intent: null, attempts: 0, lastRunId: null, settled: true, lastClass: null, question: null, answer: null, parked: null, lastClosedAt: null, branch: null, commit: null,
+  key, intent: null, attempts: 0, lastRunId: null, settled: true, lastClass: null, question: null, answer: null, parked: null, signedOff: false, lastClosedAt: null, branch: null, commit: null,
 });
 
 /** Machine-local, beside the worktrees: it describes this machine's runs and means nothing in another clone. */
@@ -60,7 +62,7 @@ export function ledgerPath(repoPath: string, env: NodeJS.ProcessEnv): string {
 function apply(state: ItemState, entry: LedgerEntry): ItemState {
   switch (entry.t) {
     case "dispatched":
-      return { ...state, intent: entry.intent, lastRunId: entry.runId, settled: false, answer: null };
+      return { ...state, intent: entry.intent, lastRunId: entry.runId, settled: false, answer: null, signedOff: false };
     case "ended":
       return entry.class === "delivered"
         ? { ...state, settled: true, lastClass: "delivered", attempts: 0, question: null, lastClosedAt: entry.at, branch: entry.branch ?? null, commit: entry.commit ?? null }
@@ -71,6 +73,8 @@ function apply(state: ItemState, entry: LedgerEntry): ItemState {
       return { ...state, parked: null, attempts: 0, answer: entry.answer };
     case "unparked":
       return { ...fresh(state.key), intent: state.intent, lastClosedAt: state.lastClosedAt };
+    case "signed_off":
+      return { ...state, parked: null, attempts: 0, signedOff: true };
   }
 }
 
@@ -169,6 +173,10 @@ export async function recordAnswer(path: string, key: string, answer: string): P
 
 export async function recordUnpark(path: string, key: string): Promise<void> {
   await append(path, { t: "unparked", key, at: now() });
+}
+
+export async function recordSignOff(path: string, key: string): Promise<void> {
+  await append(path, { t: "signed_off", key, at: now() });
 }
 
 export function parkedItems(ledger: Map<string, ItemState>): ItemState[] {

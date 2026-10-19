@@ -173,6 +173,18 @@ describe("the ledger", () => {
     expect(parkedNote(state)).toBe("Holding backlog:x.md: its fix is finished and checked, and waits for your sign-off because the problem is serious. Read it, then: delivery sign-off backlog:x.md, or set it aside: delivery reject backlog:x.md");
   });
 
+  it("unparks a signed-off item, and forgets the sign-off once it is dispatched again", () => {
+    const at = "2026-10-19T12:00:00Z";
+    const states = foldLedger([
+      { t: "dispatched", key: "k", runId: "r1", intent: "x", at },
+      { t: "ended", key: "k", runId: "r1", class: "held", at },
+      { t: "parked", key: "k", reason: "held", at },
+      { t: "signed_off", key: "k", at },
+    ]);
+    expect(states.get("k")).toMatchObject({ parked: null, signedOff: true, lastClass: "held" });
+    expect(foldLedger([{ t: "signed_off", key: "k", at }, { t: "dispatched", key: "k", runId: "r2", intent: "x", at }]).get("k")?.signedOff).toBe(false);
+  });
+
   it("lists what is parked", async () => {
     const path = scratch();
     await recordDispatched(path, KEY, "r1", "Greet people.");
