@@ -1,7 +1,8 @@
 # Delivery Service: Stacked Delivery Pull Requests — Design
 
-> **Status:** Draft
+> **Status:** Approved
 > **Created:** 2026-10-19
+> **Approved:** 2026-10-19
 > **Builds on:** `2026-10-06-course-correction-design.md` §5.5 (landed, not yet merged) and §5.7
 > (the delivery branch). Rolling mode, described there, is unchanged and stays the default.
 
@@ -31,7 +32,9 @@ request merges, or is closed, the next run rebuilds the rest of the stack on the
 **In scope:** an opt-in stack mode for the `open-pr` closer; reconciling the stack with GitHub at
 the start of every `--sources` run (merged, closed, and owner-amended pull requests); restacking
 by rebase, with every remaining level re-checked; publishing the stack; the ledger, status and
-report changes those need; fetching the base from `origin` for the `open-pr` closer in both modes.
+report changes those need; fetching the base from `origin` for the `open-pr` closer in both modes;
+ordered sequences in dispatch, so dependent items never run ahead of the item they build on
+(§5.10, in both modes).
 
 **Not in scope:**
 
@@ -133,8 +136,9 @@ is the base when the bottom was closed.
   `parkAfter` rule rather than looping. Items above *j* are released without an attempt. All of them become
   dispatchable again, because their work no longer awaits merge.
 
-Whether a later item (slice 3) is dispatched while an earlier one (slice 2) is parked is the
-work source's decision, as it is today.
+When the items are in a sequence (§5.10), the closed item is the earliest undelivered one in it,
+so it is dispatched again first, built on level *j−1*, and the items above it wait. Work
+continues from the base only when the bottom level itself was closed.
 
 ### 5.4 Adopting the owner's commits
 
@@ -221,6 +225,35 @@ rolling mode, plus the existing `blocked`. `docs/reporting.md` documents the fie
 `docs/project-configuration.md` gains a "Stacked pull requests" section beside "The delivery
 branch".
 
+### 5.10 Ordered sequences
+
+Slices build on each other: slice 3 assumes slice 2's work is there. Dispatching slice 3 while
+slice 2 is parked builds it on the wrong parent. Either its check fails and it parks too, or,
+worse, the agent writes slice 2's missing work into slice 3, and the pull requests, the slices
+and their UATs no longer match. Autoloop's stop-the-line veto exists for this reason. A work
+source cannot enforce it itself, because it cannot see the item ledger, so dispatch does.
+
+- **A work item may carry `sequence: <name>`**, from any source: a backlog item's front matter,
+  a field of a command source's task, or a `sequence:<name>` label on a GitHub issue. Items with
+  the same name form one sequence, in the source's order.
+- **Within a sequence, dispatch takes only the earliest item not yet delivered.** An item counts
+  as delivered once it has landed, so in stack mode the next item stacks on the one before it
+  while that one awaits review. If the earliest undelivered item is parked, waiting for the
+  operator's answer, or in flight, nothing later in its sequence is dispatched.
+- **Nothing else waits.** Items without a `sequence`, and other sequences, are dispatched as
+  usual, so a stall in one spec does not stop another spec or the issue backlog.
+- **`delivery status` and the report** name each waiting sequence and the item holding it,
+  with that item's state (parked, waiting for an answer, or in flight). In the report's
+  versioned data this is `held`: an array of `{ sequence, item, reason }`.
+- With `--max N` above 1, at most one item of a sequence is taken per run, since the next one
+  cannot start until the earlier one lands.
+
+A sequence is ordering only. A dependency between sequences, such as one spec's slices needing
+another spec's, is expressed by giving them the same sequence name. Richer dependencies (a
+per-item `dependsOn`) are not part of this design.
+
+The slices work source sets `sequence` to the slices file, so each spec is its own sequence.
+
 ## 6. Units
 
 | Unit | Does | Depends on |
@@ -232,6 +265,7 @@ branch".
 | `open-pr-closer.ts` | Stack publishing (§5.6), when `ctx.delivery.stack` is set | `gh.ts`, `git-exec.ts` |
 | `cli/sources-run.ts` | Chooses reconcile by mode; runs it every run while the stack has levels | the above |
 | `item-ledger.ts` | `awaitsMerge` consults the stack in stack mode; `rejected` attempt for a closed level | `delivery-stack.ts` |
+| `work-sources.ts` | Reads `sequence` from every source type; `chooseWork` applies the sequence hold (§5.10) | `item-ledger.ts` |
 | `schema.ts` | `stack` on the `open-pr` closer | — |
 
 The plan function is where the decisions live, and it touches neither git nor GitHub, so every
@@ -265,6 +299,10 @@ row of §5.2's table is a unit test.
   `sources-run` tests drive whole sequences: three runs make three stacked pull requests; the
   bottom merges by squash; the next run restacks, retargets and lands a fourth on top; closing
   level 2 drops levels 2 to 4 and the next item starts from level 1.
+- **Sequences:** in `chooseWork`, a parked, answer-waiting or in-flight earliest item holds its
+  sequence and nothing else; a landed-but-unmerged item does not hold it; with `--max 3`, one
+  item per sequence is taken; and, end to end in stack mode, closing slice 2's pull request
+  redelivers slice 2 on slice 1 before slice 3 is dispatched.
 - **Rolling mode regression:** the existing delivery-branch tests run unchanged, plus one for
   §5.8 (a rolling pull request merged on GitHub and seen only through the fetch).
 
@@ -294,10 +332,14 @@ row of §5.2's table is a unit test.
 5. **GitHub's pull request state, not ancestry, decides "merged".** It is the only signal that
    is correct for all three merge methods, and the repository's method is not ours to choose.
 6. **Closed means no.** A closed level is rejected and counts as an attempt; levels above are
-   released. This honours "a closed pull request means new work continues from the base" without
-   letting a rejected item loop.
+   released, and with sequences (§5.10) the closed item is redone first, on the level below it,
+   which is the base only when the bottom level was closed. Counting the attempt stops a rejected
+   item looping.
 7. **Force-push with lease, atomically.** Level refs are the harness's branches, so rewriting
    them is expected in a stacked workflow. The lease protects any commit the owner pushed.
+8. **Ordered sequences in the harness, not in the source.** Only dispatch can see whether an
+   item is parked or waiting, so only dispatch can hold a sequence behind it. A sequence is a
+   named order rather than a dependency graph, because slices are a line.
 
 ### Operability / DX
 
@@ -317,6 +359,6 @@ row of §5.2's table is a unit test.
   merges.
 - **Lagging the base** (decision 4) can surface a conflict only when the bottom merges, which
   then blocks the stack until the owner resolves or closes a level.
-- **Dependent items and parking.** If a slice parks after its pull request is closed, a source
-  that lists later slices may dispatch one that depends on it. That is the source's ordering to
-  get right. It is not new, but stack mode makes it more likely.
+- **A held sequence looks idle.** A parked slice stops its spec's sequence until the operator
+  unparks or answers it. `delivery status` and `notify` name the held sequence, so the stall is
+  visible rather than silent.
