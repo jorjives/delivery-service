@@ -95,17 +95,13 @@ The part is a folder or a file, relative to where you are. The review says "This
 
 ## Choosing what to fix
 
-Nothing is fixed until you say so. Choose by the numbers in the list:
+`delivery backlog` lists the ideas a review added. Approve the ones you want fixed by name:
 
-```bash
-delivery findings approve 1 3
-delivery findings skip 2
-delivery findings approve --all
-```
+    delivery approve total-below-zero settings-error
 
-`--all` approves every problem listed now, by name, so a later review never adds to it. If you
-change your mind, choose again: your latest choice counts, until fixing starts. Approving a
-problem that is tests only says so once, because only your existing tests can show it is fixed.
+or all of them with `delivery approve --all`. Each becomes an open item, fixed through the review's fix workflow the
+next time you run `delivery run --sources`. Set the rest aside with `delivery decline <ids>`. Both commit only those
+item files on your current branch, and refuse if you have changed one of them without committing it.
 
 `delivery findings approve --recommended` approves, in one step, the problems still to decide that
 have a check of their own and are not serious enough to wait for your sign-off, and says which it

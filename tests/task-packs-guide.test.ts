@@ -54,7 +54,7 @@ describe("the task packs guide", () => {
   });
 
   it("shows how to choose which problems to fix, and quotes where each can stand", () => {
-    for (const command of ["delivery findings approve 1 3", "delivery findings approve --all", "delivery findings skip 2"]) expect(guide).toContain(command);
+    for (const command of ["delivery approve total-below-zero settings-error", "delivery approve --all", "delivery decline <ids>"]) expect(guide).toContain(command);
     for (const phrase of [...Object.values(STATE_WORDS), PR_OPENED]) expect(flat).toContain(phrase);
   });
 
