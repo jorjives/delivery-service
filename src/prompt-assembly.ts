@@ -72,6 +72,8 @@ const GUARD_WORDS: Record<GuardName, string> = {
   "no-skips": "no new skip or only marker added to a test file",
   ignored: "no test setting, or test that switches others off, left out of git",
   backlog: "no existing item in .delivery/backlog/ edited or removed, and any new item you add there (a follow-up) in the item format",
+  "backlog-only":
+    "nothing changed but new backlog items, each with status idea, a severity and a check that finds its problem in the project as it stands",
 };
 
 /** The check that judges the work, and how the agent can run it itself. */

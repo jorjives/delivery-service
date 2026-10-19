@@ -34,7 +34,7 @@ export const TaskDef = z.record(z.string(), z.unknown());
 export type TaskDef = z.infer<typeof TaskDef>;
 
 /** The guards by name, in the order they are told. Each judges one way of weakening the tests. */
-export const GuardName = z.enum(["tests-untouched", "tests-unchanged", "check-untouched", "no-skips", "ignored", "backlog"]);
+export const GuardName = z.enum(["tests-untouched", "tests-unchanged", "check-untouched", "no-skips", "ignored", "backlog", "backlog-only"]);
 export type GuardName = z.infer<typeof GuardName>;
 
 /** How serious a problem is, most serious first. Words, never a number. */

@@ -306,6 +306,8 @@ commit its work was saved in. The task is delivered once, after the last step. A
 `continue: true` to pick up the previous step's agent session. `delivery preview --step <name>`
 shows what a step will be told. A task run without `--workflow` is one step, as before.
 
+`backlog-only` is off by default. A step that turns it on (`"guards": { "add": ["backlog-only"] }`) may only add ideas: new backlog items with `status: idea`, a `severity` and a `check` that finds its problem in the project as it stands. Any other change, or an idea its check cannot find, fails the step. A pack's scan workflow turns it on.
+
 To start a configuration for a project of your own, run `delivery init` in it: it asks what the
 project is, what checks the work, what happens to work that passes, and what you would like
 done, one thing at a time, and writes the file for you. The [readme](../README.md#configure-it-once)

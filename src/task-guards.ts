@@ -29,13 +29,16 @@ export function activeGuards(taskDef: TaskDef, step?: GuardSwitches): ActiveGuar
  * other task gets the defaults, with what its own `guards` adds and turns off. In `GuardName` order, so the same
  * task always yields the same list.
  */
+/** Every guard a fix is judged by: all of them but `backlog-only`, which judges a scan that only adds ideas. */
+const FIX_GUARDS = GuardName.options.filter((name) => name !== "backlog-only");
+
 function taskGuards(taskDef: TaskDef): ActiveGuards {
   const fix = FixTask.safeParse(taskDef);
   if (fix.success) {
     const { guards, authorisation } = fix.data;
     const lists = guards === undefined ? DEFAULT_GUARDS : { testGlobs: guards.testGlobs, protectedGlobs: guards.protectedGlobs, skipMarkers: guards.skipMarkers };
     const editsAllowed = guards?.testsCategory === true || authorisation.allowTestEdits === true;
-    return { lists, on: GuardName.options.filter((name) => !(editsAllowed && name === "tests-unchanged")) };
+    return { lists, on: FIX_GUARDS.filter((name) => !(editsAllowed && name === "tests-unchanged")) };
   }
   const { add = [], off = [] } = switchesOf(taskDef);
   return { lists: DEFAULT_GUARDS, on: GuardName.options.filter((name) => (DEFAULT_ON.includes(name) || add.includes(name)) && !off.includes(name)) };

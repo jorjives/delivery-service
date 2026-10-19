@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { appendFileSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { git } from "./git-exec.js";
 import { cleanGitEnv } from "./git-env.js";
 import { treeOf } from "./repair-changes.js";
 import { GuardSwitches, type GateRef } from "./schema.js";
@@ -10,6 +11,7 @@ import { FILE_LIMIT } from "./packs/confirm.js";
 import {
   addedBacklogItems,
   BACKLOG_GUARD,
+  BACKLOG_ONLY_GUARD,
   CHECK_GUARD,
   DEFAULT_GUARDS,
   DEFAULT_ON,
@@ -42,7 +44,7 @@ describe("what a fix may not touch", () => {
 });
 
 const NPM: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
-const GUARDS: ActiveGuards = { lists: DEFAULT_GUARDS, on: GuardName.options };
+const GUARDS: ActiveGuards = { lists: DEFAULT_GUARDS, on: GuardName.options.filter((name) => name !== "backlog-only") };
 const PROJECT = {
   "package.json": JSON.stringify({ type: "module", scripts: { test: "node --test" } }, null, 2),
   "checkout.js": "export const total = (p, d) => p - d;\n",
@@ -99,7 +101,7 @@ describe("whether a change touched the tests", () => {
   });
 
   it("for a problem whose fix changes tests, allows modifying a test and still refuses deleting one", async () => {
-    const tests = { ...GUARDS, on: GuardName.options.filter((name) => name !== "tests-unchanged") };
+    const tests = { ...GUARDS, on: GUARDS.on.filter((name) => name !== "tests-unchanged") };
     const changed = initTempRepo("guards-", PROJECT);
     put(changed, "checkout.test.js", "import { test } from 'node:test';\ntest('takes the discount off', () => { /* stronger */ });\n");
     expect(await outcomes(changed, tests)).not.toHaveProperty(EDIT_GUARD);
@@ -336,5 +338,42 @@ describe("no-skips reads only test files", () => {
     const repo = initTempRepo("guards-", PROJECT);
     put(repo, "checkout.test.js", "import { test } from 'node:test';\ntest.skip('later', () => {});\n");
     expect((await outcomes(repo))[SKIP_GUARD]).toBe("FAIL");
+  });
+});
+
+describe("the backlog-only guard", () => {
+  const on = { lists: DEFAULT_GUARDS, on: ["backlog", "backlog-only"] as const };
+  const idea = (anchor: string) => `---\nstatus: idea\nworkflow: code:fix\nseverity: high\ncheck:\n  kind: anchor-gone\n  path: total.js\n  anchor: "${anchor}"\n---\n# The total can go below zero\n`;
+  const project = () => initTempRepo("backlog-only-", { "total.js": "return price - discount;\n" });
+  const head = (repo: string) => git(repo, ["rev-parse", "HEAD"]);
+  const judge = async (repo: string) => (await guardAssertions(repo, await head(repo), on, null)).find((a) => a.id === BACKLOG_ONLY_GUARD);
+
+  it("passes a scan that only adds ideas whose checks find their problems now", async () => {
+    const repo = project();
+    put(repo, ".delivery/backlog/20261019T120000Z-total.md", idea("return price - discount;"));
+    expect((await judge(repo))?.outcome).toBe("PASS");
+  });
+
+  it("fails an idea its check cannot find, naming it", async () => {
+    const repo = project();
+    put(repo, ".delivery/backlog/20261019T120000Z-total.md", idea("return price + discount;"));
+    expect(await judge(repo)).toMatchObject({ outcome: "FAIL", detail: expect.stringContaining("20261019T120000Z-total.md: its check does not find the problem") });
+  });
+
+  it("fails any change outside the backlog, and a new item that is not an idea with a severity and a check", async () => {
+    const repo = project();
+    put(repo, "total.js", "return Math.max(0, price - discount);\n");
+    put(repo, ".delivery/backlog/20261019T120100Z-open.md", "---\nstatus: open\n---\n# Do something\n");
+    put(repo, ".delivery/backlog/20261019T120200Z-nocheck.md", "---\nstatus: idea\nseverity: low\n---\n# No check\n");
+    const detail = (await judge(repo))?.detail ?? "";
+    expect(detail).toContain("total.js changed");
+    expect(detail).toContain("20261019T120100Z-open.md is not an idea");
+    expect(detail).toContain("20261019T120200Z-nocheck.md has no check");
+  });
+
+  it("is off by default", async () => {
+    const repo = project();
+    put(repo, "total.js", "x\n");
+    expect((await guardAssertions(repo, await head(repo), { lists: DEFAULT_GUARDS, on: DEFAULT_ON }, null)).some((a) => a.id === BACKLOG_ONLY_GUARD)).toBe(false);
   });
 });

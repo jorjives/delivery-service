@@ -7,7 +7,7 @@ import { isEnoent } from "./journal.js";
 import { checkFilesOf, treeOf } from "./repair-changes.js";
 import type { Assertion, GateRef } from "./schema.js";
 import { GuardName } from "./schema.js";
-import { FILE_LIMIT } from "./item-check.js";
+import { checkItem, describeCheck, FILE_LIMIT } from "./item-check.js";
 import { z } from "zod";
 
 // Re-export GuardName for consumers who import from guards
@@ -49,6 +49,7 @@ export const DEFAULT_GUARDS: GuardLists = {
  */
 export const DEFAULT_ON: readonly GuardName[] = ["tests-untouched", "check-untouched", "no-skips", "ignored", "backlog"];
 export const BACKLOG_GUARD = "guard:backlog";
+export const BACKLOG_ONLY_GUARD = "guard:backlog-only";
 
 /** The guards one run is judged by: what they look at, and which of them are on. */
 export interface ActiveGuards {
@@ -128,6 +129,34 @@ export async function addedBacklogItems(cwd: string, base: string, tree: string)
     }
   }
   return { items, findings };
+}
+
+/**
+ * What a change did besides adding ideas: any path outside the backlog, a new item that is not an idea with a
+ * severity and a check, and an idea whose check does not find its problem in the working copy as the agent left it.
+ * Edits to existing items, and new files that are not items at all, are the backlog guard's to report.
+ */
+async function notIdeas(cwd: string, base: string, tree: string): Promise<string[]> {
+  const findings: string[] = [];
+  for (const { status, path } of await touched(cwd, base, tree, ["."])) {
+    if (!path.startsWith(`${BACKLOG_DIR}/`)) {
+      findings.push(`${path} changed`);
+      continue;
+    }
+    if (status !== "A") continue;
+    const parsed = parseItem(path.slice(BACKLOG_DIR.length + 1), await git(cwd, ["cat-file", "blob", `${tree}:${path}`], { raw: true, maxBuffer: FILE_LIMIT }));
+    if (!parsed.ok) continue;
+    const { item } = parsed;
+    if (item.status !== "idea") findings.push(`${path} is not an idea (its status is ${item.status})`);
+    else if (item.severity === undefined) findings.push(`${path} has no severity`);
+    else if (item.check === undefined) findings.push(`${path} has no check`);
+    else {
+      const result = await checkItem(item.check, { worktreePath: cwd });
+      if (result === "resolved") findings.push(`${path}: its check does not find the problem in the project (${describeCheck(item.check).replace("is still", "is not")})`);
+      else if (result !== "present") findings.push(`${path}: its check could not run (${result.error})`);
+    }
+  }
+  return findings;
 }
 
 /** How a revision's package.json says tests run: its test scripts and its test runners' settings. Empty when it has none or cannot be read. */
@@ -304,6 +333,10 @@ export async function guardAssertions(worktreePath: string, base: string, guards
     assertion(BACKLOG_GUARD, (await addedBacklogItems(worktreePath, base, tree)).findings, "changed the backlog in a way it may not",
       "Existing backlog items may not be edited or removed; add a new item file for a follow-up, in the item format (see docs/project-configuration.md)."),
     ...(await ignoredAssertions(worktreePath, guards)),
+    ...(on.includes("backlog-only")
+      ? [assertion(BACKLOG_ONLY_GUARD, await notIdeas(worktreePath, base, tree), "changed something other than adding ideas to the backlog",
+          "A review only adds ideas: new backlog item files with status: idea, a severity, and a check that finds the problem in the project as it stands. Put back every other change, and correct or remove an idea its check cannot find.")]
+      : []),
   ];
   return all.filter((found) => judged(on, found.id));
 }
