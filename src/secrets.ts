@@ -75,8 +75,9 @@ export function maskIn(text: string, literals: Iterable<string>): string {
 const cache = new Map<string, { stamp: string; literals: string[] }>();
 
 /**
- * Every secret a backlog item's check flags (every quoted value for a sensitive one), or that an unreadable item holds, read again only when the backlog folder changes (by name and
- * modification time), so a command that adds an idea masks it in the same breath.
+ * Every secret a backlog item's check flags (every quoted value for a sensitive one), or that an unreadable item
+ * holds, read again only when the backlog folder changes (by name and modification time), so a command that adds an
+ * idea masks it in the same breath.
  */
 export function knownSecrets(repoRoot: string): string[] {
   const root = join(repoRoot, BACKLOG_DIR);
