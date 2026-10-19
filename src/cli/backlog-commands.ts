@@ -28,7 +28,8 @@ export const unknownFixWorkflow = (file: string, workflow: string | undefined): 
   workflow === undefined
     ? `${file} does not say which workflow fixes it. Name one with --workflow.`
     : `${file} is to be fixed through the workflow "${workflow}", which your config file and your packs do not define.`;
-const titles = (items: readonly BacklogItem[]): string => items.map((item) => taskIntent(itemTask(item))).join("; ");
+const titleOf = (item: BacklogItem): string => taskIntent(itemTask(item));
+const titles = (items: readonly BacklogItem[]): string => items.map(titleOf).join("; ");
 const ideasWord = (n: number): string => (n === 1 ? "1 idea" : `${n} ideas`);
 export const approved = (items: readonly BacklogItem[]): string[] => [`Approved ${ideasWord(items.length)} for fixing: ${titles(items)}.`, "They are fixed the next time you run: delivery run --sources"];
 export const declined = (items: readonly BacklogItem[]): string[] => [`Set aside ${ideasWord(items.length)}: ${titles(items)}.`];
@@ -105,7 +106,6 @@ export async function declineCommand(ids: string[], options: ChooseOptions, ctx:
 }
 
 const stem = (file: string): string => file.replace(/\.md$/, "");
-const titleOf = (item: BacklogItem): string => taskIntent(itemTask(item));
 const rated = (item: BacklogItem): string => (item.severity === undefined ? "" : ` (${item.severity})`);
 const line = (item: BacklogItem): string => `  ${stem(item.file)}  ${titleOf(item)}${rated(item)}`;
 const stateOf = (item: BacklogItem, ledger: Map<string, ItemState>): ItemState | undefined => [...ledger.values()].find((s) => s.key.endsWith(`:${item.file}`));
