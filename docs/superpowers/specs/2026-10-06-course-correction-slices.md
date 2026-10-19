@@ -1,6 +1,7 @@
 # Delivery Service: Course Correction — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-10-06-course-correction-design.md`
+> **Status:** ✅ Complete — 2026-10-19 — all 8 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** as with the task-packs item, this item's product surface is the `delivery`
@@ -489,6 +490,7 @@ one using the file-based backlog, without the operator writing any integration c
 
 ## Slice 8: Review a Project, Choose What to Fix, and Hold Serious Problems for Sign-Off
 
+**Status:** ✅ Complete — 2026-10-19 — `838129f`
 **Delivers:** An operator runs a built-in or installed pack's review, reads the problems it found
 as plain-language backlog ideas, approves the ones they want fixed, and anything serious enough is
 held on its own branch for the operator's explicit sign-off before it reaches the delivery branch.
