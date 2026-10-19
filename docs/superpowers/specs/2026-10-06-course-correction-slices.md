@@ -491,6 +491,7 @@ one using the file-based backlog, without the operator writing any integration c
 ## Slice 8: Review a Project, Choose What to Fix, and Hold Serious Problems for Sign-Off
 
 **Status:** ✅ Complete — 2026-10-19 — `838129f`
+**Tests:** ✅ Recorded — 2026-10-19 — `b1ded48` — cli (vitest) — 1 UAT + 3 AC, 2 skipped
 **Delivers:** An operator runs a built-in or installed pack's review, reads the problems it found
 as plain-language backlog ideas, approves the ones they want fixed, and anything serious enough is
 held on its own branch for the operator's explicit sign-off before it reaches the delivery branch.
