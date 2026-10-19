@@ -5,7 +5,7 @@ import { atomicWrite } from "../journal.js";
 import type { ReportDocument } from "../report/document.js";
 import { quoted } from "../report/text.js";
 import { prepareDeliveryDir } from "../run-location.js";
-import { secretMasker } from "../packs/secrets.js";
+import { secretMasker } from "../secrets.js";
 
 /** Where the report of the last run is kept, as the owner would find it: relative to the repository. One fixed pair, replaced by the next run. */
 export const SAVED_TEXT = ".delivery/last-report.txt";

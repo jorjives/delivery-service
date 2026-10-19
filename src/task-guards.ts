@@ -1,10 +1,8 @@
 import { DEFAULT_GUARDS, DEFAULT_ON, guardAssertions, ignoredAssertions, type ActiveGuards, type AcceptedSettings } from "./guards.js";
-import { FixTask } from "./packs/fix-task.js";
 import type { Gate } from "./command-gate.js";
 import { errorReport, messageOf } from "./gate-support.js";
-import { git } from "./git-exec.js";
 import { resolvedAssertion } from "./item-check.js";
-import { GuardName, GuardSwitches, type GateRef, type TaskDef, type CaseFileHeader, type Assertion, type GateReport } from "./schema.js";
+import { GuardName, GuardSwitches, type TaskDef, type CaseFileHeader, type Assertion, type GateReport } from "./schema.js";
 
 /** Only the switches a task's own `guards` names: the config file refuses anything else, so a record holding more is read as holding none. */
 const SwitchesOf = GuardSwitches.partial();
@@ -24,22 +22,10 @@ export function activeGuards(taskDef: TaskDef, step?: GuardSwitches): ActiveGuar
 }
 
 /**
- * The guards a task's run is judged by. A fix of a problem a review found keeps every guard, by the lists it was
- * authorised with, and may change an existing test only when the problem is in one or its owner allowed it. Any
- * other task gets the defaults, with what its own `guards` adds and turns off. In `GuardName` order, so the same
- * task always yields the same list.
+ * The guards a task's run is judged by: the defaults, with what its own `guards` adds and turns off. In `GuardName`
+ * order, so the same task always yields the same list.
  */
-/** Every guard a fix is judged by: all of them but `backlog-only`, which judges a scan that only adds ideas. */
-const FIX_GUARDS = GuardName.options.filter((name) => name !== "backlog-only");
-
 function taskGuards(taskDef: TaskDef): ActiveGuards {
-  const fix = FixTask.safeParse(taskDef);
-  if (fix.success) {
-    const { guards, authorisation } = fix.data;
-    const lists = guards === undefined ? DEFAULT_GUARDS : { testGlobs: guards.testGlobs, protectedGlobs: guards.protectedGlobs, skipMarkers: guards.skipMarkers };
-    const editsAllowed = guards?.testsCategory === true || authorisation.allowTestEdits === true;
-    return { lists, on: FIX_GUARDS.filter((name) => !(editsAllowed && name === "tests-unchanged")) };
-  }
   const { add = [], off = [] } = switchesOf(taskDef);
   return { lists: DEFAULT_GUARDS, on: GuardName.options.filter((name) => (DEFAULT_ON.includes(name) || add.includes(name)) && !off.includes(name)) };
 }
@@ -52,17 +38,8 @@ export function guardChanges(taskDef: TaskDef, step?: GuardSwitches): { added: G
   return added.length === 0 && off.length === 0 ? null : { added, off };
 }
 
-/** The check whose own files the guards protect: the run's gate, or the project check a fix wraps (none in a project with no tests). */
-export function verifyOf(taskDef: TaskDef, gateRef: GateRef): GateRef | null {
-  const fix = FixTask.safeParse(taskDef);
-  return fix.success ? fix.data.authorisation.verify : gateRef;
-}
-
-/** Where the guards diff from: the commit the work started from, or, for a record made before it was pinned, where the work branched from its base branch. */
-export type GuardBase = { commit: string } | { branch: string };
-
-const commitOf = async (worktreePath: string, base: GuardBase): Promise<string> =>
-  "commit" in base ? base.commit : git(worktreePath, ["merge-base", "HEAD", base.branch]);
+/** Where the guards diff from: the commit the work started from. */
+export type GuardBase = { commit: string };
 
 /** The check's report with the guards' results joined to it. A check that could not run still fails on a guard that failed. */
 function joined(report: GateReport, guards: Assertion[]): GateReport {
@@ -91,7 +68,7 @@ export function guardedGate(gate: Gate, base: GuardBase, accepted: AcceptedSetti
     async check(ctx) {
       let guards: Assertion[];
       try {
-        guards = await guardAssertions(ctx.worktreePath, await commitOf(ctx.worktreePath, base), activeGuards(ctx.taskDef, ctx.guards), verifyOf(ctx.taskDef, ctx.gateRef), accepted, ctx.itemId);
+        guards = await guardAssertions(ctx.worktreePath, base.commit, activeGuards(ctx.taskDef, ctx.guards), ctx.gateRef, accepted, ctx.itemId);
         const resolved = await resolvedAssertion(ctx.taskDef, ctx.itemId, ctx.worktreePath);
         if (resolved !== undefined) guards = [...guards, resolved];
       } catch (err) {
@@ -102,11 +79,7 @@ export function guardedGate(gate: Gate, base: GuardBase, accepted: AcceptedSetti
   };
 }
 
-/**
- * Where a run's guards diff from: its pinned start commit. A fix recorded before the start commit was pinned keeps
- * the guards it was always judged by, from where it branched; any other such run is judged by its gate alone.
- */
+/** Where a run's guards diff from: its pinned start commit. A run recorded before the start commit was pinned is judged by its gate alone. */
 export function guardBase(header: CaseFileHeader): GuardBase | null {
-  if (header.startCommit !== undefined) return { commit: header.startCommit };
-  return FixTask.safeParse(header.taskDef).success && header.baseBranch !== null ? { branch: header.baseBranch } : null;
+  return header.startCommit === undefined ? null : { commit: header.startCommit };
 }

@@ -5,7 +5,7 @@ import { BACKLOG_DIR } from "./backlog.js";
 import { git } from "./git-exec.js";
 import { isEnoent } from "./journal.js";
 import { LOCKFILE, lockfileHas } from "./lockfile.js";
-import { secretLiterals } from "./packs/secrets.js";
+import { secretLiterals } from "./secrets.js";
 import { SEVERITIES, ItemCheck, type Assertion, type Severity, type TaskDef } from "./schema.js";
 
 /** Where the harness keeps its records in a project: never where a problem is looked for, so an item never confirms itself. */

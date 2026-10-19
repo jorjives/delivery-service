@@ -3,12 +3,7 @@ import { resolve } from "node:path";
 import { Command, CommanderError, Option } from "commander";
 import type { CommandContext, CliStdin, ExitOnInterrupt } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
-import { secretMasker } from "../packs/secrets.js";
-import { SIGN_OFF_THRESHOLDS } from "../packs/finding.js";
-import { decideCommand, findingsCommand, type DecideOptions, type FindingsOptions } from "./findings-command.js";
-import type { SignOffOptions } from "./sign-off-command.js";
-import type { ReviewCommandOptions } from "./review-command.js";
-import type { FixOptions } from "./fix-command.js";
+import { secretMasker } from "../secrets.js";
 import { answerCommand, rejectCommand as rejectItemCommand, signOffCommand as signOffItemCommand, unparkCommand, type ItemOptions } from "./item-commands.js";
 import { approveCommand, declineCommand, type ChooseOptions } from "./backlog-commands.js";
 import { dropAfterCommand } from "./after-command.js";
@@ -103,7 +98,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .version(version, "-V, --version", "print the harness version")
     .option("--no-color", "print without colour")
-    .option("--json", "print machine-readable output: one JSON object per step while a run or a fix happens, one JSON document from status, report, validate, review, findings and packs, and one JSON event per line from status --watch")
+    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate and packs, and one JSON event per line from status --watch")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
     .configureOutput({ writeOut: (text) => out.stdout.write(text), writeErr: (text) => out.stderr.write(text) });
@@ -310,107 +305,11 @@ export async function runCli(io: CliIo): Promise<number> {
     });
 
   program
-    .command("review")
-    .description(
-      "have an agent review your project, such as a code review, and list the problems it finds in plain words: it reads your last commit and changes nothing",
-    )
-    .argument("<pack>", "which review: a name from `delivery packs`, such as code, or the path to a review folder of your own")
-    .argument("[repo]", "the git repository to review (default: the current folder)")
-    .option("--path <part>", "review only this part of your project, such as src/auth: a folder or file, relative to where you are")
-    .option("--preview", "show what the review agent would be told, and start nothing: no sign-in and no network needed")
-    .action(async (pack: string, repo: string | undefined, options: ReviewCommandOptions, command: Command) => {
-      const ctx = ctxFor(command, repo);
-      const { reviewCommand } = await import("./review-command.js");
-      exitCode = await reviewCommand(pack, repo, ctx, inquirerAsk(ctx.colour), options);
-    });
-
-  const findings = program
-    .command("findings")
-    .description("list the problems your latest review found and where each stands, or show one in full with the detail for engineers; changes nothing")
-    .argument("[number]", "show this problem in full, counted from 1 as the list numbers them")
-    .option("--unconfirmed", "list the problems the review reported that could not be found in your project, and why")
-    .option("--changes", "with a problem's number: show what its kept fix changed, file by file")
-    .option("--include-skipped", "also list problems you skipped or declined in an earlier review of the same kind, which are left out by default")
-    .option("--schema", "print the published JSON Schema of the document `delivery findings --json` prints, instead of the problems")
-    .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
-    .action(async (number: string | undefined, options: FindingsOptions, command: Command) => {
-      exitCode = await findingsCommand(number, options, ctxFor(command));
-    });
-
-  findings
-    .command("approve")
-    .description("approve problems from your latest review for fixing, by their numbers in the list; `delivery fix` then fixes them")
-    .argument("[numbers...]", "the problems to approve, as the list numbers them")
-    .option("--all", "approve every problem listed now that is not already being fixed (not those you settled in an earlier review)")
-    .option("--allow-unchecked", "approve problems that cannot be checked: nothing will check their fixes except you, so each waits for your sign-off")
-    .option("--allow-test-edits", "let each named problem's fix change your existing tests, never delete or skip one: each waits for your sign-off. Use it on a problem that needs a change to one of your tests to have it fixed on the next delivery fix")
-    .option("--recommended", "approve the problems still to decide that have a check of their own and are not serious enough to wait for your sign-off; says which it chose")
-    .action(async (numbers: string[], _options: DecideOptions, command: Command) => {
-      exitCode = await decideCommand("approve", numbers, command.optsWithGlobals<DecideOptions>(), ctxFor(command));
-    });
-
-  findings
-    .command("skip")
-    .description("skip problems from your latest review: nothing will be done about them")
-    .argument("[numbers...]", "the problems to skip, as the list numbers them")
-    .action(async (numbers: string[], _options: unknown, command: Command) => {
-      exitCode = await decideCommand("skip", numbers, command.optsWithGlobals<DecideOptions>(), ctxFor(command));
-    });
-
-  findings
-    .command("sign-off")
-    .description("merge a serious fix waiting for your sign-off: it is checked again on your current main copy first, and nothing is merged if it no longer passes")
-    .argument("<number>", "the problem whose fix to merge, as the list numbers it")
-    .action(async (number: string, _options: unknown, command: Command) => {
-      const { signOffCommand } = await import("./sign-off-command.js");
-      exitCode = await signOffCommand(number, command.optsWithGlobals<SignOffOptions>(), ctxFor(command));
-    });
-
-  findings
-    .command("reject")
-    .description("decline a serious fix waiting for your sign-off: nothing is merged, and the fix is kept on its branch for an engineer")
-    .argument("<number>", "the problem whose fix to decline, as the list numbers it")
-    .action(async (number: string, _options: unknown, command: Command) => {
-      const { rejectCommand } = await import("./sign-off-command.js");
-      exitCode = await rejectCommand(number, command.optsWithGlobals<SignOffOptions>(), ctxFor(command));
-    });
-
-  program
-    .command("fix")
-    .description(
-      "fix the problems you approved in your latest review: each is fixed by an agent in its own copy, checked by its own check and your tests (if you have any), then merged or kept for your sign-off",
-    )
-    .option("--concurrency <n>", "how many problems to fix at once (default: 1, or `concurrency` in delivery.config.json)")
-    .addOption(
-      new Option("--sign-off-threshold <level>", "how serious a problem must be for its fix to wait for your sign-off: that level and every more serious one wait; none: nothing waits for how serious it is (default: the review's own)").choices(
-        SIGN_OFF_THRESHOLDS,
-      ),
-    )
-    .option("--repo <path>", "the git repository the review belongs to (default: the current folder)")
-    .action(async (options: FixOptions, command: Command) => {
-      const { fixCommand } = await import("./fix-command.js");
-      exitCode = await fixCommand(options, ctxFor(command));
-    });
-
-  const packs = program
     .command("packs")
     .description("list the reviews available, each with a sentence saying what it looks for")
     .option("--schema", "print the JSON Schema of a review folder's pack.json, so your editor can check one as you write it")
     .action(async (options: PacksOptions, command: Command) => {
       exitCode = await packsCommand(options, ctxFor(command));
-    });
-
-  packs
-    .command("check")
-    .description(
-      "check a review folder of your own before you use it: every mistake is named by file and field, then its fixtures run against a scripted agent, with nothing sent to a real agent",
-    )
-    .argument("<path>", "the review folder to check, such as ./my-review")
-    .option("--yes", "skip asking whether you trust this pack's code before its fixtures run; needed when this isn't a terminal")
-    .action(async (path: string, options: { yes?: boolean }, command: Command) => {
-      const { packsCheckCommand } = await import("./packs-check-command.js");
-      const ctx = ctxFor(command);
-      exitCode = await packsCheckCommand(path, options, ctx, inquirerAsk(ctx.colour));
     });
 
   try {

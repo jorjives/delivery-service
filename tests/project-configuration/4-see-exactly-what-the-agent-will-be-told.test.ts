@@ -112,12 +112,11 @@ describe("acceptance criteria", () => {
     expect(status).toBe(EXIT.configuration);
   });
 
-  it("gives the same single plain-language message delivery validate gives, for a configuration problem", () => {
+  it("previews with the defaults when there is no config file, and says in one plain sentence what it still needs", () => {
     const repo = freshRepo(undefined, "uat-slice-4-noconfig-");
-    const validate = runDelivery(["validate"], { cwd: repo });
     const preview = runDelivery(["preview"], { cwd: repo });
-    expect(validate.stderr.trimEnd()).toBe(NO_CONFIG);
-    expect(preview.stderr.trimEnd()).toBe(validate.stderr.trimEnd());
+    expect(preview.stderr).not.toContain(NO_CONFIG);
+    expect(preview.stderr.trimEnd()).toContain("--gate-command");
     expect(preview.stdout).toBe("");
     expect(preview.status).toBe(EXIT.configuration);
   });

@@ -12,7 +12,7 @@ describe("delivery packs", () => {
     const lines = stdout.trimEnd().split("\n");
     expect(lines[0]).toBe("These reviews are available:");
     for (const pack of await builtInPacks()) expect(lines).toContain(`  ${pack.manifest.name}: ${pack.manifest.summary}`);
-    expect(lines.slice(-2)).toEqual(["Run one with: delivery review code", "Or run a review from a folder of your own: delivery review ./path-to-the-folder"]);
+    expect(lines.slice(-2)).toEqual(["Run one with: delivery review code", "Or use a review folder of your own: list it under packs in delivery.config.json, then delivery review <its name>"]);
   });
 
   it("prints the pack format's JSON Schema with --schema, wherever it is asked", async () => {

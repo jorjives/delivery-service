@@ -1,10 +1,9 @@
 import { guardAssertions, settingsChanged, ignoredAssertions, type AcceptedSettings } from "./guards.js";
 import { integrityOf } from "./gate-digest.js";
 import { messageOf } from "./gate-support.js";
-import { git } from "./git-exec.js";
 import { treeOf } from "./repair-changes.js";
 import type { CaseFileHeader, HistoryEntry } from "./schema.js";
-import { activeGuards, guardBase, verifyOf } from "./task-guards.js";
+import { activeGuards, guardBase } from "./task-guards.js";
 
 export interface RepairVerdict {
   refused: string | null;
@@ -34,11 +33,9 @@ export async function judgedRepair<T>(
   const base = guardBase(header);
   if (base === null) return { result: await session(), verdict: ACCEPTED };
   const active = activeGuards(header.taskDef);
-  const verify = verifyOf(header.taskDef, header.gateRef);
   let before: { tree: string; start: string; ignored: Set<string> } | undefined;
   try {
-    const start = "commit" in base ? base.commit : await git(worktreePath, ["merge-base", "HEAD", base.branch]);
-    before = { tree: await treeOf(worktreePath), start, ignored: new Set((await ignoredAssertions(worktreePath, active)).map((a) => a.id)) };
+    before = { tree: await treeOf(worktreePath), start: base.commit, ignored: new Set((await ignoredAssertions(worktreePath, active)).map((a) => a.id)) };
   } catch {
     before = undefined;
   }
@@ -48,13 +45,13 @@ export async function judgedRepair<T>(
     const after = await treeOf(worktreePath);
     const prior = acceptedOf(history);
     const [sinceStart, byRepair] = await Promise.all([
-      settingsChanged(worktreePath, before.start, before.tree, active.lists, verify),
-      settingsChanged(worktreePath, before.tree, after, active.lists, verify),
+      settingsChanged(worktreePath, before.start, before.tree, active.lists, header.gateRef),
+      settingsChanged(worktreePath, before.tree, after, active.lists, header.gateRef),
     ]);
     // Only what the repair alone changed is excused: a setting the worker changed first stays the worker's.
     const workers = new Set([...sinceStart].filter(([label, print]) => prior[label] !== print).map(([label]) => label));
     const accepted: AcceptedSettings = Object.fromEntries([...byRepair].filter(([label]) => !workers.has(label)));
-    const found = (await guardAssertions(worktreePath, before.tree, active, verify, Object.fromEntries(byRepair))).filter((a) => a.outcome === "FAIL" && !before.ignored.has(a.id));
+    const found = (await guardAssertions(worktreePath, before.tree, active, header.gateRef, Object.fromEntries(byRepair))).filter((a) => a.outcome === "FAIL" && !before.ignored.has(a.id));
     const gate = (await integrityOf(header, repoPath)).filter((a) => a.outcome === "FAIL");
     const failed = [...found, ...gate];
     if (failed.length > 0) return { result, verdict: refusal(failed.map((a) => a.detail ?? a.id).join(" ")) };

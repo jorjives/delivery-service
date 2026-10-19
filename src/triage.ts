@@ -2,9 +2,8 @@ import { deterministicRouter } from "./router.js";
 import { inDisposableCopy } from "./disposable-copy.js";
 import { SETBACK_LABELS } from "./escalation-packet.js";
 import { CHECK_GUARD, settingsChanged, type AcceptedSettings } from "./guards.js";
-import { activeGuards, guardBase, verifyOf } from "./task-guards.js";
+import { activeGuards, guardBase } from "./task-guards.js";
 import { treeOf } from "./repair-changes.js";
-import { git } from "./git-exec.js";
 import { appendEntry } from "./case-file.js";
 import type { AgentPort, TriageInput, TriagePort, TriageTerminus, TriageVerdict } from "./ports.js";
 import type { Budget, CaseFile, GateEntry } from "./schema.js";
@@ -88,10 +87,8 @@ export function toTriageVerdict(terminus: TriageTerminus, input: TriageInput): T
 async function currentSettings(worktreePath: string, caseFile: CaseFile): Promise<AcceptedSettings> {
   const base = guardBase(caseFile.header);
   if (base === null) return {};
-  const commit = "commit" in base ? base.commit : await git(worktreePath, ["merge-base", "HEAD", base.branch]);
   const { lists } = activeGuards(caseFile.header.taskDef);
-  const verify = verifyOf(caseFile.header.taskDef, caseFile.header.gateRef);
-  return Object.fromEntries(await settingsChanged(worktreePath, commit, await treeOf(worktreePath), lists, verify));
+  return Object.fromEntries(await settingsChanged(worktreePath, base.commit, await treeOf(worktreePath), lists, caseFile.header.gateRef));
 }
 
 /**

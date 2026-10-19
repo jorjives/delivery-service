@@ -4,7 +4,6 @@ import { WorkerEnvelope, workerRoleConfig, gateMaintenanceRoleConfig, validateRo
 import type { RoleConfig } from "./role-config.js";
 import { InvalidRoleConfig } from "./errors.js";
 import { triageRoleConfig, TriageEnvelope } from "./triage-role-config.js";
-import { SCANNER_FRAGMENT } from "./packs/scanner-role.js";
 
 describe("WorkerEnvelope", () => {
   it("accepts a clean completion", () => {
@@ -121,9 +120,5 @@ describe("what a role is", () => {
   it("tells gate maintenance the check's definition is verified, not that it is out of reach", () => {
     expect(gateMaintenanceRoleConfig.systemPromptFragment).toContain("verified unchanged");
     expect(gateMaintenanceRoleConfig.systemPromptFragment).not.toMatch(/outside your working tree/);
-  });
-
-  it("no longer tells the reviewer it can only read", () => {
-    expect(SCANNER_FRAGMENT).not.toMatch(/You only read/);
   });
 });

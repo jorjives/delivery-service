@@ -23,14 +23,9 @@ describe("index", () => {
     expect(Object.keys(publishedSchema())).toEqual([REPORT_SCHEMA, EVENT_SCHEMA]);
   });
 
-  it("offers reviews: find a pack, run a review, and read reviews back", async () => {
-    const { builtInPacks, finishReview, listReviews, loadPack, loadReview, PACK_SCHEMA, resolvePack, runReview } = await import("./index.js");
-    expect([builtInPacks, finishReview, listReviews, loadPack, loadReview, resolvePack, runReview].every((fn) => typeof fn === "function")).toBe(true);
-    expect(PACK_SCHEMA).toBe("delivery.pack/1");
-  });
-
-  it("offers findings: the document schema, how to build it, and its published schema", async () => {
-    const { FINDINGS_SCHEMA, findingsSchema } = await import("./index.js");
-    expect(Object.keys(findingsSchema())).toEqual([FINDINGS_SCHEMA]);
+  it("exports packs as workflows, and nothing of the findings system", async () => {
+    const lib = await import("./index.js");
+    expect(lib).toHaveProperty("resolvePack");
+    for (const gone of ["runReview", "finishReview", "listReviews", "loadReview", "FINDINGS_SCHEMA", "FindingsDocument", "findingsSchema"]) expect(lib).not.toHaveProperty(gone);
   });
 });

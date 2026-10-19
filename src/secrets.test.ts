@@ -1,10 +1,10 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { initTempRepo } from "../temp-repo.js";
-import { PAYMENTS_PASSWORD, sampleFinding, writeReview } from "./review-fixtures.js";
-import { literalsOf, maskIn, maskSecret, secretLiterals, secretMasker } from "./secrets.js";
+import { initTempRepo } from "./temp-repo.js";
+import { PAYMENTS_PASSWORD } from "./packs/review-fixtures.js";
+import { knownSecrets, maskIn, maskSecret, secretLiterals, secretMasker } from "./secrets.js";
 
 describe("what looks like a secret", () => {
   it.each([
@@ -30,11 +30,6 @@ describe("what looks like a secret", () => {
     expect(secretLiterals("return price - discount;", true)).toEqual([]);
     expect(secretLiterals('export function chargeWithLegacyGateway(card, amount) {', false)).toEqual([]);
   });
-
-  it("reads a problem's anchor and pattern, as its category says", () => {
-    const finding = sampleFinding({ anchor: `const PAYMENTS_PASSWORD = "${PAYMENTS_PASSWORD}";`, sensitive: true });
-    expect(literalsOf(finding)).toContain(PAYMENTS_PASSWORD);
-  });
 });
 
 describe("masking", () => {
@@ -49,13 +44,29 @@ describe("masking", () => {
   });
 });
 
-describe("the secrets a project's reviews hold", () => {
-  it("masks what any saved review flagged, and sees a review saved after it was made", async () => {
+/** Writes a backlog idea whose check flags `anchor`, in the repository's backlog folder. */
+function writeIdea(repo: string, file: string, anchor: string, sensitive: boolean): void {
+  const folder = join(repo, ".delivery", "backlog");
+  mkdirSync(folder, { recursive: true });
+  const check = `  kind: anchor-gone\n  path: payments.js\n  anchor: ${JSON.stringify(anchor)}\n${sensitive ? "  scope: repo\n  sensitive: true\n" : ""}`;
+  writeFileSync(join(folder, file), `---\nstatus: idea\nworkflow: security:fix\nseverity: critical\ncheck:\n${check}---\n# A key is written in the code\n\nIt is.\n`);
+}
+
+describe("the secrets a project's backlog holds", () => {
+  it("masks what a sensitive idea's check flags, and sees an idea added after it was read", () => {
     const repo = initTempRepo("secrets-", { "a.js": "x\n" });
     const mask = secretMasker(join(repo, "sub", "folder"));
     expect(mask(PAYMENTS_PASSWORD)).toBe(PAYMENTS_PASSWORD);
-    await writeReview(repo, { reviewId: "security-20261006T101500Z", findings: [sampleFinding({ anchor: `const PAYMENTS_PASSWORD = "${PAYMENTS_PASSWORD}";`, sensitive: true })] });
+    writeIdea(repo, "20261006T101500Z-payments-password.md", `const PAYMENTS_PASSWORD = "${PAYMENTS_PASSWORD}";`, true);
     expect(mask(`it is ${PAYMENTS_PASSWORD}`)).toBe("it is pay-… (21 characters)");
+  });
+
+  it("holds only the quoted values of a sensitive idea, and no secret from one that is not sensitive", () => {
+    const repo = initTempRepo("secrets-plain-", { "a.js": "x\n" });
+    writeIdea(repo, "20261006T101500Z-plain.md", `const greeting = "plain words here";`, false);
+    expect(knownSecrets(repo)).toEqual([]);
+    writeIdea(repo, "20261006T101600Z-sensitive.md", `const greeting = "plain words here";`, true);
+    expect(knownSecrets(repo)).toEqual(["plain words here"]);
   });
 
   it("changes nothing outside a repository", () => {

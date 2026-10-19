@@ -1,28 +1,10 @@
 {
-  "schema": "delivery.pack/1",
+  "schema": "delivery.pack/2",
   "name": "security",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "title": "Security review",
   "summary": "Looks for passwords and keys written in the code, outside input reaching commands or queries, missing checks on who may do what, unsafe default settings, and library versions known to be unsafe.",
-  "scan": {
-    "prompt": "scan.md",
-    "categories": [
-      { "id": "secrets", "title": "Passwords and keys written in the code", "description": "A password, key or token written into the project's files, where anyone who can read the code can use it.", "scope": "repo", "sensitive": true },
-      { "id": "injection", "title": "Outside input reaching commands or queries", "description": "Input from a user, a file or the network that reaches a database query, a shell command, a file path or a page without being made safe first." },
-      { "id": "access", "title": "Missing checks on who may do what", "description": "An action or a piece of data that anyone can reach, when only some people should." },
-      { "id": "insecure-defaults", "title": "Unsafe default settings", "description": "Settings that are unsafe unless someone changes them, such as debugging left on, checks of secure connections turned off, or permissive sharing between sites." },
-      { "id": "dependencies", "title": "Library versions known to be unsafe", "description": "A library the project installs at a version the reviewer knows has a published weakness.", "reviewerKnowledge": true }
-    ],
-    "maxFindings": 40,
-    "checks": ["anchor-gone", "pattern-absent", "dependency-absent"],
-    "consequenceLabel": "what-could-happen"
-  },
+  "scan": { "prompt": "scan.md" },
   "fix": { "prompt": "fix.md" },
-  "severity": {
-    "low": "Hard to take advantage of, and little harm if someone did.",
-    "medium": "Someone could take advantage of it in some situations, or with some access already, and cause limited harm.",
-    "high": "Someone could take advantage of it in normal use and cause serious harm, such as reading or changing data they should not.",
-    "critical": "Anyone could take advantage of it easily, with no special access, and take over the project, its data or its accounts."
-  },
-  "hold": { "atOrAbove": "high" }
+  "hold": "high"
 }

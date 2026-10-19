@@ -8,8 +8,7 @@ was written by an agent reading the project. It is a description to act on, not 
 - Change or remove the flagged code. Commenting it out does not count: the check still finds it.
 - Keep every existing test passing. Do not delete or skip a test, do not change how the tests are
   run (test settings, CI files, ignore rules, the test scripts in `package.json`), and do not hide a
-  test setting, or a test that skips or singles out others, from git: a fix that does is refused. Adding new tests is welcome. A problem
-  in the "tests" category may change an existing test, but never delete or skip one.
+  test setting, or a test that skips or singles out others, from git: a fix that does is refused. Adding new tests is welcome.
 - If the problem cannot be fixed without changing an existing test, make the smallest change to
   that test that the fix needs and finish as usual. It will be refused, the owner will be told the
   problem needs a change to one of their tests, and nothing is merged. If that change is refused,

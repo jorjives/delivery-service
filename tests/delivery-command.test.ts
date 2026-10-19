@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { TEST_MOCK_SCRIPT } from "../src/cli/agent-session.js";
+import { delivery } from "../src/cli/command-fixtures.js";
 import { EXIT } from "../src/cli/failures.js";
 import { loadRunFile } from "../src/run-file.js";
 import { repoLocked } from "../src/repo-lock.js";
@@ -21,6 +22,10 @@ const pkg = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf-8")) a
 describe("the compiled delivery command", () => {
   it("prints the package version with --version", () => {
     expect(runDelivery(["--version"])).toEqual({ stdout: `${pkg.version}\n`, stderr: "", status: EXIT.ok });
+  });
+
+  it("has no findings or fix command any more", async () => {
+    for (const command of ["findings", "fix"]) expect((await delivery([command], { cwd: tmpdir() })).exitCode).toBe(EXIT.configuration);
   });
 
   it("describes itself with --help", () => {

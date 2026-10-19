@@ -1,11 +1,12 @@
 import { realpathSync } from "node:fs";
-import { relative, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import type { CloserRef, GateRef } from "../schema.js";
 import { CloserModuleLoadFailure, GateModuleLoadFailure, InvalidCloserExport, InvalidGateExport } from "../errors.js";
 import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, renderFailure, type ExitCode } from "./failures.js";
 import { presetPhrase } from "./gate-presets.js";
+import { withPackWorkflows } from "./pack-workflows.js";
 import { findRepository } from "./project.js";
 import { checkCustomModules, resolveProject, type ProjectSettings } from "./settings.js";
 
@@ -92,7 +93,7 @@ export function checkedLines(config: DeliveryConfig, project: ProjectSettings): 
 export async function locateConfig(options: ValidateOptions, ctx: CommandContext): Promise<{ repoPath: string; file: string }> {
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
-  const file = findConfig({ startDir, repoPath, flag: options.config, env: ctx.env, orPlan: true });
+  const file = findConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
   if (file === undefined) throw new Refusal(NO_CONFIG, EXIT.configuration);
   return { repoPath, file };
 }
@@ -102,7 +103,13 @@ export async function readProject(
   repoPath: string,
   env: NodeJS.ProcessEnv,
 ): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
-  const config = await readConfig(file);
+  const config = await withPackWorkflows(await readConfig(file), dirname(file));
+  return { config, project: await settleProject(config, repoPath, env) };
+}
+
+/** The project a run would have with no config file: the defaults, and the built-in packs' workflows. */
+export async function defaultProject(repoPath: string, env: NodeJS.ProcessEnv): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
+  const config = await withPackWorkflows({}, repoPath);
   return { config, project: await settleProject(config, repoPath, env) };
 }
 

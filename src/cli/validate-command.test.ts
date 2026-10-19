@@ -14,9 +14,6 @@ import { NO_TEST_COMMAND, type GatePreset } from "./gate-presets.js";
 import { NO_CHECK } from "./project.js";
 import type { ProjectSettings } from "./settings.js";
 import { checkedLines, NO_CONFIG, READY } from "./validate-command.js";
-import { planConfig, writePlan } from "../packs/plan.js";
-import { fixTaskFor } from "../packs/fix-task.js";
-import { exampleRepo, sampleFinding, writeReview } from "../packs/review-fixtures.js";
 
 // validate must work on a machine with no Claude Code runtime and no sign-in.
 // Every test in this file runs with the one way into the agent runtime made to
@@ -280,18 +277,6 @@ describe("delivery validate on a configuration with a problem", () => {
     const { exitCode, stderr } = await delivery(["validate"], { cwd: repoWith({ ...COMPLETE, concurrency: value }) });
     expect(exitCode).toBe(EXIT.configuration);
     expect(stderr).toContain(`the setting \`concurrency\` is \`${JSON.stringify(value)}\`. It says how many tasks from your list may run at once`);
-  });
-});
-
-describe("delivery validate after delivery fix, in a project with no configuration of its own", () => {
-  it("checks the fix's plan", async () => {
-    const repo = exampleRepo("validate-plan-");
-    const dir = await writeReview(repo, { findings: [sampleFinding()] });
-    await writePlan(dir, planConfig([fixTaskFor("code", sampleFinding(), NPM_TEST)], project({ closerRef: { type: "merge-back" } }), {}, undefined));
-    const { exitCode, stdout } = await delivery(["validate"], { cwd: repo });
-    expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain("plan.config.json");
-    expect(stdout).toContain(READY);
   });
 });
 

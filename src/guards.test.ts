@@ -7,7 +7,7 @@ import { cleanGitEnv } from "./git-env.js";
 import { treeOf } from "./repair-changes.js";
 import { GuardSwitches, type GateRef } from "./schema.js";
 import { initTempRepo } from "./temp-repo.js";
-import { FILE_LIMIT } from "./packs/confirm.js";
+import { FILE_LIMIT } from "./item-check.js";
 import {
   addedBacklogItems,
   BACKLOG_GUARD,

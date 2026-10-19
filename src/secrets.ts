@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { ScanResult, type Finding } from "./finding.js";
+import { basename, dirname, join } from "node:path";
+import { BACKLOG_DIR, parseItem } from "./backlog.js";
 
 /** The shortest text treated as a secret: anything shorter is too common to mask without masking ordinary words. */
 const SHORTEST = 8;
@@ -54,10 +54,6 @@ export function secretLiterals(text: string, sensitive: boolean): string[] {
   return [...found].filter((literal) => literal.length >= SHORTEST);
 }
 
-/** The secrets a problem's flagged text and pattern hold: the only places a secret is kept. */
-export const literalsOf = (finding: Pick<Finding, "anchor" | "check" | "sensitive">): string[] =>
-  secretLiterals([finding.anchor, finding.check.kind === "pattern-absent" ? finding.check.pattern : ""].join("\n"), finding.sensitive === true);
-
 /** A secret as every output shows it: its first four characters, an ellipsis and its length. */
 export const maskSecret = (literal: string): string => `${literal.slice(0, 4)}… (${literal.length} characters)`;
 
@@ -79,18 +75,14 @@ export function maskIn(text: string, literals: Iterable<string>): string {
 const cache = new Map<string, { stamp: string; literals: string[] }>();
 
 /**
- * Every secret any saved review of the repository flagged. Read again only
- * when a review's list changes (by name and modification time), so a command
- * that saves a review masks it in the same breath without rereading every line.
- * ponytail: a damaged list yields no secrets here; every command that reads a review refuses a damaged one first.
+ * Every secret a sensitive backlog item's check flags, read again only when the backlog folder changes (by name and
+ * modification time), so a command that adds an idea masks it in the same breath.
  */
 export function knownSecrets(repoRoot: string): string[] {
-  const root = join(repoRoot, ".delivery", "packs");
+  const root = join(repoRoot, BACKLOG_DIR);
   let files: string[];
   try {
-    files = readdirSync(root)
-      .map((name) => join(root, name, "refs", "scan.json"))
-      .filter((file) => existsSync(file));
+    files = readdirSync(root).filter((name) => name.endsWith(".md")).map((name) => join(root, name));
   } catch {
     return [];
   }
@@ -98,11 +90,9 @@ export function knownSecrets(repoRoot: string): string[] {
   const hit = cache.get(root);
   if (hit?.stamp === stamp) return hit.literals;
   const literals = files.flatMap((file) => {
-    try {
-      return ScanResult.parse(JSON.parse(readFileSync(file, "utf-8"))).findings.flatMap(literalsOf);
-    } catch {
-      return [];
-    }
+    const parsed = parseItem(basename(file), readFileSync(file, "utf-8"));
+    const check = parsed.ok ? parsed.item.check : undefined;
+    return check?.kind === "anchor-gone" && check.sensitive === true ? secretLiterals(check.anchor, true) : [];
   });
   cache.set(root, { stamp, literals });
   return literals;

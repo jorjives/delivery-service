@@ -19,11 +19,7 @@ import type { DamagedFile, RecordSnapshot, ReportSubject } from "./snapshot.js";
 /** What a review's fix pins about landing, read structurally so the report needs nothing from the packs module. */
 const PinnedRelease = z.object({ authorisation: z.object({ hold: z.boolean().optional(), landing: CloserRef.optional() }) });
 
-/**
- * How a run's work landed. A review's fix runs through the harness's own
- * finding closer, which keeps a held fix on its branch and lands the rest the
- * project's way, so that delegated closer is what is reported.
- */
+/** How a run's work landed. */
 function landingOf(header: RunRecord["caseFile"]["header"]): NonNullable<ReportSurface["closer"]> {
   if (header.delivery !== undefined) return "delivery-branch";
   // A run that pinned no closer predates closers being pinned, and was committed to its branch.

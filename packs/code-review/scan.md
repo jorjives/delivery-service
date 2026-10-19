@@ -12,9 +12,13 @@ Look for problems a person would want fixed, not matters of taste.
 - **The same job done different ways**: a second, different solution to something the project
   already solves elsewhere.
 - **Shortcuts the code admits to**: TODO and FIXME notes, and temporary workarounds left in.
-- **Tests that do not check what they claim**: a test that would pass whatever the code did,
-  or that checks something other than what its name says. Report these only under this
-  category: fixing one means changing that test.
+
+Rate each problem's severity by these bands:
+
+- **low**: Untidy or confusing, but nothing goes wrong because of it.
+- **medium**: Something goes wrong in an unusual case, or the next change here is likely to break something.
+- **high**: Something goes wrong in normal use: wrong results, lost work or a crash.
+- **critical**: Serious harm in normal use: lost or corrupted data, or money or trust lost.
 
 Prefer fewer, certain problems to many guesses.
 When a problem would be fixed by removing or changing one recognisable line, prefer the

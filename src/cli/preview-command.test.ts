@@ -148,7 +148,6 @@ describe("delivery preview", () => {
 
 describe("delivery preview on a configuration with a problem", () => {
   it.each<[string, unknown, Record<string, string>]>([
-    ["no config file", undefined, {}],
     ["an empty description", { ...PROJECT, domain: "  " }, {}],
     ["an empty list", { ...PROJECT, tasks: [] }, {}],
     ["an empty entry", { ...PROJECT, tasks: [FIRST, "", THIRD] }, {}],

@@ -1,33 +1,23 @@
 {
   "expectations": [
     {
-      "json": {
-        "findings": [
-          {
-            "title": "A key for the payments service is written in the code",
-            "category": "secrets",
-            "severity": "critical",
-            "where": { "path": "payments.js" },
-            "problem": "The key the program uses to take payments is written into payments.js.",
-            "whyItMatters": "Anyone who can read the code can take payments as you.",
-            "fixedLooksLike": "The key is not in the code, and the code reads it from somewhere private instead.",
-            "anchor": "const PAYMENTS_KEY = \"pk-live-9Rt4Wq2Zx7Lm3Vb8\";",
-            "check": { "kind": "anchor-gone" },
-            "outsideStep": "Change the key at the payments provider: only a person can do that."
-          },
-          {
-            "title": "Checks of secure connections are turned off",
-            "category": "insecure-defaults",
-            "severity": "high",
-            "where": { "path": "settings.js" },
-            "problem": "The program does not check it is talking to the real server.",
-            "whyItMatters": "Someone on the same network could read or change what is sent.",
-            "fixedLooksLike": "Secure connections are checked.",
-            "anchor": "verifyCertificates: false,",
-            "check": { "kind": "pattern-absent", "pattern": "verifyCertificates: false", "paths": ["settings.js"] }
+      "effects": [
+        {
+          "write": {
+            "path": ".delivery/backlog/20260101T000000Z-payments-key.md",
+            "content": "---\nstatus: idea\nworkflow: security:fix\nseverity: critical\ncheck:\n  kind: anchor-gone\n  path: payments.js\n  anchor: 'const PAYMENTS_KEY = \"pk-live-9Rt4Wq2Zx7Lm3Vb8\";'\n  scope: repo\n  sensitive: true\n---\n# A key for the payments service is written in the code\n\nThe key the program uses to take payments is written into payments.js.\n\n## Why it matters\n\nAnyone who can read the code can take payments as you.\n\n## What fixed looks like\n\nThe key is not in the code, and the code reads it from somewhere private instead. Change the key at the payments provider: only a person can do that.\n"
           }
-        ],
-        "notes": ""
+        },
+        {
+          "write": {
+            "path": ".delivery/backlog/20260101T000100Z-certificates-off.md",
+            "content": "---\nstatus: idea\nworkflow: security:fix\nseverity: high\ncheck:\n  kind: pattern-absent\n  pattern: \"verifyCertificates: false\"\n  paths:\n    - settings.js\n---\n# Checks of secure connections are turned off\n\nThe program does not check it is talking to the real server.\n\n## Why it matters\n\nSomeone on the same network could read or change what is sent.\n\n## What fixed looks like\n\nSecure connections are checked.\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "Reviewed the project and added two ideas."
       }
     }
   ]

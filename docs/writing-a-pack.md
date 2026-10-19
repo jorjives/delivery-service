@@ -4,7 +4,7 @@ A review pack is a folder of data that describes what a review looks for and how
 
 ## What a pack is
 
-A pack holds only data: `pack.json` (the manifest), `scan.md` (the review instructions), `fix.md` (the fix instructions, optional), and `fixtures/` (a small project and scripted replies to prove the pack works). It cannot give the agent tools or commands, or bring code of its own for its check. A pack that tries is refused: `delivery packs check` names which field is not allowed, quoting a message like `"scan.allowedTools" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check`.
+A pack holds only data: `pack.json` (the manifest), `scan.md` (the review instructions), `fix.md` (the fix instructions), and `fixtures/` (a small project and scripted replies to prove the pack works). It cannot give the agent tools or commands, or bring code of its own for its check. A pack that tries is refused: `delivery packs check` names which field is not allowed, quoting a message like `"scan.allowedTools" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check`.
 
 ## Start from a built-in pack
 
@@ -25,10 +25,13 @@ Then change `pack.json`:
 
 ```json
 {
+  "schema": "delivery.pack/2",
   "name": "mypack",
   "version": "1.0.0",
   "title": "My review",
-  "summary": "Looks for issues in my code."
+  "summary": "Looks for issues in my code.",
+  "scan": { "prompt": "scan.md" },
+  "fix": { "prompt": "fix.md" }
 }
 ```
 
@@ -36,57 +39,50 @@ Replace the instructions in `scan.md` and `fix.md` with text for your review.
 
 ## pack.json, field by field
 
-Each field of `pack.json` is optional unless noted. Bump `version` when you change a pack: each review records the version and a fingerprint of the pack's contents (see `delivery findings <n>`, the line starting "Made by").
+Every key `pack.json` may hold is listed here, and any other key is refused. Bump `version` when you change the pack's manifest or instructions.
 
 | Field | Value | Notes |
 |-------|-------|-------|
 | `$schema` | `string` | Where an editor finds the schema to check this file against while it is written. Ignored by the harness. Optional. |
-| `schema` | `string` | Always `delivery.pack/1`, the format this harness reads. Required. |
-| `name` | `string` | Short name of the review, such as `code`. Used in sentences and `delivery review <name>`. Required. |
-| `version` | `string` | Version of the pack, such as `1.0.0`. When you change this pack's manifest or instructions, bump the version. Required. |
+| `schema` | `string` | Always `delivery.pack/2`, the format this harness reads. Required. |
+| `name` | `string` | Short lower-case name of the review, such as `code`. Its two workflows are `<name>:scan` and `<name>:fix`. Required. |
+| `version` | `string` | Version of the pack, such as `1.0.0`. Required. |
 | `title` | `string` | The review's title, such as `Code review`. Required. |
 | `summary` | `string` | One sentence saying what it looks for. Required. |
-| `scan` | `object` | The review phase: see below. Required. |
-| `fix` | `object` | The fix phase, optional. If present, it holds `prompt` and `testGlobs`, `protectedGlobs`, `skipMarkers`: paths and markers this pack adds to what every run is already judged by (the guards), never ones it could take away. Optional. |
-| `severity` | `object` | What each of `low`, `medium`, `high`, `critical` means for this pack, one plain sentence each, by consequence. The reviewer is told these. Required. |
-| `hold` | `object` | `{ "atOrAbove": "high" }`: fixes of problems at or above this severity wait for sign-off. `null`, the default, holds nothing. Optional. |
+| `scan` | `object` | The scan workflow: see below. Required. |
+| `fix` | `object` | The fix workflow: see below. Required. |
+| `hold` | `string` | The severity from which fixes wait for the owner's sign-off: `critical`, `high`, `medium` or `low`. Optional; when absent, nothing is held. |
 
 ### scan
 
-The review phase. Holds:
+The scan workflow reads your project and may only add ideas to `.delivery/backlog/`. Holds:
 
 | Field | Value | Notes |
 |-------|-------|-------|
-| `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `scan.md`. Required. |
-| `categories` | `array` | The kinds of problem this review reports: a list of `{ id, title, description }`, each optionally with `changesTests`, `reviewerKnowledge`, `scope: "repo"` or `sensitive`. At least one. Required. |
-| `exclude` | `array` | Kinds of problem the reviewer is told not to report, one plain sentence each, such as "Style, formatting and naming preferences, and missing comments.". `delivery review <pack> --preview` shows them. It is an instruction to the reviewer: to keep a kind of problem out for certain, leave its category out. Optional. |
-| `maxFindings` | `number` | Limit the number of problems in one review. Defaults to `40`. Optional. |
-| `consequenceLabel` | `string` | `why-it-matters` (the default) or `what-could-happen`: how each problem's consequence is introduced to the owner. Optional. |
-| `requireCheck` | `boolean` | `true` sets aside every problem with no specific check for the owner's decision, in any project. Absent by default. Optional. |
-| `checks` | `array` | The checks this pack's problems may use. See "The checks a problem may use" below. Defaults to all three. Optional. |
+| `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `scan.md`. The harness adds its own description of an idea after your instructions. Required. |
 
-## The checks a problem may use
+### fix
 
-Every problem has a check: the way you prove the fix worked. A pack lists which checks its problems may use. If a problem suggests a check the pack does not offer, it falls back to `anchor-gone`.
+The fix workflow changes the project to fix one idea. Holds:
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `fix.md`. Required. |
+| `guards` | `object` | `{ "add": ["backlog-only"] }`: guards this pack turns on beside `tests-unchanged`, which every fix already has. Each name must be one the schema lists. Optional. |
+
+Your pack becomes two workflows, `<name>:scan` and `<name>:fix`: list its folder under `packs` in `delivery.config.json` to use it.
+
+## The checks an idea may use
+
+The harness, not your pack, writes each idea's check. Every idea a scan adds names one of these, and the reviewing agent is told the list:
 
 | Check | Meaning |
 |-------|---------|
-| `anchor-gone` | Fixed when the flagged text is gone. The usual choice. Every pack must offer this. |
-| `pattern-absent` | Fixed when an extended regular expression (as `git grep -E` reads it) no longer matches anywhere in the named paths. Use this when the problem is a pattern, not a single piece of code. |
+| `anchor-gone` | Fixed when the flagged code is gone from its `path`. The usual choice. |
+| `pattern-absent` | Fixed when an extended regular expression (as `git grep -E` reads it) no longer matches anywhere in the named `paths`. Use this when the problem is a pattern, not a single piece of code. |
 | `dependency-absent` | Fixed when `package-lock.json` no longer installs the named package at the named version. Use it for a library version you know to be unsafe. |
-| `none` | When nothing about the code itself can show the problem is fixed. The agent marks it unfixable; a person fixes it. |
 
-In `pack.json`:
-
-```json
-{
-  "scan": {
-    "checks": ["anchor-gone", "pattern-absent"]
-  }
-}
-```
-
-This pack's problems may use `anchor-gone` or `pattern-absent`. The security review offers all three; the code review offers the first two.
+An idea whose check cannot find its problem in the project as it stands now is refused, so an idea is only offered when its fix can be proved.
 
 ## Check it as you type
 
@@ -192,7 +188,7 @@ A fix at or above the pack's `hold` severity counts as passing its check when it
 delivery packs check ./my-review
 ```
 
-Running the fixtures runs the fixture project's own tests on your machine, as `delivery fix` runs a project's tests, so it asks you to confirm you trust the pack's code before anything runs: `y` to continue, Enter or `n` to leave it alone. The command runs that test command with none of your credentials and a scratch `HOME` in place of your own, but it is still real code with your real filesystem and process access - only check a pack whose `fixtures/project` you have read or trust. In a script or CI, where nothing can ask, pass `--yes` once you do.
+Running the fixtures runs the fixture project's own tests on your machine, as a run runs a project's tests, so it asks you to confirm you trust the pack's code before anything runs: `y` to continue, Enter or `n` to leave it alone. The command runs that test command with none of your credentials and a scratch `HOME` in place of your own, but it is still real code with your real filesystem and process access - only check a pack whose `fixtures/project` you have read or trust. In a script or CI, where nothing can ask, pass `--yes` once you do.
 
 If there are problems with the manifest or fixtures, they are named by file and field:
 
@@ -277,13 +273,3 @@ A scripted check cannot prove:
 - Your review catches real problems in your area.
 
 Also: unlike `delivery review`, `delivery packs check` runs `fixtures/project/`'s own `test` script (the way it proves a fix broke nothing). The confirmation above, and the sandboxed environment that command runs with, guard against an accidental credential leak - they are not a sandbox against hostile code. Only check a pack someone else wrote after reading and understanding what their `fixtures/project/` tests, and what their fixtures claim the review should find.
-
-## Try it
-
-To see a pack being written and checked, run the demo:
-
-```bash
-npm run demo:packs-slice-7
-```
-
-This copies the built-in code review to a scratch folder, breaks one field to show an error, fixes it, and shows a passing check.

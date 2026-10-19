@@ -1,33 +1,11 @@
 {
   "expectations": [
     {
-      "json": {
-        "findings": [
-          {
-            "title": "The total can go below zero",
-            "category": "correctness",
-            "severity": "high",
-            "where": { "path": "total.js" },
-            "problem": "A discount larger than the price makes the total negative.",
-            "whyItMatters": "A negative total means paying the customer.",
-            "fixedLooksLike": "A total never goes below zero.",
-            "anchor": "return price - discount;",
-            "check": { "kind": "anchor-gone" }
-          },
-          {
-            "title": "A missing or broken settings file gives an unhelpful error",
-            "category": "error-handling",
-            "severity": "medium",
-            "where": { "path": "settings.js" },
-            "problem": "A missing or broken settings file stops the program with a technical error.",
-            "whyItMatters": "Whoever runs it cannot tell which file to fix.",
-            "fixedLooksLike": "A missing or broken settings file gives a message naming the file.",
-            "anchor": "return JSON.parse(readFileSync(path, \"utf-8\"));",
-            "check": { "kind": "pattern-absent", "pattern": "JSON\\.parse\\(readFileSync\\(", "paths": ["settings.js"] }
-          }
-        ],
-        "notes": ""
-      }
+      "effects": [
+        { "write": { "path": ".delivery/backlog/20260101T000000Z-total-below-zero.md", "content": "---\nstatus: idea\nworkflow: code:fix\nseverity: high\ncheck:\n  kind: anchor-gone\n  path: total.js\n  anchor: \"return price - discount;\"\n---\n# The total can go below zero\n\nA discount larger than the price makes the total negative.\n\n## Why it matters\n\nA negative total means paying the customer.\n\n## What fixed looks like\n\nA total never goes below zero.\n" } },
+        { "write": { "path": ".delivery/backlog/20260101T000100Z-settings-error.md", "content": "---\nstatus: idea\nworkflow: code:fix\nseverity: medium\ncheck:\n  kind: pattern-absent\n  pattern: \"JSON\\\\.parse\\\\(readFileSync\\\\(\"\n  paths:\n    - settings.js\n---\n# A missing or broken settings file gives an unhelpful error\n\nA missing or broken settings file stops the program with a technical error.\n\n## Why it matters\n\nWhoever runs it cannot tell which file to fix.\n\n## What fixed looks like\n\nA missing or broken settings file gives a message naming the file.\n" } }
+      ],
+      "json": { "status": "completed", "rationale": "Reviewed the project and added two ideas." }
     }
   ]
 }

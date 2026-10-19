@@ -147,11 +147,6 @@ Each tick is one thing it read. If something is wrong it prints the one thing to
 instead, and nothing starts. It needs no sign-in and no network and changes nothing, so
 run it as often as you like, and in CI on every push. In CI, `delivery validate --json` lists every problem at once, each with the setting it concerns, as one JSON document a script can read.
 
-In a project with no `delivery.config.json` of its own, after `delivery fix` has run,
-`validate`, `preview`, `status` and `report` read the configuration `delivery fix` wrote
-beside the review instead (`.delivery/packs/<review>/plan.config.json`), so you can check and
-follow a fix like any other list. `delivery run` never uses it.
-
 ## 7. See what the agent will be told
 
 ```bash
@@ -441,6 +436,14 @@ When items come from a `github` source, or a `command` source with `"tracker": t
 in your tracker as the first after step (see "Work sources" below).
 
 A workflow's own `after` replaces this list for the items it delivers.
+
+### Packs
+
+`packs` lists folders of review packs of your own, relative to this file. Each adds the workflows
+`<name>:scan` and `<name>:fix`; the built-in `code` and `security` packs are always available. See
+[Writing a pack](writing-a-pack.md).
+
+    "packs": ["./my-review"]
 
 ### Work sources
 

@@ -6,7 +6,6 @@ describe("the public testing entry point", () => {
   it("publishes the testing API and nothing else", () => {
     expect(Object.keys(testing).sort()).toEqual([
       "assertFullyConsumed",
-      "checkPack",
       "expectEnvelope",
       "fakeAgentPort",
       "mockSessionEnvironment",

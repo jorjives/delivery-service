@@ -1,17 +1,19 @@
 import { InvalidArgumentError } from "commander";
+import { resolve } from "node:path";
 import { DEFAULT_ROLES } from "../agent-invoke.js";
 import { initialCaseFile } from "../case-file.js";
 import { assemblePrompt, type PromptEvidence } from "../prompt-assembly.js";
 import type { AgentOptions, PinnedWorkflow, TaskDef } from "../schema.js";
 import { stepView } from "../workflow-step.js";
-import { andList, type DeliveryConfig } from "./config.js";
+import { andList, findConfig, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
+import { findRepository } from "./project.js";
 import { EVERY_TASK_DONE, nextQueueTask, queueTasks, taskHeading } from "./queue.js";
 import { allRuns } from "./runs.js";
 import { taskIntent } from "../task-list.js";
 import { NO_TASK, unknownWorkflow, workflowFrom } from "./settings.js";
-import { locateConfig, readProject, type ValidateOptions } from "./validate-command.js";
+import { defaultProject, readProject, type ValidateOptions } from "./validate-command.js";
 
 /** The roles an owner can see the instructions of. Triage is the harness's own and is not configurable from the file. */
 export type PreviewRole = "worker" | "gate-maintenance";
@@ -143,8 +145,10 @@ async function chooseTask(
  * beside a run in progress.
  */
 export async function previewCommand(options: PreviewOptions, ctx: CommandContext): Promise<ExitCode> {
-  const { repoPath, file } = await locateConfig(options, ctx);
-  const { config, project } = await readProject(file, repoPath, ctx.env);
+  const startDir = resolve(ctx.cwd, options.repo ?? ".");
+  const repoPath = await findRepository(startDir);
+  const file = findConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
+  const { config, project } = file === undefined ? await defaultProject(repoPath, ctx.env) : await readProject(file, repoPath, ctx.env);
   const chosen = await chooseTask(config, repoPath, options.queueIndex, options.task);
   if (chosen === undefined) {
     ctx.writeLine(EVERY_TASK_DONE);

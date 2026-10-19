@@ -23,6 +23,6 @@ export async function packsCommand(options: PacksOptions, ctx: CommandContext): 
   for (const { manifest } of packs) say(`  ${manifest.name}: ${manifest.summary}`);
   say("");
   say(`Run one with: delivery review ${packs[0]?.manifest.name ?? "code"}`);
-  say("Or run a review from a folder of your own: delivery review ./path-to-the-folder");
+  say("Or use a review folder of your own: list it under packs in delivery.config.json, then delivery review <its name>");
   return EXIT.ok;
 }

@@ -198,7 +198,7 @@ async function stopForEnvironment(repoPath: string, dir: string, runId: string, 
  * that is waiting for a person, is a complete answer on a machine that has
  * never signed in, and saying so is more use than asking for a credential.
  *
- * `carryOn` is for a list the harness wrote itself (`delivery fix`): a task that is not delivered
+ * `carryOn` is for a list the harness wrote itself (the one a scan wrote into the backlog): a task that is not delivered
  * never stops the rest, even one at a time, and the list ends without asking the owner to add to it.
  * `skip` is the same list's precondition: asked as each not-yet-started task is about to start, so
  * a task made pointless by an earlier one in the same pass is passed over without spending an agent session.

@@ -6,12 +6,12 @@ import { z } from "zod";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 import { InvalidPack, UnknownPack } from "../errors.js";
 import { isEnoent } from "../journal.js";
-import { Severity, SPECIFIC_CHECKS } from "./finding.js";
-import { GuardGlob } from "../guards.js";
+import { GuardName, Severity } from "../schema.js";
+import type { WorkflowConfig } from "../cli/config.js";
 import type { JsonSchema } from "../report/json-schema.js";
 
 /** The version of the pack format this build reads. Additive-only within the major. */
-export const PACK_SCHEMA = "delivery.pack/1";
+export const PACK_SCHEMA = "delivery.pack/2";
 
 const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lower-case letters, digits and dashes");
 const Sentence = z.string().trim().min(1, "must not be empty");
@@ -30,66 +30,75 @@ export const PackManifest = z.strictObject({
   version: z.string().regex(/^\d+\.\d+\.\d+$/, "must be a version such as 1.0.0"),
   title: Sentence,
   summary: Sentence,
-  scan: z.strictObject({
-    prompt: PackFile,
-    categories: z
-      .array(
-        z.strictObject({
-          id: Slug,
-          title: Sentence,
-          description: Sentence,
-          /** Problems of this kind are fixed by changing a test: the fix may change an existing test, never delete or skip one. */
-          changesTests: z.literal(true).optional(),
-          /** Problems of this kind come from the reviewer's own knowledge, such as which library versions are unsafe, not from anything the harness looks up. */
-          reviewerKnowledge: z.literal(true).optional(),
-          /** A fix must clear the flagged text from the whole project: moving it to another file is not fixing it. */
-          scope: z.literal("repo").optional(),
-          /** The flagged text may hold a secret: every quoted value in it is treated as one and never shown. */
-          sensitive: z.literal(true).optional(),
-        }),
-      )
-      .min(1)
-      .refine((categories) => new Set(categories.map((category) => category.id)).size === categories.length, "must not name the same category twice"),
-    /**
-     * Kinds of problem the reviewer is told not to report, one plain sentence each. An instruction to the reviewer,
-     * shown by `delivery review --preview`; to keep a kind out for certain, leave its category out instead.
-     */
-    exclude: z.array(Sentence).min(1).optional(),
-    maxFindings: z.int().min(1).max(200).default(40),
-    consequenceLabel: z.enum(["why-it-matters", "what-could-happen"]).default("why-it-matters"),
-    /** Every problem must have a specific check: one with none is set aside for the owner's decision, in any project. */
-    requireCheck: z.literal(true).optional(),
-    /** The checks this pack's problems may use. A problem whose suggested check is not here falls back to anchor-gone. */
-    checks: z
-      .array(z.enum(SPECIFIC_CHECKS))
-      .min(1)
-      .refine((checks) => checks.includes("anchor-gone"), "must include anchor-gone: every problem can fall back to it")
-      .default([...SPECIFIC_CHECKS]),
-  }),
-  /** What the agent fixing one of this pack's problems is told, beside the harness's own fixed instructions, and what the pack adds to the paths and markers a fix may not touch. Optional: the harness's own are enough. */
-  fix: z
-    .strictObject({ prompt: PackFile, testGlobs: z.array(GuardGlob).optional(), protectedGlobs: z.array(GuardGlob).optional(), skipMarkers: z.array(z.string().min(1)).optional() })
-    .optional(),
-  severity: z.strictObject({ low: Sentence, medium: Sentence, high: Sentence, critical: Sentence }),
-  /** Fixes of problems at or above this severity wait for the owner's sign-off before they reach the main copy. Null, the default, holds nothing. */
-  hold: z.strictObject({ atOrAbove: Severity.nullable() }).default({ atOrAbove: null }),
+  /** What the reviewing agent is told, beside the harness's own description of an idea. */
+  scan: z.strictObject({ prompt: PackFile }),
+  /** What the agent fixing one idea is told, and the guards its fix turns on beside `tests-unchanged`. */
+  fix: z.strictObject({ prompt: PackFile, guards: z.strictObject({ add: z.array(GuardName).min(1) }).optional() }),
+  /** Fixes of ideas rated this or more serious wait for the owner's sign-off. */
+  hold: Severity.optional(),
 });
 export type PackManifest = z.infer<typeof PackManifest>;
 
-/**
- * The JSON Schema of `pack.json` as an author writes it: strict, so an editor flags a key the format
- * does not name or a check it does not have while it is typed. What `delivery packs --schema` prints.
- */
-export const packSchema = (): JsonSchema => ({ ...z.toJSONSchema(PackManifest, { io: "input" }), title: PACK_SCHEMA });
+export const scanWorkflowOf = (name: string): string => `${name}:scan`;
+export const fixWorkflowOf = (name: string): string => `${name}:fix`;
 
-/** A loaded pack: where it is, what it says, the scanner's instructions, and a hash of both, so a review records exactly which pack it ran. */
+/** The harness's half of every scan step: what an idea is and how its check is written. A pack only says what to look for. */
+export function ideaFormat(fixWorkflow: string): string {
+  return [
+    "## What to hand back",
+    "",
+    "Change nothing in the project. For each problem you find, add one new file to `.delivery/backlog/`, named",
+    "`<UTC timestamp>-<short-slug>.md` such as `20261019T170000Z-total-below-zero.md`, and nothing else. Each file is:",
+    "",
+    "```",
+    "---",
+    "status: idea",
+    `workflow: ${fixWorkflow}`,
+    "severity: high",
+    "check:",
+    "  kind: anchor-gone",
+    "  path: src/checkout.js",
+    '  anchor: "return price - discount;"',
+    "---",
+    "# One plain sentence naming the problem",
+    "",
+    "What is wrong, in words the owner, who is not technical, can follow.",
+    "",
+    "## Why it matters",
+    "",
+    "## What fixed looks like",
+    "",
+    "## For engineers",
+    "",
+    "Anything technical: the lines, the cause, a suggested fix.",
+    "```",
+    "",
+    "`severity` is one of critical, high, medium or low. The check is how the harness will know the problem is gone, and",
+    "it must find the problem in the project as it stands now, or the idea is refused:",
+    "",
+    "- `anchor-gone`: `path` is the file and `anchor` the flagged code, copied exactly, at most five lines. For a password,",
+    "  key or token add `scope: repo` and `sensitive: true`: it is then looked for across the whole project.",
+    "- `pattern-absent`: `pattern` is an extended regular expression matching the problem, and `paths` the files it must",
+    "  no longer match in. Use it only for a problem that could come back in other places.",
+    "- `dependency-absent`: `package` and `version` exactly as `package-lock.json` installs them.",
+    "",
+    "Prefer fewer, certain problems to many guesses, and write no more than 40.",
+  ].join("\n");
+}
+
+/** A loaded pack: where it is, what it says, a hash of everything it holds, and the two workflows it is. */
 export interface Pack {
   dir: string;
   manifest: PackManifest;
-  scanInstructions: string;
-  fixInstructions?: string;
   hash: string;
+  workflows: Record<string, WorkflowConfig>;
 }
+
+/**
+ * The JSON Schema of `pack.json` as an author writes it: strict, so an editor flags a key the format
+ * does not name or a guard it does not have while it is typed. What `delivery packs --schema` prints.
+ */
+export const packSchema = (): JsonSchema => ({ ...z.toJSONSchema(PackManifest, { io: "input" }), title: PACK_SCHEMA });
 
 /** One thing wrong with a pack, as an author fixes it: the file (absolute), the field in it, and one plain sentence starting with that field. */
 export interface PackProblem {
@@ -111,8 +120,7 @@ function describe(issue: Issue, raw: unknown): string {
   if (field !== null && value === undefined) return `${where} is missing`;
   if (issue.code === "invalid_value") {
     const allowed = issue.values.map(String).join(", ");
-    const kind = issue.path[0] === "scan" && issue.path[1] === "checks" ? "the available checks are" : "the allowed values are";
-    return `${where} is ${JSON.stringify(value)} but ${kind}: ${allowed}`;
+    return `${where} is ${JSON.stringify(value)} but the allowed values are: ${allowed}`;
   }
   return `${where} ${issue.message}`;
 }
@@ -146,20 +154,27 @@ export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack }
   } catch {
     return { ok: false, problems: [{ file: manifestFile, field: null, message: "is not valid JSON" }] };
   }
+  // A manifest in another format is refused with its own sentence and never read further: its keys mean something else.
+  const schema = typeof json === "object" && json !== null ? (json as { schema?: unknown }).schema : undefined;
+  if (schema !== undefined && schema !== PACK_SCHEMA) {
+    return { ok: false, problems: [{ file: manifestFile, field: "schema", message: `"schema" is ${JSON.stringify(schema)}, but this harness reads only ${PACK_SCHEMA}: packs are now a scan workflow and a fix workflow over the backlog (see docs/writing-a-pack.md)` }] };
+  }
   const parsed = PackManifest.safeParse(json);
   if (!parsed.success) return { ok: false, problems: packProblems(manifestFile, parsed.error, json) };
-  const scanInstructions = await packFile(dir, parsed.data.scan.prompt);
-  const fixInstructions = parsed.data.fix === undefined ? undefined : await packFile(dir, parsed.data.fix.prompt);
-  if (typeof scanInstructions !== "string" || (fixInstructions !== undefined && typeof fixInstructions !== "string")) {
-    return { ok: false, problems: [scanInstructions, fixInstructions].filter((text): text is PackProblem => text !== undefined && typeof text !== "string") };
-  }
-  const hasher = createHash("sha256").update(raw).update("\0").update(scanInstructions);
-  // A pack without fix instructions keeps the identity it had before they existed.
-  if (fixInstructions !== undefined) hasher.update("\0").update(fixInstructions);
-  return {
-    ok: true,
-    pack: { dir, manifest: parsed.data, scanInstructions, ...(fixInstructions === undefined ? {} : { fixInstructions }), hash: hasher.digest("hex") },
+  const manifest = parsed.data;
+  const [scanText, fixText] = await Promise.all([packFile(dir, manifest.scan.prompt), packFile(dir, manifest.fix.prompt)]);
+  if (typeof scanText !== "string" || typeof fixText !== "string") return { ok: false, problems: [scanText, fixText].filter((t): t is PackProblem => typeof t !== "string") };
+  const fix = fixWorkflowOf(manifest.name);
+  const workflows: Record<string, WorkflowConfig> = {
+    // A scan lands nothing but ideas, so the project's own after steps (a deploy) are not run for it.
+    [scanWorkflowOf(manifest.name)]: { steps: [{ name: "scan", prompt: `${scanText.trim()}\n\n${ideaFormat(fix)}`, guards: { add: ["backlog-only"] } }], after: [] },
+    [fix]: {
+      steps: [{ name: "fix", prompt: fixText.trim(), guards: { add: [...new Set<GuardName>(["tests-unchanged", ...(manifest.fix.guards?.add ?? [])])] } }],
+      ...(manifest.hold === undefined ? {} : { hold: manifest.hold }),
+    },
   };
+  const hash = createHash("sha256").update(raw).update("\0").update(scanText).update("\0").update(fixText).digest("hex");
+  return { ok: true, pack: { dir, manifest, hash, workflows } };
 }
 
 /** Read and check the pack in `dir`. Refuses, naming the file and the field, the first thing the format does not allow. */

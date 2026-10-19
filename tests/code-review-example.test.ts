@@ -6,12 +6,8 @@ import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
-import { expectEnvelope } from "../src/mock-script.js";
-import { confirmFindings } from "../src/packs/confirm.js";
-import { resolvePack } from "../src/packs/manifest.js";
-import { EXAMPLE_DIR, EXAMPLE_SCAN, EXAMPLE_SECURITY_SCAN, SCOPED_SCAN, exampleRepo } from "../src/packs/review-fixtures.js";
-import { scannerRoleConfig } from "../src/packs/scanner-role.js";
-import { git } from "./helpers.js";
+import { checkItem } from "../src/item-check.js";
+import { EXAMPLE_DIR, EXAMPLE_IDEAS, EXAMPLE_SECURITY_IDEAS, exampleRepo } from "../src/packs/review-fixtures.js";
 
 describe("the code-review example", () => {
   it("passes its own tests as shipped, so the flaws are ones the tests miss", () => {
@@ -24,25 +20,14 @@ describe("the code-review example", () => {
     expect(files.sort()).toEqual(["README.md", "auth/session.js", "checkout.js", "checkout.test.js", "legacy-gateway.js", "package-lock.json", "package.json", "payments.js", "settings.js"]);
   });
 
-  it("has a scripted review the code pack accepts, whose three real problems are confirmed in it and whose fourth is not", async () => {
-    const pack = await resolvePack("code", "/");
-    expectEnvelope(scannerRoleConfig(pack), EXAMPLE_SCAN);
+  it("has a scripted code review whose three real problems its checks find in it, and whose fourth they do not", async () => {
     const repo = exampleRepo();
-    const result = await confirmFindings(repo, git(repo, ["rev-parse", "HEAD"]), { pack: "code", maxFindings: 40 }, EXAMPLE_SCAN);
-    expect(result.findings.map((finding) => finding.check.kind).sort()).toEqual(["anchor-gone", "none", "pattern-absent"]);
-    expect(result.unconfirmed.map((u) => u.reason)).toEqual(["no_such_file"]);
+    const results = await Promise.all(EXAMPLE_IDEAS.map((idea) => checkItem(idea.check, { repoPath: repo, commit: "HEAD" })));
+    expect(results).toEqual(["present", "present", "present", "resolved"]);
   });
 
-  it("has a scripted review of its auth folder the code pack accepts", async () => {
-    expectEnvelope(scannerRoleConfig(await resolvePack("code", "/")), SCOPED_SCAN);
-  });
-
-  it("has a scripted security review the security pack accepts, both of whose problems are confirmed with their own checks", async () => {
-    const pack = await resolvePack("security", "/");
-    expectEnvelope(scannerRoleConfig(pack), EXAMPLE_SECURITY_SCAN);
+  it("has a scripted security review both of whose problems its checks find", async () => {
     const repo = exampleRepo();
-    const result = await confirmFindings(repo, git(repo, ["rev-parse", "HEAD"]), { pack: "security", maxFindings: 40 }, EXAMPLE_SECURITY_SCAN);
-    expect(result.findings.map((finding) => finding.check.kind)).toEqual(["anchor-gone", "dependency-absent"]);
-    expect(result.unconfirmed).toEqual([]);
+    expect(await Promise.all(EXAMPLE_SECURITY_IDEAS.map((idea) => checkItem(idea.check, { repoPath: repo, commit: "HEAD" })))).toEqual(["present", "present"]);
   });
 });

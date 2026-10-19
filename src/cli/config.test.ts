@@ -5,11 +5,6 @@ import { dirname, join } from "node:path";
 import { CONFIG_KEYS, checkConfig, configCandidates, configProblems, DeliveryConfig, findConfig, firstStepContinues, loadConfig, NO_SUCH_CONFIG, sameStep, stepLabel, structureTask, unknownCloser, unknownGate } from "./config.js";
 import { harnessOwned } from "../schema.js";
 import { EXIT, Refusal } from "./failures.js";
-import { planConfig, writePlan } from "../packs/plan.js";
-import { fixTaskFor } from "../packs/fix-task.js";
-import { sampleFinding, writeReview } from "../packs/review-fixtures.js";
-import { DEFAULT_BUDGETS } from "../budgets.js";
-import { initTempRepo } from "../temp-repo.js";
 
 const FILE = "delivery.config.json";
 
@@ -194,7 +189,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `after`, `parkAfter` and `notify`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `sources`, `after`, `parkAfter` and `notify`.",
     );
   });
 
@@ -265,7 +260,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names a file that holds something other than one object of settings", () => {
     expect(problemFor(["add a page"])).toBe(
-      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `after`, `parkAfter` and `notify`. " +
+      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `sources`, `after`, `parkAfter` and `notify`. " +
         "A `.js` or `.mjs` file exports that object as its default.",
     );
   });
@@ -376,9 +371,12 @@ const write = (dir: string, name: string, contents: string): string => {
   return file;
 };
 
+/** A loaded config without the workflows the built-in packs add to it: each pack's workflows are tested where they are made. */
+const ownSettings = (config: DeliveryConfig): DeliveryConfig => Object.fromEntries(Object.entries(config).filter(([key]) => key !== "workflows"));
+
 /** Load the config a run would use, with nothing named on the command line or in the environment. */
-const found = (startDir: string, repoPath: string, env: NodeJS.ProcessEnv = {}) =>
-  loadConfig({ startDir, repoPath, flag: undefined, env });
+const found = async (startDir: string, repoPath: string, env: NodeJS.ProcessEnv = {}) =>
+  ownSettings(await loadConfig({ startDir, repoPath, flag: undefined, env }));
 
 async function refusalOf(promise: Promise<unknown>): Promise<Refusal> {
   const err = await promise.then(
@@ -464,7 +462,7 @@ describe("reading a config file", () => {
     const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
     const refusal = await refusalOf(found(repo, repo));
     expect(refusal.message).toBe(
-      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`packs\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
     );
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });
@@ -485,7 +483,7 @@ describe("naming a config file yourself", () => {
     const { parent, repo } = tree();
     write(repo, "delivery.config.json", JSON.stringify({ closer: { type: "open-pr" } }));
     write(parent, "elsewhere.json", JSON.stringify({ closer: { type: "merge-back" } }));
-    expect(await loadConfig({ startDir: repo, repoPath: repo, flag: join(parent, "elsewhere.json"), env: {} })).toEqual({
+    expect(ownSettings(await loadConfig({ startDir: repo, repoPath: repo, flag: join(parent, "elsewhere.json"), env: {} }))).toEqual({
       closer: { type: "merge-back" },
     });
   });
@@ -493,7 +491,7 @@ describe("naming a config file yourself", () => {
   it("resolves a relative --config against the folder the command was run from", async () => {
     const { repo, deep } = tree();
     write(deep, "elsewhere.json", JSON.stringify({ closer: { type: "merge-back" } }));
-    expect(await loadConfig({ startDir: deep, repoPath: repo, flag: "elsewhere.json", env: {} })).toEqual({
+    expect(ownSettings(await loadConfig({ startDir: deep, repoPath: repo, flag: "elsewhere.json", env: {} }))).toEqual({
       closer: { type: "merge-back" },
     });
   });
@@ -508,7 +506,7 @@ describe("naming a config file yourself", () => {
     const { parent, repo } = tree();
     const fromEnv = write(parent, "from-env.json", JSON.stringify({ closer: { type: "merge-back" } }));
     const fromFlag = write(parent, "from-flag.json", JSON.stringify({ closer: { type: "open-pr" } }));
-    expect(await loadConfig({ startDir: repo, repoPath: repo, flag: fromFlag, env: { DELIVERY_CONFIG: fromEnv } })).toEqual({
+    expect(ownSettings(await loadConfig({ startDir: repo, repoPath: repo, flag: fromFlag, env: { DELIVERY_CONFIG: fromEnv } }))).toEqual({
       closer: { type: "open-pr" },
     });
   });
@@ -552,25 +550,6 @@ describe("which config file a command means", () => {
   });
 });
 
-describe("a project with no configuration of its own, after delivery fix", () => {
-  const NPM = { type: "command", command: "npm test", parseMode: "exitcode" } as const;
-  const planned = async (repo: string): Promise<string> =>
-    writePlan(await writeReview(repo), planConfig([fixTaskFor("code", sampleFinding(), NPM)], { gateRef: NPM, closerRef: { type: "merge-back" }, budgets: DEFAULT_BUDGETS, concurrency: 1 }, {}, undefined));
-
-  it("is read from the fix's plan by the commands that only read", async () => {
-    const repo = initTempRepo("config-plan-", { "a.js": "x\n" });
-    const plan = await planned(repo);
-    expect(findConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {}, orPlan: true })).toBe(plan);
-    expect(findConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {} })).toBeUndefined();
-  });
-
-  it("is never read from the plan when the project has its own", async () => {
-    const repo = initTempRepo("config-plan-", { "a.js": "x\n", "delivery.config.json": "{}\n" });
-    await planned(repo);
-    expect(findConfig({ startDir: repo, repoPath: repo, flag: undefined, env: {}, orPlan: true })).toBe(join(realpathSync(repo), "delivery.config.json"));
-  });
-});
-
 describe("every problem with a config file's shape, at once", () => {
   it("lists each problem with the setting it concerns, in the words the plain form uses for it alone", () => {
     expect(problemsFor({ domain: " ", tasks: ["add a page", ""] })).toEqual([
@@ -583,7 +562,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor({ foo: 1, roles: {} })).toEqual([
       {
         field: "foo",
-        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
+        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`packs\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
       },
       {
         field: "roles",
@@ -597,7 +576,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor("add a page")).toEqual([
       {
         field: null,
-        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
+        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`packs\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
       },
     ]);
   });
@@ -705,7 +684,7 @@ describe("workflows", () => {
   });
 
   it("lists workflows among the settings a config file takes", () => {
-    expect(CONFIG_KEYS).toBe("`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `after`, `parkAfter` and `notify`");
+    expect(CONFIG_KEYS).toBe("`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `sources`, `after`, `parkAfter` and `notify`");
   });
 });
 

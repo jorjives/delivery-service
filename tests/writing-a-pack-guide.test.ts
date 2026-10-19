@@ -2,11 +2,10 @@
 // reading the harness's source. It is held to the format, the fixture files and the phrases
 // `delivery packs check` actually uses.
 
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { SENT_NOTHING } from "../src/cli/packs-check-command.js";
-import { SPECIFIC_CHECKS } from "../src/packs/finding.js";
+import { ItemCheck } from "../src/schema.js";
 import { packSchema } from "../src/packs/manifest.js";
 import { FIXTURES, FixtureExpectations } from "../src/packs/pack-fixtures.js";
 import { REPO_ROOT } from "./helpers.js";
@@ -16,9 +15,9 @@ const flat = guide.replace(/\s+/g, " ");
 
 describe("the 'writing a pack' guide", () => {
   it("starts from a copy of a built-in pack and proves it with the pack check, then runs it", () => {
-    for (const command of ["delivery packs check ./my-review", "delivery review ./my-review", "delivery packs --schema"]) expect(guide).toContain(command);
+    for (const command of ["delivery packs check ./my-review", "delivery packs --schema"]) expect(guide).toContain(command);
     expect(guide).toContain("packs/code-review");
-    expect(flat).toContain(SENT_NOTHING);
+    expect(guide).toContain("`packs`");
   });
 
   it("names every top-level and scan key of pack.json", () => {
@@ -28,7 +27,7 @@ describe("the 'writing a pack' guide", () => {
   });
 
   it("lists every check a pack may offer", () => {
-    for (const kind of SPECIFIC_CHECKS) expect(guide).toContain(`\`${kind}\``);
+    for (const option of ItemCheck.options) expect(guide).toContain(`\`${option.shape.kind.value}\``);
   });
 
   it("names each fixture file, and its worked expect.json is valid", () => {
@@ -45,9 +44,7 @@ describe("the 'writing a pack' guide", () => {
     expect(guide).toContain("checkPack(");
   });
 
-  it("points at the demo, which exists, and uses no em-dashes", () => {
-    expect(guide).toContain("npm run demo:packs-slice-7");
-    expect(existsSync(join(REPO_ROOT, "demos/task-packs-slice-7-write-a-pack.ts"))).toBe(true);
+  it("uses no em-dashes", () => {
     expect(guide).not.toContain("—");
   });
 

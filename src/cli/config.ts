@@ -7,10 +7,9 @@ import { z } from "zod";
 import { messageOf } from "../gate-support.js";
 import { AgentOptions, CloserRef, GuardName, GuardSwitches, Severity, TaskDef, Written } from "../schema.js";
 import { FenceSetting } from "../fence.js";
-import { FixTask } from "../packs/fix-task.js";
-import { latestPlanFile } from "../packs/review-record.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
+import { withPackWorkflows } from "./pack-workflows.js";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 
 /** The one filename family a project uses, and the forms it may take. A `.js` or `.mjs` file exports the same object, for a project that computes a value. */
@@ -18,7 +17,7 @@ export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
 /** The keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `sources`, `after`, `parkAfter` and `notify`";
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `sources`, `after`, `parkAfter` and `notify`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -205,6 +204,8 @@ export const DeliveryConfig = z
     fence: FenceSetting.optional(),
     // Named ways of doing a task in more than one checked step, chosen with `delivery run --workflow <name>`.
     workflows: z.record(Written, WorkflowConfig).optional(),
+    // Review folders of the project's own, relative to this file; each adds its <name>:scan and <name>:fix workflows (spec 5.13).
+    packs: z.array(Written).optional(),
     // Where `delivery run --sources` finds work, in order; a fallback is read only when nothing else has any.
     sources: z.array(SourceConfig).min(1).optional(),
     // How many runs in a row an item may end undelivered before it is set aside (default 3).
@@ -230,16 +231,13 @@ export const DeliveryConfig = z
   })
   .superRefine((config, ctx) => {
     // A task's guards are checked here, not in the entry's own schema, so a wrong name gets its own sentence
-    // rather than the whole entry being quoted back as the wrong kind. A review's own fix task carries the
-    // full lists its fix is bound by, not a switch by name, and is left alone: a review's plan is loaded
-    // through this same schema (`orPlan`), and its `guards` was never the owner's to write by hand.
+    // rather than the whole entry being quoted back as the wrong kind.
     const entries: [PropertyKey[], unknown][] = [
       ...(config.task === undefined ? [] : [[["task"], config.task] as [PropertyKey[], unknown]]),
       ...(config.tasks ?? []).map((entry, index): [PropertyKey[], unknown] => [["tasks", index], entry]),
     ];
     for (const [path, entry] of entries) {
       if (typeof entry !== "object" || entry === null || !("guards" in entry)) continue;
-      if (FixTask.safeParse(entry).success) continue;
       if (!GuardSwitches.safeParse(entry.guards).success) ctx.addIssue({ code: "custom", path: [...path, "guards"], message: "guards" });
     }
   })
@@ -292,6 +290,8 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
   fence:
     'It says whether the agent works inside a fence that keeps your main folder read-only: "preferred", "required" or "off", ' +
     'or an object such as `{ "mode": "required", "devices": ["/dev/kvm"] }`.',
+  packs:
+    'It is a list of folders of review packs of your own, relative to this file, such as `["reviews/mine"]`: each adds its `<name>:scan` and `<name>:fix` workflows.',
   workflows:
     'It names ways of doing a task in steps, each a list of `steps` run in order, for example ' +
     '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +
@@ -485,8 +485,6 @@ export interface ConfigLookup {
   repoPath: string;
   flag: string | undefined;
   env: NodeJS.ProcessEnv;
-  /** For the commands that only read: with no configuration of the project's own, use the newest plan `delivery fix` wrote. Never for a command that starts work. */
-  orPlan?: boolean;
   /** For a command that promises only to read: a JSON file alone, never a JavaScript one, which would run the project's own code. */
   dataOnly?: boolean;
 }
@@ -499,14 +497,14 @@ export interface ConfigLookup {
  * A named file that isn't there is refused rather than quietly replaced by
  * discovery.
  */
-export function findConfig({ startDir, repoPath, flag, env, orPlan, dataOnly }: ConfigLookup): string | undefined {
+export function findConfig({ startDir, repoPath, flag, env, dataOnly }: ConfigLookup): string | undefined {
   // An empty DELIVERY_CONFIG is CI writing an input nobody filled in: not a
   // file called "", and not a reason to refuse before discovery has run.
   const named = flag ?? (env.DELIVERY_CONFIG || undefined);
   const found = named === undefined ? configCandidates(startDir, repoPath).find((candidate) => existsSync(candidate)) : resolve(startDir, named);
   if (named !== undefined && found !== undefined && !existsSync(found)) throw new Refusal(NO_SUCH_CONFIG(named), EXIT.configuration);
   if (dataOnly === true && found !== undefined && !found.endsWith(".json")) return undefined;
-  return found ?? (orPlan === true ? latestPlanFile(repoPath) : undefined);
+  return found;
 }
 
 /** What a config file holds: its settings, or every problem with its shape. A file that is not valid JSON is still refused outright. */
@@ -534,5 +532,10 @@ export async function readConfig(file: string): Promise<DeliveryConfig> {
  */
 export async function loadConfig(lookup: ConfigLookup): Promise<DeliveryConfig> {
   const file = findConfig(lookup);
-  return file === undefined ? {} : readConfig(file);
+  const config = file === undefined ? {} : await readConfig(file);
+  return withPackWorkflows(config, file === undefined ? lookup.repoPath : dirname(file));
 }
+
+/** The source a project's ideas are raised to instead of committed: its first tracker, if it has one. */
+export const trackerSource = (config: DeliveryConfig): SourceConfig | undefined =>
+  (config.sources ?? DEFAULT_SOURCES).find((source) => source.type === "github" || (source.type === "command" && source.tracker === true));
