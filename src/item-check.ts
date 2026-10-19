@@ -10,7 +10,7 @@ import { SEVERITIES, ItemCheck, type Assertion, type Severity, type TaskDef } fr
 
 /** Where the harness keeps its records in a project: never where a problem is looked for, so an item never confirms itself. */
 export const HARNESS_DIR = ".delivery/";
-/** Paths named to git exactly as written, and the backlog folder never searched. */
+/** Paths named to git exactly as written, and the backlog folder never searched by a pattern. */
 const named = (path: string): string => `:(literal)${path}`;
 const NOT_BACKLOG = `:(exclude,literal)${BACKLOG_DIR}`;
 
@@ -205,12 +205,15 @@ async function oddFileIn(worktreePath: string, paths: string[]): Promise<{ error
  * Whether any of `literals` is anywhere in the project: at the commit, or in
  * the working copy's tracked and new files (files git ignores aside, which is
  * where a secret moved out of the code belongs). Searched as fixed text by git,
- * so nothing an agent wrote is run as a pattern.
+ * so nothing an agent wrote is run as a pattern. The checked item's own file
+ * (`own`) is never searched, as it holds the secret to describe it; when there
+ * is no such file the whole backlog is left out, since none can be told apart.
  */
-async function anywhere(where: Where, literals: string[]): Promise<boolean | { error: string }> {
+async function anywhere(where: Where, literals: string[], own: string | undefined): Promise<boolean | { error: string }> {
   const search = literals.flatMap((literal) => ["-e", literal]);
+  const skip = own === undefined ? NOT_BACKLOG : `:(exclude,literal)${BACKLOG_DIR}/${own}`;
   const [cwd, args] =
-    "commit" in where ? [where.repoPath, ["grep", "-q", "-F", ...search, where.commit, "--", NOT_BACKLOG]] : [where.worktreePath, ["grep", "-q", "-F", "--untracked", ...search, "--", NOT_BACKLOG]];
+    "commit" in where ? [where.repoPath, ["grep", "-q", "-F", ...search, where.commit, "--", skip]] : [where.worktreePath, ["grep", "-q", "-F", "--untracked", ...search, "--", skip]];
   try {
     await git(cwd, args, { timeout: PATTERN_TIMEOUT_MS });
     return true;
@@ -225,9 +228,11 @@ async function anywhere(where: Where, literals: string[]): Promise<boolean | { e
  * Whether an item's problem is still there: its pattern still matches, its vulnerable
  * version is still in the lockfile, or its flagged code is still in its file
  * (commented out counts as still there). A secret is still there
- * while its text is anywhere in the project: moving it is not fixing it. Never read as gone when it cannot tell.
+ * while its text is anywhere in the project, another backlog item included: moving
+ * it is not fixing it. Never read as gone when it cannot tell. `own` is the
+ * backlog file of the item being checked.
  */
-export async function checkItem(check: ItemCheck, where: Where): Promise<CheckResult> {
+export async function checkItem(check: ItemCheck, where: Where, own?: string): Promise<CheckResult> {
   if (check.kind === "dependency-absent") {
     const text = await textAt(where, LOCKFILE);
     if (text === undefined) return { error: `${LOCKFILE} is not in the project, so which versions are installed cannot be read` };
@@ -250,7 +255,7 @@ export async function checkItem(check: ItemCheck, where: Where): Promise<CheckRe
   if (check.scope === "repo") {
     const literals = secretLiterals(check.anchor, check.sensitive === true);
     if (literals.length > 0) {
-      const found = await anywhere(where, literals);
+      const found = await anywhere(where, literals, own);
       if (found !== false) return found === true ? "present" : found;
     }
   }
@@ -285,7 +290,7 @@ export async function resolvedAssertion(taskDef: TaskDef, itemId: string | undef
   const id = resolvedId(itemId ?? "task");
   const parsed = ItemCheck.safeParse(taskDef.check);
   if (!parsed.success) return { id, outcome: "FAIL", detail: "The task's check is not one the harness knows, so whether its problem is gone cannot be told." };
-  const result = await checkItem(parsed.data, { worktreePath });
+  const result = await checkItem(parsed.data, { worktreePath }, itemId);
   if (result === "resolved") return { id, outcome: "PASS", detail: "the problem the task describes is gone" };
   if (result === "present") return { id, outcome: "FAIL", detail: `The problem is still there: ${describeCheck(parsed.data)}. Fix the problem itself; commenting it out or moving it does not count.` };
   return { id, outcome: "FAIL", detail: `Whether the problem is gone could not be checked: ${result.error}.` };

@@ -215,8 +215,21 @@ describe("an item check never reads the harness's own records", () => {
       ".delivery/backlog/20261019T120000Z-key-in-code.md": `---\nstatus: idea\nseverity: critical\ncheck:\n  kind: anchor-gone\n  path: payments.js\n  anchor: '${LINE}'\n  scope: repo\n  sensitive: true\n---\n# A key is written in the code\n`,
     });
     const check: ItemCheck = { kind: "anchor-gone", path: "payments.js", anchor: LINE, scope: "repo", sensitive: true };
-    expect(await checkItem(check, { worktreePath: repo })).toBe("resolved");
-    expect(await checkItem(check, { repoPath: repo, commit: "HEAD" })).toBe("resolved");
+    expect(await checkItem(check, { worktreePath: repo }, "20261019T120000Z-key-in-code.md")).toBe("resolved");
+    expect(await checkItem(check, { repoPath: repo, commit: "HEAD" }, "20261019T120000Z-key-in-code.md")).toBe("resolved");
+  });
+
+  it("finds a secret copied into another backlog item, whatever the item that describes it", async () => {
+    const LINE = 'const PAYMENTS_PASSWORD = "pay-live-7Hq2xV9rLm4K";';
+    const OWN = "20261019T120000Z-key-in-code.md";
+    const repo = initTempRepo("item-check-copied-", {
+      "payments.js": "export const pay = () => 1;\n",
+      [`.delivery/backlog/${OWN}`]: `---\nstatus: idea\n---\n# A key is written in the code\n${LINE}\n`,
+      ".delivery/backlog/20261019T130000Z-other.md": `---\nstatus: idea\n---\n# Another item\n${LINE}\n`,
+    });
+    const check: ItemCheck = { kind: "anchor-gone", path: "payments.js", anchor: LINE, scope: "repo", sensitive: true };
+    expect(await checkItem(check, { worktreePath: repo }, OWN)).toBe("present");
+    expect(await checkItem(check, { repoPath: repo, commit: "HEAD" }, OWN)).toBe("present");
   });
 
   it("does not match a pattern in the backlog folder", async () => {
