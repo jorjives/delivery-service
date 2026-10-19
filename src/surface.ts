@@ -837,8 +837,12 @@ async function closing(
 
   // Held only by an attempt about to land, after any rebuild, so a rejected or conflicting attempt raises nothing (spec §5.5).
   // A review of a tracker-backed project lands no delivery branch, so its ideas are held against the branch it started from.
+  // The work is committed first: holdFollowUps reads the branch's commits, so an idea left in the worktree would land unheld.
   const item = caseFile.header.item;
-  if (item?.raise === true) await holdFollowUps(dir, ctx.worktreePath, caseFile.header.delivery?.branch ?? ctx.baseBranch, item.source);
+  if (item?.raise === true) {
+    await commitAccepted(ctx);
+    await holdFollowUps(dir, ctx.worktreePath, caseFile.header.delivery?.branch ?? ctx.baseBranch, item.source);
+  }
 
   const report = await onSharedGround(ports, caseFile, () => ports.closer.close(ctx, { kind: "accepted" }));
   return recordClose(dir, caseFile, location, report);
