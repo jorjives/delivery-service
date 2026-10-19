@@ -56,7 +56,6 @@ ordered sequences in dispatch, so dependent items never run ahead of the item th
 | **Level** | One landed item in the stack: its run id, item key, intent, task text, `closes` reference, its **level ref** and the commit that ref points at. Ordered by landing. |
 | **Level ref** | `delivery-stack/<base>/<runId>`, a local branch pointing at the delivery-branch commit at which that item landed, pushed to `origin` as the pull request's head. (`delivery/<base>/…` cannot be used: git refuses a ref under an existing branch name.) |
 | **Parent** | The base for the bottom level; otherwise the level below. A level's pull request targets its parent. |
-| **Fork point** | The commit the stack's bottom level was built on: the base's tip when the stack was opened or last restacked. |
 
 The stack is a projection of the delivery ledger (`delivery.jsonl`), folded like the rest of
 `DeliveryState`. The ledger, not the refs or GitHub, is the record of which levels exist; refs
@@ -97,8 +96,11 @@ In stack mode, `reconcileDeliveryBranch` is replaced by stack reconciliation. It
 merges are acted on even when the backlog is empty. It has three parts.
 
 **Observe.** Fetch the base from `origin` (remote-tracking ref only; no local branch other than
-the delivery branch and level refs is ever moved). For each level, ask GitHub for its pull
-request through `gh` (state `OPEN`, `MERGED` or `CLOSED`, URL, head commit, base branch).
+the delivery branch and level refs is ever moved). Ask GitHub for every level's pull request in
+**one** `gh pr list --state all` call (state `OPEN`, `MERGED` or `CLOSED`, URL, head commit, base
+branch), matched to levels by head ref, so the cost of observing does not grow with the stack.
+This widens the existing `OpenPullRequests` lookup that `open-pr-closer.ts` and
+`landed-outside.ts` share, rather than adding a third.
 GitHub's state is authoritative: it reports a merge the same way whether it was a merge commit,
 a squash or a rebase-merge, which ancestry cannot.
 
@@ -173,19 +175,24 @@ tip after merges, or an adopted level's new commit.
   names the level, its pull request and the conflicting files or newly failing assertions. The
   owner's way out is to resolve it on that pull request (adopted next run) or to close it
   (dropped next run).
-- The ledger records `restacked`, with the new parent and each level's new commit. The fork point
-  becomes *P*.
+- The ledger records `restacked`, with the new parent, the levels merged below it (if any) and
+  each remaining level's new commit. The item ledger records each moved item's new commit and
+  level ref through the same entry that records a landing, so the item ledger's view of where each item's work is stays
+  current (§5.7).
+- The rebase-and-recheck is today's `rebuildIfMoved` mechanism (rebase in the task's own copy,
+  re-check against the new parent's baseline through `takeBaseline` in a detached copy), applied
+  per level rather than written again.
 
 ### 5.6 Publishing the stack (the closer)
 
 The closer stays a publisher: the harness decides what the stack is, and the closer makes GitHub
 match it. `CloseContext.delivery` gains `stack`: the levels in order, each with its level ref,
-commit, parent ref, the commit the closer last pushed for it (or none), item key, intent, task
-text and `closes`. `branch` is the top level ref; `baseBranch` is the base.
+commit, parent ref, the head commit GitHub reported for it at the start of the run (§5.2, or
+none when it has no pull request yet), item key, intent, task text and `closes`. `branch` is the top level ref; `baseBranch` is the base.
 
-For each level, bottom up, the stack-mode `open-pr` closer:
+For each level, bottom up, the stack publisher (`open-pr` with `stack: true`):
 
-1. Pushes its level ref: plain push when new, `--force-with-lease=<ref>:<last pushed commit>`
+1. Pushes its level ref: plain push when new, `--force-with-lease=<ref>:<reported head commit>`
    when restacked. All pushes of one close go in a single `git push --atomic`. A lease that
    fails means someone pushed meanwhile: the close is an `ERROR`, and the next run adopts or
    blocks (§5.4).
@@ -202,11 +209,12 @@ branch is deleted.
 
 ### 5.7 Item ledger: awaiting merge
 
-`awaitsMerge` reads an item's commit and asks whether its branch still holds it. A restack
-changes every remaining level's commit, so in stack mode the question is answered from the
-stack instead: an item awaits merge while it is a live level. A merged level's item no longer
-awaits merge; the base now carries its resolution (backlog `status: resolved`, a ✅ slice marker,
-or a closed issue), so the source does not list it. A dropped level's item is dispatchable.
+`awaitsMerge` is unchanged: it reads an item's commit and asks whether its branch still holds
+it. In stack mode the branch is the item's level ref, and a restack writes each moved item's new
+commit through to the item ledger (§5.5), so the same ancestry check answers in both modes. A
+dropped level's ref is deleted, so its item no longer awaits merge. A merged level's item no longer
+awaits merge either; the base now carries its resolution (backlog `status: resolved`, a ✅ slice marker,
+or a closed issue), so the source does not list it.
 
 ### 5.8 Fetching the base (both modes)
 
@@ -259,12 +267,12 @@ The slices work source sets `sequence` to the slices file, so each spec is its o
 | Unit | Does | Depends on |
 |---|---|---|
 | `delivery-stack.ts` (new) | Folds the levels from the delivery ledger; the pure **plan** function (§5.2) | `delivery-ledger.ts` |
-| `stack-pull-requests.ts` (new) | Reads each level's pull request state, head commit and base through `gh`; never throws, reporting "could not ask" as a value | `gh.ts` |
-| `restack.ts` (new) | Rebase in a scratch worktree, per-level re-check, single ref transaction (§5.5); adopt (§5.4); drop (§5.3, refs only) | `git-exec.ts`, `disposable-copy.ts`, gate resolution, `delta-rule.ts` |
-| `delivery-ledger.ts` | Gains `level` (via `landed`, with its exact commit), `restacked`, `merged`, `dropped` and `adopted` entries | — |
-| `open-pr-closer.ts` | Stack publishing (§5.6), when `ctx.delivery.stack` is set | `gh.ts`, `git-exec.ts` |
-| `cli/sources-run.ts` | Chooses reconcile by mode; runs it every run while the stack has levels | the above |
-| `item-ledger.ts` | `awaitsMerge` consults the stack in stack mode; `rejected` attempt for a closed level | `delivery-stack.ts` |
+| `gh.ts` / `open-pr-closer.ts` | The shared `OpenPullRequests` lookup widens to one `--state all` listing with state, head commit and base (§5.2); never throws, reporting "could not ask" as a value | — |
+| `restack.ts` (new) | Per-level rebase and re-check reusing `rebuildIfMoved`'s mechanism, single ref transaction (§5.5); adopt (§5.4); drop (§5.3, refs only) | `delivery-landing.ts`, `git-exec.ts`, `disposable-copy.ts` |
+| `delivery-ledger.ts` | Gains `restacked` (which also names levels merged below it), `dropped` and `adopted` entries; `landed` carries the item's exact commit | — |
+| `stack-pr-closer.ts` (new) | Stack publishing (§5.6), chosen by `resolveCloser` when the `open-pr` closer has `stack: true`; shares the push and pull request helpers with `open-pr-closer.ts`, which stays the rolling publisher | `gh.ts`, `git-exec.ts` |
+| `cli/sources-run.ts` | Calls the mode's reconcile unconditionally; each mode decides for itself whether it has anything to do (rolling: claims or pending landings; stack: any level) | the above |
+| `item-ledger.ts` | Accepts restacked commits as ordinary commit updates; `rejected` attempt for a closed level; `awaitsMerge` unchanged | — |
 | `work-sources.ts` | Reads `sequence` from every source type; `chooseWork` applies the sequence hold (§5.10) | `item-ledger.ts` |
 | `schema.ts` | `stack` on the `open-pr` closer | — |
 
