@@ -215,6 +215,15 @@ they pass their checks. With `none` it says "No fix waits for your sign-off beca
 its problem is." Your choice is recorded with the fixes it applies to, and a fix already made keeps
 the choice it was made under. In a project with no tests every fix still waits, whatever you choose.
 
+## Serious fixes wait for you
+
+A review's fix workflow can hold fixes of serious problems (the security review holds those rated high or critical).
+Such a fix is finished and checked, then waits on its own branch: nothing after it builds on it. `delivery backlog`
+lists it under "Held". Read it with `delivery backlog <id>`, then:
+
+- `delivery sign-off <id>` checks it again where it lands and lands it, then hands the delivery branch to your closer;
+- `delivery reject <id>` sets it aside; its work stays on its branch.
+
 ## Come back to the report
 
 After a fix phase, `delivery report` tells you what happened in one place. It opens with which
