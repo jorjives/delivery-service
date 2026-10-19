@@ -22,6 +22,7 @@ delivery.report/1.parked[].question: null|string
 delivery.report/1.parked[].reason = "attempts"
 delivery.report/1.parked[].reason = "decision"
 delivery.report/1.parked[].reason = "escalated"
+delivery.report/1.parked[].reason = "held"
 delivery.report/1.parked[].reason: string
 delivery.report/1.run.breaker = "DEGRADED"
 delivery.report/1.run.breaker = "HEALTHY"
@@ -68,6 +69,7 @@ delivery.report/1.surfaces[].budgets[]: object
 delivery.report/1.surfaces[].cause.kind = "authority"
 delivery.report/1.surfaces[].cause.kind = "budget"
 delivery.report/1.surfaces[].cause.kind = "decision"
+delivery.report/1.surfaces[].cause.kind = "held"
 delivery.report/1.surfaces[].cause.kind = "landed_outside_closer"
 delivery.report/1.surfaces[].cause.kind = "provisioning"
 delivery.report/1.surfaces[].cause.kind = "repair_gave_up"
@@ -129,6 +131,7 @@ delivery.report/1.surfaces[].fence.reason: null|string
 delivery.report/1.surfaces[].fence: null|object
 delivery.report/1.surfaces[].guards.added: array
 delivery.report/1.surfaces[].guards.added[] = "backlog"
+delivery.report/1.surfaces[].guards.added[] = "backlog-only"
 delivery.report/1.surfaces[].guards.added[] = "check-untouched"
 delivery.report/1.surfaces[].guards.added[] = "ignored"
 delivery.report/1.surfaces[].guards.added[] = "no-skips"
@@ -137,6 +140,7 @@ delivery.report/1.surfaces[].guards.added[] = "tests-untouched"
 delivery.report/1.surfaces[].guards.added[]: string
 delivery.report/1.surfaces[].guards.off: array
 delivery.report/1.surfaces[].guards.off[] = "backlog"
+delivery.report/1.surfaces[].guards.off[] = "backlog-only"
 delivery.report/1.surfaces[].guards.off[] = "check-untouched"
 delivery.report/1.surfaces[].guards.off[] = "ignored"
 delivery.report/1.surfaces[].guards.off[] = "no-skips"
