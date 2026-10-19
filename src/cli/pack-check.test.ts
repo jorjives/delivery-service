@@ -8,7 +8,6 @@ import { checkPack, NotTrusted, sandboxedEnv, WEAKENED_TESTS } from "./pack-chec
 
 const RUN_TIMEOUT = 120_000;
 const TOTAL = "The total can go below zero";
-const SETTINGS = "A missing or broken settings file gives an unhelpful error";
 
 /**
  * A copy of a built-in pack in a fresh folder, renamed `mine` so it does not clash with the built-in,
