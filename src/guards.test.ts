@@ -302,6 +302,15 @@ describe("the backlog guard", () => {
     expect(found?.detail).toContain(`${ITEM} changed`);
   });
 
+  it("lets the harness's own resolution of the item being delivered stand, and nothing else about it", async () => {
+    const repo = initTempRepo("guards-", { ...PROJECT, [ITEM]: GOOD });
+    put(repo, ITEM, GOOD.replace("open", "resolved"));
+    const resolving = "20261016T090000Z-greet.md";
+    expect((await guardAssertions(repo, "main", on, null, {}, resolving)).find((a) => a.id === BACKLOG_GUARD)?.outcome).toBe("PASS");
+    put(repo, ITEM, GOOD.replace("open", "resolved").replace("Greet people.", "Something else."));
+    expect((await guardAssertions(repo, "main", on, null, {}, resolving)).find((a) => a.id === BACKLOG_GUARD)?.outcome).toBe("FAIL");
+  });
+
   it("refuses the removal of an existing item", async () => {
     const repo = initTempRepo("guards-", { ...PROJECT, [ITEM]: GOOD });
     rmSync(join(repo, ITEM));

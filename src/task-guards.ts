@@ -91,7 +91,7 @@ export function guardedGate(gate: Gate, base: GuardBase, accepted: AcceptedSetti
     async check(ctx) {
       let guards: Assertion[];
       try {
-        guards = await guardAssertions(ctx.worktreePath, await commitOf(ctx.worktreePath, base), activeGuards(ctx.taskDef, ctx.guards), verifyOf(ctx.taskDef, ctx.gateRef), accepted);
+        guards = await guardAssertions(ctx.worktreePath, await commitOf(ctx.worktreePath, base), activeGuards(ctx.taskDef, ctx.guards), verifyOf(ctx.taskDef, ctx.gateRef), accepted, ctx.itemId);
         const resolved = await resolvedAssertion(ctx.taskDef, ctx.itemId, ctx.worktreePath);
         if (resolved !== undefined) guards = [...guards, resolved];
       } catch (err) {

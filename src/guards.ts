@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { BACKLOG_DIR, parseItem } from "./backlog.js";
+import { BACKLOG_DIR, parseItem, setFields } from "./backlog.js";
 import { git } from "./git-exec.js";
 import type { HeldItem } from "./follow-ups.js";
 import { isEnoent } from "./journal.js";
@@ -109,15 +109,23 @@ async function touched(cwd: string, base: string, tree: string, patterns: string
   return pairs;
 }
 
+/** Whether the only change to `path` is the harness marking its item resolved: that commit stays on a task's branch when its landing is retried, and is not the worker's doing. */
+async function isResolution(cwd: string, base: string, tree: string, path: string): Promise<boolean> {
+  const blob = (ref: string) => git(cwd, ["cat-file", "blob", `${ref}:${path}`], { raw: true, maxBuffer: FILE_LIMIT });
+  const [before, after] = await Promise.all([blob(base), blob(tree)]);
+  return setFields(before, { status: "resolved" }) === after;
+}
+
 /**
  * What a change did to the backlog: the new items it added, each read from `tree`, and what it may not do (an
  * existing item edited or removed, or a new file that is not a valid item). Shared by the backlog guard and the
  * after agent pass, so a follow-up is judged the same wherever it comes from.
  */
-export async function addedBacklogItems(cwd: string, base: string, tree: string): Promise<{ items: HeldItem[]; findings: string[] }> {
+export async function addedBacklogItems(cwd: string, base: string, tree: string, resolving?: string): Promise<{ items: HeldItem[]; findings: string[] }> {
   const items: HeldItem[] = [];
   const findings: string[] = [];
   for (const { status, path } of await touched(cwd, base, tree, [glob(`${BACKLOG_DIR}/**`)])) {
+    if (status === "M" && path === `${BACKLOG_DIR}/${resolving}` && (await isResolution(cwd, base, tree, path))) continue;
     if (status === "M" || status === "T") findings.push(`${path} changed`);
     else if (status === "D") findings.push(`${path} removed`);
     else if (status === "A") {
@@ -316,7 +324,7 @@ export async function settingsChanged(worktreePath: string, base: string, tree: 
  * ponytail: package.json is read at the top of the project only; a workspace's own package.json is guarded only through `protectedGlobs`.
  * `base` is the commit the work started from, pinned when its working copy was made, so moving HEAD back cannot hide a deleted test.
  */
-export async function guardAssertions(worktreePath: string, base: string, guards: ActiveGuards, verify: GateRef | null, accepted: AcceptedSettings = {}): Promise<Assertion[]> {
+export async function guardAssertions(worktreePath: string, base: string, guards: ActiveGuards, verify: GateRef | null, accepted: AcceptedSettings = {}, resolving?: string): Promise<Assertion[]> {
   const { lists, on } = guards;
   const tree = await treeOf(worktreePath);
   const tests = await touched(worktreePath, base, tree, lists.testGlobs.map(glob));
@@ -330,7 +338,7 @@ export async function guardAssertions(worktreePath: string, base: string, guards
     assertion(EDIT_GUARD, edited, "changed existing tests", `${PUT_BACK} If only a change to an existing test would fix the problem, stop and say so.`),
     assertion(CHECK_GUARD, settings, "changed how the tests are run"),
     assertion(SKIP_GUARD, await addedSkips(worktreePath, base, tree, lists.skipMarkers, lists.testGlobs), "skipped tests"),
-    assertion(BACKLOG_GUARD, (await addedBacklogItems(worktreePath, base, tree)).findings, "changed the backlog in a way it may not",
+    assertion(BACKLOG_GUARD, (await addedBacklogItems(worktreePath, base, tree, resolving)).findings, "changed the backlog in a way it may not",
       "Existing backlog items may not be edited or removed; add a new item file for a follow-up, in the item format (see docs/project-configuration.md)."),
     ...(await ignoredAssertions(worktreePath, guards)),
     ...(on.includes("backlog-only")
