@@ -37,6 +37,28 @@ export type TaskDef = z.infer<typeof TaskDef>;
 export const GuardName = z.enum(["tests-untouched", "tests-unchanged", "check-untouched", "no-skips", "ignored", "backlog"]);
 export type GuardName = z.infer<typeof GuardName>;
 
+/** How serious a problem is, most serious first. Words, never a number. */
+export const SEVERITIES = ["critical", "high", "medium", "low"] as const;
+export const Severity = z.enum(SEVERITIES);
+export type Severity = z.infer<typeof Severity>;
+
+const CheckPath = z.string().min(1).max(300);
+/**
+ * How the harness knows an item's problem is gone. Closed and harness-owned: whoever writes an item picks one, and
+ * the harness alone decides whether it holds. `scope: repo` looks for the anchor's secret-shaped text across the
+ * whole project; `sensitive` treats every quoted value in the anchor as a secret.
+ */
+export const ItemCheck = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("anchor-gone"), path: CheckPath, anchor: z.string().min(1).max(2000), scope: z.literal("repo").optional(), sensitive: z.literal(true).optional() }),
+  z.strictObject({ kind: z.literal("pattern-absent"), pattern: z.string().min(1).max(500), paths: z.array(CheckPath).min(1) }),
+  z.strictObject({
+    kind: z.literal("dependency-absent"),
+    package: z.string().regex(/^(?:@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/),
+    version: z.string().regex(/^[0-9A-Za-z.+_~-]+$/),
+  }),
+]);
+export type ItemCheck = z.infer<typeof ItemCheck>;
+
 /** A task's (or a workflow step's) change to which guards judge it: guards added to the defaults, and defaults turned off. */
 export const GuardSwitches = z.strictObject({ add: z.array(GuardName).optional(), off: z.array(GuardName).optional() });
 export type GuardSwitches = z.infer<typeof GuardSwitches>;

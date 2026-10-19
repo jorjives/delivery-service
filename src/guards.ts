@@ -7,7 +7,7 @@ import { isEnoent } from "./journal.js";
 import { checkFilesOf, treeOf } from "./repair-changes.js";
 import type { Assertion, GateRef } from "./schema.js";
 import { GuardName } from "./schema.js";
-import { FILE_LIMIT } from "./packs/confirm.js";
+import { FILE_LIMIT } from "./item-check.js";
 import { z } from "zod";
 
 // Re-export GuardName for consumers who import from guards

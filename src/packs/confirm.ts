@@ -1,28 +1,15 @@
 import { createHash } from "node:crypto";
-import { posix } from "node:path";
-import { git } from "../git-exec.js";
 import { stripControl } from "../report/text.js";
 import { SEVERITIES, type CheckKind, type CheckSpec, type Finding, type ScanEnvelope, type ScannedFinding, type ScanResult, type Unconfirmed, type UnconfirmedReason } from "./finding.js";
-import { LOCKFILE, lockfileHas } from "./lockfile.js";
 import type { PinnedCategory } from "./review-record.js";
 import { literalsOf, maskIn, secretLiterals } from "./secrets.js";
+// Moved to the core as item checks (course-correction slice 8); this file is deleted with the findings system.
+export { FILE_LIMIT, LITERAL, PATTERN_LIMIT, PATTERN_TIMEOUT_MS, fileAt, locate, normaliseAnchor, patternFound, projectPath } from "../item-check.js";
+import { fileAt, locate, normaliseAnchor, patternFound, projectPath } from "../item-check.js";
+import { LOCKFILE, lockfileHas } from "../lockfile.js";
 
-/** How long git may spend on one agent-written pattern before the check is not used. */
-export const PATTERN_TIMEOUT_MS = 10_000;
-/** The longest agent-written pattern that is run at all. */
-export const PATTERN_LIMIT = 500;
 /** The longest each kind of agent-written text is kept at. */
 export const TEXT_LIMITS = { title: 120, sentence: 600, detail: 2000, notes: 2000, path: 300 } as const;
-/** The largest file read to find flagged code in. */
-export const FILE_LIMIT = 10 * 1024 * 1024;
-/** Paths named to git as they are, never as patterns. */
-export const LITERAL = { GIT_LITERAL_PATHSPECS: "1" };
-
-/** Flagged code as it is compared: every run of whitespace one space, none at either end. */
-export function normaliseAnchor(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
-
 /**
  * A problem's identity: what it is about (pack and category), where (path) and
  * which code (the flagged text, normalised). Never the line, which moves as
@@ -32,87 +19,15 @@ export function findingId(pack: string, category: string, path: string, anchor: 
   return createHash("sha256").update(JSON.stringify([pack, category, path, normaliseAnchor(anchor)])).digest("hex").slice(0, 12);
 }
 
-/** Where flagged code starts and ends in `text`, by line, comparing with whitespace collapsed on both sides. */
-export function locate(text: string, anchor: string): { line: number; endLine: number } | undefined {
-  const wanted = normaliseAnchor(anchor);
-  if (wanted === "") return undefined;
-  let flat = "";
-  const lineOf: number[] = [];
-  let line = 1;
-  let gap = false;
-  for (let i = 0; i < text.length; i++) {
-    const char = text.charAt(i);
-    if (/\s/.test(char)) {
-      if (char === "\n") line++;
-      gap = flat.length > 0;
-      continue;
-    }
-    if (gap) {
-      flat += " ";
-      lineOf.push(line);
-      gap = false;
-    }
-    flat += char;
-    lineOf.push(line);
-  }
-  const at = flat.indexOf(wanted);
-  if (at === -1) return undefined;
-  return { line: lineOf[at] ?? line, endLine: lineOf[at + wanted.length - 1] ?? line };
-}
-
 /** Agent-written text as it is kept: nothing that drives a terminal, whitespace collapsed, cut to `limit`. */
 function plain(text: string, limit: number): string {
   const clean = stripControl(text).replace(/\s+/g, " ").trim();
   return clean.length <= limit ? clean : `${clean.slice(0, limit - 1)}…`;
 }
 
-/** A path inside the project, as git names it, or undefined for one that is absolute or leads out. */
-export function projectPath(raw: string): string | undefined {
-  if (raw.includes("\0") || raw.includes("\\") || raw.startsWith("/") || /^[A-Za-z]:/.test(raw)) return undefined;
-  // Without a trailing slash, so git names the entry itself, never the contents of a folder.
-  const normal = posix.normalize(raw).replace(/\/+$/, "");
-  if (normal === "." || normal === ".." || normal.startsWith("../")) return undefined;
-  return normal;
-}
-
 /** Flagged code that cannot be found reliably: almost nothing in it, or more than five lines. */
 function vague(anchor: string): boolean {
   return normaliseAnchor(anchor).replace(/ /g, "").length < 8 || anchor.trim().split("\n").length > 5;
-}
-
-/** The file's text at `commit`, or why there is none. Reads git's own tree, so a link or a folder is never followed. */
-export async function fileAt(repoPath: string, commit: string, path: string): Promise<{ text: string } | { reason: UnconfirmedReason }> {
-  const listing = await git(repoPath, ["ls-tree", commit, "--", path], { env: LITERAL });
-  const entry = /^(\d+) (\w+) ([0-9a-f]+)\t/.exec(listing);
-  if (entry === null) return { reason: "no_such_file" };
-  const [, mode, type, oid] = entry;
-  if (type !== "blob" || (mode !== "100644" && mode !== "100755") || oid === undefined) return { reason: "not_a_file" };
-  try {
-    return { text: await git(repoPath, ["cat-file", "blob", oid], { maxBuffer: FILE_LIMIT, raw: true }) };
-  } catch {
-    return { reason: "text_not_found" };
-  }
-}
-
-/**
- * Whether an agent-written pattern matches in the paths it names: at `commit`,
- * or in the working tree at `cwd` (new and ignored files included) when there is
- * none. Run through git with a time limit; anything that is not a clean "matches"
- * or "does not match" is an error, never an answer.
- */
-export async function patternFound(cwd: string, check: Extract<CheckSpec, { kind: "pattern-absent" }>, commit?: string): Promise<boolean | { error: string }> {
-  const paths = check.paths.map(projectPath);
-  if (check.pattern.length > PATTERN_LIMIT) return { error: `the pattern is longer than ${PATTERN_LIMIT} characters` };
-  if (paths.some((path) => path === undefined)) return { error: "a path the check names leads outside the project" };
-  const scope = commit === undefined ? { options: ["--untracked", "--no-exclude-standard"], revision: [] } : { options: [], revision: [commit] };
-  try {
-    await git(cwd, ["grep", "-q", "-E", ...scope.options, "-e", check.pattern, ...scope.revision, "--", ...(paths as string[])], { env: LITERAL, timeout: PATTERN_TIMEOUT_MS });
-    return true;
-  } catch (err) {
-    const { code, killed } = err as { code?: unknown; killed?: boolean };
-    if (code === 1 && killed !== true) return false;
-    return { error: killed === true ? `the pattern ran longer than ${PATTERN_TIMEOUT_MS / 1000} seconds` : "git could not run the pattern" };
-  }
 }
 
 /** Whether a check can be used: it runs and the problem it looks for is there now, so it can go from red to green. Anything else is not a check. */

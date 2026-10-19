@@ -2,28 +2,23 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { FILE_LIMIT, PATTERN_LIMIT } from "./confirm.js";
-import { checkFinding, commentBlind } from "./finding-check.js";
-import { exampleRepo, PAYMENTS_PASSWORD, sampleFinding } from "./review-fixtures.js";
-import { initTempRepo } from "../temp-repo.js";
-import { cleanGitEnv } from "../git-env.js";
+import { atOrAbove, checkItem, commentBlind, FILE_LIMIT, PATTERN_LIMIT } from "./item-check.js";
+import { exampleRepo, PAYMENTS_PASSWORD } from "./packs/review-fixtures.js";
+import { initTempRepo } from "./temp-repo.js";
+import { cleanGitEnv } from "./git-env.js";
+import type { ItemCheck } from "./schema.js";
 
-const NEGATIVE = sampleFinding();
-const SETTINGS = sampleFinding({
-  id: "111111111111",
-  where: { path: "settings.js", line: 5, endLine: 5 },
-  anchor: 'return JSON.parse(readFileSync(path, "utf-8"));',
-  check: { kind: "pattern-absent", pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["settings.js"] },
-});
+const NEGATIVE: ItemCheck = { kind: "anchor-gone", path: "checkout.js", anchor: "return price - discount;" };
+const SETTINGS: ItemCheck = { kind: "pattern-absent", pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["settings.js"] };
 const edit = (repo: string, file: string, from: string, to: string): void =>
   writeFileSync(join(repo, file), readFileSync(join(repo, file), "utf-8").replace(from, to));
 
 describe("whether a problem's code is still there, in the main copy at a commit", () => {
   it("finds flagged code that is there, and none in a file that is not", async () => {
     const repo = exampleRepo("finding-check-");
-    expect(await checkFinding(NEGATIVE, { repoPath: repo, commit: "HEAD" })).toBe("present");
-    expect(await checkFinding(sampleFinding({ where: { path: "gone.js", line: 1, endLine: 1 } }), { repoPath: repo, commit: "HEAD" })).toBe("resolved");
-    expect(await checkFinding(SETTINGS, { repoPath: repo, commit: "HEAD" })).toBe("present");
+    expect(await checkItem(NEGATIVE, { repoPath: repo, commit: "HEAD" })).toBe("present");
+    expect(await checkItem({ kind: "anchor-gone", path: "gone.js", anchor: "return price - discount;" }, { repoPath: repo, commit: "HEAD" })).toBe("resolved");
+    expect(await checkItem(SETTINGS, { repoPath: repo, commit: "HEAD" })).toBe("present");
   });
 });
 
@@ -31,9 +26,9 @@ describe("whether a problem's code is still there, in a working copy", () => {
   it("is resolved when the flagged code is replaced or its file removed", async () => {
     const repo = exampleRepo("finding-check-");
     edit(repo, "checkout.js", "return price - discount;", "return Math.max(0, price - discount);");
-    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toBe("resolved");
+    expect(await checkItem(NEGATIVE, { worktreePath: repo })).toBe("resolved");
     rmSync(join(repo, "checkout.js"));
-    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toBe("resolved");
+    expect(await checkItem(NEGATIVE, { worktreePath: repo })).toBe("resolved");
   });
 
   it.each([
@@ -42,23 +37,23 @@ describe("whether a problem's code is still there, in a working copy", () => {
   ])("still finds flagged code commented out with %s", async (_, replacement) => {
     const repo = exampleRepo("finding-check-");
     edit(repo, "checkout.js", "return price - discount;", replacement);
-    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toBe("present");
+    expect(await checkItem(NEGATIVE, { worktreePath: repo })).toBe("present");
   });
 
   it("still finds flagged code of several lines commented out line by line", async () => {
     const repo = exampleRepo("finding-check-");
-    const twoLines = sampleFinding({ where: { path: "settings.js", line: 4, endLine: 5 }, anchor: 'export function loadSettings(path) {\n  return JSON.parse(readFileSync(path, "utf-8"));' });
+    const twoLines: ItemCheck = { kind: "anchor-gone", path: "settings.js", anchor: 'export function loadSettings(path) {\n  return JSON.parse(readFileSync(path, "utf-8"));' };
     edit(repo, "settings.js", 'export function loadSettings(path) {\n  return JSON.parse(readFileSync(path, "utf-8"));', '// export function loadSettings(path) {\n  // return JSON.parse(readFileSync(path, "utf-8"));\nexport function loadSettings(path) {\n  return {};');
-    expect(await checkFinding(twoLines, { worktreePath: repo })).toBe("present");
+    expect(await checkItem(twoLines, { worktreePath: repo })).toBe("present");
   });
 
   it("judges a pattern by the files as the agent left them, new files included", async () => {
     const repo = exampleRepo("finding-check-");
-    expect(await checkFinding(SETTINGS, { worktreePath: repo })).toBe("present");
+    expect(await checkItem(SETTINGS, { worktreePath: repo })).toBe("present");
     edit(repo, "settings.js", 'return JSON.parse(readFileSync(path, "utf-8"));', 'const text = readFileSync(path, "utf-8");\n  return JSON.parse(text);');
-    expect(await checkFinding(SETTINGS, { worktreePath: repo })).toBe("resolved");
+    expect(await checkItem(SETTINGS, { worktreePath: repo })).toBe("resolved");
     writeFileSync(join(repo, "new.js"), "JSON.parse(readFileSync(x));\n");
-    expect(await checkFinding(sampleFinding({ check: { kind: "pattern-absent", pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["new.js"] } }), { worktreePath: repo })).toBe("present");
+    expect(await checkItem({ kind: "pattern-absent", pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["new.js"] }, { worktreePath: repo })).toBe("present");
   });
 
   it.each([
@@ -67,14 +62,14 @@ describe("whether a problem's code is still there, in a working copy", () => {
     ["a path that leads out of the project", { kind: "pattern-absent" as const, pattern: "x", paths: ["../x"] }],
   ])("is never resolved for %s: the check itself has a problem", async (_, check) => {
     const repo = exampleRepo("finding-check-");
-    expect(await checkFinding(sampleFinding({ check }), { worktreePath: repo })).toEqual({ error: expect.any(String) });
+    expect(await checkItem(check, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
   it("is never resolved when the flagged file has been swapped for a link", async () => {
     const repo = exampleRepo("finding-check-");
     rmSync(join(repo, "checkout.js"));
     symlinkSync("/dev/null", join(repo, "checkout.js"));
-    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
+    expect(await checkItem(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
   it("is never resolved when a folder on the flagged file's path has been swapped for a link", async () => {
@@ -83,27 +78,27 @@ describe("whether a problem's code is still there, in a working copy", () => {
     mkdirSync(kept);
     writeFileSync(join(kept, "checkout.js"), "export const total = () => 0;\n");
     symlinkSync(kept, join(repo, "lib"));
-    const nested = sampleFinding({ where: { path: "lib/checkout.js", line: 1, endLine: 1 } });
-    expect(await checkFinding(nested, { worktreePath: repo })).toEqual({ error: expect.any(String) });
+    const nested: ItemCheck = { kind: "anchor-gone", path: "lib/checkout.js", anchor: "return price - discount;" };
+    expect(await checkItem(nested, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
   it("is never resolved, and never waits, when the flagged file has been swapped for a pipe", async () => {
     const repo = exampleRepo("finding-check-");
     rmSync(join(repo, "checkout.js"));
     execFileSync("mkfifo", [join(repo, "checkout.js")]);
-    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
+    expect(await checkItem(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
   it("is resolved when a folder on the flagged file's path has been replaced by a file", async () => {
     const repo = exampleRepo("finding-check-");
     writeFileSync(join(repo, "lib"), "not a folder\n");
-    expect(await checkFinding(sampleFinding({ where: { path: "lib/checkout.js", line: 1, endLine: 1 } }), { worktreePath: repo })).toBe("resolved");
+    expect(await checkItem({ kind: "anchor-gone", path: "lib/checkout.js", anchor: "return price - discount;" }, { worktreePath: repo })).toBe("resolved");
   });
 
   it("is never resolved when the flagged file is too large to read", async () => {
     const repo = exampleRepo("finding-check-");
     writeFileSync(join(repo, "checkout.js"), "x".repeat(FILE_LIMIT + 1));
-    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
+    expect(await checkItem(NEGATIVE, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
   it.each([
@@ -116,7 +111,7 @@ describe("whether a problem's code is still there, in a working copy", () => {
     mkdirSync(join(repo, "lib"));
     symlinkSync(join(repo, "..", "kept-settings.js"), join(repo, link));
     const check = { kind: "pattern-absent" as const, pattern: "JSON\\.parse\\(readFileSync\\(", paths };
-    expect(await checkFinding(sampleFinding({ check }), { worktreePath: repo })).toEqual({ error: expect.any(String) });
+    expect(await checkItem(check, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
   it("is never resolved when a folder on a pattern's path is swapped for a link to the same code", async () => {
@@ -129,13 +124,13 @@ describe("whether a problem's code is still there, in a working copy", () => {
     renameSync(join(repo, "lib"), kept);
     symlinkSync(kept, join(repo, "lib"));
     const check = { kind: "pattern-absent" as const, pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["lib/settings.js"] };
-    expect(await checkFinding(sampleFinding({ check }), { worktreePath: repo })).toEqual({ error: expect.any(String) });
+    expect(await checkItem(check, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
   it.each([["--assume-unchanged"], ["--skip-worktree"]])("is never resolved when a file the pattern names is marked %s", async (flag) => {
     const repo = exampleRepo("finding-check-");
     execFileSync("git", ["update-index", flag, "settings.js"], { cwd: repo });
-    expect(await checkFinding(SETTINGS, { worktreePath: repo })).toEqual({ error: expect.any(String) });
+    expect(await checkItem(SETTINGS, { worktreePath: repo })).toEqual({ error: expect.any(String) });
   });
 
   it("still finds a pattern in a file the project's ignore list covers", async () => {
@@ -143,7 +138,7 @@ describe("whether a problem's code is still there, in a working copy", () => {
     writeFileSync(join(repo, ".gitignore"), "new.js\n");
     writeFileSync(join(repo, "new.js"), "JSON.parse(readFileSync(x));\n");
     const check = { kind: "pattern-absent" as const, pattern: "JSON\\.parse\\(readFileSync\\(", paths: ["new.js"] };
-    expect(await checkFinding(sampleFinding({ check }), { worktreePath: repo })).toBe("present");
+    expect(await checkItem(check, { worktreePath: repo })).toBe("present");
   });
 });
 
@@ -154,52 +149,46 @@ describe("comparing code with comment markers set aside", () => {
 });
 
 const LOCK = (version: string): string => JSON.stringify({ lockfileVersion: 3, packages: { "": {}, "node_modules/minimist": { version } } }, null, 2);
-const MINIMIST = sampleFinding({
-  id: "333333333333",
-  category: "dependencies",
-  where: { path: "package-lock.json", line: 1, endLine: 1 },
-  anchor: '"node_modules/minimist": {',
-  check: { kind: "dependency-absent", package: "minimist", version: "1.2.5" },
-});
+const MINIMIST: ItemCheck = { kind: "dependency-absent", package: "minimist", version: "1.2.5" };
 
 describe("whether a vulnerable library version is still installed", () => {
   it("is present while the lockfile installs it, at a commit and in a working copy", async () => {
     const repo = initTempRepo("dependency-check-", { "package-lock.json": LOCK("1.2.5") });
-    expect(await checkFinding(MINIMIST, { repoPath: repo, commit: "HEAD" })).toBe("present");
-    expect(await checkFinding(MINIMIST, { worktreePath: repo })).toBe("present");
+    expect(await checkItem(MINIMIST, { repoPath: repo, commit: "HEAD" })).toBe("present");
+    expect(await checkItem(MINIMIST, { worktreePath: repo })).toBe("present");
   });
 
   it("is resolved once the lockfile installs another version", async () => {
     const repo = initTempRepo("dependency-check-", { "package-lock.json": LOCK("1.2.6") });
-    expect(await checkFinding(MINIMIST, { worktreePath: repo })).toBe("resolved");
+    expect(await checkItem(MINIMIST, { worktreePath: repo })).toBe("resolved");
   });
 
   it("cannot say, never resolved, when the lockfile is missing or unreadable", async () => {
     const missing = initTempRepo("dependency-check-", { "a.js": "x\n" });
-    expect(await checkFinding(MINIMIST, { worktreePath: missing })).toEqual({ error: "package-lock.json is not in the project, so which versions are installed cannot be read" });
+    expect(await checkItem(MINIMIST, { worktreePath: missing })).toEqual({ error: "package-lock.json is not in the project, so which versions are installed cannot be read" });
     const broken = initTempRepo("dependency-check-", { "package-lock.json": "not json" });
-    expect(await checkFinding(MINIMIST, { worktreePath: broken })).toEqual({ error: "package-lock.json could not be read as an npm lockfile" });
+    expect(await checkItem(MINIMIST, { worktreePath: broken })).toEqual({ error: "package-lock.json could not be read as an npm lockfile" });
   });
 });
 
 describe("a secret's check looks across the whole project", () => {
   const LINE = `const PAYMENTS_PASSWORD = "${PAYMENTS_PASSWORD}";`;
-  const SECRET = sampleFinding({ id: "444444444444", category: "secrets", severity: "critical", where: { path: "payments.js", line: 2, endLine: 2 }, anchor: LINE, scope: "repo", sensitive: true });
+  const SECRET: ItemCheck = { kind: "anchor-gone", path: "payments.js", anchor: LINE, scope: "repo", sensitive: true };
 
   it("is present while the secret is in its file", async () => {
     const repo = exampleRepo("secret-check-");
-    expect(await checkFinding(SECRET, { repoPath: repo, commit: "HEAD" })).toBe("present");
-    expect(await checkFinding(SECRET, { worktreePath: repo })).toBe("present");
+    expect(await checkItem(SECRET, { repoPath: repo, commit: "HEAD" })).toBe("present");
+    expect(await checkItem(SECRET, { worktreePath: repo })).toBe("present");
   });
 
   it("is still present when the secret is moved to another file, committed or not", async () => {
     const repo = exampleRepo("secret-check-");
     edit(repo, "payments.js", LINE, "import { PAYMENTS_PASSWORD } from \"./config.js\";");
     writeFileSync(join(repo, "config.js"), `export const PAYMENTS_PASSWORD = "${PAYMENTS_PASSWORD}";\n`);
-    expect(await checkFinding(SECRET, { worktreePath: repo })).toBe("present");
+    expect(await checkItem(SECRET, { worktreePath: repo })).toBe("present");
     execFileSync("git", ["add", "-A"], { cwd: repo, env: cleanGitEnv() });
     execFileSync("git", ["commit", "-m", "move it"], { cwd: repo, env: cleanGitEnv() });
-    expect(await checkFinding(SECRET, { repoPath: repo, commit: "HEAD" })).toBe("present");
+    expect(await checkItem(SECRET, { repoPath: repo, commit: "HEAD" })).toBe("present");
   });
 
   it("is resolved once the secret is nowhere in the project, a file git ignores aside", async () => {
@@ -207,13 +196,50 @@ describe("a secret's check looks across the whole project", () => {
     edit(repo, "payments.js", LINE, "const PAYMENTS_PASSWORD = process.env.PAYMENTS_PASSWORD;");
     writeFileSync(join(repo, ".gitignore"), ".env\n");
     writeFileSync(join(repo, ".env"), `PAYMENTS_PASSWORD=${PAYMENTS_PASSWORD}\n`);
-    expect(await checkFinding(SECRET, { worktreePath: repo })).toBe("resolved");
+    expect(await checkItem(SECRET, { worktreePath: repo })).toBe("resolved");
   });
 
   it("leaves a problem in an ordinary category judged by its own file", async () => {
     const repo = exampleRepo("secret-check-");
     writeFileSync(join(repo, "copy.js"), "return price - discount;\n");
     edit(repo, "checkout.js", "return price - discount;", "return Math.max(0, price - discount);");
-    expect(await checkFinding(NEGATIVE, { worktreePath: repo })).toBe("resolved");
+    expect(await checkItem(NEGATIVE, { worktreePath: repo })).toBe("resolved");
+  });
+});
+
+describe("an item check never reads the harness's own records", () => {
+  it("does not find a secret in the backlog item that describes it", async () => {
+    const LINE = 'const PAYMENTS_PASSWORD = "pay-live-7Hq2xV9rLm4K";';
+    const repo = initTempRepo("item-check-backlog-", {
+      "payments.js": "export const pay = () => 1;\n",
+      ".delivery/backlog/20261019T120000Z-key-in-code.md": `---\nstatus: idea\nseverity: critical\ncheck:\n  kind: anchor-gone\n  path: payments.js\n  anchor: '${LINE}'\n  scope: repo\n  sensitive: true\n---\n# A key is written in the code\n`,
+    });
+    const check: ItemCheck = { kind: "anchor-gone", path: "payments.js", anchor: LINE, scope: "repo", sensitive: true };
+    expect(await checkItem(check, { worktreePath: repo })).toBe("resolved");
+    expect(await checkItem(check, { repoPath: repo, commit: "HEAD" })).toBe("resolved");
+  });
+
+  it("does not match a pattern in the backlog folder", async () => {
+    const repo = initTempRepo("item-check-pattern-", {
+      "a.js": "ok\n",
+      ".delivery/backlog/20261019T120000Z-eval.md": "---\nstatus: idea\n---\n# eval(x) is used\n",
+    });
+    expect(await checkItem({ kind: "pattern-absent", pattern: "eval\\(", paths: [".delivery/backlog"] }, { worktreePath: repo })).toBe("resolved");
+  });
+
+  it("refuses a check whose file is inside .delivery", async () => {
+    const repo = initTempRepo("item-check-own-", { ".delivery/backlog/20261019T120000Z-x.md": "---\nstatus: idea\n---\n# x\n" });
+    expect(await checkItem({ kind: "anchor-gone", path: ".delivery/backlog/20261019T120000Z-x.md", anchor: "status: idea" }, { worktreePath: repo })).toEqual({
+      error: "the check looks inside .delivery, where the harness keeps its own records",
+    });
+  });
+});
+
+describe("severity thresholds", () => {
+  it("holds what is at or above the threshold, and nothing without one", () => {
+    expect(atOrAbove("critical", "high")).toBe(true);
+    expect(atOrAbove("high", "high")).toBe(true);
+    expect(atOrAbove("medium", "high")).toBe(false);
+    expect(atOrAbove("critical", undefined)).toBe(false);
   });
 });

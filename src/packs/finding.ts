@@ -1,9 +1,8 @@
 import { z } from "zod";
 
-/** How serious a problem is, most serious first: the order a review lists them in. Words a pack defines, never a number. */
-export const SEVERITIES = ["critical", "high", "medium", "low"] as const;
-export const Severity = z.enum(SEVERITIES);
-export type Severity = z.infer<typeof Severity>;
+// The closed severity order lives in the core now; re-exported here until the findings system is deleted.
+export { SEVERITIES, Severity } from "../schema.js";
+import { SEVERITIES, Severity } from "../schema.js";
 
 /** How sure a review is that a problem is real, most sure first. Words, never a number; a problem it is unsure of ("low") is set aside, not hidden. */
 export const CONFIDENCES = ["high", "medium", "low"] as const;
