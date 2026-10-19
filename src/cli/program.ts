@@ -9,7 +9,7 @@ import { decideCommand, findingsCommand, type DecideOptions, type FindingsOption
 import type { SignOffOptions } from "./sign-off-command.js";
 import type { ReviewCommandOptions } from "./review-command.js";
 import type { FixOptions } from "./fix-command.js";
-import { answerCommand, unparkCommand, type ItemOptions } from "./item-commands.js";
+import { answerCommand, rejectCommand as rejectItemCommand, signOffCommand as signOffItemCommand, unparkCommand, type ItemOptions } from "./item-commands.js";
 import { approveCommand, declineCommand, type ChooseOptions } from "./backlog-commands.js";
 import { dropAfterCommand } from "./after-command.js";
 import { scheduleDisableCommand, scheduleEnableCommand, scheduleStatusCommand, type ScheduleOptions } from "./schedule-command.js";
@@ -166,6 +166,25 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the backlog belongs to (default: the current folder)")
     .action(async (ids: string[], options: ChooseOptions, command: Command) => {
       exitCode = await declineCommand(ids, options, ctxFor(command));
+    });
+
+  program
+    .command("sign-off")
+    .description("land a serious fix that waits for your sign-off: it is checked again where it lands, then handed to your closer as a run would")
+    .argument("<item>", "the held item, as `delivery backlog` names it")
+    .option("--config <path>", "use this config file instead of looking for a delivery.config.json")
+    .option("--repo <path>", "the git repository the item belongs to (default: the current folder)")
+    .action(async (item: string, options: ItemOptions & { config?: string }, command: Command) => {
+      exitCode = await signOffItemCommand(item, options, ctxFor(command));
+    });
+
+  program
+    .command("reject")
+    .description("set aside a serious fix that waits for your sign-off: nothing is landed, and its work stays on its branch")
+    .argument("<item>", "the held item, as `delivery backlog` names it")
+    .option("--repo <path>", "the git repository the item belongs to (default: the current folder)")
+    .action(async (item: string, options: ItemOptions, command: Command) => {
+      exitCode = await rejectItemCommand(item, options, ctxFor(command));
     });
 
   program
