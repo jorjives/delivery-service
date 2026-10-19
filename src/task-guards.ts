@@ -3,6 +3,7 @@ import { FixTask } from "./packs/fix-task.js";
 import type { Gate } from "./command-gate.js";
 import { errorReport, messageOf } from "./gate-support.js";
 import { git } from "./git-exec.js";
+import { resolvedAssertion } from "./item-check.js";
 import { GuardName, GuardSwitches, type GateRef, type TaskDef, type CaseFileHeader, type Assertion, type GateReport } from "./schema.js";
 
 /** Only the switches a task's own `guards` names: the config file refuses anything else, so a record holding more is read as holding none. */
@@ -88,6 +89,8 @@ export function guardedGate(gate: Gate, base: GuardBase, accepted: AcceptedSetti
       let guards: Assertion[];
       try {
         guards = await guardAssertions(ctx.worktreePath, await commitOf(ctx.worktreePath, base), activeGuards(ctx.taskDef, ctx.guards), verifyOf(ctx.taskDef, ctx.gateRef), accepted);
+        const resolved = await resolvedAssertion(ctx.taskDef, ctx.itemId, ctx.worktreePath);
+        if (resolved !== undefined) guards = [...guards, resolved];
       } catch (err) {
         return errorReport(`whether this work changed the project's tests could not be checked: ${messageOf(err)}`);
       }

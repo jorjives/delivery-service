@@ -6,7 +6,7 @@ import { git } from "./git-exec.js";
 import { isEnoent } from "./journal.js";
 import { LOCKFILE, lockfileHas } from "./lockfile.js";
 import { secretLiterals } from "./packs/secrets.js";
-import { SEVERITIES, type ItemCheck, type Severity } from "./schema.js";
+import { SEVERITIES, ItemCheck, type Assertion, type Severity, type TaskDef } from "./schema.js";
 
 /** Where the harness keeps its records in a project: never where a problem is looked for, so an item never confirms itself. */
 export const HARNESS_DIR = ".delivery/";
@@ -258,4 +258,32 @@ export async function checkItem(check: ItemCheck, where: Where): Promise<CheckRe
   if (text === undefined) return "resolved";
   if (typeof text !== "string") return text;
   return locate(commentBlind(text), commentBlind(check.anchor)) === undefined ? "resolved" : "present";
+}
+
+/** An item's own requirement: its problem is gone. Counted when new, as a guard is. */
+export const isItemAssertion = (id: string): boolean => id.startsWith("item:");
+export const resolvedId = (itemId: string): string => `item:${itemId}:resolved`;
+
+/** What the check looks for, for the agent and the engineer. Never the anchor itself, which may hold a secret. */
+export function describeCheck(check: ItemCheck): string {
+  switch (check.kind) {
+    case "anchor-gone":
+      return check.scope === "repo" ? `the flagged text from ${check.path} is still somewhere in the project` : `the flagged code is still in ${check.path}`;
+    case "pattern-absent":
+      return `the pattern ${JSON.stringify(check.pattern)} still matches in ${check.paths.join(", ")}`;
+    case "dependency-absent":
+      return `${check.package} ${check.version} is still installed in ${LOCKFILE}`;
+  }
+}
+
+/** The task's check as a gate assertion: undefined when it has none, FAIL when it cannot be read or cannot run. */
+export async function resolvedAssertion(taskDef: TaskDef, itemId: string | undefined, worktreePath: string): Promise<Assertion | undefined> {
+  if (taskDef.check === undefined) return undefined;
+  const id = resolvedId(itemId ?? "task");
+  const parsed = ItemCheck.safeParse(taskDef.check);
+  if (!parsed.success) return { id, outcome: "FAIL", detail: "The task's check is not one the harness knows, so whether its problem is gone cannot be told." };
+  const result = await checkItem(parsed.data, { worktreePath });
+  if (result === "resolved") return { id, outcome: "PASS", detail: "the problem the task describes is gone" };
+  if (result === "present") return { id, outcome: "FAIL", detail: `The problem is still there: ${describeCheck(parsed.data)}. Fix the problem itself; commenting it out or moving it does not count.` };
+  return { id, outcome: "FAIL", detail: `Whether the problem is gone could not be checked: ${result.error}.` };
 }

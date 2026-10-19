@@ -14,6 +14,8 @@ export interface GateContext {
   env?: NodeJS.ProcessEnv;
   /** A workflow step's own guard switches, laid over the task's. Unset outside a workflow. */
   guards?: GuardSwitches;
+  /** The work-source item the run delivers, naming its `item:<id>:resolved` assertion; unset outside `--sources`. */
+  itemId?: string;
 }
 
 export interface Gate {

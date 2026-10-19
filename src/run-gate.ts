@@ -19,7 +19,15 @@ function gateContext(view: CaseFile, worktreePath: string, env?: NodeJS.ProcessE
   // Every gate command can see where the work started, so a check can judge what was added since.
   const withStart = header.startCommit === undefined ? env : { ...(env ?? process.env), DELIVERY_STEP_START: header.startCommit };
   const guards = currentStep(view)?.guards;
-  return { worktreePath, taskDef: header.taskDef, gateRef: header.gateRef, baseBranch: header.baseBranch, env: withStart, ...(guards === undefined ? {} : { guards }) };
+  return {
+    worktreePath,
+    taskDef: header.taskDef,
+    gateRef: header.gateRef,
+    baseBranch: header.baseBranch,
+    env: withStart,
+    ...(guards === undefined ? {} : { guards }),
+    ...(header.item === undefined ? {} : { itemId: header.item.id }),
+  };
 }
 
 // The gate measures the worktree but is loaded from the repo root: a relative

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_GUARDS, guardListsFor } from "./guards.js";
@@ -9,6 +9,7 @@ import type { GateRef } from "./schema.js";
 import { activeGuards, guardChanges, verifyOf, guardedGate } from "./task-guards.js";
 import type { Gate, GateContext } from "./command-gate.js";
 import { initTempRepo } from "./temp-repo.js";
+import { isItemAssertion } from "./item-check.js";
 import { git } from "../tests/helpers.js";
 
 const NPM: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
@@ -93,5 +94,36 @@ describe("a workflow step's guards", () => {
 
   it("reports the step's changes from the defaults", () => {
     expect(guardChanges({ intent: "x" }, { add: ["tests-unchanged"] })).toEqual({ added: ["tests-unchanged"], off: [] });
+  });
+});
+
+describe("an item's check joins the gate", () => {
+  const passing: Gate = { baseline: async () => ({ status: "PASS", assertions: [] }), check: async () => ({ status: "PASS", assertions: [] }) };
+  const check = { kind: "anchor-gone", path: "total.js", anchor: "return price - discount;" } as const;
+
+  it("fails while the problem is there, and passes once it is gone", async () => {
+    const repo = initTempRepo("item-gate-", { "total.js": "export const total = (price, discount) => {\n  return price - discount;\n};\n" });
+    const start = git(repo, ["rev-parse", "HEAD"]);
+    const gate = guardedGate(passing, { commit: start });
+    const ctx = { worktreePath: repo, taskDef: { intent: "x", check }, gateRef: { type: "command", command: "true", parseMode: "exitcode" } as const, itemId: "20261019T120000Z-total.md" };
+    const before = await gate.check(ctx);
+    expect(before.status).toBe("FAIL");
+    expect(before.assertions.find((a) => a.id === "item:20261019T120000Z-total.md:resolved")).toMatchObject({ outcome: "FAIL", detail: expect.stringContaining("still there") });
+    writeFileSync(join(repo, "total.js"), "export const total = (price, discount) => Math.max(0, price - discount);\n");
+    expect((await gate.check(ctx)).assertions.find((a) => a.id === "item:20261019T120000Z-total.md:resolved")?.outcome).toBe("PASS");
+  });
+
+  it("fails, never passes, when the task's check cannot be read", async () => {
+    const repo = initTempRepo("item-gate-bad-", { "a.js": "x\n" });
+    const gate = guardedGate(passing, { commit: git(repo, ["rev-parse", "HEAD"]) });
+    const report = await gate.check({ worktreePath: repo, taskDef: { intent: "x", check: { kind: "tests-pass" } }, gateRef: { type: "command", command: "true", parseMode: "exitcode" } });
+    expect(report.assertions.find((a) => a.id === "item:task:resolved")?.outcome).toBe("FAIL");
+  });
+
+  it("adds nothing for a task with no check", async () => {
+    const repo = initTempRepo("item-gate-none-", { "a.js": "x\n" });
+    const gate = guardedGate(passing, { commit: git(repo, ["rev-parse", "HEAD"]) });
+    const report = await gate.check({ worktreePath: repo, taskDef: { intent: "x" }, gateRef: { type: "command", command: "true", parseMode: "exitcode" } });
+    expect(report.assertions.some((a) => isItemAssertion(a.id))).toBe(false);
   });
 });

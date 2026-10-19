@@ -285,3 +285,9 @@ describe("a guard's result", () => {
     expect(computeDelta(baseline, { status: "FAIL", assertions: [{ id: "new-test", outcome: "FAIL", detail: "broke" }] }).pass).toBe(true);
   });
 });
+
+it("counts a new failing item assertion as a new failure, whatever the gate's option", () => {
+  const delta = computeDelta({ status: "PASS", assertions: [] }, { status: "FAIL", assertions: [{ id: "item:x.md:resolved", outcome: "FAIL", detail: "still there" }] });
+  expect(delta.pass).toBe(false);
+  expect(delta.newFailures.map((f) => f.id)).toEqual(["item:x.md:resolved"]);
+});
