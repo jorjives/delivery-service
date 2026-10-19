@@ -54,7 +54,7 @@ function turnFor(state: ItemState | undefined): Continues["turn"] | undefined {
   return undefined;
 }
 
-export async function runSources(options: RunFlags, { repoPath, config }: { repoPath: string; config: DeliveryConfig }, ctx: CommandContext): Promise<ExitCode> {
+export async function runSources(options: RunFlags, { repoPath, config }: { repoPath: string; config: DeliveryConfig }, ctx: CommandContext, { only }: { only?: string } = {}): Promise<ExitCode> {
   const max = maxItems(options);
   const project = await resolveProject(options, { env: ctx.env, repoPath, config });
   await checkCustomModules(project.gateRef, project.closerRef, repoPath);
@@ -89,12 +89,13 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   // Picked back up first: an item whose run was stopped part way (a crash, a kill) carries on in its own record.
   for (const state of ledger.values()) {
     if (claims.length >= max) break;
+    if (only !== undefined && state.key !== only) continue;
     const record = records.find((r) => r.runId === state.lastRunId);
     if (state.settled || record === undefined || record.caseFile.outcome !== undefined) continue;
     claims.push({ key: state.key, taskDef: record.caseFile.header.taskDef, surfaceId: record.runId, position: { task: 0, of: 0 }, existing: record });
   }
 
-  const chosen = await chooseWork(sources, { repoPath, config, env: ctx.env, ledger, records, now, max: max - claims.length, taken: new Set(claims.map((c) => c.key)) });
+  const chosen = await chooseWork(sources, { repoPath, config, env: ctx.env, ledger, records, now, max: max - claims.length, taken: new Set(claims.map((c) => c.key)), only });
   for (const note of chosen.notes) ctx.report.note(note);
   for (const item of chosen.items) {
     const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch }, ctx);

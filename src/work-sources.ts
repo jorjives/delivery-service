@@ -125,9 +125,9 @@ async function eligible(item: WorkItem, state: ItemState | undefined, repoPath: 
  */
 export async function chooseWork(
   sources: readonly SourceConfig[],
-  { repoPath, config, env, ledger, records, now, max, taken }: {
+  { repoPath, config, env, ledger, records, now, max, taken, only }: {
     repoPath: string; config: DeliveryConfig; env: NodeJS.ProcessEnv; ledger: Map<string, ItemState>;
-    records: RunRecord[]; now: Date; max: number; taken: ReadonlySet<string>;
+    records: RunRecord[]; now: Date; max: number; taken: ReadonlySet<string>; only?: string;
   },
 ): Promise<Chosen> {
   const chosen: WorkItem[] = [];
@@ -146,6 +146,7 @@ export async function chooseWork(
   };
   const take = async (items: WorkItem[]): Promise<void> => {
     for (const item of items) {
+      if (only !== undefined && item.key !== only) continue;
       if (chosen.length >= max) return;
       if (chosen.some((c) => c.key === item.key)) continue;
       if (await eligible(item, ledger.get(item.key), repoPath, records, taken)) chosen.push(item);
