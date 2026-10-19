@@ -352,7 +352,7 @@ describe("delivery run --sources", () => {
     expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("hello");
     expect(() => git(repo, ["show", `delivery/main:${FOLLOW}`])).toThrow();
     const [record] = await allRuns(repo);
-    expect(record?.caseFile.header.item).toMatchObject({ source: "tracker", raise: true });
+    expect(record?.caseFile.header.item).toMatchObject({ source: "tracker", raise: true, untrusted: true });
     expect(await readRef(record?.dir ?? "", "follow-ups")).toEqual([{ file: "20261018T090000Z-tidy-the-readme.md", text: "---\nstatus: open\n---\nTidy the README.\n" }]);
   }, RUN_TIMEOUT);
 
