@@ -85,6 +85,8 @@ function decisionFor(cause: EscalationCause): string {
       return "Triage could not reach a verdict. Decide how to proceed from the evidence below.";
     case "landed_outside_closer":
       return `The agent opened a pull request for this task's branch itself: ${cause.pullRequest}. Nothing has been landed by the harness. Decide whether to close that pull request or review and merge it yourself.`;
+    case "held":
+      return `This fix is finished and passes its checks, but its problem is rated ${cause.severity}, and fixes rated ${cause.threshold} or above wait for you. Read what it changed, then land it with \`delivery sign-off ${cause.item}\`, or set it aside with \`delivery reject ${cause.item}\`.`;
   }
 }
 
@@ -104,6 +106,8 @@ function reasonFor(cause: EscalationCause): string {
       return `Triage's reply could not be acted on: ${cause.rationale}`;
     case "landed_outside_closer":
       return `A pull request was found open for the task's branch after session ${cause.sessionKey}; landing belongs to the harness, so the task stops for you rather than being treated as merged.`;
+    case "held":
+      return "A fix at or above its workflow's hold is never landed without a person's sign-off.";
   }
 }
 

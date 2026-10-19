@@ -132,7 +132,7 @@ export async function workflowFrom(name: string | undefined, config: DeliveryCon
   if (name === undefined) return undefined;
   const workflow = config.workflows?.[name];
   if (workflow === undefined) throw new Refusal(unknownWorkflow(name, Object.keys(config.workflows ?? {})), EXIT.configuration, "workflow");
-  return { name, steps: await Promise.all(workflow.steps.map((step) => pinnedStep(step, repoPath))) };
+  return { name, steps: await Promise.all(workflow.steps.map((step) => pinnedStep(step, repoPath))), ...(workflow.hold === undefined ? {} : { hold: workflow.hold }) };
 }
 
 function taskFrom(intent: string | undefined, config: DeliveryConfig): TaskDef {

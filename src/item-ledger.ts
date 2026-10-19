@@ -16,12 +16,12 @@ export const DEFAULT_PARK_AFTER = 3;
 /**
  * How a run of an item ended, as the next run acts on it (spec §5.11): delivered; interrupted (carried on in the
  * same work); exhausted (started afresh, the old branch kept); decision (waits for the operator's answer);
- * escalated (waits for the operator to unpark it).
+ * escalated (waits for the operator to unpark it); held (finished and checked, waits for the operator's sign-off).
  */
-export const OutcomeClass = z.enum(["delivered", "interrupted", "exhausted", "decision", "escalated"]);
+export const OutcomeClass = z.enum(["delivered", "interrupted", "exhausted", "decision", "escalated", "held"]);
 export type OutcomeClass = z.infer<typeof OutcomeClass>;
 
-const ParkReason = z.enum(["decision", "escalated", "attempts"]);
+const ParkReason = z.enum(["decision", "escalated", "attempts", "held"]);
 export type ParkReason = z.infer<typeof ParkReason>;
 
 export const LedgerEntry = z.discriminatedUnion("t", [
@@ -108,6 +108,7 @@ export function classOf(caseFile: CaseFile): OutcomeClass | undefined {
   if (outcome.kind === "aborted") return "exhausted";
   const cause = outcome.cause;
   if (cause?.kind === "decision") return "decision";
+  if (cause?.kind === "held") return "held";
   // Accepted work that could not be landed (the close budget spent) is the operator's to look at, its accepted
   // branch kept (spec §5.7); starting it afresh would redo accepted work only to fail the same close again.
   if (cause?.kind === "budget" && cause.population === "close") return "escalated";
@@ -121,6 +122,7 @@ export async function recordDispatched(path: string, key: string, runId: string,
 }
 
 function parkReasonOf(state: ItemState, parkAfter: number): ParkReason | null {
+  if (state.lastClass === "held") return "held";
   if (state.lastClass === "decision") return "decision";
   if (state.lastClass === "escalated") return "escalated";
   if (state.lastClass !== "delivered" && state.attempts >= parkAfter) return "attempts";

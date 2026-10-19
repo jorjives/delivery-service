@@ -39,6 +39,7 @@ type Stop =
   | "could_not_decide"
   | "no_working_copy"
   | "landed_outside"
+  | "held"
   | "unexplained";
 
 /** Which kind of stop a record's facts describe. A cause this build does not know in full is unexplained, never guessed at. */
@@ -63,6 +64,8 @@ function stopOf({ cause, agentStuck, limit }: PlainFacts): Stop {
       return "no_working_copy";
     case "landed_outside_closer":
       return "landed_outside";
+    case "held":
+      return "held";
     case "budget":
       switch (cause.population) {
         case "correction":
@@ -99,6 +102,7 @@ const GROUP: Record<Stop, PlainGroup> = {
   could_not_decide: "needs_an_engineer",
   no_working_copy: "needs_an_engineer",
   landed_outside: "needs_your_decision",
+  held: "needs_your_decision",
   unexplained: "stopped",
 };
 
@@ -137,11 +141,12 @@ const SENTENCE: Record<Stop, (facts: PlainFacts) => string> = {
   could_not_decide: () => `After a setback, the harness could not work out what to do next. ${NOT_YOURS}`,
   no_working_copy: () => `A working copy of your project could not be set up, so the agent never started. ${NOT_YOURS}`,
   landed_outside: () => "Needs your attention. The agent opened a pull request for this task itself, so its work was not landed by the harness.",
+  held: () => "Waiting for your sign-off. The fix is finished and passes its checks, but the problem it fixes is serious, so it does not land until you say so.",
   unexplained: () => "Stopped. The record does not say what kind of stop this was.",
 };
 
 /** The route that works for each kind of stop. A finished task is never resumed, and running an unchanged list again only retells it. */
-type Route = "decide" | "answer" | "reword" | "sign_in" | "wait" | "engineer" | "landed" | "none";
+type Route = "decide" | "answer" | "reword" | "sign_in" | "wait" | "engineer" | "landed" | "sign_off" | "none";
 
 const ROUTE: Record<Stop, Route> = {
   say_so: "decide",
@@ -161,6 +166,7 @@ const ROUTE: Record<Stop, Route> = {
   could_not_decide: "engineer",
   no_working_copy: "engineer",
   landed_outside: "landed",
+  held: "sign_off",
   unexplained: "none",
 };
 
@@ -189,6 +195,10 @@ const NEXT: Record<Route, (facts: PlainFacts) => string[]> = {
   wait: ({ listed }) => ["Wait until the limit no longer applies.", RUN_AGAIN_ALONE, ...(listed ? [THEN_THE_LIST] : [])],
   engineer: ({ runId }) => [`Pass this to whoever maintains your checks: delivery status ${runId}`],
   landed: ({ cause }) => [`Look at the pull request the agent opened: ${cause?.pullRequest ?? "its address was not recorded"}. Close it, or review and merge it yourself.`],
+  sign_off: ({ item, runId }) =>
+    item !== null
+      ? [`Read what it changed: delivery backlog ${item}`, `Land it: delivery sign-off ${item}`, `Or set it aside: delivery reject ${item}`]
+      : [`Read what it changed: delivery status ${runId}`],
   none: () => [],
 };
 

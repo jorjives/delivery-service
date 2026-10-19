@@ -241,3 +241,10 @@ describe("where the work is", () => {
     expect(whereTheWorkIs("open-pr", null)).toBe("not recorded.");
   });
 });
+
+it("tells the owner a held fix waits for their sign-off, and how to give it", () => {
+  const plain = plainOf({ runId: "r", cause: { kind: "held" }, agentStuck: false, attempts: 1, limit: null, agentSaid: null, listed: false, item: "backlog:x.md" });
+  expect(plain.group).toBe("needs_your_decision");
+  expect(plain.sentence).toBe("Waiting for your sign-off. The fix is finished and passes its checks, but the problem it fixes is serious, so it does not land until you say so.");
+  expect(plain.next).toEqual(["Read what it changed: delivery backlog backlog:x.md", "Land it: delivery sign-off backlog:x.md", "Or set it aside: delivery reject backlog:x.md"]);
+});

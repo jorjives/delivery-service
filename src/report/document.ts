@@ -26,7 +26,7 @@ export type Audience = z.infer<typeof Audience>;
 export const ParkedItem = z.object({
   item: z.string(),
   intent: z.string().nullable(),
-  reason: z.enum(["decision", "escalated", "attempts"]),
+  reason: z.enum(["decision", "escalated", "attempts", "held"]),
   question: z.string().nullable(),
   attempts: z.number().int().nonnegative(),
   lastRun: z.string().nullable(),

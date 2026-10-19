@@ -209,6 +209,8 @@ export function parkedLines(parked: readonly ParkedItem[]): string[] {
         return `- ${name}: ended without being delivered ${attempts} runs in a row. To try again: delivery unpark ${key}`;
       case "escalated":
         return `- ${name}: stopped for you. When you have dealt with it: delivery unpark ${key}`;
+      case "held":
+        return `- ${name}: finished and checked, waiting for your sign-off. Land it: delivery sign-off ${key}, or set it aside: delivery reject ${key}`;
     }
   };
   return ["", "Parked, skipped until you deal with them:", ...parked.map(line)];

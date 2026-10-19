@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
 import { messageOf } from "../gate-support.js";
-import { AgentOptions, CloserRef, GuardName, GuardSwitches, TaskDef, Written } from "../schema.js";
+import { AgentOptions, CloserRef, GuardName, GuardSwitches, Severity, TaskDef, Written } from "../schema.js";
 import { FenceSetting } from "../fence.js";
 import { FixTask } from "../packs/fix-task.js";
 import { latestPlanFile } from "../packs/review-record.js";
@@ -148,7 +148,8 @@ export function stepLabel(step: AfterStep): string {
 }
 
 // `after` replaces the project's own after steps for a task delivered through this workflow; an empty list runs none.
-export const WorkflowConfig = z.object({ steps: z.array(StepConfig).min(1), after: z.array(AfterStep).optional() }).strict();
+// `hold`: a finished task whose item is at or above this severity waits for `delivery sign-off` instead of landing (spec 5.13).
+export const WorkflowConfig = z.object({ steps: z.array(StepConfig).min(1), after: z.array(AfterStep).optional(), hold: Severity.optional() }).strict();
 export type WorkflowConfig = z.infer<typeof WorkflowConfig>;
 
 /** One place `delivery run --sources` finds work. A `fallback` is read only when no other source has any. */

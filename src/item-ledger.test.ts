@@ -8,6 +8,7 @@ import { awaitsMerge, classOf, foldLedger, ledgerPath, parkedItems, readItemLedg
 import { deliveryLedgerPath, readDelivery } from "./delivery-ledger.js";
 import type { CaseFile, CaseFileOutcome } from "./schema.js";
 import type { RunRecord } from "./run-records.js";
+import { parkedNote } from "./cli/sources-run.js";
 
 const KEY = "backlog:20261016T090000Z-greet.md";
 const at = "2026-10-16T09:00:00.000Z";
@@ -163,6 +164,13 @@ describe("the ledger", () => {
       const repo = initTempRepo("await-", { "package.json": "{}" });
       expect(await awaitsMerge(repo, undefined)).toBe(false);
     });
+  });
+
+  it("parks a held run's item as held, and says so", async () => {
+    const path = scratch();
+    const state = await settleRun(path, "backlog:x.md", recordWith("r1", { kind: "escalated", source: "harness", reason: "held", at, cause: { kind: "held" } }), 3);
+    expect(state).toMatchObject({ lastClass: "held", parked: "held" });
+    expect(parkedNote(state)).toBe("Holding backlog:x.md: its fix is finished and checked, and waits for your sign-off because the problem is serious. Read it, then: delivery sign-off backlog:x.md, or set it aside: delivery reject backlog:x.md");
   });
 
   it("lists what is parked", async () => {

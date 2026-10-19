@@ -746,3 +746,8 @@ describe("a tracker-backed command source", () => {
     expect(problemFor({ sources: [{ type: "backlog", tracker: true }] })).toContain("sources");
   });
 });
+
+it("accepts a workflow's hold as a severity, and refuses anything else", () => {
+  expect(DeliveryConfig.safeParse({ workflows: { fix: { steps: [{ name: "fix", prompt: "fix" }], hold: "high" } } }).success).toBe(true);
+  expect(DeliveryConfig.safeParse({ workflows: { fix: { steps: [{ name: "fix", prompt: "fix" }], hold: "urgent" } } }).success).toBe(false);
+});

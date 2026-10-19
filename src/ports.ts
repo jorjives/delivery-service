@@ -1,4 +1,4 @@
-import type { Budget, BudgetPopulation, BudgetSet, CaseFile, CloseReport, UsageLimit, SessionUsage } from "./schema.js";
+import type { Budget, BudgetPopulation, BudgetSet, CaseFile, CloseReport, Severity, UsageLimit, SessionUsage } from "./schema.js";
 import type { CloseRepairBrief, EscalationPacket, SharpenedBrief, TriageEnvelope } from "./triage-role-config.js";
 
 // --- AgentPort (createAgentPort in agent-invoke.ts is the SDK-backed implementation) ---
@@ -98,7 +98,8 @@ export type EscalationCause =
   | { kind: "session_not_run"; role: "worker" | "gate-maintenance" }
   | { kind: "budget"; population: BudgetPopulation; budget: Budget; detail: string }
   | { kind: "triage_failure"; rationale: string }
-  | { kind: "landed_outside_closer"; pullRequest: string; sessionKey: string };
+  | { kind: "landed_outside_closer"; pullRequest: string; sessionKey: string }
+  | { kind: "held"; severity: Severity; threshold: Severity; item: string };
 
 export interface TriageInput {
   trigger: "gate_fail" | "gate_error" | "worker_escalate" | "close_failure";

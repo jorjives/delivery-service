@@ -29,7 +29,7 @@ export async function prepareContinuation(
   const from = (await branchExists(record.repoPath, branch)) ? await git(record.repoPath, ["rev-parse", branch]) : startCommit;
   const sessionId = lastWorkerSession(view.history);
   const workflow = record.caseFile.header.workflow;
-  const remaining = workflow === undefined ? undefined : { name: workflow.name, steps: workflow.steps.slice(stepIndexOf(record.caseFile) - 1) };
+  const remaining = workflow === undefined ? undefined : { ...workflow, steps: workflow.steps.slice(stepIndexOf(record.caseFile) - 1) };
   return {
     continues: { runId: record.runId, worktreePath, from, startCommit, baseline: view.header.baseline, ...(sessionId === undefined ? {} : { sessionId }), turn },
     ...(remaining === undefined ? {} : { workflow: remaining }),

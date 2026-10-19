@@ -218,7 +218,7 @@ export const WorkflowStep = z.object({
 export type WorkflowStep = z.infer<typeof WorkflowStep>;
 
 /** The workflow a run was started with, pinned at CREATE like gateRef. Absent: the run is one step, the task, the project's gate. */
-export const PinnedWorkflow = z.object({ name: z.string(), steps: z.array(WorkflowStep).min(1) });
+export const PinnedWorkflow = z.object({ name: z.string(), steps: z.array(WorkflowStep).min(1), hold: Severity.optional() });
 export type PinnedWorkflow = z.infer<typeof PinnedWorkflow>;
 
 /**
@@ -527,6 +527,7 @@ export const OutcomeCause = z.object({
     "triage_abort",
     "provisioning",
     "landed_outside_closer",
+    "held",
   ]),
   // authority and session_not_run only: whose session it was.
   role: z.enum(["worker", "gate-maintenance"]).optional(),

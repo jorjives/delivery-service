@@ -32,6 +32,8 @@ export function parkedNote(state: ItemState): string {
       return `Parked ${state.key}: it needs your answer. The agent asked: ${state.question ?? "the question was not recorded"} Answer with: delivery answer ${state.key} "your answer"`;
     case "attempts":
       return `Parked ${state.key}: it ended without being delivered ${state.attempts} runs in a row. When it is ready to try again: delivery unpark ${state.key}`;
+    case "held":
+      return `Holding ${state.key}: its fix is finished and checked, and waits for your sign-off because the problem is serious. Read it, then: delivery sign-off ${state.key}, or set it aside: delivery reject ${state.key}`;
     default:
       return `Parked ${state.key}: it stopped for you. When you have dealt with it: delivery unpark ${state.key}`;
   }

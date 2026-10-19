@@ -317,6 +317,8 @@ A workflow may also carry its own `after` list, which replaces the project's `af
 the items it delivers (see "After landing" below); `"after": []` runs none, for a workflow whose
 work has nothing to deploy or announce.
 
+A workflow may also set `hold` to a severity (`critical`, `high`, `medium` or `low`). A task whose item is rated that or more serious is finished and checked as usual, then waits on its own branch instead of landing: `delivery run --sources` reports it as held, and `delivery sign-off <item>` lands it, or `delivery reject <item>` sets it aside.
+
 ### A backlog of work items
 
 Rather than a fixed list, a project can keep its work as items in `.delivery/backlog/`. Each item

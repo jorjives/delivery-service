@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mkdtemp } from "node:fs/promises";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -14,6 +14,12 @@ import { fakeAgentPort } from "./testing.js";
 import { cleanGitEnv } from "./git-env.js";
 import type { AgentContext, CloserPort, SurfacePorts, Terminus } from "./ports.js";
 import type { BudgetSet, GateReport, GateRef, PinnedWorkflow } from "./schema.js";
+
+async function rewriteTaskDef(dir: string, taskDef: Record<string, unknown>): Promise<void> {
+  const file = join(dir, "case.json");
+  const json = JSON.parse(readFileSync(file, "utf-8")) as { header: { taskDef: unknown } };
+  writeFileSync(file, JSON.stringify({ ...json, header: { ...json.header, taskDef } }, null, 2));
+}
 
 const budgets: BudgetSet = {
   correction: { used: 0, max: 3 }, gateError: { used: 0, max: 3 }, gateMaintenance: { used: 0, max: 2 }, terminus: { used: 0, max: 5 }, close: { used: 0, max: 3 },
@@ -238,5 +244,31 @@ describe("a run that carries on an earlier run's work", () => {
     expect(header.startCommit).toBe(start);
     expect(header.baseline).toEqual(carried);
     expect(existsSync(ownCopy)).toBe(false);
+  });
+});
+
+describe("a workflow that holds serious work for sign-off", () => {
+  const fix = (hold?: "high"): PinnedWorkflow => ({ name: "security:fix", steps: [{ name: "fix", prompt: "fix it" }], ...(hold === undefined ? {} : { hold }) });
+  const withSeverity = async (severity: string, flow: PinnedWorkflow) => {
+    const made = await surfaceWith(flow, { "README.md": "hi\n" }, [write("BUILT.md")]);
+    // surfaceWith's taskDef has no severity; rewrite the header the way a backlog item's task carries one.
+    await rewriteTaskDef(made.dir, { intent: "fix it", severity });
+    return made;
+  };
+
+  it("escalates an item at or above the threshold as held, its work committed and not landed", async () => {
+    const { dir, location, ports, closer } = await withSeverity("critical", fix("high"));
+    const result = await run(dir, location, ports);
+    expect(result.outcome).toMatchObject({ kind: "escalated", cause: { kind: "held" } });
+    expect(closer.calls).toEqual(["escalated"]);
+    expect(execFileSync("git", ["log", "-1", "--format=%s"], { cwd: location.worktreePath, encoding: "utf-8" }).trim()).toBe("Accepted, waiting for sign-off");
+  });
+
+  it("lands an item below the threshold, and every item in a workflow with no hold", async () => {
+    for (const [severity, flow] of [["medium", fix("high")], ["critical", fix()]] as const) {
+      const { dir, location, ports, closer } = await withSeverity(severity, flow);
+      expect((await run(dir, location, ports)).outcome?.kind).toBe("closed");
+      expect(closer.calls).toEqual(["accepted"]);
+    }
   });
 });

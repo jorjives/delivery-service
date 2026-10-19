@@ -11,6 +11,7 @@ import { ensureCommitted, git } from "./git-exec.js";
 import { commitAccepted } from "./closer-support.js";
 import { dropKeptBranches, rebuildIfMoved, restartFrom } from "./delivery-landing.js";
 import { holdFollowUps } from "./follow-ups.js";
+import { atOrAbove } from "./item-check.js";
 import { budgetExhausted } from "./budgets.js";
 import { BriefRef } from "./prompt-assembly.js";
 import { resolveEscalationPacket } from "./escalation-packet.js";
@@ -19,7 +20,7 @@ import { setFields } from "./backlog.js";
 import { captureRepair, checkFilesOf } from "./repair-changes.js";
 import { judgedRepair } from "./repair-guards.js";
 import type { SurfaceLocation, SurfacePorts, TriageInput, EscalationCause, TriageVerdict, CloseContext, CloseReport } from "./ports.js";
-import { OutcomeCause } from "./schema.js";
+import { OutcomeCause, Severity } from "./schema.js";
 import type { CaseFile, CaseFileOutcome, SurfaceState, HistoryEntry, TerminusEntry, WorkflowStep } from "./schema.js";
 
 export interface AdvanceResult {
@@ -217,6 +218,8 @@ function outcomeCause(cause: EscalationCause): OutcomeCause {
       return { kind: cause.kind };
     case "landed_outside_closer":
       return { kind: cause.kind, pullRequest: cause.pullRequest };
+    case "held":
+      return { kind: "held" };
   }
 }
 
@@ -768,6 +771,14 @@ async function gating(
   return { state, done: false };
 }
 
+/** Why a finished task waits for sign-off: its item is at or above its workflow's hold. Undefined when it lands. */
+function heldFor(caseFile: CaseFile): { severity: Severity; threshold: Severity } | undefined {
+  const threshold = caseFile.header.workflow?.hold;
+  const severity = Severity.safeParse(caseFile.header.taskDef.severity);
+  if (threshold === undefined || !severity.success || !atOrAbove(severity.data, threshold)) return undefined;
+  return { severity: severity.data, threshold };
+}
+
 /**
  * Do something with the accepted work. Acceptance and close are separate
  * events: GATING decided the change is good, this decides what happens to it.
@@ -785,6 +796,14 @@ async function closing(
   // Accepting a step that is not the last opens the next one; only the last step's work is landed.
   const next = nextStepOf(caseFile);
   if (next !== undefined) return nextStep(dir, caseFile, location, next);
+
+  // Serious work waits, finished and checked, on its own branch: it never reaches the delivery branch, so no later task builds on it (spec 5.13).
+  const held = heldFor(caseFile);
+  if (held !== undefined) {
+    await ensureCommitted(worktreeOf(caseFile, location), "Accepted, waiting for sign-off");
+    const item = caseFile.header.item?.key ?? caseFile.header.surfaceId;
+    return escalateFor(dir, caseFile, location, ports, "harness", `rated ${held.severity}, which waits for sign-off`, { kind: "held", ...held, item });
+  }
 
   // A backlog item's completion travels with the work that completes it (spec §5.5): its own commit, before the closer.
   const resolve = caseFile.header.item?.resolve;
