@@ -28,7 +28,7 @@ A review's list is an agent's opinion. "Nothing to add" means none were found, n
 
 ## Read what it found
 
-`delivery backlog` lists the ideas in your backlog, with the open, held and parked items. `delivery backlog <id>` shows one in full.
+`delivery backlog` lists what is waiting: ideas for you to choose, open items to be worked, held fixes waiting for your sign-off, and parked items that stopped for you. `delivery backlog <id>` shows one in full, with a FOR ENGINEERS block naming its file, the workflow that fixes it and what the harness checks. A password or key a review finds is never shown in full.
 
 ## Choose what to fix
 

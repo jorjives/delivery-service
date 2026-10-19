@@ -264,15 +264,18 @@ export async function checkItem(check: ItemCheck, where: Where): Promise<CheckRe
 export const isItemAssertion = (id: string): boolean => id.startsWith("item:");
 export const resolvedId = (itemId: string): string => `item:${itemId}:resolved`;
 
-/** What the check looks for, for the agent and the engineer. Never the anchor itself, which may hold a secret. */
-export function describeCheck(check: ItemCheck): string {
+/** What the check looks for, for the agent and the engineer, or what it will show once the problem is gone. Never the anchor itself, which may hold a secret. */
+export function describeCheck(check: ItemCheck, when: "now" | "done" = "now"): string {
+  const gone = when === "done";
   switch (check.kind) {
     case "anchor-gone":
-      return check.scope === "repo" ? `the flagged text from ${check.path} is still somewhere in the project` : `the flagged code is still in ${check.path}`;
+      return check.scope === "repo"
+        ? `the flagged text from ${check.path} ${gone ? "is no longer" : "is still"} somewhere in the project`
+        : `the flagged code ${gone ? "is no longer" : "is still"} in ${check.path}`;
     case "pattern-absent":
-      return `the pattern ${JSON.stringify(check.pattern)} still matches in ${check.paths.join(", ")}`;
+      return `the pattern ${JSON.stringify(check.pattern)} ${gone ? "no longer matches" : "still matches"} in ${check.paths.join(", ")}`;
     case "dependency-absent":
-      return `${check.package} ${check.version} is still installed in ${LOCKFILE}`;
+      return `${check.package} ${check.version} ${gone ? "is no longer" : "is still"} installed in ${LOCKFILE}`;
   }
 }
 

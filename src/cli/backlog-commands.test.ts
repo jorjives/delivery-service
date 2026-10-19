@@ -6,7 +6,9 @@ import { git } from "../../tests/helpers.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { NO_IDEAS, notAnIdea, PUSH_FIRST, uncommittedItems, unknownFixWorkflow } from "./backlog-commands.js";
+import { backlogLines, itemLines, NO_IDEAS, notAnIdea, PUSH_FIRST, uncommittedItems, unknownFixWorkflow } from "./backlog-commands.js";
+import { foldLedger } from "../item-ledger.js";
+import type { BacklogItem } from "../backlog.js";
 
 const TOTAL = "20261019T120000Z-total-below-zero.md";
 const SETTINGS = "20261019T120100Z-settings-error.md";
@@ -74,5 +76,72 @@ describe("delivery decline", () => {
     expect(statusOf(repo, SETTINGS)).toBe("declined");
     expect(statusOf(repo, TOTAL)).toBe("idea");
     expect(stdout).toContain("Set aside 1 idea: A broken settings file gives an unhelpful error.");
+  });
+});
+
+describe("delivery backlog", () => {
+  it("lists ideas, open, held and parked items under plain headings, each with its id", () => {
+    const at = "2026-10-19T12:00:00Z";
+    const item = (file: string, status: string, title: string, severity?: string) => ({ file, status, ...(severity === undefined ? {} : { severity }), fields: {}, body: `# ${title}\n` }) as BacklogItem;
+    const ledger = foldLedger([
+      { t: "ended", key: "backlog:20261019T120200Z-key.md", runId: "r1", class: "held", at }, { t: "parked", key: "backlog:20261019T120200Z-key.md", reason: "held", at },
+      { t: "ended", key: "backlog:20261019T120300Z-stuck.md", runId: "r2", class: "escalated", at }, { t: "parked", key: "backlog:20261019T120300Z-stuck.md", reason: "escalated", at },
+    ]);
+    expect(backlogLines([
+      item("20261019T120000Z-total.md", "idea", "The total can go below zero", "high"),
+      item("20261019T120100Z-greet.md", "open", "Greet people"),
+      item("20261019T120200Z-key.md", "open", "A key is written in the code", "critical"),
+      item("20261019T120300Z-stuck.md", "open", "Something stuck"),
+      item("20261019T120400Z-done.md", "resolved", "Done already"),
+    ], ledger)).toEqual([
+      "Ideas, waiting for you to choose:",
+      "  20261019T120000Z-total  The total can go below zero (high)",
+      "Open, to be worked on the next delivery run --sources:",
+      "  20261019T120100Z-greet  Greet people",
+      "Held, finished and waiting for your sign-off:",
+      "  20261019T120200Z-key  A key is written in the code (critical)",
+      "Parked, stopped for you:",
+      "  20261019T120300Z-stuck  Something stuck",
+      "",
+      "Read one in full with: delivery backlog <id>",
+    ]);
+  });
+
+  it("lists a held or parked item from a tracker, which has no file in the backlog folder, by its key and intent", () => {
+    const at = "2026-10-19T12:00:00Z";
+    const ledger = foldLedger([
+      { t: "dispatched", key: "github:#12", runId: "r3", intent: "The total can go below zero", at },
+      { t: "ended", key: "github:#12", runId: "r3", class: "held", at }, { t: "parked", key: "github:#12", reason: "held", at },
+    ]);
+    expect(backlogLines([], ledger)).toEqual([
+      "Held, finished and waiting for your sign-off:",
+      "  github:#12  The total can go below zero",
+      "",
+      "Read one in full with: delivery backlog <id>",
+    ]);
+  });
+
+  it("shows one item in full, then a block for engineers", () => {
+    const item = { file: "20261019T120000Z-total.md", status: "idea", workflow: "code:fix", severity: "high", check: { kind: "anchor-gone", path: "total.js", anchor: "return price - discount;" }, fields: {}, body: "# The total can go below zero\n\nA discount larger than the price makes the total negative.\n" } as BacklogItem;
+    expect(itemLines(item, undefined)).toEqual([
+      "The total can go below zero",
+      "An idea, rated high, waiting for you to choose: delivery approve 20261019T120000Z-total, or delivery decline 20261019T120000Z-total",
+      "",
+      "A discount larger than the price makes the total negative.",
+      "",
+      "FOR ENGINEERS",
+      "  File: .delivery/backlog/20261019T120000Z-total.md",
+      "  Fixed through: code:fix",
+      "  Done when: the flagged code is no longer in total.js",
+      "  Flagged code: return price - discount;",
+    ]);
+  });
+
+  it("masks a sensitive item's secret wherever the command prints it", async () => {
+    const secret = "pay-live-7Hq2xV9rLm4K";
+    const repo = initTempRepo("backlog-secret-", { [`.delivery/backlog/${TOTAL}`]: `---\nstatus: idea\nseverity: critical\ncheck:\n  kind: anchor-gone\n  path: payments.js\n  anchor: 'const KEY = "${secret}";'\n  scope: repo\n  sensitive: true\n---\n# A key is written in the code\n` });
+    const { stdout } = await delivery(["backlog", "total-below-zero"], { cwd: repo });
+    expect(stdout).not.toContain(secret);
+    expect(stdout).toContain("pay-… (21 characters)");
   });
 });

@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
-import { commitItemFields, itemsCalled, itemTask, readBacklog, uncommittedItemFiles, type BacklogItem } from "../backlog.js";
+import { BACKLOG_DIR, commitItemFields, itemsCalled, itemTask, readBacklog, uncommittedItemFiles, type BacklogItem, type ItemStatus } from "../backlog.js";
 import { git } from "../git-exec.js";
-import { resolveBaseRef } from "../provision.js";
+import { describeCheck } from "../item-check.js";
+import { ledgerPath, readItemLedger, type ItemState } from "../item-ledger.js";
+import { branchName, resolveBaseRef } from "../provision.js";
 import { taskIntent } from "../task-list.js";
 import { loadConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
@@ -99,5 +101,75 @@ export async function declineCommand(ids: string[], options: ChooseOptions, ctx:
   const ideas = await chosenIdeas(ids, options, repoPath);
   await commitChoice(repoPath, ideas, () => ({ status: "declined" }), `Set aside ${ideasWord(ideas.length)}`);
   for (const line of declined(ideas)) ctx.writeLine(line);
+  return EXIT.ok;
+}
+
+const stem = (file: string): string => file.replace(/\.md$/, "");
+const titleOf = (item: BacklogItem): string => taskIntent(itemTask(item));
+const rated = (item: BacklogItem): string => (item.severity === undefined ? "" : ` (${item.severity})`);
+const line = (item: BacklogItem): string => `  ${stem(item.file)}  ${titleOf(item)}${rated(item)}`;
+const stateOf = (item: BacklogItem, ledger: Map<string, ItemState>): ItemState | undefined => [...ledger.values()].find((s) => s.key.endsWith(`:${item.file}`));
+const isUntracked = (state: ItemState, items: readonly BacklogItem[]): boolean => !items.some((item) => state.key.endsWith(`:${item.file}`));
+// A tracker's held or parked item has no file in the backlog folder, so it is named by its ledger key and intent.
+const untrackedLine = (state: ItemState): string => `  ${state.key}  ${state.intent ?? state.key}`;
+
+/** The backlog in the owner's words: four groups, each item by its id and title. Resolved and declined items are not shown. */
+export function backlogLines(items: readonly BacklogItem[], ledger: Map<string, ItemState>): string[] {
+  const parked = (item: BacklogItem): ItemState["parked"] => stateOf(item, ledger)?.parked ?? null;
+  const untracked = [...ledger.values()].filter((state) => state.parked !== null && isUntracked(state, items));
+  const groups: [string, string[]][] = [
+    ["Ideas, waiting for you to choose:", items.filter((i) => i.status === "idea").map(line)],
+    ["Open, to be worked on the next delivery run --sources:", items.filter((i) => i.status === "open" && parked(i) === null).map(line)],
+    ["Held, finished and waiting for your sign-off:", [...items.filter((i) => i.status === "open" && parked(i) === "held").map(line), ...untracked.filter((s) => s.parked === "held").map(untrackedLine)]],
+    ["Parked, stopped for you:", [...items.filter((i) => i.status === "open" && parked(i) !== null && parked(i) !== "held").map(line), ...untracked.filter((s) => s.parked !== "held").map(untrackedLine)]],
+  ];
+  const shown = groups.filter(([, lines]) => lines.length > 0).flatMap(([heading, lines]) => [heading, ...lines]);
+  return shown.length === 0 ? ["Your backlog has nothing waiting. Ask for a review with: delivery review code"] : [...shown, "", "Read one in full with: delivery backlog <id>"];
+}
+
+type Standing = ItemStatus | "held" | "parked";
+const STANDING: Record<Standing, (id: string, item: BacklogItem) => string> = {
+  idea: (id, item) => `An idea${item.severity === undefined ? "" : `, rated ${item.severity},`} waiting for you to choose: delivery approve ${id}, or delivery decline ${id}`,
+  open: () => "Open: it is worked on the next delivery run --sources.",
+  held: (id) => `Finished and checked, waiting for your sign-off: delivery sign-off ${id}, or delivery reject ${id}`,
+  parked: (id) => `Parked: it stopped for you. See why with: delivery status, then delivery unpark ${id}`,
+  resolved: () => "Done.",
+  declined: () => "Set aside.",
+};
+
+/** One item in full: its title, where it stands, its own words, then what an engineer needs. */
+export function itemLines(item: BacklogItem, state: ItemState | undefined): string[] {
+  const id = stem(item.file);
+  const standing: Standing = item.status !== "open" ? item.status : state?.parked === "held" ? "held" : state?.parked ? "parked" : "open";
+  const [, ...rest] = item.body.split("\n");
+  const body = rest.join("\n").trim();
+  const check = item.check;
+  return [
+    titleOf(item),
+    STANDING[standing](id, item),
+    ...(body === "" ? [] : ["", body]),
+    "",
+    "FOR ENGINEERS",
+    `  File: ${BACKLOG_DIR}/${item.file}`,
+    ...(item.workflow === undefined ? [] : [`  Fixed through: ${item.workflow}`]),
+    ...(check === undefined ? [] : [`  Done when: ${describeCheck(check, "done")}`]),
+    ...(check?.kind === "anchor-gone" ? [`  Flagged code: ${check.anchor}`] : check?.kind === "pattern-absent" ? [`  Pattern: ${check.pattern} in ${check.paths.join(", ")}`] : []),
+    ...(state?.parked === "held" && state.lastRunId !== null ? [`  Waiting on branch: ${branchName(state.lastRunId)}`] : []),
+  ];
+}
+
+/** `delivery backlog [id]`: the backlog on the branch you are on, with each item's standing from this machine's ledger. */
+export async function backlogCommand(id: string | undefined, options: { repo?: string }, ctx: CommandContext): Promise<ExitCode> {
+  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+  const { items } = await readBacklog(repoPath, { at: "HEAD" });
+  const ledger = await readItemLedger(ledgerPath(repoPath, ctx.env));
+  if (id === undefined) {
+    for (const text of backlogLines(items, ledger)) ctx.writeLine(text);
+    return EXIT.ok;
+  }
+  const named = itemsCalled(id.replace(/^[^:]+:/, ""), items);
+  if (named.length !== 1) throw new Refusal(named.length === 0 ? noSuchItem(id) : ambiguousItem(id, named.map((i) => i.file)), EXIT.configuration);
+  const [item] = named as [BacklogItem];
+  for (const text of itemLines(item, stateOf(item, ledger))) ctx.writeLine(text);
   return EXIT.ok;
 }

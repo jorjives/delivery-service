@@ -199,6 +199,7 @@ order: due recurring items first, then each source in turn, and a fallback sourc
 else has work.
 
 ```sh
+delivery backlog                # list the ideas, open, held and parked items
 delivery run --sources          # take one item
 delivery run --sources --max 3  # take up to three items in this run
 ```

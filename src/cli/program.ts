@@ -5,7 +5,7 @@ import type { CommandContext, CliStdin, ExitOnInterrupt } from "./context.js";
 import { EXIT, renderFailure } from "./failures.js";
 import { secretMasker } from "../secrets.js";
 import { answerCommand, rejectCommand as rejectItemCommand, signOffCommand as signOffItemCommand, unparkCommand, type ItemOptions } from "./item-commands.js";
-import { approveCommand, declineCommand, type ChooseOptions } from "./backlog-commands.js";
+import { approveCommand, backlogCommand, declineCommand, type ChooseOptions } from "./backlog-commands.js";
 import { dropAfterCommand } from "./after-command.js";
 import { scheduleDisableCommand, scheduleEnableCommand, scheduleStatusCommand, type ScheduleOptions } from "./schedule-command.js";
 import { DEFAULT_INTERVAL } from "./schedule.js";
@@ -140,6 +140,15 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--repo <path>", "the git repository the item belongs to (default: the current folder)")
     .action(async (item: string, options: ItemOptions, command: Command) => {
       exitCode = await unparkCommand(item, options, ctxFor(command));
+    });
+
+  program
+    .command("backlog")
+    .description("list the ideas, open, held and parked items in your backlog in plain words, or show one in full with the detail for engineers; changes nothing")
+    .argument("[id]", "show this item in full, as the list names it")
+    .option("--repo <path>", "the git repository the backlog belongs to (default: the current folder)")
+    .action(async (id: string | undefined, options: { repo?: string }, command: Command) => {
+      exitCode = await backlogCommand(id, options, ctxFor(command));
     });
 
   program
