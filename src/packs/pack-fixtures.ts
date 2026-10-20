@@ -75,7 +75,7 @@ async function jsonFixture<T>(dir: string, part: FixturePart, schema: z.ZodType<
 const HFS_IGNORABLE = /[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/gu;
 
 /** Whether a filesystem (case-folding, NTFS or HFS+) may resolve this path segment to git's own `.git` folder. */
-export function isGitSegment(segment: string): boolean {
+function isGitSegment(segment: string): boolean {
   const name = segment.normalize("NFC").replace(HFS_IGNORABLE, "").replace(/:.*$/s, "").replace(/[. ]+$/, "").toLowerCase();
   return name === ".git" || name === "git~1";
 }
