@@ -6,7 +6,7 @@ on:
   # A pull request builds the site (the check) but never deploys it.
   pull_request:
     branches: ["main"]
-    paths: ["docs/**", "mkdocs.yml", ".github/workflows/docs.yml"]
+    paths: ["docs/**", "mkdocs.yml", "requirements-docs.txt", ".github/workflows/docs.yml"]
   workflow_dispatch:
 
 jobs:
@@ -17,12 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Warnings are errors: a broken link or a stray page fails the build.
-      # Python is preinstalled on the runner, so no third-party action is needed.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - run: pip install -r requirements-docs.txt
       - name: Build the site
-        run: |
-          python3 -m venv .docs-venv
-          .docs-venv/bin/pip install --quiet 'mkdocs-material~=9.7' 'mkdocs-llmstxt~=0.5'
-          .docs-venv/bin/mkdocs build --strict --site-dir site
+        run: mkdocs build --strict --site-dir site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site

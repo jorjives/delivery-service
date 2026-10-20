@@ -28,14 +28,6 @@ The documentation is a site, built from [`docs/`](docs/) with MkDocs: <https://j
 - [Writing a pack](docs/writing-a-pack.md): write a review of your own and prove it with `delivery packs check`, no real agent needed
 - [Testing your delivery pipeline](docs/testing-your-pipeline.md): test your gate, closer and role configurations together against a scripted agent
 
-To preview the site while you edit it:
-
-```bash
-uvx --with 'mkdocs-material~=9.7' --with 'mkdocs-llmstxt~=0.5' mkdocs serve
-```
-
-`make docs` builds it with warnings as errors, the same as the Docs workflow.
-
 ## Working on the harness
 
-See [CONTRIBUTING.md](CONTRIBUTING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md), which also says how to preview the docs.

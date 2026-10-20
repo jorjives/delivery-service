@@ -110,10 +110,12 @@ time; `timed(steps, from)` gives the steps times a minute apart.
 ## Documentation
 
 The docs under `docs/` are published as a site (`mkdocs.yml` lists the pages). Preview it with
-`uvx --with 'mkdocs-material~=9.7' --with 'mkdocs-llmstxt~=0.5' mkdocs serve`, and check it the way CI does with `make docs`,
-which fails on a broken link or a page missing from the build. A new page needs an entry under
-`nav` in `mkdocs.yml`. Design notes, PRDs and personas stay in `docs/` but are excluded from the
-site; list any new one under `exclude_docs`.
+`make docs-serve`, and check it the way CI does with `make docs`, which fails on a broken link
+or a page missing from the build. Both need [uv](https://docs.astral.sh/uv/); the tools they
+install are listed in `requirements-docs.txt`. A new page needs an entry under `nav` and under
+`plugins.llmstxt.sections` in `mkdocs.yml`; `npm test` fails if either is missing. Design notes,
+PRDs and personas stay in `docs/` but are excluded from the site; list any new one under
+`exclude_docs`.
 
 Write each page as one kind: a tutorial, a how-to guide, reference or an explanation. Use second
 person, present tense and sentence-case headings; link to a section by name rather than saying

@@ -4,12 +4,17 @@
 # lints, builds and runs the tests. A worktree has no shared node_modules, so
 # `npm ci` runs every time; it's fast off the committed lockfile.
 
-.PHONY: verify docs
+.PHONY: verify docs docs-serve
 
 verify:
 	npm ci --no-audit --no-fund
 	npm test
 
-# The documentation site, built as the Docs workflow builds it.
+# The documentation site, built as the Docs workflow builds it: the tools come
+# from requirements-docs.txt and a warning fails the build.
 docs:
-	uvx --with 'mkdocs-material~=9.7' --with 'mkdocs-llmstxt~=0.5' mkdocs build --strict --site-dir site
+	uvx --with-requirements requirements-docs.txt mkdocs build --strict --site-dir site
+
+# Preview the site at http://127.0.0.1:8000 while you edit.
+docs-serve:
+	uvx --with-requirements requirements-docs.txt mkdocs serve

@@ -1,0 +1,4 @@
+# The tools that build the documentation site (mkdocs.yml). One list, read by
+# `make docs`, `make docs-serve` and the Docs workflow.
+mkdocs-material~=9.7
+mkdocs-llmstxt~=0.5
