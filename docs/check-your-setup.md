@@ -90,7 +90,7 @@ in the same words as `validate` uses, and `--config` and `--repo` work as they d
   cannot run.
 - A project with a single `task` shows that one.
 - `--task "<task>"` previews a task you would type.
-- `--step <step-name>` shows what that step of a [workflow](project-configuration.md#workflows)
+- `--step <step-name>` shows what that step of a [workflow](use-workflows.md)
   will be told, with its own instruction and check, and the agent options it runs with (yours,
   with the step's laid over them). Add `--workflow <name>` when two workflows have a step of that
   name.
