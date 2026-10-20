@@ -107,6 +107,18 @@ from `src/without-at.ts`, the one place that does; do not strip `at` by hand or 
 each step exactly as given, so a step given no `at` is a record from before steps carried a
 time; `timed(steps, from)` gives the steps times a minute apart.
 
+## Documentation
+
+The docs under `docs/` are published as a site (`mkdocs.yml` lists the pages). Preview it with
+`uvx --with 'mkdocs-material~=9.7' mkdocs serve`, and check it the way CI does with `make docs`,
+which fails on a broken link or a page missing from the build. A new page needs an entry under
+`nav` in `mkdocs.yml`. Design notes, PRDs and personas stay in `docs/` but are excluded from the
+site; list any new one under `exclude_docs`.
+
+Write each page as one kind: a tutorial, a how-to guide, reference or an explanation. Use second
+person, present tense and sentence-case headings; link to a section by name rather than saying
+"above" or "below"; use no em-dashes.
+
 ## Describing your change
 
 Every change that a user of the package would notice needs a changeset: a short
