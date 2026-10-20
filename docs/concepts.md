@@ -2,18 +2,21 @@
 
 This page explains the model behind the `delivery` command: what a run is made of, who decides
 what, and what happens when something goes wrong. Read it after [Get started](getting-started.md)
-to learn why the command behaves as it does. To do something, use a guide.
+to learn why the command behaves as it does. To do something, use a guide:
+[Run a task](run-a-task.md), [Work through a task list](run-a-task-list.md) or
+[Set up a project](project-configuration.md). In this documentation, delivery-service is also
+called the harness.
 
-## The agent proposes; your check decides
+## The agent proposes; your gate decides
 
 delivery-service hands a task to an AI agent and does not take the agent's word for the
 result. The agent works on its own copy of your repository. When it says it has finished, a
-check that you chose, such as `npm test`, runs against that copy. The work counts as done only if
-the check passes.
+check that you chose, such as `npm test`, runs against that copy. The harness calls this check the
+gate, and the work counts as done only if the gate passes.
 
-The check is ordinary code with a yes or no answer, so the same work always gets the same verdict.
-This is what "deterministically gated" means: the agent's output can vary, but the verdict on it
-cannot.
+The gate is ordinary code with a yes or no answer, so the same work always gets the same verdict.
+That is the sense in which the harness is deterministically gated: the agent's output can vary,
+but the verdict on it cannot.
 
 ## The parts of a run
 
@@ -32,7 +35,8 @@ machine supports it (Linux, with bubblewrap), a fence also keeps your main folde
 
 ## What happens to a task
 
-A run moves through a fixed set of steps, and each one is printed as it happens:
+A run normally moves through these steps, and each one is printed as it happens. A setback adds
+steps (see the next section):
 
 1. **Setting up.** A working copy and a branch are created for the task.
 2. **Checking the starting point.** The gate runs before the agent starts, so the agent is not
@@ -41,7 +45,9 @@ A run moves through a fixed set of steps, and each one is printed as it happens:
 4. **Checking the agent's work.** The gate runs again.
 5. **Wrapping up.** The closer delivers the work.
 
-The branch is named after the task, for example `surface/add-a-page-that-shows-20260917T090000Z`.
+The branch is `surface/<run id>`: `surface` is the harness's word for a task's working unit, and
+the run id is the first words of the task followed by the start time, for example
+`surface/add-a-page-that-shows-20260917T090000Z`.
 
 ## When something goes wrong
 
@@ -54,7 +60,7 @@ This decision is called triage:
 - The run stops and asks a person, when no attempts remain or the agent says it needs a decision.
 
 Each kind of retry has a budget (`correction`, `gateError`, `gateMaintenance`, `terminus` and
-`close`), so a run cannot loop forever. A run that stops for a decision exits with code 4 and
+`close`; see [budgets](configuration-reference.md#budgets)), so a run cannot loop forever. A run that stops for a decision exits with code 4 and
 names the decision. See the [exit codes](cli-reference.md#exit-codes).
 
 ## Runs survive interruption
@@ -78,8 +84,38 @@ breaks, the run pauses the tasks about to check or hand off their work, repairs 
 once, and carries on. See
 [When the shared environment breaks](shared-environment.md).
 
+## The delivery branch
+
+When a run works several items, such as a backlog, they do not each get a branch for you to
+merge. Every item lands on one branch, `delivery/<base>` (for example `delivery/main`). Each item
+starts from that branch's latest work, so it sees everything delivered before it, and you review
+one branch rather than many.
+
+When another item lands while one is still working, the later one is rebuilt on top and its gate
+runs again before it lands. If that rebuild conflicts or the gate fails, the item gets a fresh
+attempt from the latest work, shown what went wrong, within its usual corrections. Nothing that
+conflicts or fails is ever added to the delivery branch.
+
+Your closer acts once per run, on the delivery branch, once at least one item has landed:
+`merge-back` merges it into your base branch, `commit-to-branch` leaves it for you to merge, and
+`open-pr` opens one pull request for it. If the closer does not succeed, the delivery branch stays
+as it is and the next run tries again.
+
+If you commit to your base branch yourself, the next run brings those commits into the delivery
+branch first, and runs your gate on the result. If that conflicts or the gate fails, the run
+starts no task and says what is in the way. It says so again on later runs, without trying the
+same thing again, until your base branch or the delivery branch moves.
+
+To use it, see [Work through a backlog](work-a-backlog.md).
+
 ## Reading the outcome
 
 Two commands read a run without changing it. `delivery status` gives the full account of one run,
 including how it got there. `delivery report` gives your whole task list in plain words and says
 what to do next. Both can print versioned JSON for scripts: see [Reports as data](reporting.md).
+
+## Next steps
+
+- [Get started](getting-started.md): finish a first run.
+- [Set up a project](project-configuration.md) and [Work through a backlog](work-a-backlog.md): put the model to use.
+- [Configuration reference](configuration-reference.md) and [Glossary](glossary.md): the settings and terms.
