@@ -300,7 +300,7 @@ The harness runs a `command` source with one argument:
 | `<command> complete <id>` | After the task is delivered | Mark the task done, wherever the list is kept |
 | `<command> raise` | Only with `"tracker": true`, once the closer has taken the work | Read a follow-up item as JSON on standard input (`file`, its front matter and `body`), open it in your tracker, and print the new item's id |
 
-See [Work through a backlog](work-a-backlog.md) for the GitHub source in use.
+See [Take work from other sources](work-sources.md) for each kind in use, GitHub issues included.
 
 ## After-landing steps
 
