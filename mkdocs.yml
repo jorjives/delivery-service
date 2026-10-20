@@ -4,7 +4,6 @@ site_url: https://jorjives.github.io/delivery-service/
 repo_url: https://github.com/jorjives/delivery-service
 repo_name: jorjives/delivery-service
 edit_uri: edit/main/docs/
-copyright: delivery-service
 
 # docs/ also keeps the design history (design notes, PRDs, specs, personas):
 # records of how the harness was designed, not documentation of how to use it.
@@ -20,12 +19,10 @@ exclude_docs: |
 validation:
   omitted_files: warn
   absolute_links: warn
-  unrecognized_links: warn
   anchors: warn
 
 theme:
   name: material
-  language: en
   font:
     text: Inter
     code: JetBrains Mono
@@ -49,7 +46,6 @@ theme:
   features:
     - navigation.tabs
     - navigation.sections
-    - navigation.indexes
     - navigation.top
     - navigation.footer
     - navigation.instant
@@ -98,21 +94,15 @@ plugins:
           - configuration-reference.md
           - reporting.md
 
+# Only what the pages use: attr_list and md_in_html build the home page's
+# buttons and cards; the rest is Material's standard code rendering.
 markdown_extensions:
-  - admonition
   - attr_list
-  - def_list
   - md_in_html
-  - tables
   - toc:
       permalink: true
-  - pymdownx.details
-  - pymdownx.highlight:
-      anchor_linenums: true
-  - pymdownx.inlinehilite
+  - pymdownx.highlight
   - pymdownx.superfences
-  - pymdownx.tabbed:
-      alternate_style: true
 
 nav:
   - Home: index.md
