@@ -1,28 +1,53 @@
 # Run on a schedule
 
-This guide shows how to have `delivery run --sources` run by itself on a timer. It needs a backlog or other work source: see [Work through a backlog](work-a-backlog.md).
+This guide shows how to have `delivery run --sources` run by itself on a timer, on Linux with systemd, and how to be told when a run ends. It needs a backlog or other work source: see [Work through a backlog](work-a-backlog.md). Claude Code must be signed in for the scheduled runs to start.
 
-Turn on a schedule once, and `delivery run --sources` runs by itself for this project from then on:
+## Turn the schedule on
 
-```sh
-delivery schedule enable --every 30m   # or 1h, 6h, 12h, 1d (the default)
+Run this in the repository (or pass `--repo <path>`):
+
+```bash
+delivery schedule enable --every 30m
 ```
 
-```sh
+```text
+Scheduling is on: delivery run --sources every 30m in <repo>. A run missed while this machine is off happens as soon as it is back.
+```
+
+`--every` takes minutes that divide an hour (`5m`, `15m`, `30m`), hours that divide a day (`1h`, `6h`, `12h`) or `1d`, which is the default. Anything else is refused with "isn't an interval I can schedule".
+
+It installs a systemd user timer for the repository, `delivery-<key>.timer` in `~/.config/systemd/user/`; `<key>` identifies your repository. Each run's output goes to the journal, and the run shows in `delivery status` and `delivery report` as if you had typed the command. To change how often it runs, run `enable` again with a new `--every`.
+
+The timer runs with the `PATH` you had when you ran `enable`. Run `enable` again after you move Node or Claude Code.
+
+## Check or turn it off
+
+```bash
 delivery schedule status    # on or off, and when it last ran and will next run
 delivery schedule disable   # turn it off; `delivery run --sources` still works by hand
 ```
 
-It installs a systemd user timer for the project, `delivery-<key>.timer` in
-`~/.config/systemd/user/`. A run missed while the machine was off happens as soon as it is back.
-Each run's output goes to the journal (`journalctl --user -u delivery-<key>.service`), and the run
-shows in `delivery status` and `delivery report` as if you had typed the command. To change how
-often it runs, run `enable` again with a new `--every`. The timer runs while you are logged in. To
-have it run while you are logged out too, run `loginctl enable-linger` once.
+`status` also prints the exact `journalctl --user -u delivery-<key>.service` command that shows each scheduled run's output. When the schedule is off it says `Scheduling is off for <repo>` and how to turn it on.
 
-On a machine without systemd user timers, `enable` refuses and prints the equivalent line for your
-own crontab.
+## Run while you are logged out
+
+The timer runs while you are logged in. To have it run while you are logged out too, run the systemd command `loginctl enable-linger` once.
+
+## Use cron without systemd
+
+On a machine without systemd user timers, `enable` refuses with exit code 2 and prints the equivalent line for your own crontab. Unlike the timer, cron skips a run missed while the machine is off.
+
+## Be told when a run ends
+
+Unattended runs end with nobody watching. `notify` is a command run at the end of every run, however it ended: work delivered, a stop, a run blocked before it started any task, or a run with nothing to do. Set it at the top level of `delivery.config.json`:
+
+```json
+{ "notify": "./scripts/post-to-chat.sh" }
+```
+
+It runs from the repository folder, with the run's report on its standard input as JSON: the same document `delivery report --json` prints, including `parked`, so the command can say what was done and which item is waiting for your answer. A notify command that fails is reported in one line and never changes the run's outcome or exit code. See [Reports as data](reporting.md) for the document, and the [configuration reference](configuration-reference.md#notify).
 
 ## Next steps
 
-- [Read the report](read-a-report.md): check what the scheduled runs did
+- [Read the report](read-a-report.md): check what the scheduled runs did.
+- [Run steps after landing](run-after-landing.md): deploy once scheduled work has landed.
