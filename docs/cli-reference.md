@@ -26,7 +26,10 @@ authority; this page groups it by what you are trying to do.
 | `delivery answer` | Answers the question a parked item is waiting on | [Work through a backlog](work-a-backlog.md) |
 | `delivery unpark` | Puts a parked item back in the queue | [Work through a backlog](work-a-backlog.md) |
 | `delivery drop-after` | Gives up after-landing steps that are waiting, such as a deploy you cannot fix | [Set up a project](project-configuration.md) |
-| `delivery schedule enable \| status \| disable` | Runs `delivery run --sources` on a timer | [Run on a schedule](run-on-a-schedule.md) |
+| `delivery packs check` | Checks a review folder of your own, then runs its fixtures against a scripted agent | [Write a pack](writing-a-pack.md) |
+| `delivery schedule enable` | Turns on a timer that runs `delivery run --sources`, or changes how often it runs | [Run on a schedule](run-on-a-schedule.md) |
+| `delivery schedule status` | Says whether the project runs on a schedule, and when it last ran and will next run | [Run on a schedule](run-on-a-schedule.md) |
+| `delivery schedule disable` | Turns the timer off; `delivery run --sources` still works by hand | [Run on a schedule](run-on-a-schedule.md) |
 
 ## Options for `delivery run`
 
@@ -64,6 +67,8 @@ authority; this page groups it by what you are trying to do.
 | `approve` | `--all`, `--workflow <name>` | Approves every idea; names the workflow to fix them through |
 | `decline` | `--all` | Declines every idea |
 | `packs` | `--schema` | Prints the JSON Schema of a review folder's `pack.json` |
+| `packs check` | `--yes` | Skips the question about trusting the pack's code before its fixtures run; needed when there is no terminal |
+| `schedule enable` | `--every <interval>` | Sets how often it runs: `30m`, `1h`, `6h`, `12h` or `1d` (the default) |
 
 `--config` and `--repo` mean the same on every command that takes them. Every command also
 takes the global options `--json`, `--no-color` and `--version`.
