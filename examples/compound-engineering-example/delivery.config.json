@@ -1,0 +1,33 @@
+{
+  "domain": "A small Node.js module for feature flags. Plain JavaScript with no dependencies, tested with node:test. CLAUDE.md lists lessons from earlier work: read the ones that touch your change.",
+  "gate": { "type": "test-runner" },
+  "closer": { "type": "merge-back" },
+  "sources": [{ "type": "backlog" }],
+  "workflows": {
+    "compound": {
+      "steps": [
+        {
+          "name": "plan",
+          "prompt": "Read the code, the tests and the lessons CLAUDE.md links to, then write a plan to a new file in plans/: what changes, which tests prove it, and which lessons apply. Change nothing outside plans/.",
+          "gate": { "type": "command-succeeds", "command": "node scripts/changed.mjs --only plans/" }
+        },
+        {
+          "name": "work",
+          "prompt": "Carry out your plan, tests first, and run npm test until it passes.",
+          "continue": true
+        },
+        {
+          "name": "review",
+          "prompt": "You did not write this change. Review the commits since the task started for wrong results, unhandled cases and anything the plan promised that is missing, and fix what you find, with a test for each fix. Do not edit the tests already there. Note in the plan what you found.",
+          "guards": { "add": ["tests-unchanged"] }
+        },
+        {
+          "name": "compound",
+          "prompt": "Write down one lesson from this task that would have saved time if you had known it at the start: something that went wrong, a review finding, or a fact about this code that was not obvious. Put it in a new file in docs/solutions/ with the sections ## Problem, ## What worked and ## Next time, and add a link to it under Lessons in CLAUDE.md. Change nothing else.",
+          "continue": true,
+          "gate": { "type": "command-succeeds", "command": "node scripts/lesson-recorded.mjs" }
+        }
+      ]
+    }
+  }
+}

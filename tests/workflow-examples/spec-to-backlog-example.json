@@ -1,0 +1,33 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"plan\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": ".delivery/backlog/20261020T100001Z-r2.md",
+            "content": "---\nstatus: open\nworkflow: build\npriority: 10\n---\nR2: mark a book read on a date.\n"
+          }
+        },
+        {
+          "write": {
+            "path": ".delivery/backlog/20261020T100002Z-r3.md",
+            "content": "---\nstatus: open\nworkflow: build\npriority: 20\n---\nR3: list unread books.\n"
+          }
+        },
+        {
+          "write": {
+            "path": ".delivery/backlog/20261020T100003Z-r4.md",
+            "content": "---\nstatus: open\nworkflow: build\npriority: 30\n---\nR4: count books read in a year.\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "planned R2 to R4"
+      }
+    }
+  ]
+}

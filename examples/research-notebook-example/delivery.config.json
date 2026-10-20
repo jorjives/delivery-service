@@ -1,0 +1,12 @@
+{
+  "domain": "A research notebook: questions answered by writing and running code, not by opinion. data/orders.csv is two months of a small shop's orders (pence, with a returned flag). research/README.md says how a folder of findings is laid out. Node.js 22, no dependencies, no network.",
+  "tasks": [
+    "Which category brought in the most money in September 2026, counting only orders that were not returned, and by how much did it lead the next one?",
+    "Is the weekend share of orders different in August and September 2026, and is the difference bigger than you would expect by chance?",
+    "For an array of 10,000 order objects shaped like the rows in data/orders.csv, which is faster in Node 22: structuredClone or a JSON round trip, and by roughly how much?"
+  ],
+  "concurrency": 3,
+  "gate": { "type": "command-succeeds", "command": "node scripts/check-research.mjs --new" },
+  "closer": { "type": "commit-to-branch" },
+  "agent": { "append": "Answer the question by writing code and running it. Put everything in a new folder under research/, named after the question, laid out as research/README.md says. Say plainly how sure you are, and what would change the answer." }
+}

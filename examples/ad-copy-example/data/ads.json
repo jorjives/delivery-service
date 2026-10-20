@@ -1,0 +1,72 @@
+[
+  {
+    "id": "hike-01",
+    "headline": "Boots made for the long way",
+    "description": "Waterproof leather walking boots, resoled for free for the first five years.",
+    "impressions": 42000,
+    "clicks": 1302
+  },
+  {
+    "id": "hike-02",
+    "headline": "Best boots ever",
+    "description": "Our boots are the best. Buy them now before they are gone.",
+    "impressions": 39000,
+    "clicks": 234
+  },
+  {
+    "id": "tent-01",
+    "headline": "A tent up in under a minute",
+    "description": "Two-person tent, 1.9 kg, poles colour-coded so it goes up right first time.",
+    "impressions": 51000,
+    "clicks": 1428
+  },
+  {
+    "id": "tent-02",
+    "headline": "Tents",
+    "description": "We sell tents for camping in all weathers and seasons of the year.",
+    "impressions": 47000,
+    "clicks": 329
+  },
+  {
+    "id": "pack-01",
+    "headline": "Carry less, walk further",
+    "description": "A 40-litre pack that weighs under a kilo, with a frame that fits your back.",
+    "impressions": 36000,
+    "clicks": 1080
+  },
+  {
+    "id": "pack-02",
+    "headline": "Great backpack deal",
+    "description": "Backpacks at prices you will love. Shop the range today and save.",
+    "impressions": 33000,
+    "clicks": 264
+  },
+  {
+    "id": "sock-01",
+    "headline": "Socks for a thousand miles",
+    "description": "Merino walking socks, guaranteed for a year of daily use or we replace them.",
+    "impressions": 28000,
+    "clicks": 812
+  },
+  {
+    "id": "sock-02",
+    "headline": "Comfortable socks",
+    "description": "Socks for walking. Many colours available in our online shop now.",
+    "impressions": 30000,
+    "clicks": 180
+  },
+  {
+    "id": "coat-01",
+    "headline": "Dry at the summit",
+    "description": "A three-layer shell that breathes on the climb and keeps the rain out on top.",
+    "impressions": 45000,
+    "clicks": 1215
+  },
+  {
+    "id": "stove-01",
+    "headline": "Hot tea in four minutes",
+    "description": "A gas stove that boils half a litre in four minutes, even in the wind.",
+    "impressions": 22000,
+    "clicks": 594
+  }
+]

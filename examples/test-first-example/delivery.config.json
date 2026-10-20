@@ -1,0 +1,28 @@
+{
+  "domain": "A small Node.js module that totals a shopping basket, prices in pence. Plain JavaScript with no dependencies, tested with node:test. plan.md is the list of tests still to write.",
+  "gate": { "type": "test-runner" },
+  "closer": { "type": "merge-back" },
+  "sources": [{ "type": "backlog" }],
+  "workflows": {
+    "red-green-refactor": {
+      "steps": [
+        {
+          "name": "red",
+          "prompt": "Write exactly one new test for the behaviour this task describes, and nothing else: no code yet. Run npm test and check it fails for the reason you expect. Tick the test off in plan.md only in the refactor step, not now.",
+          "gate": { "type": "command-succeeds", "command": "node scripts/red.mjs" }
+        },
+        {
+          "name": "green",
+          "prompt": "One test is failing. Make it pass with the simplest code that could work, and change no test. Run npm test until every test passes.",
+          "guards": { "add": ["tests-unchanged"] }
+        },
+        {
+          "name": "refactor",
+          "prompt": "Every test passes. Tidy the code you just wrote without changing what it does: remove duplication, name things clearly. Then tick the test off in plan.md. Do not change any test.",
+          "continue": true,
+          "guards": { "add": ["tests-unchanged"] }
+        }
+      ]
+    }
+  }
+}

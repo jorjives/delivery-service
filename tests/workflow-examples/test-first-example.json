@@ -1,0 +1,57 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"red\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "quantity.test.js",
+            "content": "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { total } from \"./basket.js\";\n\ntest(\"a line with no quantity is refused\", () => {\n  assert.throws(() => total([{ price: 100, quantity: 0 }]), RangeError);\n});\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "one failing test"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"green\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "basket.js",
+            "old": "  return lines.reduce(",
+            "new": "  for (const line of lines) if (line.quantity <= 0) throw new RangeError(`quantity must be above zero: ${JSON.stringify(line)}`);\n  return lines.reduce("
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "green"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"refactor\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "plan.md",
+            "old": "- [ ] a line with a quantity",
+            "new": "- [x] a line with a quantity"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "tidy"
+      }
+    }
+  ]
+}

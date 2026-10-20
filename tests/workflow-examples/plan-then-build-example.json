@@ -1,0 +1,63 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"plan\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "plans/swap-weeks.md",
+            "content": "# Swap weeks\n\nChange rota.js: add swapWeeks(rota, a, b). Test in rota.test.js.\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "plan written"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"build\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "rota.js",
+            "old": "export function whoIsOnCall",
+            "new": "export function swapWeeks(rota, a, b) {\n  const people = [...rota.people];\n  const i = people.indexOf(a);\n  const j = people.indexOf(b);\n  [people[i], people[j]] = [people[j], people[i]];\n  return { ...rota, people };\n}\n\nexport function whoIsOnCall"
+          }
+        },
+        {
+          "write": {
+            "path": "swap.test.js",
+            "content": "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { swapWeeks, whoIsOnCall } from \"./rota.js\";\n\ntest(\"a swap gives each the other's week\", () => {\n  const rota = swapWeeks({ start: new Date(\"2026-01-05\"), people: [\"Ada\", \"Grace\"] }, \"Ada\", \"Grace\");\n  assert.equal(whoIsOnCall(rota, new Date(\"2026-01-07\")), \"Grace\");\n});\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "built"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"review\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "plans/swap-weeks.md",
+            "old": "Test in rota.test.js.\n",
+            "new": "Test in rota.test.js.\n\n## Review\n\nChecked unknown names.\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "reviewed"
+      }
+    }
+  ]
+}

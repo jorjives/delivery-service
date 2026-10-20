@@ -1,0 +1,21 @@
+{
+  "domain": "The copy for a walking-gear shop's search ads. data/ads.json holds each ad with how often it was shown (impressions) and clicked. brand.md says how we write ads. There is no code to change here: the work is the words.",
+  "gate": { "type": "command-succeeds", "command": "node scripts/check-ads.mjs" },
+  "closer": { "type": "commit-to-branch" },
+  "workflows": {
+    "refresh-ads": {
+      "steps": [
+        {
+          "name": "pick",
+          "prompt": "Work out each ad's click-through rate (clicks divided by impressions) from data/ads.json, and write the ids of the four lowest, as a JSON array, to data/underperformers.json. Change nothing else.",
+          "gate": { "type": "command-succeeds", "command": "node scripts/check-ads.mjs --pick" }
+        },
+        {
+          "name": "rewrite",
+          "prompt": "Rewrite the headline and description of each ad listed in data/underperformers.json, following brand.md. Look at what the best-performing ads do and do the same. Leave every other ad, and every figure, exactly as it is.",
+          "gate": { "type": "command-succeeds", "command": "node scripts/check-ads.mjs --rewrite" }
+        }
+      ]
+    }
+  }
+}

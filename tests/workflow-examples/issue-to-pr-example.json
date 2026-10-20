@@ -1,0 +1,39 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"reproduce\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "ounces.test.js",
+            "content": "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { gramsToOunces } from \"./units.js\";\n\ntest(\"ounces keep one decimal place\", () => {\n  assert.equal(gramsToOunces(100), 3.5);\n});\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "reproduced"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"fix\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "units.js",
+            "old": "  return Math.round(grams / 28.35);",
+            "new": "  return Math.round((grams / 28.35) * 10) / 10;"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "fixed"
+      }
+    }
+  ]
+}

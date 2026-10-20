@@ -9,6 +9,7 @@ edit_uri: edit/main/docs/
 # records of how the harness was designed, not documentation of how to use it.
 exclude_docs: |
   prd/
+  research/
   superpowers/
   personas.md
   agent-interface.md

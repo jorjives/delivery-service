@@ -1,0 +1,86 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"plan\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "plans/rollout.md",
+            "content": "# Rollout\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "p"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"work\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "rollout.js",
+            "content": "export const rollout = (pct, id) => [...id].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 100, 7) < pct;\n"
+          }
+        },
+        {
+          "write": {
+            "path": "rollout.test.js",
+            "content": "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { rollout } from \"./rollout.js\";\n\ntest(\"a 100 per cent rollout is on for everyone\", () => {\n  assert.equal(rollout(100, \"u1\"), true);\n});\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "w"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"review\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "plans/rollout.md",
+            "old": "# Rollout\n",
+            "new": "# Rollout\n\nReviewed: fine.\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "r"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"compound\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "docs/solutions/stable-hash.md",
+            "content": "# Stable hash\n\n## Problem\n\nx\n\n## What worked\n\ny\n\n## Next time\n\nz\n"
+          }
+        },
+        {
+          "edit": {
+            "path": "CLAUDE.md",
+            "old": "(docs/solutions/flags-are-plain-objects.md)\n",
+            "new": "(docs/solutions/flags-are-plain-objects.md)\n- [Stable hash](docs/solutions/stable-hash.md)\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "c"
+      }
+    }
+  ]
+}

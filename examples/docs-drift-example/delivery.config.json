@@ -1,0 +1,24 @@
+{
+  "domain": "A small library of string helpers in plain Node.js, tested with node:test. docs/API.md is the library's documentation: one ### section per exported function, with examples written `call // => value`.",
+  "gate": { "type": "test-runner" },
+  "closer": { "type": "merge-back" },
+  "sources": [{ "type": "backlog" }],
+  "workflows": {
+    "sync-docs": {
+      "steps": [
+        {
+          "name": "sync",
+          "prompt": "Bring docs/API.md in line with the code in src/: document every exported function, remove sections for functions that no longer exist, and correct any example that no longer gives what it says. Describe what the code does, not what you think it should do; if the code looks wrong, add a follow-up item to .delivery/backlog/ instead of changing it. Change only docs/API.md, apart from follow-ups. If nothing has drifted, change nothing.",
+          "gate": { "type": "command-succeeds", "command": "node scripts/check-docs.mjs --only-docs" }
+        }
+      ],
+      "after": []
+    }
+  },
+  "after": [
+    {
+      "name": "check the docs",
+      "prompt": "Run node scripts/check-docs.mjs against what just landed. If it fails, add one follow-up item to .delivery/backlog/ with status open and workflow sync-docs, saying what it reported. If it passes, change nothing."
+    }
+  ]
+}

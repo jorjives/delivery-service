@@ -1,0 +1,46 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"fix\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "load-all.js",
+            "old": "  const results = [];\n  await Promise.all(ids.map(async (id) => results.push(await load(id))));\n  return results;",
+            "new": "  return Promise.all(ids.map((id) => load(id)));"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "results were pushed in completion order"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"learn\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "docs/flaky-patterns.md",
+            "old": "give the test a fixed date.\n",
+            "new": "give the test a fixed date.\n\n## Results collected in the order they finish\n\n**Symptom:** a list built with push() inside Promise.all comes back in a different order each run.\n\n**Fix:** return the array Promise.all gives you, which keeps the input order.\n"
+          }
+        },
+        {
+          "write": {
+            "path": ".delivery/backlog/20261020T100000Z-flaky-prices.md",
+            "content": "---\nstatus: open\nworkflow: fix-flaky\n---\nprices.js pushes results inside Promise.all, so prices come back in completion order.\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "recorded"
+      }
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "domain": "A small Node.js module for a personal reading list. Plain JavaScript with no dependencies, tested with node:test. docs/spec.md is the source of truth: every requirement has an id such as R2, and is done when a test named after its id passes.",
+  "gate": { "type": "test-runner" },
+  "closer": { "type": "merge-back" },
+  "sources": [{ "type": "backlog" }],
+  "workflows": {
+    "plan": {
+      "steps": [
+        {
+          "name": "plan",
+          "prompt": "Read docs/spec.md, the code and its tests, and the open items in .delivery/backlog/. For each requirement that is neither done nor already planned by an open item, add one follow-up item to .delivery/backlog/: status open, workflow build, a priority that puts them in a sensible order (10, 20, 30 and so on), and a body that names the requirement id and says what done looks like. Keep each item small enough for one session. Change nothing else. If every requirement is done or planned, change nothing.",
+          "gate": { "type": "command-succeeds", "command": "node scripts/spec-coverage.mjs" }
+        }
+      ],
+      "after": []
+    },
+    "build": {
+      "steps": [
+        {
+          "name": "build",
+          "prompt": "Do the one requirement this item names, as docs/spec.md describes it, and nothing more. Name its test after the requirement id, for example test(\"R2: ...\"). Run npm test until it passes, and commit with a message naming the id."
+        }
+      ]
+    }
+  }
+}

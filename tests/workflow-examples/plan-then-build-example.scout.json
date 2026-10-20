@@ -1,0 +1,39 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"attempt\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "rota.js",
+            "old": "const WEEK",
+            "new": "import { readFileSync } from \"node:fs\";\nexport const load = (p) => JSON.parse(readFileSync(p, \"utf-8\"));\nconst WEEK"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "tried"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"notes\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "plans/scout-store-rota.md",
+            "content": "# Scout\n\nDates need reviving after JSON.parse.\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "notes"
+      }
+    }
+  ]
+}

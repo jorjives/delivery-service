@@ -1,0 +1,23 @@
+{
+  "domain": "Unit conversions for a recipe site, in plain Node.js, tested with node:test.",
+  "gate": { "type": "test-runner" },
+  "closer": { "type": "open-pr" },
+  "sources": [{ "type": "github", "label": "delivery", "workflow": "resolve-issue" }],
+  "workflows": {
+    "resolve-issue": {
+      "steps": [
+        {
+          "name": "reproduce",
+          "prompt": "Read the issue. Write one test that shows the problem it describes, and nothing else, and check it fails. If the issue is not clear enough to write that test, escalate with a decision and ask the one question you need answered.",
+          "gate": { "type": "command-succeeds", "command": "node scripts/red.mjs" }
+        },
+        {
+          "name": "fix",
+          "prompt": "Fix the code so the new test passes and every other test still passes. Change no test. Commit with a message that says what was wrong.",
+          "continue": true,
+          "guards": { "add": ["tests-unchanged"] }
+        }
+      ]
+    }
+  }
+}

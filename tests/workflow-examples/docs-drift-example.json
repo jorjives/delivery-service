@@ -1,0 +1,38 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"sync\":"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "docs/API.md",
+            "old": "ending with three dots when it was cut.\n\n```js\ntruncate(\"abcdef\", 4) // => \"a...\"",
+            "new": "ending with an ellipsis when it was cut.\n\n```js\ntruncate(\"abcdef\", 4) // => \"abc…\""
+          }
+        },
+        {
+          "edit": {
+            "path": "docs/API.md",
+            "old": "### reverse(text)\n\nReverses the text.\n\n```js\nreverse(\"abc\") // => \"cba\"",
+            "new": "### titleCase(text)\n\nCapitalises the first letter of each word.\n\n```js\ntitleCase(\"the long goodbye\") // => \"The Long Goodbye\""
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "synced"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "check-docs"
+      },
+      "json": {
+        "status": "completed",
+        "rationale": "docs pass"
+      }
+    }
+  ]
+}

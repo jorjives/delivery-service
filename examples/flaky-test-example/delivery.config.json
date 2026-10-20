@@ -1,0 +1,23 @@
+{
+  "domain": "A product catalogue's data-loading code in plain Node.js, tested with node:test. docs/flaky-patterns.md lists what has made tests flaky here before: read it first.",
+  "gate": { "type": "command-succeeds", "command": "node scripts/repeat.mjs 30" },
+  "closer": { "type": "commit-to-branch" },
+  "sources": [{ "type": "backlog" }],
+  "workflows": {
+    "fix-flaky": {
+      "steps": [
+        {
+          "name": "fix",
+          "prompt": "Reproduce the flaky test first: run it many times until you have seen it fail, and work out why from the failure. Then fix the cause in the code under test. Do not change the test, slow it down, retry it, or loosen what it checks: the fix must make the code right. node scripts/repeat.mjs 30 is the check.",
+          "guards": { "add": ["tests-unchanged"] }
+        },
+        {
+          "name": "learn",
+          "prompt": "Add what you found to docs/flaky-patterns.md, as a new section with a Symptom and a Fix, in the style of the ones there. Then look through the rest of the code for the same mistake. For each place you find it, add a follow-up item to .delivery/backlog/ (status open, workflow fix-flaky) naming the file and the pattern. Change nothing else.",
+          "continue": true,
+          "gate": { "type": "command-succeeds", "command": "node scripts/changed.mjs --only docs/flaky-patterns.md .delivery/backlog/" }
+        }
+      ]
+    }
+  }
+}

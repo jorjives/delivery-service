@@ -1,0 +1,73 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "Which category brought"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "research/top-category/run.mjs",
+            "content": "import { readFileSync } from \"node:fs\";\nconst rows = readFileSync(\"../../data/orders.csv\", \"utf-8\").trim().split(\"\\n\").slice(1).map((l) => l.split(\",\"));\nconst t = {};\nfor (const [, d, c, p, r] of rows) if (d.startsWith(\"2026-09\") && r === \"no\") t[c] = (t[c] ?? 0) + Number(p);\nconsole.log(t);\nconsole.log(\"ANSWER: games led\");\n"
+          }
+        },
+        {
+          "write": {
+            "path": "research/top-category/README.md",
+            "content": "# top-category\n\n## Question\n\nWhich category brought\n\n## Answer\n\nANSWER: games led\n\n## How to check\n\nnode run.mjs\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "answered"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "weekend share"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "research/weekend-share/run.mjs",
+            "content": "import { readFileSync } from \"node:fs\";\nconst rows = readFileSync(\"../../data/orders.csv\", \"utf-8\").trim().split(\"\\n\").slice(1).map((l) => l.split(\",\"));\nconsole.log(\"ANSWER: no clear difference\");\n"
+          }
+        },
+        {
+          "write": {
+            "path": "research/weekend-share/README.md",
+            "content": "# weekend-share\n\n## Question\n\nweekend share\n\n## Answer\n\nANSWER: no clear difference\n\n## How to check\n\nnode run.mjs\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "answered"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "structuredClone"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "research/clone-speed/run.mjs",
+            "content": "console.log(\"ANSWER: JSON round trip is faster\");\n"
+          }
+        },
+        {
+          "write": {
+            "path": "research/clone-speed/README.md",
+            "content": "# clone-speed\n\n## Question\n\nstructuredClone\n\n## Answer\n\nANSWER: JSON round trip is faster\n\n## How to check\n\nnode run.mjs\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "answered"
+      }
+    }
+  ]
+}

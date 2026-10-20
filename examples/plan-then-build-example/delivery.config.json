@@ -1,0 +1,41 @@
+{
+  "domain": "A small Node.js library that works out who is on call each week from a rota. Plain JavaScript modules with no dependencies, each function tested with node:test.",
+  "gate": { "type": "test-runner" },
+  "closer": { "type": "commit-to-branch" },
+  "workflows": {
+    "explore-plan-build": {
+      "steps": [
+        {
+          "name": "plan",
+          "prompt": "Explore before you change anything. Read the code and tests this task touches, then write a plan to a new file in plans/, named after the task. Say which files change, which tests will prove the change, what is out of scope, and how to check the whole thing end to end. Change nothing outside plans/ in this step.",
+          "gate": { "type": "command-succeeds", "command": "node scripts/changed.mjs --only plans/" }
+        },
+        {
+          "name": "build",
+          "prompt": "Carry out the plan you wrote in plans/. Write the tests it names first, then the code, and run npm test until it passes. Commit with a message that says what changed and why.",
+          "continue": true
+        },
+        {
+          "name": "review",
+          "prompt": "You did not write this change. Review the commits since this task started against the task's plan in plans/, as a sceptical colleague would: look for wrong results, unhandled edge cases, and anything the plan promised that is missing. Fix each problem you find, with a test that would have caught it, and add a Review section to the plan listing what you checked and what you changed. Do not edit the tests that are already there.",
+          "guards": { "add": ["tests-unchanged"] }
+        }
+      ]
+    },
+    "scout": {
+      "steps": [
+        {
+          "name": "attempt",
+          "prompt": "This is a scouting run: its code will not be merged. Try to do the task quickly, to find out what it really involves. Do not polish anything.",
+          "gate": { "type": "command-succeeds", "command": "node scripts/changed.mjs ." }
+        },
+        {
+          "name": "notes",
+          "prompt": "Write what you learnt to a new file in plans/, named scout- and then the task: which files you had to touch, what surprised you, what you would do differently, and what a plan for doing it properly must say. Change nothing outside plans/.",
+          "continue": true,
+          "gate": { "type": "command-succeeds", "command": "node scripts/changed.mjs --only plans/" }
+        }
+      ]
+    }
+  }
+}

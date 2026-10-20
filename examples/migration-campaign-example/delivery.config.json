@@ -1,0 +1,31 @@
+{
+  "domain": "A shop's reporting code in plain Node.js, tested with node:test. It is part way through moving from lib/legacy-dates.js to format() in lib/dates.js. docs/MIGRATION.md is the playbook: read it before you change anything.",
+  "gate": { "type": "test-runner" },
+  "closer": { "type": "commit-to-branch" },
+  "concurrency": 3,
+  "parkAfter": 2,
+  "sources": [{ "type": "command", "command": "node scripts/migration-source.mjs", "name": "legacy-dates" }],
+  "workflows": {
+    "migrate-file": {
+      "steps": [
+        {
+          "name": "convert",
+          "prompt": "Move the one file this task names (its file field) off lib/legacy-dates.js, following docs/MIGRATION.md. Change no other file under src/.",
+          "gate": { "type": "custom", "modulePath": "./gates/file-migrated.mjs" }
+        },
+        {
+          "name": "tests",
+          "prompt": "Run npm test. If a test fails, the conversion changed what the file prints: fix the file, not the test.",
+          "continue": true,
+          "guards": { "add": ["tests-unchanged"] }
+        },
+        {
+          "name": "lint",
+          "prompt": "Run npm run lint and fix what it reports in the file you migrated.",
+          "continue": true,
+          "gate": { "type": "command-succeeds", "command": "npm run lint" }
+        }
+      ]
+    }
+  }
+}

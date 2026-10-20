@@ -1,0 +1,38 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"pick\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "data/underperformers.json",
+            "content": "[\"hike-02\", \"tent-02\", \"pack-02\", \"sock-02\"]\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "picked"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"rewrite\":"
+      },
+      "effects": [
+        {
+          "write": {
+            "path": "data/ads.json",
+            "content": "[\n  {\n    \"id\": \"hike-01\",\n    \"headline\": \"Boots made for the long way\",\n    \"description\": \"Waterproof leather walking boots, resoled for free for the first five years.\",\n    \"impressions\": 42000,\n    \"clicks\": 1302\n  },\n  {\n    \"id\": \"hike-02\",\n    \"headline\": \"Resoled free for five years\",\n    \"description\": \"Leather walking boots, waterproof from new, resoled for free for five years.\",\n    \"impressions\": 39000,\n    \"clicks\": 234\n  },\n  {\n    \"id\": \"tent-01\",\n    \"headline\": \"A tent up in under a minute\",\n    \"description\": \"Two-person tent, 1.9 kg, poles colour-coded so it goes up right first time.\",\n    \"impressions\": 51000,\n    \"clicks\": 1428\n  },\n  {\n    \"id\": \"tent-02\",\n    \"headline\": \"Pitched and dry in a minute\",\n    \"description\": \"A 1.9 kg two-person tent with colour-coded poles that goes up right first time.\",\n    \"impressions\": 47000,\n    \"clicks\": 329\n  },\n  {\n    \"id\": \"pack-01\",\n    \"headline\": \"Carry less, walk further\",\n    \"description\": \"A 40-litre pack that weighs under a kilo, with a frame that fits your back.\",\n    \"impressions\": 36000,\n    \"clicks\": 1080\n  },\n  {\n    \"id\": \"pack-02\",\n    \"headline\": \"A 40-litre pack under 1 kg\",\n    \"description\": \"Carry less and walk further with a frame that fits your back.\",\n    \"impressions\": 33000,\n    \"clicks\": 264\n  },\n  {\n    \"id\": \"sock-01\",\n    \"headline\": \"Socks for a thousand miles\",\n    \"description\": \"Merino walking socks, guaranteed for a year of daily use or we replace them.\",\n    \"impressions\": 28000,\n    \"clicks\": 812\n  },\n  {\n    \"id\": \"sock-02\",\n    \"headline\": \"Merino socks, a year of wear\",\n    \"description\": \"Walking socks guaranteed for a year of daily use, or we replace them.\",\n    \"impressions\": 30000,\n    \"clicks\": 180\n  },\n  {\n    \"id\": \"coat-01\",\n    \"headline\": \"Dry at the summit\",\n    \"description\": \"A three-layer shell that breathes on the climb and keeps the rain out on top.\",\n    \"impressions\": 45000,\n    \"clicks\": 1215\n  },\n  {\n    \"id\": \"stove-01\",\n    \"headline\": \"Hot tea in four minutes\",\n    \"description\": \"A gas stove that boils half a litre in four minutes, even in the wind.\",\n    \"impressions\": 22000,\n    \"clicks\": 594\n  }\n]\n"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "rewritten"
+      }
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "domain": "A small Node.js module that reads timeouts from settings, tested with node:test. Its dependencies are kept up to date one package at a time.",
+  "gate": { "type": "command", "command": "npm test", "parseMode": "exitcode", "setup": "npm ci --ignore-scripts --no-audit --no-fund" },
+  "closer": { "type": "commit-to-branch" },
+  "sources": [{ "type": "command", "command": "node scripts/outdated-source.mjs", "name": "outdated" }],
+  "parkAfter": 1,
+  "workflows": {
+    "upgrade": {
+      "steps": [
+        {
+          "name": "bump",
+          "prompt": "Upgrade the one package this task names (its package field) to the version it names (its to field), with npm install, so that package.json and package-lock.json both change. Change nothing else.",
+          "gate": { "type": "custom", "modulePath": "./gates/upgraded.mjs" }
+        },
+        {
+          "name": "repair",
+          "prompt": "Run npm test. If anything fails, read the package's changelog or release notes between the old and new versions, and change our code to work with the new version. Change no test: the tests say what our code must still do. If the new version cannot do what we need, escalate and say why.",
+          "continue": true,
+          "guards": { "add": ["tests-unchanged"] }
+        }
+      ]
+    }
+  }
+}

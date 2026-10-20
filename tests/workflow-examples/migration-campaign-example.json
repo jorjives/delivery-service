@@ -1,0 +1,152 @@
+{
+  "expectations": [
+    {
+      "when": {
+        "promptContains": "\"convert\":",
+        "promptMatches": "\"file\": \"src\\/invoice.js\""
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "src/invoice.js",
+            "old": "import { formatDate } from \"../lib/legacy-dates.js\";",
+            "new": "import { format } from \"../lib/dates.js\";"
+          }
+        },
+        {
+          "edit": {
+            "path": "src/invoice.js",
+            "old": "${formatDate(due)}",
+            "new": "${format(due, \"dd/MM/yyyy\")}"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "converted"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"convert\":",
+        "promptMatches": "\"file\": \"src\\/daily-report.js\""
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "src/daily-report.js",
+            "old": "import { formatDate } from \"../lib/legacy-dates.js\";",
+            "new": "import { format } from \"../lib/dates.js\";"
+          }
+        },
+        {
+          "edit": {
+            "path": "src/daily-report.js",
+            "old": "${formatDate(day)}",
+            "new": "${format(day, \"dd/MM/yyyy\")}"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "converted"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"convert\":",
+        "promptMatches": "\"file\": \"src\\/receipt.js\""
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "src/receipt.js",
+            "old": "import { formatDateTime } from \"../lib/legacy-dates.js\";",
+            "new": "import { format } from \"../lib/dates.js\";"
+          }
+        },
+        {
+          "edit": {
+            "path": "src/receipt.js",
+            "old": "${formatDateTime(at)}",
+            "new": "${format(at, \"dd/MM/yyyy HH:mm\")}"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "converted"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"convert\":",
+        "promptMatches": "\"file\": \"src\\/shipping.js\""
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "src/shipping.js",
+            "old": "import { formatDate, formatDateTime } from \"../lib/legacy-dates.js\";",
+            "new": "import { format } from \"../lib/dates.js\";\nimport { formatDate } from \"../lib/dates.js\";"
+          }
+        },
+        {
+          "edit": {
+            "path": "src/shipping.js",
+            "old": "${formatDateTime(at)}",
+            "new": "${format(at, \"dd/MM/yyyy HH:mm\")}"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "converted"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"tests\":"
+      },
+      "json": {
+        "status": "completed",
+        "rationale": "tests pass"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"lint\":",
+        "promptMatches": "src\\/shipping"
+      },
+      "effects": [
+        {
+          "edit": {
+            "path": "src/shipping.js",
+            "old": "\nimport { formatDate } from \"../lib/dates.js\";",
+            "new": ""
+          }
+        },
+        {
+          "edit": {
+            "path": "src/shipping.js",
+            "old": "${formatDate(day)}",
+            "new": "${format(day, \"dd/MM/yyyy\")}"
+          }
+        }
+      ],
+      "json": {
+        "status": "completed",
+        "rationale": "lint"
+      }
+    },
+    {
+      "when": {
+        "promptContains": "\"lint\":"
+      },
+      "json": {
+        "status": "completed",
+        "rationale": "lint clean"
+      }
+    }
+  ]
+}
