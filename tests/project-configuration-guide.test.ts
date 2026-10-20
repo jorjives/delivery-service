@@ -31,7 +31,7 @@ const STEP = {
   preview: "## 7. See what the agent will be told",
   run: "## 8. Run the list",
   add: "## 9. Add to the list",
-  further: "## Going further",
+  further: "## Next steps",
 } as const;
 
 const scratch = useScratch();
@@ -181,7 +181,7 @@ describe("the project-configuration guide", () => {
 
   it("walks through the setup in plain words, and sends extenders to the gate, closer and role guides", () => {
     // Fenced blocks and inline code are the command's own output and the file's own keys and names; the prose is the guide's.
-    const prose = sectionOf(guide, "# Setting up a project", STEP.further).replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "").toLowerCase();
+    const prose = sectionOf(guide, "# Set up a project", STEP.further).replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "").toLowerCase();
     for (const word of ["worktree", "envelope", "surface", "case file", "role config", "schema"]) expect(prose).not.toContain(word);
     const further = sectionOf(guide, STEP.further);
     for (const doc of ["writing-a-gate.md", "writing-a-closer.md", "configuring-a-role.md"]) expect(further).toContain(doc);
