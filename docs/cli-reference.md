@@ -91,9 +91,9 @@ For a script or a CI step, add `--json`:
 delivery run --json --task "add a function that says hello to a name, with a test"
 ```
 
-Instead of the plain-language lines, each step prints as one JSON object on its own line, with
-the harness's own state name, whether the run is over, anything the step had to put right, and
-when it happened:
+Instead of the plain-language lines, each step prints as one JSON object on its own line. The
+object holds the harness's own state name, whether the run is over, anything the step had to put
+right, and when it happened:
 
 ```text
 {"state":"PROVISIONING","done":false,"at":"2026-09-16T12:00:00.000Z"}
@@ -101,10 +101,9 @@ when it happened:
 {"state":"CLOSED","done":true,"at":"2026-09-16T12:01:39.002Z"}
 ```
 
-The exit codes are the same ones in the table in "Exit codes", so a script reads the outcome from the exit
-code and the detail from `delivery status --json`. Everything that is not a step, such as which
-run started, any warning and the closing sentence, goes to standard error, so standard output is
-only ever JSON.
+The exit codes are those in the "Exit codes" table, so a script reads the outcome from the exit
+code and the detail from `delivery status --json`. Everything that is not a step goes to standard
+error: which run started, any warning and the closing sentence. Standard output is only ever JSON.
 
 When several tasks run at once, each object also says what it is about: `"scope": "run"` for the
 run starting and finishing, and `"scope": "surface"` for a task's step, with the run's id and a
@@ -114,7 +113,7 @@ id. Every key is present, `null` where it does not apply. A run of several at on
 `HEALTHY`, and `ESCALATED` when it gives up), with `affected` listing the task run ids it
 concerns (`null` on the run starting and finishing).
 
-`--json` works on `delivery resume`, `delivery status`, `delivery report`, `delivery validate` and `delivery packs` too. Without it the output is
+`--json` also works on `delivery resume`, `delivery status`, `delivery report`, `delivery validate` and `delivery packs`. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
 The step lines are the running command's own account of itself and carry no version. To build
-on what a run did, use the versioned data described in [Reports as data](reporting.md).
+on what a run did, use the versioned data in [Reports as data](reporting.md).

@@ -2,17 +2,17 @@
 
 This page explains the model behind the `delivery` command: what a run is made of, who decides
 what, and what happens when something goes wrong. Read it after [Get started](getting-started.md)
-if you want to know why the command behaves as it does. To do something, use a guide instead.
+to learn why the command behaves as it does. To do something, use a guide.
 
 ## The agent proposes; your check decides
 
-delivery-service hands a task to an AI agent and then refuses to take the agent's word for the
+delivery-service hands a task to an AI agent and does not take the agent's word for the
 result. The agent works on its own copy of your repository. When it says it has finished, a
 check that you chose, such as `npm test`, runs against that copy. The work counts as done only if
 the check passes.
 
-The check is ordinary code with a yes or no answer, so the same work gets the same verdict every
-time. This is what "deterministically gated" means: the agent's output can vary, but the verdict on it
+The check is ordinary code with a yes or no answer, so the same work always gets the same verdict.
+This is what "deterministically gated" means: the agent's output can vary, but the verdict on it
 cannot.
 
 ## The parts of a run
@@ -26,17 +26,17 @@ cannot.
 | Budgets | How many attempts each kind of setback gets before a person is asked | [Configuration reference](configuration-reference.md) |
 | Record | The run's step-by-step account, kept in `.delivery/runs/` in your repository | [See what happened to a run](check-a-run.md) |
 
-Your own checkout is not touched while the agent works. The agent has a separate working copy,
-and where the machine supports it (Linux, with bubblewrap), a fence keeps your main folder
-read-only while it works. The `fence` setting controls whether that is preferred, required or off.
+The agent never touches your own checkout. It works in a separate working copy. Where the
+machine supports it (Linux, with bubblewrap), a fence also keeps your main folder read-only. The
+`fence` setting controls whether the fence is preferred, required or off.
 
 ## What happens to a task
 
 A run moves through a fixed set of steps, and each one is printed as it happens:
 
 1. **Setting up.** A working copy and a branch are created for the task.
-2. **Checking the starting point.** The gate runs before the agent starts, so a check that is
-   already failing is not blamed on the agent.
+2. **Checking the starting point.** The gate runs before the agent starts, so the agent is not
+   blamed for a check that is already failing.
 3. **The agent is working.** The worker does the task.
 4. **Checking the agent's work.** The gate runs again.
 5. **Wrapping up.** The closer delivers the work.
@@ -45,8 +45,8 @@ The branch is named after the task, for example `surface/add-a-page-that-shows-2
 
 ## When something goes wrong
 
-A failing check does not end the run. The harness sorts each setback and decides what to do next
-(this decision is called triage):
+A failing check does not end the run. The harness sorts each setback and decides what to do next.
+This decision is called triage:
 
 - The agent is sent back to try again, with a sharper brief that says what failed and which dead
   ends to avoid.
@@ -55,12 +55,12 @@ A failing check does not end the run. The harness sorts each setback and decides
 
 Each kind of retry has a budget (`correction`, `gateError`, `gateMaintenance`, `terminus` and
 `close`), so a run cannot loop forever. A run that stops for a decision exits with code 4 and
-says what the decision is. See the [exit codes](cli-reference.md#exit-codes).
+names the decision. See the [exit codes](cli-reference.md#exit-codes).
 
 ## Runs survive interruption
 
 The record is written as the run goes, so closing the terminal or restarting the machine loses
-nothing. Run `delivery run` again in the same repository and it carries on from the step the run
+nothing. Run `delivery run` again in the same repository and the run continues from the step it
 had reached. See [Pick up an interrupted run](resume-a-run.md).
 
 ## One task, a list, or a backlog
@@ -73,9 +73,9 @@ The same run can be driven three ways:
 - **A backlog:** work items kept in `.delivery/backlog/`, plus other sources such as GitHub issues,
   worked by `delivery run --sources`. See [Work through a backlog](work-a-backlog.md).
 
-When several tasks run at once, they share one repository and, usually, one environment. If that
-shared environment breaks, the run pauses the tasks about to check or hand off their work,
-repairs the environment once, and carries on. See
+Tasks that run at once share one repository and, usually, one environment. If that environment
+breaks, the run pauses the tasks about to check or hand off their work, repairs the environment
+once, and carries on. See
 [When the shared environment breaks](shared-environment.md).
 
 ## Reading the outcome

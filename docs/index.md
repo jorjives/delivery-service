@@ -62,6 +62,6 @@ You need Node 22 or later, git and a signed-in Claude Code. [Get started](gettin
 
 ## Getting help
 
-If a command stops with a message, the message names what to fix; `delivery validate` finds the
+If a command stops with a message, the message names what to fix. `delivery validate` finds the
 same mistakes without starting anything. For anything else, open an issue on
 [GitHub](https://github.com/jorjives/delivery-service/issues).
