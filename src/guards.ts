@@ -141,7 +141,7 @@ export async function addedBacklogItems(cwd: string, base: string, tree: string,
 
 /**
  * What a change did besides adding ideas: any path outside the backlog, a new item that is not an idea with a
- * severity and a check, and an idea whose check does not find its problem in the working copy as the agent left it.
+ * severity and a check, and an idea whose check does not find its problem in the tree as the agent left it (files git ignores are not in it).
  * Edits to existing items, and new files that are not items at all, are the backlog guard's to report.
  */
 async function notIdeas(cwd: string, base: string, tree: string): Promise<string[]> {
@@ -159,7 +159,7 @@ async function notIdeas(cwd: string, base: string, tree: string): Promise<string
     else if (item.severity === undefined) findings.push(`${path} has no severity`);
     else if (item.check === undefined) findings.push(`${path} has no check`);
     else {
-      const result = await checkItem(item.check, { worktreePath: cwd }, item.file);
+      const result = await checkItem(item.check, { repoPath: cwd, commit: tree }, item.file);
       if (result === "resolved") findings.push(`${path}: its check does not find the problem in the project (${describeCheck(item.check).replace("is still", "is not")})`);
       else if (result !== "present") findings.push(`${path}: its check could not run (${result.error})`);
     }

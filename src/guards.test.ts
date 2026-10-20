@@ -369,6 +369,13 @@ describe("the backlog-only guard", () => {
     expect(await judge(repo)).toMatchObject({ outcome: "FAIL", detail: expect.stringContaining("20261019T120000Z-total.md: its check does not find the problem") });
   });
 
+  it("fails an idea whose problem is only in an ignored file the tree leaves out", async () => {
+    const repo = initTempRepo("backlog-only-", { "total.js": "ok;\n", ".gitignore": "secret.js\n" });
+    put(repo, "secret.js", "return price - discount;\n");
+    put(repo, ".delivery/backlog/20261019T120000Z-total.md", idea("return price - discount;").replace("path: total.js", "path: secret.js"));
+    expect(await judge(repo)).toMatchObject({ outcome: "FAIL", detail: expect.stringContaining("its check does not find the problem") });
+  });
+
   it("fails any change outside the backlog, and a new item that is not an idea with a severity and a check", async () => {
     const repo = project();
     put(repo, "total.js", "return Math.max(0, price - discount);\n");
