@@ -95,7 +95,9 @@ plugins:
         Reference:
           - cli-reference.md
           - configuration-reference.md
+          - troubleshooting.md
           - reporting.md
+          - troubleshooting.md
           - glossary.md
 
 # Only what the pages use: attr_list and md_in_html build the home page's
@@ -140,6 +142,8 @@ nav:
   - Reference:
       - Command reference: cli-reference.md
       - Configuration reference: configuration-reference.md
+      - Troubleshooting: troubleshooting.md
       - Reports as data: reporting.md
+      - Troubleshooting: troubleshooting.md
       - Glossary: glossary.md
 
