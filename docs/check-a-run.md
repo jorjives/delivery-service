@@ -1,8 +1,12 @@
 # See what happened to a run
 
-This guide shows how to find out how a run ended, follow one while it is going, and list every run in a repository. These commands only read: none of them changes a run.
+This guide shows how to find out how a run ended, follow one while it is going, and list every run in a repository. It is for anyone who has started a run with `delivery run` and assumes one exists: see [Run a task](run-a-task.md). These commands only read: none of them changes a run.
 
-To find out how a run ended, in a new terminal or days later:
+A [run](glossary.md#run) is one go at one task. A run of several tasks at once has an id of its own (`run-…`) and holds one run per task, each with its own id. Where a command takes a `<run-id>`, either kind works.
+
+## Find out how a run ended
+
+In a new terminal, or days later:
 
 ```bash
 delivery status
@@ -28,8 +32,11 @@ If the run's task is on your `tasks` list, it also says which task of how many i
 from the list as it is written now.
 
 Beneath that account, `status` says how the task got there, for whoever has to find out why. These
-parts use the harness's own words (triage, gate, correction) on purpose, because those are the
-words to search the run's record for.
+parts use the harness's own words ([triage](glossary.md#triage), gate, correction) on purpose,
+because those are the words to search the run's record for. The five retry budgets are named
+`correction`, `gate recheck`, `gate repair`, `session retry` and `close retry` here;
+[`delivery report`](read-a-report.md) names the same five in plainer words, and
+[Configuration reference](configuration-reference.md#budgets) gives the settings behind them.
 
 - **How it got here:** one line for each triage round, which is each time the harness had to
   decide what to do after a setback: the attempt it followed, what set it off, and the verdict.
@@ -106,7 +113,7 @@ Each round gives what set it off, the verdict, the reasoning word for word, and 
 produced: the brief the next session was given, exactly as that session read it, or the packet
 written for a person. A round that wrote no brief says so ("none; this round wrote no brief"). A
 round whose brief or packet can no longer be read says "not recorded". Combining `--decisions`
-with `--all` stops with exit 2. With `--json`, `--decisions` prints the same document
+with `--all` stops with exit 2 and a message ("Use either `--all` or `--decisions`, not both"). With `--json`, `--decisions` prints the same document
 `status --json` does, which already carries every round in full.
 
 To see exactly what each repair changed, add `--repairs`:
@@ -128,11 +135,12 @@ Repairs (1, each with what it changed):
 A file the repair added is shown in full. Each repair keeps up to 256 KiB of patches. A file past
 that limit, or a binary file, keeps its name and counts and says "patch too large to keep".
 What a repair changed is kept with the run's record, so you can still read it after the task's
-working copy is cleared away. Combining `--repairs` with `--all` or `--watch` is not allowed.
+working copy is cleared away. Combining `--repairs` with `--all` or `--watch` stops with exit 2 and a message.
 
-`status` exits 0 whenever it could read the run and 2 when it could not find one, so a run that
-needs your decision is still a successful read. `status --watch` is the exception: it ends with
-the code of the run it followed (see "Watch a run as it happens"). The
+`status` exits 0 whenever it could read the run and 2 when it could not find one ("I couldn't find
+that run's record"), so a run that needs your decision is still a successful read. `status
+--watch` is the exception: it ends with the code of the run it followed (see [Watch a run as it
+happens](#watch-a-run-as-it-happens)). The
 [exit codes](cli-reference.md#exit-codes) are the run's own, reported by `delivery run`.
 
 Add `--json` to get the account as one JSON document instead of sentences:
@@ -148,28 +156,37 @@ escalation packet. Every key is always present, and `null` means "not that kind 
 a script never has to check whether a key is there. A run that cannot be found gives a
 plain-language message on standard error and exit 2, not JSON.
 
-The document also carries `report`: the same versioned document `delivery report <run-id> --json`
-prints for that run, with its state history, retry budgets and every triage round in full. See
-[Reports as data](reporting.md).
+The document also carries `report`, the versioned document `delivery report <run-id> --json`
+prints for that run. [Reports as data](reporting.md) lists its keys.
 
 ## A run of several tasks at once
 
-A run of several tasks at once has an id of its own, the one it opened with (`run-…`).
-`delivery status run-20260930T090000Z` reads the whole run: when it started and its shape,
-whether the environment the tasks share is healthy, how many tasks are done, need your
-decision, stopped or are still queued, then one line per task in list order, naming the task's
-own run id once it has one. A task that needs
-your decision is followed by the same account `delivery status` gives of it on its own. A task
-waiting only because every slot is busy shows as "queued, waiting for a free slot". If the run
-was stopped part way, the account says how to carry it on. While the run is going, a task under
-way says what it is doing right now, which attempt it is on and since when ("the agent is
-working, attempt 2, since 2026-09-30 09:14 UTC"). Once the run has stopped, it says "not finished
-yet". A run that has not finished also says when its record last shows anything happening ("Last
-recorded activity: 2026-09-30 09:14 UTC."). A run made by an earlier version recorded no times,
-so it leaves out "since" and says "Last recorded activity: not recorded."
-Under the tasks come the retry budgets added up across the tasks the run has taken, beside the
-run's own limit on repairs of what its tasks share, and a `Next:` line. With `--decisions`, every
-task's triage rounds are printed in full beneath that. Any task a repair ran in is then listed with its repairs, one line each, or with their patches under `--repairs`.
+Name the id the run opened with (`run-…`) to read the whole run:
+
+```bash
+delivery status run-20260930T090000Z
+```
+
+The account gives:
+
+- when the run started and its shape;
+- whether the environment the tasks share is healthy;
+- how many tasks are done, need your decision, stopped or are still queued;
+- one line per task in list order, naming the task's own run id once it has one;
+- the retry budgets added up across the tasks the run has taken, beside the run's own limit on
+  repairs of what its tasks share, and a `Next:` line.
+
+A task that needs your decision is followed by the same account `delivery status` gives of it on
+its own. A task waiting only because every slot is busy shows as "queued, waiting for a free
+slot". If the run was stopped part way, the account says how to carry it on. While the run is
+going, a task under way says what it is doing right now, which attempt it is on and since when
+("the agent is working, attempt 2, since 2026-09-30 09:14 UTC"). Once the run has stopped, it says
+"not finished yet". A run that has not finished also says when its record last shows anything
+happening ("Last recorded activity: 2026-09-30 09:14 UTC."). A run made by an earlier version
+recorded no times, so it leaves out "since" and says "Last recorded activity: not recorded."
+
+With `--decisions`, every task's triage rounds are printed in full beneath that. Any task a repair
+ran in is then listed with its repairs, one line each, or with their patches under `--repairs`.
 
 ```text
 Run run-20260930T090000Z, started 2026-09-30 09:00 UTC: 4 tasks, up to 2 at once
@@ -207,12 +224,19 @@ limiting requests" or "the spending limit has been reached"). Its record names t
 cause.
 
 `delivery status run-… --json` gives the whole run as one document, for a script or for looking
-back after the fact: the run id, when it started, how many tasks and how many at once, whether it
-is going now, the environment, how it ended and when, why it stopped and whether the shared environment or a usage limit was the cause (`reason`, `cause`), how many repairs it used of its limit (`runBudgets`), every time its environment broke with the task that found it, the tasks it held and each repair attempt (`trips`), then `surfaces`, one entry per task it took,
-each exactly the document `delivery status <task-run-id> --json` gives, and `queued`, the tasks
-it has yet to start with their place on your list, and `report`, the versioned document
-`delivery report run-… --json` prints for the run. Every key is always present, `null` where it
-does not apply yet.
+back after the fact. Every key is always present, `null` where it does not apply yet. It holds:
+
+- the run id, when it started, how many tasks and how many at once, and whether it is going now;
+- the environment, how the run ended and when;
+- `reason` and `cause`: why it stopped, and whether the shared environment or a usage limit was
+  the cause;
+- `runBudgets`: how many shared repairs it used, of its limit;
+- `trips`: every time its environment broke, with the task that found it, the tasks it held and
+  each repair attempt;
+- `surfaces`: one entry for each task the run took (`surfaces` is the JSON name for tasks), each
+  exactly the document `delivery status <task-run-id> --json` gives;
+- `queued`: the tasks it has yet to start, with their place on your list;
+- `report`: the versioned document `delivery report run-… --json` prints for the run.
 
 ## Watch a run as it happens
 
@@ -264,8 +288,8 @@ was stopped part way, the watch says so and how to carry on, and exits 0.
 The watch only reads the record, and takes no lock. It looks every 2 seconds; `--interval
 <seconds>` changes that. A run made by an earlier version recorded no times. You can still watch
 it: its lines leave the time out, and the watch says once that times were not recorded.
-Combining `--watch` with `--all` or `--decisions` stops with exit 2, as does `--interval`
-without `--watch`.
+Combining `--watch` with `--all`, `--decisions` or `--repairs` stops with exit 2 and a message,
+as does `--interval` without `--watch`.
 
 For a script, `delivery status --watch --json` prints the same watch as data, one JSON event to
 a line: a first line saying what is being followed (`"type": "stream_started"`), one event for
@@ -307,5 +331,7 @@ nothing and exits 0.
 ## Next steps
 
 - [Read the report](read-a-report.md): the plain-words summary of your task list
+- [Pick up an interrupted run](resume-a-run.md): carry on with a run that stopped part way
+- [When the shared environment breaks](shared-environment.md): a worked example of a run of several tasks stopping
 - [Reports as data](reporting.md): the JSON these commands print
 - [Command reference](cli-reference.md): every option
