@@ -128,7 +128,7 @@ working copy is cleared away. `--repairs` cannot be combined with `--all` or `--
 
 `status` exits 0 whenever it could read the run and 2 when it could not find one, so a run that
 needs your decision is still a successful read. `status --watch` is the exception: it ends with
-the code of the run it followed (see "Watch a run as it happens"). The exit codes in the table above are the run's
+the code of the run it followed (see "Watch a run as it happens"). The [exit codes](cli-reference.md#exit-codes) are the run's
 own, reported by `delivery run`.
 
 Add `--json` to get the account as one JSON document instead of sentences:
@@ -245,7 +245,7 @@ when the project has no `tasks` list. `delivery status --watch <run-id>` follows
 or one run of several tasks at once.
 
 The watch ends when what it follows ends, with the counts `delivery report` opens with, and
-its exit code is the one that run ended with (the table above), so a script can wait on it. A
+its exit code is the one that run ended with (the [exit codes](cli-reference.md#exit-codes)), so a script can wait on it. A
 list worked one task at a time ends when every task is done or when a task stops the list, with
 the code `delivery run` gives for that; the pause between one task finishing and the next
 starting does not end it. Nothing records whether such a list is still being worked on, so the

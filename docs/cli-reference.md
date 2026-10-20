@@ -70,7 +70,7 @@ takes the global options `--json`, `--no-color` and `--version`.
 
 ## Exit codes
 
-The exit codes below are the run's own, reported by `delivery run` and `delivery resume`.
+These exit codes are the run's own, reported by `delivery run` and `delivery resume`.
 `status`, `report` and the other read-only commands exit 0 whenever they could do what you asked
 and 2 when they could not (for example, a run id that names nothing).
 
@@ -101,7 +101,7 @@ when it happened:
 {"state":"CLOSED","done":true,"at":"2026-09-16T12:01:39.002Z"}
 ```
 
-The exit codes are the same ones in the table above, so a script reads the outcome from the exit
+The exit codes are the same ones in the table in "Exit codes", so a script reads the outcome from the exit
 code and the detail from `delivery status --json`. Everything that is not a step, such as which
 run started, any warning and the closing sentence, goes to standard error, so standard output is
 only ever JSON.
@@ -116,5 +116,5 @@ concerns (`null` on the run starting and finishing).
 
 `--json` works on `delivery resume`, `delivery status`, `delivery report`, `delivery validate` and `delivery packs` too. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
-The lines above are the running command's own account of itself and carry no version. To build
+The step lines are the running command's own account of itself and carry no version. To build
 on what a run did, use the versioned data described in [Reports as data](reporting.md).
