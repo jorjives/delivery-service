@@ -187,30 +187,30 @@ work today through a `command` source, but there is no ready-made source for eit
 
 ## Defects and gaps found while building the examples
 
-1. **`{{task.<field>}}` is documented but never substituted.** `docs/project-configuration.md`
+1. **`{{task.<field>}}` is documented but never substituted** ([#17](https://github.com/jorjives/delivery-service/issues/17)). `docs/project-configuration.md`
    says any front-matter field is available to step prompts as `{{task.<field>}}`, and
    `{{task.body}}` as the brief. A step prompt containing them reaches the agent with the
    placeholders still literal. The fields are in the prompt's `## Task` block, so the agent can
    find them. The examples avoid the placeholders and say "the file named in the task's `file`
    field" instead.
-2. **The closing sentence names the project's check, not the one that ran.** A run through a
+2. **The closing sentence names the project's check, not the one that ran** ([#18](https://github.com/jorjives/delivery-service/issues/18)). A run through a
    workflow whose steps each name their own gate ends "passed `npm test`" even when no step ran
    `npm test` (`checkOf` in `src/cli/outcome.ts` reads only the header's `gateRef`).
 3. **A task list cannot be worked through a workflow.** `--workflow` needs `--task`, and an
    entry in `tasks` cannot name a workflow. Only backlog items and source tasks can. Three
    examples use the backlog for this reason alone.
-4. **Two example READMEs use commands that no longer exist.** `examples/code-review-example` and
+4. **Two example READMEs use commands that no longer exist** ([#19](https://github.com/jorjives/delivery-service/issues/19)). `examples/code-review-example` and
    `examples/no-tests-example` tell the reader to run `delivery findings` and `delivery fix`.
    The commands are now `delivery backlog`, `delivery approve`, `delivery decline`,
    `delivery sign-off` and `delivery run --sources`.
 5. **A command gate cannot see the task's fields.** The migration and upgrade examples need a
    custom gate module only to read `file`, `package` and `to`. Passing the task to a command gate
    (an environment variable naming a JSON file, say) would let them be one-line commands.
-6. **Custom gate modules are shared between concurrent tasks.** A gate module is loaded once per
+6. **Custom gate modules are shared between concurrent tasks** ([#20](https://github.com/jorjives/delivery-service/issues/20)). A gate module is loaded once per
    process, so state kept in a module variable is shared by every task running at once. The
    migration example's gate keys its state by working copy for this reason.
    `docs/writing-a-gate.md` does not warn about it.
-7. **`delivery validate` does not describe sources.** For a project that works from `sources`, it
+7. **`delivery validate` does not describe sources** ([#21](https://github.com/jorjives/delivery-service/issues/21)). For a project that works from `sources`, it
    says "no tasks listed: name one when you run, with `delivery run --task`", which suggests the
    wrong command, and it lists neither the sources nor the workflows.
 8. **Only Claude agents.** Jesse Vincent and others have a second vendor's model review the
