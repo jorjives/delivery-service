@@ -49,8 +49,8 @@ Every key `pack.json` may hold is listed here, and any other key is refused. Bum
 | `version` | `string` | Version of the pack, such as `1.0.0`. Required. |
 | `title` | `string` | The review's title, such as `Code review`. Required. |
 | `summary` | `string` | One sentence saying what it looks for. Required. |
-| `scan` | `object` | The scan workflow: see below. Required. |
-| `fix` | `object` | The fix workflow: see below. Required. |
+| `scan` | `object` | The scan workflow: see [scan](#scan). Required. |
+| `fix` | `object` | The fix workflow: see [fix](#fix). Required. |
 | `hold` | `string` | The severity from which fixes wait for the owner's sign-off: `critical`, `high`, `medium` or `low`. Optional; when absent, nothing is held. |
 
 ### scan
@@ -161,7 +161,7 @@ A fix at or above the pack's `hold` severity counts as passing its check when it
 delivery packs check ./my-review
 ```
 
-Running the fixtures runs the fixture project's own tests on your machine, as a run runs a project's tests, so it asks you to confirm you trust the pack's code before anything runs: `y` to continue, Enter or `n` to leave it alone. The command runs that test command with none of your credentials and a scratch `HOME` in place of your own, but it is still real code with your real filesystem and process access - only check a pack whose `fixtures/project` you have read or trust. In a script or CI, where nothing can ask, pass `--yes` once you do.
+Running the fixtures runs the fixture project's own tests on your machine, as a run runs a project's tests, so it asks you to confirm you trust the pack's code before anything runs: `y` to continue, Enter or `n` to leave it alone. The command runs that test command with none of your credentials and a scratch `HOME` in place of your own, but it is still real code with your real filesystem and process access; only check a pack whose `fixtures/project` you have read or trust. In a script or CI, where nothing can ask, pass `--yes` once you do.
 
 If there are problems with the manifest or fixtures, they are named by file and field:
 
@@ -228,7 +228,7 @@ describe("my review pack", () => {
 });
 ```
 
-`checkPack` itself asks no questions - the confirmation above is the CLI command's, for a person checking a pack they did not write. Your own test suite calls it directly on your own pack, with the same sandboxed environment but no prompt.
+`checkPack` itself asks no questions; the confirmation in [Run the check](#run-the-check) is the CLI command's, for a person checking a pack they did not write. Your own test suite calls it directly on your own pack, with the same sandboxed environment but no prompt.
 
 ## What a scripted check cannot prove
 
@@ -245,4 +245,4 @@ A scripted check cannot prove:
 - Whether a real agent follows your `scan.md`. As `docs/testing-your-pipeline.md` explains, a real agent may follow the instructions differently.
 - Your review catches real problems in your area.
 
-Also: unlike `delivery review`, `delivery packs check` runs `fixtures/project/`'s own `test` script (the way it proves a fix broke nothing). The confirmation above, and the sandboxed environment that command runs with, guard against an accidental credential leak - they are not a sandbox against hostile code. Only check a pack someone else wrote after reading and understanding what their `fixtures/project/` tests, and what their fixtures claim the review should find.
+Also: unlike `delivery review`, `delivery packs check` runs `fixtures/project/`'s own `test` script (the way it proves a fix broke nothing). The confirmation in [Run the check](#run-the-check), and the sandboxed environment that command runs with, guard against an accidental credential leak - they are not a sandbox against hostile code. Only check a pack someone else wrote after reading and understanding what their `fixtures/project/` tests, and what their fixtures claim the review should find.

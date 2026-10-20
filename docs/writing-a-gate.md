@@ -16,11 +16,11 @@ A gate measures a worktree and returns a **report**: a list of named
    is stored in the case file and never changes for the rest of the surface.
 2. **`check(ctx)`**, after every attempt, against the changed worktree.
 
-The harness then compares the two with a fixed rule (see "How the verdict is
-reached" below). Your gate never decides pass or fail for the change; it only
+The harness then compares the two with a fixed rule (see [How the verdict is
+reached](#how-the-verdict-is-reached)). Your gate never decides pass or fail for the change; it only
 reports what it measured.
 
-Everything below is imported from the harness's single entry point,
+Everything in this guide is imported from the harness's single entry point,
 `delivery-service`. Install it in your project as
 [Getting started](getting-started.md) describes, then run the snippets with
 `npx tsx`.
@@ -219,7 +219,7 @@ npm run demo:gate-slice-3
 The verdict is only as honest as the reports. A gate must:
 
 1. **Measure the same thing both times.** `baseline` and `check` are usually the
-   same function, as above. If they differ, a change can look like a regression,
+   same function, as in [A minimal custom gate](#a-minimal-custom-gate). If they differ, a change can look like a regression,
    or hide one.
 2. **Give each assertion a stable `id`.** The same thing measured on unchanged
    code must come out with the same `id` every time. Assertions are matched
@@ -253,7 +253,7 @@ failure** is any assertion that:
 **The ABSENT rule** (second row) is the one to design your gate around: an
 assertion that passed at baseline and is missing from the check counts as a new
 failure. Otherwise deleting a failing test, or a file your gate measures, would
-make the failure disappear. With the gate above, deleting `good.json` fails the
+make the failure disappear. With the gate in [A minimal custom gate](#a-minimal-custom-gate), deleting `good.json` fails the
 check with `json:good.json` reported as `ABSENT`. It is also why `id`s must be
 stable: a renamed `id` reads as the old one vanishing.
 
@@ -280,6 +280,6 @@ Whatever your check reports, the harness adds its own results: whether the work 
 renamed a test, changed how tests run, added a skip marker to a test, or hid a test setting from
 git. "Changed how tests run" includes `.gitignore` (it decides which files the other guards can
 see) and the project's `Makefile` or equivalent build file (it can redefine what a `test` target
-actually runs) alongside the obvious test-runner configs and CI files — protected on every run,
+actually runs) alongside the obvious test-runner configs and CI files, protected on every run,
 not only inside a pack's own fix. They are worked out from the commit the task started from, and a
 failure among them fails the round even when your check passes.

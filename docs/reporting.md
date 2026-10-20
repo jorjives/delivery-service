@@ -42,7 +42,7 @@ kind has none.
 | `run` | The run of several tasks at once the document is about, or `null` when there is none |
 | `surfaces` | One entry for each task |
 | `trips` | Each time the setup a run's tasks share broke: the `cause` (its `kind`, the `surfaceId` of the task whose report tripped it, and either a `reason` or the `surfaceIds` of every task counted, whichever the kind does not have being `null`), the tasks `held`, every one of the `repairs` tried, how it `ended`, the `reason` and any usage `limit`. Empty when there is no run of several tasks |
-| `usage`, `usageRecorded` | What the agent sessions behind everything the document reports took and cost, and how many sessions that covers. See "Time and cost" below |
+| `usage`, `usageRecorded` | What the agent sessions behind everything the document reports took and cost, and how many sessions that covers. See [Time and cost](#time-and-cost) |
 | `parked` | The backlog items this machine's item ledger has set aside, oldest key first, each with its `item` key, its `intent`, the `reason` it is parked (`"decision"`, `"escalated"` or `"attempts"`), the `question` it is waiting on, its `attempts`, and the `lastRun` that ended it. Empty when nothing is parked or the machine has no ledger |
 | `delivery` | The delivery branch this machine's `delivery run --sources` runs land their tasks on, or `null` when none was ever opened: its `branch` and the `base` it is for, `openedAt`, its `tip` (`null` once your closer has merged and deleted it), every task `landed` on it since it opened (each with its `run`, `item` key, `intent`, the delivery branch's `commit` that holds it, and `at`), what your `closer` last did with it (`status`, `detail`, `at`, or `null`), and what `blocked` it (`reason`, `at`, or `null`) |
 | `after` | The after-landing steps this machine's `delivery run --sources` runs ran: every batch still waiting on a step, then the most recent, oldest first, each with its `batch` id, the `branch` and `commit` that landed, when it began (`at`), the tasks `landed` (each with its `run`, `item` key and `intent`), and its `steps`, each with the `after` list it came `for` (`"project"`, a workflow's name, or `"follow-ups"`), its `label`, its `status` (`"done"`, `"failed"`, `"skipped"` (superseded by a later batch, dropped, or gone from the config) or `"pending"`), the `detail` of what happened, and `at`. Empty when none ran |
@@ -78,8 +78,8 @@ Each entry of `surfaces`:
 | `attempts` | How many times the agent was set to work on it |
 | `budgets` | Each kind of retry: its `population`, how many were `used` and the `max` allowed |
 | `decisions` | Every triage round, oldest first: `afterAttempt`, `trigger`, `verdict`, the `rationale` word for word, and the `brief` or `packet` the round produced. `recorded` is `false` when what the round wrote can no longer be read |
-| `repairs` | Every repair that ran in the task's working copy, oldest first. See below |
-| `usage`, `usageRecorded` | The same for the task's own agent sessions. See "Time and cost" below |
+| `repairs` | Every repair that ran in the task's working copy, oldest first. Each entry is described in its own table |
+| `usage`, `usageRecorded` | The same for the task's own agent sessions. See [Time and cost](#time-and-cost) |
 | `item` | The work-source item the task was, such as `backlog:x.md`; `null` for any other task |
 | `limit` | The usage limit that stopped its last session, when one did |
 | `escalation` | The packet the task stopped with, word for word: `decision`, `evidence`, `dead_ends`, `why_now`, `references` |
@@ -199,7 +199,7 @@ prints one JSON object holding a JSON Schema (draft 2020-12) under each format's
 is generated from the definitions the harness validates its own data with, so the two cannot
 drift apart, and every document and event the commands print is valid against it.
 
-The schema is open on purpose, to match the promise below. No object forbids a key it does not
+The schema is open on purpose, to match the promise in [What will not change](#what-will-not-change). No object forbids a key it does not
 name. A value that is one of a set of names (`standing`, `outcome`, `verdict` and the like) is
 published as a string, with the names in use today listed as `examples`. An event whose `type`
 the schema does not name is valid so long as it carries the six keys every event carries.

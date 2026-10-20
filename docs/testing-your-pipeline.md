@@ -10,7 +10,7 @@ does: that your gate judges the change, your closer lands it, and a bad reply is
 retried or escalated as your budgets say. It proves nothing about how well a
 real agent would do the work.
 
-Everything below is imported from the harness's two entry points:
+Everything in this guide is imported from the harness's two entry points:
 `delivery-service`, and `delivery-service/testing` for the testing API. Run the
 snippets with `npx tsx`.
 
@@ -22,7 +22,7 @@ snippets with `npx tsx`.
   `claude-mock`, is vendored in the harness and installed with it, in a checkout
   and in an installed copy alike.
 
-Nothing else: no global setup, no project-local setup beyond the install above, no
+Nothing else: no global setup, no project-local setup beyond installing the harness, no
 network and no API key. Every session the testing API starts runs the scripted
 agent and is given no credentials, even when your shell has some.
 
@@ -570,7 +570,7 @@ ways a script provokes it:
 Another role reads the same, with its own name first: `triage session did not
 complete: ...`.
 
-What the surface does next: each incomplete attempt above uses one slot of the
+What the surface does next: each incomplete attempt in the table uses one slot of the
 `terminus` budget and the attempt is run again. (The one incomplete a script
 cannot provoke is a session the runtime would not start at all; there is no
 session to script. That one is not retried: it escalates after a single attempt,
@@ -619,7 +619,7 @@ did, as a real one would.
 |---|---|
 | The scripted agent is not installed | `runSurfaceAgainstMock` and `mockSessionEnvironment` throw `claude-mock was not found at <path>.` |
 | A scripted envelope is malformed by mistake | `expectEnvelope` throws `The scripted envelope is not a valid worker result:`, then one line per problem, naming the field |
-| An expectation was never used | `assertFullyConsumed` throws, as above |
+| An expectation was never used | `assertFullyConsumed` throws |
 | A `fakeAgentPort` is asked for a role it has no reply for | the call rejects with `fakeAgentPort was given no reply for the triage role: the test must supply a "triage" handler` |
 | `slots` is not a whole number of 1 or more | `runSupervisorAgainstMock` throws `slots must be a whole number of 1 or more, but was 0.` before anything runs |
 | Two tasks share a `surfaceId` | `runSupervisorAgainstMock` throws `Each scripted task needs its own surfaceId, but "hello" is used more than once: a task's branch and working copy are named after it.` before anything runs |

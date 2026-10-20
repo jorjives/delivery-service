@@ -25,7 +25,7 @@ A role configuration has three fields:
 A mistake in any field throws `InvalidRoleConfig`, naming the field, before an
 agent is started. It is never reported as a failed run.
 
-Everything below is imported from the harness's single entry point,
+Everything in this guide is imported from the harness's single entry point,
 `delivery-service`. Install it in your project as
 [Getting started](getting-started.md) describes, then run the snippets with
 `npx tsx`.
@@ -82,12 +82,11 @@ in `permissions.deny` in your own Claude settings.
 **A misspelled tool name is not caught by `delivery validate`.** No list of valid
 tool names is checked, because none could stay in step with the agent runtime you
 have installed. A misspelling shows up during a run instead: the tool you meant is
-refused to the agent as a tool outside its list (see "What a role cannot do"
-below), and the run reports that refusal. If an agent says it was refused a tool
+refused to the agent as a tool outside its list (see [What a role cannot do](#what-a-role-cannot-do)), and the run reports that refusal. If an agent says it was refused a tool
 you thought you granted, check the spelling in `allowedTools` first.
 
 Whatever the file lists, a role still works only inside its working tree: the
-tool guard below applies to every role, overridden or not.
+tool guard in [What a role cannot do](#what-a-role-cannot-do) applies to every role, overridden or not.
 
 ## Making your first invocation
 
@@ -134,8 +133,8 @@ To run the worker instead, pass `workerRoleConfig` (or your own worker config).
 Nothing else changes.
 
 `invoke` uses the `claude` command on your machine and needs whatever credentials
-that command needs. To try it without a real agent or an API key, see "Trying it
-offline" below.
+that command needs. To try it without a real agent or an API key, see [Trying it
+offline](#trying-it-offline).
 
 ## What comes back
 
@@ -269,7 +268,7 @@ rather than acted on.
 
 ### Your first triage invocation
 
-Offline, with `claude-mock` (see "Trying it offline" above). Write the reply the
+Offline, with `claude-mock` (see [Trying it offline](#trying-it-offline)). Write the reply the
 mock should give to `/tmp/my-triage/mock.json`:
 
 ```json
@@ -359,7 +358,7 @@ const { state, outcome } = await run(dir, { repoPath: "/path/to/your/repo", work
 
 Pass `deterministicRouter` as `triage` instead to run with the fixed rules alone
 and never call the agent. Every run then retries and escalates exactly as the
-"Otherwise" column above says.
+"Otherwise" column of the table in [When triage is asked](#when-triage-is-asked) says.
 
 To watch triage being asked only on the last slot, and a flaky gate recovering
 on a free recheck, run:

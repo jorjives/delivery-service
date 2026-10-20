@@ -23,7 +23,7 @@ What the harness does with the report:
 
 A failed close is never sent back to the worker: the work is already accepted.
 
-Everything below is imported from the harness's single entry point,
+Everything in this guide is imported from the harness's single entry point,
 `delivery-service`. Install it in your project as
 [Getting started](getting-started.md) describes, then run the snippets with
 `npx tsx`.
@@ -108,7 +108,7 @@ interface Closer {
 
 | Field | What it is | When it is set |
 |---|---|---|
-| `worktreePath` | The surface's scratch worktree, holding the accepted work. It may already be gone on a replay (see below). | Always |
+| `worktreePath` | The surface's scratch worktree, holding the accepted work. It may already be gone on a replay (see [Replays: detect "already done" yourself](#replays-detect-already-done-yourself)). | Always |
 | `dir` | The surface's case file directory. `load(dir)` gives its header, whose `taskDef` is what was asked for; the built-in closers title their commit with it. When `delivery` is set there is no case file in it. | Always |
 | `repoPath` | The repository checkout the worktree was created from. It is shared with the people using that checkout: act on it, but never switch its checked-out branch. | Always |
 | `branch` | The branch to land: the surface's own, for example `surface/surface-7`, or, when `delivery` is set, the delivery branch, for example `delivery/main`. The worktree has it checked out. | Always |

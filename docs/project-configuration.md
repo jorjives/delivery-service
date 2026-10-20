@@ -268,7 +268,7 @@ fall out of step with your file. The count is always the list as it is written n
 
 ## Going further
 
-Everything above uses the harness's built-in pieces. When you need your own, each has a
+Everything so far uses the harness's built-in pieces. When you need your own, each has a
 guide of its own:
 
 - [Writing a gate](writing-a-gate.md): a check of your own, written in code, in place of a command.
@@ -309,7 +309,7 @@ done, one thing at a time, and writes the file for you. The [configuration refer
 lists every setting.
 
 A workflow may also carry its own `after` list, which replaces the project's `after` steps for
-the items it delivers (see "After landing" below); `"after": []` runs none, for a workflow whose
+the items it delivers (see [After landing](#after-landing)); `"after": []` runs none, for a workflow whose
 work has nothing to deploy or announce.
 
 A workflow may also set `hold` to a severity (`critical`, `high`, `medium` or `low`). A task whose item is rated that or more serious is finished and checked as usual, then waits on its own branch instead of landing: `delivery run --sources` reports it as held, and `delivery sign-off <item>` lands it, or `delivery reject <item>` sets it aside.
@@ -319,7 +319,7 @@ A workflow may also set `hold` to a severity (`critical`, `high`, `medium` or `l
 Rather than a fixed list, a project can keep its work as items in `.delivery/backlog/`. Each item
 is a markdown file, committed to the repository, named `<timestamp>-<slug>.md` (for example
 `20261016T090000Z-greet-people.md`) so that items added at the same time never collide. Its front
-matter says how it is done, and the text below it is the brief the agent receives:
+matter says how it is done, and the text after the front matter is the brief the agent receives:
 
     ---
     status: open
@@ -341,7 +341,7 @@ copied exactly; add `scope: repo` and `sensitive: true` for a password or key, w
 for across the whole project), `pattern-absent` (`pattern`, an extended regular expression, and
 `paths`) or `dependency-absent` (`package` and `version` as `package-lock.json` installs them). Every
 step's check then also requires the problem to be gone, as `item:<id>:resolved`.
-Any other field is available to the step prompts as `{{task.<field>}}`, such as `spec` above.
+Any other field is available to the step prompts as `{{task.<field>}}`, such as `spec` in the example item.
 
 Items are read from your base branch's last commit: `origin`'s, when the project has one. So commit
 an item, and push it if there is an origin, for it to be worked. Item files on disk that the base
@@ -433,7 +433,7 @@ Getting unstuck:
   longer want. The work that landed stays landed.
 
 When items come from a `github` source, or a `command` source with `"tracker": true`, follow-ups an agent raised while working them are raised
-in your tracker as the first after step (see "Work sources" below).
+in your tracker as the first after step (see [Work sources](#work-sources)).
 
 A workflow's own `after` replaces this list for the items it delivers.
 
@@ -450,10 +450,10 @@ A workflow's own `after` replaces this list for the items it delivers.
 `sources` says where `delivery run --sources` finds work, in order. Each source is an object with a
 `type`:
 
-- `backlog`: the items in `.delivery/backlog/`, as above.
+- `backlog`: the items in `.delivery/backlog/`, as in [A backlog of work items](#a-backlog-of-work-items).
 - `list`: the `tasks` you wrote in this file.
 - `command`: a command of your own, which takes a `command` string.
-- `github`: open issues on your GitHub repository that carry a label (see "GitHub issues" below).
+- `github`: open issues on your GitHub repository that carry a label (see [GitHub issues](#github-issues)).
 
 Any source may also take a `name`, which tells its entries apart in a run's report (it defaults to
 the `type`), and `"fallback": true`, which reads it only when no other source has any work. Two
