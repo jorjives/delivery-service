@@ -1,4 +1,6 @@
-# Work through a list of tasks
+# Work through a task list
+
+This guide shows how to keep a list of tasks in `delivery.config.json` and have the agent work down it, one at a time or several at once. It assumes you have [set up a project](project-configuration.md).
 
 Put the things you want done in your `delivery.config.json`, in the order you want them:
 
@@ -101,3 +103,9 @@ The list is yours to edit between runs. A new entry anywhere runs in its place; 
 changes only the order they are visited in; deleting an entry leaves its run in the history; and
 rewording an entry makes it a new task, which is also how you deliberately run a finished task
 again. `delivery run --task "..."` always runs exactly that one task and leaves the list alone.
+
+## Next steps
+
+- [Read the report](read-a-report.md): see what happened and what to do next
+- [When the shared environment breaks](shared-environment.md): what several tasks at once do when their shared setup fails
+- [Pick up an interrupted run](resume-a-run.md): carry on after a stop

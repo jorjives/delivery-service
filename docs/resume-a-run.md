@@ -1,4 +1,6 @@
-# Pick up a run that was interrupted
+# Pick up an interrupted run
+
+This guide shows how to carry on a run that stopped before it finished, whether you closed the terminal, pressed Ctrl-C or the machine restarted.
 
 If a run stops before it finishes, because you closed the terminal, pressed Ctrl-C or the
 machine restarted, run the same command again in the same repository:
@@ -32,3 +34,8 @@ the new task and leave the old run to pick up later.
 
 `--workflow <name>` does the task in the steps of a workflow from your config file; see
 [Workflows](project-configuration.md#workflows).
+
+## Next steps
+
+- [See what happened to a run](check-a-run.md): read a run without changing it
+- [How it works](concepts.md): why a run can be picked up

@@ -1,5 +1,7 @@
 # Check your setup before a run
 
+This guide shows how to check your configuration and see exactly what the agent will be told, before anything runs. Neither command starts an agent, needs a sign-in or needs a network.
+
 ```bash
 delivery validate
 ```
@@ -71,3 +73,8 @@ needs no agent, no sign-in and no network, changes nothing on disk, reports a pr
 configuration in the same words, and takes `--config` and `--repo`.
 
 For a workflow, `delivery preview --step build` shows what that step's agent will be told, with its own instruction and check, and the agent options it runs with (yours, with the step's laid over them). Add `--workflow <name>` when two workflows have a step of that name, and `--task "..."` to preview a task you would type.
+
+## Next steps
+
+- [Work through a task list](run-a-task-list.md): run what you have set up
+- [Configuration reference](configuration-reference.md): every setting

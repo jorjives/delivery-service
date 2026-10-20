@@ -1,4 +1,6 @@
-# Come back to your task list
+# Read the report
+
+This guide shows how to read `delivery report`, the plain-words account of your task list: what landed, what needs you and what was not started.
 
 After a list of tasks has run, overnight or while you were elsewhere, one command says what
 happened and what to do about it, in plain words:
@@ -110,3 +112,8 @@ no run id and no `--write`.
 To see a report without an agent or a sign-in, run `npm run demo:report-slice-1` in a checkout of
 this repository: it runs a list of four tasks against a scripted agent, prints the report, follows
 its advice, and prints the report again.
+
+## Next steps
+
+- [See what happened to a run](check-a-run.md): the full account of one run
+- [Reports as data](reporting.md): the same report as versioned JSON

@@ -1,4 +1,6 @@
-# Run it on a schedule
+# Run on a schedule
+
+This guide shows how to have `delivery run --sources` run by itself on a timer. It needs a backlog or other work source: see [Work through a backlog](work-a-backlog.md).
 
 Turn on a schedule once and `delivery run --sources` runs by itself for this project from then on:
 
@@ -20,3 +22,7 @@ to have it run while you are logged out too, run `loginctl enable-linger` once.
 
 On a machine without systemd user timers, `enable` refuses and prints the equivalent line to add
 to your own crontab instead.
+
+## Next steps
+
+- [Read the report](read-a-report.md): check what the scheduled runs did

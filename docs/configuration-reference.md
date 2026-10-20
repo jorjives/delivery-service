@@ -1,4 +1,6 @@
-# Configure it once
+# Configuration reference
+
+This page lists every setting in `delivery.config.json`, and the flags and environment variables that override them for one run.
 
 Settings that belong to a project live in a `delivery.config.json` beside your code. The
 command looks for one in the folder you run from and each folder above it, up to the top of
@@ -45,3 +47,8 @@ An unknown setting, a limit or a concurrency that is not a whole number, a close
 a role override that is empty or names a role that can't be changed, or a custom module it can't
 load all stop the command before it starts, naming what to fix.
 `delivery validate` finds the same mistakes without starting anything.
+
+## Next steps
+
+- [Set up a project](project-configuration.md): a worked example
+- [Command reference](cli-reference.md): every command and option

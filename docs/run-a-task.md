@@ -1,5 +1,7 @@
 # Run a task from the command line
 
+This guide shows how to hand one task to the agent and find out how it ended. You need the command installed (see [Get started](getting-started.md)), Node 22 or later, git, and a signed-in Claude Code.
+
 In a git repository whose `package.json` has a `test` script:
 
 ```bash
@@ -26,3 +28,8 @@ which remembers how each backlog item's runs ended, is kept beside them in
 `NO_COLOR`, turns colour off.
 
 To try it on something small first, use the [sample project](https://github.com/jorjives/delivery-service/tree/main/examples/sample-project).
+
+## Next steps
+
+- [Work through a task list](run-a-task-list.md): run several tasks in order
+- [Command reference](cli-reference.md): exit codes and `--json` output

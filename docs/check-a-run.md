@@ -1,5 +1,7 @@
 # See what happened to a run
 
+This guide shows how to find out how a run ended, follow one while it is going, and list every run in a repository. These commands only read: none of them changes a run.
+
 To find out how a run ended, in a new terminal or days later:
 
 ```bash
@@ -295,3 +297,9 @@ once, whose own `task` is `null`, the same four fields for each task it took. Th
 by when each run started, so it is a history; `delivery status` with no run id reports the run you
 were last working on, which is not always the newest one. A repository with no runs yet lists
 nothing and exits 0.
+
+## Next steps
+
+- [Read the report](read-a-report.md): the plain-words summary of your task list
+- [Reports as data](reporting.md): the JSON these commands print
+- [Command reference](cli-reference.md): every option

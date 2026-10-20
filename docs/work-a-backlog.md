@@ -1,5 +1,7 @@
 # Work through a backlog
 
+This guide shows how to work through work items kept in a backlog, one run at a time, and what to do when an item is parked.
+
 Items you keep in `.delivery/backlog/` (see [A backlog of work items](project-configuration.md#a-backlog-of-work-items))
 are worked by `delivery run --sources`, along with the other work sources in your config file, in
 order: due recurring items first, then each source in turn, and a fallback source only when nothing
@@ -22,3 +24,8 @@ Each item's work lands on one delivery branch, `delivery/main` (named after your
 A project that already tracks its work in GitHub issues can use them instead: add a `github`
 source, and label an issue `delivery` to have it worked (see
 [GitHub issues](project-configuration.md#github-issues)).
+
+## Next steps
+
+- [Run on a schedule](run-on-a-schedule.md): have the backlog worked without you
+- [Review your project](task-packs.md): fill the backlog with ideas from a review

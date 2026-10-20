@@ -1,4 +1,6 @@
-# Set it up by answering a few questions
+# Set up with questions
+
+This guide shows how to create a `delivery.config.json` by answering questions instead of writing the file yourself.
 
 If you would rather not write the config file yourself:
 
@@ -20,3 +22,8 @@ it as it was if you say no.
 
 It asks questions, so it needs a terminal. Run in a pipe or in CI it says so and stops, rather
 than guessing an answer on your behalf.
+
+## Next steps
+
+- [Check your setup](check-your-setup.md): validate the file and preview what the agent is told
+- [Configuration reference](configuration-reference.md): every setting
