@@ -12,8 +12,8 @@ check that you chose, such as `npm test`, runs against that copy. The work count
 the check passes.
 
 The check is ordinary code with a yes or no answer, so the same work gets the same verdict every
-time. This is what "deterministically gated" means: the model is free to be creative, and the
-gate is not.
+time. This is what "deterministically gated" means: the agent's output can vary, but the verdict on it
+cannot.
 
 ## The parts of a run
 
