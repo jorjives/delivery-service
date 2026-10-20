@@ -59,6 +59,45 @@ theme:
     - content.code.copy
     - content.action.edit
 
+# llms.txt and llms-full.txt: the pages as plain Markdown, for people reading
+# the docs through an AI assistant.
+plugins:
+  - search
+  - llmstxt:
+      full_output: llms-full.txt
+      markdown_description: >-
+        delivery-service hands an AI agent a task in plain English. It works on a
+        copy of your repository, your own tests check the result, and the work is
+        left on a branch for you.
+      sections:
+        Start:
+          - index.md
+          - getting-started.md
+          - concepts.md
+        Guides:
+          - project-configuration.md
+          - set-up-with-init.md
+          - check-your-setup.md
+          - run-a-task.md
+          - run-a-task-list.md
+          - work-a-backlog.md
+          - run-on-a-schedule.md
+          - resume-a-run.md
+          - shared-environment.md
+          - check-a-run.md
+          - read-a-report.md
+          - task-packs.md
+        Extend:
+          - configuring-a-role.md
+          - writing-a-gate.md
+          - writing-a-closer.md
+          - writing-a-pack.md
+          - testing-your-pipeline.md
+        Reference:
+          - cli-reference.md
+          - configuration-reference.md
+          - reporting.md
+
 markdown_extensions:
   - admonition
   - attr_list

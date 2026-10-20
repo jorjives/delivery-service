@@ -12,4 +12,4 @@ verify:
 
 # The documentation site, built as the Docs workflow builds it.
 docs:
-	uvx --with 'mkdocs-material~=9.7' mkdocs build --strict --site-dir site
+	uvx --with 'mkdocs-material~=9.7' --with 'mkdocs-llmstxt~=0.5' mkdocs build --strict --site-dir site

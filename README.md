@@ -31,7 +31,7 @@ The documentation is a site, built from [`docs/`](docs/) with MkDocs: <https://j
 To preview the site while you edit it:
 
 ```bash
-uvx --with 'mkdocs-material~=9.7' mkdocs serve
+uvx --with 'mkdocs-material~=9.7' --with 'mkdocs-llmstxt~=0.5' mkdocs serve
 ```
 
 `make docs` builds it with warnings as errors, the same as the Docs workflow.
