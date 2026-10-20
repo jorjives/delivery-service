@@ -3,12 +3,11 @@ name: Docs
 on:
   push:
     branches: ["main"]
+  # A pull request builds the site (the check) but never deploys it.
+  pull_request:
+    branches: ["main"]
+    paths: ["docs/**", "mkdocs.yml", ".github/workflows/docs.yml"]
   workflow_dispatch:
-
-# One deployment at a time; a newer push supersedes a queued one.
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
   build:
@@ -30,6 +29,11 @@ jobs:
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
+    # One deployment at a time; a newer push supersedes a queued one.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     permissions:
       pages: write
