@@ -213,7 +213,7 @@ import { promisify } from "node:util";
 const run = promisify(execFile);
 
 // Git sets GIT_DIR and friends when it runs hooks. Left in place they would
-// point every command below at the wrong repository, whatever cwd says.
+// point every command in this module at the wrong repository, whatever cwd says.
 const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("GIT_")));
 
 // Arguments as a list, never a shell string: branch names can come from task content.
@@ -255,7 +255,7 @@ async function land(ctx) {
   if (existsSync(ctx.worktreePath)) {
     await git(ctx.worktreePath, ["add", "-A"]);
     if ((await git(ctx.worktreePath, ["status", "--porcelain"])) !== "") {
-      // The built-in closers title this commit with the task instead (see `dir` above).
+      // The built-in closers title this commit with the task instead (see the `dir` row of the context table).
       await git(ctx.worktreePath, ["commit", "-m", `Accepted work from ${ctx.branch}`]);
     }
   }
