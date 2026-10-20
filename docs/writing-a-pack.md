@@ -1,30 +1,69 @@
-# Writing a pack
+# Write a pack
 
-A review pack is a folder of data that describes what a review looks for and how it proves a fix. You write one by copying a built-in pack, changing its manifest and instructions, proving it with `delivery packs check`, then running it against your projects.
+This guide is for you if you want a review of your own: a folder that tells an agent what to look for in a project, and that proves its fixes with the project's own tests. You copy a built-in pack, change its manifest and instructions, prove it with `delivery packs check`, then run it against your projects. It takes about half an hour.
+
+## Before you start
+
+- Install the command and run a task once: [Get started](getting-started.md).
+- Know what a review, an [idea](glossary.md#idea) and the [backlog](glossary.md#backlog) are: [Review your project](task-packs.md).
 
 ## What a pack is
 
-A pack holds only data: `pack.json` (the manifest), `scan.md` (the review instructions), `fix.md` (the fix instructions), and `fixtures/` (a small project and scripted replies to prove the pack works). It cannot give the agent tools or commands, or bring code of its own for its check. A pack that tries is refused: `delivery packs check` names which field is not allowed, quoting a message like `"scan.allowedTools" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check`.
+A [pack](glossary.md#pack) holds only data: `pack.json` (the manifest), `scan.md` (the review instructions), `fix.md` (the fix instructions), and `fixtures/` (a small project and scripted replies that prove the pack works). It cannot give the agent tools or commands, or bring code of its own for its check. A pack that tries is refused: `delivery packs check` names which field is not allowed, quoting a message like `"scan.allowedTools" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check`.
 
 ## Start from a built-in pack
 
-Copy a built-in pack as a starting point:
+Copy the built-in `code` pack. If you installed the command globally, as [Get started](getting-started.md) does:
 
 ```bash
-# In your repository
+cp -r "$(npm root -g)/delivery-service/packs/code-review" ./my-review
+```
+
+If you installed it in this project instead (see [Importing the library in your own project](getting-started.md#importing-the-library-in-your-own-project)):
+
+```bash
 cp -r "$(npm root)/delivery-service/packs/code-review" ./my-review
 ```
 
-Or, in a checkout of the harness:
+Or, in a checkout of the harness repository:
 
 ```bash
 cp -r packs/code-review ./my-review
 ```
 
-Then change `pack.json`:
+Then make the folder yours:
+
+1. Change `pack.json`. The `name` must not be one that is already taken (`code` and `security` are built in), or the check stops with `Two things define the workflow "code:scan"`.
+
+    ```json
+    {
+      "schema": "delivery.pack/2",
+      "name": "mypack",
+      "version": "1.0.0",
+      "title": "My review",
+      "summary": "Looks for issues in my code.",
+      "scan": { "prompt": "scan.md" },
+      "fix": { "prompt": "fix.md" }
+    }
+    ```
+
+2. Replace the instructions in `scan.md` and `fix.md` with text for your review.
+3. In `fixtures/review.json`, change every `workflow: code:fix` to `workflow: <name>:fix`, using the name from step 1.
+4. Replace the contents of `fixtures/` to match your review: see [Fixtures](#fixtures). The copied ones describe the code review's own problems.
+
+## Check it as you type
+
+Get the JSON Schema so your editor can check your `pack.json`:
+
+```bash
+delivery packs --schema > pack.schema.json
+```
+
+Then put `"$schema"` first in `pack.json`:
 
 ```json
 {
+  "$schema": "./pack.schema.json",
   "schema": "delivery.pack/2",
   "name": "mypack",
   "version": "1.0.0",
@@ -35,88 +74,22 @@ Then change `pack.json`:
 }
 ```
 
-Replace the instructions in `scan.md` and `fix.md` with text for your review.
-
-## pack.json, field by field
-
-Every key `pack.json` may hold is listed here, and any other key is refused. Bump `version` when you change the pack's manifest or instructions.
-
-| Field | Value | Notes |
-|-------|-------|-------|
-| `$schema` | `string` | Where an editor finds the schema to check this file against while it is written. Ignored by the harness. Optional. |
-| `schema` | `string` | Always `delivery.pack/2`, the format this harness reads. Required. |
-| `name` | `string` | Short lower-case name of the review, such as `code`. Its two workflows are `<name>:scan` and `<name>:fix`. Required. |
-| `version` | `string` | Version of the pack, such as `1.0.0`. Required. |
-| `title` | `string` | The review's title, such as `Code review`. Required. |
-| `summary` | `string` | One sentence saying what it looks for. Required. |
-| `scan` | `object` | The scan workflow: see [scan](#scan). Required. |
-| `fix` | `object` | The fix workflow: see [fix](#fix). Required. |
-| `hold` | `string` | The severity from which fixes wait for the owner's sign-off: `critical`, `high`, `medium` or `low`. Optional; when absent, nothing is held. |
-
-### scan
-
-The scan workflow reads your project and may only add ideas to `.delivery/backlog/`. Holds:
-
-| Field | Value | Notes |
-|-------|-------|-------|
-| `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `scan.md`. The harness adds its own description of an idea after your instructions. Required. |
-
-### fix
-
-The fix workflow changes the project to fix one idea. Holds:
-
-| Field | Value | Notes |
-|-------|-------|-------|
-| `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `fix.md`. Required. |
-| `guards` | `object` | `{ "add": ["backlog-only"] }`: guards this pack turns on beside `tests-unchanged`, which every fix already has. Each name must be one the schema lists. Optional. |
-
-Your pack becomes two workflows, `<name>:scan` and `<name>:fix`: list its folder under `packs` in `delivery.config.json` to use it.
-
-## The checks an idea may use
-
-The harness, not your pack, writes each idea's check. Every idea a scan adds names one of these, and the reviewing agent is told the list:
-
-| Check | Meaning |
-|-------|---------|
-| `anchor-gone` | Fixed when the flagged code is gone from its `path`. The usual choice. |
-| `pattern-absent` | Fixed when an extended regular expression (as `git grep -E` reads it) no longer matches anywhere in the named `paths`. Use this when the problem is a pattern, not a single piece of code. |
-| `dependency-absent` | Fixed when `package-lock.json` no longer installs the named package at the named version. Use it for a library version you know to be unsafe. |
-
-An idea whose check cannot find its problem in the project as it stands now is refused, so an idea is only offered when its fix can be proved.
-
-## Check it as you type
-
-Get the JSON Schema so your editor can check your `pack.json`:
-
-```bash
-delivery packs --schema > pack.schema.json
-```
-
-Then at the top of `pack.json`:
-
-```json
-{
-  "$schema": "./pack.schema.json",
-  ...
-}
-```
-
-Your editor will flag unknown keys and invalid values as you type.
+Your editor flags unknown keys and invalid values as you type.
 
 ## Fixtures
 
 The fixtures prove your pack works before you run it against a real project. They live in `fixtures/`:
 
-- `project/`: a small project with a `test` script (for example, `"test": "node --test"` in `package.json`). Committed fresh for each check run.
-- `review.json`: a claude-mock script for the scan: its session writes your ideas into `.delivery/backlog/` with `effects` and replies `completed`. See `packs/code-review/fixtures/review.json` for a worked one.
+- `project/`: a small project with a `test` script (for example, `"test": "node --test"` in `package.json`). Committed fresh for each check run. It must not be empty or hold a `.git` folder.
+- `review.json`: a claude-mock script for the scan. claude-mock is the scripted stand-in for the agent (see [Test your pipeline](testing-your-pipeline.md)). Its session writes your ideas into `.delivery/backlog/` with `effects` and replies `completed`. See `packs/code-review/fixtures/review.json` in the harness repository for a worked one.
 - `fixes.json`: a claude-mock script for the fixes, honest and cheating: one honest fix per problem, and one cheat per problem that should be refused.
-- `expect.json`: names the titles the review adds (`found`), the fixes that pass (`fixed`) and the cheats that are refused (`refused`).
+- `expect.json`: names the titles the review adds (`found`), the fixes that pass (`fixed`) and the cheats that are refused (`refused`). Each list needs at least one title.
 
 `delivery packs check ./my-review` runs `delivery review`, `delivery approve --all` and `delivery run --sources` against those scripts in a scratch copy of `fixtures/project`, with nothing sent to a real agent.
 
 ### fixtures/fixes.json
 
-This claude-mock script holds several expectations, each describing a file change (an honest fix or a cheat). Put the retry after a refusal first, so a refused cheat ends quickly without burning through the fix budget:
+This script holds several expectations, each describing a file change (an honest fix or a cheat). Give each expectation a `when`: the first one that matches the prompt is used. Without it, every idea gets the same reply and the check stops showing what you wrote. Put the retry after a refusal first, so a refused cheat ends quickly without burning through the fix budget. This is the shipped one, which keys each fix on the idea's title:
 
 ```json
 {
@@ -126,16 +99,23 @@ This claude-mock script holds several expectations, each describing a file chang
       "json": { "status": "escalate", "category": "authority", "rationale": "Told its fix was refused, the scripted agent gives up." }
     },
     {
+      "when": { "promptContains": "The total can go below zero" },
       "effects": [{ "edit": { "path": "total.js", "old": "return price - discount;", "new": "return Math.max(0, price - discount);" } }],
       "json": { "status": "completed", "rationale": "A total never goes below zero." }
     },
     {
-      "effects": [{ "edit": { "path": "settings.js", "old": "...", "new": "..." } }, { "delete": { "path": "old-file.js" } }],
-      "json": { "status": "completed", "rationale": "..." }
+      "when": { "promptContains": "A missing or broken settings file gives an unhelpful error" },
+      "effects": [
+        { "edit": { "path": "settings.js", "old": "return JSON.parse(readFileSync(path, \"utf-8\"));", "new": "const text = readFileSync(path, \"utf-8\");\n  return JSON.parse(text);" } },
+        { "delete": { "path": "total.test.js" } }
+      ],
+      "json": { "status": "completed", "rationale": "Read the file first, and removed a test that got in the way." }
     }
   ]
 }
 ```
+
+The second expectation is the honest fix. The third is a cheat: it deletes a test, so the check refuses it.
 
 ### fixtures/expect.json
 
@@ -161,19 +141,13 @@ A fix at or above the pack's `hold` severity counts as passing its check when it
 delivery packs check ./my-review
 ```
 
-Running the fixtures runs the fixture project's own tests on your machine, as a run runs a project's tests, so it asks you to confirm you trust the pack's code before anything runs: `y` to continue, Enter or `n` to leave it alone. The command runs that test command with none of your credentials and a scratch `HOME` in place of your own, but it is still real code with your real filesystem and process access; only check a pack whose `fixtures/project` you have read or trust. In a script or CI, where nothing can ask, pass `--yes` once you do.
+Running the fixtures runs the fixture project's own tests on your machine, as a run runs a project's tests, so the command asks you to confirm you trust the pack's code before anything runs: `y` to continue, Enter or `n` to leave it alone. It runs that test command with none of your credentials and a scratch `HOME` in place of your own. It is still real code with your real filesystem and process access, and this is not a sandbox against hostile code, so only check a pack whose `fixtures/project` you have read or trust. In a script or CI, where nothing can ask, pass `--yes` once you do. Without a terminal and without `--yes`, the command prints `This isn't a terminal, so I can't ask whether you trust this pack's code. Pass --yes once you do.` and exits 2.
 
-The check names any problem with the manifest or fixtures by file and field:
-
-```
-my-review/pack.json: "scan.checks" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check.
-```
-
-Exit code 2.
+Declining leaves the pack unchecked and exits 0. The command prints `Left my-review alone: I only run a pack's own code once you say you trust it.`
 
 If the pack is ready, the check runs the fixtures:
 
-```
+```text
 Checking the review in my-review…
 ✓ pack.json: the mypack review, version 1.0.0.
 ✓ The scripted review found 2 problems, as fixtures/expect.json expects: "The total can go below zero", "A missing or broken settings file gives an unhelpful error".
@@ -185,16 +159,26 @@ Ready to use: delivery review ./my-review
 
 Exit code 0.
 
-### What the check can report
+### When the check finds a problem
 
-- `"The scripted review found X problems, as fixtures/expect.json expects"`: success.
-- `"The scripted fix for X did not pass its check: it ended ..."`: the fix did not make the change it claimed, or broke a test.
-- `"The scripted cheat for X was not refused: it ended ..."`: the cheat passed its check when the fixtures say it should fail.
-- `"The scripted review did not add X"`: the scripted review did not write an idea with this title.
-- `"The scripted review also added X, which found does not list"`: an unexpected idea.
-- `"The scripted review could not be used: ..."`: the reply was valid JSON but not a valid review (wrong category name, for example).
+Each problem is printed as `<file>: <what is wrong>.` and the command exits 2. For example, when `expect.json` lists a title the scripted review did not write:
 
-Exit code 2 for any of these. Passing runs use exit code 0.
+```text
+Checking the review in my-review…
+my-review/fixtures/expect.json: the scripted review did not add "The login page is slow".
+Nothing was sent to a real agent: every reply came from the review's fixtures.
+```
+
+What each message means, and the fix:
+
+- `pack.json: "<field>" is not part of the pack format ...`, or a missing or invalid field: correct the manifest. A manifest with a mistake stops the check before any fixture runs.
+- `<fixture file>: is missing: it holds ...`, `is not valid JSON`, or `fixtures/project: is empty`: add or repair that file. A `.git` folder inside `fixtures/project` is refused.
+- `expect.json: ... must name at least one problem`: each of `found`, `fixed` and `refused` needs a title, and every title in `fixed` and `refused` must also be in `found`.
+- `the scripted review could not be used: ...`: the review did not run, for example because the pack name is already taken, or an idea's `workflow:` is not `<name>:fix`.
+- `the scripted review did not add "X"` and `the scripted review also added "X", which "found" does not list`: `review.json` and `found` disagree. Make them name the same titles.
+- `the scripted fixes could not run: ...`: the fixes did not run; the rest of the message says why.
+- `the scripted fix for "X" did not pass its check: it ended ...`: the fix did not make the change it claimed, or broke a test.
+- `the scripted cheat for "X" was not refused: it ended ...`: the cheat passed its check when the fixtures say it should fail.
 
 ### With --json
 
@@ -202,23 +186,77 @@ Exit code 2 for any of these. Passing runs use exit code 0.
 delivery packs check ./my-review --json
 ```
 
-The whole result as one JSON document, with the same exit codes.
+Prints the whole result as one JSON document, with the same exit codes. Its keys are `ready`, `pack` (`name`, `version` and `hash`), `problems`, `run` (`found`, `fixed` and `refused`) and `sentToAgent`, which is always `false`.
 
 ## Use it
 
-Once the check passes, use the pack exactly as you would a built-in one:
+Once the check passes, run the pack against your project exactly as you would a built-in one:
 
 ```bash
 delivery review ./my-review
 ```
 
-This proves the folder against your project.
+This runs a real review of your project with a real agent, so Claude Code must be signed in. It adds one idea to your backlog for each problem it finds. See [Review your project](task-packs.md).
+
+To have the ideas fixed with `delivery approve` and `delivery run --sources`, list the folder under `packs` in `delivery.config.json`, so the `<name>:fix` workflow exists:
+
+```json
+{ "packs": ["./my-review"] }
+```
+
+See [`packs`](configuration-reference.md#packs).
+
+## The manifest, field by field
+
+Every key `pack.json` may hold is listed here, and any other key is refused. Bump `version` when you change the pack's manifest or instructions.
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `$schema` | `string` | Where an editor finds the schema to check this file against while it is written. Ignored by the harness. Optional. |
+| `schema` | `string` | Always `delivery.pack/2`, the format this harness reads. Required. |
+| `name` | `string` | Short name of the review, such as `code`: lower-case letters, digits and dashes, starting with a letter or digit. Its two workflows are `<name>:scan` and `<name>:fix`. Required. |
+| `version` | `string` | Three numbers separated by dots, such as `1.0.0`. Required. |
+| `title` | `string` | The review's title, such as `Code review`. Required. |
+| `summary` | `string` | One sentence saying what it looks for. Required. |
+| `scan` | `object` | The scan workflow: see [scan](#scan). Required. |
+| `fix` | `object` | The fix workflow: see [fix](#fix). Required. |
+| `hold` | `string` | The severity from which fixes wait for the owner's sign-off: `critical`, `high`, `medium` or `low`. Optional; when absent, nothing is held. |
+
+### scan
+
+The scan workflow reads your project and may only add ideas to `.delivery/backlog/`. Holds:
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `scan.md`. The harness adds its own description of an idea after your instructions. Required. |
+
+### fix
+
+The fix workflow changes the project to fix one idea. Holds:
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `fix.md`. Required. |
+| `guards` | `object` | `{ "add": ["backlog-only"] }`: [guards](glossary.md#guard) this pack turns on beside `tests-unchanged`, which every fix already has. Each name must be one that `delivery packs --schema` lists; the guards are described in the [configuration reference](configuration-reference.md#guards). Optional. |
+
+### The checks an idea may use
+
+The harness, not your pack, writes each idea's check. Every idea a scan adds names one of these, and the reviewing agent is told the list:
+
+| Check | Meaning |
+|-------|---------|
+| `anchor-gone` | Fixed when the flagged code is gone from its `path`. The usual choice. |
+| `pattern-absent` | Fixed when an extended regular expression (as `git grep -E` reads it) no longer matches anywhere in the named `paths`. Use this when the problem is a pattern, not a single piece of code. |
+| `dependency-absent` | Fixed when `package-lock.json` no longer installs the named package at the named version. Use it for a library version you know to be unsafe. |
+
+An idea whose check cannot find its problem in the project as it stands now is refused, so an idea is only offered when its fix can be proved.
 
 ## From your own test suite
 
-Import the check from the testing export:
+Import the check from the testing export, in a Vitest or Jest test file. The path is relative to the directory you run the tests from:
 
 ```typescript
+import { describe, it, expect } from "vitest";
 import { checkPack } from "delivery-service/testing";
 
 describe("my review pack", () => {
@@ -228,21 +266,25 @@ describe("my review pack", () => {
 });
 ```
 
-`checkPack` itself asks no questions; the confirmation in [Run the check](#run-the-check) is the CLI command's, for a person checking a pack they did not write. Your own test suite calls it directly on your own pack, with the same sandboxed environment but no prompt.
+This needs the project-local install (see [Importing the library in your own project](getting-started.md#importing-the-library-in-your-own-project)). `checkPack` asks no questions; the confirmation in [Run the check](#run-the-check) is the command's, for a person checking a pack they did not write. Your own test suite calls it directly on your own pack, with the same sandboxed environment but no prompt.
 
 ## What a scripted check cannot prove
 
 A scripted check proves:
 
 - Your pack's manifest is valid.
-- Your instructions are complete enough for the scripted agent to find the problems you wrote.
-- Your honest fix actually fixes the problem (the check passes).
+- Your honest fix fixes the problem (the check passes).
 - Your cheat is caught by the check (it fails).
 
-A scripted check cannot prove:
+It cannot prove:
 
+- Anything about `scan.md` and `fix.md`: the scripted agent never reads them.
 - How good your review is on real code. A person must read your instructions and decide if they lead to useful findings.
-- Whether a real agent follows your `scan.md`. As `docs/testing-your-pipeline.md` explains, a real agent may follow the instructions differently.
+- Whether a real agent follows your `scan.md`. As [Test your pipeline](testing-your-pipeline.md) explains, a real agent may follow the instructions differently.
 - Whether your review catches real problems in your area.
 
-Unlike `delivery review`, `delivery packs check` runs `fixtures/project/`'s own `test` script (the way it proves a fix broke nothing). The confirmation in [Run the check](#run-the-check), and the sandboxed environment that command runs with, guard against an accidental credential leak; they are not a sandbox against hostile code. Only check a pack someone else wrote after reading and understanding what their `fixtures/project/` tests, and what their fixtures claim the review should find.
+## See also
+
+- [Review your project](task-packs.md): run a review and choose what to fix.
+- [Test your pipeline](testing-your-pipeline.md): the scripted agent behind the fixtures.
+- [Command reference](cli-reference.md): `delivery review` and `delivery packs check`.
