@@ -1,0 +1,108 @@
+site_name: delivery-service
+site_description: Hand an AI agent a task in plain English. Your own tests check the result, and the work is left on a branch for you.
+site_url: https://jorjives.github.io/delivery-service/
+repo_url: https://github.com/jorjives/delivery-service
+repo_name: jorjives/delivery-service
+edit_uri: edit/main/docs/
+copyright: delivery-service
+
+# docs/ also keeps the design history (design notes, PRDs, specs, personas):
+# records of how the harness was designed, not documentation of how to use it.
+exclude_docs: |
+  prd/
+  superpowers/
+  personas.md
+  agent-interface.md
+  multi-surface-control-flow.md
+  single-surface-control-flow.md
+  provisioning.md
+
+validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
+
+theme:
+  name: material
+  language: en
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - navigation.instant
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Home: index.md
+  - Get started: getting-started.md
+  - Guides:
+      - Set up:
+          - Set up a project: project-configuration.md
+          - Set up with questions: set-up-with-init.md
+          - Check your setup: check-your-setup.md
+      - Run work:
+          - Run a task: run-a-task.md
+          - Work through a task list: run-a-task-list.md
+          - Work through a backlog: work-a-backlog.md
+          - Run on a schedule: run-on-a-schedule.md
+          - Pick up an interrupted run: resume-a-run.md
+          - When the shared environment breaks: shared-environment.md
+      - Follow results:
+          - See what happened to a run: check-a-run.md
+          - Read the report: read-a-report.md
+      - Review your project: task-packs.md
+  - Extend:
+      - Configure a role: configuring-a-role.md
+      - Write a gate: writing-a-gate.md
+      - Write a closer: writing-a-closer.md
+      - Write a pack: writing-a-pack.md
+      - Test your pipeline: testing-your-pipeline.md
+  - Concepts: concepts.md
+  - Reference:
+      - Command reference: cli-reference.md
+      - Configuration reference: configuration-reference.md
+      - Reports as data: reporting.md
+
