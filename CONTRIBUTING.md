@@ -121,6 +121,31 @@ Write each page as one kind: a tutorial, a how-to guide, reference or an explana
 person, present tense and sentence-case headings; link to a section by name rather than saying
 "above" or "below"; use no em-dashes.
 
+Every page:
+
+- opens with what it covers, who it is for and what the reader can do afterwards;
+- links its prerequisites rather than repeating them;
+- uses `##` and `###` headings only, under one `#` title that matches its `nav` label;
+- shows the output of every command it asks you to run, as the command prints it today;
+- marks values the reader replaces as `<like-this>`, and says what goes there;
+- says what the reader sees when the step goes wrong, and how to fix it;
+- ends with "Next steps" (tutorials and guides) or "See also" (reference and explanation).
+
+Fence commands as `bash`, output as `text` and configuration as `json`. Do not use "simply",
+"just", "easy", "please" or "let's".
+
+Use one word for one thing. [`docs/glossary.md`](docs/glossary.md) defines each term; add any new
+one there. In particular:
+
+| Write | Not | Note |
+|---|---|---|
+| check | gate, test | In prose. `gate` is the setting, the command line's word and the library's |
+| working copy | worktree, working tree, scratch copy | In command guides. The library guides say worktree, the API's word |
+| configuration file | config file, config | Then `delivery.config.json` |
+| run | surface | `surface` only where the reader sees it: branch names, JSON, the library API |
+| triage | close-triage | |
+| pick up (a run) | resume, carry on | `delivery resume` is the command |
+
 ## Describing your change
 
 Every change that a user of the package would notice needs a changeset: a short

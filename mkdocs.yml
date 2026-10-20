@@ -93,6 +93,7 @@ plugins:
           - cli-reference.md
           - configuration-reference.md
           - reporting.md
+          - glossary.md
 
 # Only what the pages use: attr_list and md_in_html build the home page's
 # buttons and cards; the rest is Material's standard code rendering.
@@ -134,4 +135,5 @@ nav:
       - Command reference: cli-reference.md
       - Configuration reference: configuration-reference.md
       - Reports as data: reporting.md
+      - Glossary: glossary.md
 
