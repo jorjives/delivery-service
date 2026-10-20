@@ -1,7 +1,7 @@
 # Reports as data
 
 Everything `delivery report`, `delivery status` and `delivery status --watch` say in words is
-also available as data, for a dashboard, a script or a CI step. There are two formats, each
+also available as data, for a dashboard, a script or a CI step. There are two formats. Each
 names its own version, and both come with a published schema and a promise about what will not
 change.
 
@@ -14,14 +14,14 @@ change.
 
 With `--json`, standard output holds only data: no colour, and no sentence meant for a person.
 Anything said alongside goes to standard error. A command that cannot answer (a run id that
-names nothing) still says so in words on standard error and exits 2.
+names nothing) says so in words on standard error and exits 2.
 
 ## The report document
 
 `delivery report --json` prints one `delivery.report/1` document about your task list, as
 `delivery report` does. `delivery report <run-id> --json` prints it about one task's run, or
-about one run of several tasks at once. It is the document saved as `.delivery/last-report.json`
-when a run ends.
+about one run of several tasks at once. A run saves the document as `.delivery/last-report.json`
+when it ends.
 
 ```bash
 delivery report --json
@@ -103,17 +103,17 @@ whether a change was safe, and nothing a run does depends on it.
 ## Time and cost
 
 `usage` holds `costUsd`, an estimated cost in US dollars, and `durationMs`, how long the agent
-sessions took in milliseconds, each added up over the sessions the agent runtime reported both
-for. The figures are the runtime's own: the harness counts no tokens and keeps no prices, so
+sessions took in milliseconds. Each is added up over the sessions for which the agent runtime reported both.
+The figures are the runtime's own: the harness counts no tokens and keeps no prices, so
 the cost is an estimate. `usage` is `null` when no session reported them, never `0` for lack of
 data.
 
 `usageRecorded` says how complete the figure is: `recorded` sessions of the `sessions` that ran.
-The figure is the whole only when the two are equal. A task's sessions are each time its agent was
-set to work, each of its own repairs of the check, and each triage round an agent decided; a
-round the rules decided ran no session and is not counted, nor is a session the agent runtime
-never started; a session still going counts as not recorded yet. The document's own figure adds up its tasks' and, where there is a run of
-several tasks, that run's repairs of the setup every task shares; a task's figure leaves those
+The figure covers everything only when the two are equal. A task's sessions are each time its agent was
+set to work, each of its own repairs of the check, and each triage round an agent decided. Three
+things are not counted: a round the rules decided, which ran no session; a session the agent runtime
+never started; and a session still going, which counts as not recorded yet. The document's own figure adds up its tasks' figures and, where there is a run of
+several tasks, that run's repairs of the setup every task shares. A task's figure leaves those
 out. A run made before the harness recorded these counts its sessions with `recorded` at `0`.
 
 Nothing a run does depends on these figures: no run is stopped, slowed or changed because of them.
@@ -135,8 +135,8 @@ state history and every triage round under `report.surfaces`. `delivery status -
 delivery status --watch --json
 ```
 
-prints one `delivery.event/1` event to a line, as newline-delimited JSON, following your task
-list or the run you name exactly as `delivery status --watch` does:
+prints one `delivery.event/1` event per line, as newline-delimited JSON. It follows your task
+list or the run you name, as `delivery status --watch` does:
 
 ```text
 {"schema":"delivery.event/1","run":null,"surface":null,"seq":0,"subject":"list","at":null,"type":"stream_started"}
@@ -180,13 +180,13 @@ arrives, so a reader knows when to stop without watching the process. Its `endin
 | `nothing_recorded` | The folder holds no run to follow | 0 |
 
 Every event between the two markers is one recorded entry, never a difference between two looks
-at the record. Replaying a finished run therefore prints exactly the lines that following it
-live printed. Within one task the order is always the order of its log. Across tasks working at
+at the record. Replaying a finished run therefore prints the same lines that following it
+live printed. Within one task the order is the order of its log. Across tasks working at
 the same time the order is by recorded time, so two tasks' events can interleave differently
 between a live watch and a replay.
 
-Where nothing records whether the work is still going, the stream waits: it never decides for
-itself that a run is dead.
+Where nothing records whether the work is still going, the stream waits. It never decides
+that a run is dead.
 
 ## The schema
 
@@ -195,18 +195,18 @@ delivery report --schema
 ```
 
 prints one JSON object holding a JSON Schema (draft 2020-12) under each format's name,
-`delivery.report/1` and `delivery.event/1`. It needs no project and reads no record. The schema
-is generated from the definitions the harness validates its own data with, so the two cannot
+`delivery.report/1` and `delivery.event/1`. It needs no project and reads no record. The harness generates the schema
+from the definitions it validates its own data with, so the two cannot
 drift apart, and every document and event the commands print is valid against it.
 
-The schema is open on purpose, to match the promise in [What will not change](#what-will-not-change). No object forbids a key it does not
-name. A value that is one of a set of names (`standing`, `outcome`, `verdict` and the like) is
+The schema is open on purpose, to match the promise in [What will not change](#what-will-not-change).
+No object forbids a key it does not name. A value that is one of a set of names (`standing`, `outcome`, `verdict` and the like) is
 published as a string, with the names in use today listed as `examples`. An event whose `type`
 the schema does not name is valid so long as it carries the six keys every event carries.
 
 An event of a known `type` is validated only for the six keys every event carries. The schema
 does not check the keys that type requires. A `surface_state` event lacking a `state` field
-still passes validation. Those keys are held by the stability promise instead; the published
+still passes validation. The stability promise holds those keys; the published
 schema enforces only the envelope.
 
 ## What will not change
@@ -217,7 +217,7 @@ Within a version (the `/1` in `delivery.report/1` and `delivery.event/1`):
    removed. The harness's own test suite fails if one is.
 2. New keys, new names and new event types may be added. Ignore keys you do not know, and
    treat a name or an event type you do not know as "other" rather than as an error.
-3. A change that breaks this is a new version, which you would have to ask for.
+3. A change that breaks this is a new version, which you must ask for.
 4. The keys `delivery status --json` printed before it carried `report` are under the same
    promise.
 5. Do not parse sentences meant for people. `plain.sentence`, `plain.next`, `plain.agentSaid`,

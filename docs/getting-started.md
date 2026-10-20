@@ -1,22 +1,22 @@
 # Getting started
 
-This guide takes you from nothing to a finished run: you install the `delivery`
-command, point it at a small sample project, and watch an agent do a task your
-own tests check. It takes about ten minutes, and you do not need to read any
-harness source to follow it.
+This guide takes you from nothing to a finished run. You install the `delivery`
+command, point it at a small sample project, and watch an agent do a task that
+your own tests check. It takes about ten minutes, and you need not read any
+harness source.
 
 ## What you need
 
 - Node.js 22 or later, and `git`.
 - Claude Code, signed in. Check with `claude auth status`; if it says you are not
   signed in, run `claude auth login`, or set `ANTHROPIC_API_KEY`.
-- A copy of the harness checkout, which is where you pack the command from.
+- A copy of the harness checkout, where you pack the command.
 
 ## 1. Install the command
 
 The harness is not on the public npm registry yet: its first publication waits on
-a licence decision. Until then you install it from a copy you pack yourself, which
-is what the rest of this guide assumes.
+a licence decision. Until then, install it from a copy you pack yourself. The rest
+of this guide assumes you have.
 
 In the harness checkout:
 
@@ -32,22 +32,22 @@ npm install -g ./delivery-service-*.tgz
 ```
 
 If that fails with a permission error, npm's global folder belongs to the system
-(common on Linux). Install into your own home instead, with no `sudo`:
+(common on Linux). Install into your home folder instead, with no `sudo`:
 
 ```bash
 npm install -g --prefix ~/.local ./delivery-service-*.tgz
 ```
 
-This puts `delivery` in `~/.local/bin`; if your shell does not find it, add that
+This puts `delivery` in `~/.local/bin`. If your shell does not find it, add that
 folder to your `PATH`.
 
-Check that the command is there. It prints the version you just packed:
+Check that the command is there. It prints the version you packed:
 
 ```bash
 delivery --version
 ```
 
-If you would rather not install anything, run it straight from the packed file:
+To run it without installing, use the packed file directly:
 
 ```bash
 npx --package ./delivery-service-*.tgz delivery --version
@@ -55,11 +55,11 @@ npx --package ./delivery-service-*.tgz delivery --version
 
 ### Importing the library in your own project
 
-The install above puts `delivery` on your `PATH`, which is all the rest of this guide
+Step 1 puts `delivery` on your `PATH`, which is all the rest of this guide
 needs. The other guides linked at the end ([writing a gate](writing-a-gate.md), for
-example) have you `import` the library or the testing API in a project of your own instead.
-A global install does not do that: a bare `import "delivery-service"` resolves through a
-project's own `node_modules`, so install the same packed file there too, without `-g`:
+example) have you `import` the library or the testing API in a project of your own.
+A global install does not support that: a bare `import "delivery-service"` resolves through a
+project's own `node_modules`. Install the same packed file there too, without `-g`:
 
 ```bash
 npm install /path/to/your/harness-checkout/delivery-service-*.tgz
@@ -69,9 +69,8 @@ Now `import { ... } from "delivery-service"` resolves in that project.
 
 ## 2. Get a project to try it on
 
-The harness ships a sample project: one function, one test, and a `test` script,
-which is all a run needs. Copy it somewhere outside the checkout and make it a
-git repository:
+The harness ships a sample project: one function, one test and a `test` script.
+That is all a run needs. Copy it outside the checkout and make it a git repository:
 
 ```bash
 cp -r examples/sample-project ~/sample-project
@@ -89,7 +88,7 @@ Say what you want in plain English:
 delivery run --task "add a function that greets a name, with a test"
 ```
 
-The agent works on its own copy of your project, `npm test` decides whether the
+The agent works on its own copy of your project. `npm test` decides whether the
 change is good, and the work is committed to a new branch. You will see:
 
 ```text
@@ -106,19 +105,19 @@ This run: 1 of 1 task completed and committed to its own branch.
 Run `delivery report <run-id>` for what to do.
 ```
 
-The last two lines sum the run up and name the command that says it again in full. The same
-report is kept as a file, `.delivery/last-report.txt`, until the next run replaces it.
+The last two lines sum up the run and name the command that repeats it in full. The same
+report is kept in `.delivery/last-report.txt` until the next run replaces it.
 
 Your `main` branch is untouched. Read what the agent did with
-`git log -p surface/<run-id>`, and merge it yourself if you like it.
+`git log -p surface/<run-id>`, and merge it yourself if you approve.
 
-If the run stops before it finishes, because you closed the terminal or pressed
-Ctrl-C, run `delivery run` again in the same folder: it picks the run up where it
-left off rather than starting over.
+If the run stops early, because you closed the terminal or pressed
+Ctrl-C, run `delivery run` again in the same folder. It resumes where it
+left off.
 
 ## 4. Read what happened, later
 
-You do not have to watch a run. In the same folder, at any time afterwards:
+You need not watch a run. In the same folder, at any time afterwards:
 
 ```bash
 delivery status
@@ -140,17 +139,17 @@ No stop: this run finished.
 Next: delivery report (your task list)
 ```
 
-`delivery status` only ever reads, so it is safe while a run is still going. If a
+`delivery status` only reads, so it is safe while a run is going. If a
 run stopped because it needs a decision from you, that decision is the first thing
-it prints, with the evidence behind it underneath.
+it prints, with the evidence beneath it.
 
-Beneath that account it says how the task got there: the times the harness had to decide what to
-do after a setback ("triage rounds"; none here, because the first attempt passed), how many
-retries of each kind were used, and, for a task that stopped, what to do about it. The last line
+Beneath that account it says how the task got there: how often the harness had to decide what to
+do after a setback ("triage rounds"; none here, because the first attempt passed) and how many
+retries of each kind were used. For a task that stopped, it also says what to do. The last line
 names where to go next.
 
-Once your project has a list of tasks (the next guide sets one up), `delivery report` is the
-command to come back to: it says in plain words which tasks landed, which need you, and what to do
+Once your project has a list of tasks (the next guide sets one up), come back to `delivery report`.
+It says in plain words which tasks landed, which need you, and what to do
 about each. See [Read the report](read-a-report.md).
 
 ## Where to go next

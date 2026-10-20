@@ -1,9 +1,9 @@
 # Setting up a project
 
 [Getting started](getting-started.md) ran one task you typed on the command line. A
-project is more than that: it has things an agent should know before it starts, more
-than one thing to do, and an owner who wants to check the setup before any agent time
-is spent. This guide sets one up from start to finish, in a complete example project
+project is more than that. An agent needs to know things before it starts, there is more
+than one thing to do, and the owner wants to check the setup before spending any agent time.
+This guide sets up a project from start to finish, in a complete example project
 that ships with the harness. You describe the project, list what you want done, choose
 how the work is checked and what happens to it, check the setup, read what the agent
 will be told, run the whole list, and then add to it.
@@ -15,14 +15,14 @@ your code. You write no code and read no harness source.
 
 - The `delivery` command, installed as [Getting started](getting-started.md) describes.
 - Node.js 22 or later, and `git`.
-- For steps 8 and 9, Claude Code, signed in. Check with `claude auth status`; if it says
+- For steps 8 and 9, Claude Code, signed in. Check with `claude auth status`. If it says
   you are not signed in, run `claude auth login`, or set `ANTHROPIC_API_KEY`. Checking and
   previewing your setup need no sign-in and no network.
 
 ## 1. Get the example project
 
 The harness ships an example project: a small library of text helpers with one function,
-its test, and a finished `delivery.config.json`. Copy it somewhere outside the harness
+its test and a finished `delivery.config.json`. Copy it outside the harness
 checkout and make it a git repository:
 
 ```bash
@@ -33,7 +33,7 @@ git add -A
 git commit -m "Start the example project"
 ```
 
-This is its whole configuration file. The next four steps explain it a setting at a time.
+This is its whole configuration file. The next four steps explain it one setting at a time.
 
 ```json
 {
@@ -53,10 +53,10 @@ This is its whole configuration file. The next four steps explain it a setting a
 `domain` says what your project is, in your own words: a sentence or two about what it
 does, what it is built with, and anything an agent should know before it starts. Every
 agent on every run is told it before its own instructions, so you never retype it. A run
-keeps the description it started with: editing it changes the next run, not one already
+keeps the description it started with. Editing it changes the next run, not one already
 going.
 
-A description that runs to several paragraphs is easiest in a `delivery.config.js` that
+For a description of several paragraphs, use a `delivery.config.js` that
 exports the same settings, with the description in a template literal. The
 [configuration reference](configuration-reference.md) shows that form.
 
@@ -67,10 +67,10 @@ each the way you would ask a colleague: what you want, and that it should come w
 test. `delivery run` works down the list one task at a time, and the work for each task
 ends up on a branch of its own.
 
-The list is yours to edit between runs. A new sentence runs in its place. Rewording a
+You can edit the list between runs. A new sentence runs in its place. Rewording a
 sentence makes it a new task, which is also how you ask for a finished one again.
-Deleting a sentence leaves what already ran in the history. An empty sentence, or two
-that say exactly the same thing, are refused before anything runs.
+Deleting a sentence leaves what already ran in the history. The harness refuses, before anything runs, an empty sentence or two
+sentences that say exactly the same thing.
 
 Every task's work is checked for weakened tests, whatever the check you set up says: a test
 deleted or renamed (`tests-untouched`), a change to how tests run, such as a test-runner setting or
@@ -82,8 +82,8 @@ for a task whose job is to change tests. The report shows any task whose guards 
 
 ## 4. Choose how the work is checked, and what happens to it
 
-`gate` is the check that decides whether the agent's work is good: the agent's own word
-is never taken as proof. The simplest way to choose one is by name:
+`gate` is the check that decides whether the agent's work is good. The harness never takes the agent's own word
+as proof. The simplest way to choose one is by name:
 
 ```json
 { "gate": { "type": "test-runner" } }
@@ -93,23 +93,23 @@ That runs your project's own tests with `npm test` and passes when they succeed.
 five ready-made checks, and each takes only the detail it needs:
 
 - `test-runner` runs your tests. Add `"command"` if they are not run with `npm test`.
-- `file-exists` checks that a file is there once the work is done: `{ "type": "file-exists", "path": "CHANGES.md" }`. It is judged only after the work, so a file that is still missing fails it.
+- `file-exists` checks that a file is there once the work is done: `{ "type": "file-exists", "path": "CHANGES.md" }`. The harness judges it only after the work, so a file that is still missing fails it.
 - `command-succeeds` checks that a command succeeds: `{ "type": "command-succeeds", "command": "npm run lint" }`.
 - `schema-validates` checks that a JSON file has the shape another file describes:
   `{ "type": "schema-validates", "file": "data.json", "schema": "data.schema.json" }`. It
   fetches its checker the first time it runs, so that run needs the network.
-- `commits-ahead` checks that the work added at least one commit: `{ "type": "commits-ahead" }`. Useful for a workflow step whose job is to commit something other than passing tests.
+- `commits-ahead` checks that the work added at least one commit: `{ "type": "commits-ahead" }`. Use it for a workflow step whose job is to commit something other than passing tests.
 
 `delivery validate` says in plain words what the check you chose does, and if you misspell a
 name it lists the five.
 
-The example writes its check out in full instead, which does exactly the same as
-`test-runner`: `"command": "npm test"` runs the tests, and `"parseMode": "exitcode"` means the
+The example writes its check out in full instead, which does the same as
+`test-runner`. `"command": "npm test"` runs the tests, and `"parseMode": "exitcode"` means the
 check passes when the command succeeds. Any command that succeeds when the work is good and
 fails when it is not will do.
 
 `closer` is what happens to work that passes the check. The example's `commit-to-branch`
-commits it to a new branch and leaves `main` alone, so you look at it before you merge
+commits it to a new branch and leaves `main` alone, so you can look at it before you merge
 it. The other built-in choices are `merge-back`, which merges it into your main branch,
 and `open-pr`, which opens a pull request.
 
@@ -117,13 +117,13 @@ and `open-pr`, which opens a pull request.
 
 `agent` holds options for the agent's sessions. `append` is text added to what every agent is
 told; the example asks for small, explained changes. The agent already works with your own
-Claude Code setup: your settings, CLAUDE.md, skills and plugins all load, and it has every tool
-they give it. To keep it from a tool, add it to `permissions.deny` in your Claude settings.
+Claude Code setup: it loads your settings, CLAUDE.md, skills and plugins, and has every tool
+they give it. To keep it from a tool, add the tool to `permissions.deny` in your Claude settings.
 
 `fence` says whether the agent works inside a fence that keeps your main folder read-only while
 it works in its own copy: `"preferred"` (the default, used wherever it works), `"required"` (a
-run refuses to start without it), or `"off"`. It needs bubblewrap (`bwrap`) on Linux; where it
-cannot be had, a `"preferred"` run goes ahead and says so first.
+run refuses to start without it), or `"off"`. It needs bubblewrap (`bwrap`) on Linux. Where
+bubblewrap is unavailable, a `"preferred"` run goes ahead and says so first.
 
 ## 6. Check your setup
 
@@ -143,9 +143,9 @@ Checking delivery.config.json…
 Ready to run.
 ```
 
-Each tick is one thing it read. If something is wrong it prints the one thing to fix
+Each tick is one thing it read. If something is wrong, it prints the one thing to fix
 instead, and nothing starts. It needs no sign-in and no network and changes nothing, so
-run it as often as you like, and in CI on every push. In CI, `delivery validate --json` lists every problem at once, each with the setting it concerns, as one JSON document a script can read.
+run it as often as you like, including in CI on every push. In CI, `delivery validate --json` lists every problem at once, each with the setting it concerns, as one JSON document a script can read.
 
 ## 7. See what the agent will be told
 
@@ -154,7 +154,7 @@ delivery preview
 ```
 
 It prints the instructions the first task on your list will be given, word for word, with
-your description in place. The middle is long, so it is shortened here:
+your description in place. The middle is long, so this output shortens it:
 
 ```text
 Next up is Task 1 of 2: add a function that turns a title into a URL slug, with a test
@@ -180,7 +180,7 @@ Agent options: none.
 `delivery preview --queue-index 2` shows the second task instead. Like `delivery
 validate`, it needs no sign-in and changes nothing.
 
-For a workflow, `delivery preview --step build` shows what that step's agent will be told, with its own instruction and check, and the agent options it runs with (yours, with the step's laid over them). Add `--workflow <name>` when two workflows have a step of that name, and `--task "..."` to preview a task you would type.
+For a workflow, `delivery preview --step build` shows what that step's agent will be told, with its own instruction and check, and the agent options it runs with (yours, with the step's laid over them). Add `--workflow <name>` when two workflows have a step of that name. Add `--task "..."` to preview a task you would type.
 
 ## 8. Run the list
 
@@ -214,7 +214,7 @@ Your task list: 2 of 2 tasks completed and committed to their own branches.
 Run `delivery report` for what to do.
 ```
 
-Each task ends by naming the branch its work is on. Your `main` branch is untouched: read
+Each task ends by naming the branch its work is on. Your `main` branch is untouched. Read
 what the agent did with `git log -p <branch>`, and merge what you like.
 
 If the run stops part way, because you closed the terminal or pressed Ctrl-C, run
@@ -262,14 +262,14 @@ Your task list: 3 of 3 tasks completed and committed to their own branches.
 Run `delivery report` for what to do.
 ```
 
-Only your new task runs. The first two already have finished runs, and what is left to do
-is worked out afresh each time from what has already run, so nothing is stored that could
+Only your new task runs. The first two already have finished runs. The harness works out what is left to do
+afresh each time from what has already run, so nothing is stored that could
 fall out of step with your file. The count is always the list as it is written now.
 
 ## Going further
 
-Everything so far uses the harness's built-in pieces. When you need your own, each has a
-guide of its own:
+Everything so far uses the harness's built-in pieces. When you need your own, each has its own
+guide:
 
 - [Writing a gate](writing-a-gate.md): a check of your own, written in code, in place of a command.
 - [Writing a closer](writing-a-closer.md): your own way of handling work that passes, such as notifying a channel.
@@ -293,9 +293,9 @@ A workflow does a task in more than one checked step, in the order you give. Nam
 
 and run a task through it with `delivery run --task "add a rota page" --workflow plan-then-build`.
 
-Each step is told the task and its own `prompt`. A step is checked by the project's `gate` unless it
+Each step is told the task and its own `prompt`. The project's `gate` checks a step unless the step
 names its own (any ready-made check works, including `commits-ahead`). A step that fails is
-corrected on its own, on its own limits; the next step starts only once it is accepted, from the
+corrected on its own, on its own limits. The next step starts only once the previous one is accepted, from the
 commit its work was saved in. The task is delivered once, after the last step. A step may also set
 `agent` options (laid over the project's), `guards` (`add` or `off`, for that step only), and
 `continue: true` to pick up the previous step's agent session. `delivery preview --step <name>`
@@ -303,16 +303,16 @@ shows what a step will be told. A task run without `--workflow` is one step, as 
 
 `backlog-only` is off by default. A step that turns it on (`"guards": { "add": ["backlog-only"] }`) may only add ideas: new backlog items with `status: idea`, a `severity` and a `check` that finds its problem in the project as it stands. Any other change, or an idea its check cannot find, fails the step. A pack's scan workflow turns it on.
 
-To start a configuration for a project of your own, run `delivery init` in it: it asks what the
+To start a configuration for a project of your own, run `delivery init` in it. It asks, one thing at a time, what the
 project is, what checks the work, what happens to work that passes, and what you would like
-done, one thing at a time, and writes the file for you. The [configuration reference](configuration-reference.md)
+done. It then writes the file for you. The [configuration reference](configuration-reference.md)
 lists every setting.
 
 A workflow may also carry its own `after` list, which replaces the project's `after` steps for
-the items it delivers (see [After landing](#after-landing)); `"after": []` runs none, for a workflow whose
+the items it delivers (see [After landing](#after-landing)). `"after": []` runs none, for a workflow whose
 work has nothing to deploy or announce.
 
-A workflow may also set `hold` to a severity (`critical`, `high`, `medium` or `low`). A task whose item is rated that or more serious is finished and checked as usual, then waits on its own branch instead of landing: `delivery run --sources` reports it as held, and `delivery sign-off <item>` lands it, or `delivery reject <item>` sets it aside.
+A workflow may also set `hold` to a severity (`critical`, `high`, `medium` or `low`). The harness finishes and checks a task whose item is rated that or more serious as usual, then holds it on its own branch instead of landing it: `delivery run --sources` reports it as held, and `delivery sign-off <item>` lands it, or `delivery reject <item>` sets it aside.
 
 ### A backlog of work items
 
@@ -343,14 +343,14 @@ for across the whole project), `pattern-absent` (`pattern`, an extended regular 
 step's check then also requires the problem to be gone, as `item:<id>:resolved`.
 Any other field is available to the step prompts as `{{task.<field>}}`, such as `spec` in the example item.
 
-Items are read from your base branch's last commit: `origin`'s, when the project has one. So commit
-an item, and push it if there is an origin, for it to be worked. Item files on disk that the base
-does not yet hold are named, and not worked.
+The harness reads items from your base branch's last commit, or `origin`'s when the project has one. So commit
+an item, and push it if there is an origin, for it to be worked. The harness names, but does not work, item files on disk that the base
+does not yet hold.
 
 ### Running the backlog
 
 `delivery run --sources` works through the backlog and the other work sources (`sources` in your
-config file) in order. `--max N` takes up to N items in one run; one is the default. Each item
+config file) in order. `--max N` takes up to N items in one run; the default is one. Each item
 becomes a run of its own, with its workflow, and is delivered the same way as a task.
 
 How an item is carried on depends on how its last run ended:
@@ -367,10 +367,10 @@ How an item is carried on depends on how its last run ended:
 The record of each item (its last run, how that ended, and whether it is parked) is kept in the
 item ledger, `ledger/` under your state folder (`~/.local/state/delivery-service/`, or
 `$XDG_STATE_HOME`), beside the working copies. What landed on the delivery branch, and what your
-closer did with it, is kept beside it, in the same folder. It is on this machine only: another
+closer did with it, is kept beside it, in the same folder. It stays on this machine: another
 clone of the repository keeps its own.
 
-To have `delivery run --sources` run by itself, on a timer, see `delivery schedule enable` in the
+To run `delivery run --sources` by itself, on a timer, see `delivery schedule enable` in
 [Run on a schedule](run-on-a-schedule.md).
 
 #### The delivery branch
@@ -378,7 +378,7 @@ To have `delivery run --sources` run by itself, on a timer, see `delivery schedu
 Every item the run delivers lands on one branch, `delivery/<base>` (for example `delivery/main`), not
 on a branch of its own. Each item starts from that branch's latest work, so it sees everything
 delivered before it. When another item lands while one is still working, the later one is rebuilt
-on top and its check is run again before it lands; if that rebuild conflicts or the check fails,
+on top and its check runs again before it lands. If that rebuild conflicts or the check fails,
 the item gets a fresh attempt from the latest work, shown what went wrong, within its usual
 corrections. Nothing that conflicts or fails is ever added to the delivery branch.
 
@@ -390,7 +390,7 @@ run tries again.
 
 If you commit to your base branch yourself, the next run brings those commits into the delivery
 branch first, and runs your check on the result. If that conflicts or the check fails, the run
-starts no task and says what is in the way; it says so again on later runs, without trying the
+starts no task and says what is in the way. It says so again on later runs, without trying the
 same thing again, until your base branch or the delivery branch moves.
 
 #### After landing
@@ -413,8 +413,8 @@ once, not once per item. Each step is either a command or an agent pass:
   items come from a `github` source or a `command` source with `"tracker": true`, is raised in your tracker).
 - `check` is a command, run from your folder, whose success confirms the step worked.
 
-If a step, or its check, does not work, it and the steps after it are not run; the work that
-landed stays landed. They are shown as waiting in `delivery status` and `delivery report`, and the
+If a step or its check does not work, the harness does not run that step or the steps after it. The work that
+landed stays landed. `delivery status` and `delivery report` show them as waiting, and the
 next `delivery run --sources` tries them first, starting from the one that did not work. Until
 they work, each run ends as stopped.
 
@@ -527,7 +527,7 @@ script of your own.
   it asked one. Answer or unpark it as usual (`delivery answer`, `delivery unpark`); the label comes
   off when the issue is next worked. `delivery status` still lists it.
 
-`parkAfter` is how many runs in a row an item may end without being delivered before it is set
+`parkAfter` is how many runs in a row an item may end undelivered before the harness sets it
 aside. It is a whole number, 1 or more, and defaults to 3.
 
 `notify` is a command run at the end of every run, however it ended: work delivered, a stop, a run
