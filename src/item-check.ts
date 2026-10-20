@@ -10,6 +10,7 @@ import { SEVERITIES, ItemCheck, type Assertion, type Severity, type TaskDef } fr
 
 /** Where the harness keeps its records in a project: never where a problem is looked for, so an item never confirms itself. */
 export const HARNESS_DIR = ".delivery/";
+const HARNESS_REFUSAL = "the check looks inside .delivery, where the harness keeps its own records";
 /** Paths named to git exactly as written, and the backlog folder never searched by a pattern. */
 const named = (path: string): string => `:(literal)${path}`;
 const NOT_BACKLOG = `:(exclude,literal)${BACKLOG_DIR}`;
@@ -241,6 +242,7 @@ export async function checkItem(check: ItemCheck, where: Where, own?: string): P
     return installed ? "present" : "resolved";
   }
   if (check.kind === "pattern-absent") {
+    if (check.paths.some((raw) => `${projectPath(raw)}/`.startsWith(HARNESS_DIR))) return { error: HARNESS_REFUSAL };
     if ("worktreePath" in where) {
       const odd = await oddFileIn(where.worktreePath, check.paths);
       if (odd !== undefined) return odd;
@@ -250,7 +252,7 @@ export async function checkItem(check: ItemCheck, where: Where, own?: string): P
   }
   const path = projectPath(check.path);
   if (path === undefined) return { error: "the problem's file leads outside the project" };
-  if (`${path}/`.startsWith(HARNESS_DIR)) return { error: "the check looks inside .delivery, where the harness keeps its own records" };
+  if (`${path}/`.startsWith(HARNESS_DIR)) return { error: HARNESS_REFUSAL };
   if (check.scope === "repo") {
     const literals = secretLiterals(check.anchor, check.sensitive === true);
     if (literals.length > 0) {

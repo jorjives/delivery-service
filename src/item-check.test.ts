@@ -232,12 +232,21 @@ describe("an item check never reads the harness's own records", () => {
     expect(await checkItem(check, { repoPath: repo, commit: "HEAD" }, OWN)).toBe("present");
   });
 
-  it("does not match a pattern in the backlog folder", async () => {
+  it("refuses a pattern that names the backlog folder", async () => {
     const repo = initTempRepo("item-check-pattern-", {
       "a.js": "ok\n",
       ".delivery/backlog/20261019T120000Z-eval.md": "---\nstatus: idea\n---\n# eval(x) is used\n",
     });
-    expect(await checkItem({ kind: "pattern-absent", pattern: "eval\\(", paths: [".delivery/backlog"] }, { worktreePath: repo })).toBe("resolved");
+    expect(await checkItem({ kind: "pattern-absent", pattern: "eval\\(", paths: [".delivery/backlog"] }, { worktreePath: repo })).toEqual({
+      error: "the check looks inside .delivery, where the harness keeps its own records",
+    });
+  });
+
+  it("refuses a pattern that names a path inside .delivery", async () => {
+    const repo = initTempRepo("item-check-pattern-", { "a.js": "ok\n", ".delivery/notes.md": "eval(x)\n" });
+    expect(await checkItem({ kind: "pattern-absent", pattern: "eval\\(", paths: [".delivery/notes.md"] }, { worktreePath: repo })).toEqual({
+      error: "the check looks inside .delivery, where the harness keeps its own records",
+    });
   });
 
   it("refuses a check whose file is inside .delivery", async () => {
