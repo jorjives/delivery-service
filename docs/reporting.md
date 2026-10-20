@@ -121,7 +121,7 @@ Nothing a run does depends on these figures: no run is stopped, slowed or change
 ## What `delivery status --json` prints
 
 `delivery status --json` prints every key it always has, with the same names and meanings (see
-"See what happened to a run" in the [README](../README.md)), and one more: `report`, which holds
+"[See what happened to a run](check-a-run.md)"), and one more: `report`, which holds
 the `delivery.report/1` document for the same run. It is exactly what `delivery report <run-id>
 --json` prints, so a script that already reads `status --json` finds the retry budgets, the
 state history and every triage round under `report.surfaces`. `delivery status --decisions

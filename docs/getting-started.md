@@ -151,7 +151,7 @@ names where to go next.
 
 Once your project has a list of tasks (the next guide sets one up), `delivery report` is the
 command to come back to: it says in plain words which tasks landed, which need you, and what to do
-about each. See [Come back to your task list](../README.md#come-back-to-your-task-list).
+about each. See [Read the report](read-a-report.md).
 
 ## Where to go next
 
@@ -159,7 +159,7 @@ about each. See [Come back to your task list](../README.md#come-back-to-your-tas
   once, list what you want done, check and preview the setup, and run the whole list, in a
   complete example project. For a project of your own, `delivery init` writes a
   `delivery.config.json` by asking what the project is, what checks the work, what happens
-  to work that passes, and what you would like done; the [readme](../README.md) lists every setting.
+  to work that passes, and what you would like done; the [configuration reference](configuration-reference.md) lists every setting.
 - [Running the backlog](project-configuration.md#running-the-backlog): have the harness work
   through a backlog of items on its own, each landing on one delivery branch you review once.
 - [Writing a gate](writing-a-gate.md): use a check other than `npm test`, or write

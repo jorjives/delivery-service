@@ -58,7 +58,7 @@ going.
 
 A description that runs to several paragraphs is easiest in a `delivery.config.js` that
 exports the same settings, with the description in a template literal. The
-[readme](../README.md#configure-it-once) shows that form.
+[configuration reference](configuration-reference.md) shows that form.
 
 ## 3. List what you want done
 
@@ -305,7 +305,7 @@ shows what a step will be told. A task run without `--workflow` is one step, as 
 
 To start a configuration for a project of your own, run `delivery init` in it: it asks what the
 project is, what checks the work, what happens to work that passes, and what you would like
-done, one thing at a time, and writes the file for you. The [readme](../README.md#configure-it-once)
+done, one thing at a time, and writes the file for you. The [configuration reference](configuration-reference.md)
 lists every setting.
 
 A workflow may also carry its own `after` list, which replaces the project's `after` steps for
@@ -371,7 +371,7 @@ closer did with it, is kept beside it, in the same folder. It is on this machine
 clone of the repository keeps its own.
 
 To have `delivery run --sources` run by itself, on a timer, see `delivery schedule enable` in the
-[README](../README.md#run-it-on-a-schedule).
+[Run on a schedule](run-on-a-schedule.md).
 
 #### The delivery branch
 
