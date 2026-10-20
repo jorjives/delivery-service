@@ -13,12 +13,14 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
       # Warnings are errors: a broken link or a stray page fails the build.
+      # pipx is preinstalled on the runner, so no third-party action is needed.
       - name: Build the site
-        run: uvx --with 'mkdocs-material~=9.7' mkdocs build --strict --site-dir site
+        run: pipx run --spec 'mkdocs-material~=9.7' mkdocs build --strict --site-dir site
       - uses: actions/upload-pages-artifact@v3
         with:
           path: site
