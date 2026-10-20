@@ -64,6 +64,11 @@ export async function git(cwd: string, args: string[], options: { env?: NodeJS.P
 export const branchExists = (repoPath: string, branch: string): Promise<boolean> =>
   tryGit(repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]);
 
+/** The tip commit of local `branch`, or undefined when there is no such branch. */
+export async function branchTip(repoPath: string, branch: string): Promise<string | undefined> {
+  return (await branchExists(repoPath, branch)) ? git(repoPath, ["rev-parse", `refs/heads/${branch}`]) : undefined;
+}
+
 export async function tryGit(cwd: string, args: string[]): Promise<boolean> {
   try {
     await git(cwd, args);

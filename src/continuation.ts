@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { branchExists, ensureCommitted, git } from "./git-exec.js";
+import { branchTip, ensureCommitted, git } from "./git-exec.js";
 import { branchName } from "./provision.js";
 import { runPlace } from "./run-location.js";
 import type { RunRecord } from "./run-records.js";
@@ -30,11 +30,12 @@ export async function prepareContinuation(
   const worktreePath = worktreeOf(record.caseFile, runPlace(record.repoPath, record.runId, env).location);
   const branch = branchName(record.caseFile.header.surfaceId);
   const copyExists = existsSync(join(worktreePath, ".git"));
-  const tipOf = async (): Promise<string> => ((await branchExists(record.repoPath, branch)) ? git(record.repoPath, ["rev-parse", branch]) : startCommit);
-  const reviewed = asked.kind === "signed_off" && held != null && held === (await tipOf()) && (!copyExists || (await git(worktreePath, ["status", "--porcelain"])) === "");
+  const tip = await branchTip(record.repoPath, branch);
+  const reviewed = asked.kind === "signed_off" && held === tip && tip !== undefined && (!copyExists || (await git(worktreePath, ["status", "--porcelain"])) === "");
   const turn: Continues["turn"] = asked.kind === "signed_off" && !reviewed ? { kind: "interrupted" } : asked;
   if (copyExists && !reviewed) await ensureCommitted(worktreePath, `Unfinished work from ${branch}, carried on by the next run`);
-  const from = await tipOf();
+  // Committing the copy can move the tip; a reviewed sign-off commits nothing, so its tip stands.
+  const from = reviewed ? tip : ((await branchTip(record.repoPath, branch)) ?? startCommit);
   const sessionId = lastWorkerSession(view.history);
   const workflow = record.caseFile.header.workflow;
   const remaining = workflow === undefined ? undefined : { ...workflow, steps: workflow.steps.slice(stepIndexOf(record.caseFile) - 1) };

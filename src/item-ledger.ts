@@ -1,7 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { branchExists, git, tryGit } from "./git-exec.js";
+import { branchExists, branchTip, git, tryGit } from "./git-exec.js";
 import { deliveryLedgerPath, recordDelivery } from "./delivery-ledger.js";
 import { appendLine, isEnoent, parseLines } from "./journal.js";
 import { branchName, resolveBaseRef } from "./provision.js";
@@ -66,7 +66,7 @@ function apply(state: ItemState, entry: LedgerEntry): ItemState {
       return { ...state, intent: entry.intent, lastRunId: entry.runId, settled: false, answer: null, signedOff: false };
     case "ended":
       return entry.class === "delivered"
-        ? { ...state, settled: true, lastClass: "delivered", attempts: 0, question: null, lastClosedAt: entry.at, branch: entry.branch ?? null, commit: entry.commit ?? null }
+        ? { ...state, settled: true, lastClass: "delivered", attempts: 0, question: null, heldCommit: null, lastClosedAt: entry.at, branch: entry.branch ?? null, commit: entry.commit ?? null }
         : { ...state, settled: true, lastClass: entry.class, attempts: state.attempts + 1, question: entry.question ?? null, heldCommit: entry.class === "held" ? entry.commit ?? null : null };
     case "parked":
       return { ...state, parked: entry.reason };
@@ -141,14 +141,7 @@ function parkReasonOf(state: ItemState, parkAfter: number): ParkReason | null {
  */
 async function deliveredCommit(record: RunRecord): Promise<string> {
   const branch = record.caseFile.header.delivery?.branch ?? branchName(record.runId);
-  if (await branchExists(record.repoPath, branch)) return git(record.repoPath, ["rev-parse", branch]);
-  return git(record.repoPath, ["rev-parse", (await resolveBaseRef(record.repoPath)).localBranch]);
-}
-
-/** The tip of the branch a held run's finished work waits on: the commit the operator reviews. Undefined when the branch is gone. */
-async function heldTip(record: RunRecord): Promise<string | undefined> {
-  const branch = branchName(record.runId);
-  return (await branchExists(record.repoPath, branch)) ? git(record.repoPath, ["rev-parse", branch]) : undefined;
+  return (await branchTip(record.repoPath, branch)) ?? git(record.repoPath, ["rev-parse", (await resolveBaseRef(record.repoPath)).localBranch]);
 }
 
 /** Record how `record`'s run of `key` ended, and park the item when that says to. Returns the item's state after. */
@@ -158,7 +151,7 @@ export async function settleRun(path: string, key: string, record: RunRecord, pa
   const question = record.caseFile.outcome?.cause?.question;
   const delivery = record.caseFile.header.delivery;
   const commit = kind === "delivered" ? await deliveredCommit(record) : undefined;
-  const heldCommit = kind === "held" ? await heldTip(record) : undefined;
+  const heldCommit = kind === "held" ? await branchTip(record.repoPath, branchName(record.runId)) : undefined;
   // Landed before it is settled, so a crash between the two leaves the landing recorded and the run settled on the next run.
   if (delivery !== undefined && commit !== undefined) {
     await recordDelivery(deliveryLedgerPath(path), { t: "landed", branch: delivery.branch, runId: record.runId, key, intent: taskIntent(record.caseFile.header.taskDef), commit });
