@@ -295,7 +295,7 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
   workflows:
     'It names ways of doing a task in steps, each a list of `steps` run in order, for example ' +
     '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +
-    "see docs/project-configuration.md.",
+    "see docs/configuration-reference.md.",
   sources:
     'It is the list of places work comes from, in order, for `delivery run --sources`: each one an object with a `type` of "backlog", "list", "command" or "github" ' +
     '(a command source also takes `command`, and `"tracker": true` when it can `raise` follow-ups; a github source may take a `label` and a default `workflow`), ' +
@@ -304,7 +304,7 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
   after:
     "It is a list of steps run once a run's work has landed and your closer has taken it: each one a command, such as " +
     '`{ "run": "make deploy", "check": "curl -f http://localhost/health" }` (add `"in": "base"` to run it in your own folder rather than a copy of what landed), ' +
-    'or an agent pass, such as `{ "prompt": "Write release notes for the landed commits." }`: see docs/project-configuration.md.',
+    'or an agent pass, such as `{ "prompt": "Write release notes for the landed commits." }`: see docs/configuration-reference.md.',
   parkAfter:
     "It is how many runs in a row an item may end without being delivered before it is set aside: a whole number, 1 or more, such as `3`.",
   notify: 'It is a command run at the end of every run with the run\'s report on its standard input, such as `"./tell-me.sh"`.',
