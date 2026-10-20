@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -39,5 +39,21 @@ describe("a pack's fixtures", () => {
     writeFileSync(join(dir, FIXTURES.fixes), JSON.stringify({ replies: [] }));
     const result = await readFixtures(dir);
     expect(!result.ok && result.problems[0]?.file).toBe(join(dir, FIXTURES.fixes));
+  });
+});
+
+describe("a pack's fixture project", () => {
+  it.each([".git", ".GIT", ".git.", ".git ", ".git. .", ".g\u200cit", ".gi\ufefft", "git~1", "GIT~1", ".git::$INDEX_ALLOCATION"])("rejects a path through %j, which a filesystem may treat as .git", async (segment) => {
+    const dir = copy();
+    mkdirSync(join(dir, FIXTURES.project, segment), { recursive: true });
+    writeFileSync(join(dir, FIXTURES.project, segment, "config"), "[core]\n");
+    const result = await readFixtures(dir);
+    expect(!result.ok && result.problems.map((p) => p.field)).toEqual([`${segment}/config`]);
+  });
+
+  it.each([".gitignore", ".github", "git", "digit~1", "legit.js"])("keeps %s, which is not git's", async (segment) => {
+    const dir = copy();
+    writeFileSync(join(dir, FIXTURES.project, segment), "x\n");
+    expect((await readFixtures(dir)).ok).toBe(true);
   });
 });

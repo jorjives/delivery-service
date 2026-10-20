@@ -13,7 +13,8 @@ import { cleanGitEnv } from "./git-env.js";
 export function initTempRepo(prefix: string, files: Record<string, string>): string {
   const repo = mkdtempSync(join(tmpdir(), prefix));
   const git = (args: string[]): void => {
-    execFileSync("git", args, { cwd: repo, stdio: "pipe", env: cleanGitEnv() });
+    // No hook or fsmonitor command, whatever the global config or a template would run.
+    execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "core.fsmonitor=false", ...args], { cwd: repo, stdio: "pipe", env: cleanGitEnv() });
   };
 
   git(["init", "-b", "main"]);

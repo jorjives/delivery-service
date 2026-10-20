@@ -71,6 +71,15 @@ async function jsonFixture<T>(dir: string, part: FixturePart, schema: z.ZodType<
   return parsed.success ? { text, value: parsed.data } : packProblems(file, parsed.error, raw);
 }
 
+/** Characters HFS+ ignores when comparing names (as git's own protectHFS does). */
+const HFS_IGNORABLE = /[\u200c-\u200f\u202a-\u202e\u206a-\u206f\ufeff]/gu;
+
+/** Whether a filesystem (case-folding, NTFS or HFS+) may resolve this path segment to git's own `.git` folder. */
+export function isGitSegment(segment: string): boolean {
+  const name = segment.normalize("NFC").replace(HFS_IGNORABLE, "").replace(/:.*$/s, "").replace(/[. ]+$/, "").toLowerCase();
+  return name === ".git" || name === "git~1";
+}
+
 async function projectFiles(dir: string): Promise<Record<string, string> | PackProblem[]> {
   const root = join(dir, FIXTURES.project);
   let entries;
@@ -84,7 +93,7 @@ async function projectFiles(dir: string): Promise<Record<string, string> | PackP
   if (files.length === 0) return [{ file: root, field: null, message: `is empty: it holds ${HOLDS.project}` }];
   // Seeded into the repository after `git init`, a `.git/config` or hook would run its commands in every later git call.
   const paths = files.map((entry) => ({ abs: join(entry.parentPath, entry.name), rel: relative(root, join(entry.parentPath, entry.name)).split(sep) }));
-  const inGit = paths.filter(({ rel }) => rel.some((part) => part.toLowerCase() === ".git"));
+  const inGit = paths.filter(({ rel }) => rel.some(isGitSegment));
   if (inGit.length > 0) return inGit.map(({ rel }) => ({ file: root, field: rel.join("/"), message: "is inside .git: a project's own git files would run commands the harness never chose" }));
   const pairs = await Promise.all(paths.map(async ({ abs, rel }) => [rel.join("/"), await readFile(abs, "utf-8")] as const));
   return Object.fromEntries(pairs.sort(([a], [b]) => a.localeCompare(b)));
