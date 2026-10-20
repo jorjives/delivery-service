@@ -1,9 +1,6 @@
 # Read the report
 
-This guide shows how to read `delivery report`, the plain-words account of your task list: what landed, what needs you and what was not started.
-
-After a list of tasks has run, overnight or while you were elsewhere, one command says in plain
-words what happened and what to do about it:
+This guide shows how to read `delivery report`, the plain-words account of your task list: what landed, what needs you and what was not started. Run it after a list has run, overnight or while you were elsewhere. It assumes you have run a [task list](run-a-task-list.md).
 
 ```bash
 delivery report
@@ -54,12 +51,12 @@ it has tasks in it:
 - **Worth a look:** a repair that changed a file the check runs (the guards accept it, so this is
   where you review it), and a task that ran with a test guard turned off, naming the guards.
 
-Under the time the work ran, a line says whether your main folder was protected while the agent
-worked, and why not when it was not.
+Under the start and last-activity times, a line says whether your main folder was protected while
+the agent worked, and why not when it was not.
 
 Words taken from a run (your task, what the agent said) are always in quotation marks. Every other
 sentence is the harness's own and is the same for every project. "For whoever tunes this" is for
-the person who sets the limits. It counts the retries used, says how long the agent sessions took
+the person who sets the limits. It counts the retries used (`agent corrections`, `check re-runs`, `check repairs`, `agent restarts` and `hand-off retries`: the five [`budgets`](configuration-reference.md#budgets); [`delivery status`](check-a-run.md) names the same five `correction`, `gate recheck`, `gate repair`, `session retry` and `close retry`), says how long the agent sessions took
 and roughly what they cost (an estimate from the agent runtime, with how many sessions it covers,
 or "not recorded"), and names the saved copy of the report when there is one.
 
@@ -67,9 +64,9 @@ or "not recorded"), and names the saved copy of the report when there is one.
 of the list. In a project with no `tasks` list, `delivery report` reports the most recent run and
 says so in its first line.
 
-It never changes a run or its record, and takes no lock, so it is safe while a run is going. It
-then says the run is still going, rather than giving a final count, and how to follow it ("Follow
-it: delivery status --watch"). For work that has not finished, its second line gives the last
+It never changes a run or its record and takes no lock, so you can run it while a run is going. In
+that case it says the run is still going, rather than giving a final count, and how to follow it
+("Follow it: delivery status --watch"). For work that has not finished, its second line gives the last
 time the record shows anything happening ("last activity 1 Oct 02:22 UTC"). That time comes from
 the record for you to judge by; the report never guesses whether the work is still going. Where
 nothing records whether a task worked one at a time is still going, the report says exactly that
@@ -88,33 +85,18 @@ loses nothing. While the saved copy is the report you are looking at, the report
 names it ("Saved to: ..."). If the files cannot be written, the report is still printed, with one
 line in that place saying it was not saved and why.
 
-`report` exits 0 whenever the report could be made, whatever it says, and 2 when it could not (a
-run id that names nothing).
+`report` exits 0 whenever the report could be made, whatever it says, and 2 when it could not. For
+a run id that names nothing it prints "I couldn't find that run's record" and the path it looked in.
 
-Add `--json` to get the same report as one JSON document, for a dashboard or a script:
+To get the same report as data for a dashboard or a script, add `--json`; `delivery report
+--schema` prints the schema of that document. Standard output holds only the data, and with
+`--write` it is exactly what is saved as `last-report.json`. [Reports as data](reporting.md) lists
+every key, the schema, and what is promised not to change.
 
-```bash
-delivery report --json
-```
-
-The document names its format and version (`"schema": "delivery.report/1"`) and carries
-everything the report says: how many tasks stand where (`counts`), and for each task its
-standing, the recorded reason and cause of a stop, who must act (`plain.audience`), its retry
-budgets, every triage round and whether the work is still going (`live`). Every key is always
-present, `null` where it does not apply. Standard output holds only the document; with `--write`
-it is exactly what is saved as `last-report.json`. In a folder with no runs yet it is still a
-document, with every task `not_started`. [Reports as data](reporting.md) lists every key
-and states what is promised not to change.
-
-`delivery report --schema` prints the JSON Schema of that document and of the events `delivery
-status --watch --json` prints. It is generated from the definitions the harness validates its own
-data with, and needs no project. Every document and event the commands print is valid against it.
-It accepts keys and names it does not know, so data from a later release still passes. It takes
-no run id and no `--write`.
-
-To see a report without an agent or a sign-in, run `npm run demo:report-slice-1` in a checkout of
-this repository. It runs a list of four tasks against a scripted agent, prints the report,
-follows its advice, and prints the report again.
+To see a report without an agent or a sign-in, run `npm install` in a checkout of this repository,
+then `npm run demo:report-slice-1`. It runs a list of four tasks against a [scripted
+agent](glossary.md#scripted-agent), prints the report, follows its advice, and prints the report
+again.
 
 ## Next steps
 
