@@ -1488,6 +1488,30 @@ describe("delivery status for a run of several tasks at once", () => {
       expect(stdout.split("\n")).toContain("Environment: healthy (repaired once during this run)");
     });
 
+    it("counts every repair the run made when it gives up, not only those since the environment last broke", async () => {
+      const repo = initTempRepo("status-breaker-two-trips-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [HELLO, GOODBYE, "add a shout"], concurrency: 2 }) });
+      await writeRunRecord(repo, { runId: HELLO_RUN, task: HELLO });
+      await writeRunRecord(repo, { runId: GOODBYE_RUN, task: GOODBYE });
+      const reason = "the shared environment could not be repaired after 2 attempts; no task caused this";
+      const dir = await writeSupervisedRun(repo, { runId: SUPERVISED, repoPath: repo, concurrency: 2, tasks: 3, runBudgetMax: { gateMaintenance: 2 } }, [
+        { t: "slot_fill", slot: 1, surfaceId: HELLO_RUN, taskDef: { intent: HELLO } },
+        { t: "slot_fill", slot: 2, surfaceId: GOODBYE_RUN, taskDef: { intent: GOODBYE } },
+        { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: GOODBYE_RUN, reason: "the shared helper is missing" } },
+        { t: "repair_dispatch", attempt: 1, sessionKey: "run-repair-1", surfaceId: GOODBYE_RUN },
+        { t: "repair_terminus", attempt: 1, sessionKey: "run-repair-1", status: "completed", rationale: "restored it" },
+        { t: "breaker_healthy" },
+        { t: "breaker_degraded", cause: { kind: "gate_maintenance", surfaceId: HELLO_RUN, reason: "the shared helper is missing again" } },
+        { t: "repair_dispatch", attempt: 2, sessionKey: "run-repair-2", surfaceId: HELLO_RUN },
+        { t: "repair_terminus", attempt: 2, sessionKey: "run-repair-2", status: "completed", rationale: "restored it again" },
+        { t: "run_escalated", reason },
+      ]);
+      await setRunOutcome(dir, { kind: "escalated", cause: "shared_environment", reason, at: "2026-09-30T10:00:00.000Z" });
+
+      const { stdout } = await delivery(["status", SUPERVISED], { cwd: repo });
+
+      expect(stdout.split("\n")[0]).toBe("The shared environment could not be fixed after 2 attempts, so the run stopped; no task caused this.");
+    });
+
     it("gives the trip, the run's repair limit and why it stopped in --json, for looking back", async () => {
       const repo = await gaveUp("status-breaker-json-");
 

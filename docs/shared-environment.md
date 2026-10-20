@@ -69,7 +69,7 @@ delivery status
 ```
 
 ```text
-The shared environment could not be fixed after 0 attempts, so the run stopped; no task caused this.
+The shared environment could not be fixed after 2 attempts, so the run stopped; no task caused this.
 It was first noticed by [<task-pos>/4] add a function that shortens long text to a given length, with a test: the shared helper <path>/shared/helper.json is missing, so the check cannot run.
 Held: [<task-pos>/4] add a function that shortens long text to a given length, with a test, [<task-pos>/4] add a function that turns a title into a URL slug, with a test.
 Once it is fixed, `delivery run` carries the held tasks on.
