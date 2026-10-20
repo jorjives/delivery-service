@@ -109,14 +109,14 @@ The fixtures prove your pack works before you run it against a real project. The
 
 - `project/`: a small project with a `test` script (for example, `"test": "node --test"` in `package.json`). Committed fresh for each check run.
 - `review.json`: a claude-mock script for the scan: its session writes your ideas into `.delivery/backlog/` with `effects` and replies `completed`. See `packs/code-review/fixtures/review.json` for a worked one.
-- `fixes.json`: a claude-mock script that scripts the fixes, honest and cheating: one honest fix per problem, and one cheat per problem that should be refused.
+- `fixes.json`: a claude-mock script for the fixes, honest and cheating: one honest fix per problem, and one cheat per problem that should be refused.
 - `expect.json`: names the titles the review adds (`found`), the fixes that pass (`fixed`) and the cheats that are refused (`refused`).
 
 `delivery packs check ./my-review` runs `delivery review`, `delivery approve --all` and `delivery run --sources` against those scripts in a scratch copy of `fixtures/project`, with nothing sent to a real agent.
 
 ### fixtures/fixes.json
 
-A claude-mock script with multiple expectations. Each describes a file change (an honest fix or a cheat). The first expectation should always be for the retry after a refusal, so a refused cheat ends quickly without burning through the fix budget:
+This claude-mock script holds several expectations, each describing a file change (an honest fix or a cheat). Put the retry after a refusal first, so a refused cheat ends quickly without burning through the fix budget:
 
 ```json
 {
@@ -163,7 +163,7 @@ delivery packs check ./my-review
 
 Running the fixtures runs the fixture project's own tests on your machine, as a run runs a project's tests, so it asks you to confirm you trust the pack's code before anything runs: `y` to continue, Enter or `n` to leave it alone. The command runs that test command with none of your credentials and a scratch `HOME` in place of your own, but it is still real code with your real filesystem and process access; only check a pack whose `fixtures/project` you have read or trust. In a script or CI, where nothing can ask, pass `--yes` once you do.
 
-If there are problems with the manifest or fixtures, they are named by file and field:
+The check names any problem with the manifest or fixtures by file and field:
 
 ```
 my-review/pack.json: "scan.checks" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check.
@@ -212,7 +212,7 @@ Once the check passes, use the pack exactly as you would a built-in one:
 delivery review ./my-review
 ```
 
-Proves the folder against your project.
+This proves the folder against your project.
 
 ## From your own test suite
 
@@ -243,6 +243,6 @@ A scripted check cannot prove:
 
 - How good your review is on real code. A person must read your instructions and decide if they lead to useful findings.
 - Whether a real agent follows your `scan.md`. As `docs/testing-your-pipeline.md` explains, a real agent may follow the instructions differently.
-- Your review catches real problems in your area.
+- Whether your review catches real problems in your area.
 
-Also: unlike `delivery review`, `delivery packs check` runs `fixtures/project/`'s own `test` script (the way it proves a fix broke nothing). The confirmation in [Run the check](#run-the-check), and the sandboxed environment that command runs with, guard against an accidental credential leak - they are not a sandbox against hostile code. Only check a pack someone else wrote after reading and understanding what their `fixtures/project/` tests, and what their fixtures claim the review should find.
+Unlike `delivery review`, `delivery packs check` runs `fixtures/project/`'s own `test` script (the way it proves a fix broke nothing). The confirmation in [Run the check](#run-the-check), and the sandboxed environment that command runs with, guard against an accidental credential leak; they are not a sandbox against hostile code. Only check a pack someone else wrote after reading and understanding what their `fixtures/project/` tests, and what their fixtures claim the review should find.

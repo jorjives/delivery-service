@@ -11,7 +11,7 @@ once to do something with it: merge it, leave it on a branch, open a pull
 request, tell someone. The harness decides *when* the closer runs and acts on
 what it reports; the closer decides *what* closing means.
 
-The same closer is also called when a surface stops without being accepted
+The harness also calls the closer when a surface stops without being accepted
 (escalated to a person, or aborted), so it can tidy up after itself.
 
 What the harness does with the report:
@@ -136,8 +136,7 @@ Every closer switches on `outcome.kind`:
 - **`"aborted"`**: the surface was stopped. Nothing is landed. Tidy up the same
   way.
 
-A report on a stopped surface is only logged, so make teardown something that is
-safe to run twice.
+A report on a stopped surface is only logged, so make teardown safe to run twice.
 
 ## FAIL or ERROR
 
@@ -186,7 +185,7 @@ Describe the cause in your own words instead.
 ## Worked example: the merge-back closer
 
 This is the built-in `merge-back` closer's algorithm, written as a custom closer
-module that uses nothing but Node.js and `git`. Use it as a starting point: name
+module that uses nothing but Node.js and `git`. Use it as a starting point, or name
 `{ type: "merge-back" }` if the built-in already does what you need.
 
 Its order matters, and every step is safe to replay:
@@ -349,8 +348,8 @@ including every call the built-in closers make, so their merges never overlap. T
 merge-back closer's `--ff-only` merge also checks the base afresh when it runs: if another
 task moved the base on first, it reports `"FAIL"`, and triage and the `close` budget handle
 it as for any close that failed. When no checkout holds the base branch, as for the delivery
-branch a `--sources` run lands its tasks on, the closer moves the branch with `git update-ref`,
-giving the tip it read as the old value, which is the same check made in the same command.
+branch a `--sources` run lands its tasks on, the closer moves the branch with `git update-ref`.
+It gives the tip it read as the old value, which is the same check made in the same command.
 
 A closer of your own that runs git in the shared checkout through its own child process is
 outside that turn-taking. Write it so another task's git call landing between two of yours
@@ -359,8 +358,8 @@ cannot do harm: check the state you depend on in the same command that changes i
 
 ## When your closer goes wrong
 
-The harness wraps every custom closer, so a mistake in yours is reported, never
-crashed on. Each of these becomes an `"ERROR"` report, and on an accepted
+The harness wraps every custom closer, so it reports a mistake in yours and never
+crashes. Each of these becomes an `"ERROR"` report, which on an accepted
 surface goes to close-triage like any other failed close:
 
 | Mistake | The `detail` names |

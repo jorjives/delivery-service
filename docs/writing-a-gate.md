@@ -10,7 +10,7 @@ The gate is the only proof the harness accepts that a change is good. An agent's
 word that it finished is never taken as proof; the gate is run instead.
 
 A gate measures a worktree and returns a **report**: a list of named
-**assertions**, each passing or failing. It is measured twice per surface:
+**assertions**, each passing or failing. The harness measures it twice per surface:
 
 1. **`baseline(ctx)`**, once, before any agent touches the worktree. The report
    is stored in the case file and never changes for the rest of the surface.
@@ -177,8 +177,7 @@ through a run.
 
 **The module is loaded from outside the worktree.** A relative `modulePath` is
 resolved against the repository root (`repoPath`), never the worktree the surface
-is running in, so the agent being judged cannot edit the gate that judges it and
-make a failure disappear rather than fix it. An absolute path works too.
+is running in, so the agent being judged cannot edit the gate to hide a failure instead of fixing it. An absolute path works too.
 
 To load and call it yourself:
 
@@ -197,8 +196,8 @@ const ctx = {
 console.log(await gate.baseline(ctx));
 ```
 
-The harness wraps every custom gate, so a mistake in yours is reported, never
-crashed on:
+The harness wraps every custom gate, so it reports a mistake in yours and never
+crashes:
 
 | Mistake | What happens |
 |---|---|
@@ -281,5 +280,5 @@ renamed a test, changed how tests run, added a skip marker to a test, or hid a t
 git. "Changed how tests run" includes `.gitignore` (it decides which files the other guards can
 see) and the project's `Makefile` or equivalent build file (it can redefine what a `test` target
 actually runs) alongside the obvious test-runner configs and CI files, protected on every run,
-not only inside a pack's own fix. They are worked out from the commit the task started from, and a
+not only inside a pack's own fix. The harness works them out from the commit the task started from, and a
 failure among them fails the round even when your check passes.

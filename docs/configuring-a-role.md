@@ -3,14 +3,14 @@
 This guide gets you from nothing to a first successful agent invocation for any
 of the three roles a run dispatches: the **worker**, **gate-maintenance** and
 **triage**. You do not need to read any source to follow it. A fourth role, the
-**scanner**, reviews a project for `delivery review`; it is configured by the
-review, not by you, and works in a scratch copy that is thrown away, as triage does.
+**scanner**, reviews a project for `delivery review`; the
+review configures it, not you, and it works in a scratch copy that is thrown away, as triage does.
 
 ## What a role is
 
 The harness has one way of running an agent: `invoke(roleCfg, ctx)`. It starts one
 fresh agent session, sends it a prompt the harness assembles from the case file,
-and hands back exactly one result. A **role** is nothing more than the
+and hands back exactly one result. A **role** is the
 configuration you pass as `roleCfg`. You never write invocation code for a new
 role; you write a new configuration.
 
@@ -79,10 +79,10 @@ A project no longer changes roles from its configuration file. Instructions go i
 `agent.append` (see [Project configuration](project-configuration.md)); tool restrictions go
 in `permissions.deny` in your own Claude settings.
 
-**A misspelled tool name is not caught by `delivery validate`.** No list of valid
-tool names is checked, because none could stay in step with the agent runtime you
-have installed. A misspelling shows up during a run instead: the tool you meant is
-refused to the agent as a tool outside its list (see [What a role cannot do](#what-a-role-cannot-do)), and the run reports that refusal. If an agent says it was refused a tool
+**`delivery validate` does not catch a misspelled tool name.** It checks no list of valid
+tool names, because no list could stay in step with the agent runtime you
+have installed. The misspelling shows up during a run instead: the agent is
+refused the tool you meant, as a tool outside its list (see [What a role cannot do](#what-a-role-cannot-do)), and the run reports that refusal. If an agent says it was refused a tool
 you thought you granted, check the spelling in `allowedTools` first.
 
 Whatever the file lists, a role still works only inside its working tree: the
@@ -146,10 +146,10 @@ Always exactly one of three results:
 | `escalate` | The agent says it cannot go on, with a `category` of `exhaustion`, `authority` or `decision`. | Stops retrying that step and escalates. A `decision` also carries a `question` for the operator and goes straight to them, as `authority` does. |
 | `incomplete` | The session produced nothing usable. `rationale` says which of these it was, in plain English: it crashed, it ended without a reply, it replied in the wrong shape, it could not be started, or it tried something it is not allowed to do. | Retries, within the run's budget. |
 
-You will never get a stack trace or raw error text in `rationale`. When a session
-errored or could not be started, the underlying error is kept verbatim as `cause` in
-`refs/session-error-<session key>.json` beside the case file, so a harness problem
-can still be diagnosed without it reaching the person reading the run. When a session
+`rationale` never holds a stack trace or raw error text. When a session
+errors or cannot start, the harness keeps the underlying error verbatim as `cause` in
+`refs/session-error-<session key>.json` beside the case file. A harness problem
+can still be diagnosed, and the error never reaches the person reading the run. When a session
 ended without a reply or replied in the wrong shape, the same file keeps what it said
 as `agentReply` (the agent's own words, cut to the first 4,000 characters), and, for
 the wrong shape, why the role's `envelopeSchema` refused it as `cause`.
@@ -157,8 +157,8 @@ the wrong shape, why the role's `envelopeSchema` refused it as `cause`.
 ## What a role cannot do
 
 A role does not limit what the agent may do: every session has every tool your own Claude Code
-setup gives it. What a role's work may change is judged afterwards: the gate, the test guards
-and the gate's integrity check decide whether it is accepted. To keep the agent from a tool,
+setup gives it. Afterwards the gate, the test guards
+and the gate's integrity check judge what a role's work changed and decide whether to accept it. To keep the agent from a tool,
 use `permissions.deny` in your own Claude settings.
 
 ## Trying it offline
@@ -181,7 +181,7 @@ const result = await invoke(
 
 The session makes no network call and needs no API key.
 
-where `/tmp/my-run/mock.json` scripts what the agent does and replies, for example:
+The file `/tmp/my-run/mock.json` scripts what the agent does and replies, for example:
 
 ```json
 [
