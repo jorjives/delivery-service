@@ -1,10 +1,13 @@
 # Configuring a role
 
-This guide gets you from nothing to a first successful agent invocation for any
-of the three roles a run dispatches: the **worker**, **gate-maintenance** and
-**triage**. You do not need to read any source to follow it. A fourth role, the
-**scanner**, reviews a project for `delivery review`; the
-review configures it, not you, and it works in a scratch copy that is thrown away, as triage does.
+This guide takes you from nothing to a first successful agent invocation for each role a run
+dispatches: the **worker**, **gate-maintenance** and **triage**. It is for developers who want to
+change what an agent is told, or to run one by hand. You do not need to read any source. Two
+further roles, the **scanner** (used by `delivery review`) and **after** (used by after-landing
+steps that run an agent), are configured by the harness, not by you.
+
+The `npm run demo:*` commands in this guide need a clone of the harness repository; the snippets
+need only the installed package.
 
 ## What a role is
 
@@ -14,11 +17,11 @@ and hands back exactly one result. A **role** is the
 configuration you pass as `roleCfg`. You never write invocation code for a new
 role; you write a new configuration.
 
-A role configuration has three fields:
+A role configuration has three fields (a fourth, `budgets`, is reserved and unused):
 
 | Field | What it is | What happens if it is wrong |
 |---|---|---|
-| `role` | `"worker"`, `"gate-maintenance"`, `"triage"` or `"scanner"` | Rejected before any session starts |
+| `role` | `"worker"`, `"gate-maintenance"`, `"triage"`, `"scanner"` or `"after"` | Rejected before any session starts |
 | `systemPromptFragment` | Who the agent is and what it is for, in plain sentences. Must not be empty. | Rejected before any session starts |
 | `envelopeSchema` | The reply shape the agent must end with. Use `WorkerEnvelope` for the worker and gate-maintenance, and `TriageEnvelope` for triage. | Rejected before any session starts |
 
@@ -26,7 +29,7 @@ A mistake in any field throws `InvalidRoleConfig`, naming the field, before an
 agent is started. It is never reported as a failed run.
 
 Everything in this guide is imported from the harness's single entry point,
-`delivery-service`. Install it in your project as
+`delivery-service`, except the offline helpers in `delivery-service/testing`. Install it in your project as
 [Getting started](getting-started.md) describes, then run the snippets with
 `npx tsx`.
 
@@ -34,7 +37,8 @@ Everything in this guide is imported from the harness's single entry point,
 
 Start from one of these. Copy it and change the sentences to suit your project.
 
-**Worker**: carries out the task, inside the working copy and branch made for it.
+**Worker**: carries out the task, inside the [worktree](glossary.md#working-copy) and branch
+made for it. A worktree is the harness's copy of your project that one run works in.
 
 ```ts
 import { WorkerEnvelope, type RoleConfig } from "delivery-service";
@@ -42,7 +46,7 @@ import { WorkerEnvelope, type RoleConfig } from "delivery-service";
 export const myWorker: RoleConfig = {
   role: "worker",
   systemPromptFragment: [
-    "You are carrying out one task for a delivery harness, in a working copy and branch it made for this task.",
+    "You are carrying out one task for a delivery harness, in a worktree and branch it made for this task.",
     "Work as you normally would, with your own tools, skills and judgement.",
     "If you cannot finish and no further attempt would help, escalate instead of guessing.",
   ].join("\n"),
@@ -59,7 +63,7 @@ import { WorkerEnvelope, type RoleConfig } from "delivery-service";
 export const myGateMaintenance: RoleConfig = {
   role: "gate-maintenance",
   systemPromptFragment: [
-    "The project's check could not run in this working copy, so the delivery harness asked you to repair it.",
+    "The project's check could not run in this worktree, so the delivery harness asked you to repair it.",
     "Repair the environment (configuration, fixtures, dependency manifests) so that the check can run.",
     "Deleting, renaming or skipping a test, or hiding one from git, is refused, and so is a change to the check's own module.",
     "If only a change to the check would fix it, escalate instead.",
@@ -68,25 +72,15 @@ export const myGateMaintenance: RoleConfig = {
 };
 ```
 
-The two are also exported ready-made as `workerRoleConfig` and
-`gateMaintenanceRoleConfig`.
+These are shortened. The exported `workerRoleConfig`, `gateMaintenanceRoleConfig` and
+`triageRoleConfig` hold the full text. To keep the full text and change one thing, spread it:
+`{ ...gateMaintenanceRoleConfig, systemPromptFragment: "..." }`.
 
 The only difference between them is the sentences. The call you make is identical.
 
-## From the configuration file
-
-A project no longer changes roles from its configuration file. Instructions go in
-`agent.append` (see [Project configuration](project-configuration.md)); tool restrictions go
-in `permissions.deny` in your own Claude settings.
-
-**`delivery validate` does not catch a misspelled tool name.** It checks no list of valid
-tool names, because no list could stay in step with the agent runtime you
-have installed. The misspelling shows up during a run instead: the agent is
-refused the tool you meant, as a tool outside its list (see [What a role cannot do](#what-a-role-cannot-do)), and the run reports that refusal. If an agent says it was refused a tool
-you thought you granted, check the spelling in `allowedTools` first.
-
-Whatever the file lists, a role still works only inside its working tree: the
-tool guard in [What a role cannot do](#what-a-role-cannot-do) applies to every role, overridden or not.
+To change what a role is told in a real run, set `agent.append` (see
+[Project configuration](project-configuration.md)). To keep an agent from a tool, use
+`permissions.deny` in your own Claude settings.
 
 ## Making your first invocation
 
@@ -99,7 +93,7 @@ import { mkdirSync } from "node:fs";
 import { create, invoke, gateMaintenanceRoleConfig } from "delivery-service";
 
 const dir = "/tmp/my-run/case";          // the case file directory
-const worktreePath = "/tmp/my-run/tree"; // the agent's working tree
+const worktreePath = "/tmp/my-run/tree"; // the agent's worktree
 
 mkdirSync(dir, { recursive: true });
 mkdirSync(worktreePath, { recursive: true });
@@ -133,8 +127,9 @@ To run the worker instead, pass `workerRoleConfig` (or your own worker config).
 Nothing else changes.
 
 `invoke` uses the `claude` command on your machine and needs whatever credentials
-that command needs. To try it without a real agent or an API key, see [Trying it
-offline](#trying-it-offline).
+that command needs. If `claude` is missing or signed out, the result has `status: "incomplete"`
+and a plain-English `rationale`. To try it without a real agent or an API key, see
+[Trying it offline](#trying-it-offline).
 
 ## What comes back
 
@@ -157,15 +152,14 @@ the wrong shape, why the role's `envelopeSchema` refused it as `cause`.
 ## What a role cannot do
 
 A role does not limit what the agent may do: every session has every tool your own Claude Code
-setup gives it. Afterwards the gate, the test guards
-and the gate's integrity check judge what a role's work changed and decide whether to accept it. To keep the agent from a tool,
-use `permissions.deny` in your own Claude settings.
+setup gives it. Afterwards the gate and the harness's own checks on the work (see
+[Writing a gate](writing-a-gate.md#how-the-verdict-is-reached)) decide whether to accept it. To keep
+the agent from a tool, use `permissions.deny` in your own Claude settings.
 
 ## Trying it offline
 
-`claude-mock` is a scripted stand-in for the `claude` command. It is vendored in
-`vendor/claude-mock` and installed by `npm install`, so there is nothing else to set
-up. `mockSessionEnvironment` points a session at it, with the script it replays and
+`claude-mock` is a scripted stand-in for the `claude` command. It is bundled with the
+`delivery-service` package, so there is nothing else to set up. `mockSessionEnvironment` points a session at it, with the script it replays and
 the journal it writes; pass that as the third argument to `invoke`:
 
 ```ts
@@ -181,6 +175,17 @@ const result = await invoke(
 
 The session makes no network call and needs no API key.
 
+With the scripted reply described next, `console.log(result)` prints this (the `sessionId` differs each time):
+
+```text
+{
+  status: 'completed',
+  rationale: 'set the missing PORT in .env',
+  usage: { costUsd: 0, durationMs: 0 },
+  sessionId: '0ed1fb5f-207b-480e-aece-44f5094541ca'
+}
+```
+
 The file `/tmp/my-run/mock.json` scripts what the agent does and replies, for example:
 
 ```json
@@ -192,7 +197,7 @@ The file `/tmp/my-run/mock.json` scripts what the agent does and replies, for ex
 ]
 ```
 
-The ready-made demos do exactly this, one per role:
+The ready-made demos do exactly this, one per role (from a clone of the harness repository):
 
 ```bash
 npm run demo:agent-slice-1   # worker
@@ -203,8 +208,8 @@ The mock does not model tool permissions, so it cannot show a refusal happening
 inside a live session. The demos show the refusal by driving the harness's own
 decision directly; the live guarantee comes from the real `claude` runtime.
 
-This section is the single-role quick start. To test your gate, closer and role
-configurations together through a whole surface against the scripted agent, follow
+To test your gate, closer and role configurations together through a whole
+[surface](glossary.md#surface) (one task's run) against the scripted agent, follow
 [Testing your delivery pipeline](testing-your-pipeline.md).
 
 ## Triage
@@ -233,7 +238,7 @@ It is also exported ready-made as `triageRoleConfig`.
 
 **Triage works in a disposable copy.** Triage must never change the thing it is
 judging: the gate is the only proof that work is good. Triage has every tool a
-session has, so the harness gives it a copy of the task's working copy as it
+session has, so the harness gives it a copy of the task's worktree as it
 stands, uncommitted changes included, and throws the copy away when triage
 replies. It can read, run the check and try things there; none of it reaches the
 task's work.
@@ -247,7 +252,7 @@ happens. Every other setback is settled by a fixed rule, at no cost:
 |---|---|---|
 | The worker lacked authority | never | escalate to a person |
 | The worker is stuck | a correction slot is left | escalate once none is left |
-| The gate failed | exactly one correction slot is left | retry the worker while more are left; escalate at none |
+| The gate failed | exactly one correction slot is left, or the round failed only because test-runner settings changed | retry the worker while more are left; escalate at none |
 | The close failed | exactly one close slot is left | retry the close while more are left; escalate at none |
 | The gate could not run | gate rechecks are used up and a gate repair slot is left | re-run the gate free while rechecks are left; escalate when both are used up |
 
@@ -259,9 +264,9 @@ rather than acted on.
 
 | `status` | Allowed after | `payload` |
 |---|---|---|
-| `reroute` | the gate failed, the worker is stuck | a brief for the next worker: `problem`, `dead_ends`, `scope`, `references`, `diagnosis` |
-| `fix_the_gate` | the gate could not run | the same brief shape, for the repair session |
-| `retry_close` | the close failed | the same brief shape, kept in the case file and handed to the closer on the retried close as `repairBrief` (the built-in closers ignore it) |
+| `reroute` | the gate failed, the worker is stuck | a brief for the next worker: `problem`, `dead_ends`, `scope`, `references`, `diagnosis`; an optional `acceptSettings` boolean, honoured only when the gate failed on a settings change alone |
+| `fix_the_gate` | the gate could not run | a brief with the same five fields, for the repair session |
+| `retry_close` | the close failed | a brief with the same five fields, kept in the case file and handed to the closer on the retried close as `repairBrief` (the built-in closers ignore it) |
 | `escalate` | any setback | a packet for a person: `decision`, `evidence`, `dead_ends`, `why_now`, `references` |
 | `abort` | any setback | `{ reason }` |
 | `incomplete` | (the harness's own verdict) | none: the session produced nothing usable, and the harness escalates rather than guessing |
@@ -289,7 +294,7 @@ mock should give to `/tmp/my-triage/mock.json`:
 ]
 ```
 
-Then, from the repository root, save the following as `first-triage.ts` and run
+Then save the following as `first-triage.ts` and run
 it with `npx tsx first-triage.ts`:
 
 ```ts
@@ -367,5 +372,12 @@ on a free recheck, run:
 npm run demo:triage-slice-3
 ```
 
-The mock does not enforce `allowedTools`, so it cannot show triage being refused
+The mock does not enforce `permissions.deny`, so it cannot show triage being refused
 a write. That guarantee comes from the real `claude` runtime.
+
+## See also
+
+- [Testing your delivery pipeline](testing-your-pipeline.md): test roles, gates and closers together against the scripted agent.
+- [Writing a gate](writing-a-gate.md) and [Writing a closer](writing-a-closer.md): the other two extension points.
+- [Project configuration](project-configuration.md): `agent.append` and the other settings.
+- [Glossary](glossary.md): the terms used here.
