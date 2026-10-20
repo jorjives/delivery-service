@@ -141,7 +141,8 @@ export async function addedBacklogItems(cwd: string, base: string, tree: string,
 
 /**
  * What a change did besides adding ideas: any path outside the backlog, a new item that is not an idea with a
- * severity and a check, and an idea whose check does not find its problem in the tree as the agent left it (files git ignores are not in it).
+ * severity and a check, and an idea whose check does not find its problem in the tree as the agent left it (files
+ * git ignores are not in it).
  * Edits to existing items, and new files that are not items at all, are the backlog guard's to report.
  */
 async function notIdeas(cwd: string, base: string, tree: string): Promise<string[]> {
