@@ -76,7 +76,10 @@ plugins:
           - check-your-setup.md
           - run-a-task.md
           - run-a-task-list.md
+          - use-workflows.md
           - work-a-backlog.md
+          - work-sources.md
+          - run-after-landing.md
           - run-on-a-schedule.md
           - resume-a-run.md
           - shared-environment.md
@@ -116,7 +119,10 @@ nav:
       - Run work:
           - Run a task: run-a-task.md
           - Work through a task list: run-a-task-list.md
+          - Do a task in steps: use-workflows.md
           - Work through a backlog: work-a-backlog.md
+          - Take work from other sources: work-sources.md
+          - Run steps after landing: run-after-landing.md
           - Run on a schedule: run-on-a-schedule.md
           - Pick up an interrupted run: resume-a-run.md
           - When the shared environment breaks: shared-environment.md
