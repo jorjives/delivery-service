@@ -31,43 +31,23 @@ describe("the configuration reference", () => {
     expect(missing).toEqual([]);
   });
 
-  it("names every budget", () => {
-    expect(unnamed(section("### `budgets`"), Object.keys(Budgets.shape))).toEqual([]);
-  });
-
-  it("names every fence mode", () => {
-    expect(unnamed(section("### `fence`"), FenceMode.options)).toEqual([]);
-  });
-
-  it("names every closer", () => {
-    expect(unnamed(section("### `closer`"), CloserRef.options.map((option) => option.shape.type.value))).toEqual([]);
-  });
-
-  it("names every ready-made check", () => {
-    expect(unnamed(section("## Ready-made checks"), PRESET_NAMES)).toEqual([]);
-  });
-
-  it("names every field of a workflow and of its steps", () => {
-    expect(unnamed(section("## Workflows"), [...Object.keys(WorkflowConfig.shape), ...Object.keys(StepConfig.shape)])).toEqual([]);
-  });
-
-  it("names every guard", () => {
-    expect(unnamed(section("## Guards"), GuardName.options)).toEqual([]);
-  });
-
-  it("names every kind of work source", () => {
-    expect(unnamed(section("## Work sources"), SourceConfig.options.map((option) => option.shape.type.value))).toEqual([]);
-  });
-
-  it("names every field of an after-landing step", () => {
-    const fields = [...new Set(AfterStep.options.flatMap((option) => Object.keys(option.shape)))];
-    expect(unnamed(section("## After-landing steps"), fields)).toEqual([]);
-  });
-
-  it("names every field of a backlog item, every check kind and every severity", () => {
-    const text = section("## Backlog items");
-    expect(unnamed(text, Object.keys(ItemFrontMatter.shape))).toEqual([]);
-    expect(unnamed(text, ItemCheck.options.map((option) => option.shape.kind.value))).toEqual([]);
-    expect(unnamed(text, SEVERITIES)).toEqual([]);
+  // What the reference must name, and the section it must name it in.
+  const typeOf = (option: { shape: { type: { value: string } } }): string => option.shape.type.value;
+  it.each([
+    ["budget", "### `budgets`", Object.keys(Budgets.shape)],
+    ["fence mode", "### `fence`", FenceMode.options],
+    ["closer", "### `closer`", CloserRef.options.map(typeOf)],
+    ["ready-made check", "## Ready-made checks", PRESET_NAMES],
+    ["field of a workflow and of its steps", "## Workflows", [...Object.keys(WorkflowConfig.shape), ...Object.keys(StepConfig.shape)]],
+    ["guard", "## Guards", GuardName.options],
+    ["kind of work source", "## Work sources", SourceConfig.options.map(typeOf)],
+    ["field of an after-landing step", "## After-landing steps", [...new Set(AfterStep.options.flatMap((option) => Object.keys(option.shape)))]],
+    [
+      "field of a backlog item, check kind and severity",
+      "## Backlog items",
+      [...Object.keys(ItemFrontMatter.shape), ...ItemCheck.options.map((option) => option.shape.kind.value), ...SEVERITIES],
+    ],
+  ] as const)("names every %s under %s", (_what, heading, names) => {
+    expect(unnamed(section(heading), names)).toEqual([]);
   });
 });
