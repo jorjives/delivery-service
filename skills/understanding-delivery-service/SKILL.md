@@ -7,23 +7,21 @@ description: Use when asked to set up, write, validate or fix a `delivery.config
 
 ## Overview
 
-`delivery` is a deterministically gated agent delivery harness. An agent works on a disposable copy of a repo; **the project's own check (the gate) decides** whether the work is good, never the agent; passing work goes through a **closer** (leave on a branch, merge back, open a PR). Setting a project up means writing one file, `delivery.config.json`, at the repo root. No code needed.
+`delivery` is an agent delivery harness. An agent works on a disposable copy of a repo; **the project's own check (the gate) decides** whether the work is good, never the agent; passing work goes through a **closer** (leave on a branch, merge back, open a PR). Setting a project up means writing one file, `delivery.config.json`, at the repo root. No code needed.
 
-The harness lives outside your project: source and the full docs are in `/home/jorjives/dev/delivery-service` (`docs/`). The `delivery` command is installed at `~/.local/bin/delivery`, which is not on PATH in every shell: call it by full path if `delivery: command not found`. Read the doc named below for the setting in front of you, not all of them.
+The harness lives outside your project. Its docs are in the delivery-service repo: `../../docs/` relative to this skill's real directory (`readlink -f` this skill's base directory, since it is a symlink). Find the command with `command -v delivery`; if absent, it is usually `~/.local/bin/delivery`. Read only the doc for the setting in front of you.
 
 ## Set up a project
 
-1. **Preconditions:** a git repo; Node 22+; for real runs, a signed-in Claude Code. `validate` and `preview` need none of that.
-2. **Write `delivery.config.json` by hand.** `delivery init` asks questions and exits 2 without a terminal, so it is no use to you. Every setting is optional; an unknown setting stops every command.
-3. **Choose the gate first.** It must be a command that exits non-zero when the work is bad, which the agent cannot weaken. Default is the `test` script in `package.json`; with none, you must set one.
-4. **Validate, then preview, both free and offline:**
+1. **Write `delivery.config.json` by hand** at the repo root (it is found from the current folder upwards). `delivery init` needs a terminal and exits 2 without one. Needs: git repo, Node 22+; real runs also need a signed-in Claude Code. Every setting is optional; an unknown setting stops every command.
+2. **Choose the gate first.** A command that exits non-zero on bad work and cannot be weakened by the agent. Default is the `test` script in `package.json`; with none, you must set one.
+3. **Validate, then preview.** Both are free and offline:
 
 ```bash
-delivery validate          # add --json for every problem at once; exit 2 = fix the config
-delivery preview           # prints exactly what the agent will be told for the next task
+delivery validate && delivery preview   # validate --json lists every problem; exit 2 = fix the config
 ```
 
-5. Commit `delivery.config.json`. Do not commit `.delivery/` (it carries its own `.gitignore`).
+4. Commit `delivery.config.json`. `.delivery/` (run state) ignores itself.
 
 ## Minimal config
 
@@ -38,33 +36,29 @@ delivery preview           # prints exactly what the agent will be told for the 
 
 ## Which setting, which doc
 
-All paths are under `/home/jorjives/dev/delivery-service/docs/`.
-
 | Decision | Setting | Read |
 |---|---|---|
 | Project description every agent is told | `domain` | configuration-reference.md |
-| What decides "good" | `gate` (`test-runner`, `command-succeeds`, `file-exists`, `schema-validates`, `commits-ahead`, `command`, `custom`) | writing-a-gate.md |
-| What happens to passing work | `closer` (`commit-to-branch` default, `merge-back`, `open-pr`, `custom`) | writing-a-closer.md |
+| What decides "good"; heavy setup via `checkOnly` | `gate` | writing-a-gate.md |
+| What happens to passing work | `closer` | writing-a-closer.md |
 | Fixed list of jobs | `tasks`, `concurrency` | run-a-task-list.md |
-| Work from GitHub issues or a command | `sources`, with `workflows` | work-sources.md, use-workflows.md |
-| Extra instructions for the agent | `agent.append` | configuration-reference.md |
-| Retry limits, fence, notify, after-landing steps | `budgets`, `fence`, `notify`, `after` | configuration-reference.md |
+| Work from GitHub issues or a command | `sources`, `workflows` | work-sources.md, use-workflows.md |
+| Stop the agent weakening tests | `guards` (on by default) | configuration-reference.md#guards |
+| Project rules for the agent | `agent.append` | configuration-reference.md |
+| Retries, fence, notify, after-landing steps | `budgets`, `fence`, `notify`, `after` | configuration-reference.md |
 
-Worked examples: `/home/jorjives/dev/delivery-service/examples/project-configuration-example/` (small), and the repo's own `delivery.config.json` (issue-driven, two-step workflow, `open-pr` closer). Step-by-step guide: `project-configuration.md`.
+Examples, in the delivery-service repo: `examples/project-configuration-example/` (small) and its own `delivery.config.json` (issue-driven, two-step workflow, `open-pr`). Walkthrough: `project-configuration.md`.
 
 ## Choosing well
 
-- **Gate:** reuse the project's existing verify command (`make verify`, `npm test`) rather than inventing one. Use `"checkOnly": true` when the command does heavy setup (e.g. `npm ci`) that should not run before the agent starts.
+- **Gate:** reuse the project's existing verify command rather than inventing one.
 - **Closer:** `commit-to-branch` is the safe default. `open-pr` needs a remote and a signed-in `gh`. `merge-back` lands work with no human look.
-- **Guards** (on by default) stop the agent passing by deleting tests, skipping tests or editing CI. Turn one off per task only with a stated reason.
-- **Conventions:** put project rules in `agent.append` or point it at `CONTRIBUTING.md`, rather than lengthening `domain`.
+- **Guards:** turn one off per task only with a stated reason.
+- **Conventions:** put project rules in `agent.append` (or point it at `CONTRIBUTING.md`), not in `domain`.
 
 ## Common mistakes
 
-- Running `delivery init` non-interactively. Write the file.
 - Declaring the project set up before `delivery validate` prints `Ready to run.`
-- A gate that cannot fail (`true`, `echo ok`), or one so slow or flaky that every correction round times out.
-- Using `delivery run` to "test" the config. It starts a real agent and spends money; use `validate` and `preview`.
+- A gate that always passes (`true`, `echo ok`), or one so slow or flaky that correction rounds time out.
+- Using `delivery run` to test the config: it starts a real agent and spends money.
 - Editing the config mid-run and expecting the run to notice: a run keeps the `domain` it started with.
-- Putting the config in a subfolder: it is found from the current folder upwards to the repo top, so keep it at the root.
-- Looking for harness code in the target project. It is not there.
