@@ -6,6 +6,7 @@ import { computeDelta } from "./delta-rule.js";
 import { inDetachedWorktree } from "./disposable-copy.js";
 import { readDelivery, recordDelivery } from "./delivery-ledger.js";
 import { branchExists, conflictedFiles, git, tryGit } from "./git-exec.js";
+import { messageOf } from "./gate-support.js";
 import { resolveBaseRef } from "./provision.js";
 import { resolveCloser } from "./resolve-closer.js";
 import { resolveGate } from "./resolve-gate.js";
@@ -28,6 +29,34 @@ export async function baseTip(repoPath: string): Promise<{ base: string; commit:
   if (ref === localBranch) return { base: localBranch, commit: local };
   const remote = await git(repoPath, ["rev-parse", ref]).catch(() => local);
   return { base: localBranch, commit: remote !== local && (await isAncestor(repoPath, local, remote)) ? remote : local };
+}
+
+/** Long enough for a slow network; short enough that an unreachable origin does not hold the run. */
+const FETCH_TIMEOUT_MS = 60_000;
+
+/**
+ * Bring the base's remote-tracking branch up to date from origin (spec §5.8), so a pull request merged on GitHub is
+ * seen without the owner pulling: `baseTip` then prefers it. Moves only `refs/remotes/origin/<base>`, never a local
+ * branch. A repository whose base is not taken from origin has nothing to fetch. Never throws: a failure (offline,
+ * origin gone, a prompt for credentials refused) comes back with git's reason, for the run to report and carry on.
+ */
+export async function fetchBase(repoPath: string): Promise<{ base: string; reason: string } | undefined> {
+  const { ref, localBranch } = await resolveBaseRef(repoPath);
+  if (ref === localBranch) return undefined;
+  try {
+    await git(repoPath, ["fetch", "--quiet", "--no-tags", "origin", `+refs/heads/${localBranch}:refs/remotes/${ref}`], { env: { GIT_TERMINAL_PROMPT: "0" }, timeout: FETCH_TIMEOUT_MS });
+    return undefined;
+  } catch (err) {
+    return { base: localBranch, reason: fetchFailure(err) };
+  }
+}
+
+/** git's first line of complaint, without its "fatal: " prefix; or that it ran out of time. */
+function fetchFailure(err: unknown): string {
+  const { killed, stderr } = err as { killed?: boolean; stderr?: unknown };
+  if (killed === true) return `it took longer than ${FETCH_TIMEOUT_MS / 1000} seconds`;
+  const line = typeof stderr === "string" ? stderr.split("\n").map((l) => l.trim()).find((l) => l !== "") : undefined;
+  return line === undefined ? messageOf(err) : line.replace(/^fatal: /, "");
 }
 
 export type Reconciled =

@@ -3,9 +3,9 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
-import { initTempRepo } from "./temp-repo.js";
+import { addLocalOrigin, initTempRepo } from "./temp-repo.js";
 import { readDelivery, readDeliveryEntries } from "./delivery-ledger.js";
-import { baseTip, closeDeliveryBranch, reconcileDeliveryBranch } from "./delivery-branch.js";
+import { baseTip, closeDeliveryBranch, fetchBase, reconcileDeliveryBranch } from "./delivery-branch.js";
 import { commitOn } from "./delivery-fixtures.js";
 import type { GateRef } from "./schema.js";
 
@@ -135,5 +135,48 @@ describe("closeDeliveryBranch", () => {
     expect(git(repo, ["branch", "--list", D])).toBe("");
     expect(git(repo, ["worktree", "list"]).split("\n")).toHaveLength(1);
     expect((await readDelivery(path, D)).closer).toMatchObject({ status: "DONE" });
+  });
+});
+
+describe("fetchBase", () => {
+  /** A commit pushed to origin's main from elsewhere, as merging a pull request on GitHub would. */
+  const pushToOrigin = (origin: string, file: string): string => {
+    const clone = join(mkdtempSync(join(tmpdir(), "fetch-base-clone-")), "clone");
+    git(tmpdir(), ["clone", "-q", origin, clone]);
+    git(clone, ["config", "user.email", "owner@example.invalid"]);
+    git(clone, ["config", "user.name", "Owner"]);
+    writeFileSync(join(clone, file), "on GitHub\n");
+    git(clone, ["add", file]);
+    git(clone, ["commit", "-q", "-m", `GitHub: ${file}`]);
+    git(clone, ["push", "-q", "origin", "main"]);
+    return git(clone, ["rev-parse", "HEAD"]);
+  };
+
+  it("moves origin's tracking branch for the base to what origin has, and no local branch", async () => {
+    const repo = project();
+    const origin = addLocalOrigin(repo);
+    git(repo, ["remote", "set-head", "origin", "main"]);
+    const local = git(repo, ["rev-parse", "main"]);
+    const merged = pushToOrigin(origin, "merged.txt");
+
+    expect(await fetchBase(repo)).toBeUndefined();
+    expect(git(repo, ["rev-parse", "origin/main"])).toBe(merged);
+    expect(git(repo, ["rev-parse", "main"])).toBe(local);
+  });
+
+  it("has nothing to fetch when the base is not taken from origin", async () => {
+    const repo = project();
+    expect(await fetchBase(repo)).toBeUndefined();
+  });
+
+  it("returns git's reason, and leaves the tracking branch as it was, when origin cannot be reached", async () => {
+    const repo = project();
+    addLocalOrigin(repo);
+    git(repo, ["remote", "set-head", "origin", "main"]);
+    const before = git(repo, ["rev-parse", "origin/main"]);
+    git(repo, ["remote", "set-url", "origin", join(tmpdir(), "no-such-origin-for-fetch")]);
+
+    expect(await fetchBase(repo)).toEqual({ base: "main", reason: expect.stringContaining("does not appear to be a git repository") });
+    expect(git(repo, ["rev-parse", "origin/main"])).toBe(before);
   });
 });
