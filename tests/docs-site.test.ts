@@ -11,7 +11,7 @@ import { REPO_ROOT, runDelivery } from "./helpers.js";
 
 const config = parse(readFileSync(join(REPO_ROOT, "mkdocs.yml"), "utf-8"), { logLevel: "error" }) as {
   exclude_docs: string;
-  markdown_extensions: Array<string | Record<string, { custom_fences?: Array<{ name: string }> }>>;
+  markdown_extensions: unknown;
   nav: unknown;
   plugins: Array<string | Record<string, { sections: Record<string, string[]> }>>;
 };
@@ -47,23 +47,29 @@ describe("the docs site", () => {
 // Flows are drawn, not just described: Mermaid blocks in the Markdown, rendered
 // by the theme. Each page below explains a flow a reader may want to follow.
 describe("the diagrams", () => {
-  const diagramPages: string[] = ["concepts.md", "work-a-backlog.md", "task-packs.md", "writing-a-gate.md"];
-  const fence = "```mermaid";
+  // The flows a reader is meant to be able to follow, not only read about.
+  const drawn = ["concepts.md", "work-a-backlog.md", "task-packs.md", "writing-a-gate.md"];
+  const textOf = (page: string): string => readFileSync(join(REPO_ROOT, "docs", page), "utf-8");
+  const blocks = pages.flatMap((page) =>
+    [...textOf(page).matchAll(/^([^\n]*)\n\n```mermaid\n([^]*?)\n```$/gm)].map(([, before, body]) => ({ page, before: before ?? "", body: body ?? "" })),
+  );
 
   it("are rendered by the site", () => {
-    const superfences = config.markdown_extensions.find((ext) => typeof ext === "object" && "pymdownx.superfences" in ext) as
-      | { "pymdownx.superfences": { custom_fences?: Array<{ name: string }> } }
-      | undefined;
-    expect(superfences?.["pymdownx.superfences"].custom_fences?.map((f) => f.name)).toContain("mermaid");
+    expect(JSON.stringify(config.markdown_extensions)).toContain('"name":"mermaid"');
   });
 
-  it.each(diagramPages)("%s draws its flow", (page) => {
-    expect(readFileSync(join(REPO_ROOT, "docs", page), "utf-8")).toContain(fence);
+  it.each(drawn)("%s draws its flow", (page) => {
+    expect(blocks.some((block) => block.page === page)).toBe(true);
   });
 
-  it("only appear on published pages", () => {
-    const unpublished = readdirSync(join(REPO_ROOT, "docs")).filter((n) => n.endsWith(".md") && excluded.includes(n));
-    expect(diagramPages.filter((page) => unpublished.includes(page))).toEqual([]);
+  it("are introduced by a sentence, so the page reads without the image", () => {
+    expect(blocks.filter((block) => block.before.startsWith("#") || block.before.trim() === "").map((block) => block.page)).toEqual([]);
+  });
+
+  it("are not empty and are all fenced as mermaid", () => {
+    const fences = pages.reduce((count, page) => count + (textOf(page).match(/^```mermaid$/gm) ?? []).length, 0);
+    expect(blocks.length).toBe(fences);
+    expect(blocks.filter((block) => block.body.trim() === "")).toEqual([]);
   });
 });
 
