@@ -691,6 +691,45 @@ describe("delivery run --sources", () => {
 
       expect(stdout).toContain("Could not ask GitHub whether delivery/main");
     }, RUN_TIMEOUT * 2);
+
+    it("starts again after a squash merge on GitHub, replacing the kept branch, and opens a fresh pull request", async () => {
+      const { gh, repo, origin, env, ledger } = await prProject(helloThenGoodbye);
+      await delivery(["run", "--sources"], { cwd: repo, env });
+      gh.mergePullRequest(gh.pullRequests()[0]?.url ?? "", mergeOnGitHub(origin, "squash", { [SECOND_PATH]: SECOND_BRIEF }));
+
+      const second = await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(second.exitCode).toBe(EXIT.ok);
+      expect(git(repo, ["merge-base", "--is-ancestor", "origin/main", "delivery/main"])).toBe("");
+      expect((await readDelivery(ledger, "delivery/main")).landed.map((e) => e.key)).toEqual([SECOND_KEY]);
+      expect(git(origin, ["rev-parse", "delivery/main"])).toBe(git(repo, ["rev-parse", "delivery/main"]));
+      expect(gh.pullRequests().map((pr) => pr.state)).toEqual(["MERGED", "OPEN"]);
+    }, RUN_TIMEOUT * 2);
+
+    it("starts again after a squash merge even when the owner then changed the same file on the base", async () => {
+      const { gh, repo, origin, env, ledger } = await prProject(helloThenGoodbye);
+      await delivery(["run", "--sources"], { cwd: repo, env });
+      gh.mergePullRequest(gh.pullRequests()[0]?.url ?? "", mergeOnGitHub(origin, "squash", { [SECOND_PATH]: SECOND_BRIEF, "hello.js": "export const hello = 2;\n" }));
+
+      const second = await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(second.exitCode).toBe(EXIT.ok);
+      expect((await readDelivery(ledger, "delivery/main")).landed.map((e) => e.key)).toEqual([SECOND_KEY]);
+      expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("hello = 2");
+      expect(gh.pullRequests().map((pr) => pr.state)).toEqual(["MERGED", "OPEN"]);
+    }, RUN_TIMEOUT * 2);
+
+    it("does not start again while the pull request is still open, even when the base already holds the same change", async () => {
+      const { gh, repo, origin, env, ledger } = await prProject(helloThenGoodbye);
+      await delivery(["run", "--sources"], { cwd: repo, env });
+      mergeOnGitHub(origin, "squash", { [SECOND_PATH]: SECOND_BRIEF });
+      // GitHub is not told it merged: the pull request is still open.
+
+      await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(gh.pullRequests().map((pr) => pr.state)).toEqual(["OPEN"]);
+      expect((await readDelivery(ledger, "delivery/main")).landed.map((e) => e.key)).toContain(KEY);
+    }, RUN_TIMEOUT * 2);
   });
 
   it("does not fetch, or ask GitHub, with any other closer", async () => {

@@ -3,7 +3,8 @@ import { z } from "zod";
 import { load } from "./case-file.js";
 import { closeError, closerFromAcceptedHandler, commitAccepted, taskSummary } from "./closer-support.js";
 import { ghAccess, ghFailureOf, ghReason, runGh, type GhFailure } from "./gh.js";
-import { tryGit } from "./git-exec.js";
+import { git, tryGit } from "./git-exec.js";
+import { mergedPullRequestTips } from "./merged-pull-requests.js";
 import type { CloseContext, CloseReport, CloserPort, DeliveredTask } from "./ports.js";
 import type { TaskDef } from "./schema.js";
 
@@ -91,6 +92,24 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
 
   const gh = (cwd: string, args: string[]): Promise<string> => runGh(args, { cwd, command: ghCommand });
 
+  /**
+   * Push the branch to origin. When git refuses a delivery branch because origin's copy is not an ancestor, replace that
+   * copy, but only when it is exactly the head of a pull request GitHub reports merged (a squash or rebase merge whose
+   * branch GitHub kept): everything on it is then in the base. The lease names that commit, so anything pushed since is
+   * never overwritten. Any other branch, and any other refusal, is reported as before.
+   */
+  async function pushBranch(ctx: CloseContext): Promise<boolean> {
+    const refspec = `refs/heads/${ctx.branch}:refs/heads/${ctx.branch}`;
+    if (await tryGit(ctx.repoPath, ["push", "--set-upstream", "origin", refspec])) return true;
+    if (ctx.delivery === undefined) return false;
+    const listed = await git(ctx.repoPath, ["ls-remote", "origin", `refs/heads/${ctx.branch}`]).catch(() => "");
+    const remote = listed.split(/\s+/)[0] ?? "";
+    if (remote === "") return false;
+    const merged = await mergedPullRequestTips(ctx.repoPath, ctx.branch, { command: ghCommand }).catch(() => new Set<string>());
+    if (!merged.has(remote)) return false;
+    return tryGit(ctx.repoPath, ["push", "--set-upstream", `--force-with-lease=refs/heads/${ctx.branch}:${remote}`, "origin", refspec]);
+  }
+
   async function closeAccepted(ctx: CloseContext): Promise<CloseReport> {
     if (ctx.baseBranch === "") {
       return closeError("This surface has no pinned base branch, so there is nothing to open a pull request against.");
@@ -107,8 +126,7 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
       );
     }
 
-    const refspec = `refs/heads/${ctx.branch}:refs/heads/${ctx.branch}`;
-    if (!(await tryGit(ctx.repoPath, ["push", "--set-upstream", "origin", refspec]))) {
+    if (!(await pushBranch(ctx))) {
       return closeError(
         `git could not push ${ctx.branch} to origin, so no pull request was opened. The work is committed on ` +
           `${ctx.branch}. Check that the operator can push to origin from ${ctx.repoPath}, then close again.`,

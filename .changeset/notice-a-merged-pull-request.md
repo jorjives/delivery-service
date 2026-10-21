@@ -8,3 +8,7 @@ request you merged on GitHub, by merge commit, squash or rebase, is seen without
 delivery branch starts again from your base, `delivery status` stops listing what merged, and the
 next item gets a new pull request. If the fetch or the question fails, for example offline, the run
 says so and carries on with what it already has. Other closers do not fetch.
+
+When GitHub keeps the branch of a merged delivery pull request, `open-pr` replaces it with the new
+work, but only when it is exactly what GitHub reports as merged; a commit someone else pushed there
+is never overwritten.
