@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { git } from "../../tests/helpers.js";
 import { createGhStandIn } from "../gh-stand-in.js";
 import { UNTRUSTED_TASK } from "../prompt-assembly.js";
@@ -21,9 +21,48 @@ const ITEM = "20261016T090000Z-say-hello.md";
 const ITEM_PATH = `.delivery/backlog/${ITEM}`;
 const KEY = `backlog:${ITEM}`;
 const BRIEF = "---\nstatus: open\npriority: 1\n---\nAdd a function that says hello to a name.\n";
+const SECOND = "20261016T090100Z-say-goodbye.md";
+const SECOND_PATH = `.delivery/backlog/${SECOND}`;
+const SECOND_KEY = `backlog:${SECOND}`;
+const SECOND_BRIEF = "---\nstatus: open\npriority: 2\n---\nAdd a function that says goodbye.\n";
+const helloThenGoodbye: MockScript = {
+  expectations: [
+    { when: { promptContains: "says hello" }, effects: [{ write: { path: "hello.js", content: "export const hello = 1;\n" } }], json: { status: "completed", rationale: "hello" } },
+    { when: { promptContains: "says goodbye" }, effects: [{ write: { path: "goodbye.js", content: "export const goodbye = 1;\n" } }], json: { status: "completed", rationale: "goodbye" } },
+  ],
+};
 
 const project = (files: Record<string, string> = {}) => initTempRepo("sources-run-", { "package.json": PACKAGE, [ITEM_PATH]: BRIEF, ...files });
 const stateDir = () => mkdtempSync(join(tmpdir(), "sources-state-"));
+
+/**
+ * Merge the delivery branch's pull request "on GitHub": in a clone of origin, as the owner would, then push origin's
+ * main. Nothing in the project's own checkout moves, and origin keeps its delivery branch (GitHub's default). Returns the
+ * delivery branch's head on origin at merge time: what GitHub reports as the merged pull request's `headRefOid`. `extra`
+ * files ride on top as the owner's next commit.
+ */
+function mergeOnGitHub(origin: string, method: "merge" | "squash", extra: Record<string, string> = {}): string {
+  const head = git(origin, ["rev-parse", "delivery/main"]);
+  const clone = join(mkdtempSync(join(tmpdir(), "github-")), "clone");
+  git(tmpdir(), ["clone", "-q", origin, clone]);
+  git(clone, ["config", "user.email", "owner@example.invalid"]);
+  git(clone, ["config", "user.name", "Owner"]);
+  if (method === "merge") git(clone, ["merge", "-q", "--no-ff", "-m", "Merge pull request #1", "origin/delivery/main"]);
+  else {
+    git(clone, ["merge", "-q", "--squash", "origin/delivery/main"]);
+    git(clone, ["commit", "-q", "-m", "Delivered work (#1)"]);
+  }
+  for (const [path, content] of Object.entries(extra)) {
+    mkdirSync(dirname(join(clone, path)), { recursive: true });
+    writeFileSync(join(clone, path), content);
+  }
+  if (Object.keys(extra).length > 0) {
+    git(clone, ["add", "-A"]);
+    git(clone, ["commit", "-q", "-m", "the owner's next item"]);
+  }
+  git(clone, ["push", "-q", "origin", "main"]);
+  return head;
+}
 
 const asks: MockScript = {
   expectations: [
@@ -55,17 +94,10 @@ describe("delivery run --sources", () => {
   }, RUN_TIMEOUT);
 
   it("lands several items one after another on one delivery branch, and hands it to the closer once", async () => {
-    const SECOND = "20261016T090100Z-say-goodbye.md";
-    const repo = project({ [`.delivery/backlog/${SECOND}`]: "---\nstatus: open\npriority: 2\n---\nAdd a function that says goodbye.\n" });
+    const repo = project({ [SECOND_PATH]: SECOND_BRIEF });
     const state = stateDir();
-    const script: MockScript = {
-      expectations: [
-        { when: { promptContains: "says hello" }, effects: [{ write: { path: "hello.js", content: "export const hello = 1;\n" } }], json: { status: "completed", rationale: "hello" } },
-        { when: { promptContains: "says goodbye" }, effects: [{ write: { path: "goodbye.js", content: "export const goodbye = 1;\n" } }], json: { status: "completed", rationale: "goodbye" } },
-      ],
-    };
 
-    const { exitCode, stdout } = await delivery(["run", "--sources", "--max", "2"], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(script) } });
+    const { exitCode, stdout } = await delivery(["run", "--sources", "--max", "2"], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(helloThenGoodbye) } });
 
     expect(exitCode).toBe(EXIT.ok);
     expect(git(repo, ["branch", "--list", "surface/*"])).toBe("");
@@ -583,5 +615,136 @@ describe("delivery run --sources", () => {
     const { stdout } = await delivery(["run", "--sources"], { cwd: repo, env });
     expect((await readItemLedger(ledgerPath(repo, { XDG_STATE_HOME: state }))).get("github:1")?.parked).toBe("decision");
     expect(stdout).toContain("Could not show that it is parked on GitHub issue #1: the account gh is signed in as lacks permission to change this repository's issues.");
+  }, RUN_TIMEOUT);
+
+  describe("with the open-pr closer", () => {
+    afterEach(() => {
+      vi.unstubAllEnvs();
+    });
+
+    /** A project with origin and the open-pr closer, gh replaced by the stand-in (the built-in closer runs gh from PATH). */
+    const prProject = async (script: MockScript) => {
+      const gh = createGhStandIn();
+      vi.stubEnv("PATH", `${gh.binDir}${delimiter}${process.env.PATH ?? ""}`);
+      const repo = project({ "delivery.config.json": JSON.stringify({ closer: { type: "open-pr" } }) });
+      const origin = addLocalOrigin(repo);
+      git(repo, ["remote", "set-head", "origin", "main"]);
+      const state = stateDir();
+      const env = { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(script) };
+      return { gh, repo, origin, env, ledger: deliveryLedgerPath(ledgerPath(repo, { XDG_STATE_HOME: state })) };
+    };
+
+    it("sees a pull request merged on GitHub without pulling, starts again from the base, and opens a fresh pull request", async () => {
+      const { gh, repo, origin, env, ledger } = await prProject(helloThenGoodbye);
+      expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+      const [first] = gh.pullRequests();
+      expect(first).toMatchObject({ head: "delivery/main", base: "main", state: "OPEN" });
+      const localMain = git(repo, ["rev-parse", "main"]);
+
+      gh.mergePullRequest(first?.url ?? "", mergeOnGitHub(origin, "merge", { [SECOND_PATH]: SECOND_BRIEF }));
+      const second = await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(second.exitCode).toBe(EXIT.ok);
+      const mergedBase = git(repo, ["rev-parse", "origin/main"]);
+      expect(mergedBase).toBe(git(origin, ["rev-parse", "main"]));
+      expect(git(repo, ["rev-parse", "main"])).toBe(localMain);
+      const entries = await readDeliveryEntries(ledger);
+      const reopened = entries.findLastIndex((e) => e.t === "opened" && e.from === mergedBase);
+      expect(reopened).toBeGreaterThan(-1);
+      expect(entries.findIndex((e, i) => i > reopened && e.t === "landed" && e.key === SECOND_KEY)).toBeGreaterThan(reopened);
+      expect((await readDelivery(ledger, "delivery/main")).landed.map((e) => e.key)).toEqual([SECOND_KEY]);
+      expect(gh.pullRequests().map((pr) => pr.state)).toEqual(["MERGED", "OPEN"]);
+      expect(gh.pullRequests()[1]?.body).toContain("Add a function that says goodbye.");
+      expect(gh.pullRequests()[1]?.body).not.toContain("says hello");
+    }, RUN_TIMEOUT * 2);
+
+    it("starts the delivery branch again on a run with nothing to work, so status no longer lists what merged", async () => {
+      const { gh, repo, origin, env, ledger } = await prProject(helloThenGoodbye);
+      await delivery(["run", "--sources"], { cwd: repo, env });
+      gh.mergePullRequest(gh.pullRequests()[0]?.url ?? "", mergeOnGitHub(origin, "merge"));
+
+      const second = await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(second.stdout).toContain(NOTHING_TO_WORK);
+      expect(git(repo, ["rev-parse", "delivery/main"])).toBe(git(repo, ["rev-parse", "origin/main"]));
+      expect((await readDelivery(ledger, "delivery/main")).landed).toEqual([]);
+      expect((await delivery(["status"], { cwd: repo, env })).stdout).toContain("- nothing has landed on it yet");
+      expect(gh.pullRequests()).toHaveLength(1);
+    }, RUN_TIMEOUT * 2);
+
+    it("says it could not fetch, and carries on with what it has, when origin cannot be reached", async () => {
+      const { repo, env } = await prProject(completes);
+      git(repo, ["remote", "set-url", "origin", join(tmpdir(), "no-such-origin-for-sources-run")]);
+
+      const { stdout } = await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(stdout).toContain("Could not fetch main from origin");
+      expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("hello");
+    }, RUN_TIMEOUT);
+
+    it("says it could not ask GitHub which pull requests merged, and carries on, when gh cannot answer", async () => {
+      const { gh, repo, env } = await prProject(helloThenGoodbye);
+      await delivery(["run", "--sources"], { cwd: repo, env });
+      gh.setMode("offline");
+
+      const { stdout } = await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(stdout).toContain("Could not ask GitHub whether delivery/main");
+    }, RUN_TIMEOUT * 2);
+
+    it("starts again after a squash merge on GitHub, replacing the kept branch, and opens a fresh pull request", async () => {
+      const { gh, repo, origin, env, ledger } = await prProject(helloThenGoodbye);
+      await delivery(["run", "--sources"], { cwd: repo, env });
+      gh.mergePullRequest(gh.pullRequests()[0]?.url ?? "", mergeOnGitHub(origin, "squash", { [SECOND_PATH]: SECOND_BRIEF }));
+
+      const second = await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(second.exitCode).toBe(EXIT.ok);
+      expect(git(repo, ["merge-base", "--is-ancestor", "origin/main", "delivery/main"])).toBe("");
+      expect((await readDelivery(ledger, "delivery/main")).landed.map((e) => e.key)).toEqual([SECOND_KEY]);
+      expect(git(origin, ["rev-parse", "delivery/main"])).toBe(git(repo, ["rev-parse", "delivery/main"]));
+      expect(gh.pullRequests().map((pr) => pr.state)).toEqual(["MERGED", "OPEN"]);
+    }, RUN_TIMEOUT * 2);
+
+    it("starts again after a squash merge even when the owner then changed the same file on the base", async () => {
+      const { gh, repo, origin, env, ledger } = await prProject(helloThenGoodbye);
+      await delivery(["run", "--sources"], { cwd: repo, env });
+      gh.mergePullRequest(gh.pullRequests()[0]?.url ?? "", mergeOnGitHub(origin, "squash", { [SECOND_PATH]: SECOND_BRIEF, "hello.js": "export const hello = 2;\n" }));
+
+      const second = await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(second.exitCode).toBe(EXIT.ok);
+      expect((await readDelivery(ledger, "delivery/main")).landed.map((e) => e.key)).toEqual([SECOND_KEY]);
+      expect(git(repo, ["show", "delivery/main:hello.js"])).toContain("hello = 2");
+      expect(gh.pullRequests().map((pr) => pr.state)).toEqual(["MERGED", "OPEN"]);
+    }, RUN_TIMEOUT * 2);
+
+    it("does not start again while the pull request is still open, even when the base already holds the same change", async () => {
+      const { gh, repo, origin, env, ledger } = await prProject(helloThenGoodbye);
+      await delivery(["run", "--sources"], { cwd: repo, env });
+      mergeOnGitHub(origin, "squash", { [SECOND_PATH]: SECOND_BRIEF });
+      // GitHub is not told it merged: the pull request is still open.
+
+      await delivery(["run", "--sources"], { cwd: repo, env });
+
+      expect(gh.pullRequests().map((pr) => pr.state)).toEqual(["OPEN"]);
+      expect((await readDelivery(ledger, "delivery/main")).landed.map((e) => e.key)).toContain(KEY);
+    }, RUN_TIMEOUT * 2);
+  });
+
+  it("does not fetch, or ask GitHub, with any other closer", async () => {
+    const repo = project();
+    const origin = addLocalOrigin(repo);
+    git(repo, ["remote", "set-head", "origin", "main"]);
+    const tracked = git(repo, ["rev-parse", "origin/main"]);
+    // origin's main moves on "GitHub": mergeOnGitHub needs a delivery branch on origin to merge, so give it one at main.
+    git(repo, ["push", "-q", "origin", "main:refs/heads/delivery/main"]);
+    mergeOnGitHub(origin, "merge", { "owner.txt": "the owner's\n" });
+    expect(git(origin, ["rev-parse", "main"])).not.toBe(tracked);
+
+    const { stdout } = await delivery(["run", "--sources"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+    expect(git(repo, ["rev-parse", "origin/main"])).toBe(tracked);
+    expect(stdout).not.toContain("Could not ask GitHub");
   }, RUN_TIMEOUT);
 });

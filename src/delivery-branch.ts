@@ -5,7 +5,8 @@ import { closeError } from "./closer-support.js";
 import { computeDelta } from "./delta-rule.js";
 import { inDetachedWorktree } from "./disposable-copy.js";
 import { readDelivery, recordDelivery } from "./delivery-ledger.js";
-import { branchExists, conflictedFiles, git, tryGit } from "./git-exec.js";
+import { branchExists, branchTip, conflictedFiles, git, tryGit } from "./git-exec.js";
+import { messageOf } from "./gate-support.js";
 import { resolveBaseRef } from "./provision.js";
 import { resolveCloser } from "./resolve-closer.js";
 import { resolveGate } from "./resolve-gate.js";
@@ -30,17 +31,52 @@ export async function baseTip(repoPath: string): Promise<{ base: string; commit:
   return { base: localBranch, commit: remote !== local && (await isAncestor(repoPath, local, remote)) ? remote : local };
 }
 
+/** Long enough for a slow network; short enough that an unreachable origin does not hold the run. */
+const FETCH_TIMEOUT_MS = 60_000;
+
+/**
+ * Bring the base's remote-tracking branch up to date from origin (spec §5.8), so a pull request merged on GitHub is
+ * seen without the owner pulling: `baseTip` then prefers it. Moves only `refs/remotes/origin/<base>`, never a local
+ * branch. A repository whose base is not taken from origin has nothing to fetch. Never throws: a failure (offline,
+ * origin gone, a prompt for credentials refused) comes back with git's reason, for the run to report and carry on.
+ */
+export async function fetchBase(repoPath: string): Promise<{ base: string; reason: string } | undefined> {
+  const { ref, localBranch } = await resolveBaseRef(repoPath);
+  if (ref === localBranch) return undefined;
+  try {
+    await git(repoPath, ["fetch", "--quiet", "--no-tags", "origin", `+refs/heads/${localBranch}:refs/remotes/${ref}`], { env: { GIT_TERMINAL_PROMPT: "0" }, timeout: FETCH_TIMEOUT_MS });
+    return undefined;
+  } catch (err) {
+    return { base: localBranch, reason: fetchFailure(err) };
+  }
+}
+
+/** git's first line of complaint, without its "fatal: " prefix; or that it ran out of time. */
+function fetchFailure(err: unknown): string {
+  const { killed, stderr } = err as { killed?: boolean; stderr?: unknown };
+  if (killed === true) return `it took longer than ${FETCH_TIMEOUT_MS / 1000} seconds`;
+  const line = typeof stderr === "string" ? stderr.split("\n").map((l) => l.trim()).find((l) => l !== "") : undefined;
+  return line === undefined ? messageOf(err) : line.replace(/^fatal: /, "");
+}
+
 export type Reconciled =
   | { ready: true; branch: string; base: string }
   | { ready: false; branch: string; base: string; reason: string; repeated: boolean };
 
 /**
- * Make the delivery branch ready for a run's tasks: open it at the base's tip when none is open or the base already has
- * all it held; bring the owner's own base commits in, by merge, when that is clean and the checks still pass; otherwise
- * say what blocks it. A blocked attempt is not repeated until the base or the branch moves.
- * ponytail: a pull request merged by squash is not seen as reached; the base is then brought in by merge, which is clean.
+ * Make the delivery branch ready for a run's tasks: open it at the base's tip when none is open, when the base already
+ * has all it held (a merge-commit merge), or when GitHub reports its tip as the head of a merged pull request
+ * (`mergedTips`, supplied for the `open-pr` closer only: a squash or rebase merge leaves nothing in the history to see);
+ * bring the owner's own base commits in, by merge, when that is clean and the checks still pass; otherwise say what
+ * blocks it. A blocked attempt is not repeated until the base or the branch moves.
  */
-export async function reconcileDeliveryBranch(repoPath: string, gateRef: GateRef, ledger: string, env?: NodeJS.ProcessEnv): Promise<Reconciled> {
+export async function reconcileDeliveryBranch(
+  repoPath: string,
+  gateRef: GateRef,
+  ledger: string,
+  env?: NodeJS.ProcessEnv,
+  mergedTips: ReadonlySet<string> = new Set(),
+): Promise<Reconciled> {
   const { base, commit: baseCommit } = await baseTip(repoPath);
   const branch = deliveryBranchOf(base);
   const ready = { ready: true as const, branch, base };
@@ -53,7 +89,7 @@ export async function reconcileDeliveryBranch(repoPath: string, gateRef: GateRef
   }
   const tip = await git(repoPath, ["rev-parse", `refs/heads/${branch}`]);
 
-  if (await isAncestor(repoPath, tip, baseCommit)) {
+  if (mergedTips.has(tip) || (await isAncestor(repoPath, tip, baseCommit))) {
     if (tip !== baseCommit) await git(repoPath, ["update-ref", `refs/heads/${branch}`, baseCommit, tip]);
     if (tip !== baseCommit || state.landed.length > 0 || state.openedAt === null) await recordDelivery(ledger, { t: "opened", branch, base, from: baseCommit });
     return ready;
@@ -71,6 +107,17 @@ export async function reconcileDeliveryBranch(repoPath: string, gateRef: GateRef
   }
   await recordDelivery(ledger, { t: "blocked", branch, base, baseTip: baseCommit, tip, reason: merged.reason });
   return { ready: false, branch, base, reason: merged.reason, repeated: false };
+}
+
+/**
+ * Whether the open delivery branch's work has merged: its tip is an ancestor of the base (as `baseTip` reads it) or is in
+ * `mergedTips`, so reconciling would start it again from the base at no cost. False with no branch open, or with the
+ * branch already at the base's tip.
+ */
+export async function deliveryMerged(repoPath: string, mergedTips: ReadonlySet<string>): Promise<boolean> {
+  const { base, commit } = await baseTip(repoPath);
+  const tip = await branchTip(repoPath, deliveryBranchOf(base));
+  return tip !== undefined && tip !== commit && (mergedTips.has(tip) || (await isAncestor(repoPath, tip, commit)));
 }
 
 /** Merge the base into a scratch copy of the delivery tip and check it as a task's work is checked: against the tip's baseline. */

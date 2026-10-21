@@ -1,8 +1,10 @@
 import { prepareContinuation } from "../continuation.js";
-import { baseTip, closeDeliveryBranch, deliveryBranchOf, reconcileDeliveryBranch } from "../delivery-branch.js";
+import { baseTip, closeDeliveryBranch, deliveryBranchOf, deliveryMerged, fetchBase, reconcileDeliveryBranch } from "../delivery-branch.js";
 import { deliveryLedgerPath, readDelivery, type LandedEntry } from "../delivery-ledger.js";
-import { git } from "../git-exec.js";
+import { ghFailureOf, ghReason } from "../gh.js";
+import { branchExists, git } from "../git-exec.js";
 import { DEFAULT_PARK_AFTER, ledgerPath, readItemLedger, recordDispatched, settleRun, type ItemState } from "../item-ledger.js";
+import { mergedPullRequestTips } from "../merged-pull-requests.js";
 import { runIdFor } from "../run-location.js";
 import type { CloseReport } from "../ports.js";
 import type { RunRecord } from "../run-records.js";
@@ -43,6 +45,12 @@ export const blockedNote = (reason: string): string => `No task was started: ${r
 export const deliveryClosedNote = (branch: string, report: CloseReport): string =>
   report.status === "DONE" ? `Handed ${branch} to your closer: ${report.detail}` : `${branch} was not handed off: ${report.detail} The next run tries again.`;
 
+export const couldNotFetch = (base: string, reason: string): string =>
+  `Could not fetch ${base} from origin (${reason}), so a pull request merged on GitHub since the last run may not be seen yet. This run carries on with what this machine already has.`;
+
+export const couldNotAskGitHub = (branch: string, reason: string): string =>
+  `Could not ask GitHub whether ${branch}'s pull request has merged (${reason}), so a merge by squash or rebase may not be seen yet. This run carries on as if it had not.`;
+
 export const unknownItemWorkflow = (key: string, name: string): string => `Left ${key} alone: it names the workflow "${name}", which your config file does not define.`;
 const completeFailed = (key: string, detail: string): string => `${key} was delivered, but marking it done failed: ${detail}`;
 
@@ -59,6 +67,12 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const project = await resolveProject(options, { env: ctx.env, repoPath, config });
   await checkCustomModules(project.gateRef, project.closerRef, repoPath);
   if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
+  const asksGitHub = project.closerRef.type === "open-pr";
+  // With open-pr the owner merges on GitHub: fetch the base first, so the backlog and the delivery branch see it (spec §5.8).
+  if (asksGitHub) {
+    const failed = await fetchBase(repoPath);
+    if (failed !== undefined) ctx.report.note(couldNotFetch(failed.base, failed.reason));
+  }
   const path = ledgerPath(repoPath, ctx.env);
   const parkAfter = config.parkAfter ?? DEFAULT_PARK_AFTER;
   const sources = config.sources ?? DEFAULT_SOURCES;
@@ -79,6 +93,16 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   // The one branch every task of this run lands on, named after the base before any task is claimed.
   const { base } = await baseTip(repoPath);
   const branch = deliveryBranchOf(base);
+  // GitHub's state, not the shape of history, says a rolling pull request merged (design §9 decision 5). Empty for every
+  // other closer, and when there is no branch yet to have merged, so reconciling is unchanged for them.
+  let mergedTips: ReadonlySet<string> = new Set();
+  if (asksGitHub && (await branchExists(repoPath, branch))) {
+    try {
+      mergedTips = await mergedPullRequestTips(repoPath, branch);
+    } catch (err) {
+      ctx.report.note(couldNotAskGitHub(branch, ghReason(ghFailureOf(err))));
+    }
+  }
   const after = afterLanding({ repoPath, config, project, itemLedger: path, branch, base, records: () => allRuns(repoPath) }, ctx);
   // Steps an earlier run left pending are tried first, from the one that failed (spec §5.7); they never stop new work.
   let afterDone = await after.pending();
@@ -110,10 +134,12 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   };
   // Readied before any task starts, so every task builds on the owner's latest commits (spec §5.7). Also readied when
   // nothing is to be worked but earlier landings still wait for the closer: the closer is retried "after bringing in
-  // any base commits" (spec §5.7), since a moved base is the usual reason a merge-back failed. A run with neither
-  // opens no branch.
+  // any base commits" (spec §5.7), since a moved base is the usual reason a merge-back failed. And, with open-pr, readied
+  // when the delivery branch's pull request has merged, so it starts again from the base and stops listing what merged.
+  // A run with none of these opens no branch.
   const waiting = (await readDelivery(deliveryLedger, branch)).pending.length > 0;
-  const reconciled = claims.length === 0 && !waiting ? undefined : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env);
+  const mergedOnGitHub = asksGitHub && (await deliveryMerged(repoPath, mergedTips));
+  const reconciled = claims.length === 0 && !waiting && !mergedOnGitHub ? undefined : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env, mergedTips);
   if (reconciled?.ready === false) {
     ctx.report.note(blockedNote(reconciled.reason));
     return finish(EXIT.escalated);

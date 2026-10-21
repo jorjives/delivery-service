@@ -48,3 +48,22 @@ describe("the gh stand-in's issues", () => {
     expect(run(gh.command, ["api", "graphql", "-f", "label=delivery"]).status).toBe(0);
   });
 });
+
+describe("the gh stand-in's pull requests", () => {
+  it("lists only open pull requests for a head by default, as gh does, others by --state, and reports a merged head", () => {
+    const gh = createGhStandIn();
+    const first = run(gh.command, ["pr", "create", "--base=main", "--head=delivery/main", "--title=T", "--body=B"]).stdout.trim();
+    expect(gh.pullRequests()[0]?.state).toBe("OPEN");
+    gh.mergePullRequest(first, "abc123");
+
+    const list = (args: string[]) => JSON.parse(run(gh.command, ["pr", "list", "--head=delivery/main", "--json=url,headRefOid", ...args]).stdout) as { url: string; headRefOid?: string }[];
+    expect(list([])).toEqual([]);
+    expect(list(["--state=open"])).toEqual([]);
+    expect(list(["--state=merged"])).toEqual([{ url: first, headRefOid: "abc123" }]);
+    expect(list(["--state=all"])).toEqual([{ url: first, headRefOid: "abc123" }]);
+
+    const second = run(gh.command, ["pr", "create", "--base=main", "--head=delivery/main", "--title=T2", "--body=B2"]).stdout.trim();
+    expect(second).not.toBe(first);
+    expect(list(["--state=open"])).toEqual([{ url: second }]);
+  });
+});

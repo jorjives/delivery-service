@@ -66,6 +66,11 @@ request opens, for follow-up commits. A missing `gh`, an expired sign-in or a mi
 reported as `"ERROR"` naming the fix; a pull request GitHub declines, for example because of
 branch protection, is `"FAIL"`.
 
+If GitHub merged a delivery pull request and kept its branch, `open-pr` replaces that branch on
+`origin` with the new work, but only when the branch is exactly what GitHub reports as merged. A
+commit someone else pushed to it since is never overwritten: the push is reported as `"ERROR"`
+instead.
+
 To watch it open a pull request, reuse it on a repeat close, and report an expired sign-in,
 against a stand-in for `gh` with no network, run `npm run demo:close-slice-5`.
 
