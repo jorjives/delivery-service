@@ -65,7 +65,13 @@ which records each call and answers `show` with the properties the test sets.
 `src/cli/schedule.test.ts` checks the generated units with the real `systemd-analyze` where it is
 installed, and skips that check where it is not.
 
-The built-in reviews `delivery review` runs are data-only folders under `packs/` (a `pack.json` manifest, the agent's `scan.md` instructions and, optionally, its `fix.md` instructions for fixing a problem), shipped in the package; `src/packs/` is the engine. To see a review without an agent, run `npm run demo:packs-slice-1`: it reviews a copy of `examples/code-review-example` with the scripted reply `EXAMPLE_SCAN` from `src/packs/review-fixtures.ts`. Tests script a review the same way, with `scanScript(envelope)`, and write a review's record directly with `writeReview`. Every sentence a review prints comes from `src/packs/render.ts`; `src/packs/render.test.ts` holds them to the owner vocabulary.
+The built-in reviews `delivery review` runs are data-only folders under `packs/`, shipped in
+the package: a `pack.json` manifest, the agent's `scan.md` and `fix.md` instructions, and the
+`fixtures/` that `delivery packs check` runs. `src/packs/` reads and checks them. To see a review
+work without an agent, run `delivery packs check packs/code-review`: it runs the pack's fixtures
+against the scripted agent and says what was found, fixed and refused. Tests script a review's
+findings with `ideasScript(ideas)` from `src/packs/review-fixtures.ts`, against a copy of
+`examples/code-review-example` made with `exampleRepo()`.
 
 To prove a gate, a closer and role configurations work together, run one surface end to end
 against `claude-mock` with `runSurfaceAgainstMock` from `src/testing.ts`, in a scratch
