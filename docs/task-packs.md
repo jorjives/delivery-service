@@ -4,6 +4,21 @@ This guide shows how to have an agent review your project, choose which of its f
 
 A [pack](glossary.md#pack), also called a review, is a set of instructions that has an agent read your project for one kind of problem. The built-in packs are `code` and `security`. Each problem a review finds becomes an [idea](glossary.md#idea) in your [backlog](glossary.md#backlog). Nothing is fixed until you choose which ideas to fix.
 
+The review runs in four stages, and you decide at two of them:
+
+```mermaid
+flowchart LR
+    A[delivery review code] --> B[Ideas in your backlog]
+    B --> C{You choose}
+    C -->|delivery approve| D[delivery run --sources<br/>fixes each idea]
+    C -->|delivery decline| X([Set aside])
+    D --> E{Severity at or<br/>above hold?}
+    E -->|no| F([Fix lands on the delivery branch])
+    E -->|yes| G[Held on its own branch]
+    G -->|delivery sign-off| F
+    G -->|delivery reject| X
+```
+
 ## Ask for a review
 
 In your project's folder, type:
