@@ -7,7 +7,7 @@ A [pack](glossary.md#pack), also called a review, is a set of instructions that 
 The review runs in four stages, and you decide at two of them:
 
 ```mermaid
-flowchart LR
+flowchart TD
     A[delivery review code] --> B[Ideas in your backlog]
     B --> C{You choose}
     C -->|delivery approve| D[delivery run --sources<br/>fixes each idea]
