@@ -43,7 +43,21 @@ Every item lands on one delivery branch, `delivery/<base>`, and your closer take
 
 ## How an item is carried on
 
-How an item is carried on depends on how its last run ended:
+How an item is carried on depends on how its last run ended. The diagram shows where each ending leads:
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Queued
+    Queued --> Running: delivery run
+    Running --> Delivered: gate passes
+    Running --> Queued: interrupted or out of corrections
+    Running --> Parked: question, or parkAfter failures
+    Parked --> Queued: delivery answer or unpark
+    Delivered --> [*]
+```
+
+In words:
 
 - A run that was interrupted (its session stopped before it finished) carries on in the same working copy. Anything left uncommitted there is committed onto the earlier run's branch first, so the work it had done is kept, and its agent session can be resumed.
 - A run that used up its corrections starts afresh from the delivery branch. Its old branch is kept for you to look at.
