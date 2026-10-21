@@ -74,7 +74,8 @@ describe("UAT: test your own pipeline by following one guide", () => {
   });
 
   it("states plainly that the scripted agent cannot prove what your own settings allow, and where that guarantee is tested instead", () => {
-    const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong");
+    // Line wrapping is the page's layout, not its content.
+    const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong").replace(/\s+/g, " ");
     expect(limits).toContain("The scripted agent cannot prove what your own Claude Code settings allow or refuse.");
     expect(limits).toContain("`permissions.deny`");
     expect(limits).toContain("src/agent-invoke.test.ts");

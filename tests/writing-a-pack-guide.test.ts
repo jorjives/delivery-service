@@ -50,6 +50,6 @@ describe("the 'writing a pack' guide", () => {
 
   it("is listed in the README beside the guides to writing a gate and a closer", () => {
     const readme = readFileSync(join(REPO_ROOT, "README.md"), "utf-8");
-    expect(readme).toContain("[Writing a pack](docs/writing-a-pack.md)");
+    expect(readme).toContain("[Write a pack](docs/writing-a-pack.md)");
   });
 });

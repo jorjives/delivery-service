@@ -158,7 +158,8 @@ describe("acceptance criteria", () => {
   it("shows a preset as the simplest way to choose a check in the project-configuration guide", () => {
     const guide = readFileSync(join(REPO_ROOT, "docs", "project-configuration.md"), "utf-8");
     expect(guide).toContain('{ "gate": { "type": "test-runner" } }');
-    expect(guide).toContain("The simplest way to choose one is by name");
+    // Line wrapping is the page's layout, not its content.
+    expect(guide.replace(/\s+/g, " ")).toContain("The simplest way to choose one is by name");
     for (const name of ["test-runner", "file-exists", "command-succeeds", "schema-validates"]) expect(guide).toContain(`\`${name}\``);
   });
 });

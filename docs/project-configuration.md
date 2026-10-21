@@ -234,9 +234,8 @@ Your task list: 2 of 2 tasks completed and committed to their own branches.
 Run `delivery report` for what to do.
 ```
 
-`<run-id>` stands for the id the harness printed for that run, and `surface/` is the harness's
-prefix for a task's working branch. Each task ends by naming the branch its work is on. Your `main` branch is untouched. Read
-what the agent did with `git log -p <branch>`, and merge what you like.
+`<run-id>` stands for the id the harness printed for that run. Each task ends by naming the
+branch its work is on, and your `main` branch is untouched. Read what the agent did with `git log -p <branch>`, and merge what you like.
 
 If the run stops part way, because you closed the terminal or pressed Ctrl-C, run
 `delivery run` again in the same folder. It carries on with the task it was on, then the
