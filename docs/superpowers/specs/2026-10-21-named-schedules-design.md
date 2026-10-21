@@ -117,8 +117,9 @@ closes it rather than documenting around it.
   over, as today.
 
 This changes concurrency-1 behaviour that an earlier item left untouched deliberately. The change
-is in scope because the alternative, overlapping runs on one delivery branch, corrupts the thing
-the tool exists to protect.
+is in scope because the alternative lets two runs take the same item: the agent's work is done and
+paid for twice, and both then race to land on one delivery branch, ending in a blocked or
+conflicting landing that someone must untangle.
 
 ## 7. The scheduler backend port
 
