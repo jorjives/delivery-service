@@ -303,12 +303,15 @@ export function environmentNarration(view: SupervisedView): string[] {
   const limit = trip.ended === "gave_up" ? trip.limit : null;
   const limitWords = limit === null ? "" : USAGE_LIMIT_WORDS[limit];
   // The repair limit is the run's, so a run that gives up counts every repair it made, not only this trip's.
-  const repairs = repairsUsed(view.runFile.history);
+  const attempts = (): string => {
+    const repairs = repairsUsed(view.runFile.history);
+    return `${repairs} ${repairs === 1 ? "attempt" : "attempts"}`;
+  };
   const opening =
     limit !== null
       ? `${limitWords.charAt(0).toUpperCase()}${limitWords.slice(1)}, so the run stopped before it could repair the shared environment; no task caused this.`
       : trip.ended === "gave_up"
-        ? `The shared environment could not be fixed after ${repairs} ${repairs === 1 ? "attempt" : "attempts"}, so the run stopped; no task caused this.`
+        ? `The shared environment could not be fixed after ${attempts()}, so the run stopped; no task caused this.`
         : `${view.breaker === "REPAIRING" ? "The shared environment is being repaired" : "Something in the shared environment looks broken"}: any task about to check or hand off its work is held until it is fixed.`;
   return [
     opening,
