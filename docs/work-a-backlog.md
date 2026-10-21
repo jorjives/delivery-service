@@ -47,14 +47,13 @@ How an item is carried on depends on how its last run ended. The diagram shows w
 
 ```mermaid
 stateDiagram-v2
+    direction LR
     [*] --> Queued
-    Queued --> Running: delivery run --sources
+    Queued --> Running: delivery run
     Running --> Delivered: gate passes
-    Running --> Queued: interrupted, or out of corrections
-    Running --> Parked: the agent asks a question
-    Running --> Parked: undelivered parkAfter runs in a row
-    Parked --> Queued: delivery answer
-    Parked --> Queued: delivery unpark
+    Running --> Queued: interrupted or out of corrections
+    Running --> Parked: question, or parkAfter failures
+    Parked --> Queued: delivery answer or unpark
     Delivered --> [*]
 ```
 
