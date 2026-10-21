@@ -81,7 +81,8 @@ export async function packsCheckCommand(pathArg: string, options: PacksCheckOpti
     ctx.writeLine(JSON.stringify(result, null, 2));
     return exitCode;
   }
-  for (const problem of result.problems) ctx.writeLine(`${shown(problem.file)}: ${problem.message}.`);
+  // A problem is usually a clause; one carrying a refusal is already a sentence.
+  for (const problem of result.problems) ctx.writeLine(`${shown(problem.file)}: ${problem.message.replace(/\.?$/, ".")}`);
   if (result.ready) for (const line of passedLines(result, pathArg)) ctx.writeLine(line);
   else if (result.run !== null) ctx.writeLine(SENT_NOTHING);
   return exitCode;

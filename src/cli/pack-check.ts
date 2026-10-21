@@ -18,9 +18,6 @@ import { reviewCommand } from "./review-command.js";
 import { runCommand } from "./run-command.js";
 import { plainReporter } from "./report.js";
 
-/** A refusal is a whole sentence; a problem's message is a clause the command finishes, so it drops the full stop. */
-const asClause = (err: Refusal): string => err.message.replace(/\.$/, "");
-
 export const WEAKENED_TESTS = "it removed, changed or skipped tests";
 export const CHECK_FAILED = "its check did not pass";
 
@@ -121,7 +118,7 @@ export async function checkPack(dir: string, { env = process.env, confirm }: { e
     try {
       await reviewCommand(packRef, undefined, {}, ctxWith(reviewScript));
     } catch (err) {
-      if (err instanceof Refusal) return failed({ file: join(dir, FIXTURES.review), field: null, message: `the scripted review could not be used: ${asClause(err)}` });
+      if (err instanceof Refusal) return failed({ file: join(dir, FIXTURES.review), field: null, message: `the scripted review could not be used: ${err.message}` });
       throw err;
     }
     const ideas = (await readBacklog(repo, { at: "HEAD" })).items.filter((item) => item.status === "idea");
@@ -138,7 +135,7 @@ export async function checkPack(dir: string, { env = process.env, confirm }: { e
       await approveCommand([], { all: true }, fixesCtx);
       await runCommand({ sources: true, max: String(ideas.length) }, fixesCtx);
     } catch (err) {
-      if (err instanceof Refusal) return failed({ file: fixesFile, field: null, message: `the scripted fixes could not run: ${asClause(err)}` }, run);
+      if (err instanceof Refusal) return failed({ file: fixesFile, field: null, message: `the scripted fixes could not run: ${err.message}` }, run);
       throw err;
     }
     const ledger = await readItemLedger(ledgerPath(repo, fixesCtx.env));
