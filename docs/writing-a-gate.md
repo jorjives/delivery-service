@@ -261,8 +261,20 @@ The verdict is only as honest as the reports. A gate must:
 
 ## How the verdict is reached
 
-After each `check`, the harness compares it with the stored baseline. A **new
-failure** is any assertion that:
+After each `check`, the harness compares it with the stored baseline:
+
+```mermaid
+flowchart TD
+    A[check runs] --> B{Could it run?}
+    B -->|no: ERROR| E([Gate error: no verdict on the agent's work])
+    B -->|yes| C{Any assertion that passed<br/>at baseline now FAIL,<br/>ERROR or missing?}
+    C -->|yes| F([Fail: new failures])
+    C -->|no| D{New assertion failing and<br/>failOnNewAssertions is true?}
+    D -->|yes| F
+    D -->|no| P([Pass])
+```
+
+A **new failure** is any assertion that:
 
 | At baseline | At check | New failure? |
 |---|---|---|
