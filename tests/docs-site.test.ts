@@ -9,8 +9,9 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { REPO_ROOT, runDelivery } from "./helpers.js";
 
-const config = parse(readFileSync(join(REPO_ROOT, "mkdocs.yml"), "utf-8")) as {
+const config = parse(readFileSync(join(REPO_ROOT, "mkdocs.yml"), "utf-8"), { logLevel: "error" }) as {
   exclude_docs: string;
+  markdown_extensions: unknown;
   nav: unknown;
   plugins: Array<string | Record<string, { sections: Record<string, string[]> }>>;
 };
@@ -40,6 +41,35 @@ describe("the docs site", () => {
   it("lists every published page in the llms.txt sections", () => {
     const listed = new Set(Object.values(llmsPlugin?.llmstxt.sections ?? {}).flat());
     expect(pages.filter((page) => !listed.has(page))).toEqual([]);
+  });
+});
+
+// Flows are drawn, not just described: Mermaid blocks in the Markdown, rendered
+// by the theme. Each page below explains a flow a reader may want to follow.
+describe("the diagrams", () => {
+  // The flows a reader is meant to be able to follow, not only read about.
+  const drawn = ["concepts.md", "work-a-backlog.md", "task-packs.md", "writing-a-gate.md"];
+  const textOf = (page: string): string => readFileSync(join(REPO_ROOT, "docs", page), "utf-8");
+  const blocks = pages.flatMap((page) =>
+    [...textOf(page).matchAll(/^([^\n]*)\n\n```mermaid\n([^]*?)\n```$/gm)].map(([, before, body]) => ({ page, before: before ?? "", body: body ?? "" })),
+  );
+
+  it("are rendered by the site", () => {
+    expect(JSON.stringify(config.markdown_extensions)).toContain('"name":"mermaid"');
+  });
+
+  it.each(drawn)("%s draws its flow", (page) => {
+    expect(blocks.some((block) => block.page === page)).toBe(true);
+  });
+
+  it("are introduced by a sentence, so the page reads without the image", () => {
+    expect(blocks.filter((block) => block.before.startsWith("#") || block.before.trim() === "").map((block) => block.page)).toEqual([]);
+  });
+
+  it("are not empty and are all fenced as mermaid", () => {
+    const fences = pages.reduce((count, page) => count + (textOf(page).match(/^```mermaid$/gm) ?? []).length, 0);
+    expect(blocks.length).toBe(fences);
+    expect(blocks.filter((block) => block.body.trim() === "")).toEqual([]);
   });
 });
 
