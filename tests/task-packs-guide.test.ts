@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { approved } from "../src/cli/backlog-commands.js";
-import { REPO_ROOT } from "./helpers.js";
+import { flatten, REPO_ROOT } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/task-packs.md"), "utf-8");
 
@@ -18,6 +18,6 @@ describe("the task packs guide", () => {
 
   it("quotes the harness's own words where it shows them", () => {
     expect(guide).toContain(approved([{ file: "x.md", status: "idea", fields: {}, body: "# The total can go below zero\n" }])[1]);
-    expect(guide.replace(/\s+/g, " ")).toContain("On GitHub, adding the label is the approval");
+    expect(flatten(guide)).toContain("On GitHub, adding the label is the approval");
   });
 });

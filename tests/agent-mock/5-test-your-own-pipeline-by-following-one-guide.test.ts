@@ -19,7 +19,7 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect, afterAll } from "vitest";
-import { REPO_ROOT, runTsx, sectionOf, snippetFrom } from "../helpers.js";
+import { flatten, REPO_ROOT, runTsx, sectionOf, snippetFrom } from "../helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "utf-8");
 const snippet = (name: string) => snippetFrom(guide, name);
@@ -74,8 +74,7 @@ describe("UAT: test your own pipeline by following one guide", () => {
   });
 
   it("states plainly that the scripted agent cannot prove what your own settings allow, and where that guarantee is tested instead", () => {
-    // Line wrapping is the page's layout, not its content.
-    const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong").replace(/\s+/g, " ");
+    const limits = flatten(sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong"));
     expect(limits).toContain("The scripted agent cannot prove what your own Claude Code settings allow or refuse.");
     expect(limits).toContain("`permissions.deny`");
     // An installed copy has no source to point at, so the guide names where the guarantee lives in words.

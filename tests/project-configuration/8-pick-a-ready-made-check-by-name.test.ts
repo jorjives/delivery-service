@@ -14,7 +14,7 @@ import { writeMockScript } from "../../src/testing.js";
 import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { EXIT } from "../../src/cli/failures.js";
 import { READY } from "../../src/cli/validate-command.js";
-import { git, REPO_ROOT, runDelivery, useScratch } from "../helpers.js";
+import { flatten, git, REPO_ROOT, runDelivery, useScratch } from "../helpers.js";
 
 const TASK = "create a CHANGES.md file with a one-line summary of this project";
 
@@ -158,8 +158,7 @@ describe("acceptance criteria", () => {
   it("shows a preset as the simplest way to choose a check in the project-configuration guide", () => {
     const guide = readFileSync(join(REPO_ROOT, "docs", "project-configuration.md"), "utf-8");
     expect(guide).toContain('{ "gate": { "type": "test-runner" } }');
-    // Line wrapping is the page's layout, not its content.
-    expect(guide.replace(/\s+/g, " ")).toContain("The simplest way to choose one is by name");
+    expect(flatten(guide)).toContain("The simplest way to choose one is by name");
     for (const name of ["test-runner", "file-exists", "command-succeeds", "schema-validates"]) expect(guide).toContain(`\`${name}\``);
   });
 });

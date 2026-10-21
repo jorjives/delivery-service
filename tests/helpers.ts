@@ -67,6 +67,9 @@ export function runTsx(args: string[], env?: NodeJS.ProcessEnv): { stdout: strin
   return { stdout, stderr, status: status ?? 1 };
 }
 
+/** Text with every run of whitespace as one space, so a match on prose does not depend on where a page wraps. */
+export const flatten = (text: string): string => text.replace(/\s+/g, " ");
+
 /** Slices a UAT demo's numbered console output between two section headings. */
 export function sectionOf(stdout: string, from: string, to?: string): string {
   const start = stdout.indexOf(from);
