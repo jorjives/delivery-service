@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { REPO_ROOT, runTsx, sectionOf, snippetFrom } from "./helpers.js";
+import { flatten, REPO_ROOT, runGuideTest, sectionOf, snippetFrom } from "./helpers.js";
 import { cleanGitEnv } from "../src/git-env.js";
 import { MockNotInstalled } from "../src/errors.js";
 import {
@@ -74,7 +74,7 @@ function stage(name: string): string {
 /** Run a staged worked test as the guide says to, with no credentials in reach. */
 function runWorkedTest(name: string): string {
   expect(guide).toContain(`npx tsx --test ${name}`);
-  const { stdout, status } = runTsx(["--test", stage(name)], env);
+  const { stdout, status } = runGuideTest(stage(name), env);
   expect(stdout).toContain("ℹ fail 0");
   expect(status).toBe(0);
   return stdout;
@@ -123,7 +123,7 @@ describe("the 'testing your delivery pipeline' guide", () => {
   });
 
   it("quotes each authoring mistake's message exactly as the testing API words it", async () => {
-    const wrong = sectionOf(guide, "## When the test itself is wrong", "## Watch it run");
+    const wrong = sectionOf(guide, "## When the test itself is wrong", "## Next steps");
     expect(wrong).toContain(`throw \`${new MockNotInstalled("<path>").message}\``);
 
     const missingRole = await fakeAgentPort({})
@@ -221,18 +221,23 @@ describe("the 'testing your delivery pipeline' guide", () => {
     expect(incomplete).toContain("terminus budget exhausted (<used>/<max>): ");
   });
 
-  it("says plainly that the scripted agent cannot prove what your own settings allow, and where session building is tested", () => {
-    const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong");
+  it("says plainly that the scripted agent cannot prove what your own settings allow, without pointing at source an installed copy lacks", () => {
+    const limits = flatten(sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong"));
     expect(limits).toContain("The scripted agent cannot prove what your own Claude Code settings allow or refuse.");
     expect(limits).toContain("`permissions.deny`");
-    expect(limits).toContain("`src/agent-invoke.test.ts`");
-    expect(existsSync(join(REPO_ROOT, "src/agent-invoke.test.ts"))).toBe(true);
+    expect(guide).not.toMatch(/src\/[a-z-]+\.(test\.)?ts/);
+  });
+
+  it("does not document the contributor-only DELIVERY_TEST_MOCK_SCRIPT seam for adopters", () => {
+    expect(guide).not.toContain("DELIVERY_TEST_MOCK_SCRIPT");
+  });
+
+  it("names tsx among what you need", () => {
+    expect(sectionOf(guide, "## What you need", "## Choosing a stand-in")).toContain("`tsx`");
   });
 
   it("is where the role guide's offline quick start points", () => {
     const roleGuide = readFileSync(join(REPO_ROOT, "docs/configuring-a-role.md"), "utf-8");
-    expect(sectionOf(roleGuide, "## Trying it offline", "## Triage")).toContain(
-      "[Testing your delivery pipeline](testing-your-pipeline.md)",
-    );
+    expect(sectionOf(roleGuide, "## Trying it offline", "## Triage")).toContain("](testing-your-pipeline.md)");
   });
 });

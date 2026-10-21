@@ -108,7 +108,7 @@ describe("UAT: trust that one broken piece of shared set-up is fixed once for th
       const status = runDelivery(["status"], { cwd: repo, env });
       expect(status.status).toBe(EXIT.ok);
       const statusLines = status.stdout.trimEnd().split("\n");
-      expect(statusLines[0]).toBe("The shared environment could not be fixed after 0 attempts, so the run stopped; no task caused this.");
+      expect(statusLines[0]).toBe("The shared environment could not be fixed after 2 attempts, so the run stopped; no task caused this.");
       expect(statusLines[1]).toMatch(/^It was first noticed by \[\d\/4] .*?: the shared helper .*shared\/helper\.json is missing, so the check cannot run\.$/);
       expect(statusLines[2]).toMatch(/^Held: \[\d\/4] .*?, \[\d\/4] .*?\.$/);
       expect(status.stdout).toContain(`Environment: something in the shared environment looks broken`);

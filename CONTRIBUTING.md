@@ -65,7 +65,13 @@ which records each call and answers `show` with the properties the test sets.
 `src/cli/schedule.test.ts` checks the generated units with the real `systemd-analyze` where it is
 installed, and skips that check where it is not.
 
-The built-in reviews `delivery review` runs are data-only folders under `packs/` (a `pack.json` manifest, the agent's `scan.md` instructions and, optionally, its `fix.md` instructions for fixing a problem), shipped in the package; `src/packs/` is the engine. To see a review without an agent, run `npm run demo:packs-slice-1`: it reviews a copy of `examples/code-review-example` with the scripted reply `EXAMPLE_SCAN` from `src/packs/review-fixtures.ts`. Tests script a review the same way, with `scanScript(envelope)`, and write a review's record directly with `writeReview`. Every sentence a review prints comes from `src/packs/render.ts`; `src/packs/render.test.ts` holds them to the owner vocabulary.
+The built-in reviews `delivery review` runs are data-only folders under `packs/`, shipped in
+the package: a `pack.json` manifest, the agent's `scan.md` and `fix.md` instructions, and the
+`fixtures/` that `delivery packs check` runs. `src/packs/` reads and checks them. To see a review
+work without an agent, run `delivery packs check packs/code-review`: it runs the pack's fixtures
+against the scripted agent and says what was found, fixed and refused. Tests script a review's
+findings with `ideasScript(ideas)` from `src/packs/review-fixtures.ts`, against a copy of
+`examples/code-review-example` made with `exampleRepo()`.
 
 To prove a gate, a closer and role configurations work together, run one surface end to end
 against `claude-mock` with `runSurfaceAgainstMock` from `src/testing.ts`, in a scratch
@@ -120,6 +126,31 @@ PRDs and personas stay in `docs/` but are excluded from the site; list any new o
 Write each page as one kind: a tutorial, a how-to guide, reference or an explanation. Use second
 person, present tense and sentence-case headings; link to a section by name rather than saying
 "above" or "below"; use no em-dashes.
+
+Every page:
+
+- opens with what it covers, who it is for and what the reader can do afterwards;
+- links its prerequisites rather than repeating them;
+- uses `##` and `###` headings only, under one `#` title that matches its `nav` label;
+- shows the output of every command it asks you to run, as the command prints it today;
+- marks values the reader replaces as `<like-this>`, and says what goes there;
+- says what the reader sees when the step goes wrong, and how to fix it;
+- ends with "Next steps" (tutorials and guides) or "See also" (reference and explanation).
+
+Fence commands as `bash`, output as `text` and configuration as `json`. Do not use "simply",
+"just", "easy", "please" or "let's".
+
+Use one word for one thing. [`docs/glossary.md`](docs/glossary.md) defines each term; add any new
+one there. In particular:
+
+| Write | Not | Note |
+|---|---|---|
+| check | gate, test | In prose. `gate` is the setting, the command line's word and the library's |
+| working copy | worktree, working tree, scratch copy | In command guides. The library guides say worktree, the API's word |
+| configuration file | config file, config | Then `delivery.config.json` |
+| run | surface | `surface` only where the reader sees it: branch names, JSON, the library API |
+| triage | close-triage | |
+| pick up (a run) | resume, carry on | `delivery resume` is the command |
 
 ## Describing your change
 

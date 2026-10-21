@@ -1,12 +1,16 @@
-# Writing a closer
+# Write a closer
 
 This guide gets you from nothing to a working closer for your project: either
 one of the **built-in closers**, named as data, or a **custom closer** you write
-yourself. You do not need to read any source to follow it.
+yourself. It is for developers whose project needs something other than the three built-in ways
+of landing work. You do not need to read any source to follow it.
+
+The `npm run demo:*` commands in this guide need a clone of the harness repository; the snippets
+need only the installed package.
 
 ## What a closer is
 
-When the gate accepts a surface's work, the harness runs the surface's closer
+When the gate accepts a [surface](glossary.md#surface)'s work (a surface is one task's run), the harness runs the surface's closer
 once to do something with it: merge it, leave it on a branch, open a pull
 request, tell someone. The harness decides *when* the closer runs and acts on
 what it reports; the closer decides *what* closing means.
@@ -19,20 +23,20 @@ What the harness does with the report:
 | Report | On an accepted surface | On a stopped surface |
 |---|---|---|
 | `"DONE"` | the surface is `CLOSED`, and your `detail` is its closing report | nothing more |
-| `"FAIL"` or `"ERROR"` | close-triage retries the close while the close budget lasts, then hands it to a person with your `detail` as the evidence | logged, never retried |
+| `"FAIL"` or `"ERROR"` | triage retries the close while the `close` [budget](glossary.md#budget) lasts, then hands it to a person with your `detail` as the evidence | logged, never retried |
 
 A failed close is never sent back to the worker: the work is already accepted.
 
 Everything in this guide is imported from the harness's single entry point,
 `delivery-service`. Install it in your project as
-[Getting started](getting-started.md) describes, then run the snippets with
+[Get started](getting-started.md) describes, then run the snippets with
 `npx tsx`.
 
 ## Choosing a closer
 
 A surface pins its closer in the case file header as a `closerRef`, passed to
 `create()` with the rest of the header, exactly as in
-[Configuring a role](configuring-a-role.md):
+[Making your first invocation](configuring-a-role.md#making-your-first-invocation):
 
 ```ts
 // Built in: fast-forward the base branch onto the work, then remove the worktree and branch.
@@ -46,21 +50,26 @@ A surface pins its closer in the case file header as a `closerRef`, passed to
 { type: "open-pr" }
 
 // Your own closer module.
-{ type: "custom", modulePath: "closers/notify.mjs", exportName: "default" }
+{ type: "custom", modulePath: "closers/notify.mjs", exportName: "default" } // closers/notify.mjs stands for your own module
 ```
 
-`open-pr` runs the GitHub command-line tool, `gh`, as whoever runs the harness,
-so only projects that name it need `gh` installed and signed in: install it from
-https://cli.github.com and run `gh auth login` first. The harness never takes or
-stores a token. The repository's `origin` remote must be the GitHub repository.
-The closing report is the pull request's address; closing again finds the pull
-request already open and reports it rather than opening a second. The worktree is
-left in place after the pull request opens, for follow-up commits. A missing
-`gh`, an expired sign-in or a missing permission is reported as `"ERROR"` naming
-the fix; a pull request GitHub declines, for example because of branch
-protection, is `"FAIL"`.
-To watch it open a pull request, reuse it on a repeat close, and report an
-expired sign-in, against a stand-in for `gh` with no network: `npm run demo:close-slice-5`.
+### Using `open-pr`
+
+`open-pr` runs the GitHub command-line tool, `gh`, as whoever runs the harness. Only projects that
+use `open-pr` need `gh`: [install it](https://cli.github.com) and run `gh auth login` first. The
+harness never takes or stores a token. The repository's `origin` remote must be the GitHub
+repository.
+
+The closing report is the pull request's address; closing again finds the pull request already
+open and reports it rather than opening a second. The worktree is left in place after the pull
+request opens, for follow-up commits. A missing `gh`, an expired sign-in or a missing permission is
+reported as `"ERROR"` naming the fix; a pull request GitHub declines, for example because of
+branch protection, is `"FAIL"`.
+
+To watch it open a pull request, reuse it on a repeat close, and report an expired sign-in,
+against a stand-in for `gh` with no network, run `npm run demo:close-slice-5`.
+
+### Loading the closer
 
 Whoever runs the surface turns the pinned reference into a closer and passes it
 in the surface's ports:
@@ -104,7 +113,7 @@ interface Closer {
 }
 ```
 
-`close` receives a `CloseContext`:
+`close` receives a `CloseContext` and an `outcome`. The context is:
 
 | Field | What it is | When it is set |
 |---|---|---|
@@ -114,10 +123,10 @@ interface Closer {
 | `branch` | The branch to land: the surface's own, for example `surface/surface-7`, or, when `delivery` is set, the delivery branch, for example `delivery/main`. The worktree has it checked out. | Always |
 | `baseBranch` | The local branch the surface was started from, pinned when it was provisioned, for example `main`. The branch to merge into or open a pull request against. | Always; the empty string only if provisioning never completed, which a closer should report as `"ERROR"` |
 | `repairBrief` | Guidance written by triage's agent: `{ problem, dead_ends, scope, references, diagnosis }`. You may surface it, in a pull request body or a notification. The built-in closers ignore it. | Only on a close retried by triage's agent; absent on a first close and on a deterministic retry |
-| `delivery` | `{ landed }`: every task landed on the delivery branch since it opened, oldest first, each with its `intent`, `item` key, `run` id and the time `at` which it landed, and, for an item from a `github` source, `closes`, the reference (such as `#12`) a pull request for the branch should close. Your closer is then called once per `delivery run --sources` run, for the delivery branch, and again on later runs while the branch stays open: treat a branch or pull request you made for it earlier as your own. | Only when the closer acts on a delivery branch |
+| `delivery` | `{ landed }`: every task landed on the delivery branch since it opened, oldest first, each with its `intent`, `item` key, `run` id, the time `at` it landed and, for an item from a `github` source, `closes`: the reference (such as `#12`) a pull request for the branch should close. Your closer is then called once per `delivery run --sources` run, for the delivery branch, and again on later runs while the branch stays open: treat a branch or pull request you made for it earlier as your own. | Only when the closer acts on a delivery branch |
 
-an `outcome`, `{ kind: "accepted" | "escalated" | "aborted" }`, and must return a
-`CloseReport`:
+The `outcome` is `{ kind: "accepted" | "escalated" | "aborted" }` (see [The three
+outcomes](#the-three-outcomes)). `close` must return a `CloseReport`:
 
 | Field | What it is |
 |---|---|
@@ -140,7 +149,7 @@ A report on a stopped surface is only logged, so make teardown safe to run twice
 
 ## FAIL or ERROR
 
-Both route to close-triage in the same way; the difference tells the person
+Both route to triage in the same way; the difference tells the person
 reading the escalation what kind of problem it is.
 
 - **`"FAIL"`: a decision could resolve it.** The close was refused for a reason
@@ -315,7 +324,7 @@ export default {
 ```
 
 Save it in your repository, for example as `closers/merge-back-closer.mjs`, and
-reference it:
+reference it as the `closerRef` you pass to `create()`:
 
 ```ts
 { type: "custom", modulePath: "closers/merge-back-closer.mjs" }
@@ -324,34 +333,47 @@ reference it:
 `exportName` selects a named export instead of `default`, so one module can hold
 several closers.
 
-To try it on a real surface's worktree without running a whole surface:
+To try it without running a whole surface, use a throwaway clone of your project, never the project
+itself: the closer fast-forwards the base branch and deletes the surface's branch. Save the module as
+`/tmp/closer-try/merge-back-closer.mjs`, then clone:
+
+```bash
+git clone /home/me/project /tmp/closer-try/repo
+```
+
+Save this as `try-closer.ts` and run it with `npx tsx try-closer.ts`:
 
 ```ts
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { branchName, provisionWorktree, resolveCloser } from "delivery-service";
 
-const repoPath = "/home/me/project";
+const repoPath = "/tmp/closer-try/repo"; // the throwaway clone
 const dir = "/tmp/closer-try/case";
 const worktreePath = "/tmp/closer-try/tree";
 
 const { baseBranch } = await provisionWorktree(dir, repoPath, worktreePath, "surface-1");
-// ... change something in worktreePath ...
-const closer = resolveCloser({ type: "custom", modulePath: "closers/merge-back-closer.mjs" }, repoPath);
+writeFileSync(join(worktreePath, "try.txt"), "hello\n"); // the "accepted work"
+
+const closer = resolveCloser({ type: "custom", modulePath: "/tmp/closer-try/merge-back-closer.mjs" }, repoPath);
 const ctx = { worktreePath, dir, repoPath, branch: branchName("surface-1"), baseBranch };
 console.log(await closer.close(ctx, { kind: "accepted" }));
 ```
 
+It prints (the commit hash differs, and the branch name is your base branch's):
+
+```text
+{
+  status: 'DONE',
+  detail: 'Fast-forwarded main to 6390573 and removed surface/surface-1.'
+}
+```
+
 ## When several tasks close at once
 
-With `concurrency` above 1, several tasks can reach their close at nearly the same time
-against one checkout. Every git call the harness itself makes there takes its turn,
-including every call the built-in closers make, so their merges never overlap. The
-merge-back closer's `--ff-only` merge also checks the base afresh when it runs: if another
-task moved the base on first, it reports `"FAIL"`, and triage and the `close` budget handle
-it as for any close that failed. When no checkout holds the base branch, as for the delivery
-branch a `--sources` run lands its tasks on, the closer moves the branch with `git update-ref`.
-It gives the tip it read as the old value, which is the same check made in the same command.
-
-A closer of your own that runs git in the shared checkout through its own child process is
+With `concurrency` greater than 1, several tasks can reach their close at nearly the same time against
+one checkout. Every git call the harness makes there, including the built-in closers', takes its
+turn, so their merges never overlap. A closer of your own that runs git in the shared checkout through its own child process is
 outside that turn-taking. Write it so another task's git call landing between two of yours
 cannot do harm: check the state you depend on in the same command that changes it, as
 `merge --ff-only` does, rather than in an earlier one.
@@ -360,7 +382,7 @@ cannot do harm: check the state you depend on in the same command that changes i
 
 The harness wraps every custom closer, so it reports a mistake in yours and never
 crashes. Each of these becomes an `"ERROR"` report, which on an accepted
-surface goes to close-triage like any other failed close:
+surface goes to triage like any other failed close:
 
 | Mistake | The `detail` names |
 |---|---|
@@ -369,8 +391,16 @@ surface goes to close-triage like any other failed close:
 | `close` throws, or its promise rejects | the module path and the error message |
 | `close` returns something that is not a `CloseReport` | the module path and what was invalid |
 
-To watch an example closer close a surface, then a broken one reach close-triage:
+To watch an example closer close a surface, then a broken one reach triage:
 
 ```bash
 npm run demo:close-slice-4
 ```
+
+## See also
+
+- [Write a gate](writing-a-gate.md): decide what counts as good work.
+- [Configure a role](configuring-a-role.md): triage and the `repairBrief` it hands a retried close.
+- [Set up a project](project-configuration.md): the `closer` setting.
+- [Test your pipeline](testing-your-pipeline.md): try a closer against the scripted agent.
+- [Glossary](glossary.md): the terms used here.

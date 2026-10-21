@@ -1,19 +1,19 @@
-# Setting up a project
+# Set up a project
 
-[Getting started](getting-started.md) ran one task you typed on the command line. A
-project is more than that. An agent needs to know things before it starts, there is more
-than one thing to do, and the owner wants to check the setup before spending any agent time.
-This guide sets up a project from start to finish, in a complete example project
-that ships with the harness. You describe the project, list what you want done, choose
-how the work is checked and what happens to it, check the setup, read what the agent
-will be told, run the whole list, and then add to it.
+This guide takes you through setting up a project with the example in
+`examples/project-configuration-example`. [Get started](getting-started.md) ran one task you
+typed on the command line; a project has more to it. You describe the project, list tasks,
+choose a check and a closer, validate the setup, preview what the agent will be told, run the
+list and extend it. By the end you can write a `delivery.config.json` for your own project.
 
 All of it lives in one file of plain settings, `delivery.config.json`, checked in beside
-your code. You write no code and read no harness source.
+your code. You write no code. To have the file written for you instead, see
+[Set up with questions](set-up-with-init.md).
 
 ## What you need
 
-- The `delivery` command, installed as [Getting started](getting-started.md) describes.
+- The `delivery` command, installed as [Get started](getting-started.md) describes, and a
+  checkout of the harness: step 1 copies the example from its `examples/` folder.
 - Node.js 22 or later, and `git`.
 - For steps 8 and 9, Claude Code, signed in. Check with `claude auth status`. If it says
   you are not signed in, run `claude auth login`, or set `ANTHROPIC_API_KEY`. Checking and
@@ -22,8 +22,8 @@ your code. You write no code and read no harness source.
 ## 1. Get the example project
 
 The harness ships an example project: a small library of text helpers with one function,
-its test and a finished `delivery.config.json`. Copy it outside the harness
-checkout and make it a git repository:
+its test and a finished `delivery.config.json`. From the root of
+your harness checkout, copy it outside the checkout and make it a git repository:
 
 ```bash
 cp -r examples/project-configuration-example ~/text-helpers
@@ -69,39 +69,54 @@ ends up on a branch of its own.
 
 You can edit the list between runs. A new sentence runs in its place. Rewording a
 sentence makes it a new task, which is also how you ask for a finished one again.
-Deleting a sentence leaves what already ran in the history. The harness refuses, before anything runs, an empty sentence or two
-sentences that say exactly the same thing.
+Deleting a sentence leaves what already ran in the history. Before anything runs, the harness
+refuses an empty sentence, and two sentences that say exactly the same thing.
 
-Every task's work is checked for weakened tests, whatever the check you set up says: a test
-deleted or renamed (`tests-untouched`), a change to how tests run, such as a test-runner setting or
-a CI file (`check-untouched`), a new skip marker (`no-skips`), and a test setting or skipping test
-hidden from git (`ignored`). Editing an existing test is allowed, because test-first work and
-refactoring do it. A task written as an object can change this with `guards`: `"add":
-["tests-unchanged"]` also refuses edits to existing tests, and `"off": [...]` turns a guard off
+The harness also guards every task against weakened tests, whatever your check says. It
+refuses:
+
+- a deleted or renamed test (`tests-untouched`);
+- a change to how tests run, such as a test-runner setting or a CI file (`check-untouched`);
+- a new skip marker (`no-skips`);
+- a test setting, or a skipping test, hidden from git (`ignored`).
+
+Editing an existing test is allowed, because test-first work and refactoring do it. A task
+written as an object can change this with `guards`:
+
+```json
+{ "intent": "rewrite the slug tests to use node:test subtests", "guards": { "off": ["tests-untouched"] } }
+```
+
+`"add": ["tests-unchanged"]` also refuses edits to existing tests, and `"off"` turns a guard off
 for a task whose job is to change tests. The report shows any task whose guards differ.
 
 ## 4. Choose how the work is checked, and what happens to it
 
-`gate` is the check that decides whether the agent's work is good. The harness never takes the agent's own word
-as proof. The simplest way to choose one is by name:
+`gate` is your check: it decides whether the agent's work is good, and the harness never takes
+the agent's own word as proof. Later steps call it the check. The simplest way to choose one is
+by name:
 
 ```json
 { "gate": { "type": "test-runner" } }
 ```
 
-That runs your project's own tests with `npm test` and passes when they succeed. There are
+That runs your project's `test` script from `package.json` and passes when it succeeds. If
+there is no `test` script and you gave no `command`, the harness refuses and says so. There are
 five ready-made checks, and each takes only the detail it needs:
 
-- `test-runner` runs your tests. Add `"command"` if they are not run with `npm test`.
-- `file-exists` checks that a file is there once the work is done: `{ "type": "file-exists", "path": "CHANGES.md" }`. The harness judges it only after the work, so a file that is still missing fails it.
+- `test-runner` runs your tests. Add `"command"` if they are not run by a `test` script.
+- `file-exists` checks that a file is there once the work is done: `{ "type": "file-exists", "path": "CHANGES.md" }`.
+  The harness judges it only after the work, so a file that is still missing fails the check.
 - `command-succeeds` checks that a command succeeds: `{ "type": "command-succeeds", "command": "npm run lint" }`.
 - `schema-validates` checks that a JSON file has the shape another file describes:
   `{ "type": "schema-validates", "file": "data.json", "schema": "data.schema.json" }`. It
   fetches its checker the first time it runs, so that run needs the network.
-- `commits-ahead` checks that the work added at least one commit: `{ "type": "commits-ahead" }`. Use it for a workflow step whose job is to commit something other than passing tests.
+- `commits-ahead` checks that the work added at least one commit: `{ "type": "commits-ahead" }`.
+  Use it for a [workflow](use-workflows.md) step whose job is to commit something other than
+  passing tests.
 
-`delivery validate` says in plain words what the check you chose does, and if you misspell a
-name it lists the five.
+`delivery validate` says in plain words what the check you chose does. If you misspell a
+name, it lists the five.
 
 The example writes its check out in full instead, which does the same as
 `test-runner`. `"command": "npm test"` runs the tests, and `"parseMode": "exitcode"` means the
@@ -111,7 +126,7 @@ fails when it is not will do.
 `closer` is what happens to work that passes the check. The example's `commit-to-branch`
 commits it to a new branch and leaves `main` alone, so you can look at it before you merge
 it. The other built-in choices are `merge-back`, which merges it into your main branch,
-and `open-pr`, which opens a pull request.
+and `open-pr`, which opens a pull request. See [closer](glossary.md#closer).
 
 ## 5. Tell the agent how you like things done
 
@@ -144,7 +159,7 @@ Ready to run.
 ```
 
 Each tick is one thing it read. If something is wrong, it prints the one thing to fix
-instead, and nothing starts. It needs no sign-in and no network and changes nothing, so
+instead, exits with code 2 and starts nothing. It needs no sign-in and no network and changes nothing, so
 run it as often as you like, including in CI on every push. In CI, `delivery validate --json` lists every problem at once, each with the setting it concerns, as one JSON document a script can read.
 
 ## 7. See what the agent will be told
@@ -177,6 +192,7 @@ It can use every tool your setup allows.
 Agent options: none.
 ```
 
+`append` is in the instructions above, so the last line lists only other agent options.
 `delivery preview --queue-index 2` shows the second task instead. Like `delivery
 validate`, it needs no sign-in and changes nothing.
 
@@ -187,6 +203,10 @@ For a workflow, `delivery preview --step build` shows what that step's agent wil
 ```bash
 delivery run
 ```
+
+If it stops at once, the message says why. Outside a git repository it says "This isn't a git
+repository yet" and exits with code 2; if Claude Code is not signed in it says so and exits with
+code 3.
 
 ```text
 Task 1 of 2: add a function that turns a title into a URL slug, with a test
@@ -214,8 +234,8 @@ Your task list: 2 of 2 tasks completed and committed to their own branches.
 Run `delivery report` for what to do.
 ```
 
-Each task ends by naming the branch its work is on. Your `main` branch is untouched. Read
-what the agent did with `git log -p <branch>`, and merge what you like.
+`<run-id>` stands for the id the harness printed for that run. Each task ends by naming the
+branch its work is on, and your `main` branch is untouched. Read what the agent did with `git log -p <branch>`, and merge what you like.
 
 If the run stops part way, because you closed the terminal or pressed Ctrl-C, run
 `delivery run` again in the same folder. It carries on with the task it was on, then the
@@ -266,273 +286,15 @@ Only your new task runs. The first two already have finished runs. The harness w
 afresh each time from what has already run, so nothing is stored that could
 fall out of step with your file. The count is always the list as it is written now.
 
-## Going further
+## Next steps
 
-Everything so far uses the harness's built-in pieces. When you need your own, each has its own
-guide:
-
-- [Writing a gate](writing-a-gate.md): a check of your own, written in code, in place of a command.
-- [Writing a closer](writing-a-closer.md): your own way of handling work that passes, such as notifying a channel.
-- [Configuring a role](configuring-a-role.md#from-the-configuration-file): changing an agent's instructions as well as its tools, and why a misspelled tool name only shows up during a run.
-- [Testing your delivery pipeline](testing-your-pipeline.md): proving your own check, closing action and roles together against a scripted agent.
-
-### Workflows
-
-A workflow does a task in more than one checked step, in the order you give. Name it under
-`workflows`:
-
-    "workflows": {
-      "plan-then-build": {
-        "steps": [
-          { "name": "plan", "prompt": "Write a short plan to PLAN.md.",
-            "gate": { "type": "file-exists", "path": "PLAN.md" } },
-          { "name": "build", "prompt": "Carry out PLAN.md.", "continue": true }
-        ]
-      }
-    }
-
-and run a task through it with `delivery run --task "add a rota page" --workflow plan-then-build`.
-
-Each step is told the task and its own `prompt`. The project's `gate` checks a step unless the step
-names its own (any ready-made check works, including `commits-ahead`). A step that fails is
-corrected on its own, on its own limits. The next step starts only once the previous one is accepted, from the
-commit its work was saved in. The task is delivered once, after the last step. A step may also set
-`agent` options (laid over the project's), `guards` (`add` or `off`, for that step only), and
-`continue: true` to pick up the previous step's agent session. `delivery preview --step <name>`
-shows what a step will be told. A task run without `--workflow` is one step, as before.
-
-`backlog-only` is off by default. A step that turns it on (`"guards": { "add": ["backlog-only"] }`) may only add ideas: new backlog items with `status: idea`, a `severity` and a `check` that finds its problem in the project as it stands. Any other change, or an idea its check cannot find, fails the step. A pack's scan workflow turns it on.
-
-To start a configuration for a project of your own, run `delivery init` in it. It asks, one thing at a time, what the
-project is, what checks the work, what happens to work that passes, and what you would like
-done. It then writes the file for you. The [configuration reference](configuration-reference.md)
-lists every setting.
-
-A workflow may also carry its own `after` list, which replaces the project's `after` steps for
-the items it delivers (see [After landing](#after-landing)). `"after": []` runs none, for a workflow whose
-work has nothing to deploy or announce.
-
-A workflow may also set `hold` to a severity (`critical`, `high`, `medium` or `low`). The harness finishes and checks a task whose item is rated that or more serious as usual, then holds it on its own branch instead of landing it: `delivery run --sources` reports it as held, and `delivery sign-off <item>` lands it, or `delivery reject <item>` sets it aside.
-
-### A backlog of work items
-
-Rather than a fixed list, a project can keep its work as items in `.delivery/backlog/`. Each item
-is a markdown file, committed to the repository, named `<timestamp>-<slug>.md` (for example
-`20261016T090000Z-greet-people.md`) so that items added at the same time never collide. Its front
-matter says how it is done, and the text after the front matter is the brief the agent receives:
-
-    ---
-    status: open
-    workflow: plan-then-build
-    priority: 10
-    cadence: 7d
-    spec: docs/greeting-spec.md
-    ---
-    Tidy the greeting copy so it matches the spec.
-
-`status` is one of `open`, `idea`, `resolved` or `declined`; only `open` items are worked, and an
-`idea` is material for other work rather than a task. `workflow` names the workflow that delivers
-it. `priority` orders items, lower first, with unprioritised items last. `cadence` (`30m`, `12h`,
-`7d` or `2w`) makes an item recur: it is due again once that long has passed since it last closed.
-`severity` is how serious the item's problem is: `critical`, `high`, `medium` or `low`. A workflow
-with `hold` keeps a finished item at or above its threshold for your sign-off. `check` is how the
-harness knows the problem is gone, one of: `anchor-gone` (`path` and `anchor`, the flagged code
-copied exactly; add `scope: repo` and `sensitive: true` for a password or key, which is then looked
-for across the whole project), `pattern-absent` (`pattern`, an extended regular expression, and
-`paths`) or `dependency-absent` (`package` and `version` as `package-lock.json` installs them). Every
-step's check then also requires the problem to be gone, as `item:<id>:resolved`.
-Any other field is available to the step prompts as `{{task.<field>}}`, such as `spec` in the example item.
-
-The harness reads items from your base branch's last commit, or `origin`'s when the project has one. So commit
-an item, and push it if there is an origin, for it to be worked. The harness names, but does not work, item files on disk that the base
-does not yet hold.
-
-### Running the backlog
-
-`delivery run --sources` works through the backlog and the other work sources (`sources` in your
-config file) in order. `--max N` takes up to N items in one run; the default is one. Each item
-becomes a run of its own, with its workflow, and is delivered the same way as a task.
-
-How an item is carried on depends on how its last run ended:
-
-- A run that was interrupted (its session stopped before it finished) carries on in the same
-  working copy. Anything left uncommitted there is committed onto the earlier run's branch first,
-  so the work it had done is kept, and its agent session can be resumed.
-- A run that used up its corrections starts afresh from the delivery branch. Its old branch is kept.
-- A question the agent asked parks the item until you answer it with `delivery answer`, and the
-  next run carries on with your answer.
-- An item that ends undelivered `parkAfter` runs in a row (3 by default) is parked, and skipped
-  until you run `delivery unpark <item>`. An item that stopped for you is parked the same way.
-
-The record of each item (its last run, how that ended, and whether it is parked) is kept in the
-item ledger, `ledger/` under your state folder (`~/.local/state/delivery-service/`, or
-`$XDG_STATE_HOME`), beside the working copies. What landed on the delivery branch, and what your
-closer did with it, is kept beside it, in the same folder. It stays on this machine: another
-clone of the repository keeps its own.
-
-To run `delivery run --sources` by itself, on a timer, see `delivery schedule enable` in
-[Run on a schedule](run-on-a-schedule.md).
-
-#### The delivery branch
-
-Every item the run delivers lands on one branch, `delivery/<base>` (for example `delivery/main`), not
-on a branch of its own. Each item starts from that branch's latest work, so it sees everything
-delivered before it. When another item lands while one is still working, the later one is rebuilt
-on top and its check runs again before it lands. If that rebuild conflicts or the check fails,
-the item gets a fresh attempt from the latest work, shown what went wrong, within its usual
-corrections. Nothing that conflicts or fails is ever added to the delivery branch.
-
-Your `closer` then acts once per run, on the delivery branch, once at least one item has landed:
-`merge-back` merges it into your base branch and deletes it, `commit-to-branch` leaves it for you
-to merge, and `open-pr` opens one pull request for it, updating that pull request's list of items
-on later runs. If the closer does not succeed, the delivery branch stays as it is and the next
-run tries again.
-
-If you commit to your base branch yourself, the next run brings those commits into the delivery
-branch first, and runs your check on the result. If that conflicts or the check fails, the run
-starts no task and says what is in the way. It says so again on later runs, without trying the
-same thing again, until your base branch or the delivery branch moves.
-
-#### After landing
-
-`after` lists steps to run once a run's work has landed and your closer has taken the delivery
-branch. They run once per run, in order, and only when at least one item landed: a deploy happens
-once, not once per item. Each step is either a command or an agent pass:
-
-    "after": [
-      { "name": "deploy", "run": "make deploy", "in": "base", "check": "curl -f http://localhost:8080/health" },
-      { "name": "release notes", "prompt": "Write release notes for the landed commits and post them to the project's discussion." }
-    ]
-
-- A command runs in a throwaway copy of what landed, or in your own folder with `"in": "base"`.
-  It sees the landed commit as `DELIVERY_COMMIT` and the delivery branch as `DELIVERY_BRANCH`.
-- An agent pass is a session with your own Claude Code setup, in a throwaway copy of what landed.
-  It is told what landed. It cannot change what landed: anything it changes is discarded and the
-  run says so, except a new item file in `.delivery/backlog/`, which is checked like any follow-up
-  and then lands on the delivery branch for your closer to take next run (or, when the landed
-  items come from a `github` source or a `command` source with `"tracker": true`, is raised in your tracker).
-- `check` is a command, run from your folder, whose success confirms the step worked.
-
-If a step or its check does not work, the harness does not run that step or the steps after it. The work that
-landed stays landed. `delivery status` and `delivery report` show them as waiting, and the
-next `delivery run --sources` tries them first, starting from the one that did not work. Until
-they work, each run ends as stopped.
-
-Getting unstuck:
-
-- A waiting step is run as your config file defines it when it is tried, not as it was when the
-  work landed: it is found by its place in its `after` list (the project's, or the workflow's), so
-  correcting a typo in a command repairs the step on the next run. A step whose place has gone from
-  the list is skipped.
-- A later run that lands work and runs the same `after` list supersedes the waiting steps of
-  earlier runs from that list: they are skipped, never run afterwards, so a deploy that failed for
-  an older commit is not redone over a newer one that has since deployed. Raising held follow-ups
-  is never superseded.
-- `delivery drop-after` gives up every waiting step, or only those of one batch
-  (`delivery drop-after <batch>`, as `delivery status` names it), for a step you cannot fix or no
-  longer want. The work that landed stays landed.
-
-When items come from a `github` source, or a `command` source with `"tracker": true`, follow-ups an agent raised while working them are raised
-in your tracker as the first after step (see [Work sources](#work-sources)).
-
-A workflow's own `after` replaces this list for the items it delivers.
-
-### Packs
-
-`packs` lists folders of review packs of your own, relative to this file. Each adds the workflows
-`<name>:scan` and `<name>:fix`; the built-in `code` and `security` packs are always available. See
-[Writing a pack](writing-a-pack.md).
-
-    "packs": ["./my-review"]
-
-### Work sources
-
-`sources` says where `delivery run --sources` finds work, in order. Each source is an object with a
-`type`:
-
-- `backlog`: the items in `.delivery/backlog/`, as in [A backlog of work items](#a-backlog-of-work-items).
-- `list`: the `tasks` you wrote in this file.
-- `command`: a command of your own, which takes a `command` string.
-- `github`: open issues on your GitHub repository that carry a label (see [GitHub issues](#github-issues)).
-
-Any source may also take a `name`, which tells its entries apart in a run's report (it defaults to
-the `type`), and `"fallback": true`, which reads it only when no other source has any work. Two
-sources with the same name are refused, so give one of them its own `name`.
-
-    "sources": [
-      { "type": "backlog" },
-      { "type": "command", "command": "./next-slice.sh", "name": "slices" },
-      { "type": "list", "fallback": true }
-    ]
-
-A command source is run through its own command line, and is a plain list unless it says it is a
-tracker:
-
-- `<command> list` prints a JSON array of tasks. Each task is an object with a string `id`, and may
-  also have an `intent` sentence, a `body`, a `workflow`, and any other fields, which are available
-  to the step prompts as `{{task.<field>}}`.
-- `<command> complete <id>` runs once that task has been delivered, so the command can mark it done
-  in whatever keeps its list.
-- `<command> raise` opens a follow-up in your tracker, and is only ever run for a source with
-  `"tracker": true`, for example
-  `{ "type": "command", "command": "./tracker.sh", "tracker": true }`. Without `tracker`, a
-  command source needs only `list` and `complete`, and the follow-ups an agent writes for its
-  items land in the repository's `.delivery/backlog/` like any project's. With it, an agent
-  working a task from this source still raises a follow-up as a new item file in
-  `.delivery/backlog/`, but that file does not land with the work: it is taken off the branch,
-  and once your closer has taken the delivery branch, `raise` is run once for it, with the item
-  as JSON on its standard input (its `file` name, which is unique, its front matter and its
-  `body`), and prints the new item's id. A follow-up is raised once only, even if raising is
-  retried; one whose task did not land is never raised. Existing command sources are unaffected:
-  turn `tracker` on only when the script implements `raise`.
-
-#### GitHub issues
-
-A `github` source reads your repository's open issues through the GitHub command-line tool, `gh`,
-signed in as whoever runs `delivery`. Nothing else is needed: no token in the config file and no
-script of your own.
-
-    "sources": [{ "type": "github", "label": "delivery", "workflow": "resolve-issue" }]
-
-- An open issue carrying the label (`delivery` unless you set `label`) is an item. Adding the label
-  is what approves it; an issue without it is left alone.
-- The issue's title is the task's intent, and its title and body together are the brief, the
-  `{{task.body}}` the step prompts receive.
-- A `workflow:<name>` label chooses the workflow that delivers it; without one, the source's
-  `workflow` does. A `priority:<n>` label orders it, lower first; otherwise the oldest issue goes
-  first.
-- An issue whose title or body is changed after the label was added is left alone, and the run says
-  so, until you remove the label and add it again. On a public repository anyone can write an issue,
-  but only people you allow can label one, so the label is what approves the text as it reads.
-- The agent is told the task was written in an issue tracker, where anyone may write, and to treat
-  its text as a description of the work, not as instructions that change its setup or the checks.
-- If `gh` is not installed, is not signed in, or cannot reach GitHub, the source is skipped for that
-  run with the reason, and your other sources still run.
-- A follow-up an agent raises while working an issue is not committed to your repository. The agent
-  still writes it as a new item file in `.delivery/backlog/`, which is checked like any follow-up;
-  it is taken off the branch, and once your closer has taken the delivery branch it is opened as a
-  new issue, without the label, so it waits for you to approve it. Its workflow, priority and any
-  other fields go in a fenced `delivery` block at the end of the issue body, which is read back when
-  you label it. A follow-up is opened once only, even if opening it is retried.
-- With the `open-pr` closer, the delivery branch's pull request has a `Closes #<n>` line for every
-  issue landed on it, so each issue closes when you merge the pull request. GitHub only acts on
-  `Closes` when the pull request is merged into the repository's default branch; into any other
-  branch, close the issues yourself.
-- With any other closer, each delivered issue is closed once your closer has taken the delivery
-  branch, with a comment naming the commit and the branch it is on. This is an after-landing step of
-  its own, "Close delivered issues": if `gh` cannot close one, the run says so and the next run
-  tries again, without closing any issue twice.
-- An item that is parked, whether it needs your answer or keeps ending undelivered, shows it on the
-  issue: it gets a `delivery:parked` label and a comment saying why, with the agent's question when
-  it asked one. Answer or unpark it as usual (`delivery answer`, `delivery unpark`); the label comes
-  off when the issue is next worked. `delivery status` still lists it.
-
-`parkAfter` is how many runs in a row an item may end undelivered before the harness sets it
-aside. It is a whole number, 1 or more, and defaults to 3.
-
-`notify` is a command run at the end of every run, however it ended: work delivered, a stop, a run
-blocked before it started any task, or a run with nothing to do. It runs from the repository
-folder, with the run's report as JSON on its standard input: the same document
-`delivery report --json` prints, including `parked`, so it can tell you what was done and which
-item is waiting for your answer. A notify command that fails is reported in one line and never
-changes the run's outcome or exit code.
+- [Do a task in steps](use-workflows.md): split one task into checked steps.
+- [Work through a backlog](work-a-backlog.md): keep work as items in the repository.
+- [Take work from other sources](work-sources.md): read work from a command or GitHub issues.
+- [Run steps after landing](run-after-landing.md): deploy or announce once work has landed.
+- [Check your setup](check-your-setup.md) and [Work through a task list](run-a-task-list.md).
+- [Configuration reference](configuration-reference.md): every setting.
+- [Write a gate](writing-a-gate.md): a check of your own, written in code, in place of a command.
+- [Write a closer](writing-a-closer.md): your own way of handling work that passes, such as notifying a channel.
+- [Configure a role](configuring-a-role.md): change an agent's instructions as well as its tools.
+- [Test your pipeline](testing-your-pipeline.md): prove your own check, closer and roles against a scripted agent.

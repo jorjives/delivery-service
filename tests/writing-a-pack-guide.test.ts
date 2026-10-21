@@ -8,10 +8,10 @@ import { describe, expect, it } from "vitest";
 import { ItemCheck } from "../src/schema.js";
 import { packSchema } from "../src/packs/manifest.js";
 import { FIXTURES, FixtureExpectations } from "../src/packs/pack-fixtures.js";
-import { REPO_ROOT } from "./helpers.js";
+import { flatten, REPO_ROOT } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/writing-a-pack.md"), "utf-8");
-const flat = guide.replace(/\s+/g, " ");
+const flat = flatten(guide);
 
 describe("the 'writing a pack' guide", () => {
   it("starts from a copy of a built-in pack and proves it with the pack check, then runs it", () => {
@@ -50,6 +50,6 @@ describe("the 'writing a pack' guide", () => {
 
   it("is listed in the README beside the guides to writing a gate and a closer", () => {
     const readme = readFileSync(join(REPO_ROOT, "README.md"), "utf-8");
-    expect(readme).toContain("[Writing a pack](docs/writing-a-pack.md)");
+    expect(readme).toContain("[Write a pack](docs/writing-a-pack.md)");
   });
 });

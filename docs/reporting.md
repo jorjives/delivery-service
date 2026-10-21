@@ -5,6 +5,10 @@ also available as data, for a dashboard, a script or a CI step. There are two fo
 names its own version, and both come with a published schema and a promise about what will not
 change.
 
+In the data, a task is called a surface: `surfaces`, `surface` and `surfaceId` all mean a task
+(see the [glossary](glossary.md#surface)). The `breaker` key describes the
+[shared environment](shared-environment.md).
+
 | You want | Run | You get |
 |---|---|---|
 | Where everything stands, once | `delivery report --json` | One `delivery.report/1` document |
@@ -41,9 +45,9 @@ kind has none.
 | `counts` | How many tasks stand in each standing: `closed`, `escalated`, `aborted`, `paused`, `unfinished`, `queued`, `not_started` |
 | `run` | The run of several tasks at once the document is about, or `null` when there is none |
 | `surfaces` | One entry for each task |
-| `trips` | Each time the setup a run's tasks share broke: the `cause` (its `kind`, the `surfaceId` of the task whose report tripped it, and either a `reason` or the `surfaceIds` of every task counted, whichever the kind does not have being `null`), the tasks `held`, every one of the `repairs` tried, how it `ended`, the `reason` and any usage `limit`. Empty when there is no run of several tasks |
+| `trips` | Each time the shared environment broke: the `cause` (its `kind`, the `surfaceId` of the task whose report tripped it, and either a `reason` or the `surfaceIds` of every task counted, whichever the kind does not have being `null`), the tasks `held`, every one of the `repairs` tried, how it `ended`, the `reason` and any usage `limit`. Empty when there is no run of several tasks |
 | `usage`, `usageRecorded` | What the agent sessions behind everything the document reports took and cost, and how many sessions that covers. See [Time and cost](#time-and-cost) |
-| `parked` | The backlog items this machine's item ledger has set aside, oldest key first, each with its `item` key, its `intent`, the `reason` it is parked (`"decision"`, `"escalated"` or `"attempts"`), the `question` it is waiting on, its `attempts`, and the `lastRun` that ended it. Empty when nothing is parked or the machine has no ledger |
+| `parked` | The backlog items this machine's item ledger has set aside, oldest key first, each with its `item` key, its `intent`, the `reason` it is parked (`"decision"`, `"escalated"`, `"attempts"` or `"held"`), the `question` it is waiting on, its `attempts`, and the `lastRun` that ended it. Empty when nothing is parked or the machine has no ledger |
 | `delivery` | The delivery branch this machine's `delivery run --sources` runs land their tasks on, or `null` when none was ever opened: its `branch` and the `base` it is for, `openedAt`, its `tip` (`null` once your closer has merged and deleted it), every task `landed` on it since it opened (each with its `run`, `item` key, `intent`, the delivery branch's `commit` that holds it, and `at`), what your `closer` last did with it (`status`, `detail`, `at`, or `null`), and what `blocked` it (`reason`, `at`, or `null`) |
 | `after` | The after-landing steps this machine's `delivery run --sources` runs ran: every batch still waiting on a step, then the most recent, oldest first, each with its `batch` id, the `branch` and `commit` that landed, when it began (`at`), the tasks `landed` (each with its `run`, `item` key and `intent`), and its `steps`, each with the `after` list it came `for` (`"project"`, a workflow's name, or `"follow-ups"`), its `label`, its `status` (`"done"`, `"failed"`, `"skipped"` (superseded by a later batch, dropped, or gone from the config) or `"pending"`), the `detail` of what happened, and `at`. Empty when none ran |
 
@@ -53,8 +57,8 @@ kind has none.
 |---|---|
 | `runId`, `startedAt` | Which run, and when it started |
 | `tasks`, `concurrency` | How many tasks the list held when it started, and how many it works on at once |
-| `governs` | Whether the run says how the document's tasks stand. Always `true` in a document about the run itself. In a document about your task list it is `true` while the run goes, and until a task of the list is worked on its own after the run began; then it is `false`, and the run is only history |
-| `breaker` | How the setup its tasks share stands: `HEALTHY`, `DEGRADED` or `REPAIRING` |
+| `governs` | Whether the run says how the document's tasks stand. Always `true` in a document about the run itself. In a document about your task list it is `true` while the run goes and until a task of the list is worked on its own after the run began. From then on it is `false` and the run is only history |
+| `breaker` | How the shared environment stands: `HEALTHY`, `DEGRADED` or `REPAIRING` |
 | `outcome`, `finishedAt` | `"drained"` (every task it could take has ended) or `"escalated"` (it stopped), and when; `null` while it has not ended |
 | `lastActivityAt` | The latest time its record holds |
 | `reason`, `cause`, `limit` | Why it stopped, when it did: the recorded reason, `"shared_environment"` or `"usage_limit"`, and which usage limit |
@@ -109,19 +113,22 @@ the cost is an estimate. `usage` is `null` when no session reported them, never 
 data.
 
 `usageRecorded` says how complete the figure is: `recorded` sessions of the `sessions` that ran.
-The figure covers everything only when the two are equal. A task's sessions are each time its agent was
-set to work, each of its own repairs of the check, and each triage round an agent decided. Three
-things are not counted: a round the rules decided, which ran no session; a session the agent runtime
-never started; and a session still going, which counts as not recorded yet. The document's own figure adds up its tasks' figures and, where there is a run of
-several tasks, that run's repairs of the setup every task shares. A task's figure leaves those
-out. A run made before the harness recorded these counts its sessions with `recorded` at `0`.
+The figure covers everything only when the two are equal.
+
+A task's sessions are each time its agent was set to work, each of its own repairs of the check,
+and each triage round an agent decided. Not counted are a round the rules decided (no session
+ran), a session the agent runtime never started, and a session still going (not recorded yet).
+
+The document's figure adds up its tasks' figures and, for a run of several tasks, that run's
+repairs of the shared environment. A task's figure leaves those out. A run made before these
+counts were kept shows `recorded` as `0`.
 
 Nothing a run does depends on these figures: no run is stopped, slowed or changed because of them.
 
 ## What `delivery status --json` prints
 
 `delivery status --json` prints every key it always has, with the same names and meanings (see
-"[See what happened to a run](check-a-run.md)"), and one more: `report`, which holds
+[See what happened to a run](check-a-run.md)), and one more: `report`, which holds
 the `delivery.report/1` document for the same run. It is exactly what `delivery report <run-id>
 --json` prints, so a script that already reads `status --json` finds the retry budgets, the
 state history and every triage round under `report.surfaces`. `delivery status --decisions
@@ -131,12 +138,14 @@ state history and every triage round under `report.surfaces`. `delivery status -
 
 ## The event stream
 
+This prints one `delivery.event/1` event per line, as newline-delimited JSON. It follows your
+task list or the run you name, as `delivery status --watch` does:
+
 ```bash
 delivery status --watch --json
 ```
 
-prints one `delivery.event/1` event per line, as newline-delimited JSON. It follows your task
-list or the run you name, as `delivery status --watch` does:
+The output looks like this:
 
 ```text
 {"schema":"delivery.event/1","run":null,"surface":null,"seq":0,"subject":"list","at":null,"type":"stream_started"}
@@ -190,14 +199,16 @@ that a run is dead.
 
 ## The schema
 
+`delivery report --schema` prints one JSON object holding a JSON Schema (draft 2020-12) under
+each format's name, `delivery.report/1` and `delivery.event/1`. It needs no project and reads no
+record:
+
 ```bash
 delivery report --schema
 ```
 
-prints one JSON object holding a JSON Schema (draft 2020-12) under each format's name,
-`delivery.report/1` and `delivery.event/1`. It needs no project and reads no record. The harness generates the schema
-from the definitions it validates its own data with, so the two cannot
-drift apart, and every document and event the commands print is valid against it.
+The harness generates the schema from the definitions it validates its own data with, so the two
+cannot drift apart, and every document and event the commands print is valid against it.
 
 The schema is open on purpose, to match the promise in [What will not change](#what-will-not-change).
 No object forbids a key it does not name. A value that is one of a set of names (`standing`, `outcome`, `verdict` and the like) is
@@ -232,7 +243,8 @@ version, and they stay as they are. To follow a run from a script, use `delivery
 
 ## From your own code
 
-The functions the commands are built on are part of the package:
+The functions the commands are built on are part of the package. Run this as an ES module (a
+`.mjs` file, or `"type": "module"` in your `package.json`), because it uses top-level `await`:
 
 ```ts
 // reporting from your own code
@@ -254,3 +266,9 @@ console.log(text.join("\n"), Object.keys(publishedSchema()));
 the same document, events and text. `ReportDocument` and `ReportEvent` are the zod schemas the
 data is validated with, `publishedSchema()` is what `delivery report --schema` prints, and
 `streamStarted` and `streamEnded` build the two marker events.
+
+## See also
+
+- [Read the report](read-a-report.md): the same report in words.
+- [See what happened to a run](check-a-run.md): `delivery status` and its output.
+- [Command reference](cli-reference.md#machine-readable-output): `--json` on each command.

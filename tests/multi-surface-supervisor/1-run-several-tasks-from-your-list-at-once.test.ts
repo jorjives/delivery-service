@@ -22,6 +22,9 @@ import { writeMockScript, type MockScript } from "../../src/mock-script.js";
 import { TEST_MOCK_SCRIPT } from "../../src/cli/agent-session.js";
 import { EXIT } from "../../src/cli/failures.js";
 import { EVERY_TASK_DONE } from "../../src/cli/queue.js";
+import { FENCE_ABSENT } from "../../src/cli/drive.js";
+import { NO_BWRAP } from "../../src/cli/command-fixtures.js";
+import { TEST_BWRAP } from "../../src/fence.js";
 import { REPO_ROOT, runDelivery, git } from "../helpers.js";
 
 const RUN_TIMEOUT = 60_000;
@@ -91,14 +94,17 @@ describe("UAT: have several tasks from your list worked on at the same time inst
           completesWith(task4, "count.js", "export const count = () => 10;\n"),
         ],
       });
-      const run = runDelivery(["run"], { cwd: repo, env: { ...process.env, XDG_STATE_HOME: scratchState(), [TEST_MOCK_SCRIPT]: script } });
+      // The write fence is made absent, as on a machine without bubblewrap, so every machine prints the same lines.
+      const run = runDelivery(["run"], { cwd: repo, env: { ...process.env, XDG_STATE_HOME: scratchState(), [TEST_MOCK_SCRIPT]: script, [TEST_BWRAP]: NO_BWRAP } });
 
       expect(run.status).toBe(EXIT.ok);
       const lines = run.stdout.trimEnd().split("\n");
       // The run opens with one line naming the run and its shape.
       expect(lines[0]).toMatch(/^Starting run run-\d{8}T\d{6}Z: 4 tasks, up to 2 at once$/);
-      // Every following line is prefixed with the task's position, never distinguished by colour alone.
-      for (const line of lines.slice(1, -3)) expect(line).toMatch(/^\[[1234]\/4\] /);
+      // Without the fence the run says so once, untagged; it concerns the whole run, not one task.
+      expect(lines.filter((line) => line === FENCE_ABSENT)).toHaveLength(1);
+      // Every other line is prefixed with the task's position, never distinguished by colour alone.
+      for (const line of lines.slice(1, -3).filter((line) => line !== FENCE_ABSENT)) expect(line).toMatch(/^\[[1234]\/4\] /);
       // Both slots are taken before either frees, so lines from two different tasks interleave.
       expect(lines.some((line) => line.startsWith("[1/4] "))).toBe(true);
       expect(lines.some((line) => line.startsWith("[2/4] "))).toBe(true);

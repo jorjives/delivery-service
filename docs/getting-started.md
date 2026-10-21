@@ -1,4 +1,4 @@
-# Getting started
+# Get started
 
 This guide takes you from nothing to a finished run. You install the `delivery`
 command, point it at a small sample project, and watch an agent do a task that
@@ -10,13 +10,12 @@ harness source.
 - Node.js 22 or later, and `git`.
 - Claude Code, signed in. Check with `claude auth status`; if it says you are not
   signed in, run `claude auth login`, or set `ANTHROPIC_API_KEY`.
-- A copy of the harness checkout, where you pack the command.
+- A clone of the harness repository, to build the package from.
 
 ## 1. Install the command
 
-The harness is not on the public npm registry yet: its first publication waits on
-a licence decision. Until then, install it from a copy you pack yourself. The rest
-of this guide assumes you have.
+The harness is not published to the public npm registry yet, so you install it from
+a package you build yourself. The rest of this guide assumes you have.
 
 In the harness checkout:
 
@@ -47,18 +46,16 @@ Check that the command is there. It prints the version you packed:
 delivery --version
 ```
 
-To run it without installing, use the packed file directly:
-
-```bash
-npx --package ./delivery-service-*.tgz delivery --version
+```text
+<version>
 ```
 
 ### Importing the library in your own project
 
-Step 1 puts `delivery` on your `PATH`, which is all the rest of this guide
-needs. The other guides linked at the end ([writing a gate](writing-a-gate.md), for
-example) have you `import` the library or the testing API in a project of your own.
-A global install does not support that: a bare `import "delivery-service"` resolves through a
+You can skip this section for now: step 1 puts `delivery` on your `PATH`, which is all this guide
+needs. The guides to [write a gate](writing-a-gate.md) and
+[test your pipeline](testing-your-pipeline.md) `import` the library in a project of your own, and a
+global install does not support that: a bare `import "delivery-service"` resolves through a
 project's own `node_modules`. Install the same packed file there too, without `-g`:
 
 ```bash
@@ -70,7 +67,8 @@ Now `import { ... } from "delivery-service"` resolves in that project.
 ## 2. Get a project to try it on
 
 The harness ships a sample project: one function, one test and a `test` script.
-That is all a run needs. Copy it outside the checkout and make it a git repository:
+That is all a run needs. From the harness checkout, copy it outside the checkout
+and make it a git repository:
 
 ```bash
 cp -r examples/sample-project ~/sample-project
@@ -105,19 +103,22 @@ This run: 1 of 1 task completed and committed to its own branch.
 Run `delivery report <run-id>` for what to do.
 ```
 
-The last two lines sum up the run and name the command that repeats it in full. The same
-report is kept in `.delivery/last-report.txt` until the next run replaces it.
+`<run-id>` is made from your task and the time the run started, such as
+`add-a-function-that-greets-20260917T090000Z`. The last two lines summarise the run and name the
+command that prints the full report. The same report is kept in `.delivery/last-report.txt` until
+the next run replaces it.
 
 Your `main` branch is untouched. Read what the agent did with
 `git log -p surface/<run-id>`, and merge it yourself if you approve.
 
 If the run stops early, because you closed the terminal or pressed
-Ctrl-C, run `delivery run` again in the same folder. It resumes where it
-left off.
+Ctrl-C, run `delivery run` again in the same folder. It picks the run up where it
+left off; see [Pick up an interrupted run](resume-a-run.md). If the command
+refuses to start, see [Troubleshooting](troubleshooting.md).
 
 ## 4. Read what happened, later
 
-You need not watch a run. In the same folder, at any time afterwards:
+You do not need to watch a run. In the same folder, at any time afterwards:
 
 ```bash
 delivery status
@@ -134,36 +135,37 @@ How it got here: no triage rounds.
 Retry budgets when it finished, after 1 attempt:
   correction 0 of 3, gate recheck 0 of 3, gate repair 0 of 2, session retry 0 of 5, close retry 0 of 3
 
+Time and cost, recorded for 1 of 1 agent session: 0 s of session time; USD 0.00, estimated by the agent runtime.
+
+Repairs: none ran for this task.
+
 No stop: this run finished.
 
 Next: delivery report (your task list)
 ```
 
-`delivery status` only reads, so it is safe while a run is going. If a
-run stopped because it needs a decision from you, that decision is the first thing
-it prints, with the evidence beneath it.
+`<when>` stands for a date and time in UTC, such as `2026-09-17 09:00 UTC`. The time and cost
+figures differ on every run. `delivery status` only reads the record and changes nothing, so it is
+safe while a run is going. If a run stopped because it needs a decision from you, that decision
+comes first, with the evidence beneath it. For the rest, run `delivery status --help` or see
+[See what happened to a run](check-a-run.md).
 
-Beneath that account it says how the task got there: how often the harness had to decide what to
-do after a setback ("triage rounds"; none here, because the first attempt passed) and how many
-retries of each kind were used. For a task that stopped, it also says what to do. The last line
-names where to go next.
+## Next steps
 
-Once your project has a list of tasks (the next guide sets one up), come back to `delivery report`.
-It says in plain words which tasks landed, which need you, and what to do
-about each. See [Read the report](read-a-report.md).
-
-## Where to go next
-
-- [Setting up a project](project-configuration.md): the next step. Describe your project
-  once, list what you want done, check and preview the setup, and run the whole list, in a
-  complete example project. For a project of your own, `delivery init` writes a
-  `delivery.config.json` by asking what the project is, what checks the work, what happens
-  to work that passes, and what you would like done; the [configuration reference](configuration-reference.md) lists every setting.
-- [Running the backlog](project-configuration.md#running-the-backlog): have the harness work
-  through a backlog of items on its own, each landing on one delivery branch you review once.
-- [Writing a gate](writing-a-gate.md): use a check other than `npm test`, or write
+- [Set up a project](project-configuration.md): the next step. Describe your project
+  once and list what you want done, in a complete example project. For a project of your own,
+  [`delivery init`](set-up-with-init.md) writes a `delivery.config.json` by asking questions; the
+  [configuration reference](configuration-reference.md) lists every setting.
+- [Check your setup](check-your-setup.md): validate the file and preview what the agent is told.
+- [Run a task](run-a-task.md) and [Work through a task list](run-a-task-list.md): hand the agent
+  one task, or a list.
+- [Work through a backlog](work-a-backlog.md): have the harness work through a backlog of items
+  on its own, each landing on one delivery branch you review once.
+- [Run on a schedule](run-on-a-schedule.md): start runs on a timer.
+- [Read the report](read-a-report.md): what landed, what needs you, and what to do about each.
+- [Write a gate](writing-a-gate.md): use a check other than `npm test`, or write
   your own.
-- [Writing a closer](writing-a-closer.md): merge the work back, open a pull
+- [Write a closer](writing-a-closer.md): merge the work back, open a pull
   request, or deliver it your own way.
-- [Testing your delivery pipeline](testing-your-pipeline.md): test your gate,
+- [Test your pipeline](testing-your-pipeline.md): test your gate,
   closer and role configurations against a scripted agent.

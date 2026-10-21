@@ -1,0 +1,11 @@
+{#- Adds a "Report a problem" link under every page, opening a GitHub issue that names the page. -#}
+{% extends "base.html" %}
+
+{% block content %}
+  {{ super() }}
+  {%- set title = "Docs: " ~ page.title -%}
+  {%- set body = "Page: " ~ page.canonical_url ~ "\n\nWhat is wrong, unclear or missing:\n" -%}
+  <p class="md-source-file">
+    <a href="{{ config.repo_url }}/issues/new?title={{ title | urlencode }}&amp;body={{ body | urlencode }}">Report a problem with this page</a>
+  </p>
+{% endblock %}

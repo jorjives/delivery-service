@@ -1,6 +1,8 @@
-# Check your setup before a run
+# Check your setup
 
-This guide shows how to check your configuration and see exactly what the agent will be told, before anything runs. Neither command starts an agent, needs a sign-in or needs a network.
+This guide shows how to check your configuration file and see what the agent will be told, before anything runs. Neither command starts an agent, needs a sign-in or needs a network, and neither changes anything on disk, so both are safe in CI on every push and while a run is going. It assumes you have [set up a project](project-configuration.md) or answered the questions in [Set up with questions](set-up-with-init.md).
+
+## Validate your configuration
 
 ```bash
 delivery validate
@@ -8,7 +10,7 @@ delivery validate
 
 It reads your `delivery.config.json` the way `delivery run` would, says what it found, and stops:
 
-```
+```text
 Checking delivery.config.json…
 ✓ domain description: present
 ✓ 3 tasks queued
@@ -17,10 +19,17 @@ Checking delivery.config.json…
 Ready to run.
 ```
 
+The `domain` line is your project description. The `gate` line is the [check](glossary.md#check)
+that decides whether the agent's work is good, and the `closer` line is what happens to work that
+passes. [Configuration reference](configuration-reference.md) lists every setting.
+
 If something is wrong, it prints the one thing to fix instead, such as an empty task or two
-tasks that say the same thing, and exits 2. It never starts an agent, needs no sign-in and no
-network, and changes nothing on disk, so it is safe in CI on every push and while a run
-is going. `--config <path>` and `--repo <path>` mean what they mean on `delivery run`.
+tasks that say the same thing, and exits 2. `--config <path>` and `--repo <path>` mean what they
+mean on `delivery run`. If there is no configuration file, it says so and exits 2:
+
+```text
+No delivery.config.json found. Run `delivery init` to create one, or see the getting-started guide (docs/getting-started.md).
+```
 
 For CI, add `--json` to get every problem at once, instead of only the first, as one JSON document:
 
@@ -42,42 +51,51 @@ Each problem names the setting it concerns (list positions count from 0, and `nu
 file as a whole) and uses the same words as the plain form. A clean file gives
 `{ "ready": true, "problems": [] }`. The exit codes match those without `--json`.
 
-# See what the agent will be told
+## Preview what the agent will be told
 
 ```bash
 delivery preview
 ```
 
-Before anything runs, it prints the instructions the next task on your list would be given, word
-for word, with your project description in place, and then what the agent may do:
+It prints the instructions the harness adds for the next task on your list, word for word, with
+your project description in place, and then what else applies to the agent. The sample is shortened
+here:
 
-```
+```text
 Next up is Task 1 of 3: add a page that shows who's on call today
 
-What the worker will be told (before any run starts):
+What the worker will be told (before any run starts), added to Claude Code's own instructions:
 ─────────────────────────────────────────────────────
-You are the worker on a gated delivery harness.
+You are carrying out one task for a delivery harness, in a working copy and branch it made for this task.
 …
 A small internal tool that tracks who's on call this week. Node.js, Express, a SQLite file for storage.
 
 ## Task
+{
+  "intent": "add a page that shows who's on call today"
+}
 …
 ─────────────────────────────────────────────────────
-Tools it can use: read files, look through the project, edit files, run commands.
+Your own Claude Code settings, CLAUDE.md, skills, plugins, hooks and MCP servers also apply.
+It can use every tool your setup allows.
+Agent options: none.
 ```
 
-`--queue-index 3` shows the third task on your list instead, numbered as in "Task 3 of 3".
-`--role gate-maintenance` shows what the agent that repairs your check is told when the check
-cannot run. A project with a single `task` shows that one. Like `delivery validate`, `preview`
-needs no agent, no sign-in and no network, changes nothing on disk, reports a configuration
-problem in the same words, and takes `--config` and `--repo`.
+Unlike `validate`, `preview` works without a configuration file: it uses the defaults, and
+asks for a task with `--task "<task>"` when there is no list. A configuration problem is reported
+in the same words as `validate` uses, and `--config` and `--repo` work as they do there.
 
-For a workflow, `delivery preview --step build` shows what that step's agent will be told, with
-its own instruction and check, and the agent options it runs with (yours, with the step's laid
-over them). Add `--workflow <name>` when two workflows have a step of that name, and
-`--task "..."` to preview a task you would type.
+- `--queue-index 3` shows the third task on your list instead, numbered as in "Task 3 of 3".
+- `--role gate-maintenance` shows what the agent that repairs your check is told when the check
+  cannot run.
+- A project with a single `task` shows that one.
+- `--task "<task>"` previews a task you would type.
+- `--step <step-name>` shows what that step of a [workflow](use-workflows.md)
+  will be told, with its own instruction and check, and the agent options it runs with (yours,
+  with the step's laid over them). Add `--workflow <name>` when two workflows have a step of that
+  name.
 
 ## Next steps
 
-- [Work through a task list](run-a-task-list.md): run what you have set up
+- [Work through a task list](run-a-task-list.md): run the whole list
 - [Configuration reference](configuration-reference.md): every setting

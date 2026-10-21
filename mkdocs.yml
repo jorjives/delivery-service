@@ -23,6 +23,7 @@ validation:
 
 theme:
   name: material
+  custom_dir: overrides
   font:
     text: Inter
     code: JetBrains Mono
@@ -59,6 +60,10 @@ theme:
 # the docs through an AI assistant.
 plugins:
   - search
+  # "Last update" under each page, from git. The Docs workflow checks out full history for it.
+  - git-revision-date-localized:
+      type: date
+      locale: en_GB
   - llmstxt:
       full_output: llms-full.txt
       markdown_description: >-
@@ -76,7 +81,10 @@ plugins:
           - check-your-setup.md
           - run-a-task.md
           - run-a-task-list.md
+          - use-workflows.md
           - work-a-backlog.md
+          - work-sources.md
+          - run-after-landing.md
           - run-on-a-schedule.md
           - resume-a-run.md
           - shared-environment.md
@@ -92,7 +100,9 @@ plugins:
         Reference:
           - cli-reference.md
           - configuration-reference.md
+          - troubleshooting.md
           - reporting.md
+          - glossary.md
 
 # Only what the pages use: attr_list and md_in_html build the home page's
 # buttons and cards; the rest is Material's standard code rendering.
@@ -115,7 +125,10 @@ nav:
       - Run work:
           - Run a task: run-a-task.md
           - Work through a task list: run-a-task-list.md
+          - Do a task in steps: use-workflows.md
           - Work through a backlog: work-a-backlog.md
+          - Take work from other sources: work-sources.md
+          - Run steps after landing: run-after-landing.md
           - Run on a schedule: run-on-a-schedule.md
           - Pick up an interrupted run: resume-a-run.md
           - When the shared environment breaks: shared-environment.md
@@ -129,9 +142,11 @@ nav:
       - Write a closer: writing-a-closer.md
       - Write a pack: writing-a-pack.md
       - Test your pipeline: testing-your-pipeline.md
-  - Concepts: concepts.md
+  - How it works: concepts.md
   - Reference:
       - Command reference: cli-reference.md
       - Configuration reference: configuration-reference.md
+      - Troubleshooting: troubleshooting.md
       - Reports as data: reporting.md
+      - Glossary: glossary.md
 

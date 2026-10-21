@@ -119,7 +119,7 @@ describe("the getting-started guide", () => {
   });
 
   it("shows what `delivery status` prints afterwards, exactly as it prints it", () => {
-    const section = sectionOf(guide, "## 4. Read what happened, later", "## Where to go next");
+    const section = sectionOf(guide, "## 4. Read what happened, later", "## Next steps");
     expect(section).toContain("delivery status");
     const status = runDelivery(["status"], { cwd: project, env });
     expect(status.status).toBe(EXIT.ok);
@@ -131,7 +131,7 @@ describe("the getting-started guide", () => {
     expect(needs).toContain("Node.js 22");
     expect(needs).toMatch(/git/);
     expect(needs).toContain("claude auth login");
-    const next = sectionOf(guide, "## Where to go next");
+    const next = sectionOf(guide, "## Next steps");
     // The next step after one task is a whole project: it comes first.
     const firstNext = next.split("\n").find((line) => line.startsWith("- "));
     expect(firstNext).toContain("(project-configuration.md)");

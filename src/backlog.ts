@@ -37,7 +37,7 @@ export function cadenceMs(text: string): number | undefined {
   return match ? Number(match[1]) * UNIT_MS[match[2] as keyof typeof UNIT_MS] : undefined;
 }
 
-const FrontMatter = z
+export const ItemFrontMatter = z
   .object({
     status: z.enum(STATUSES, { error: "`status` must be one of open, idea, resolved or declined" }),
     workflow: z.string().min(1, "`workflow` must name a workflow").optional(),
@@ -66,7 +66,7 @@ export function parseItem(file: string, text: string): ParsedItem {
   } catch {
     return refuse("its front matter is not valid YAML");
   }
-  const parsed = FrontMatter.safeParse(raw ?? {});
+  const parsed = ItemFrontMatter.safeParse(raw ?? {});
   if (!parsed.success) return refuse(parsed.error.issues[0]?.message ?? "its front matter does not match the item format");
   const body = split[2] ?? "";
   if (body.trim() === "") return refuse("it has no brief below its front matter");

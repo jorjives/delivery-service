@@ -1,16 +1,20 @@
-# Writing a gate
+# Write a gate
 
 This guide gets you from nothing to a working gate for your project: either the
 built-in **command gate**, configured to run your test suite, or a **custom
-gate** you write yourself. You do not need to read any source to follow it.
+gate** you write yourself. It is for developers whose project needs a check beyond the ready-made
+ones in `delivery.config.json`. You do not need to read any source to follow it.
+
+The `npm run demo:*` commands in this guide need a clone of the harness repository; the snippets
+need only the installed package.
 
 ## What a gate is
 
 The gate is the only proof the harness accepts that a change is good. An agent's
 word that it finished is never taken as proof; the gate is run instead.
 
-A gate measures a worktree and returns a **report**: a list of named
-**assertions**, each passing or failing. The harness measures it twice per surface:
+A gate measures a [worktree](glossary.md#working-copy) (the harness's copy of your project that one run works in) and returns a **report**: a list of named
+**assertions**, each passing or failing. The harness measures it twice per [surface](glossary.md#surface) (one task's run):
 
 1. **`baseline(ctx)`**, once, before any agent touches the worktree. The report
    is stored in the case file and never changes for the rest of the surface.
@@ -22,7 +26,7 @@ reports what it measured.
 
 Everything in this guide is imported from the harness's single entry point,
 `delivery-service`. Install it in your project as
-[Getting started](getting-started.md) describes, then run the snippets with
+[Get started](getting-started.md) describes, then run the snippets with
 `npx tsx`.
 
 ## The contract
@@ -46,12 +50,15 @@ Each method receives a `GateContext`:
 | `taskDef` | The surface's task definition, as pinned in the case file. Most gates ignore it. |
 | `gateRef` | The gate reference that selected this gate, as pinned in the case file. |
 | `baseBranch` | The branch the run started from and its work lands on, as pinned in the case file, or `null` for a run that recorded none. Most gates ignore it. |
+| `env` | The environment the gate's command should run with. Unset means the process's own. |
+| `guards` | A workflow step's own guard switches. Unset outside a workflow; most gates ignore it. |
+| `itemId` | The work-source item the run delivers. Unset outside `delivery run --sources`. |
 
 and must return a `GateReport`:
 
 | Field | What it is |
 |---|---|
-| `status` | `"PASS"` if the gate ran and measured the worktree, whatever the assertions say. `"ERROR"` if it could not measure at all. `"FAIL"` is allowed but reads the same as `"PASS"` to the verdict: only assertions and `"ERROR"` matter. |
+| `status` | `"PASS"` if the gate ran and measured the worktree, whatever the assertions say. `"ERROR"` if it could not measure at all. Avoid `"FAIL"`: the verdict reads it as `"PASS"`. |
 | `assertions` | One entry per thing measured: `{ id, outcome, detail }`. `outcome` is `"PASS"`, `"FAIL"` or `"ERROR"`. |
 | `detail` | Optional. On an `"ERROR"` report, a sentence saying why the gate could not run. |
 
@@ -68,9 +75,9 @@ kinds:
 { type: "custom", modulePath: "/abs/path/to/json-gate.mjs", exportName: "default" }
 ```
 
-Both accept an optional `failOnNewAssertions: true` (see "How the verdict is
-reached"). Pass the `gateRef` to `create()` along with the rest of the header,
-exactly as in [Configuring a role](configuring-a-role.md). A `gateRef` the
+Both accept an optional `failOnNewAssertions: true` (see [How the verdict is
+reached](#how-the-verdict-is-reached)). Pass the `gateRef` to `create()` along with the rest of
+the header, exactly as in [Making your first invocation](configuring-a-role.md#making-your-first-invocation). A `gateRef` the
 harness cannot understand (an unknown `type`, an unsupported `parseMode`) is not
 an exception: it resolves to a gate whose every report is `"ERROR"`, naming what
 was wrong.
@@ -78,9 +85,9 @@ was wrong.
 ## The built-in command gate
 
 For the common checks you need not write this out at all: `delivery.config.json` takes a
-ready-made check by name, such as `{ "type": "file-exists", "path": "CHANGES.md" }`, and turns it
-into exactly the command gate described here, judged by exit code. The four names are listed in
-[Setting up a project](project-configuration.md#4-choose-how-the-work-is-checked-and-what-happens-to-it).
+ready-made check by name, such as `{ "type": "file-exists", "path": "CHANGES.md" }`. Each of the
+five ready-made checks is turned into a command gate, judged by exit code. The five names are
+listed in [Configuration reference](configuration-reference.md#ready-made-checks).
 
 Most projects need nothing more. The command runs with `/bin/sh -c` inside the
 worktree, and its output is parsed according to `parseMode`:
@@ -93,7 +100,7 @@ worktree, and its output is parsed according to `parseMode`:
 
 Prefer `"tap"` or `"junit"` whenever your runner can emit them. With
 `"exitcode"` the whole suite is a single assertion, so a suite that was already
-red at baseline can never show a new failure.
+failing at baseline stays one failing assertion, and a new failure inside it goes unseen.
 
 `"checkOnly": true` judges the work only after it is done: the baseline runs nothing, so every
 assertion the check reports is new, and a new failing one counts against the work. The
@@ -103,10 +110,13 @@ Every gate command runs with `DELIVERY_STEP_START` set to the commit the work st
 
 A written-out command gate may also name `setup` and `teardown`:
 
-    { "type": "command", "command": "npm test", "parseMode": "exitcode",
-      "setup": "docker compose up -d", "teardown": "docker compose down" }
+```json
+{ "type": "command", "command": "npm test", "parseMode": "exitcode",
+  "setup": "docker compose up -d", "teardown": "docker compose down" }
+```
 
-`setup` runs before the command, in the same working copy. If it fails, the gate reports an error
+`setup` and `teardown` run around the baseline (unless `checkOnly` is set) and around every check.
+`setup` runs before the command, in the same worktree. If it fails, the gate reports an error
 (the check could not run), never that the work failed its checks. `teardown` runs after the
 command whatever happened, including after a setup that failed; a failing teardown is warned about
 and does not change the verdict. Both are shown to the agent and by `delivery validate`. The
@@ -179,21 +189,35 @@ through a run.
 resolved against the repository root (`repoPath`), never the worktree the surface
 is running in, so the agent being judged cannot edit the gate to hide a failure instead of fixing it. An absolute path works too.
 
-To load and call it yourself:
+To load and call it yourself, save the gate from [A minimal custom gate](#a-minimal-custom-gate) as `/tmp/my-run/json-gate.mjs` and run:
 
 ```ts
+import { mkdirSync, writeFileSync } from "node:fs";
 import { loadCustomGate } from "delivery-service";
+
+// A worktree for the gate to measure, with one valid JSON file in it.
+mkdirSync("/tmp/my-run/tree", { recursive: true });
+writeFileSync("/tmp/my-run/tree/good.json", "{}");
 
 // The first argument is the repository root a relative `modulePath` resolves
 // against. It is required, so a gate can never be loaded from whichever
 // directory the process happens to be running in.
-const gate = await loadCustomGate("/home/me/project", "/home/me/gates/json-gate.mjs");
+const gate = await loadCustomGate("/tmp/my-run", "/tmp/my-run/json-gate.mjs");
 const ctx = {
   worktreePath: "/tmp/my-run/tree",
   taskDef: {},
-  gateRef: { type: "custom", modulePath: "/home/me/gates/json-gate.mjs" } as const,
+  gateRef: { type: "custom", modulePath: "/tmp/my-run/json-gate.mjs" } as const,
 };
 console.log(await gate.baseline(ctx));
+```
+
+It prints:
+
+```text
+{
+  status: 'PASS',
+  assertions: [ { id: 'json:good.json', outcome: 'PASS', detail: 'parses' } ]
+}
 ```
 
 The harness wraps every custom gate, so it reports a mistake in yours and never
@@ -275,10 +299,20 @@ npm run demo:gate-slice-4   # resolving a gateRef into a gate
 npm run demo:gate-slice-5   # a baseline and its checks persisted in a case file
 ```
 
-Whatever your check reports, the harness adds its own results: whether the work deleted or
+## What the harness adds to your report
+
+Whatever your check reports, the harness adds its own results (the [guards](glossary.md#guard)): whether the work deleted or
 renamed a test, changed how tests run, added a skip marker to a test, or hid a test setting from
 git. "Changed how tests run" includes `.gitignore` (it decides which files the other guards can
 see) and the project's `Makefile` or equivalent build file (it can redefine what a `test` target
 actually runs) alongside the obvious test-runner configs and CI files, protected on every run,
 not only inside a pack's own fix. The harness works them out from the commit the task started from, and a
 failure among them fails the round even when your check passes.
+
+## See also
+
+- [Write a closer](writing-a-closer.md): decide what happens to work that passes.
+- [Set up a project](project-configuration.md): name your gate in `delivery.config.json`.
+- [Test your pipeline](testing-your-pipeline.md): try a gate against the scripted agent.
+- [Configure a role](configuring-a-role.md): the agent roles a gate's verdict feeds.
+- [Configuration reference](configuration-reference.md#guards): the full list of guards.

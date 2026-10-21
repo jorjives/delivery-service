@@ -1,30 +1,46 @@
-# Testing your delivery pipeline
+# Test your pipeline
 
-This guide gets you from nothing to passing, scripted tests of your own
-delivery pipeline: your gate, your closer and your role configurations, run
-together through a whole surface against a scripted stand-in for the agent. You
-do not need to read any source to follow it.
+This tutorial is for you if you have written your own check (the gate), closer
+or role configuration and want to see it work without a real agent. By the end
+you will have passing, scripted tests of your own delivery pipeline: your gate,
+your closer and your role configurations, run together through a whole surface
+against a [scripted agent](glossary.md#scripted-agent). You do not need to read
+any source to follow it.
+
+Terms this page uses:
+
+- A **surface** is one task's run through the harness. The commands call it a
+  task; the library's API calls it a surface, as in `surfaceId` and
+  `result.state`.
+- The **agent port** is the one place the harness talks to an agent. Tests
+  replace what is behind it.
+- The **gate**, the **closer**, **triage** and the **budgets** are described in
+  [How delivery-service works](concepts.md); the **case file** is the library's
+  name for a run's record (see the [glossary](glossary.md#record)).
+- The **journal** is the scripted agent's own log of every prompt it was sent.
 
 A scripted test proves your pipeline does the right thing with what the agent
 does: that your gate judges the change, your closer lands it, and a bad reply is
 retried or escalated as your budgets say. It proves nothing about how well a
 real agent would do the work.
 
-Everything in this guide is imported from the harness's two entry points:
+Everything in this guide is imported from the library's two entry points:
 `delivery-service`, and `delivery-service/testing` for the testing API. Run the
 snippets with `npx tsx`.
 
 ## What you need
 
 - Node.js 22 or later, and `git`.
-- The harness installed in your project with `npm install`, as
-  [Getting started](getting-started.md) describes. The scripted agent,
-  `claude-mock`, is vendored in the harness and installed with it, in a checkout
-  and in an installed copy alike.
+- The library installed in your project with `npm install`: see [Importing the
+  library in your own project](getting-started.md#importing-the-library-in-your-own-project).
+  The scripted agent, `claude-mock`, is installed with it.
+- `tsx`, which runs the snippets with `npx tsx`. Install it in your project
+  (`npm install --save-dev tsx`); otherwise `npx` fetches it the first time,
+  which needs the network.
 
-Nothing else: no global setup, no project-local setup beyond installing the harness, no
-network and no API key. Every session the testing API starts runs the scripted
-agent and is given no credentials, even when your shell has some.
+Once those are in place the tests need no global setup, no network and
+no API key. Every session the testing API starts runs the scripted agent and is
+given no credentials, even when your shell has some.
 
 ## Choosing a stand-in
 
@@ -35,7 +51,7 @@ in for the agent behind it, and they answer different questions:
 |---|---|---|
 | What it runs | Nothing below the agent port: no prompt assembly, no reply validation, no Agent SDK | The real invocation, the real Agent SDK over the real command-line protocol, and real reply validation |
 | Cost | No process is started | One short-lived process per agent session |
-| Proves your role configuration | No | Yes: the only stand-in that runs your `systemPromptFragment` and `envelopeSchema` through the real wiring (but not what your own Claude Code settings allow: see "What the scripted agent cannot prove") |
+| Proves your role configuration | No | Yes: the only stand-in that runs your `systemPromptFragment` and `envelopeSchema` through the real wiring (but not what your own Claude Code settings allow: see [What the scripted agent cannot prove](#what-the-scripted-agent-cannot-prove)) |
 | Right for | Fast tests of the surface driver, triage or routing that need exact control over each reply | Tests of your own pipeline: your gate, closer and role configurations together |
 
 If you are testing your gate, closer or role configurations, use the scripted
@@ -48,7 +64,7 @@ reaches:
 // fake-agent.ts
 import { fakeAgentPort } from "delivery-service/testing";
 
-const agent = fakeAgentPort({
+export const agent = fakeAgentPort({
   worker: async () => ({ status: "completed", rationale: "made the change" }),
 });
 ```
@@ -57,7 +73,7 @@ Pass `agent` wherever the harness takes an agent port, such as the `agent` in
 `run`'s ports. Each reply is type-checked against its role, so a worker reply
 shaped like a triage verdict does not compile. Never cast to
 `AgentPort["invoke"]` instead: the cast lets exactly that mistake through, and
-the linter rejects it.
+the harness's own linter rejects it.
 
 ## Worked example: the happy path
 
@@ -411,8 +427,8 @@ agent waits before each reply. Tasks that start together have their working
 copies made before any agent answers, so the task whose agent answers first
 reaches the merge first. Give the task you want second a delay a couple of
 seconds longer than the first: each agent session takes a moment to start, and
-the gap has to outlast that. Nothing else decides the order, so the same test
-gives the same result every time. With `slots: 1` the delays decide nothing:
+the gap has to outlast that. The order is then fixed; if the test is ever flaky
+on a slow machine, raise `GOODBYE_DELAY_MS`. With `slots: 1` the delays decide nothing:
 the tasks run one after another, in the order you listed them.
 
 This test scripts two tasks that reach the merge together:
@@ -571,10 +587,9 @@ Another role reads the same, with its own name first: `triage session did not
 complete: ...`.
 
 What the surface does next: each incomplete attempt in the table uses one slot of the
-`terminus` budget, and the harness runs the attempt again. (The one incomplete a script
-cannot provoke is a session the runtime would not start at all; there is no
-session to script. That one is not retried: it escalates after a single attempt,
-because nothing about a second could differ.) When the budget is used up the
+`terminus` budget, and the harness runs the attempt again. One incomplete you cannot
+script is a session the runtime would not start at all. There is no session to script,
+and the harness does not retry it: it escalates after one attempt. When the budget is used up the
 surface ends `ESCALATED`, and `result.outcome.reason` reads
 `terminus budget exhausted (<used>/<max>): ` followed by the last rationale. To
 see every attempt's rationale, read the terminus entries of `load(dir)`'s
@@ -599,19 +614,11 @@ same figures under `usage` and `usageRecorded` (see [Reports as data](reporting.
 
 ## What the scripted agent cannot prove
 
-The scripted agent cannot prove what your own Claude Code settings allow or refuse. It makes no
-tool calls: it writes its effects itself, inside the working copy, so a
-`permissions.deny` rule in your settings is never consulted. `src/agent-invoke.test.ts` proves that a session is built to load your
-settings: it hands the real runtime the options the
-harness builds.
-
-## Running `--sources` against the scripted agent
-
-`delivery run --sources` takes its items from the backlog and the other work sources, and keeps
-what it knows about each item in the item ledger under the state folder. To try it without
-spending a session, point `DELIVERY_TEST_MOCK_SCRIPT` at a script and give every invocation the
-same `XDG_STATE_HOME`. The ledger lives there, as does the record of what landed on the delivery branch, so a second invocation sees what the first
-did, as a real one would.
+The scripted agent cannot prove what your own Claude Code settings allow or
+refuse. It makes no tool calls: it writes its scripted effects itself, inside
+the working copy, so a `permissions.deny` rule in your settings is never
+consulted. The harness's own tests, in its repository, check that a real
+session loads your settings.
 
 ## When the test itself is wrong
 
@@ -624,12 +631,9 @@ did, as a real one would.
 | `slots` is not a whole number of 1 or more | `runSupervisorAgainstMock` throws `slots must be a whole number of 1 or more, but was 0.` before anything runs |
 | Two tasks share a `surfaceId` | `runSupervisorAgainstMock` throws `Each scripted task needs its own surfaceId, but "hello" is used more than once: a task's branch and working copy are named after it.` before anything runs |
 
-## Watch it run
+## Next steps
 
-Each of these runs with no network and no API key, and prints what it does:
-
-```bash
-npm run demo:mock-slice-1   # a stand-in built with fakeAgentPort, and the compile error for a wrong reply
-npm run demo:mock-slice-3   # a whole pipeline against the scripted agent, then a typo in the script
-npm run demo:mock-slice-4   # each way the agent can misbehave, and what the surface does
-```
+- [Write a gate](writing-a-gate.md): the check this tutorial runs.
+- [Write a closer](writing-a-closer.md): what happens to work that passes.
+- [Configure a role](configuring-a-role.md): the role configurations you pass to `roleConfigs`.
+- [Write a pack](writing-a-pack.md): the pack check runs on the same scripted agent.

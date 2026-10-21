@@ -11,7 +11,7 @@ import { Decision, Plain, ReportAfter, ReportDelivery, RepairFile, ReportDocumen
 import { ReportEvent, StreamEnding } from "../src/report/events.js";
 import * as library from "../src/index.js";
 import { EVENT_SCHEMA, publishedSchema } from "../src/index.js";
-import { outputBlock, REPO_ROOT, sectionOf, snippetFrom } from "./helpers.js";
+import { flatten, outputBlock, REPO_ROOT, sectionOf, snippetFrom } from "./helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/reporting.md"), "utf-8");
 const readme = readFileSync(join(REPO_ROOT, "README.md"), "utf-8");
@@ -41,7 +41,7 @@ describe("the reporting guide", () => {
   });
 
   it("says every key is always present, inside a cause as well, and leaves out no exception to it", () => {
-    const flat = guide.replace(/\s+/g, " ");
+    const flat = flatten(guide);
 
     expect(flat).toContain("Every key is always present");
     expect(flat).toContain("a task's `cause` and a trip's `cause` each name every key their kinds can have");

@@ -340,7 +340,7 @@ export async function guardAssertions(worktreePath: string, base: string, guards
     assertion(CHECK_GUARD, settings, "changed how the tests are run"),
     assertion(SKIP_GUARD, await addedSkips(worktreePath, base, tree, lists.skipMarkers, lists.testGlobs), "skipped tests"),
     assertion(BACKLOG_GUARD, (await addedBacklogItems(worktreePath, base, tree, resolving)).findings, "changed the backlog in a way it may not",
-      "Existing backlog items may not be edited or removed; add a new item file for a follow-up, in the item format (see docs/project-configuration.md)."),
+      "Existing backlog items may not be edited or removed; add a new item file for a follow-up, in the item format (see docs/configuration-reference.md)."),
     ...(await ignoredAssertions(worktreePath, guards)),
     ...(on.includes("backlog-only")
       ? [assertion(BACKLOG_ONLY_GUARD, await notIdeas(worktreePath, base, tree), "changed something other than adding ideas to the backlog",

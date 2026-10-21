@@ -16,6 +16,11 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
+      # delivery commits as whoever runs it, so it needs the git identity every
+      # developer machine has; a fresh runner has none, and commits fail.
+      - run: |
+          git config --global user.name "CI"
+          git config --global user.email "ci@example.invalid"
       # The same `npm test` as everywhere else, plus the two release checks that
       # pack and install a real tarball. They are skipped without this variable,
       # which is set here and nowhere else, so `make verify` stays registry-free

@@ -19,7 +19,7 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it, expect, afterAll } from "vitest";
-import { REPO_ROOT, runTsx, sectionOf, snippetFrom } from "../helpers.js";
+import { flatten, REPO_ROOT, runGuideTest, sectionOf, snippetFrom } from "../helpers.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "utf-8");
 const snippet = (name: string) => snippetFrom(guide, name);
@@ -45,7 +45,7 @@ describe("UAT: test your own pipeline by following one guide", () => {
   });
 
   it("runs the happy-path snippet as the guide says, and it passes", () => {
-    const { stdout, status } = runTsx(["--test", stage("happy-path.test.ts")]);
+    const { stdout, status } = runGuideTest(stage("happy-path.test.ts"));
     expect(status).toBe(0);
     expect(stdout).toContain("✔ a scripted worker's change is judged by the real gate and landed by the real closer");
     expect(stdout).toContain("ℹ pass 1");
@@ -53,7 +53,7 @@ describe("UAT: test your own pipeline by following one guide", () => {
   }, 60_000);
 
   it("runs the misbehaviour snippet as the guide says, and both its tests pass", () => {
-    const { stdout, status } = runTsx(["--test", stage("misbehaviour.test.ts")]);
+    const { stdout, status } = runGuideTest(stage("misbehaviour.test.ts"));
     expect(status).toBe(0);
     expect(stdout).toContain("✔ a worker that escalates for authority stops the surface at once");
     expect(stdout).toContain("✔ a change the gate rejects goes back to the worker, and only the passing attempt lands");
@@ -74,10 +74,11 @@ describe("UAT: test your own pipeline by following one guide", () => {
   });
 
   it("states plainly that the scripted agent cannot prove what your own settings allow, and where that guarantee is tested instead", () => {
-    const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong");
+    const limits = flatten(sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong"));
     expect(limits).toContain("The scripted agent cannot prove what your own Claude Code settings allow or refuse.");
     expect(limits).toContain("`permissions.deny`");
-    expect(limits).toContain("src/agent-invoke.test.ts");
+    // An installed copy has no source to point at, so the guide names where the guarantee lives in words.
+    expect(limits).toContain("The harness's own tests, in its repository, check that a real session loads your settings.");
   });
 
   it("needs no network, no API key and no global setup", () => {
