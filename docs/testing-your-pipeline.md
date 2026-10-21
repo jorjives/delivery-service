@@ -617,8 +617,8 @@ same figures under `usage` and `usageRecorded` (see [Reports as data](reporting.
 The scripted agent cannot prove what your own Claude Code settings allow or
 refuse. It makes no tool calls: it writes its scripted effects itself, inside
 the working copy, so a `permissions.deny` rule in your settings is never
-consulted. The harness's own tests check that a real session loads your
-settings: see `src/agent-invoke.test.ts` in the delivery-service repository.
+consulted. The harness's own tests, in its repository, check that a real
+session loads your settings.
 
 ## When the test itself is wrong
 

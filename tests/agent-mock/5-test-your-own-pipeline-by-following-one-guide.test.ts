@@ -78,7 +78,8 @@ describe("UAT: test your own pipeline by following one guide", () => {
     const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong").replace(/\s+/g, " ");
     expect(limits).toContain("The scripted agent cannot prove what your own Claude Code settings allow or refuse.");
     expect(limits).toContain("`permissions.deny`");
-    expect(limits).toContain("src/agent-invoke.test.ts");
+    // An installed copy has no source to point at, so the guide names where the guarantee lives in words.
+    expect(limits).toContain("The harness's own tests, in its repository, check that a real session loads your settings.");
   });
 
   it("needs no network, no API key and no global setup", () => {

@@ -223,7 +223,7 @@ describe("the 'testing your delivery pipeline' guide", () => {
 
   it("says plainly that the scripted agent cannot prove what your own settings allow, without pointing at source an installed copy lacks", () => {
     const limits = sectionOf(guide, "## What the scripted agent cannot prove", "## When the test itself is wrong").replace(/\s+/g, " ");
-    expect(limits).toContain("The scripted agent cannot show what your own Claude Code settings allow or refuse.");
+    expect(limits).toContain("The scripted agent cannot prove what your own Claude Code settings allow or refuse.");
     expect(limits).toContain("`permissions.deny`");
     expect(guide).not.toMatch(/src\/[a-z-]+\.(test\.)?ts/);
   });
