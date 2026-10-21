@@ -7,6 +7,7 @@ import { delivery } from "./command-fixtures.js";
 import { EXIT, Refusal } from "./failures.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import type { PackCheck } from "./pack-check.js";
+import { packWorkflowClash } from "./pack-workflows.js";
 import { checkingLine, NEEDS_CONFIRMATION, NOT_TRUSTED, packsCheckCommand, readyLine, SENT_NOTHING } from "./packs-check-command.js";
 
 const CHECK_TIMEOUT = 120_000;
@@ -50,6 +51,15 @@ describe("delivery packs check", () => {
       ]),
     );
     expect(readyLine("./my-pack")).toBe("Ready to use: delivery review ./my-pack");
+  }, CHECK_TIMEOUT);
+
+  it("ends a problem whose reason is already a sentence with one full stop, not two", async () => {
+    // Not renamed, so the copy's workflows clash with the built-in code review's.
+    const cwd = mkdtempSync(join(tmpdir(), "packs-check-clash-"));
+    cpSync(join(BUILT_IN_PACKS, "code-review"), join(cwd, "my-pack"), { recursive: true });
+    const { exitCode, stdout } = await delivery(["packs", "check", "my-pack", "--yes"], { cwd });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stdout.split("\n")).toContain(`my-pack/fixtures/review.json: the scripted review could not be used: ${packWorkflowClash("code:scan")}`);
   }, CHECK_TIMEOUT);
 
   it("names a folder with no pack in it, and exits as validate does", async () => {
