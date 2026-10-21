@@ -105,14 +105,19 @@ plugins:
           - glossary.md
 
 # Only what the pages use: attr_list and md_in_html build the home page's
-# buttons and cards; the rest is Material's standard code rendering.
+# buttons and cards; the rest is Material's standard code rendering, plus the
+# mermaid fence the flow diagrams are written in (the theme draws them).
 markdown_extensions:
   - attr_list
   - md_in_html
   - toc:
       permalink: true
   - pymdownx.highlight
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
 
 nav:
   - Home: index.md

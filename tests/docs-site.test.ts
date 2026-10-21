@@ -11,6 +11,7 @@ import { REPO_ROOT, runDelivery } from "./helpers.js";
 
 const config = parse(readFileSync(join(REPO_ROOT, "mkdocs.yml"), "utf-8")) as {
   exclude_docs: string;
+  markdown_extensions: Array<string | Record<string, { custom_fences?: Array<{ name: string }> }>>;
   nav: unknown;
   plugins: Array<string | Record<string, { sections: Record<string, string[]> }>>;
 };
@@ -40,6 +41,29 @@ describe("the docs site", () => {
   it("lists every published page in the llms.txt sections", () => {
     const listed = new Set(Object.values(llmsPlugin?.llmstxt.sections ?? {}).flat());
     expect(pages.filter((page) => !listed.has(page))).toEqual([]);
+  });
+});
+
+// Flows are drawn, not just described: Mermaid blocks in the Markdown, rendered
+// by the theme. Each page below explains a flow a reader may want to follow.
+describe("the diagrams", () => {
+  const diagramPages: string[] = [];
+  const fence = "```mermaid";
+
+  it("are rendered by the site", () => {
+    const superfences = config.markdown_extensions.find((ext) => typeof ext === "object" && "pymdownx.superfences" in ext) as
+      | { "pymdownx.superfences": { custom_fences?: Array<{ name: string }> } }
+      | undefined;
+    expect(superfences?.["pymdownx.superfences"].custom_fences?.map((f) => f.name)).toContain("mermaid");
+  });
+
+  it.each(diagramPages)("%s draws its flow", (page) => {
+    expect(readFileSync(join(REPO_ROOT, "docs", page), "utf-8")).toContain(fence);
+  });
+
+  it("only appear on published pages", () => {
+    const unpublished = readdirSync(join(REPO_ROOT, "docs")).filter((n) => n.endsWith(".md") && excluded.includes(n));
+    expect(diagramPages.filter((page) => unpublished.includes(page))).toEqual([]);
   });
 });
 
