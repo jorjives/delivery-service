@@ -25,7 +25,7 @@ A workflow's own `after` replaces this list for the items it delivers (see [Do a
 
 ## When a step fails
 
-If a step or its check does not work, the harness does not run that step or the steps after it. The work that landed stays landed. `delivery status` and `delivery report` show them as waiting, and the next `delivery run --sources` tries them first, starting from the one that did not work. Until they work, each run ends as stopped.
+If a step or its check fails, the harness does not run the steps after it. The work that landed stays landed. `delivery status` and `delivery report` show the failed step and those after it as waiting, and the next `delivery run --sources` tries them first, starting from the one that failed. Until they succeed, each run ends as stopped.
 
 ## Get unstuck
 
