@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { REPO_ROOT, runDelivery } from "./helpers.js";
 
-const config = parse(readFileSync(join(REPO_ROOT, "mkdocs.yml"), "utf-8")) as {
+const config = parse(readFileSync(join(REPO_ROOT, "mkdocs.yml"), "utf-8"), { logLevel: "error" }) as {
   exclude_docs: string;
   markdown_extensions: Array<string | Record<string, { custom_fences?: Array<{ name: string }> }>>;
   nav: unknown;
@@ -47,7 +47,7 @@ describe("the docs site", () => {
 // Flows are drawn, not just described: Mermaid blocks in the Markdown, rendered
 // by the theme. Each page below explains a flow a reader may want to follow.
 describe("the diagrams", () => {
-  const diagramPages: string[] = [];
+  const diagramPages: string[] = ["concepts.md"];
   const fence = "```mermaid";
 
   it("are rendered by the site", () => {
