@@ -238,8 +238,6 @@ describe("the 'testing your delivery pipeline' guide", () => {
 
   it("is where the role guide's offline quick start points", () => {
     const roleGuide = readFileSync(join(REPO_ROOT, "docs/configuring-a-role.md"), "utf-8");
-    expect(sectionOf(roleGuide, "## Trying it offline", "## Triage")).toContain(
-      "[Testing your delivery pipeline](testing-your-pipeline.md)",
-    );
+    expect(sectionOf(roleGuide, "## Trying it offline", "## Triage")).toContain("](testing-your-pipeline.md)");
   });
 });

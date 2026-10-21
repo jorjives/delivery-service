@@ -137,7 +137,7 @@ nav:
       - Write a closer: writing-a-closer.md
       - Write a pack: writing-a-pack.md
       - Test your pipeline: testing-your-pipeline.md
-  - Concepts: concepts.md
+  - How it works: concepts.md
   - Reference:
       - Command reference: cli-reference.md
       - Configuration reference: configuration-reference.md

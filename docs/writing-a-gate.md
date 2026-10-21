@@ -1,4 +1,4 @@
-# Writing a gate
+# Write a gate
 
 This guide gets you from nothing to a working gate for your project: either the
 built-in **command gate**, configured to run your test suite, or a **custom
@@ -26,7 +26,7 @@ reports what it measured.
 
 Everything in this guide is imported from the harness's single entry point,
 `delivery-service`. Install it in your project as
-[Getting started](getting-started.md) describes, then run the snippets with
+[Get started](getting-started.md) describes, then run the snippets with
 `npx tsx`.
 
 ## The contract
@@ -87,7 +87,7 @@ was wrong.
 For the common checks you need not write this out at all: `delivery.config.json` takes a
 ready-made check by name, such as `{ "type": "file-exists", "path": "CHANGES.md" }`. Each of the
 five ready-made checks is turned into a command gate, judged by exit code. The five names are
-listed in [Setting up a project](project-configuration.md#4-choose-how-the-work-is-checked-and-what-happens-to-it).
+listed in [Configuration reference](configuration-reference.md#ready-made-checks).
 
 Most projects need nothing more. The command runs with `/bin/sh -c` inside the
 worktree, and its output is parsed according to `parseMode`:
@@ -311,8 +311,8 @@ failure among them fails the round even when your check passes.
 
 ## See also
 
-- [Writing a closer](writing-a-closer.md): decide what happens to work that passes.
-- [Project configuration](project-configuration.md): name your gate in `delivery.config.json`.
-- [Testing your delivery pipeline](testing-your-pipeline.md): try a gate against the scripted agent.
-- [Configuring a role](configuring-a-role.md): the agent roles a gate's verdict feeds.
+- [Write a closer](writing-a-closer.md): decide what happens to work that passes.
+- [Set up a project](project-configuration.md): name your gate in `delivery.config.json`.
+- [Test your pipeline](testing-your-pipeline.md): try a gate against the scripted agent.
+- [Configure a role](configuring-a-role.md): the agent roles a gate's verdict feeds.
 - [Configuration reference](configuration-reference.md#guards): the full list of guards.

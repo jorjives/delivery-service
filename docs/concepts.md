@@ -1,4 +1,4 @@
-# How delivery-service works
+# How it works
 
 This page explains the model behind the `delivery` command: what a run is made of, who decides
 what, and what happens when something goes wrong. Read it after [Get started](getting-started.md)

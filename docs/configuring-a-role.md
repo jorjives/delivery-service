@@ -1,4 +1,4 @@
-# Configuring a role
+# Configure a role
 
 This guide takes you from nothing to a first successful agent invocation for each role a run
 dispatches: the **worker**, **gate-maintenance** and **triage**. It is for developers who want to
@@ -30,7 +30,7 @@ agent is started. It is never reported as a failed run.
 
 Everything in this guide is imported from the harness's single entry point,
 `delivery-service`, except the offline helpers in `delivery-service/testing`. Install it in your project as
-[Getting started](getting-started.md) describes, then run the snippets with
+[Get started](getting-started.md) describes, then run the snippets with
 `npx tsx`.
 
 ## The two reference configurations
@@ -79,7 +79,7 @@ These are shortened. The exported `workerRoleConfig`, `gateMaintenanceRoleConfig
 The only difference between them is the sentences. The call you make is identical.
 
 To change what a role is told in a real run, set `agent.append` (see
-[Project configuration](project-configuration.md)). To keep an agent from a tool, use
+[Set up a project](project-configuration.md)). To keep an agent from a tool, use
 `permissions.deny` in your own Claude settings.
 
 ## Making your first invocation
@@ -153,7 +153,7 @@ the wrong shape, why the role's `envelopeSchema` refused it as `cause`.
 
 A role does not limit what the agent may do: every session has every tool your own Claude Code
 setup gives it. Afterwards the gate and the harness's own checks on the work (see
-[Writing a gate](writing-a-gate.md#how-the-verdict-is-reached)) decide whether to accept it. To keep
+[Write a gate](writing-a-gate.md#how-the-verdict-is-reached)) decide whether to accept it. To keep
 the agent from a tool, use `permissions.deny` in your own Claude settings.
 
 ## Trying it offline
@@ -210,7 +210,7 @@ decision directly; the live guarantee comes from the real `claude` runtime.
 
 To test your gate, closer and role configurations together through a whole
 [surface](glossary.md#surface) (one task's run) against the scripted agent, follow
-[Testing your delivery pipeline](testing-your-pipeline.md).
+[Test your pipeline](testing-your-pipeline.md).
 
 ## Triage
 
@@ -377,7 +377,7 @@ a write. That guarantee comes from the real `claude` runtime.
 
 ## See also
 
-- [Testing your delivery pipeline](testing-your-pipeline.md): test roles, gates and closers together against the scripted agent.
-- [Writing a gate](writing-a-gate.md) and [Writing a closer](writing-a-closer.md): the other two extension points.
-- [Project configuration](project-configuration.md): `agent.append` and the other settings.
+- [Test your pipeline](testing-your-pipeline.md): test roles, gates and closers together against the scripted agent.
+- [Write a gate](writing-a-gate.md) and [Write a closer](writing-a-closer.md): the other two extension points.
+- [Set up a project](project-configuration.md): `agent.append` and the other settings.
 - [Glossary](glossary.md): the terms used here.

@@ -1,4 +1,4 @@
-# Writing a closer
+# Write a closer
 
 This guide gets you from nothing to a working closer for your project: either
 one of the **built-in closers**, named as data, or a **custom closer** you write
@@ -29,7 +29,7 @@ A failed close is never sent back to the worker: the work is already accepted.
 
 Everything in this guide is imported from the harness's single entry point,
 `delivery-service`. Install it in your project as
-[Getting started](getting-started.md) describes, then run the snippets with
+[Get started](getting-started.md) describes, then run the snippets with
 `npx tsx`.
 
 ## Choosing a closer
@@ -399,8 +399,8 @@ npm run demo:close-slice-4
 
 ## See also
 
-- [Writing a gate](writing-a-gate.md): decide what counts as good work.
-- [Configuring a role](configuring-a-role.md): triage and the `repairBrief` it hands a retried close.
-- [Project configuration](project-configuration.md): the `closer` setting.
-- [Testing your delivery pipeline](testing-your-pipeline.md): try a closer against the scripted agent.
+- [Write a gate](writing-a-gate.md): decide what counts as good work.
+- [Configure a role](configuring-a-role.md): triage and the `repairBrief` it hands a retried close.
+- [Set up a project](project-configuration.md): the `closer` setting.
+- [Test your pipeline](testing-your-pipeline.md): try a closer against the scripted agent.
 - [Glossary](glossary.md): the terms used here.
