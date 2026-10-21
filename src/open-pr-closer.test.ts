@@ -288,5 +288,73 @@ describe("the open-pr closer", () => {
       expect(standIn.pullRequests()).toHaveLength(1);
       expect(standIn.pullRequests()[0]?.body).toContain("Closes #12\nCloses #13");
     });
+
+    /** Squash delivery/main into origin's main, as "Squash and merge" on GitHub does, leaving the branch on origin. */
+    const squashOnGitHub = () => {
+      git(repo, ["merge", "-q", "--squash", "delivery/main"]);
+      git(repo, ["commit", "-q", "-m", "Delivered work (#1)"]);
+      git(repo, ["push", "-q", "origin", "main"]);
+    };
+    /** Land a task's work on the delivery branch as a commit, as the delivery run does before it closes. */
+    const landWork = (worktreePath: string, name: string, text: string) => {
+      writeFileSync(join(worktreePath, name), text);
+      git(worktreePath, ["add", "-A"]);
+      git(worktreePath, ["commit", "-q", "-m", `Add ${name}`]);
+    };
+    const firstClose = async () => {
+      const base = await deliveryContext();
+      landWork(base.worktreePath, "hello.txt", "hello\n");
+      await closer().close({ ...base, delivery: { landed: landed.slice(0, 1) } }, accepted);
+      return base;
+    };
+    const secondRound = async (base: Awaited<ReturnType<typeof deliveryContext>>) => {
+      git(base.worktreePath, ["reset", "-q", "--hard", "main"]);
+      landWork(base.worktreePath, "goodbye.txt", "goodbye\n");
+      return closer().close({ ...base, delivery: { landed: landed.slice(1) } }, accepted);
+    };
+
+    it("replaces origin's copy of the branch when GitHub reports its pull request merged, and opens a fresh pull request", async () => {
+      const base = await firstClose();
+      squashOnGitHub();
+      standIn.mergePullRequest(standIn.pullRequests()[0]?.url ?? "", git(origin, ["rev-parse", "delivery/main"]));
+
+      const report = await secondRound(base);
+
+      expect(report.status).toBe("DONE");
+      expect(git(origin, ["rev-parse", "delivery/main"])).toBe(git(repo, ["rev-parse", "delivery/main"]));
+      expect(standIn.pullRequests().map((pr) => pr.state)).toEqual(["MERGED", "OPEN"]);
+    });
+
+    it("never replaces origin's copy of the branch while GitHub has not reported its pull request merged", async () => {
+      const base = await firstClose();
+      squashOnGitHub();
+      const before = git(origin, ["rev-parse", "delivery/main"]);
+
+      const report = await secondRound(base);
+
+      expect(report.status).toBe("ERROR");
+      expect(report.detail).toContain("could not push delivery/main");
+      expect(git(origin, ["rev-parse", "delivery/main"])).toBe(before);
+    });
+
+    it("never overwrites a commit someone else pushed to origin's copy of the branch after the merge", async () => {
+      const base = await firstClose();
+      squashOnGitHub();
+      standIn.mergePullRequest(standIn.pullRequests()[0]?.url ?? "", git(origin, ["rev-parse", "delivery/main"]));
+      const clone = join(await mkdtemp(join(tmpdir(), "open-pr-owner-")), "clone");
+      git(tmpdir(), ["clone", "-q", "--branch", "delivery/main", origin, clone]);
+      git(clone, ["config", "user.email", "owner@example.invalid"]);
+      git(clone, ["config", "user.name", "Owner"]);
+      writeFileSync(join(clone, "owner.txt"), "the owner's fix\n");
+      git(clone, ["add", "owner.txt"]);
+      git(clone, ["commit", "-q", "-m", "the owner's fix"]);
+      git(clone, ["push", "-q", "origin", "delivery/main"]);
+      const ownerTip = git(clone, ["rev-parse", "HEAD"]);
+
+      const report = await secondRound(base);
+
+      expect(report.status).toBe("ERROR");
+      expect(git(origin, ["rev-parse", "delivery/main"])).toBe(ownerTip);
+    });
   });
 });

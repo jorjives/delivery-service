@@ -118,6 +118,13 @@ Your closer acts once per run, on the delivery branch, once at least one item ha
 `open-pr` opens one pull request for it. If the closer does not succeed, the delivery branch stays
 as it is and the next run tries again.
 
+With `open-pr` you merge on GitHub, so each run fetches your base branch from `origin` and asks
+GitHub which delivery pull requests have merged, before it does anything else. A merge is seen
+without you pulling, whether you merged with a merge commit, a squash or a rebase: the next run
+starts the delivery branch again from your base branch, and what merged is no longer listed on it.
+If the fetch or the question fails, for example when you are offline, the run says so and carries
+on with what this machine already has. Other closers neither fetch nor ask.
+
 If you commit to your base branch yourself, the next run brings those commits into the delivery
 branch first, and runs your gate on the result. If that conflicts or the gate fails, the run
 starts no task and says what is in the way. It says so again on later runs, without trying the

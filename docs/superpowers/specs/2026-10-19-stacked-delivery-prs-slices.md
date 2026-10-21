@@ -32,6 +32,8 @@ during review, and are independent of each other.
 
 ## Slice 1: A Merge on GitHub Is Noticed Without Pulling
 
+**Status:** ✅ Complete — 2026-10-21 — `3194865`
+**Tests:** ✅ Recorded — 2026-10-21 — `563f8e4` — cli — 1 UAT + 3 AC, 0 skipped
 **Delivers:** With the `open-pr` closer, the operator merges a delivery pull request on GitHub and
 the next `delivery run --sources` knows it merged, without the operator updating the repository by
 hand first.
