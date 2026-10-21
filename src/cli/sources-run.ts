@@ -51,7 +51,7 @@ export const couldNotFetch = (base: string, reason: string): string =>
 export const couldNotAskGitHub = (branch: string, reason: string): string =>
   `Could not ask GitHub whether ${branch}'s pull request has merged (${reason}), so a merge by squash or rebase may not be seen yet. This run carries on as if it had not.`;
 
-export const unknownItemWorkflow =(key: string, name: string): string => `Left ${key} alone: it names the workflow "${name}", which your config file does not define.`;
+export const unknownItemWorkflow = (key: string, name: string): string => `Left ${key} alone: it names the workflow "${name}", which your config file does not define.`;
 const completeFailed = (key: string, detail: string): string => `${key} was delivered, but marking it done failed: ${detail}`;
 
 /** The turn a carried-on run opens with, or undefined when the item starts afresh (spec §5.11). */
@@ -95,10 +95,10 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const branch = deliveryBranchOf(base);
   // GitHub's state, not the shape of history, says a rolling pull request merged (design §9 decision 5). Empty for every
   // other closer, and when there is no branch yet to have merged, so reconciling is unchanged for them.
-  const mergedTips = new Set<string>();
+  let mergedTips: ReadonlySet<string> = new Set();
   if (asksGitHub && (await branchExists(repoPath, branch))) {
     try {
-      for (const tip of await mergedPullRequestTips(repoPath, branch)) mergedTips.add(tip);
+      mergedTips = await mergedPullRequestTips(repoPath, branch);
     } catch (err) {
       ctx.report.note(couldNotAskGitHub(branch, ghReason(ghFailureOf(err))));
     }
