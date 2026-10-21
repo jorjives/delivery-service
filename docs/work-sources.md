@@ -60,7 +60,7 @@ A follow-up an agent raises while working an issue is not committed to your repo
 
 ### Parked issues
 
-An item that is [parked](work-a-backlog.md#handle-a-parked-item), whether it needs your answer or keeps ending undelivered, shows it on the issue: a `delivery:parked` label and a comment saying why, with the agent's question when it asked one. Answer or unpark it as usual; the label comes off when the issue is next worked. `delivery status` still lists it.
+An item that is [parked](work-a-backlog.md#handle-a-parked-item), whether it needs your answer or keeps ending undelivered, is marked on the issue with a `delivery:parked` label and a comment saying why, including the agent's question if it asked one. Answer or unpark it as usual; the label comes off when the issue is next worked. `delivery status` still lists it.
 
 ## Next steps
 
