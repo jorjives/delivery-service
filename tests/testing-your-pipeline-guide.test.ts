@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
-import { flatten, REPO_ROOT, runTsx, sectionOf, snippetFrom } from "./helpers.js";
+import { flatten, REPO_ROOT, runGuideTest, sectionOf, snippetFrom } from "./helpers.js";
 import { cleanGitEnv } from "../src/git-env.js";
 import { MockNotInstalled } from "../src/errors.js";
 import {
@@ -74,7 +74,7 @@ function stage(name: string): string {
 /** Run a staged worked test as the guide says to, with no credentials in reach. */
 function runWorkedTest(name: string): string {
   expect(guide).toContain(`npx tsx --test ${name}`);
-  const { stdout, status } = runTsx(["--test", stage(name)], env);
+  const { stdout, status } = runGuideTest(stage(name), env);
   expect(stdout).toContain("ℹ fail 0");
   expect(status).toBe(0);
   return stdout;

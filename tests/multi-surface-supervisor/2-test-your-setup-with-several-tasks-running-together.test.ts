@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { cleanGitEnv } from "../../src/git-env.js";
-import { REPO_ROOT, runTsx, snippetFrom } from "../helpers.js";
+import { REPO_ROOT, runGuideTest, snippetFrom } from "../helpers.js";
 import { withoutCredentials } from "../../src/mock-session.js";
 
 const guide = readFileSync(join(REPO_ROOT, "docs/testing-your-pipeline.md"), "utf-8");
@@ -67,7 +67,7 @@ function stageSeveralTasks(swapDelays: boolean): string {
 
 /** Run a staged worked test with `npx tsx --test`, as the guide tells a reader to. */
 function runSeveralTasks(swapDelays: boolean): { stdout: string; status: number } {
-  return runTsx(["--test", stageSeveralTasks(swapDelays)], env);
+  return runGuideTest(stageSeveralTasks(swapDelays), env);
 }
 
 const RUN_TIMEOUT = 20_000;

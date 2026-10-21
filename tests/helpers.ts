@@ -67,6 +67,14 @@ export function runTsx(args: string[], env?: NodeJS.ProcessEnv): { stdout: strin
   return { stdout, stderr, status: status ?? 1 };
 }
 
+/**
+ * Runs a guide's worked test as a reader does with `npx tsx --test <file>`, in the spec format a terminal shows.
+ * Node 22 prints TAP instead whenever output is not a terminal, as here; later versions always print spec.
+ */
+export function runGuideTest(file: string, env?: NodeJS.ProcessEnv): { stdout: string; stderr: string; status: number } {
+  return runTsx(["--test", "--test-reporter=spec", file], env);
+}
+
 /** Text with every run of whitespace as one space, so a match on prose does not depend on where a page wraps. */
 export const flatten = (text: string): string => text.replace(/\s+/g, " ");
 
