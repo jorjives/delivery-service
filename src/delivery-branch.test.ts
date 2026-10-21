@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { git } from "../tests/helpers.js";
 import { addLocalOrigin, initTempRepo } from "./temp-repo.js";
 import { readDelivery, readDeliveryEntries } from "./delivery-ledger.js";
-import { baseTip, closeDeliveryBranch, fetchBase, reconcileDeliveryBranch } from "./delivery-branch.js";
+import { baseTip, closeDeliveryBranch, deliveryMerged, fetchBase, reconcileDeliveryBranch } from "./delivery-branch.js";
 import { commitOn } from "./delivery-fixtures.js";
 import type { GateRef } from "./schema.js";
 
@@ -112,12 +112,67 @@ describe("reconcileDeliveryBranch", () => {
     expect(await reconcileDeliveryBranch(repo, passes, path)).toMatchObject({ ready: false, repeated: false });
     expect((await readDeliveryEntries(path)).filter((e) => e.t === "blocked")).toHaveLength(2);
   });
+
+  it("opens afresh at the base's tip when GitHub says the pull request for the branch's tip merged by squash, even after the base changed the same paths", async () => {
+    const repo = project();
+    const path = ledger();
+    await reconcileDeliveryBranch(repo, passes, path);
+    await commitOn(repo, D, "feature.txt", "work\n");
+    const tip = await commitOn(repo, D, "feature2.txt", "more\n");
+    git(repo, ["merge", "-q", "--squash", D]);
+    git(repo, ["commit", "-q", "-m", "Delivered work (#1)"]);
+    onMain(repo, "feature.txt", "the owner's later edit\n");
+
+    expect(await reconcileDeliveryBranch(repo, passes, path, undefined, new Set([tip]))).toEqual({ ready: true, branch: D, base: "main" });
+    expect(git(repo, ["rev-parse", D])).toBe(git(repo, ["rev-parse", "main"]));
+    expect((await readDeliveryEntries(path)).map((e) => e.t)).toEqual(["opened", "opened"]);
+  });
+
+  it("brings the base in, rather than starting again, when GitHub has not said the branch's tip merged, even though the base holds the same change", async () => {
+    const repo = project();
+    const path = ledger();
+    await reconcileDeliveryBranch(repo, passes, path);
+    const tip = await commitOn(repo, D, "feature.txt", "work\n");
+    onMain(repo, "feature.txt", "work\n");
+
+    expect((await reconcileDeliveryBranch(repo, passes, path, undefined, new Set(["some-other-commit"]))).ready).toBe(true);
+    expect(git(repo, ["merge-base", "--is-ancestor", tip, D])).toBe("");
+    expect((await readDeliveryEntries(path)).map((e) => e.t)).toEqual(["opened", "base_merged"]);
+  });
 });
 
 describe("baseTip", () => {
   it("is the local base branch, unless its remote-tracking branch is strictly ahead", async () => {
     const repo = project();
     expect(await baseTip(repo)).toEqual({ base: "main", commit: git(repo, ["rev-parse", "main"]) });
+  });
+});
+
+describe("deliveryMerged", () => {
+  it("is false with no delivery branch, and while the branch sits at the base's tip", async () => {
+    const repo = project();
+    expect(await deliveryMerged(repo, new Set())).toBe(false);
+    await reconcileDeliveryBranch(repo, passes, ledger());
+    expect(await deliveryMerged(repo, new Set())).toBe(false);
+  });
+
+  it("is false while the branch has work GitHub has not reported merged, though the base holds the same change", async () => {
+    const repo = project();
+    await reconcileDeliveryBranch(repo, passes, ledger());
+    await commitOn(repo, D, "feature.txt", "work\n");
+    onMain(repo, "feature.txt", "work\n");
+    expect(await deliveryMerged(repo, new Set())).toBe(false);
+  });
+
+  it("is true once the branch's tip is a head GitHub reported merged, and when the base reaches the tip by a merge commit", async () => {
+    const repo = project();
+    await reconcileDeliveryBranch(repo, passes, ledger());
+    const tip = await commitOn(repo, D, "feature.txt", "work\n");
+    onMain(repo, "unrelated.txt", "other\n");
+    expect(await deliveryMerged(repo, new Set([tip]))).toBe(true);
+
+    git(repo, ["merge", "-q", "--no-ff", "-m", "merge", D]);
+    expect(await deliveryMerged(repo, new Set())).toBe(true);
   });
 });
 

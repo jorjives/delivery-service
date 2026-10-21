@@ -5,7 +5,7 @@ import { closeError } from "./closer-support.js";
 import { computeDelta } from "./delta-rule.js";
 import { inDetachedWorktree } from "./disposable-copy.js";
 import { readDelivery, recordDelivery } from "./delivery-ledger.js";
-import { branchExists, conflictedFiles, git, tryGit } from "./git-exec.js";
+import { branchExists, branchTip, conflictedFiles, git, tryGit } from "./git-exec.js";
 import { messageOf } from "./gate-support.js";
 import { resolveBaseRef } from "./provision.js";
 import { resolveCloser } from "./resolve-closer.js";
@@ -64,12 +64,19 @@ export type Reconciled =
   | { ready: false; branch: string; base: string; reason: string; repeated: boolean };
 
 /**
- * Make the delivery branch ready for a run's tasks: open it at the base's tip when none is open or the base already has
- * all it held; bring the owner's own base commits in, by merge, when that is clean and the checks still pass; otherwise
- * say what blocks it. A blocked attempt is not repeated until the base or the branch moves.
- * ponytail: a pull request merged by squash is not seen as reached; the base is then brought in by merge, which is clean.
+ * Make the delivery branch ready for a run's tasks: open it at the base's tip when none is open, when the base already
+ * has all it held (a merge-commit merge), or when GitHub reports its tip as the head of a merged pull request
+ * (`mergedTips`, supplied for the `open-pr` closer only: a squash or rebase merge leaves nothing in the history to see);
+ * bring the owner's own base commits in, by merge, when that is clean and the checks still pass; otherwise say what
+ * blocks it. A blocked attempt is not repeated until the base or the branch moves.
  */
-export async function reconcileDeliveryBranch(repoPath: string, gateRef: GateRef, ledger: string, env?: NodeJS.ProcessEnv): Promise<Reconciled> {
+export async function reconcileDeliveryBranch(
+  repoPath: string,
+  gateRef: GateRef,
+  ledger: string,
+  env?: NodeJS.ProcessEnv,
+  mergedTips: ReadonlySet<string> = new Set(),
+): Promise<Reconciled> {
   const { base, commit: baseCommit } = await baseTip(repoPath);
   const branch = deliveryBranchOf(base);
   const ready = { ready: true as const, branch, base };
@@ -82,7 +89,7 @@ export async function reconcileDeliveryBranch(repoPath: string, gateRef: GateRef
   }
   const tip = await git(repoPath, ["rev-parse", `refs/heads/${branch}`]);
 
-  if (await isAncestor(repoPath, tip, baseCommit)) {
+  if (mergedTips.has(tip) || (await isAncestor(repoPath, tip, baseCommit))) {
     if (tip !== baseCommit) await git(repoPath, ["update-ref", `refs/heads/${branch}`, baseCommit, tip]);
     if (tip !== baseCommit || state.landed.length > 0 || state.openedAt === null) await recordDelivery(ledger, { t: "opened", branch, base, from: baseCommit });
     return ready;
@@ -100,6 +107,17 @@ export async function reconcileDeliveryBranch(repoPath: string, gateRef: GateRef
   }
   await recordDelivery(ledger, { t: "blocked", branch, base, baseTip: baseCommit, tip, reason: merged.reason });
   return { ready: false, branch, base, reason: merged.reason, repeated: false };
+}
+
+/**
+ * Whether the open delivery branch's work has merged: its tip is an ancestor of the base (as `baseTip` reads it) or is in
+ * `mergedTips`, so reconciling would start it again from the base at no cost. False with no branch open, or with the
+ * branch already at the base's tip.
+ */
+export async function deliveryMerged(repoPath: string, mergedTips: ReadonlySet<string>): Promise<boolean> {
+  const { base, commit } = await baseTip(repoPath);
+  const tip = await branchTip(repoPath, deliveryBranchOf(base));
+  return tip !== undefined && tip !== commit && (mergedTips.has(tip) || (await isAncestor(repoPath, tip, commit)));
 }
 
 /** Merge the base into a scratch copy of the delivery tip and check it as a task's work is checked: against the tip's baseline. */
