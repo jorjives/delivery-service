@@ -23,6 +23,7 @@ validation:
 
 theme:
   name: material
+  custom_dir: overrides
   font:
     text: Inter
     code: JetBrains Mono
@@ -59,6 +60,10 @@ theme:
 # the docs through an AI assistant.
 plugins:
   - search
+  # "Last update" under each page, from git. The Docs workflow checks out full history for it.
+  - git-revision-date-localized:
+      type: date
+      locale: en_GB
   - llmstxt:
       full_output: llms-full.txt
       markdown_description: >-

@@ -2,3 +2,4 @@
 # `make docs`, `make docs-serve` and the Docs workflow.
 mkdocs-material~=9.7
 mkdocs-llmstxt~=0.5
+mkdocs-git-revision-date-localized-plugin~=1.4

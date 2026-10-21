@@ -16,6 +16,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history, so each page can say when it last changed.
+          fetch-depth: 0
       # Warnings are errors: a broken link or a stray page fails the build.
       - uses: actions/setup-python@v5
         with:
