@@ -1,7 +1,7 @@
 import { readRef } from "../case-file.js";
 import { branchName } from "../provision.js";
 import { CloseReport } from "../schema.js";
-import type { CaseFile, CloserRef } from "../schema.js";
+import type { CaseFile, CloserRef, GateRef } from "../schema.js";
 import { EscalationPacket } from "../triage-role-config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
@@ -20,9 +20,19 @@ function intentOf(caseFile: CaseFile): string {
   return typeof intent === "string" ? intent : "the task";
 }
 
-function checkOf(caseFile: CaseFile): string {
-  const { gateRef } = caseFile.header;
+function nameOf(gateRef: GateRef): string {
   return gateRef.type === "command" ? `\`${gateRef.command}\`` : "the check";
+}
+
+/**
+ * What judged the work: the project's check, unless a workflow's steps named their own. A step with none is judged by
+ * the project's, so it counts among the checks; when they differ, no one of them can be named as the check.
+ */
+function checkOf(caseFile: CaseFile): string {
+  const { gateRef, workflow } = caseFile.header;
+  const names = new Set((workflow?.steps ?? [{ gateRef }]).map((step) => nameOf(step.gateRef ?? gateRef)));
+  const [only] = names;
+  return names.size === 1 && only !== undefined ? only : "its checks";
 }
 
 /** The packet the escalation recorded, or undefined when the run has none to show. Shared with `status`, which prints all of it. */
