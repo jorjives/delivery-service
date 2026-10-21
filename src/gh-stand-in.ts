@@ -7,7 +7,7 @@ import { join } from "node:path";
  * can be exercised with no network and no GitHub account. It is the same
  * swap-the-executable approach claude-mock takes for the agent: a real
  * executable named `gh`, honouring the argv and output of the commands the
- * closer uses (`gh pr list --json url`, `gh pr create`, `gh pr edit --body`) and
+ * closer uses (`gh pr list --json url,headRefOid`, by `--state`, `gh pr create`, `gh pr edit --body`; a test marks a pull request merged with `mergePullRequest`) and
  * the issue commands the github work source uses (`gh api graphql` listing
  * issues by label, `gh issue create|close|comment|edit`, `gh label create`), with
  * their failure messages and exit codes copied from gh 2.94 itself.
@@ -21,6 +21,9 @@ export interface StandInPullRequest {
   base: string;
   title: string;
   body: string;
+  state: "OPEN" | "MERGED" | "CLOSED";
+  /** The head commit the pull request merged at; set by `mergePullRequest`. */
+  headRefOid?: string;
 }
 
 export type StandInEvent = { type: "labeled"; label: string; at: string } | { type: "renamed"; at: string };
@@ -46,6 +49,8 @@ export interface GhStandIn {
   /** Make every later `gh pr create` fail with this message, as GitHub refusing the pull request would. */
   refuseCreate(message: string): void;
   pullRequests(): StandInPullRequest[];
+  /** Mark a pull request merged at this head commit, as merging it on GitHub would. Moves no branch: merge into origin yourself. */
+  mergePullRequest(url: string, headRefOid: string): void;
   openIssue(issue: { title: string; body: string; labels?: string[]; at?: string }): number;
   labelIssue(number: number, label: string, at: string): void;
   editIssue(number: number, change: { title?: string; body?: string }, at: string): void;
@@ -106,8 +111,10 @@ const [group, command, ...rest] = process.argv.slice(2);
 const flags = flagsOf(rest);
 
 if (group === "pr" && command === "list") {
-  const open = state.pullRequests.filter((pr) => pr.head === flags.head);
-  process.stdout.write(JSON.stringify(open.map((pr) => ({ url: pr.url }))) + "\n");
+  // gh lists open pull requests unless told --state; one written before states existed is open.
+  const wanted = (flags.state || "open").toUpperCase();
+  const listed = state.pullRequests.filter((pr) => pr.head === flags.head && (wanted === "ALL" || (pr.state || "OPEN") === wanted));
+  process.stdout.write(JSON.stringify(listed.map((pr) => (pr.headRefOid ? { url: pr.url, headRefOid: pr.headRefOid } : { url: pr.url }))) + "\n");
   process.exit(0);
 }
 
@@ -117,7 +124,7 @@ if (group === "pr" && command === "create") {
   }
   if (state.refusal) fail(state.refusal, 1);
   const url = "https://github.com/example/project/pull/" + (state.pullRequests.length + 1);
-  state.pullRequests.push({ url, head: flags.head, base: flags.base, title: flags.title, body: flags.body });
+  state.pullRequests.push({ url, head: flags.head, base: flags.base, title: flags.title, body: flags.body, state: "OPEN" });
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
   process.stdout.write(url + "\n");
   process.exit(0);
@@ -241,6 +248,14 @@ export function createGhStandIn(): GhStandIn {
     setMode: (mode) => write({ ...read(), mode }),
     refuseCreate: (message) => write({ ...read(), refusal: message }),
     pullRequests: () => read().pullRequests,
+    mergePullRequest: (url, headRefOid) => {
+      const state = read();
+      const pr = state.pullRequests.find((p) => p.url === url);
+      if (!pr) throw new Error(`no pull request ${url}`);
+      pr.state = "MERGED";
+      pr.headRefOid = headRefOid;
+      write(state);
+    },
     openIssue: ({ title, body, labels = [], at = new Date().toISOString() }) => {
       const state = read();
       const number = state.issues.length + 1;
