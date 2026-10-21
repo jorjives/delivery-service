@@ -1,8 +1,4 @@
 #!/bin/sh
 # Mirror CI checks locally before push
 set -e
-# Git exports GIT_DIR and friends to hooks. Left set, every test that runs git in a
-# scratch repository would act on this one instead: committing, branching and
-# deleting files here. Clear them so the tests see the environment CI does.
-unset $(git rev-parse --local-env-vars)
 npm test
