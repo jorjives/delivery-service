@@ -45,20 +45,19 @@ steps (see the next section):
 4. **Checking the agent's work.** The gate runs again.
 5. **Wrapping up.** The closer delivers the work.
 
-The diagram shows the same steps, with the setbacks that can send a run back, covered in the next section.
+The diagram shows the same steps, with the setbacks that can send a run back, covered in the next section. It leaves out one case: a check that cannot run before the agent starts is repaired first.
 
 ```mermaid
 flowchart TD
     A([Task]) --> B[1. Setting up<br/>working copy and branch]
-    B --> C{2. Starting point<br/>passes the gate?}
+    B --> C[2. Starting point<br/>checked by the gate]
     C -->|yes, or already failing| D[3. The agent works]
-    C -->|check cannot run| R[Repair the check]
-    R --> C
     D --> E{4. Work passes<br/>the gate?}
     E -->|yes| F[5. Wrapping up<br/>the closer delivers]
     E -->|no| T{Triage}
     T -->|try again| D
-    T -->|check cannot run| R
+    T -->|check cannot run| R[Repair the check]
+    R --> E
     T -->|no attempts left,<br/>or a decision is needed| H([Stopped: asks you])
     F --> G([Done])
 ```
