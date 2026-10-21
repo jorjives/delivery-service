@@ -47,7 +47,7 @@ describe("the docs site", () => {
 // Flows are drawn, not just described: Mermaid blocks in the Markdown, rendered
 // by the theme. Each page below explains a flow a reader may want to follow.
 describe("the diagrams", () => {
-  const diagramPages: string[] = ["concepts.md"];
+  const diagramPages: string[] = ["concepts.md", "work-a-backlog.md"];
   const fence = "```mermaid";
 
   it("are rendered by the site", () => {
