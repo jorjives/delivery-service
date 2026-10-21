@@ -78,4 +78,48 @@ describe("prepareContinuation", () => {
     const { start } = await stoppedRun(repo, RUN);
     expect((await prepareContinuation(await readRun(repo, RUN), { kind: "interrupted" }, env))?.continues.from).toBe(start);
   });
+
+  describe("a signed-off turn", () => {
+    const heldRun = async (name: string) => {
+      const repo = initTempRepo(name, { "package.json": "{}" });
+      const env = { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "continue-state-")) };
+      const { start } = await stoppedRun(repo, RUN);
+      const copy = runPlace(repo, RUN, env).location.worktreePath;
+      git(repo, ["worktree", "add", "-q", "-b", `surface/${RUN}`, "--", copy, start]);
+      writeFileSync(join(copy, "fix.js"), "export const fix = true;\n");
+      git(copy, ["add", "-A"]);
+      git(copy, ["commit", "-q", "-m", "Accepted, waiting for sign-off"]);
+      return { repo, env, copy, reviewed: git(repo, ["rev-parse", `surface/${RUN}`]) };
+    };
+    const SIGNED_OFF = { kind: "signed_off" } as const;
+
+    it("stays signed off when the branch is at the reviewed commit and its copy is clean", async () => {
+      const { repo, env, reviewed } = await heldRun("signed-off-same-");
+      const carried = await prepareContinuation(await readRun(repo, RUN), SIGNED_OFF, env, reviewed);
+      expect(carried?.continues.turn).toEqual(SIGNED_OFF);
+      expect(carried?.continues.from).toBe(reviewed);
+    });
+
+    it("is no longer signed off when the branch has moved since the review", async () => {
+      const { repo, env, copy, reviewed } = await heldRun("signed-off-moved-");
+      writeFileSync(join(copy, "later.js"), "export const later = true;\n");
+      git(copy, ["add", "-A"]);
+      git(copy, ["commit", "-q", "-m", "Edited after review"]);
+      const carried = await prepareContinuation(await readRun(repo, RUN), SIGNED_OFF, env, reviewed);
+      expect(carried?.continues.turn).toEqual({ kind: "interrupted" });
+    });
+
+    it("is no longer signed off, and nothing unreviewed is committed under the sign-off, when the copy is dirty", async () => {
+      const { repo, env, copy, reviewed } = await heldRun("signed-off-dirty-");
+      writeFileSync(join(copy, "scribble.js"), "export const scribble = true;\n");
+      const carried = await prepareContinuation(await readRun(repo, RUN), SIGNED_OFF, env, reviewed);
+      expect(carried?.continues.turn).toEqual({ kind: "interrupted" });
+    });
+
+    it("is no longer signed off when no reviewed commit was recorded", async () => {
+      const { repo, env } = await heldRun("signed-off-unrecorded-");
+      const carried = await prepareContinuation(await readRun(repo, RUN), SIGNED_OFF, env, null);
+      expect(carried?.continues.turn).toEqual({ kind: "interrupted" });
+    });
+  });
 });

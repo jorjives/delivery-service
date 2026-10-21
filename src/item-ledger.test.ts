@@ -173,6 +173,15 @@ describe("the ledger", () => {
     expect(parkedNote(state)).toBe("Holding backlog:x.md: its fix is finished and checked, and waits for your sign-off because the problem is serious. Read it, then: delivery sign-off backlog:x.md, or set it aside: delivery reject backlog:x.md");
   });
 
+  it("records the branch tip a held run was reviewed at, so a sign-off can be bound to it", async () => {
+    const repo = initTempRepo("held-tip-", { "package.json": "{}" });
+    git(repo, ["branch", "surface/r1"]);
+    const tip = git(repo, ["rev-parse", "surface/r1"]);
+    const state = await settleRun(scratch(), "backlog:x.md", recordWith("r1", { kind: "escalated", source: "harness", reason: "held", at, cause: { kind: "held" } }, repo), 3);
+    expect(state.heldCommit).toBe(tip);
+    expect(state.commit).toBeNull();
+  });
+
   it("unparks a signed-off item, and forgets the sign-off once it is dispatched again", () => {
     const at = "2026-10-19T12:00:00Z";
     const states = foldLedger([

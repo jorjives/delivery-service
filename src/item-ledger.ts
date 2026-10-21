@@ -1,7 +1,7 @@
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { branchExists, git, tryGit } from "./git-exec.js";
+import { branchExists, branchTip, git, tryGit } from "./git-exec.js";
 import { deliveryLedgerPath, recordDelivery } from "./delivery-ledger.js";
 import { appendLine, isEnoent, parseLines } from "./journal.js";
 import { branchName, resolveBaseRef } from "./provision.js";
@@ -47,11 +47,12 @@ export interface ItemState {
   signedOff: boolean; // the operator signed held work off, and no run has dispatched since
   lastClosedAt: string | null;
   branch: string | null; // the delivered run's branch
+  heldCommit: string | null; // the branch tip a held run waits at: what the operator reviews, and all a sign-off covers
   commit: string | null; // the delivered work's tip: the branch tip, or the base tip when a closer already merged and deleted the branch
 }
 
 const fresh = (key: string): ItemState => ({
-  key, intent: null, attempts: 0, lastRunId: null, settled: true, lastClass: null, question: null, answer: null, parked: null, signedOff: false, lastClosedAt: null, branch: null, commit: null,
+  key, intent: null, attempts: 0, lastRunId: null, settled: true, lastClass: null, question: null, answer: null, parked: null, signedOff: false, lastClosedAt: null, branch: null, heldCommit: null, commit: null,
 });
 
 /** Machine-local, beside the worktrees: it describes this machine's runs and means nothing in another clone. */
@@ -65,8 +66,8 @@ function apply(state: ItemState, entry: LedgerEntry): ItemState {
       return { ...state, intent: entry.intent, lastRunId: entry.runId, settled: false, answer: null, signedOff: false };
     case "ended":
       return entry.class === "delivered"
-        ? { ...state, settled: true, lastClass: "delivered", attempts: 0, question: null, lastClosedAt: entry.at, branch: entry.branch ?? null, commit: entry.commit ?? null }
-        : { ...state, settled: true, lastClass: entry.class, attempts: state.attempts + 1, question: entry.question ?? null };
+        ? { ...state, settled: true, lastClass: "delivered", attempts: 0, question: null, heldCommit: null, lastClosedAt: entry.at, branch: entry.branch ?? null, commit: entry.commit ?? null }
+        : { ...state, settled: true, lastClass: entry.class, attempts: state.attempts + 1, question: entry.question ?? null, heldCommit: entry.class === "held" ? entry.commit ?? null : null };
     case "parked":
       return { ...state, parked: entry.reason };
     case "answered":
@@ -140,8 +141,7 @@ function parkReasonOf(state: ItemState, parkAfter: number): ParkReason | null {
  */
 async function deliveredCommit(record: RunRecord): Promise<string> {
   const branch = record.caseFile.header.delivery?.branch ?? branchName(record.runId);
-  if (await branchExists(record.repoPath, branch)) return git(record.repoPath, ["rev-parse", branch]);
-  return git(record.repoPath, ["rev-parse", (await resolveBaseRef(record.repoPath)).localBranch]);
+  return (await branchTip(record.repoPath, branch)) ?? git(record.repoPath, ["rev-parse", (await resolveBaseRef(record.repoPath)).localBranch]);
 }
 
 /** Record how `record`'s run of `key` ended, and park the item when that says to. Returns the item's state after. */
@@ -151,6 +151,7 @@ export async function settleRun(path: string, key: string, record: RunRecord, pa
   const question = record.caseFile.outcome?.cause?.question;
   const delivery = record.caseFile.header.delivery;
   const commit = kind === "delivered" ? await deliveredCommit(record) : undefined;
+  const heldCommit = kind === "held" ? await branchTip(record.repoPath, branchName(record.runId)) : undefined;
   // Landed before it is settled, so a crash between the two leaves the landing recorded and the run settled on the next run.
   if (delivery !== undefined && commit !== undefined) {
     await recordDelivery(deliveryLedgerPath(path), { t: "landed", branch: delivery.branch, runId: record.runId, key, intent: taskIntent(record.caseFile.header.taskDef), commit });
@@ -159,6 +160,7 @@ export async function settleRun(path: string, key: string, record: RunRecord, pa
     t: "ended", key, runId: record.runId, class: kind, at: now(),
     ...(kind === "decision" && question !== undefined ? { question } : {}),
     ...(commit === undefined ? {} : { branch: delivery?.branch ?? branchName(record.runId), commit }),
+    ...(heldCommit === undefined ? {} : { branch: branchName(record.runId), commit: heldCommit }),
   });
   const state = (await readItemLedger(path)).get(key) ?? fresh(key);
   const reason = parkReasonOf(state, parkAfter);

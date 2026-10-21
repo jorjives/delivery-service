@@ -12,6 +12,7 @@ import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { completes, delivery, PACKAGE, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { answered, notParked, notWaitingForAnswer, signedOff, unparked } from "./item-commands.js";
+import { branchName } from "../provision.js";
 
 const at = "2026-10-16T09:00:00.000Z";
 const KEY = "backlog:20261016T090000Z-greet.md";
@@ -126,6 +127,27 @@ describe("delivery sign-off", () => {
     expect(prompts.length).toBeGreaterThan(promptsBefore);
     expect(prompts[promptsBefore]).toContain(SIGNED_OFF_TEXT);
     expect(() => git(repo, ["show", "delivery/main:hello.js"])).toThrow();
+    expect((await readItemLedger(ledgerPath(repo, env))).get(HELD_KEY)).toMatchObject({ parked: "held" });
+  }, RUN_TIMEOUT * 2);
+
+  it("does not land work whose branch was edited after the review", async () => {
+    const repo = heldProject();
+    const state = mkdtempSync(join(tmpdir(), "sign-off-edited-state-"));
+    const env = { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+    await delivery(["run", "--sources"], { cwd: repo, env });
+    const held = (await readItemLedger(ledgerPath(repo, env))).get(HELD_KEY);
+    expect(held).toMatchObject({ parked: "held" });
+
+    // Something is added to the held branch after the owner read it, and before they sign it off.
+    const other = mkdtempSync(join(tmpdir(), "sign-off-edit-"));
+    git(repo, ["worktree", "add", join(other, "wt"), branchName(held?.lastRunId ?? "")]);
+    writeFileSync(join(other, "wt", "unreviewed.txt"), "slipped in after review\n");
+    git(join(other, "wt"), ["add", "unreviewed.txt"]);
+    git(join(other, "wt"), ["-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-m", "After review"]);
+    git(repo, ["worktree", "remove", "--force", join(other, "wt")]);
+
+    await delivery(["sign-off", "key-in-code"], { cwd: repo, env });
+    expect(() => git(repo, ["show", "delivery/main:unreviewed.txt"])).toThrow();
     expect((await readItemLedger(ledgerPath(repo, env))).get(HELD_KEY)).toMatchObject({ parked: "held" });
   }, RUN_TIMEOUT * 2);
 

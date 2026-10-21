@@ -188,7 +188,7 @@ async function claimFor(
   const turn = turnFor(state);
   const last = records.find((r) => r.runId === state?.lastRunId);
   // Commits the last run's leftover edits onto its branch before reading its tip; idempotent, so a claim made again adds nothing.
-  const carried = turn !== undefined && last !== undefined ? await prepareContinuation(last, turn, ctx.env) : undefined;
+  const carried = turn !== undefined && last !== undefined ? await prepareContinuation(last, turn, ctx.env, state?.heldCommit) : undefined;
   const surfaceId = runIdFor(taskIntent(item.taskDef), now, taken);
   taken.add(surfaceId);
   // A tracker's text is writable by anyone, so `untrusted` follows `raise`: a github source's items, or a command source's with `tracker` set.
