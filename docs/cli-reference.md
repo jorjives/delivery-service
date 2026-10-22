@@ -29,7 +29,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery drop-after [batch]` | Gives up after-landing steps that are waiting, such as a deploy you cannot fix | [Set up a project](project-configuration.md) |
 | `delivery packs check <path>` | Checks a review folder of your own, then runs its fixtures against a scripted agent | [Write a pack](writing-a-pack.md) |
 | `delivery schedule enable` | Turns on a timer that runs `delivery run --sources`, or changes how often it runs | [Run on a schedule](run-on-a-schedule.md) |
-| `delivery schedule status` | Says whether the project runs on a schedule, and when it last ran and will next run | [Run on a schedule](run-on-a-schedule.md) |
+| `delivery schedule status` | Says, for every schedule the project has, whether it is on, and when it last ran and will next run | [Run on a schedule](run-on-a-schedule.md) |
 | `delivery schedule disable` | Turns the timer off; `delivery run --sources` still works by hand | [Run on a schedule](run-on-a-schedule.md) |
 
 ## Options for `delivery run`
@@ -72,6 +72,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `packs check` | `--yes` | Skips the question about trusting the pack's code before its fixtures run; needed when there is no terminal |
 | `schedule enable` | `--every <interval>` | Sets how often it runs: minutes that divide an hour (such as `5m`, `15m` or `30m`), hours that divide a day (such as `1h`, `6h` or `12h`), or `1d` (the default) |
 | `schedule enable` | `--name <name>` | Names the schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens. Without it, sets up the project's default schedule |
+| `schedule status` | `--name <name>` | Shows only this schedule |
 
 `--config` and `--repo` mean the same on every command that takes them (`delivery --help` shows
 which). `review` takes the repository as an argument, `delivery review <pack> [repo]`, not as

@@ -36,11 +36,25 @@ Each scheduled run is `delivery run --sources --if-idle`, so a run that would ov
 ## Check or turn it off
 
 ```bash
-delivery schedule status    # on or off, and when it last ran and will next run
-delivery schedule disable   # turn it off; `delivery run --sources` still works by hand
+delivery schedule status    # every schedule: on or off, and when it last ran and will next run
+delivery schedule disable   # turn the default schedule off; `delivery run --sources` still works by hand
 ```
 
-`status` also prints the exact `journalctl --user -u delivery-<key>.service` command that shows each scheduled run's output. When the schedule is off it says `Scheduling is off for <repo>` and how to turn it on.
+`status` prints one block per schedule: the default first, then the others by name.
+
+```text
+Scheduling is on for the hourly schedule, every 1h.
+Last run: Thu 2026-10-22 10:00:00 BST
+Next run: Thu 2026-10-22 11:00:00 BST
+Each scheduled run's output: journalctl --user -u delivery-<key>.hourly.service
+
+Scheduling is on for the nightly schedule, every 1d.
+Last run: not yet
+Next run: Fri 2026-10-23 00:00:00 BST
+Each scheduled run's output: journalctl --user -u delivery-<key>.nightly.service
+```
+
+Each block ends with the exact `journalctl --user -u ...` command that shows that schedule's run output. `delivery schedule status --name nightly` shows only that one. When the project has no schedule, `status` says `Scheduling is off for <repo>` and how to turn one on, and `--name` for a schedule that is not there says so, with the command that would set it up.
 
 ## Run while you are logged out
 

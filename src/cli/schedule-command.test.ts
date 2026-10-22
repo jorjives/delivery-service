@@ -9,7 +9,7 @@ import { EXIT } from "./failures.js";
 import { findRepository } from "./project.js";
 import { badInterval, badName } from "./schedule/model.js";
 import { NO_SYSTEMCTL, TEST_SYSTEMCTL, unitName } from "./schedule/systemd.js";
-import { alreadyOff, journalHint, lastRun, nextRun, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
+import { alreadyOff, journalHint, lastRun, nextRun, noSuchSchedule, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
 
 async function project() {
   const repo = await findRepository(initTempRepo("schedule-", { "package.json": PACKAGE }));
@@ -133,26 +133,130 @@ describe("delivery schedule status", () => {
     await delivery(["schedule", "enable", "--every", "5m"], { cwd: repo, env });
     standIn.showing({
       UnitFileState: "enabled",
-      Description: `delivery run --sources every 5m in ${repo}`,
       LastTriggerUSec: "Sun 2026-10-18 12:00:00 BST",
       NextElapseUSecRealtime: "Sun 2026-10-18 12:05:00 BST",
     });
     const { exitCode, stdout } = await delivery(["schedule", "status"], { cwd: repo, env });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain(scheduledOn(`delivery run --sources every 5m in ${repo}`, true));
+    expect(stdout).toContain("Scheduling is on for the default schedule, every 5m.");
     expect(stdout).toContain(lastRun("Sun 2026-10-18 12:00:00 BST"));
     expect(stdout).toContain(nextRun("Sun 2026-10-18 12:05:00 BST"));
     expect(stdout).toContain(journalHint(`journalctl --user -u ${name}.service`));
-    expect(standIn.calls().at(-1)).toBe(
-      `--user show ${name}.timer -p UnitFileState -p Description -p LastTriggerUSec -p NextElapseUSecRealtime`,
-    );
+    expect(standIn.calls().at(-1)).toBe(`--user show ${name}.timer -p UnitFileState -p LastTriggerUSec -p NextElapseUSecRealtime`);
   });
 
   it("says a timer that has never fired has not run yet", async () => {
     const { repo, standIn, env } = await project();
     await delivery(["schedule", "enable"], { cwd: repo, env });
-    standIn.showing({ UnitFileState: "enabled", Description: "d", LastTriggerUSec: "", NextElapseUSecRealtime: "Mon 2026-10-19 00:00:00 BST" });
+    standIn.showing({ UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "Mon 2026-10-19 00:00:00 BST" });
     expect((await delivery(["schedule", "status"], { cwd: repo, env })).stdout).toContain(lastRun("not yet"));
+  });
+
+  it("lists every schedule, one block each, with its own interval, runs and log command", async () => {
+    const { repo, name, standIn, env } = await project();
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    standIn.showingFor(`${name}.hourly.timer`, {
+      UnitFileState: "enabled",
+      LastTriggerUSec: "Thu 2026-10-22 10:00:00 BST",
+      NextElapseUSecRealtime: "Thu 2026-10-22 11:00:00 BST",
+    });
+    standIn.showingFor(`${name}.nightly.timer`, { UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "Fri 2026-10-23 00:00:00 BST" });
+    const { exitCode, stdout } = await delivery(["schedule", "status"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(
+      [
+        "Scheduling is on for the hourly schedule, every 1h.",
+        lastRun("Thu 2026-10-22 10:00:00 BST"),
+        nextRun("Thu 2026-10-22 11:00:00 BST"),
+        journalHint(`journalctl --user -u ${name}.hourly.service`),
+        "",
+        "Scheduling is on for the nightly schedule, every 1d.",
+        lastRun("not yet"),
+        nextRun("Fri 2026-10-23 00:00:00 BST"),
+        journalHint(`journalctl --user -u ${name}.nightly.service`),
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("shows only the schedule named", async () => {
+    const { repo, name, standIn, env } = await project();
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    standIn.showingFor(`${name}.hourly.timer`, { UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "Thu 2026-10-22 11:00:00 BST" });
+    standIn.showingFor(`${name}.nightly.timer`, { UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "Fri 2026-10-23 00:00:00 BST" });
+    const { exitCode, stdout } = await delivery(["schedule", "status", "--name", "nightly"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(
+      [
+        "Scheduling is on for the nightly schedule, every 1d.",
+        lastRun("not yet"),
+        nextRun("Fri 2026-10-23 00:00:00 BST"),
+        journalHint(`journalctl --user -u ${name}.nightly.service`),
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("says there is no such schedule for a name not installed", async () => {
+    const { repo, env } = await project();
+    const none = await delivery(["schedule", "status", "--name", "weekly"], { cwd: repo, env });
+    expect(none.exitCode).toBe(EXIT.ok);
+    expect(none.stdout).toBe(`${noSuchSchedule("weekly", repo)}\n`);
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: repo, env });
+    const other = await delivery(["schedule", "status", "--name", "weekly"], { cwd: repo, env });
+    expect(other.exitCode).toBe(EXIT.ok);
+    expect(other.stdout).toBe(`${noSuchSchedule("weekly", repo)}\n`);
+  });
+
+  it("refuses a name it could never have installed", async () => {
+    const { repo, standIn, env } = await project();
+    const { exitCode, stderr } = await delivery(["schedule", "status", "--name", "Nightly"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(badName("Nightly"));
+    expect(standIn.calls()).toEqual([]);
+  });
+
+  it("lists a default schedule installed before named schedules existed", async () => {
+    const { repo, units, name, standIn, env } = await project();
+    mkdirSync(units, { recursive: true });
+    writeFileSync(
+      join(units, `${name}.service`),
+      `[Unit]\nDescription=delivery run --sources every 1d in ${repo}\n\n[Service]\nType=oneshot\nWorkingDirectory=${repo}\nExecStart=/usr/bin/node /x/main.js run --sources --if-idle\n`,
+    );
+    writeFileSync(join(units, `${name}.timer`), "[Timer]\nOnCalendar=*-*-* 00:00:00\nPersistent=true\n");
+    standIn.showing({
+      UnitFileState: "enabled",
+      LastTriggerUSec: "Sun 2026-10-18 12:00:00 BST",
+      NextElapseUSecRealtime: "Mon 2026-10-19 00:00:00 BST",
+    });
+    const { exitCode, stdout } = await delivery(["schedule", "status"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(
+      [
+        "Scheduling is on for the default schedule, every 1d.",
+        lastRun("Sun 2026-10-18 12:00:00 BST"),
+        nextRun("Mon 2026-10-19 00:00:00 BST"),
+        journalHint(`journalctl --user -u ${name}.service`),
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("shows only the re-enabled schedule changed", async () => {
+    const { repo, name, standIn, env } = await project();
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    standIn.showingFor(`${name}.hourly.timer`, { UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "Thu 2026-10-22 11:00:00 BST" });
+    standIn.showingFor(`${name}.nightly.timer`, { UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "Fri 2026-10-23 00:00:00 BST" });
+    const first = (await delivery(["schedule", "status"], { cwd: repo, env })).stdout;
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "6h"], { cwd: repo, env });
+    const second = (await delivery(["schedule", "status"], { cwd: repo, env })).stdout;
+    expect(second).toContain("Scheduling is on for the hourly schedule, every 6h.");
+    expect(second).not.toContain("every 1h");
+    const nightlyBlock = (text: string) => text.slice(text.indexOf("Scheduling is on for the nightly schedule"));
+    expect(nightlyBlock(second)).toBe(nightlyBlock(first));
   });
 
   it("says scheduling is off for a project that never turned it on, without asking systemd", async () => {
@@ -166,8 +270,8 @@ describe("delivery schedule status", () => {
   it("says scheduling is off when the timer was disabled outside delivery", async () => {
     const { repo, standIn, env } = await project();
     await delivery(["schedule", "enable"], { cwd: repo, env });
-    standIn.showing({ UnitFileState: "disabled", Description: "d", LastTriggerUSec: "", NextElapseUSecRealtime: "" });
-    expect((await delivery(["schedule", "status"], { cwd: repo, env })).stdout).toContain(scheduledOff(repo));
+    standIn.showing({ UnitFileState: "disabled", LastTriggerUSec: "", NextElapseUSecRealtime: "" });
+    expect((await delivery(["schedule", "status"], { cwd: repo, env })).stdout).toContain("Scheduling is off for the default schedule, every 1d.");
   });
 });
 

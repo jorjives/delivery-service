@@ -1,13 +1,11 @@
-import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
-import { selectBackend } from "./schedule/backend.js";
+import { selectBackend, type InstalledSchedule } from "./schedule/backend.js";
 import { cronLine } from "./schedule/cron.js";
 import { DEFAULT_INTERVAL, DEFAULT_NAME, describeSchedule, parseInterval, parseName, type Schedule } from "./schedule/model.js";
-import { must, parseShow, unitDir, unitName } from "./schedule/systemd.js";
 
 export interface ScheduleOptions {
   repo?: string;
@@ -32,17 +30,13 @@ export const turnedOff = (repoPath: string): string =>
   `Scheduling is off for ${repoPath}. You can still run it by hand at any time: delivery run --sources`;
 export const lastRun = (when: string): string => `Last run: ${when}`;
 export const nextRun = (when: string): string => `Next run: ${when}`;
+export const scheduleHeading = ({ name, every, enabled }: InstalledSchedule): string =>
+  `Scheduling is ${enabled ? "on" : "off"} for the ${name} schedule, every ${every}.`;
+export const noSuchSchedule = (name: string, repoPath: string): string =>
+  `There is no schedule called ${name} for ${repoPath}. Turn it on with: delivery schedule enable --name ${name} --every <interval>`;
 
 /** This build's own entry point: `dist/cli/main.js` beside this file once built. */
 const MAIN = fileURLToPath(new URL("./main.js", import.meta.url));
-
-/** The project's repository, its units' name, and the path its timer would be installed at. Used by status until it moves to the port. */
-async function scheduled(options: ScheduleOptions, ctx: CommandContext) {
-  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
-  const name = unitName(repoPath, DEFAULT_NAME);
-  const dir = unitDir(ctx.env);
-  return { repoPath, name, dir, timerPath: join(dir, `${name}.timer`) };
-}
 
 /** `delivery schedule enable`: install and start this project's timer, or refuse with the cron line to use instead. */
 export async function scheduleEnableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
@@ -65,24 +59,30 @@ export async function scheduleEnableCommand(options: ScheduleOptions, ctx: Comma
   return EXIT.ok;
 }
 
-/** `delivery schedule status`: whether this project runs on its own, and when it last and next ran, as systemd says. */
+/**
+ * `delivery schedule status`: each schedule this project has, with its interval, whether it is on, and when it last and
+ * next ran, as systemd says; or only the one `--name` names.
+ */
 export async function scheduleStatusCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
-  const { repoPath, name, timerPath } = await scheduled(options, ctx);
-  if (!existsSync(timerPath)) {
+  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+  const wanted = options.name === undefined ? undefined : parseName(options.name);
+  const installed = await selectBackend().list(repoPath, ctx.env);
+  const shown = wanted === undefined ? installed : installed.filter((schedule) => schedule.name === wanted);
+  if (wanted !== undefined && shown.length === 0) {
+    ctx.writeLine(noSuchSchedule(wanted, repoPath));
+    return EXIT.ok;
+  }
+  if (shown.length === 0) {
     ctx.writeLine(scheduledOff(repoPath));
     return EXIT.ok;
   }
-  const show = parseShow(
-    await must(ctx.env, ["show", `${name}.timer`, "-p", "UnitFileState", "-p", "Description", "-p", "LastTriggerUSec", "-p", "NextElapseUSecRealtime"]),
-  );
-  if (show.UnitFileState !== "enabled") {
-    ctx.writeLine(scheduledOff(repoPath));
-    return EXIT.ok;
-  }
-  ctx.writeLine(scheduledOn(show.Description ?? "", true));
-  ctx.writeLine(lastRun(show.LastTriggerUSec || "not yet"));
-  ctx.writeLine(nextRun(show.NextElapseUSecRealtime || "none"));
-  ctx.writeLine(journalHint(selectBackend().logCommand(repoPath, DEFAULT_NAME)));
+  shown.forEach((schedule, index) => {
+    if (index > 0) ctx.writeLine("");
+    ctx.writeLine(scheduleHeading(schedule));
+    ctx.writeLine(lastRun(schedule.lastRun || "not yet"));
+    ctx.writeLine(nextRun(schedule.nextRun || "none"));
+    ctx.writeLine(journalHint(schedule.logCommand));
+  });
   return EXIT.ok;
 }
 

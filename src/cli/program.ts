@@ -219,6 +219,7 @@ export async function runCli(io: CliIo): Promise<number> {
   schedule
     .command("status")
     .description("say whether this project runs on a schedule, and when it last ran and will next run")
+    .option("--name <name>", "show only this schedule (default: every schedule the project has)")
     .option("--repo <path>", "the git repository to read (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleStatusCommand(options, ctxFor(command));
