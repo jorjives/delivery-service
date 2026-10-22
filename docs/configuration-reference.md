@@ -207,6 +207,7 @@ A ready-made check is a `gate` chosen by name. Each runs a command and passes wh
 | `file-exists` | `path` | The file exists after the work |
 | `schema-validates` | `file`, `schema` | The JSON file matches the JSON Schema |
 | `commits-ahead` | None | The work added at least one commit |
+| `fails-with-new-test` | `command`, optional | The work changed a test file (under `test/`, `tests/` or `__tests__/`, or named `*.test.*` or `*.spec.*`), your tests pass on the commit the step started from, and fail on the work's commit. Without `command`, runs the `test` script in `package.json`. Meant for a step that commits a failing test; it runs the start commit in a temporary checkout that shares your `node_modules` |
 
 ```json
 "gate": { "type": "file-exists", "path": "CHANGES.md" }

@@ -112,6 +112,7 @@ five ready-made checks, and each takes only the detail it needs:
   `{ "type": "schema-validates", "file": "data.json", "schema": "data.schema.json" }`. It
   fetches its checker the first time it runs, so that run needs the network.
 - `commits-ahead` checks that the work added at least one commit: `{ "type": "commits-ahead" }`.
+- `fails-with-new-test` checks that the work committed a test that fails, where your tests passed before: `{ "type": "fails-with-new-test" }`. Use it on the first step of a reproduce-then-fix workflow.
   Use it for a [workflow](use-workflows.md) step whose job is to commit something other than
   passing tests.
 
