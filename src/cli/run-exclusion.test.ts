@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { mkdirSync, utimesSync } from "node:fs";
 import { Readable } from "node:stream";
-import { join } from "node:path";
 import { holdingRepo, liveRunFound, SKIPPED_IDLE } from "./run-exclusion.js";
 import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import { supervisorLockPath } from "../run-location.js";
