@@ -15,7 +15,7 @@ import { NOTHING_HERE, readRun } from "./runs.js";
 import { ALL_AND_DECISIONS, ALL_AND_ONE, ALL_AND_REPAIRS, statusDocument, statusReport, type RunStatusDocument } from "./status-command.js";
 import { RESUME_DOES_NOT_APPLY, UNCHANGED_NOT_RUN_AGAIN } from "../report/detail.js";
 import { ReportDocument } from "../report/document.js";
-import { attempt, BRIEF, CHANGES_TOUCHING_CHECK, failedCheck, ownRepair, PACKET, setupRepair, stoppedAt, timed, writeRecord } from "../report/report-fixtures.js";
+import { attempt, BRIEF, CHANGES_TOUCHING_CHECK, closedAt, failedCheck, FORM, ID, ownRepair, PACKET, setupRepair, stoppedAt, timed, writeRecord } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { git } from "../../tests/helpers.js";
 import { plainReporter } from "./report.js";
@@ -26,6 +26,8 @@ import { WAITING_FOR_A_SLOT } from "./status-command.js";
 import { heldPath, recordHeld } from "../held-sequences.js";
 import { ledgerPath } from "../item-ledger.js";
 import { STEP_PHRASES } from "./output.js";
+import { stackedDelivery } from "../delivery-fixtures.js";
+import { deliveryLedgerPath } from "../delivery-ledger.js";
 
 const AT = "2026-09-14T21:05:09.123Z";
 const RUN_ID = "add-a-hello-function-20260914T210309Z";
@@ -184,6 +186,31 @@ async function backdate(dir: string): Promise<void> {
 }
 
 describe("delivery status", () => {
+  it("shows the stack in delivery status", async () => {
+    const repo = initTempRepo("status-stack-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [FORM] }) });
+    const env = { XDG_STATE_HOME: await mkdtemp(join(tmpdir(), "status-state-")) };
+    await writeRecord(repo, { runId: ID.form, task: FORM, history: attempt(1, "added the form"), outcome: closedAt("2026-10-01T02:19:10.000Z") });
+    await stackedDelivery(repo, deliveryLedgerPath(ledgerPath(repo, env)), {
+      stacked: true,
+      landings: [
+        { runId: ID.form, key: "backlog:form.md", intent: "Add a contact form." },
+        { runId: ID.footer, key: "backlog:footer.md", intent: "Fix the footer." },
+      ],
+      pulls: [{ runId: ID.form, url: "https://example.invalid/pull/1", state: "OPEN" }],
+    });
+
+    const { exitCode, stdout } = await delivery(["status"], { cwd: repo, env });
+    const lines = stdout.split("\n");
+    const start = lines.indexOf("Stacked pull requests on main, bottom first:");
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(lines.slice(start, start + 3)).toEqual([
+      "Stacked pull requests on main, bottom first:",
+      "- 1. Add a contact form. (backlog:form.md): https://example.invalid/pull/1, open",
+      "- 2. Fix the footer. (backlog:footer.md): no pull request yet",
+    ]);
+  });
+
   it("shows a backlog item's key without anything that could drive the terminal", async () => {
     const repo = initTempRepo("status-item-hostile-", { "package.json": PACKAGE });
     await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED, item: { key: "backlog:b.md\u001B[2J", source: "backlog", id: "b.md" } });
