@@ -2,7 +2,7 @@ import { baseTip, closeDeliveryBranch, deliveryBranchOf, type Reconciled } from 
 import { readDelivery, recordDelivery } from "./delivery-ledger.js";
 import { ghReason } from "./gh.js";
 import { branchExists, git, tryGit } from "./git-exec.js";
-import { listPullRequests } from "./pull-requests.js";
+import { listPullRequests, standingPullRequest } from "./pull-requests.js";
 import type { CloseReport, DeliveredLevel } from "./ports.js";
 import type { CloserRef } from "./schema.js";
 
@@ -49,8 +49,7 @@ export async function closeDeliveryStack(
   const listing = await listPullRequests(repoPath, { heads: refs }, { state: "all" });
   if (!listing.ok) return { report, unobserved: ghReason(listing.failure) };
   const pullRequests = refs.flatMap((ref) => {
-    const own = listing.pullRequests.filter((pr) => pr.headRefName === ref);
-    const pr = own.find((candidate) => candidate.state === "OPEN") ?? own.at(-1);
+    const pr = standingPullRequest(listing.pullRequests.filter((candidate) => candidate.headRefName === ref));
     return pr === undefined ? [] : [{ ref, url: pr.url, state: pr.state }];
   });
   await recordDelivery(ledger, { t: "observed", branch, pullRequests });

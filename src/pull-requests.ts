@@ -90,3 +90,13 @@ export function prAccessProblem(failure: GhFailure): CloseReport | null {
       return null;
   }
 }
+
+/** The pull request's URL from what `gh pr create` printed: its last non-blank line. */
+export function createdUrl(stdout: string): string {
+  return stdout.split("\n").map((line) => line.trim()).filter(Boolean).at(-1) ?? stdout;
+}
+
+/** The pull request that stands for a branch: the open one, else the latest. */
+export function standingPullRequest(pullRequests: readonly PullRequest[]): PullRequest | undefined {
+  return pullRequests.find((pr) => pr.state === "OPEN") ?? pullRequests.at(-1);
+}

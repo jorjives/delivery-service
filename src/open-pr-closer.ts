@@ -3,7 +3,7 @@ import { load } from "./case-file.js";
 import { closeError, closerFromAcceptedHandler, commitAccepted, taskSummary } from "./closer-support.js";
 import { ghFailureOf, ghReason, runGh } from "./gh.js";
 import { git, tryGit } from "./git-exec.js";
-import { listPullRequests, prAccessProblem } from "./pull-requests.js";
+import { createdUrl, listPullRequests, prAccessProblem } from "./pull-requests.js";
 import type { CloseContext, CloseReport, CloserPort, DeliveredTask } from "./ports.js";
 import type { TaskDef } from "./schema.js";
 
@@ -162,8 +162,7 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
         }
       );
     }
-    const url = created.split("\n").map((line) => line.trim()).filter(Boolean).at(-1) ?? created;
-    return { status: "DONE", detail: url };
+    return { status: "DONE", detail: createdUrl(created) };
   }
 
   return closerFromAcceptedHandler(closeAccepted);

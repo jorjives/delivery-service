@@ -2,7 +2,7 @@ import { closeError, closerFromAcceptedHandler } from "./closer-support.js";
 import { ghFailureOf, ghReason, runGh } from "./gh.js";
 import { git, tryGit } from "./git-exec.js";
 import { createOpenPrCloser } from "./open-pr-closer.js";
-import { listPullRequests, prAccessProblem } from "./pull-requests.js";
+import { createdUrl, listPullRequests, prAccessProblem } from "./pull-requests.js";
 import type { CloseContext, CloseReport, CloserPort, DeliveredLevel } from "./ports.js";
 
 /** GitHub's limit on a pull request title. */
@@ -153,7 +153,7 @@ export function createStackPrCloser(options: { ghCommand?: string } = {}): Close
             }
           );
         }
-        const url = created.split("\n").map((line) => line.trim()).filter(Boolean).at(-1) ?? created;
+        const url = createdUrl(created);
         published.push(url);
         below.push(url);
       }
