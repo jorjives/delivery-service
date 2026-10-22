@@ -6,7 +6,7 @@ import { PullRequestState } from "./pull-requests.js";
 
 /**
  * What happened to each delivery branch (spec §5.7): opened at a base tip, a task landed, the base merged in, an attempt
- * to merge the base in blocked, and what the project's closer did. Machine-local, beside the item ledger.
+ * to merge the base in blocked, levels dropped because their pull request was closed, and what the project's closer did. Machine-local, beside the item ledger.
  */
 export const DeliveryEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("opened"), branch: z.string(), base: z.string(), from: z.string(), stack: z.literal(true).optional(), at: z.string() }),
@@ -15,6 +15,7 @@ export const DeliveryEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("base_merged"), branch: z.string(), base: z.string(), commit: z.string(), at: z.string() }),
   z.object({ t: z.literal("blocked"), branch: z.string(), base: z.string(), baseTip: z.string(), tip: z.string(), reason: z.string(), pulls: z.string().optional(), at: z.string() }),
   z.object({ t: z.literal("restacked"), branch: z.string(), onto: z.string(), merged: z.array(z.string()), levels: z.array(z.object({ runId: z.string(), commit: z.string() })), at: z.string() }),
+  z.object({ t: z.literal("dropped"), branch: z.string(), runs: z.array(z.string()), at: z.string() }),
   z.object({ t: z.literal("closed"), branch: z.string(), status: z.enum(["DONE", "FAIL", "ERROR"]), detail: z.string(), at: z.string() }),
 ]);
 export type DeliveryEntry = z.infer<typeof DeliveryEntry>;
@@ -77,10 +78,14 @@ export function foldDelivery(entries: readonly DeliveryEntry[], branch: string):
     landed = restackOf(landed);
     pending = restackOf(pending);
   }
+  // A dropped level was closed without merging: its landing no longer stands, whatever restacks came before.
+  const dropped = new Set(section.flatMap((e) => (e.t === "dropped" ? e.runs : [])));
+  landed = landed.filter((e) => !dropped.has(e.runId));
+  pending = pending.filter((e) => !dropped.has(e.runId));
   const closed = section.findLast((e) => e.t === "closed");
   const restackedAt = section.findLastIndex((e) => e.t === "restacked");
   const blockedAt = section.findLastIndex((e) => e.t === "blocked");
-  const cleared = section.findLastIndex((e) => e.t === "base_merged" || e.t === "opened" || e.t === "restacked");
+  const cleared = section.findLastIndex((e) => e.t === "base_merged" || e.t === "opened" || e.t === "restacked" || e.t === "dropped");
   const blocked = blockedAt > cleared ? (section[blockedAt] as BlockedEntry) : null;
   const lastRestack = section.findLast((e): e is RestackedEntry => e.t === "restacked");
   const pullRequests = new Map<string, { url: string; state: PullRequestState }>();

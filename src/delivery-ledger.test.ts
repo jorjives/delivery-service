@@ -138,6 +138,15 @@ describe("foldDelivery after a restack", () => {
     expect(state.landed.map((e) => [e.runId, e.commit])).toEqual([["r2", "n2"], ["r3", "n3"], ["r4", "c4"]]);
   });
 
+  it("forgets dropped levels, keeps the rest where they were, and clears a block", () => {
+    const blocked: DeliveryEntry = { t: "blocked", branch: D, base: "main", baseTip: "m1", tip: "d1", reason: "closed", at: at(2) };
+    const state = foldDelivery([opened("F"), landed("r1", "c1"), landed("r2", "c2"), landed("r3", "c3"), blocked,
+      { t: "dropped", branch: D, runs: ["r2", "r3"], at: at(3) }], D);
+    expect(state.landed.map((e) => [e.runId, e.commit])).toEqual([["r1", "c1"]]);
+    expect(state.pending.map((e) => e.runId)).toEqual(["r1"]);
+    expect(state.blocked).toBeNull();
+  });
+
   it("keeps the pulls fingerprint on a blocked entry", () => {
     const state = foldDelivery([opened("F"), { t: "blocked", branch: D, base: "main", baseTip: "m1", tip: "d1", reason: "conflicts", pulls: "x", at: at(2) }], D);
     expect(state.blocked?.pulls).toBe("x");
