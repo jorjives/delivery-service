@@ -81,7 +81,7 @@ export async function reconcileStackBranch(
   }
   const carried = await carriedLevels(repoPath, levels, observed);
 
-  const plan = planStack(levels, observed, { base, held, carried });
+  const plan = planStack(levels, observed, { base, held, carried, extended: new Map() });
   if (plan.kind === "blocked") {
     await recordDelivery(ledger, { t: "blocked", branch, base, baseTip: baseCommit, tip, reason: plan.reason, pulls });
     return { ready: false, branch, base, reason: plan.reason, repeated: false };
