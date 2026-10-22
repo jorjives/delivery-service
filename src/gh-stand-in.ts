@@ -10,7 +10,7 @@ import { cleanGitEnv } from "./git-env.js";
  * swap-the-executable approach claude-mock takes for the agent: a real
  * executable named `gh`, honouring the argv and output of the commands the
  * closer uses (`gh api graphql` answering the aliased exact-head `pullRequests(headRefName:…)` lookup, `gh pr create`,
- * `gh pr edit --body` and `--base`; a test merges a pull request with `merge`, which merges it on origin by squash, rebase or merge
+ * `gh pr edit --body` and `--base`, `gh pr close --comment`; a test closes one as the owner would with `closePullRequest`; a test merges a pull request with `merge`, which merges it on origin by squash, rebase or merge
  * commit as GitHub would, or marks it merged with `mergePullRequest`) and the issue commands the github
  * work source uses (`gh api graphql` listing issues by label, `gh issue create|close|comment|edit`, `gh label create`),
  * with their failure messages and exit codes copied from gh 2.94 itself. It refuses any query that searches: search
@@ -32,6 +32,8 @@ export interface StandInPullRequest {
   mergeCommit?: string;
   /** True when the head branch lives in a fork rather than this repository; answered as `isCrossRepository`. */
   fork?: boolean;
+  /** What `gh pr close --comment` left on it. */
+  comments?: string[];
 }
 
 export type StandInEvent = { type: "labeled"; label: string; at: string } | { type: "renamed"; at: string };
@@ -61,6 +63,8 @@ export interface GhStandIn {
   openFromFork(head: string, base: string): string;
   /** The argv of every gh invocation so far, in order. */
   calls(): string[][];
+  /** Close a pull request without merging it, as the owner closing it on GitHub would. */
+  closePullRequest(url: string): void;
   /** Mark a pull request merged at this head commit, as merging it on GitHub would. Moves no branch: merge into origin yourself. */
   mergePullRequest(url: string, headRefOid: string, mergeCommit?: string): void;
   /**
@@ -166,6 +170,20 @@ if (group === "pr" && command === "edit") {
   if (flags.base !== undefined) pr.base = flags.base;
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
   process.stdout.write(pr.url + "\n");
+  process.exit(0);
+}
+
+if (group === "pr" && command === "close") {
+  const pr = state.pullRequests.find((p) => p.url === rest[0]);
+  if (!pr) fail("no pull requests found for " + rest[0], 1);
+  if (pr.state === "CLOSED") {
+    process.stderr.write("! Pull request " + pr.url.replace(/^.*\/pull\//, "#") + " (" + pr.title + ") is already closed\n");
+    process.exit(0);
+  }
+  pr.state = "CLOSED";
+  if (flags.comment !== undefined) pr.comments = (pr.comments || []).concat([flags.comment]);
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  process.stderr.write("✓ Closed pull request " + pr.url.replace(/^.*\/pull\//, "#") + " (" + pr.title + ")\n");
   process.exit(0);
 }
 
@@ -332,6 +350,13 @@ export function createGhStandIn(): GhStandIn {
       return url;
     },
     calls: () => read().calls ?? [],
+    closePullRequest: (url) => {
+      const state = read();
+      const pr = state.pullRequests.find((p) => p.url === url);
+      if (!pr) throw new Error(`no pull request ${url}`);
+      pr.state = "CLOSED";
+      write(state);
+    },
     mergePullRequest,
     merge: (url, method, origin) => {
       const pr = read().pullRequests.find((p) => p.url === url);

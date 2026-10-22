@@ -91,6 +91,30 @@ describe("the gh stand-in's pull requests", () => {
     expect(gh.pullRequests()[0]).toMatchObject({ url, base: "other" });
   });
 
+  it("closes a pull request with a comment through pr close, and says so when it was closed already", () => {
+    const repo = initTempRepo("stand-in-close-", { "a.txt": "a\n" });
+    addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    const url = run(gh.command, ["pr", "create", "--base=main", "--head=a", "--title=T", "--body=B"], repo).stdout.trim();
+
+    expect(run(gh.command, ["pr", "close", url, "--comment", "Built on a closed one."], repo).status).toBe(0);
+    expect(gh.pullRequests()[0]).toMatchObject({ url, state: "CLOSED", comments: ["Built on a closed one."] });
+
+    const again = run(gh.command, ["pr", "close", url, "--comment", "Again."], repo);
+    expect(again.status).toBe(0);
+    expect(again.stderr).toContain("already closed");
+    expect(gh.pullRequests()[0]?.comments).toEqual(["Built on a closed one."]);
+  });
+
+  it("lets a test close a pull request as the owner would", () => {
+    const repo = initTempRepo("stand-in-owner-close-", { "a.txt": "a\n" });
+    addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    const url = run(gh.command, ["pr", "create", "--base=main", "--head=a", "--title=T", "--body=B"], repo).stdout.trim();
+    gh.closePullRequest(url);
+    expect(gh.pullRequests()[0]).toMatchObject({ state: "CLOSED" });
+  });
+
   it("refuses to create a pull request whose head has no commits beyond its base", () => {
     const repo = initTempRepo("stand-in-empty-", { "a.txt": "a\n" });
     addLocalOrigin(repo);
