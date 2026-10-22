@@ -169,7 +169,8 @@ describe("the commit a close records", () => {
     expect(JSON.parse(lines.at(-1) ?? "").t).toBe("close");
     writeFileSync(log, lines.slice(0, -1).map((line) => `${line}\n`).join(""));
     const caseJsonPath = join(dir, "case.json");
-    const { outcome: _lost, ...caseJson } = JSON.parse(readFileSync(caseJsonPath, "utf-8"));
+    const caseJson = JSON.parse(readFileSync(caseJsonPath, "utf-8"));
+    delete caseJson.outcome;
     writeFileSync(caseJsonPath, JSON.stringify(caseJson));
     await updateCursor(dir, { state: "CLOSING" });
   }
