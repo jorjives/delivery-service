@@ -38,11 +38,15 @@ export const noSuchSchedule = (name: string, repoPath: string): string =>
 /** This build's own entry point: `dist/cli/main.js` beside this file once built. */
 const MAIN = fileURLToPath(new URL("./main.js", import.meta.url));
 
+/** The repository the command is about: `--repo`, or the one around the working directory. */
+const repositoryOf = (options: ScheduleOptions, ctx: CommandContext): Promise<string> =>
+  findRepository(resolve(ctx.cwd, options.repo ?? "."));
+
 /** `delivery schedule enable`: install and start this project's timer, or refuse with the cron line to use instead. */
 export async function scheduleEnableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
   const name = parseName(options.name);
   const every = parseInterval(options.every ?? DEFAULT_INTERVAL);
-  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+  const repoPath = await repositoryOf(options, ctx);
   const schedule: Schedule = {
     repoPath,
     name,
@@ -64,7 +68,7 @@ export async function scheduleEnableCommand(options: ScheduleOptions, ctx: Comma
  * next ran, as systemd says; or only the one `--name` names.
  */
 export async function scheduleStatusCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
-  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+  const repoPath = await repositoryOf(options, ctx);
   const wanted = options.name === undefined ? undefined : parseName(options.name);
   const installed = await selectBackend().list(repoPath, ctx.env);
   const shown = wanted === undefined ? installed : installed.filter((schedule) => schedule.name === wanted);
@@ -88,7 +92,7 @@ export async function scheduleStatusCommand(options: ScheduleOptions, ctx: Comma
 
 /** `delivery schedule disable`: stop and remove this project's timer. A run already going finishes; running by hand is untouched. */
 export async function scheduleDisableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
-  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+  const repoPath = await repositoryOf(options, ctx);
   const removed = await selectBackend().remove(repoPath, DEFAULT_NAME, ctx.env);
   ctx.writeLine(removed ? turnedOff(repoPath) : alreadyOff(repoPath));
   return EXIT.ok;
