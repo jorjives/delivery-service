@@ -72,6 +72,12 @@ describe("CloserRef", () => {
   it("accepts the open-pr closer named with no parameters", () => {
     expect(CloserRef.parse({ type: "open-pr" })).toEqual({ type: "open-pr" });
   });
+
+  it("accepts stack on open-pr, true or false, and leaves it out by default", () => {
+    expect(CloserRef.parse({ type: "open-pr", stack: true })).toEqual({ type: "open-pr", stack: true });
+    expect(CloserRef.parse({ type: "open-pr", stack: false })).toEqual({ type: "open-pr", stack: false });
+    expect(CloserRef.parse({ type: "open-pr" })).not.toHaveProperty("stack");
+  });
 });
 
 describe("CloseReport", () => {

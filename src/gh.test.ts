@@ -26,8 +26,9 @@ describe("gh failures", () => {
   it("runs gh from the given environment's PATH, and reports a missing gh as missing", async () => {
     const standIn = createGhStandIn();
     // The stand-in is a `#!/usr/bin/env node` script, so node's own directory must stay on PATH.
-    expect(await runGh(["pr", "list", "--head=x", "--state=open", "--json=url"], { cwd: standIn.binDir, env: { PATH: `${standIn.binDir}:${dirname(process.execPath)}` } })).toBe("[]");
-    const err = await runGh(["pr", "list"], { cwd: standIn.binDir, env: { PATH: "/nonexistent" } }).catch((e: unknown) => e);
+    const graphql = ["api", "graphql", "-f", "query=query{repository(owner:$owner,name:$name){p0:pullRequests(headRefName:$h0,states:[OPEN]){nodes{url}}}}", "-f", "h0=x", "-F", "owner={owner}", "-F", "name={repo}"];
+    expect(await runGh(graphql, { cwd: standIn.binDir, env: { PATH: `${standIn.binDir}:${dirname(process.execPath)}` } })).toBe(JSON.stringify({ data: { repository: { p0: { nodes: [] } } } }));
+    const err = await runGh(graphql, { cwd: standIn.binDir, env: { PATH: "/nonexistent" } }).catch((e: unknown) => e);
     expect(ghFailureOf(err)).toMatchObject({ missing: true });
   });
 });

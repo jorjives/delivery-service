@@ -52,7 +52,7 @@ Examples, in the delivery-service repo: `examples/project-configuration-example/
 ## Choosing well
 
 - **Gate:** reuse the project's existing verify command rather than inventing one.
-- **Closer:** `commit-to-branch` is the safe default. `open-pr` needs a remote and a signed-in `gh`. `merge-back` lands work with no human look.
+- **Closer:** `commit-to-branch` is the safe default. `open-pr` needs a remote and a signed-in `gh`. `open-pr` with `"stack": true` opens one pull request per item, stacked; needs git 2.38+. `merge-back` lands work with no human look.
 - **Guards:** turn one off per task only with a stated reason.
 - **Conventions:** put project rules in `agent.append` (or point it at `CONTRIBUTING.md`), not in `domain`.
 

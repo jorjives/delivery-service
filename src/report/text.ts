@@ -215,6 +215,17 @@ export function heldLines(held: readonly HeldSequence[]): string[] {
   return ["", "Sequences waiting, nothing later in each is started until the item holding it moves on:", ...held.map(line)];
 }
 
+/** A stacked delivery branch's levels, bottom first: each with its intent, item, and its pull request's link and state, or none yet. */
+function stackLines(delivery: ReportDelivery): string[] {
+  return [
+    `Stacked pull requests on ${pathName(delivery.base)}, bottom first:`,
+    ...delivery.stack.map((level, i) => {
+      const pr = level.pr === null ? "no pull request yet" : `${pathName(level.pr.url)}, ${level.pr.state.toLowerCase()}`;
+      return `- ${i + 1}. ${stripControl(level.intent)} (${pathName(level.item)}): ${pr}`;
+    }),
+  ];
+}
+
 /** The delivery branch: what landed on it since it opened, what the closer last did with it, and what blocks it. */
 export function deliveryLines(delivery: ReportDelivery | null): string[] {
   if (delivery === null) return [];
@@ -226,6 +237,7 @@ export function deliveryLines(delivery: ReportDelivery | null): string[] {
       ? ["- nothing has landed on it yet"]
       : delivery.landed.map((task) => `- ${when(task.at)}: ${stripControl(task.intent)} (${pathName(task.item)}, run ${pathName(task.run)})`)),
     delivery.closer === null ? "Your closer has not taken it yet." : `Your closer, ${when(delivery.closer.at)}: ${stripControl(delivery.closer.detail)}`,
+    ...(delivery.stack.length === 0 ? [] : stackLines(delivery)),
     ...(delivery.blocked === null ? [] : [`Blocked, ${when(delivery.blocked.at)}: ${stripControl(delivery.blocked.reason)}`]),
   ];
 }

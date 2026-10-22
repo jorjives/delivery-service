@@ -112,7 +112,7 @@ An object. What happens to work that passes. Default: `{ "type": "commit-to-bran
 |---|---|---|
 | `commit-to-branch` | None | Leaves the work on its branch for you to merge |
 | `merge-back` | `deleteBranch`, default `true` | Merges the work into the branch you started from, then deletes the branch unless `deleteBranch` is `false` |
-| `open-pr` | None | Opens a pull request with the GitHub command-line tool, `gh` |
+| `open-pr` | `stack`, default `false` | Opens a pull request with the GitHub command-line tool, `gh`. With `stack`, one pull request per delivered item, each on the one below; see [Stacked pull requests](concepts.md#stacked-pull-requests) |
 | `custom` | `modulePath`, required; `exportName`, default `default` | Runs a closer of your own |
 
 See [Write a closer](writing-a-closer.md).

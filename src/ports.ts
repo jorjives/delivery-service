@@ -160,6 +160,21 @@ export interface DeliveredTask {
   closes?: string;
 }
 
+/**
+ * One level of a stack: a task that landed on the stacked delivery branch, with the branch its own commits sit on. The
+ * closer of a stack publishes each level as a pull request on the level below.
+ */
+export interface DeliveredLevel extends DeliveredTask {
+  /** The task's text, which becomes the body of its pull request. */
+  text: string;
+  /** The level's own branch, such as `delivery-stack/main/<run>`. */
+  ref: string;
+  /** The commit the level's branch holds: this task's own commits on top of the level below. */
+  commit: string;
+  /** The ref of the level below, or the base branch for the bottom level. */
+  parent: string;
+}
+
 export interface CloseContext {
   worktreePath: string;
   dir: string;
@@ -167,8 +182,12 @@ export interface CloseContext {
   branch: string;
   baseBranch: string;
   repairBrief?: CloseRepairBrief;
-  /** Set when the closer acts on a delivery branch: every task landed on it since it opened, oldest first. `dir` then holds no case file. */
-  delivery?: { landed: readonly DeliveredTask[] };
+  /**
+   * Set when the closer acts on a delivery branch: every task landed on it since it opened, oldest first. `dir` then holds
+   * no case file. `stack`, when set, is the same work as one level per task, bottom first, for a closer that publishes a
+   * stack of pull requests.
+   */
+  delivery?: { landed: readonly DeliveredTask[]; stack?: readonly DeliveredLevel[] };
 }
 
 export interface CloseOutcome {
