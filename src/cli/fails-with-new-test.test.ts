@@ -9,7 +9,7 @@ import { countsNewAssertions } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
 import { presetGate, type GatePreset } from "./gate-presets.js";
 
-const preset = { type: "fails-with-new-test", command: "sh run-tests.sh" } as unknown as GatePreset;
+const preset: GatePreset = { type: "fails-with-new-test", command: "sh run-tests.sh" };
 
 // A stand-in test runner: it fails while any file under tests/ says it fails.
 const RUNNER = "! grep -rl 'fails' tests 2>/dev/null\n";
