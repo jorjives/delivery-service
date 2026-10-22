@@ -19,7 +19,7 @@ import { afterLanding } from "./after-landing.js";
 import { previewCommand } from "./preview-command.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
 import { queueTasks } from "./queue.js";
-import { refuseIfRunGoing } from "./run-exclusion.js";
+import { holdingRepo } from "./run-exclusion.js";
 import { allRuns, readRun } from "./runs.js";
 import { checkCustomModules, resolveProject, workflowFrom } from "./settings.js";
 import { closingReport } from "./report-command.js";
@@ -73,34 +73,36 @@ export async function reviewCommand(packName: string, repoArg: string | undefine
   const taskDef = reviewTask(pack, part);
   if (options.preview === true) return previewCommand({ repo: repoPath, role: "worker", step: "scan", workflow: workflowName, task: taskIntent(taskDef) }, ctx);
 
-  await refuseIfRunGoing(repoPath);
-  const project = await resolveProject({ closer: "merge-back" }, { env: ctx.env, repoPath, config });
-  const workflow = await workflowFrom(workflowName, config, repoPath);
-  await checkCustomModules(project.gateRef, project.closerRef, repoPath, workflow);
-  const tracker = trackerSource(config);
-  const session = await agentSession(ctx.env);
-  const fenceRecord = await fenceAtStart(project.fence, repoPath, ctx);
-  if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
-  const runId = runIdFor(taskIntent(taskDef), new Date());
-  const key = `review:${pack.manifest.name}`;
-  const item = tracker === undefined ? undefined : { key, source: sourceName(tracker), id: pack.manifest.name, raise: true as const };
-  const exitCode = await startRun({ repoPath, ...project, taskDef, workflow, runId, fenceRecord, ...(item === undefined ? {} : { item }) }, session, ctx);
-  const record = await readRun(repoPath, runId);
-  if (record.caseFile.outcome?.kind === "closed") {
-    if (tracker === undefined) {
-      const added = await addedIdeas(repoPath, record);
-      for (const line of reviewed(added)) ctx.writeLine(line);
-    } else {
-      // Raised through the after phase, so a raise that fails is retried by the next `delivery run --sources` (spec 5.7).
-      const base = record.caseFile.header.baseBranch ?? (await resolveBaseRef(repoPath)).localBranch;
-      const commit = await git(repoPath, ["rev-parse", `refs/heads/${base}`]);
-      const after = afterLanding({ repoPath, config, project, itemLedger: ledgerPath(repoPath, ctx.env), branch: base, base, records: () => allRuns(repoPath) }, ctx);
-      await after.landed({ landed: [{ t: "landed", branch: base, runId, key, intent: taskIntent(taskDef), commit, at: new Date().toISOString() }], commit });
-      for (const line of raised((await heldFollowUps(record.dir)).length, sourceName(tracker))) ctx.writeLine(line);
+  // Scanning drives the checkout as any run does, so the review holds the repository while its agent works.
+  return holdingRepo(repoPath, {}, ctx, async () => {
+    const project = await resolveProject({ closer: "merge-back" }, { env: ctx.env, repoPath, config });
+    const workflow = await workflowFrom(workflowName, config, repoPath);
+    await checkCustomModules(project.gateRef, project.closerRef, repoPath, workflow);
+    const tracker = trackerSource(config);
+    const session = await agentSession(ctx.env);
+    const fenceRecord = await fenceAtStart(project.fence, repoPath, ctx);
+    if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
+    const runId = runIdFor(taskIntent(taskDef), new Date());
+    const key = `review:${pack.manifest.name}`;
+    const item = tracker === undefined ? undefined : { key, source: sourceName(tracker), id: pack.manifest.name, raise: true as const };
+    const exitCode = await startRun({ repoPath, ...project, taskDef, workflow, runId, fenceRecord, ...(item === undefined ? {} : { item }) }, session, ctx);
+    const record = await readRun(repoPath, runId);
+    if (record.caseFile.outcome?.kind === "closed") {
+      if (tracker === undefined) {
+        const added = await addedIdeas(repoPath, record);
+        for (const line of reviewed(added)) ctx.writeLine(line);
+      } else {
+        // Raised through the after phase, so a raise that fails is retried by the next `delivery run --sources` (spec 5.7).
+        const base = record.caseFile.header.baseBranch ?? (await resolveBaseRef(repoPath)).localBranch;
+        const commit = await git(repoPath, ["rev-parse", `refs/heads/${base}`]);
+        const after = afterLanding({ repoPath, config, project, itemLedger: ledgerPath(repoPath, ctx.env), branch: base, base, records: () => allRuns(repoPath) }, ctx);
+        await after.landed({ landed: [{ t: "landed", branch: base, runId, key, intent: taskIntent(taskDef), commit, at: new Date().toISOString() }], commit });
+        for (const line of raised((await heldFollowUps(record.dir)).length, sourceName(tracker))) ctx.writeLine(line);
+      }
     }
-  }
-  await closingReport(repoPath, { kind: "task", runId }, queueTasks(config), ctx, config.notify);
-  return exitCode;
+    await closingReport(repoPath, { kind: "task", runId }, queueTasks(config), ctx, config.notify);
+    return exitCode;
+  });
 }
 
 /** How many ideas the review's run merged onto the branch it started from. */

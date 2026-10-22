@@ -42,9 +42,9 @@ Full message: `There's a run that didn't finish (started `<time>`, task: `<task>
 
 ### Another run is already going here
 
-Full message: `Another run is already going here (started `<time>`, <shape>: `<run-id>`). Run `delivery status` to see how it is getting on, or wait for it to finish before starting another.`
+Full message: `Another run is already going here (started `<time>`, <shape>: `<run-id>`). Run `delivery status` to see how it is getting on, or wait for it to finish before starting another.` The bracketed `(started ..., <shape>: <run-id>)` part appears only when the run going is one of several tasks at once.
 
-**Why.** A run of a task list or a work source is still under way in this repository, and only one may drive it at a time.
+**Why.** Another `delivery run`, `resume`, `sign-off` or `review` is under way in this repository, one at a time or several at once, and only one may drive it.
 
 **Fix.** Run `delivery status` to watch it. Start the next command when it has finished.
 

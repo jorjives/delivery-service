@@ -9,14 +9,12 @@ import { agentSession } from "./agent-session.js";
 import { structureTask, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { dispatchRepair, fenceAtStart, resumeRun, startRun, type RunStart } from "./drive.js";
-import { EXIT, Refusal, type ExitCode } from "./failures.js";
+import { EXIT, type ExitCode } from "./failures.js";
 import { reportOutcome } from "./outcome.js";
 import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "../run-location.js";
 import type { RunRecord } from "../run-records.js";
 import { findQueueRun, stillToTake, taskIntent, type QueuePosition } from "../task-list.js";
 import { allRuns, describeRun, readRun, unfinishedSupervisedRun } from "./runs.js";
-import { takeRepoLock } from "../repo-lock.js";
-import { liveRunFound } from "./run-exclusion.js";
 import type { ProjectSettings } from "./settings.js";
 
 /** Everything this project's list asks for, in the order it was written. */
@@ -185,6 +183,8 @@ async function stopForEnvironment(repoPath: string, dir: string, runId: string, 
  * never stops the rest, even one at a time, and the list ends without asking the owner to add to it.
  * `skip` is the same list's precondition: asked as each not-yet-started task is about to start, so
  * a task made pointless by an earlier one in the same pass is passed over without spending an agent session.
+ *
+ * The command that called this holds the repository for as long as it runs, so no second run can start on top of it.
  */
 export async function runQueue(
   tasks: TaskDef[],
@@ -211,133 +211,122 @@ export async function runQueue(
   let unfinished = await unfinishedSupervisedRun(repoPath);
   const concurrency = unfinished?.runFile.header.concurrency ?? project.concurrency;
 
-  // A run of several at once holds the repository for as long as it runs, so a second cannot start on top of it.
-  // One at a time takes no lock: every command has already refused to start while one is held.
-  let release: (() => Promise<void>) | undefined;
-  if (concurrency > 1) {
-    release = await takeRepoLock(repoPath);
-    if (release === undefined) throw new Refusal(liveRunFound(unfinished?.runFile.header), EXIT.configuration);
+  // A run that gave up on its environment but was stopped before it could say so ends now, then a new run picks up the held tasks.
+  if (unfinished?.runFile.history.some((entry) => entry.t === "run_escalated")) {
+    await stopForEnvironment(repoPath, unfinished.dir, unfinished.runFile.header.runId, tasks, ctx);
+    unfinished = undefined; // Clear so a new run can start
   }
+
+  let breaker: RunBreaker | undefined;
+  // Tasks the list's own precondition passed over in this invocation: never claimed, never asked about again.
+  const passedOver: TaskDef[] = [];
+  const next = async (claimed: readonly QueueClaim[]): Promise<QueueClaim | undefined> => {
+    if (breaker?.gaveUp !== undefined) return undefined;
+    if (claims !== undefined) return claims.next(claimed);
+    for (;;) {
+      const records = await allRuns(repoPath);
+      const position = nextQueueTask(records, tasks, [...claimed.map((claim) => claim.taskDef), ...passedOver]);
+      const taskDef = position === undefined ? undefined : tasks[position.task - 1];
+      if (position === undefined || taskDef === undefined) return undefined;
+      const existing = findQueueRun(records, taskDef);
+      // A task with no run yet is asked, just before it would start, whether it still needs doing.
+      if (existing === undefined && (await skip?.(taskDef))) {
+        passedOver.push(taskDef);
+        continue;
+      }
+      // A run started a moment ago by another slot may not be on disk yet, so its id counts as taken too.
+      const taken = new Set([...records.map((record) => record.runId), ...claimed.map((claim) => claim.surfaceId)]);
+      return { taskDef, position, existing, surfaceId: existing?.runId ?? runIdFor(taskIntent(taskDef), new Date(), taken) };
+    }
+  };
+
+  if ((await next([])) === undefined) {
+    // Every task a stopped run was still to take has been delivered since, so that run is over too.
+    if (unfinished) await setRunOutcome(unfinished.dir, { kind: "drained", at: new Date().toISOString() });
+    if (!carryOn) ctx.report.note(EVERY_TASK_DONE);
+    return EXIT.ok;
+  }
+
+  const runId = unfinished?.runFile.header.runId ?? (concurrency > 1 ? supervisedRunId(new Date()) : undefined);
+
+  let record: { dir: string } | undefined;
+  if (unfinished) {
+    record = { dir: unfinished.dir };
+    ctx.report.note(runPickedUp(unfinished.runFile.header.runId, tasks.length, concurrency));
+    ctx.report.run({ runId: unfinished.runFile.header.runId, state: "RESUMED" });
+  } else if (runId !== undefined) {
+    const dir = supervisedPlace(repoPath, runId);
+    await prepareRunDir(repoPath, dir);
+    await createRunFile(dir, { runId, repoPath, concurrency, tasks: tasks.length, runBudgetMax: { gateMaintenance: project.budgets.gateMaintenance.max } });
+    record = { dir };
+    ctx.report.note(runShape(runId, tasks.length, concurrency));
+    ctx.report.run({ runId, state: "STARTED" });
+  }
+
+  if (record !== undefined && runId !== undefined) {
+    breaker = createRunBreaker({
+      dir: record.dir,
+      history: unfinished?.runFile.history ?? [],
+      limit: unfinished?.runFile.header.runBudgetMax.gateMaintenance ?? project.budgets.gateMaintenance.max,
+      dispatch: async (surfaceId, sessionKey) => dispatchRepair(await readRun(repoPath, surfaceId), sessionKey, await agent(), ctx.env),
+      onChange: (change) => ctx.report.run({ runId, ...change }),
+    });
+  }
+
+  const drive = async (claim: QueueClaim): Promise<SlotOutcome> => {
+    const { taskDef, surfaceId, position, existing } = claim;
+    const report =
+      runId === undefined ? ctx.report : ctx.report.forTask({ runId, ordinal: position.task, of: position.of, id: surfaceId });
+    const taskCtx: CommandContext = { ...ctx, report, ...(breaker === undefined ? {} : { repairCoordinator: breaker }) };
+    // One at a time, a heading frames each task. Several at once, the tag says where it sits and the run's own
+    // first line names the task, except for one that already ended, which is named here before it is retold.
+    if (runId === undefined) report.note(taskHeading(position, taskIntent(taskDef)));
+    else if (existing?.caseFile.outcome) report.note(describeRun(existing));
+
+    const exitCode =
+      existing === undefined
+        ? await (async () => {
+            await claims?.starting?.(claim);
+            return startRun({ repoPath, taskDef, runId: surfaceId, ...project, ...claim.start, fenceRecord: await fence() }, await agent(), taskCtx);
+          })()
+        : existing.caseFile.outcome
+          ? // What a run that already ended did, said again for whoever is looking at the list today rather than watching that run.
+            await reportOutcome(existing.dir, existing.caseFile, taskCtx)
+          : await resumeRun(existing, taskCtx, await agent());
+
+    if (runId === undefined && !carryOn && exitCode !== EXIT.ok) report.note(listStopped(position, exitCode));
+    const outcome = slotOutcome(exitCode);
+    await claims?.ended?.(claim, outcome);
+    return outcome;
+  };
+
+  // With several at once, a stop ends the command immediately with the stopped code. Immediately, because Ctrl-C
+  // reaches the agents and checks too, and whatever they reported while shutting down would otherwise be written
+  // into the tasks' records as though it had really happened. Leaving each record exactly as a crash would is
+  // safe: the next run already knows how to pick that up. The lock is released with the process. With one at a
+  // time, a stop ends the command as it always has.
+  const disarm = runId === undefined ? undefined : ctx.exitOnInterrupt?.(EXIT.aborted, STOPPED_PART_WAY);
+  let settled: Settled<QueueClaim>[];
   try {
-    // A run that gave up on its environment but was stopped before it could say so ends now, then a new run picks up the held tasks.
-    if (unfinished?.runFile.history.some((entry) => entry.t === "run_escalated")) {
-      await stopForEnvironment(repoPath, unfinished.dir, unfinished.runFile.header.runId, tasks, ctx);
-      unfinished = undefined; // Clear so a new run can start
+    settled = await supervise({ slots: concurrency, next, drive, waitOnSetback: runId === undefined && !carryOn, record });
+  } catch (err) {
+    // A task stopped at its next check or hand-off because the run gave up on the shared environment.
+    if (err instanceof RunHalted && record !== undefined && runId !== undefined) {
+      return await stopForEnvironment(repoPath, record.dir, runId, tasks, ctx);
     }
-
-    let breaker: RunBreaker | undefined;
-    // Tasks the list's own precondition passed over in this invocation: never claimed, never asked about again.
-    const passedOver: TaskDef[] = [];
-    const next = async (claimed: readonly QueueClaim[]): Promise<QueueClaim | undefined> => {
-      if (breaker?.gaveUp !== undefined) return undefined;
-      if (claims !== undefined) return claims.next(claimed);
-      for (;;) {
-        const records = await allRuns(repoPath);
-        const position = nextQueueTask(records, tasks, [...claimed.map((claim) => claim.taskDef), ...passedOver]);
-        const taskDef = position === undefined ? undefined : tasks[position.task - 1];
-        if (position === undefined || taskDef === undefined) return undefined;
-        const existing = findQueueRun(records, taskDef);
-        // A task with no run yet is asked, just before it would start, whether it still needs doing.
-        if (existing === undefined && (await skip?.(taskDef))) {
-          passedOver.push(taskDef);
-          continue;
-        }
-        // A run started a moment ago by another slot may not be on disk yet, so its id counts as taken too.
-        const taken = new Set([...records.map((record) => record.runId), ...claimed.map((claim) => claim.surfaceId)]);
-        return { taskDef, position, existing, surfaceId: existing?.runId ?? runIdFor(taskIntent(taskDef), new Date(), taken) };
-      }
-    };
-
-    if ((await next([])) === undefined) {
-      // Every task a stopped run was still to take has been delivered since, so that run is over too.
-      if (unfinished) await setRunOutcome(unfinished.dir, { kind: "drained", at: new Date().toISOString() });
-      if (!carryOn) ctx.report.note(EVERY_TASK_DONE);
-      return EXIT.ok;
-    }
-
-    const runId = unfinished?.runFile.header.runId ?? (concurrency > 1 ? supervisedRunId(new Date()) : undefined);
-
-    let record: { dir: string } | undefined;
-    if (unfinished) {
-      record = { dir: unfinished.dir };
-      ctx.report.note(runPickedUp(unfinished.runFile.header.runId, tasks.length, concurrency));
-      ctx.report.run({ runId: unfinished.runFile.header.runId, state: "RESUMED" });
-    } else if (runId !== undefined) {
-      const dir = supervisedPlace(repoPath, runId);
-      await prepareRunDir(repoPath, dir);
-      await createRunFile(dir, { runId, repoPath, concurrency, tasks: tasks.length, runBudgetMax: { gateMaintenance: project.budgets.gateMaintenance.max } });
-      record = { dir };
-      ctx.report.note(runShape(runId, tasks.length, concurrency));
-      ctx.report.run({ runId, state: "STARTED" });
-    }
-
-    if (record !== undefined && runId !== undefined) {
-      breaker = createRunBreaker({
-        dir: record.dir,
-        history: unfinished?.runFile.history ?? [],
-        limit: unfinished?.runFile.header.runBudgetMax.gateMaintenance ?? project.budgets.gateMaintenance.max,
-        dispatch: async (surfaceId, sessionKey) => dispatchRepair(await readRun(repoPath, surfaceId), sessionKey, await agent(), ctx.env),
-        onChange: (change) => ctx.report.run({ runId, ...change }),
-      });
-    }
-
-    const drive = async (claim: QueueClaim): Promise<SlotOutcome> => {
-      const { taskDef, surfaceId, position, existing } = claim;
-      const report =
-        runId === undefined ? ctx.report : ctx.report.forTask({ runId, ordinal: position.task, of: position.of, id: surfaceId });
-      const taskCtx: CommandContext = { ...ctx, report, ...(breaker === undefined ? {} : { repairCoordinator: breaker }) };
-      // One at a time, a heading frames each task. Several at once, the tag says where it sits and the run's own
-      // first line names the task, except for one that already ended, which is named here before it is retold.
-      if (runId === undefined) report.note(taskHeading(position, taskIntent(taskDef)));
-      else if (existing?.caseFile.outcome) report.note(describeRun(existing));
-
-      const exitCode =
-        existing === undefined
-          ? await (async () => {
-              await claims?.starting?.(claim);
-              return startRun({ repoPath, taskDef, runId: surfaceId, ...project, ...claim.start, fenceRecord: await fence() }, await agent(), taskCtx);
-            })()
-          : existing.caseFile.outcome
-            ? // What a run that already ended did, said again for whoever is looking at the list today rather than watching that run.
-              await reportOutcome(existing.dir, existing.caseFile, taskCtx)
-            : await resumeRun(existing, taskCtx, await agent());
-
-      if (runId === undefined && !carryOn && exitCode !== EXIT.ok) report.note(listStopped(position, exitCode));
-      const outcome = slotOutcome(exitCode);
-      await claims?.ended?.(claim, outcome);
-      return outcome;
-    };
-
-    // With several at once, a stop ends the command immediately with the stopped code. Immediately, because Ctrl-C
-    // reaches the agents and checks too, and whatever they reported while shutting down would otherwise be written
-    // into the tasks' records as though it had really happened. Leaving each record exactly as a crash would is
-    // safe: the next run already knows how to pick that up. The lock is released with the process. With one at a
-    // time, a stop ends the command as it always has.
-    const disarm = runId === undefined ? undefined : ctx.exitOnInterrupt?.(EXIT.aborted, STOPPED_PART_WAY);
-    let settled: Settled<QueueClaim>[];
-    try {
-      settled = await supervise({ slots: concurrency, next, drive, waitOnSetback: runId === undefined && !carryOn, record });
-    } catch (err) {
-      // A task stopped at its next check or hand-off because the run gave up on the shared environment.
-      if (err instanceof RunHalted && record !== undefined && runId !== undefined) {
-        return await stopForEnvironment(repoPath, record.dir, runId, tasks, ctx);
-      }
-      throw err;
-    } finally {
-      disarm?.();
-    }
-
-    if (runId !== undefined) ctx.report.run({ runId, state: "DRAINED" });
-    const exitCode = listExitCode(settled.map(({ outcome }) => outcome));
-    if (exitCode === EXIT.ok) {
-      if (!carryOn) ctx.report.note(EVERY_TASK_DONE);
-    } else if (runId !== undefined || carryOn) {
-      for (const { claim, outcome } of settled.toSorted((a, b) => a.claim.position.task - b.claim.position.task)) {
-        if (outcome !== "closed") ctx.report.note(taskEnded(claim.position, outcome));
-      }
-    }
-    return exitCode;
+    throw err;
   } finally {
-    await release?.();
+    disarm?.();
   }
+
+  if (runId !== undefined) ctx.report.run({ runId, state: "DRAINED" });
+  const exitCode = listExitCode(settled.map(({ outcome }) => outcome));
+  if (exitCode === EXIT.ok) {
+    if (!carryOn) ctx.report.note(EVERY_TASK_DONE);
+  } else if (runId !== undefined || carryOn) {
+    for (const { claim, outcome } of settled.toSorted((a, b) => a.claim.position.task - b.claim.position.task)) {
+      if (outcome !== "closed") ctx.report.note(taskEnded(claim.position, outcome));
+    }
+  }
+  return exitCode;
 }

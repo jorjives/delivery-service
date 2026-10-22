@@ -1183,6 +1183,30 @@ describe("delivery run with several tasks at once", () => {
     }
   });
 
+  it.each([
+    ["a list worked one at a time", ["run"], { tasks: [PAGE, SWAP] }],
+    ["a single task", ["run", "--task", TASK], {}],
+  ])("refuses a second run while %s is going here, and the first carries on", async (_, args, config) => {
+    const repo = listRepo("run-command-one-live-", config);
+    const first = delivery(args, { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile({ ...completes, delayMs: 1000 }) } });
+    await vi.waitFor(async () => expect(await repoLocked(repo)).toBe(true), { timeout: 30_000, interval: 50 });
+
+    const second = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+    expect(second.exitCode).toBe(EXIT.configuration);
+    expect(second.stderr.trimEnd()).toBe(liveRunFound(undefined));
+    expect(second.stdout).toBe("");
+    expect((await first).exitCode).toBe(EXIT.ok);
+    expect(await repoLocked(repo)).toBe(false);
+  }, RUN_TIMEOUT * 2);
+
+  it("lets the lock go when it refuses for another reason after taking it", async () => {
+    const repo = listRepo("run-command-lock-refused-", { tasks: [PAGE] });
+    const { exitCode } = await delivery(["run", "--max", "2"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(await repoLocked(repo)).toBe(false);
+  });
+
   it(
     "holds the repository's lock for as long as it runs, and lets it go at the end",
     async () => {
@@ -1202,7 +1226,7 @@ describe("delivery run with several tasks at once", () => {
       const repo = listRepo("run-command-lock-stale-", { tasks: [PAGE], concurrency: 2 });
       await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } });
       // A run killed outright leaves its lock behind, no longer kept fresh by anyone.
-      mkdirSync(supervisorLockPath(repo));
+      mkdirSync(supervisorLockPath(repo), { recursive: true });
       const aMinuteAgo = new Date(Date.now() - 60_000);
       utimesSync(supervisorLockPath(repo), aMinuteAgo, aMinuteAgo);
 

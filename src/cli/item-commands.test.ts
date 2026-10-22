@@ -13,6 +13,8 @@ import { completes, delivery, PACKAGE, RUN_TIMEOUT, scriptFile } from "./command
 import { EXIT } from "./failures.js";
 import { answered, notParked, notWaitingForAnswer, signedOff, unparked } from "./item-commands.js";
 import { branchName } from "../provision.js";
+import { takeRepoLock } from "../repo-lock.js";
+import { liveRunFound } from "./run-exclusion.js";
 
 const at = "2026-10-16T09:00:00.000Z";
 const KEY = "backlog:20261016T090000Z-greet.md";
@@ -94,6 +96,23 @@ describe("delivery sign-off", () => {
     expect(git(repo, ["show", `delivery/main:hello.js`])).toContain("hello");
     expect(git(repo, ["show", `delivery/main:.delivery/backlog/${HELD}`])).toContain("status: resolved");
     expect((await readItemLedger(ledgerPath(repo, env))).get(HELD_KEY)).toMatchObject({ lastClass: "delivered", parked: null });
+  }, RUN_TIMEOUT);
+
+  it("refuses to sign off while another run is going here, leaving the held item held", async () => {
+    const repo = heldProject();
+    const state = mkdtempSync(join(tmpdir(), "sign-off-lock-state-"));
+    const env = { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(completes) };
+    await delivery(["run", "--sources"], { cwd: repo, env });
+    const release = await takeRepoLock(repo);
+    try {
+      const { exitCode, stderr } = await delivery(["sign-off", "key-in-code"], { cwd: repo, env });
+      expect(exitCode).toBe(EXIT.configuration);
+      expect(stderr.trimEnd()).toBe(liveRunFound(undefined));
+      expect((await readItemLedger(ledgerPath(repo, env))).get(HELD_KEY)).toMatchObject({ parked: "held" });
+      expect(() => git(repo, ["show", "delivery/main:hello.js"])).toThrow();
+    } finally {
+      await release?.();
+    }
   }, RUN_TIMEOUT);
 
   it("holds the work again when it no longer passes where it lands, sending it to a worker with the sign-off text", async () => {

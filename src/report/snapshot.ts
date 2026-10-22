@@ -24,7 +24,7 @@ export type RecordRefs = Record<string, Record<string, unknown>>;
 /** Everything a report is derived from, read once. Plain data: `deriveReport` does no reading of its own. */
 export interface RecordSnapshot {
   subject: ReportSubject;
-  /** Whether a run of several at once holds the repository right now. */
+  /** Whether a run holds the repository right now. */
   live: boolean;
   /** The project's task list as written now; empty when it has none. */
   list: TaskDef[];
