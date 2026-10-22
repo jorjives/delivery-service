@@ -53,6 +53,8 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 2: Run Several Named Schedules on One Project
 
+**Status:** ✅ Complete — 2026-10-22 — `9965127`
+
 **Tests:** ✅ Recorded — 2026-10-22 — `aeb5e47` — cli (vitest) — 1 UAT + 5 AC groups (9 checks), 0 skipped
 **Delivers:** A project can have more than one schedule, each with its own name and interval, and `status` shows them all, while an already-installed default schedule keeps working untouched.
 
