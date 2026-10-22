@@ -342,7 +342,7 @@ describe("reconcileStackBranch on a stack of three pull requests", () => {
       const entry = (status: string) => `---\nstatus: ${status}\nworkflow: build\n---\nDo the thing.\n`;
       onOrigin(origin, (clone) => {
         mkdirSync(join(clone, ".delivery/backlog"), { recursive: true });
-        for (const [run, status] of [["r1", "resolved"], ["r2", "resolved"], ["r3", "open"]]) writeFileSync(join(clone, `.delivery/backlog/${run}.md`), entry(status));
+        for (const [run, status] of [["r1", "resolved"], ["r2", "resolved"], ["r3", "open"]] as const) writeFileSync(join(clone, `.delivery/backlog/${run}.md`), entry(status));
         git(clone, ["add", "-A"]);
         git(clone, ["commit", "-q", "-m", "owner: resolve r1 and r2 in the backlog"]);
         git(clone, ["push", "-q", "origin", "HEAD:refs/heads/main"]);
