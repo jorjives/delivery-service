@@ -37,8 +37,8 @@ export async function restackLevels(
       const where = level.pull ?? level.ref;
       const described = `level ${level.position}, ${level.intent} (${where})`;
       await git(scratch, ["checkout", "--detach", parent]);
-      const ctx = deliveryGateContext(scratch, { intent: level.intent, gateRef, base, start: parent, env });
-      const before = await gate.baseline(ctx);
+      const gateContext = () => deliveryGateContext(scratch, { intent: level.intent, gateRef, base, start: parent, env });
+      const before = await gate.baseline(gateContext());
       if (before.status === "ERROR") {
         return { reason: `The checks could not run beneath ${described}, on ${at}, so the stack was left as it is.` };
       }
@@ -50,7 +50,7 @@ export async function restackLevels(
         return { reason: `Moving the stack onto ${at}: ${described}, conflicts in ${files.join(", ")}. Resolve the conflict on that pull request's branch, then run again.` };
       }
       const moved = await git(scratch, ["rev-parse", "HEAD"]);
-      const delta = computeDelta(before, await gate.check(deliveryGateContext(scratch, { intent: level.intent, gateRef, base, start: parent, env })), { failOnNewAssertions: countsNewAssertions(gateRef) });
+      const delta = computeDelta(before, await gate.check(gateContext()), { failOnNewAssertions: countsNewAssertions(gateRef) });
       if (!delta.pass) {
         const ids = delta.newFailures.map((f) => f.id).join(", ");
         return { reason: `Moved onto ${at}, ${described}, fails the checks${ids === "" ? "" : `: ${ids}`}. Fix it on that pull request's branch, then run again.` };
