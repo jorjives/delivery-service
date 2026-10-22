@@ -3,7 +3,7 @@ import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import { promisify } from "node:util";
 import { repoKey } from "../../run-location.js";
-import type { ScheduleTarget } from "./model.js";
+import { BARE_ARG, DEFAULT_NAME, describeSchedule, runArgs, type Schedule } from "./model.js";
 
 const execFile = promisify(execFileCb);
 
@@ -11,8 +11,12 @@ export type SystemctlResult = { ok: true; stdout: string } | { ok: false; reason
 
 export const NO_SYSTEMCTL = "systemctl isn't installed";
 
-/** A project's units are named by its repository key, as Autoloop's `autoloop@<key>` are. */
-export const unitName = (repoPath: string): string => `delivery-${repoKey(repoPath)}`;
+/** The `[Unit]` key that records which schedule a unit pair is, so a repository's schedules are found without a registry. */
+export const MARKER = "X-Delivery-Schedule";
+
+/** A project's units are named by its repository key, as Autoloop's `autoloop@<key>` are; a named schedule adds its name. */
+export const unitName = (repoPath: string, name: string): string =>
+  name === DEFAULT_NAME ? `delivery-${repoKey(repoPath)}` : `delivery-${repoKey(repoPath)}.${name}`;
 
 /** Where the user's own systemd units live. */
 export function unitDir(env: NodeJS.ProcessEnv): string {
@@ -23,32 +27,35 @@ export function unitDir(env: NodeJS.ProcessEnv): string {
 const specifiers = (text: string): string => text.replace(/%/g, "%%");
 const quoted = (text: string): string => `"${specifiers(text.replace(/\\/g, "\\\\").replace(/"/g, '\\"'))}"`;
 const execArg = (text: string): string => quoted(text.replace(/\$/g, "$$$$"));
-const descriptionOf = ({ every, repoPath }: ScheduleTarget): string => `delivery run --sources every ${every.text} in ${specifiers(repoPath)}`;
+const runArg = (token: string): string => (BARE_ARG.test(token) ? token : execArg(token));
+const unitSection = (schedule: Schedule): string[] => [
+  "[Unit]",
+  `Description=${specifiers(describeSchedule(schedule))}`,
+  `${MARKER}=${schedule.name}`,
+  "",
+];
 
-export function serviceUnit(target: ScheduleTarget): string {
+export function serviceUnit(schedule: Schedule): string {
+  const { launcher, repoPath } = schedule;
   return [
-    "[Unit]",
-    `Description=${descriptionOf(target)}`,
-    "",
+    ...unitSection(schedule),
     "[Service]",
     "Type=oneshot",
-    `WorkingDirectory=${specifiers(target.repoPath)}`,
-    `Environment=${quoted(`PATH=${target.path}`)}`,
-    `ExecStart=${execArg(target.node)} ${execArg(target.main)} run --sources`,
+    `WorkingDirectory=${specifiers(repoPath)}`,
+    `Environment=${quoted(`PATH=${launcher.path}`)}`,
+    `ExecStart=${execArg(launcher.node)} ${execArg(launcher.main)} ${runArgs(schedule).map(runArg).join(" ")}`,
     "",
   ].join("\n");
 }
 
 /** `Persistent=true` is what runs a schedule missed while the machine was off as soon as it is back; it only applies to `OnCalendar=`. */
-export function timerUnit(target: ScheduleTarget): string {
+export function timerUnit(schedule: Schedule): string {
   return [
-    "[Unit]",
-    `Description=${descriptionOf(target)}`,
-    "",
+    ...unitSection(schedule),
     "[Timer]",
-    `OnCalendar=${target.every.onCalendar}`,
+    `OnCalendar=${schedule.every.onCalendar}`,
     "Persistent=true",
-    `Unit=${unitName(target.repoPath)}.service`,
+    `Unit=${unitName(schedule.repoPath, schedule.name)}.service`,
     "",
     "[Install]",
     "WantedBy=timers.target",

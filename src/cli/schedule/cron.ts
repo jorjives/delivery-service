@@ -1,9 +1,11 @@
-import type { ScheduleTarget } from "./model.js";
+import { BARE_ARG, runArgs, type Schedule } from "./model.js";
 
 /** Single-quoted for the shell; cron reads a bare % as a newline. */
 const shellArg = (text: string): string => `'${text.replace(/'/g, "'\\''").replace(/%/g, "\\%")}'`;
+const runArg = (token: string): string => (BARE_ARG.test(token) ? token : shellArg(token));
 
 /** The line a machine without systemd user timers can add to its own crontab instead. */
-export function cronLine(target: ScheduleTarget): string {
-  return `${target.every.cron} cd ${shellArg(target.repoPath)} && PATH=${shellArg(target.path)} ${shellArg(target.node)} ${shellArg(target.main)} run --sources`;
+export function cronLine(schedule: Schedule): string {
+  const { every, repoPath, launcher } = schedule;
+  return `${every.cron} cd ${shellArg(repoPath)} && PATH=${shellArg(launcher.path)} ${shellArg(launcher.node)} ${shellArg(launcher.main)} ${runArgs(schedule).map(runArg).join(" ")}`;
 }

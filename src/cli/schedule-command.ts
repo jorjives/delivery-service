@@ -6,7 +6,7 @@ import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
 import { cronLine } from "./schedule/cron.js";
-import { DEFAULT_INTERVAL, parseInterval, type ScheduleTarget } from "./schedule/model.js";
+import { DEFAULT_INTERVAL, DEFAULT_NAME, parseInterval, type Schedule } from "./schedule/model.js";
 import { must, parseShow, serviceUnit, systemctl, timerUnit, unitDir, unitName } from "./schedule/systemd.js";
 
 export interface ScheduleOptions {
@@ -35,7 +35,7 @@ const MAIN = fileURLToPath(new URL("./main.js", import.meta.url));
 /** The project's repository, its units' name, and the path its timer would be installed at. */
 async function scheduled(options: ScheduleOptions, ctx: CommandContext) {
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
-  const name = unitName(repoPath);
+  const name = unitName(repoPath, DEFAULT_NAME);
   const dir = unitDir(ctx.env);
   return { repoPath, name, dir, timerPath: join(dir, `${name}.timer`) };
 }
@@ -44,13 +44,18 @@ async function scheduled(options: ScheduleOptions, ctx: CommandContext) {
 export async function scheduleEnableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
   const every = parseInterval(options.every ?? DEFAULT_INTERVAL);
   const { repoPath, name, dir } = await scheduled(options, ctx);
-  const target: ScheduleTarget = { repoPath, node: process.execPath, main: MAIN, path: ctx.env.PATH ?? "", every };
+  const schedule: Schedule = {
+    repoPath,
+    name: DEFAULT_NAME,
+    every,
+    launcher: { node: process.execPath, main: MAIN, path: ctx.env.PATH ?? "" },
+  };
   const probe = await systemctl(ctx.env, ["show-environment"]);
-  if (!probe.ok) throw new Refusal(unsupported(probe.reason, cronLine(target)), EXIT.configuration);
+  if (!probe.ok) throw new Refusal(unsupported(probe.reason, cronLine(schedule)), EXIT.configuration);
 
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${name}.service`), serviceUnit(target));
-  await writeFile(join(dir, `${name}.timer`), timerUnit(target));
+  await writeFile(join(dir, `${name}.service`), serviceUnit(schedule));
+  await writeFile(join(dir, `${name}.timer`), timerUnit(schedule));
   await must(ctx.env, ["daemon-reload"]);
   await must(ctx.env, ["enable", `${name}.timer`]);
   await must(ctx.env, ["restart", `${name}.timer`]); // so a changed interval takes effect on a timer already running

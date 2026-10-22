@@ -54,6 +54,9 @@ export interface Schedule {
   launcher: Launcher;
 }
 
+/** A token a scheduler's command line can take unquoted; the renderers quote any other. */
+export const BARE_ARG = /^[A-Za-z0-9_./=-]+$/;
+
 /** The arguments `delivery` runs with on each tick. Every scheduled run skips quietly when another run holds the repository. */
 export function runArgs(_schedule: Schedule): string[] {
   return ["run", "--sources", "--if-idle"];
@@ -74,16 +77,4 @@ ACCEPTED_TEXTS.push("1d");
 /** The interval a systemd calendar stands for, or undefined when no accepted interval produces it. */
 export function intervalForCalendar(onCalendar: string): Interval | undefined {
   return ACCEPTED_TEXTS.map((text) => parseInterval(text)).find((interval) => interval.onCalendar === onCalendar);
-}
-
-/** What a project's schedule runs, where, and how often. */
-export interface ScheduleTarget {
-  repoPath: string;
-  /** The node binary, absolute, so the run does not depend on the service's PATH to find it. */
-  node: string;
-  /** This package's `dist/cli/main.js`, absolute. */
-  main: string;
-  /** The operator's PATH when they enabled it: a user service starts with systemd's minimal one, and the check and agent need theirs. */
-  path: string;
-  every: Interval;
 }

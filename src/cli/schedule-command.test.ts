@@ -15,7 +15,7 @@ async function project() {
   const repo = await findRepository(initTempRepo("schedule-", { "package.json": PACKAGE }));
   const config = mkdtempSync(join(tmpdir(), "schedule-config-"));
   const units = join(config, "systemd", "user");
-  const name = unitName(repo);
+  const name = unitName(repo, "default");
   const standIn = createSystemctlStandIn();
   const env = { XDG_CONFIG_HOME: config, [TEST_SYSTEMCTL]: standIn.command, PATH: "/opt/tools:/usr/bin" };
   return { repo, units, name, standIn, env };
@@ -32,7 +32,7 @@ describe("delivery schedule enable", () => {
     expect(timer).toContain("Persistent=true");
     expect(service).toContain(`WorkingDirectory=${repo}`);
     expect(service).toContain('Environment="PATH=/opt/tools:/usr/bin"');
-    expect(service).toMatch(/^ExecStart=".+" ".+main\.js" run --sources$/m);
+    expect(service).toMatch(/^ExecStart=".+" ".+main\.js" run --sources --if-idle$/m);
     expect(standIn.calls()).toEqual([
       "--user show-environment",
       "--user daemon-reload",
@@ -72,7 +72,7 @@ describe("delivery schedule enable", () => {
     expect(exitCode).toBe(EXIT.configuration);
     expect(stderr).toContain("Failed to connect to bus: No medium found");
     expect(stderr).toContain(`*/5 * * * * cd '${repo}' && PATH='/opt/tools:/usr/bin' '${process.execPath}' '`);
-    expect(stderr).toMatch(/main\.js' run --sources$/m);
+    expect(stderr).toMatch(/main\.js' run --sources --if-idle$/m);
     expect(existsSync(units)).toBe(false);
   });
 
