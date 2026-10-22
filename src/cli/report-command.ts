@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { deriveReport, mostRecentSubject } from "../report/derive.js";
-import type { ParkedItem, ReportAfter, ReportDelivery, ReportDocument } from "../report/document.js";
+import type { HeldSequence, ParkedItem, ReportAfter, ReportDelivery, ReportDocument } from "../report/document.js";
 import { publishedSchema } from "../report/json-schema.js";
 import { holdsNoRun, loadSnapshot, type ReportSubject } from "../report/snapshot.js";
 import { closingSentence, NO_RUNS_YET, NO_TASK_LIST, renderText, reportPointer } from "../report/text.js";
@@ -19,6 +19,7 @@ import { deliveryLedgerPath, foldDelivery, readDeliveryEntries } from "../delive
 import { git } from "../git-exec.js";
 import { ledgerPath, parkedItems, readItemLedger, type ItemState } from "../item-ledger.js";
 import { afterLedgerPath, isPending, readAfter } from "../after-ledger.js";
+import { heldPath, readHeld, stillHeld } from "../held-sequences.js";
 
 /** An item the ledger has set aside, as the report carries it. */
 export const parkedOf = (state: ItemState): ParkedItem => ({
@@ -33,6 +34,12 @@ export const parkedOf = (state: ItemState): ParkedItem => ({
 /** The items this machine's ledger has set aside, as a report carries them. */
 export async function parkedIn(repoPath: string, env: NodeJS.ProcessEnv): Promise<ParkedItem[]> {
   return parkedItems(await readItemLedger(ledgerPath(repoPath, env))).map(parkedOf);
+}
+
+/** The sequences the latest `--sources` run held, kept only while their holder still holds them, each with its reason now. */
+export async function heldIn(repoPath: string, env: NodeJS.ProcessEnv): Promise<HeldSequence[]> {
+  const path = ledgerPath(repoPath, env);
+  return stillHeld(await readHeld(heldPath(path)), await readItemLedger(path));
 }
 
 /** The after-landing batches a report shows: every one still waiting on a step, then the latest, oldest first. */
@@ -64,9 +71,9 @@ export async function deliveryIn(repoPath: string, env: NodeJS.ProcessEnv): Prom
   };
 }
 
-/** What this machine's ledgers add to any report: parked items, the delivery branch, and after-landing steps. */
-export async function ledgerParts(repoPath: string, env: NodeJS.ProcessEnv): Promise<Pick<ReportDocument, "parked" | "delivery" | "after">> {
-  return { parked: await parkedIn(repoPath, env), delivery: await deliveryIn(repoPath, env), after: await afterIn(repoPath, env) };
+/** What this machine's ledgers add to any report: parked items, held sequences, the delivery branch, and after-landing steps. */
+export async function ledgerParts(repoPath: string, env: NodeJS.ProcessEnv): Promise<Pick<ReportDocument, "parked" | "held" | "delivery" | "after">> {
+  return { parked: await parkedIn(repoPath, env), held: await heldIn(repoPath, env), delivery: await deliveryIn(repoPath, env), after: await afterIn(repoPath, env) };
 }
 
 /** What `delivery report` was given on the command line besides the run id. */

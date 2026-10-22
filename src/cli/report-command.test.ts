@@ -28,6 +28,8 @@ import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile, writeParkedItem, writeSupervisedRun } from "./command-fixtures.js";
 import { takeRepoLock } from "../repo-lock.js";
+import { heldPath, recordHeld } from "../held-sequences.js";
+import { ledgerPath } from "../item-ledger.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
 import { notifyFailed, SCHEMA_AND_REPORT } from "./report-command.js";
 import { EXIT } from "./failures.js";
@@ -385,6 +387,27 @@ describe("delivery report --json", () => {
     expect(documentIn(stdout).parked).toEqual([
       expect.objectContaining({ item: "backlog:a.md", intent: "Greet people.", reason: "decision", question: "Formal?", attempts: 1 }),
     ]);
+  });
+
+  it("lists the sequences held behind a parked item, and drops one whose item is no longer parked", async () => {
+    const repo = await project("report-held-", LIST, [formDone]);
+    const env = { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "report-state-")) };
+    await writeParkedItem(repo, env); // backlog:a.md, parked with a question
+    await recordHeld(heldPath(ledgerPath(repo, env)), [
+      { sequence: "spec-a", item: "backlog:a.md", source: "backlog", reason: "parked" },
+      { sequence: "spec-z", item: "backlog:gone.md", source: "backlog", reason: "parked" },
+    ], ["backlog"]);
+
+    const { exitCode, stdout } = await delivery(["report", "--json"], { cwd: repo, env });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(documentIn(stdout).held).toEqual([{ sequence: "spec-a", item: "backlog:a.md", reason: "decision" }]);
+  });
+
+  it("carries an empty held list when no run has recorded one", async () => {
+    const repo = await project("report-no-held-", LIST, [formDone]);
+    const env = { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "report-state-")) };
+    expect(documentIn((await delivery(["report", "--json"], { cwd: repo, env })).stdout).held).toEqual([]);
   });
 
   it("prints the report as one document that names its format and version: the counts, and each task with why it stopped and who must act", async () => {

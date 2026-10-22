@@ -23,6 +23,8 @@ import { appendRunEntry, setRunOutcome } from "../run-file.js";
 import { STOPPED_PART_WAY } from "./queue.js";
 import { takeRepoLock } from "../repo-lock.js";
 import { WAITING_FOR_A_SLOT } from "./status-command.js";
+import { heldPath, recordHeld } from "../held-sequences.js";
+import { ledgerPath } from "../item-ledger.js";
 import { STEP_PHRASES } from "./output.js";
 
 const AT = "2026-09-14T21:05:09.123Z";
@@ -205,6 +207,22 @@ describe("delivery status", () => {
       "",
       "Parked, skipped until you deal with them:",
       '- backlog:a.md (Greet people.): asked "Formal?". Answer with: delivery answer backlog:a.md "your answer"',
+    ]));
+  });
+
+  it("names each held sequence, the item holding it, and why", async () => {
+    const repo = initTempRepo("status-held-", { "package.json": PACKAGE });
+    const env = { XDG_STATE_HOME: await mkdtemp(join(tmpdir(), "status-state-")) };
+    await writeRunRecord(repo, { runId: RUN_ID, task: TASK, outcome: CLOSED, item: { key: "backlog:b.md", source: "backlog", id: "b.md" } });
+    await writeParkedItem(repo, env);
+    await recordHeld(heldPath(ledgerPath(repo, env)), [{ sequence: "spec-a", item: "backlog:a.md", source: "backlog", reason: "decision" }], ["backlog"]);
+
+    const { stdout, exitCode } = await delivery(["status", RUN_ID], { cwd: repo, env });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.split("\n")).toEqual(expect.arrayContaining([
+      "Sequences waiting, nothing later in each is started until the item holding it moves on:",
+      '- spec-a: held by backlog:a.md, which waits for your answer. Answer with: delivery answer backlog:a.md "your answer"',
     ]));
   });
 

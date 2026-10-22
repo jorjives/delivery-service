@@ -33,6 +33,14 @@ export const ParkedItem = z.object({
 });
 export type ParkedItem = z.infer<typeof ParkedItem>;
 
+/** A sequence waiting behind its earliest undelivered item, and why that item has not moved on (spec §5.10). */
+export const HeldSequence = z.object({
+  sequence: z.string(),
+  item: z.string(),
+  reason: z.enum(["parked", "decision", "in_flight"]),
+});
+export type HeldSequence = z.infer<typeof HeldSequence>;
+
 /**
  * The delivery branch a `--sources` run lands its tasks on: what has landed on it since it opened, what the closer last
  * did with it, and what blocks it. From this machine's ledger.
@@ -300,6 +308,8 @@ export const ReportDocument = z.object({
   usageRecorded: UsageCoverage,
   /** Items the item ledger has set aside on this machine, oldest key first; empty when none or no ledger. */
   parked: z.array(ParkedItem),
+  /** Sequences waiting behind an earlier item, as the latest `--sources` run found them and the item ledger still says; empty when none. */
+  held: z.array(HeldSequence),
   /** The delivery branch this machine's runs land on, or null when none was ever opened. */
   delivery: ReportDelivery.nullable(),
   /** After-landing steps: every batch still waiting on a step, then the most recent, oldest first; empty when none ran on this machine. */
