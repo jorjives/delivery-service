@@ -151,4 +151,21 @@ describe("foldDelivery after a restack", () => {
     const state = foldDelivery([opened("F"), { t: "blocked", branch: D, base: "main", baseTip: "m1", tip: "d1", reason: "conflicts", pulls: "x", at: at(2) }], D);
     expect(state.blocked?.pulls).toBe("x");
   });
+
+  it("moves an adopted level to the head the owner pushed, and the levels above to their new commits, keeping the section's opening", () => {
+    const state = foldDelivery([opened("F"), landed("r1", "c1"), landed("r2", "c2"), landed("r3", "c3"), closedDone(),
+      { t: "restacked", branch: D, onto: "F", merged: [], adopted: [{ runId: "r2", commit: "o2" }], levels: [{ runId: "r2", commit: "o2" }, { runId: "r3", commit: "n3" }], at: at(3) }], D);
+    expect(state.landed.map((e) => [e.runId, e.commit])).toEqual([["r1", "c1"], ["r2", "o2"], ["r3", "n3"]]);
+    expect(state.from).toBe("F");
+    expect(state.restacked).toBe(true);
+    expect(state.earlier.get("r2")).toEqual(["c2"]);
+    expect(state.earlier.get("r3")).toEqual(["c3"]);
+  });
+
+  it("remembers an adopted head as an earlier commit when the same restack moved it onto the base", () => {
+    const state = foldDelivery([opened("F"), landed("r1", "c1"), landed("r2", "c2"), closedDone(),
+      { t: "restacked", branch: D, onto: "B2", merged: ["r1"], adopted: [{ runId: "r2", commit: "o2" }], levels: [{ runId: "r2", commit: "n2" }], at: at(3) }], D);
+    expect(state.landed.map((e) => [e.runId, e.commit])).toEqual([["r2", "n2"]]);
+    expect(state.earlier.get("r2")).toEqual(["c2", "o2"]);
+  });
 });
