@@ -53,6 +53,7 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 2: Run Several Named Schedules on One Project
 
+**Tests:** ✅ Recorded — 2026-10-22 — `aeb5e47` — cli (vitest) — 1 UAT + 5 AC groups (9 checks), 0 skipped
 **Delivers:** A project can have more than one schedule, each with its own name and interval, and `status` shows them all, while an already-installed default schedule keeps working untouched.
 
 **Operational note:** Named schedules get their own scheduler entries and their own per-schedule log view, which `status` prints for each. Existing default timers are not modified until the user next enables. The scheduler is reached through a backend seam with a contract test suite, so a future platform needs one adapter and no change to the command; tests never need a real scheduler. Every scheduled invocation passes the idle option from Slice 1.
