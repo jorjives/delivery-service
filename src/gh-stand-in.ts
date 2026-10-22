@@ -30,6 +30,8 @@ export interface StandInPullRequest {
   headRefOid?: string;
   /** The base's commit the merge made; set by `merge` or `mergePullRequest`, answered as `mergeCommit{oid}`. */
   mergeCommit?: string;
+  /** True when the head branch lives in a fork rather than this repository; answered as `isCrossRepository`. */
+  fork?: boolean;
 }
 
 export type StandInEvent = { type: "labeled"; label: string; at: string } | { type: "renamed"; at: string };
@@ -55,6 +57,8 @@ export interface GhStandIn {
   /** Make every later `gh pr create` fail with this message, as GitHub refusing the pull request would; null clears it. */
   refuseCreate(message: string | null): void;
   pullRequests(): StandInPullRequest[];
+  /** Open a pull request whose head branch lives in a fork, as a stranger's would; returns its URL. */
+  openFromFork(head: string, base: string): string;
   /** The argv of every gh invocation so far, in order. */
   calls(): string[][];
   /** Mark a pull request merged at this head commit, as merging it on GitHub would. Moves no branch: merge into origin yourself. */
@@ -209,7 +213,7 @@ if (group === "api" && command === "graphql") {
         .filter((pr) => pr.head === head && wanted.includes(pr.state || "OPEN"))
         .map((pr) => ({
           url: pr.url, state: pr.state || "OPEN", headRefName: pr.head, headRefOid: pr.headRefOid || remoteHead(head), baseRefName: pr.base,
-          mergeCommit: pr.mergeCommit ? { oid: pr.mergeCommit } : null,
+          isCrossRepository: pr.fork === true, mergeCommit: pr.mergeCommit ? { oid: pr.mergeCommit } : null,
         }));
       repository["p" + alias[1]] = { nodes };
     }
@@ -320,6 +324,13 @@ export function createGhStandIn(): GhStandIn {
     setMode: (mode) => write({ ...read(), mode }),
     refuseCreate: (message) => write({ ...read(), refusal: message }),
     pullRequests: () => read().pullRequests,
+    openFromFork: (head, base) => {
+      const state = read();
+      const url = "https://github.com/example/project/pull/" + (state.pullRequests.length + 1);
+      state.pullRequests.push({ url, head, base, title: "T", body: "B", state: "OPEN", fork: true });
+      write(state);
+      return url;
+    },
     calls: () => read().calls ?? [],
     mergePullRequest,
     merge: (url, method, origin) => {

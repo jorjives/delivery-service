@@ -23,15 +23,19 @@ export type PullRequestListing = { ok: true; pullRequests: PullRequest[] } | { o
 
 const STATES = { open: "[OPEN]", merged: "[MERGED]", all: "[OPEN,MERGED,CLOSED]" } as const;
 
+/** What GitHub answers per pull request: ours plus whether its head branch lives in a fork. */
+const Node = PullRequest.extend({ isCrossRepository: z.boolean() });
+
 const Answer = z.object({
-  data: z.object({ repository: z.record(z.string(), z.object({ nodes: z.array(PullRequest) })) }).nullish(),
+  data: z.object({ repository: z.record(z.string(), z.object({ nodes: z.array(Node) })) }).nullish(),
   errors: z.array(z.object({ message: z.string() })).optional(),
 });
 
 /**
  * The pull requests GitHub holds for each of `query.heads`, in the states asked for (default `"open"`), from one
  * `gh api graphql` request whatever the number of heads. It reads GitHub's primary store by exact head name, so a
- * pull request is seen the moment it exists; nothing here goes through search. Never throws: a failure, including gh
+ * pull request is seen the moment it exists; nothing here goes through search. Pull requests from a fork are dropped,
+ * since a stranger's branch may share a delivery branch's name but is never that level's pull request. Never throws: a failure, including gh
  * missing, signed out or offline, is a listing that says so, and each caller words its own fix.
  */
 export async function listPullRequests(
@@ -43,7 +47,7 @@ export async function listPullRequests(
   const { state = "open", command } = options;
   const variables = query.heads.map((_, i) => `$h${i}:String!`).join(",");
   const aliases = query.heads
-    .map((_, i) => `p${i}:pullRequests(headRefName:$h${i},states:${STATES[state]},first:100){nodes{url state headRefName headRefOid baseRefName mergeCommit{oid}}}`)
+    .map((_, i) => `p${i}:pullRequests(headRefName:$h${i},states:${STATES[state]},first:100){nodes{url state headRefName headRefOid baseRefName isCrossRepository mergeCommit{oid}}}`)
     .join(" ");
   const graphql = `query($owner:String!,$name:String!,${variables}){repository(owner:$owner,name:$name){${aliases}}}`;
   const heads = query.heads.flatMap((head, i) => ["-f", `h${i}=${head}`]);
@@ -58,7 +62,8 @@ export async function listPullRequests(
     }
     if (answer.data === undefined || answer.data === null) throw new Error("gh answered with no data");
     const repository = answer.data.repository;
-    return { ok: true, pullRequests: query.heads.flatMap((_, i) => repository[`p${i}`]?.nodes ?? []) };
+    const pullRequests = query.heads.flatMap((_, i) => repository[`p${i}`]?.nodes ?? []);
+    return { ok: true, pullRequests: pullRequests.filter((pr) => !pr.isCrossRepository).map((pr) => PullRequest.parse(pr)) };
   } catch (err) {
     return { ok: false, failure: ghFailureOf(err) };
   }

@@ -70,8 +70,8 @@ describe("the gh stand-in's pull requests", () => {
     expect(JSON.parse(answer.stdout)).toEqual({
       data: {
         repository: {
-          p0: { nodes: [{ url: urlA, state: "OPEN", headRefName: "a", headRefOid: headA, baseRefName: "main", mergeCommit: null }] },
-          p1: { nodes: [{ url: urlB, state: "MERGED", headRefName: "b", headRefOid: "bbb", baseRefName: "main", mergeCommit: null }] },
+          p0: { nodes: [{ url: urlA, state: "OPEN", headRefName: "a", headRefOid: headA, baseRefName: "main", isCrossRepository: false, mergeCommit: null }] },
+          p1: { nodes: [{ url: urlB, state: "MERGED", headRefName: "b", headRefOid: "bbb", baseRefName: "main", isCrossRepository: false, mergeCommit: null }] },
         },
       },
     });
