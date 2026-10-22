@@ -64,10 +64,8 @@ export async function restackLevels(
       if (!delta.pass) {
         const ids = delta.newFailures.map((f) => f.id).join(", ");
         const idsText = ids === "" ? "" : `: ${ids}`;
-        if (takenAsIs) {
-          return { reason: `${described}, with the commits pushed to its branch, fails the checks${idsText}. Fix it on that pull request's branch, then run again.` };
-        }
-        return { reason: `Moved onto ${at}, ${described}, fails the checks${idsText}. Fix it on that pull request's branch, then run again.` };
+        const subject = takenAsIs ? `${described}, with the commits pushed to its branch,` : `Moved onto ${at}, ${described},`;
+        return { reason: `${subject} fails the checks${idsText}. Fix it on that pull request's branch, then run again.` };
       }
       commits.push(moved);
       parent = moved;

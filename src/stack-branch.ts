@@ -86,10 +86,9 @@ export async function reconcileStackBranch(
     const pull = observed.get(level.ref);
     return pull?.state === "OPEN" && pull.head !== level.commit && !level.earlier.includes(pull.head) ? [{ level, pull }] : [];
   });
-  const isLocal = (head: string): Promise<boolean> => tryGit(repoPath, ["cat-file", "-e", `${head}^{commit}`]);
   const missing = async () => {
     const absent = [];
-    for (const candidate of candidates) if (!(await isLocal(candidate.pull.head))) absent.push(candidate);
+    for (const candidate of candidates) if (!(await isLocal(repoPath, candidate.pull.head))) absent.push(candidate);
     return absent;
   };
   if ((await missing()).length > 0) {
@@ -155,11 +154,13 @@ async function carriedLevels(repoPath: string, levels: readonly StackLevel[], ob
   });
   if (!(await fetchHeads(repoPath, refspecs))) return carried;
   for (const { level, belowPull, mergeCommit } of asked) {
-    if (!(await tryGit(repoPath, ["cat-file", "-e", `${belowPull.head}^{commit}`]))) continue;
+    if (!(await isLocal(repoPath, belowPull.head))) continue;
     carried.set(level.ref, await tryGit(repoPath, ["merge-base", "--is-ancestor", mergeCommit, belowPull.head]));
   }
   return carried;
 }
+
+const isLocal = (repoPath: string, commit: string): Promise<boolean> => tryGit(repoPath, ["cat-file", "-e", `${commit}^{commit}`]);
 
 /** Fetch the given refs of origin into FETCH_HEAD alone: no branch or tag moves. False when origin cannot be asked. */
 async function fetchHeads(repoPath: string, refspecs: readonly string[]): Promise<boolean> {
