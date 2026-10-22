@@ -4,6 +4,7 @@ import { deliveryLedgerPath, readDelivery, type LandedEntry } from "../delivery-
 import { ghFailureOf, ghReason } from "../gh.js";
 import { branchExists, git } from "../git-exec.js";
 import { DEFAULT_PARK_AFTER, ledgerPath, readItemLedger, recordDispatched, settleRun, type ItemState } from "../item-ledger.js";
+import { heldPath, recordHeld } from "../held-sequences.js";
 import { mergedPullRequestTips } from "../merged-pull-requests.js";
 import { runIdFor } from "../run-location.js";
 import type { CloseReport } from "../ports.js";
@@ -24,7 +25,7 @@ import { allRuns, readRun } from "./runs.js";
 import { checkCustomModules, maxItems, resolveProject, workflowFrom, type ProjectSettings, type RunFlags } from "./settings.js";
 
 export const NOTHING_TO_WORK =
-  "Nothing to work on: every item is done, parked or not due yet. Add an item under .delivery/backlog/, or run `delivery status` to see what is parked.";
+  "Nothing to work on: every item is done, parked, waiting behind an earlier item of its sequence, or not due yet. Add an item under .delivery/backlog/, or run `delivery status` to see what is parked or held.";
 
 export const mirrorFailed = (issue: number, what: string, detail: string): string => `Could not ${what} on GitHub issue #${issue}: ${detail} The item's state in \`delivery status\` is unaffected.`;
 
@@ -121,6 +122,8 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
 
   const chosen = await chooseWork(sources, { repoPath, config, env: ctx.env, ledger, records, now, max: max - claims.length, taken: new Set(claims.map((c) => c.key)), only });
   for (const note of chosen.notes) ctx.report.note(note);
+  // Merged per source: this run only saw `chosen.read`, so holds in sources it never reached are kept, not wiped (spec §5.10, §10).
+  await recordHeld(heldPath(path), chosen.held, chosen.read);
   for (const item of chosen.items) {
     const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch }, ctx);
     if (claim !== undefined) claims.push(claim);
