@@ -22,14 +22,15 @@ it cannot check, and keeps every fix waiting for your sign-off.
 
    ```bash
    delivery review code
-   delivery findings approve 1 2
-   delivery fix
-   delivery findings
+   delivery backlog
+   delivery approve discount-percent settings-error
+   delivery run --sources
+   delivery backlog
    ```
 
 The review opens with a warning that the project has no tests. A problem with nothing to check it
 reads "needs your decision". Every fix waits for your sign-off, whatever its severity:
-`delivery findings 1 --changes` shows what changed, `delivery findings sign-off 1` merges it.
+`delivery backlog discount-percent` shows what changed, `delivery sign-off discount-percent` merges it.
 
 [Reviewing your project](../../docs/task-packs.md) explains what you see. To watch all of this with
 a scripted agent, run `npm run demo:packs-slice-6` from a checkout of the harness.

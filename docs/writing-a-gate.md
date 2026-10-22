@@ -62,6 +62,48 @@ and must return a `GateReport`:
 | `assertions` | One entry per thing measured: `{ id, outcome, detail }`. `outcome` is `"PASS"`, `"FAIL"` or `"ERROR"`. |
 | `detail` | Optional. On an `"ERROR"` report, a sentence saying why the gate could not run. |
 
+### One module serves every task
+
+Node imports a custom gate module once per process, so one module serves every task in a
+run, and the tasks a run works at the same time (`concurrency` above 1, including
+`delivery run --sources`) all call it. A module-level variable is therefore shared by every
+task: one task's `baseline` overwrites another's, and a `check` judges one worktree against
+another's starting point.
+
+Keep nothing from `baseline` to `check` if you can: measure again in `check`. If the gate must
+carry state between them, such as what the baseline found, keep it keyed by `ctx.worktreePath`,
+which is different for every task:
+
+```js
+// stateful-gate.mjs
+import { readdirSync } from "node:fs";
+
+// One entry per task, keyed by the task's worktree.
+const filesAtBaseline = new Map();
+
+function files(ctx) {
+  return readdirSync(ctx.worktreePath).filter((f) => f.endsWith(".json")).sort();
+}
+
+export default {
+  baseline: async (ctx) => {
+    filesAtBaseline.set(ctx.worktreePath, files(ctx));
+    return { status: "PASS", assertions: [] };
+  },
+  check: async (ctx) => {
+    const now = new Set(files(ctx));
+    return {
+      status: "PASS",
+      assertions: (filesAtBaseline.get(ctx.worktreePath) ?? []).map((file) => ({
+        id: `kept:${file}`,
+        outcome: now.has(file) ? "PASS" : "FAIL",
+        detail: now.has(file) ? "still present" : "missing",
+      })),
+    };
+  },
+};
+```
+
 ## Choosing a gate
 
 A surface pins its gate in the case file header as a `gateRef`. There are two

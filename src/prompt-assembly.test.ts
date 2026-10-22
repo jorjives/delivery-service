@@ -501,6 +501,13 @@ describe("the Step slot", () => {
     expect(assemblePrompt(cf, workerRoleConfig, NOTHING).prompt).not.toContain("## Step");
   });
 
+  it("interpolates {{task.<field>}} placeholders in the step prompt with the task's own fields", () => {
+    const withPlaceholder = { name: "w", steps: [{ name: "build", prompt: "Read SPEC={{task.spec}} BODY={{task.body}}." }] };
+    const cf = caseFileWith({ workflow: withPlaceholder, taskDef: { intent: "add a slug helper", spec: "docs/x.md", body: "Add a slug helper." } });
+    const { prompt } = assemblePrompt(stepView(cf), workerRoleConfig, NOTHING);
+    expect(prompt).toContain("Read SPEC=docs/x.md BODY=Add a slug helper.");
+  });
+
   it("says the check is the step's own only when the step names one, and the guards diff from the step's start", () => {
     const own: GateRef = { type: "command", command: "test -f PLAN.md", parseMode: "exitcode", checkOnly: true };
     const named = { ...workflow, steps: [{ name: "plan", prompt: "Write PLAN.md.", gateRef: own }, workflow.steps[1] as (typeof workflow.steps)[number]] };

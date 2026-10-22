@@ -16,7 +16,7 @@ A tiny shop with problems planted in it for a code review and a security review 
 
 2. Make sure Claude Code is signed in (`claude auth status`), or set `ANTHROPIC_API_KEY`.
 
-3. Run `delivery review code`, then `delivery findings 1`. Nothing in the folder changes.
+3. Run `delivery review code`, then `delivery backlog checkout-price-negative`. Nothing in the folder changes.
 
 4. To review only the `auth` folder: `delivery review code --path auth`.
 
@@ -25,30 +25,30 @@ A tiny shop with problems planted in it for a code review and a security review 
 Then choose and fix:
 
 ```bash
-delivery findings approve 1 2
-delivery findings skip 3
-delivery fix
-delivery findings
+delivery approve checkout-price-negative settings-error
+delivery decline legacy-gateway
+delivery run --sources
+delivery backlog
 ```
 
 The approved problems end "fixed and merged" (or say plainly why one could not be fixed), the
-skipped one stays as it is, and `checkout.js` and `settings.js` hold the fixes.
+declined one stays as it is, and `checkout.js` and `settings.js` hold the fixes.
 
 ## Try a security review
 
 ```bash
 delivery review security
-delivery findings approve --all
-delivery fix
-delivery findings
-delivery findings 1 --changes
-delivery findings sign-off 1
-delivery findings
+delivery approve --all
+delivery run --sources
+delivery backlog
+delivery backlog payments-password
+delivery sign-off payments-password
+delivery backlog
 ```
 
 The password in `payments.js` is never shown: it appears as `pay-… (21 characters)`. Its fix is
 checked and then waits for your sign-off; signing off checks it again on your main copy and
-merges it, and `delivery findings` then lists changing the password at the provider under NEEDS
+merges it, and `delivery backlog` then lists changing the password at the provider under NEEDS
 YOU. The old library version is fixed and merged without waiting.
 
 To watch all of this with a scripted agent, run `npm run demo:packs-slice-4` from a checkout of the harness.
