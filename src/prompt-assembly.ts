@@ -99,9 +99,14 @@ function gateLines(gateRef: GateRef, whose = "the project's"): string {
 
 const TASK_PLACEHOLDER = /\{\{task\.([A-Za-z0-9_]+)\}\}/g;
 
+/** A field's text: a string as it is, a number or boolean as written, and anything else (object, array, null) as compact JSON. */
+function fieldText(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : JSON.stringify(value);
+}
+
 /** Fills `{{task.<field>}}` placeholders from the task's own fields, leaving an unmatched placeholder as written. */
 function interpolateTask(prompt: string, taskDef: TaskDef): string {
-  return prompt.replace(TASK_PLACEHOLDER, (placeholder, field: string) => (taskDef[field] === undefined ? placeholder : String(taskDef[field])));
+  return prompt.replace(TASK_PLACEHOLDER, (placeholder, field: string) => (taskDef[field] === undefined ? placeholder : fieldText(taskDef[field])));
 }
 
 /** The `{{task.<field>}}` placeholders in a prompt that the task has no field for, as written and without repeats. */
