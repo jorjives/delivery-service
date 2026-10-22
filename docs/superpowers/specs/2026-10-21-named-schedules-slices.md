@@ -14,6 +14,7 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 1: A Second Run on the Same Repository Is Refused, or Quietly Skipped
 
+**Status:** ✅ Complete — 2026-10-22 — `eba040b`
 **Tests:** ✅ Recorded — 2026-10-22 — `525adcc` — cli (vitest) — 1 UAT (covering 2 AC) + 4 AC, 0 skipped
 
 **Delivers:** Starting `delivery run` while another run is already going on the same repository is refused, even for one-at-a-time runs, and `run --if-idle` turns that refusal into a quiet, successful skip.
