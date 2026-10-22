@@ -128,7 +128,7 @@ was wrong.
 
 For the common checks you need not write this out at all: `delivery.config.json` takes a
 ready-made check by name, such as `{ "type": "file-exists", "path": "CHANGES.md" }`. Each of the
-five ready-made checks is turned into a command gate, judged by exit code. The five names are
+six ready-made checks is turned into a command gate, judged by exit code. The six names are
 listed in [Configuration reference](configuration-reference.md#ready-made-checks).
 
 Most projects need nothing more. The command runs with `/bin/sh -c` inside the

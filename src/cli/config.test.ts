@@ -358,7 +358,7 @@ describe("unknownCloser", () => {
 describe("unknownGate", () => {
   it("lists the ready-made checks and where to write one out in full", () => {
     expect(unknownGate("file-exist")).toBe(
-      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds`, `schema-validates` and `commits-ahead`. " +
+      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds`, `schema-validates`, `commits-ahead` and `fails-with-new-test`. " +
         "To write one out in full, see docs/writing-a-gate.md.",
     );
   });
