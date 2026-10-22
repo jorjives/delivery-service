@@ -252,6 +252,7 @@ describe("the open-pr closer", () => {
 
     it("opens one pull request listing every item landed on the branch", async () => {
       const base = await deliveryContext();
+      landWork(base.worktreePath, "work.txt", "work\n");
 
       const report = await closer().close({ ...base, delivery: { landed } }, accepted);
 
@@ -265,6 +266,7 @@ describe("the open-pr closer", () => {
 
     it("updates the open pull request's list on a later run instead of opening another", async () => {
       const base = await deliveryContext();
+      landWork(base.worktreePath, "work.txt", "work\n");
       await closer().close({ ...base, delivery: { landed: landed.slice(0, 1) } }, accepted);
 
       const report = await closer().close({ ...base, delivery: { landed } }, accepted);
@@ -279,6 +281,7 @@ describe("the open-pr closer", () => {
       const tidy = { intent: "Tidy", item: "backlog:tidy.md", run: "r2", at: "2026-10-18T09:05:00.000Z" };
       const issue13 = { intent: "Say goodbye", item: "github:13", run: "r3", at: "2026-10-18T09:10:00.000Z", closes: "#13" };
       const base = await deliveryContext();
+      landWork(base.worktreePath, "work.txt", "work\n");
 
       await closer().close({ ...base, delivery: { landed: [issue12, tidy] } }, accepted);
       expect(standIn.pullRequests()[0]?.body).toContain("\n\nCloses #12");
