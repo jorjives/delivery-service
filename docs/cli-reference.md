@@ -71,6 +71,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `packs` | `--schema` | Prints the JSON Schema of a review folder's `pack.json` |
 | `packs check` | `--yes` | Skips the question about trusting the pack's code before its fixtures run; needed when there is no terminal |
 | `schedule enable` | `--every <interval>` | Sets how often it runs: minutes that divide an hour (such as `5m`, `15m` or `30m`), hours that divide a day (such as `1h`, `6h` or `12h`), or `1d` (the default) |
+| `schedule enable` | `--name <name>` | Names the schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens. Without it, sets up the project's default schedule |
 
 `--config` and `--repo` mean the same on every command that takes them (`delivery --help` shows
 which). `review` takes the repository as an argument, `delivery review <pack> [repo]`, not as

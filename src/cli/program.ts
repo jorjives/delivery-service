@@ -210,6 +210,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .command("enable")
     .description("turn scheduling on for this project, or change how often it runs")
     .option("--every <interval>", `how often to run: minutes that divide an hour (5m, 15m, 30m), hours that divide a day (1h, 6h, 12h), or 1d (default: ${DEFAULT_INTERVAL})`)
+    .option("--name <name>", "a name for this schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens (default: the project's one unnamed schedule)")
     .option("--repo <path>", "the git repository to schedule (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleEnableCommand(options, ctxFor(command));

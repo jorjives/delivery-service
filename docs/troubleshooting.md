@@ -230,6 +230,14 @@ Full message: `I couldn't find that run's record (<path>). Start a new run with 
 
 **Fix.** Use `5m`, `15m`, `30m`, `1h`, `6h`, `12h` or `1d`. See [Run on a schedule](run-on-a-schedule.md).
 
+### "`<name>`" isn't a name I can give a schedule
+
+Full message: `"<name>" isn't a name I can give a schedule. Use 1 to 32 lowercase letters, digits or hyphens, such as nightly, or leave --name out for the default schedule.`
+
+**Why.** `--name` takes 1 to 32 lowercase letters, digits or hyphens. `default` is the name of the schedule you get without `--name`, so it can't name another.
+
+**Fix.** Pick a name such as `nightly` or `hourly`, or leave `--name` out. See [Run on a schedule](run-on-a-schedule.md).
+
 ### This machine can't run delivery on a schedule
 
 **Why.** `delivery schedule enable` uses systemd's user timers, and this machine has none; the reason follows.

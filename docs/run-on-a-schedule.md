@@ -20,6 +20,19 @@ It installs a systemd user timer for the repository, `delivery-<key>.timer` in `
 
 The timer runs with the `PATH` you had when you ran `enable`. Run `enable` again after you move Node or Claude Code.
 
+## Run more than one schedule
+
+A project can keep several schedules, each at its own interval, such as a light frequent pass and a deeper nightly one. Give each a name with `--name`:
+
+```bash
+delivery schedule enable --name hourly --every 1h
+delivery schedule enable --name nightly --every 1d
+```
+
+A name is 1 to 32 lowercase letters, digits or hyphens, such as `nightly`. Anything else, including `default`, is refused with "isn't a name I can give a schedule". Each named schedule has its own timer, `delivery-<key>.<name>.timer`, so enabling a name again changes only that schedule. The schedule you get without `--name` is `default`: it keeps its existing timer, `delivery-<key>.timer`, and keeps working untouched until you enable it again.
+
+Each scheduled run is `delivery run --sources --if-idle`, so a run that would overlap another run in the repository is skipped quietly.
+
 ## Check or turn it off
 
 ```bash

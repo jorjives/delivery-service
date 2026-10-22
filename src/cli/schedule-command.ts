@@ -1,25 +1,29 @@
 import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
+import { selectBackend } from "./schedule/backend.js";
 import { cronLine } from "./schedule/cron.js";
-import { DEFAULT_INTERVAL, DEFAULT_NAME, parseInterval, type Schedule } from "./schedule/model.js";
-import { must, parseShow, serviceUnit, systemctl, timerUnit, unitDir, unitName } from "./schedule/systemd.js";
+import { DEFAULT_INTERVAL, DEFAULT_NAME, describeSchedule, parseInterval, parseName, type Schedule } from "./schedule/model.js";
+import { must, parseShow, unitDir, unitName } from "./schedule/systemd.js";
 
 export interface ScheduleOptions {
   repo?: string;
   every?: string;
+  name?: string;
 }
 
 export const unsupported = (reason: string, line: string): string =>
   `This machine can't run delivery on a schedule: it needs systemd's user timers, and ${reason}.\n` +
   `Add this line to your own scheduler (crontab -e) instead. Unlike the timer, cron skips a run missed while the machine is off:\n${line}`;
-export const scheduledOn = (description: string): string =>
-  `Scheduling is on: ${description}. A run missed while this machine is off happens as soon as it is back.`;
-export const journalHint = (name: string): string => `Each scheduled run's output: journalctl --user -u ${name}.service`;
+export const scheduledOn = (description: string, catchesUp: boolean): string =>
+  `Scheduling is on: ${description}. ` +
+  (catchesUp
+    ? "A run missed while this machine is off happens as soon as it is back."
+    : "A run missed while this machine is off is skipped.");
+export const journalHint = (command: string): string => `Each scheduled run's output: ${command}`;
 
 export const scheduledOff = (repoPath: string): string =>
   `Scheduling is off for ${repoPath}. Turn it on with: delivery schedule enable --every <interval>`;
@@ -32,7 +36,7 @@ export const nextRun = (when: string): string => `Next run: ${when}`;
 /** This build's own entry point: `dist/cli/main.js` beside this file once built. */
 const MAIN = fileURLToPath(new URL("./main.js", import.meta.url));
 
-/** The project's repository, its units' name, and the path its timer would be installed at. */
+/** The project's repository, its units' name, and the path its timer would be installed at. Used by status until it moves to the port. */
 async function scheduled(options: ScheduleOptions, ctx: CommandContext) {
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
   const name = unitName(repoPath, DEFAULT_NAME);
@@ -42,25 +46,22 @@ async function scheduled(options: ScheduleOptions, ctx: CommandContext) {
 
 /** `delivery schedule enable`: install and start this project's timer, or refuse with the cron line to use instead. */
 export async function scheduleEnableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
+  const name = parseName(options.name);
   const every = parseInterval(options.every ?? DEFAULT_INTERVAL);
-  const { repoPath, name, dir } = await scheduled(options, ctx);
+  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
   const schedule: Schedule = {
     repoPath,
-    name: DEFAULT_NAME,
+    name,
     every,
     launcher: { node: process.execPath, main: MAIN, path: ctx.env.PATH ?? "" },
   };
-  const probe = await systemctl(ctx.env, ["show-environment"]);
+  const backend = selectBackend();
+  const probe = await backend.probe(ctx.env);
   if (!probe.ok) throw new Refusal(unsupported(probe.reason, cronLine(schedule)), EXIT.configuration);
 
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${name}.service`), serviceUnit(schedule));
-  await writeFile(join(dir, `${name}.timer`), timerUnit(schedule));
-  await must(ctx.env, ["daemon-reload"]);
-  await must(ctx.env, ["enable", `${name}.timer`]);
-  await must(ctx.env, ["restart", `${name}.timer`]); // so a changed interval takes effect on a timer already running
-  ctx.writeLine(scheduledOn(`delivery run --sources every ${every.text} in ${repoPath}`));
-  ctx.writeLine(journalHint(name));
+  await backend.install(schedule, ctx.env);
+  ctx.writeLine(scheduledOn(describeSchedule(schedule), probe.catchesUp));
+  ctx.writeLine(journalHint(backend.logCommand(repoPath, name)));
   return EXIT.ok;
 }
 
@@ -78,24 +79,17 @@ export async function scheduleStatusCommand(options: ScheduleOptions, ctx: Comma
     ctx.writeLine(scheduledOff(repoPath));
     return EXIT.ok;
   }
-  ctx.writeLine(scheduledOn(show.Description ?? ""));
+  ctx.writeLine(scheduledOn(show.Description ?? "", true));
   ctx.writeLine(lastRun(show.LastTriggerUSec || "not yet"));
   ctx.writeLine(nextRun(show.NextElapseUSecRealtime || "none"));
-  ctx.writeLine(journalHint(name));
+  ctx.writeLine(journalHint(selectBackend().logCommand(repoPath, DEFAULT_NAME)));
   return EXIT.ok;
 }
 
 /** `delivery schedule disable`: stop and remove this project's timer. A run already going finishes; running by hand is untouched. */
 export async function scheduleDisableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
-  const { repoPath, name, dir, timerPath } = await scheduled(options, ctx);
-  if (!existsSync(timerPath)) {
-    ctx.writeLine(alreadyOff(repoPath));
-    return EXIT.ok;
-  }
-  await must(ctx.env, ["disable", "--now", `${name}.timer`]);
-  await rm(timerPath);
-  await rm(join(dir, `${name}.service`), { force: true });
-  await must(ctx.env, ["daemon-reload"]);
-  ctx.writeLine(turnedOff(repoPath));
+  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
+  const removed = await selectBackend().remove(repoPath, DEFAULT_NAME, ctx.env);
+  ctx.writeLine(removed ? turnedOff(repoPath) : alreadyOff(repoPath));
   return EXIT.ok;
 }

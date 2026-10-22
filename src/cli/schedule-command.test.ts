@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initTempRepo } from "../temp-repo.js";
@@ -7,7 +7,7 @@ import { createSystemctlStandIn } from "../systemctl-stand-in.js";
 import { delivery, PACKAGE } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { findRepository } from "./project.js";
-import { badInterval } from "./schedule/model.js";
+import { badInterval, badName } from "./schedule/model.js";
 import { NO_SYSTEMCTL, TEST_SYSTEMCTL, unitName } from "./schedule/systemd.js";
 import { alreadyOff, journalHint, lastRun, nextRun, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
 
@@ -39,8 +39,8 @@ describe("delivery schedule enable", () => {
       `--user enable ${name}.timer`,
       `--user restart ${name}.timer`,
     ]);
-    expect(stdout).toContain(scheduledOn(`delivery run --sources every 5m in ${repo}`));
-    expect(stdout).toContain(journalHint(name));
+    expect(stdout).toContain(scheduledOn(`delivery run --sources every 5m in ${repo}`, true));
+    expect(stdout).toContain(journalHint(`journalctl --user -u ${name}.service`));
   });
 
   it("runs once a day when no interval is given", async () => {
@@ -87,6 +87,44 @@ describe("delivery schedule enable", () => {
     expect(stderr).toMatch(/^0 \*\/1 \* \* \* cd /m);
     expect(existsSync(units)).toBe(false);
   });
+
+  it("sets up a named schedule alongside the default one", async () => {
+    const { repo, units, name, standIn, env } = await project();
+    await delivery(["schedule", "enable"], { cwd: repo, env });
+    const { exitCode, stdout } = await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(readFileSync(join(units, `${name}.hourly.timer`), "utf-8")).toContain("OnCalendar=*-*-* 00/1:00:00");
+    expect(readFileSync(join(units, `${name}.timer`), "utf-8")).toContain("OnCalendar=*-*-* 00:00:00");
+    expect(standIn.calls().slice(-3)).toEqual(["--user daemon-reload", `--user enable ${name}.hourly.timer`, `--user restart ${name}.hourly.timer`]);
+    expect(stdout).toContain(scheduledOn(`the hourly schedule, delivery run --sources every 1h in ${repo}`, true));
+    expect(stdout).toContain(journalHint(`journalctl --user -u ${name}.hourly.service`));
+  });
+
+  it("enabling a name again replaces that schedule only", async () => {
+    const { repo, units, name, env } = await project();
+    await delivery(["schedule", "enable"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    const defaultBefore = readFileSync(join(units, `${name}.timer`), "utf-8");
+    const nightlyBefore = readFileSync(join(units, `${name}.nightly.timer`), "utf-8");
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "6h"], { cwd: repo, env });
+    expect(readFileSync(join(units, `${name}.hourly.timer`), "utf-8")).toContain("OnCalendar=*-*-* 00/6:00:00");
+    expect(readFileSync(join(units, `${name}.timer`), "utf-8")).toBe(defaultBefore);
+    expect(readFileSync(join(units, `${name}.nightly.timer`), "utf-8")).toBe(nightlyBefore);
+  });
+
+  it.each(["", "default", "Nightly", "night_ly", "a".repeat(33)])("refuses the name %j, touching nothing", async (bad) => {
+    const { repo, units, standIn, env } = await project();
+    const { exitCode, stderr } = await delivery(["schedule", "enable", "--name", bad, "--every", "1h"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(badName(bad));
+    expect(existsSync(units)).toBe(false);
+    expect(standIn.calls()).toEqual([]);
+  });
+
+  it("gives the scheduled-on line the skipped wording when the scheduler does not catch up", () => {
+    expect(scheduledOn("d", false)).toBe("Scheduling is on: d. A run missed while this machine is off is skipped.");
+  });
 });
 
 describe("delivery schedule status", () => {
@@ -101,10 +139,10 @@ describe("delivery schedule status", () => {
     });
     const { exitCode, stdout } = await delivery(["schedule", "status"], { cwd: repo, env });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain(scheduledOn(`delivery run --sources every 5m in ${repo}`));
+    expect(stdout).toContain(scheduledOn(`delivery run --sources every 5m in ${repo}`, true));
     expect(stdout).toContain(lastRun("Sun 2026-10-18 12:00:00 BST"));
     expect(stdout).toContain(nextRun("Sun 2026-10-18 12:05:00 BST"));
-    expect(stdout).toContain(journalHint(name));
+    expect(stdout).toContain(journalHint(`journalctl --user -u ${name}.service`));
     expect(standIn.calls().at(-1)).toBe(
       `--user show ${name}.timer -p UnitFileState -p Description -p LastTriggerUSec -p NextElapseUSecRealtime`,
     );
@@ -144,6 +182,22 @@ describe("delivery schedule disable", () => {
     expect(existsSync(join(units, `${name}.service`))).toBe(false);
     expect(standIn.calls().slice(-2)).toEqual([`--user disable --now ${name}.timer`, "--user daemon-reload"]);
     expect((await delivery(["schedule", "status"], { cwd: repo, env })).stdout).toContain(scheduledOff(repo));
+  });
+
+  it("disables a default schedule installed before named schedules existed", async () => {
+    const { repo, units, name, standIn, env } = await project();
+    mkdirSync(units, { recursive: true });
+    writeFileSync(
+      join(units, `${name}.service`),
+      `[Unit]\nDescription=delivery run --sources every 1d in ${repo}\n\n[Service]\nType=oneshot\nWorkingDirectory=${repo}\nExecStart=/usr/bin/node /x/main.js run --sources --if-idle\n`,
+    );
+    writeFileSync(join(units, `${name}.timer`), "[Timer]\nOnCalendar=*-*-* 00:00:00\nPersistent=true\n");
+    const { exitCode, stdout } = await delivery(["schedule", "disable"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(turnedOff(repo));
+    expect(existsSync(join(units, `${name}.timer`))).toBe(false);
+    expect(existsSync(join(units, `${name}.service`))).toBe(false);
+    expect(standIn.calls()).toEqual([`--user disable --now ${name}.timer`, "--user daemon-reload"]);
   });
 
   it("says it is already off when there is nothing to turn off", async () => {
