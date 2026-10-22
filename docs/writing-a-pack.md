@@ -19,7 +19,7 @@ Copy the built-in `code` pack. If you installed the command globally, as [Get st
 cp -r "$(npm root -g)/delivery-service/packs/code-review" ./my-review
 ```
 
-If you installed it in this project instead (see [Importing the library in your own project](getting-started.md#importing-the-library-in-your-own-project)):
+If you installed it in this project instead (see [Extending delivery with TypeScript](getting-started.md#extending-delivery-with-typescript-optional)):
 
 ```bash
 cp -r "$(npm root)/delivery-service/packs/code-review" ./my-review
@@ -266,7 +266,7 @@ describe("my review pack", () => {
 });
 ```
 
-This needs the project-local install (see [Importing the library in your own project](getting-started.md#importing-the-library-in-your-own-project)). `checkPack` asks no questions; the confirmation in [Run the check](#run-the-check) is the command's, for a person checking a pack they did not write. Your own test suite calls it directly on your own pack, with the same sandboxed environment but no prompt.
+This needs the project-local install (see [Extending delivery with TypeScript](getting-started.md#extending-delivery-with-typescript-optional)). `checkPack` asks no questions; the confirmation in [Run the check](#run-the-check) is the command's, for a person checking a pack they did not write. Your own test suite calls it directly on your own pack, with the same sandboxed environment but no prompt.
 
 ## What a scripted check cannot prove
 

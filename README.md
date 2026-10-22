@@ -8,6 +8,9 @@ branch for you.
 delivery run --task "add a function that says hello to a name, with a test"
 ```
 
+`delivery` is a global command: install it once, then run it from inside any of your projects.
+A project needs at most a [`delivery.config.json`](docs/project-configuration.md) and takes no dependency on the harness.
+
 You need Node 22 or later, git, and a signed-in Claude Code (`claude auth login`, or set
 `ANTHROPIC_API_KEY`).
 

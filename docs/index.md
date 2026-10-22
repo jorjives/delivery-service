@@ -15,6 +15,9 @@ After you [install the command](getting-started.md), run:
 delivery run --task "add a function that says hello to a name, with a test"
 ```
 
+`delivery` is a global command: install it once, then run it from inside any of your projects.
+A project needs at most a [`delivery.config.json`](project-configuration.md) and takes no dependency on the harness.
+
 You need Node 22 or later, git and a signed-in Claude Code. [Get started](getting-started.md){ .md-button .md-button--primary }
 [How it works](concepts.md){ .md-button }
 
