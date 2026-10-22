@@ -12,6 +12,7 @@ export const PullRequest = z.object({
   headRefName: z.string(),
   headRefOid: z.string(),
   baseRefName: z.string(),
+  mergeCommit: z.object({ oid: z.string() }).nullish(),
 });
 export type PullRequest = z.infer<typeof PullRequest>;
 
@@ -42,7 +43,7 @@ export async function listPullRequests(
   const { state = "open", command } = options;
   const variables = query.heads.map((_, i) => `$h${i}:String!`).join(",");
   const aliases = query.heads
-    .map((_, i) => `p${i}:pullRequests(headRefName:$h${i},states:${STATES[state]},first:100){nodes{url state headRefName headRefOid baseRefName}}`)
+    .map((_, i) => `p${i}:pullRequests(headRefName:$h${i},states:${STATES[state]},first:100){nodes{url state headRefName headRefOid baseRefName mergeCommit{oid}}}`)
     .join(" ");
   const graphql = `query($owner:String!,$name:String!,${variables}){repository(owner:$owner,name:$name){${aliases}}}`;
   const heads = query.heads.flatMap((head, i) => ["-f", `h${i}=${head}`]);
