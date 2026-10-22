@@ -244,6 +244,8 @@ never stranded or made to conflict.
 
 ## Slice 5: Close a Pull Request to Say No, and the Item Is Done Again
 
+**Status:** ✅ Complete — 2026-10-22 — `715e9a4`
+
 **Delivers:** Closing a stacked pull request without merging it makes the harness drop that level
 and everything built on it, and deliver the item again.
 
