@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BreakerState, FenceMode, GuardName, OutcomeCause, Population, RepairChanges, RepairStatus, SurfaceState, TriageEntry, Trip, UsageLimit } from "../schema.js";
 import { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
+import { HoldReason } from "../held-sequences.js";
 
 /** The version every report document names itself by. A later version adds keys; it never renames or removes one. */
 export const REPORT_SCHEMA = "delivery.report/1";
@@ -37,7 +38,7 @@ export type ParkedItem = z.infer<typeof ParkedItem>;
 export const HeldSequence = z.object({
   sequence: z.string(),
   item: z.string(),
-  reason: z.enum(["parked", "decision", "in_flight"]),
+  reason: HoldReason,
 });
 export type HeldSequence = z.infer<typeof HeldSequence>;
 
