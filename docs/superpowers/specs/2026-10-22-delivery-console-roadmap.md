@@ -21,6 +21,15 @@ Success at the roadmap level: a person who has never used a terminal installs on
 projects, and from then on can answer "what has it been doing, what is it about to do, and does it
 need me?" for every project from one window, on macOS, Windows or Linux.
 
+Relationship to the harness roadmap (`2026-09-04-delivery-harness-roadmap.md`): that roadmap
+promised a guided experience for non-technical project owners (its Item 9) and named launchd as a
+possible scheduling mechanism (its Item 13). This roadmap is where both are delivered in
+graphical form; it supersedes neither, and the CLI remains the contract they sit on.
+
+Status of what it builds on: the named-schedules design
+(`2026-10-21-named-schedules-design.md`) is a draft and unbuilt. Items 3, 5, 6 and 8 depend on
+it, so `--name` schedules, `run --if-idle` and a repository lock on every run do not yet exist.
+
 ### Principles that bound every item
 
 - **The console is a client, not a second implementation.** The command line stays the one place
@@ -37,7 +46,8 @@ need me?" for every project from one window, on macOS, Windows or Linux.
   calendars) comes from third-party libraries styled with Ember tokens. Where Ember lacks a
   component the console needs, it is flagged for design in Claude Design and re-pulled; it is not
   hand-rolled (see "Ember gaps" below).
-- **Plain words.** The audience is the project owner persona in `docs/personas.md`. Voice follows
+- **Plain words.** The audience is the non-technical project owner persona, Dana Okafor, in
+  `docs/personas.md`. Voice follows
   Ember's content rules: terse, sentence case, counts over adjectives, machine things in mono.
   No cron syntax, no state-machine names, no exit codes on the main path.
 - **Prior art in the estate.** `autoloop` already ships a fleet console (an Ink terminal view and a
@@ -110,7 +120,7 @@ list, with the ones that need attention first.
 - The list stays usable with fifty projects: filtering by name and by state
 
 **Dependencies:**
-- The console shows one project's state (Item 1)
+- The console shows one project's state
 - A project owner can list the machine's delivery projects as data (a gap in the CLI to close
   here, so `delivery` gains a way to list and manage the set of known projects)
 
@@ -141,7 +151,7 @@ its schedules, its workflows and their steps, its task list and its backlog.
 - Nothing on this screen can change the project (read only)
 
 **Dependencies:**
-- The fleet view lists every project (Item 2)
+- The fleet view lists every project
 - A project can have several named schedules, listed as data (the named-schedules design,
   `2026-10-21-named-schedules-design.md`)
 - A person can read a project's configuration and backlog as data (CLI gaps closed here:
@@ -172,7 +182,7 @@ plain words what happened and why it ended as it did.
 - A whole-fleet view of recent runs across all projects, filterable by outcome and project
 
 **Dependencies:**
-- A person can browse a project's schedules, workflows and tasks (Item 3)
+- A person can browse a project's schedules, workflows and tasks
 - A person can follow a run as it happens (exists: `delivery status --watch --json`)
 - A person can list all runs as data (exists: `delivery status --all`; `--json` coverage to be
   confirmed in the spec)
@@ -200,7 +210,7 @@ or gaps before they happen.
 - The times shown are in the person's own time zone and agree with `delivery schedule status`
 
 **Dependencies:**
-- A person can browse a project's schedules (Item 3)
+- A person can browse a project's schedules
 - Several named schedules per project, with overlap skipped rather than failed (the
   named-schedules design, including `run --if-idle`)
 
@@ -232,7 +242,7 @@ will be told, and can stop or resume one.
 - Closing the console does not stop a run that was started from it
 
 **Dependencies:**
-- A person can read a run's history and follow a run live (Item 4)
+- A person can read a run's history and follow a run live
 - A person can preview what the agent will be told (exists: `delivery preview`)
 - Runs refuse to overlap on one project (the named-schedules design, repository lock for every
   run)
@@ -264,8 +274,8 @@ decision, and can resolve each without a terminal.
   arrive in this list
 
 **Dependencies:**
-- A person can see items and their status in a project (Item 3)
-- A person can start and follow a run (Items 4 and 6)
+- A person can see items and their status in a project
+- A person can start and follow a run
 - A person can approve, decline, sign off, reject, answer and unpark from the command line
   (exists)
 
@@ -296,7 +306,7 @@ by itself, as a Linux user can today.
 - Several named schedules per project, behind a scheduler backend interface with a shared
   contract test suite (the named-schedules design, which names launchd and Task Scheduler as
   the next adapters and builds neither)
-- A person can start a run detached from the window (Item 6)
+- A person can start a run detached from the window
 
 **Detail level:** brief
 
@@ -331,9 +341,9 @@ work comes from, and when it runs.
   same forms, and a change is validated before it is saved
 
 **Dependencies:**
-- A person can see what a project is set up to do (Item 3)
-- A person can start a run after seeing the preview (Item 6)
-- A person can turn on and change schedules on their own operating system (Item 8)
+- A person can see what a project is set up to do
+- A person can start a run after seeing the preview
+- A person can turn on and change schedules on their own operating system
 - A person can write a project's configuration without hand-editing (a gap in the CLI to close
   here: a non-interactive way to write and validate configuration, so the console and `init`
   share one writer)
@@ -367,9 +377,9 @@ something needs them without keeping the window open.
   has one answer in both places
 
 **Dependencies:**
-- A person can decide what needs them (Item 7)
-- A person can set up a project (Item 9)
-- Schedules work on the person's operating system (Item 8)
+- A person can decide what needs them
+- A person can set up a project
+- Schedules work on the person's operating system
 
 **Detail level:** brief
 
@@ -396,7 +406,7 @@ change without reading documentation.
   supporting line, per Ember's content rules
 
 **Dependencies:**
-- A person can install the console like an app (Item 10)
+- A person can install the console like an app
 
 **Detail level:** brief
 
