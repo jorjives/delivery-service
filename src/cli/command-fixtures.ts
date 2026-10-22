@@ -22,7 +22,7 @@ import type { ExitOnInterrupt } from "./context.js";
 import { runCli } from "./program.js";
 import { prepareRunDir, runIdFor, runPlace, runsRoot, supervisedPlace } from "../run-location.js";
 import { DEFAULT_CLOSER } from "./settings.js";
-import { TEST_SYSTEMCTL } from "./schedule.js";
+import { TEST_SYSTEMCTL } from "./schedule/systemd.js";
 
 export { runsRoot };
 

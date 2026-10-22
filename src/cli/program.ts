@@ -8,7 +8,7 @@ import { answerCommand, rejectCommand as rejectItemCommand, signOffCommand as si
 import { approveCommand, backlogCommand, declineCommand, type ChooseOptions } from "./backlog-commands.js";
 import { dropAfterCommand } from "./after-command.js";
 import { scheduleDisableCommand, scheduleEnableCommand, scheduleStatusCommand, type ScheduleOptions } from "./schedule-command.js";
-import { DEFAULT_INTERVAL } from "./schedule.js";
+import { DEFAULT_INTERVAL } from "./schedule/model.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";

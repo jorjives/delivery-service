@@ -15,7 +15,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PACKAGE } from "../../src/cli/command-fixtures.js";
-import { TEST_SYSTEMCTL, unitName } from "../../src/cli/schedule.js";
+import { TEST_SYSTEMCTL, unitName } from "../../src/cli/schedule/systemd.js";
 import { initTempRepo } from "../../src/temp-repo.js";
 import { createSystemctlStandIn } from "../../src/systemctl-stand-in.js";
 import { runDelivery } from "../helpers.js";

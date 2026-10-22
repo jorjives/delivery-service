@@ -1,46 +1,15 @@
+import { execFile as execFileCb } from "node:child_process";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
-import { EXIT, Refusal } from "./failures.js";
-import { repoKey } from "../run-location.js";
+import { promisify } from "node:util";
+import { repoKey } from "../../run-location.js";
+import type { ScheduleTarget } from "./model.js";
 
-/** How often a project runs: as the operator typed it, as a systemd calendar, and as a cron schedule. */
-export interface Interval {
-  text: string;
-  onCalendar: string;
-  cron: string;
-}
+const execFile = promisify(execFileCb);
 
-/** Once a day, as Autoloop's own timers run. */
-export const DEFAULT_INTERVAL = "1d";
+export type SystemctlResult = { ok: true; stdout: string } | { ok: false; reason: string };
 
-export const badInterval = (text: string): string =>
-  `"${text}" isn't an interval I can schedule. Use minutes that divide an hour (such as 5m, 15m or 30m), hours that divide a day (such as 1h, 6h or 12h), or 1d.`;
-
-/**
- * An interval as both schedulers say it. Only steps that divide the hour or the day evenly, because both express
- * "every n" as a step within the hour or day: 7m would fire at :56 and again at :00.
- */
-export function parseInterval(text: string): Interval {
-  const match = /^(\d+)([mhd])$/.exec(text);
-  const n = match ? Number(match[1]) : 0;
-  const unit = match?.[2];
-  if (unit === "m" && n >= 1 && n < 60 && 60 % n === 0) return { text, onCalendar: `*-*-* *:00/${n}:00`, cron: `*/${n} * * * *` };
-  if (unit === "h" && n >= 1 && n < 24 && 24 % n === 0) return { text, onCalendar: `*-*-* 00/${n}:00:00`, cron: `0 */${n} * * *` };
-  if (unit === "d" && n === 1) return { text, onCalendar: "*-*-* 00:00:00", cron: "0 0 * * *" };
-  throw new Refusal(badInterval(text), EXIT.configuration);
-}
-
-/** What a project's schedule runs, where, and how often. */
-export interface ScheduleTarget {
-  repoPath: string;
-  /** The node binary, absolute, so the run does not depend on the service's PATH to find it. */
-  node: string;
-  /** This package's `dist/cli/main.js`, absolute. */
-  main: string;
-  /** The operator's PATH when they enabled it: a user service starts with systemd's minimal one, and the check and agent need theirs. */
-  path: string;
-  every: Interval;
-}
+export const NO_SYSTEMCTL = "systemctl isn't installed";
 
 /** A project's units are named by its repository key, as Autoloop's `autoloop@<key>` are. */
 export const unitName = (repoPath: string): string => `delivery-${repoKey(repoPath)}`;
@@ -87,14 +56,6 @@ export function timerUnit(target: ScheduleTarget): string {
   ].join("\n");
 }
 
-/** Single-quoted for the shell; cron reads a bare % as a newline. */
-const shellArg = (text: string): string => `'${text.replace(/'/g, "'\\''").replace(/%/g, "\\%")}'`;
-
-/** The line a machine without systemd user timers can add to its own crontab instead. */
-export function cronLine(target: ScheduleTarget): string {
-  return `${target.every.cron} cd ${shellArg(target.repoPath)} && PATH=${shellArg(target.path)} ${shellArg(target.node)} ${shellArg(target.main)} run --sources`;
-}
-
 /** `systemctl show` output, one `Key=Value` per line. */
 export function parseShow(text: string): Record<string, string> {
   const properties: Record<string, string> = {};
@@ -111,3 +72,22 @@ export function parseShow(text: string): Record<string, string> {
  */
 export const TEST_SYSTEMCTL = "DELIVERY_TEST_SYSTEMCTL";
 export const systemctlOf = (env: NodeJS.ProcessEnv): string => env[TEST_SYSTEMCTL] ?? "systemctl";
+
+/** `systemctl --user <args>`: its output, or why it could not answer. Never throws. */
+export async function systemctl(env: NodeJS.ProcessEnv, args: string[]): Promise<SystemctlResult> {
+  try {
+    const { stdout } = await execFile(systemctlOf(env), ["--user", ...args], { env });
+    return { ok: true, stdout };
+  } catch (err) {
+    const { code, stderr, message } = err as { code?: unknown; stderr?: string; message: string };
+    if (code === "ENOENT") return { ok: false, reason: NO_SYSTEMCTL };
+    return { ok: false, reason: `systemctl --user said: ${(stderr ?? "").trim() || message}` };
+  }
+}
+
+/** A systemctl call that must work once the probe has: a failure here is not the operator's setup. */
+export async function must(env: NodeJS.ProcessEnv, args: string[]): Promise<string> {
+  const result = await systemctl(env, args);
+  if (!result.ok) throw new Error(`systemctl --user ${args.join(" ")} failed: ${result.reason}`);
+  return result.stdout;
+}

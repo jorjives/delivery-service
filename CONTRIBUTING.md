@@ -62,7 +62,7 @@ helper points it at a path that does not exist and gives each command its own sc
 `XDG_CONFIG_HOME`, so no test reaches your own systemd or writes into `~/.config/systemd/user`.
 A test that schedules something uses `createSystemctlStandIn()` from `src/systemctl-stand-in.ts`,
 which records each call and answers `show` with the properties the test sets.
-`src/cli/schedule.test.ts` checks the generated units with the real `systemd-analyze` where it is
+`src/cli/schedule/systemd.test.ts` checks the generated units with the real `systemd-analyze` where it is
 installed, and skips that check where it is not.
 
 The built-in reviews `delivery review` runs are data-only folders under `packs/`, shipped in

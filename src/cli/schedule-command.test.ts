@@ -7,8 +7,9 @@ import { createSystemctlStandIn } from "../systemctl-stand-in.js";
 import { delivery, PACKAGE } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { findRepository } from "./project.js";
-import { badInterval, TEST_SYSTEMCTL, unitName } from "./schedule.js";
-import { alreadyOff, journalHint, lastRun, nextRun, NO_SYSTEMCTL, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
+import { badInterval } from "./schedule/model.js";
+import { NO_SYSTEMCTL, TEST_SYSTEMCTL, unitName } from "./schedule/systemd.js";
+import { alreadyOff, journalHint, lastRun, nextRun, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
 
 async function project() {
   const repo = await findRepository(initTempRepo("schedule-", { "package.json": PACKAGE }));

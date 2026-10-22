@@ -3,8 +3,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { badInterval, cronLine, parseInterval, parseShow, serviceUnit, timerUnit, unitDir, unitName, type ScheduleTarget } from "./schedule.js";
-import { EXIT, Refusal } from "./failures.js";
+import { parseInterval, type ScheduleTarget } from "./model.js";
+import { parseShow, serviceUnit, timerUnit, unitDir, unitName } from "./systemd.js";
 
 const target: ScheduleTarget = {
   repoPath: "/home/op/my project",
@@ -58,13 +58,6 @@ describe("unit text", () => {
     expect(serviceUnit(odd)).toContain("WorkingDirectory=/w/100%%");
     expect(serviceUnit(odd)).toContain('ExecStart="/usr/bin/node" "/w/$$HOME/\\"x\\"/main.js" run --sources');
   });
-
-  it("gives the equivalent cron line, quoted for the shell and for cron", () => {
-    expect(cronLine(target)).toBe(
-      "*/5 * * * * cd '/home/op/my project' && PATH='/usr/local/bin:/usr/bin' '/usr/bin/node' '/opt/delivery/dist/cli/main.js' run --sources",
-    );
-    expect(cronLine({ ...target, repoPath: "/w/it's 100%" })).toContain("cd '/w/it'\\''s 100\\%'");
-  });
 });
 
 describe("parseShow", () => {
@@ -117,28 +110,5 @@ describe.skipIf(!analyze)("against the real systemd-analyze", () => {
     });
     expect(result.stderr).toBe("");
     expect(result.status).toBe(0);
-  });
-});
-
-describe("parseInterval", () => {
-  it.each([
-    ["5m", "*-*-* *:00/5:00", "*/5 * * * *"],
-    ["30m", "*-*-* *:00/30:00", "*/30 * * * *"],
-    ["1h", "*-*-* 00/1:00:00", "0 */1 * * *"],
-    ["6h", "*-*-* 00/6:00:00", "0 */6 * * *"],
-    ["1d", "*-*-* 00:00:00", "0 0 * * *"],
-  ])("schedules %s as OnCalendar %s and cron %s", (text, onCalendar, cron) => {
-    expect(parseInterval(text)).toEqual({ text, onCalendar, cron });
-  });
-
-  it.each(["7m", "60m", "0m", "5h", "24h", "2d", "5", "every day", ""])("refuses %j, naming what it accepts", (text) => {
-    const attempt = () => parseInterval(text);
-    expect(attempt).toThrow(Refusal);
-    expect(attempt).toThrow(badInterval(text));
-    try {
-      attempt();
-    } catch (err) {
-      expect((err as Refusal).exitCode).toBe(EXIT.configuration);
-    }
   });
 });
