@@ -1,9 +1,11 @@
 import { execFile as execFileCb } from "node:child_process";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { repoKey } from "../../run-location.js";
-import { BARE_ARG, DEFAULT_NAME, describeSchedule, runArgs, type Schedule } from "./model.js";
+import type { InstalledSchedule, SchedulerBackend } from "./backend.js";
+import { BARE_ARG, DEFAULT_NAME, describeSchedule, intervalForCalendar, runArgs, type Schedule } from "./model.js";
 
 const execFile = promisify(execFileCb);
 
@@ -98,3 +100,100 @@ export async function must(env: NodeJS.ProcessEnv, args: string[]): Promise<stri
   if (!result.ok) throw new Error(`systemctl --user ${args.join(" ")} failed: ${result.reason}`);
   return result.stdout;
 }
+
+/** One installed schedule as its unit files say it is: the unit basename as found on disk, and what the timer fires on. */
+interface UnitEntry {
+  unit: string;
+  name: string;
+  servicePath: string;
+  timerPath: string;
+  onCalendar: string;
+}
+
+/**
+ * The schedules on this repository, read from the unit files themselves: a `delivery-*.service` with a sibling `.timer`
+ * whose WorkingDirectory is the repository. The unit's own basename is kept, so later operations never recompute a name.
+ */
+async function installedEntries(repoPath: string, env: NodeJS.ProcessEnv): Promise<UnitEntry[]> {
+  const dir = unitDir(env);
+  let files: string[];
+  try {
+    files = await readdir(dir);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw err;
+  }
+  const entries: UnitEntry[] = [];
+  for (const file of files) {
+    if (!/^delivery-.*\.service$/.test(file)) continue;
+    const unit = file.slice(0, -".service".length);
+    if (!files.includes(`${unit}.timer`)) continue;
+    const servicePath = join(dir, file);
+    const timerPath = join(dir, `${unit}.timer`);
+    const service = parseShow(await readFile(servicePath, "utf-8"));
+    if ((service.WorkingDirectory ?? "").replace(/%%/g, "%") !== repoPath) continue;
+    const timer = parseShow(await readFile(timerPath, "utf-8"));
+    entries.push({ unit, name: service[MARKER] || DEFAULT_NAME, servicePath, timerPath, onCalendar: timer.OnCalendar ?? "" });
+  }
+  return entries;
+}
+
+const journal = (unit: string): string => `journalctl --user -u ${unit}.service`;
+
+/** Default first, then by name. */
+const byName = (a: InstalledSchedule, b: InstalledSchedule): number => {
+  if (a.name === b.name) return 0;
+  if (a.name === DEFAULT_NAME) return -1;
+  if (b.name === DEFAULT_NAME) return 1;
+  return a.name < b.name ? -1 : 1;
+};
+
+export const systemdBackend: SchedulerBackend = {
+  async probe(env) {
+    const result = await systemctl(env, ["show-environment"]);
+    return result.ok ? { ok: true, catchesUp: true } : { ok: false, reason: result.reason };
+  },
+
+  async install(schedule, env) {
+    const unit = unitName(schedule.repoPath, schedule.name);
+    const dir = unitDir(env);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, `${unit}.service`), serviceUnit(schedule));
+    await writeFile(join(dir, `${unit}.timer`), timerUnit(schedule));
+    await must(env, ["daemon-reload"]);
+    await must(env, ["enable", `${unit}.timer`]);
+    await must(env, ["restart", `${unit}.timer`]); // so a changed interval takes effect on a timer already running
+  },
+
+  async remove(repoPath, name, env) {
+    const entry = (await installedEntries(repoPath, env)).find((found) => found.name === name);
+    if (!entry) return false;
+    await must(env, ["disable", "--now", `${entry.unit}.timer`]);
+    await rm(entry.timerPath);
+    await rm(entry.servicePath);
+    await must(env, ["daemon-reload"]);
+    return true;
+  },
+
+  async list(repoPath, env) {
+    const entries = await installedEntries(repoPath, env);
+    const listed = await Promise.all(
+      entries.map(async (entry): Promise<InstalledSchedule> => {
+        const show = parseShow(
+          await must(env, ["show", `${entry.unit}.timer`, "-p", "UnitFileState", "-p", "LastTriggerUSec", "-p", "NextElapseUSecRealtime"]),
+        );
+        return {
+          name: entry.name,
+          every: intervalForCalendar(entry.onCalendar)?.text ?? entry.onCalendar,
+          enabled: show.UnitFileState === "enabled",
+          lastRun: show.LastTriggerUSec ?? "",
+          nextRun: show.NextElapseUSecRealtime ?? "",
+          logCommand: journal(entry.unit),
+        };
+      }),
+    );
+    return listed.sort(byName);
+  },
+
+  logCommand: (repoPath, name) => journal(unitName(repoPath, name)),
+};

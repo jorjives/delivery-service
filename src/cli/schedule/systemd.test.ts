@@ -1,10 +1,12 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseInterval, type Schedule } from "./model.js";
-import { parseShow, serviceUnit, timerUnit, unitDir, unitName } from "./systemd.js";
+import { backendContract } from "./backend.contract.js";
+import { DEFAULT_NAME, parseInterval, type Schedule } from "./model.js";
+import { createSystemctlStandIn } from "../../systemctl-stand-in.js";
+import { NO_SYSTEMCTL, MARKER, TEST_SYSTEMCTL, parseShow, serviceUnit, systemdBackend, timerUnit, unitDir, unitName } from "./systemd.js";
 
 const target: Schedule = {
   repoPath: "/home/op/my project",
@@ -12,6 +14,86 @@ const target: Schedule = {
   every: parseInterval("5m"),
   launcher: { node: "/usr/bin/node", main: "/opt/delivery/dist/cli/main.js", path: "/usr/local/bin:/usr/bin" },
 };
+
+backendContract("systemd", () => {
+  const config = mkdtempSync(join(tmpdir(), "contract-config-"));
+  const standIn = createSystemctlStandIn();
+  standIn.showing({ UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "" });
+  const base = mkdtempSync(join(tmpdir(), "contract-repo-"));
+  return { backend: systemdBackend, env: { XDG_CONFIG_HOME: config, [TEST_SYSTEMCTL]: standIn.command }, repo: (suffix = "") => base + suffix };
+});
+
+/** A systemd environment whose stand-in reports every unit enabled, with its own unit directory. */
+function systemdEnv() {
+  const standIn = createSystemctlStandIn();
+  standIn.showing({ UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "" });
+  return { env: { XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), "systemd-only-config-")), [TEST_SYSTEMCTL]: standIn.command }, standIn };
+}
+
+describe("systemd scheduler backend", () => {
+  it("lists a unit pair written before the marker existed as default", async () => {
+    const { env } = systemdEnv();
+    const repo = "/w/old-project";
+    const schedule = { ...target, repoPath: repo, every: parseInterval("1d") };
+    const dir = unitDir(env);
+    mkdirSync(dir, { recursive: true });
+    const unmarked = (text: string) => text.replace(new RegExp(`^${MARKER}=.*\\n`, "m"), "");
+    writeFileSync(join(dir, `${unitName(repo, DEFAULT_NAME)}.service`), unmarked(serviceUnit(schedule)));
+    writeFileSync(join(dir, `${unitName(repo, DEFAULT_NAME)}.timer`), unmarked(timerUnit(schedule)));
+    expect(await systemdBackend.list(repo, env)).toMatchObject([{ name: "default", every: "1d", enabled: true }]);
+  });
+
+  it("installs and lists a repository whose path holds a percent sign and a space", async () => {
+    const { env } = systemdEnv();
+    const repo = "/w/100% done";
+    await systemdBackend.install({ ...target, repoPath: repo, every: parseInterval("1d") }, env);
+    expect(await systemdBackend.list(repo, env)).toMatchObject([{ name: "default", every: "1d" }]);
+  });
+
+  it("lists only this repository's complete schedules from a unit directory holding other things", async () => {
+    const { env } = systemdEnv();
+    const mine = "/w/mine";
+    const theirs = "/w/theirs";
+    const dir = unitDir(env);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "notes.txt"), "not a unit\n");
+    writeFileSync(join(dir, "delivery-x.service"), serviceUnit({ ...target, repoPath: mine, every: parseInterval("1d") }));
+    await systemdBackend.install({ ...target, repoPath: mine, every: parseInterval("1d") }, env);
+    await systemdBackend.install({ ...target, repoPath: mine, name: "nightly", every: parseInterval("1d") }, env);
+    await systemdBackend.install({ ...target, repoPath: theirs, every: parseInterval("1h") }, env);
+    expect(await systemdBackend.list(mine, env)).toMatchObject([{ name: "default" }, { name: "nightly" }]);
+  });
+
+  it("reports a timer whose calendar was hand-edited as that raw calendar", async () => {
+    const { env } = systemdEnv();
+    const repo = "/w/edited";
+    await systemdBackend.install({ ...target, repoPath: repo, every: parseInterval("1d") }, env);
+    const timer = join(unitDir(env), `${unitName(repo, DEFAULT_NAME)}.timer`);
+    writeFileSync(timer, readFileSync(timer, "utf-8").replace("OnCalendar=*-*-* 00:00:00", "OnCalendar=Mon *-*-* 09:00:00"));
+    expect(await systemdBackend.list(repo, env)).toMatchObject([{ every: "Mon *-*-* 09:00:00" }]);
+  });
+
+  it("lists nothing, without calling systemctl, while the unit directory does not exist", async () => {
+    const { env, standIn } = systemdEnv();
+    expect(await systemdBackend.list("/w/none", env)).toEqual([]);
+    expect(standIn.calls()).toEqual([]);
+  });
+
+  it("probes with show-environment, and says it catches up missed runs", async () => {
+    const { env, standIn } = systemdEnv();
+    expect(await systemdBackend.probe(env)).toEqual({ ok: true, catchesUp: true });
+    expect(standIn.calls()).toEqual(["--user show-environment"]);
+  });
+
+  it("reports that systemctl is missing when the probe cannot run it", async () => {
+    const env = { XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), "systemd-only-config-")), [TEST_SYSTEMCTL]: join(tmpdir(), "no-such-systemctl") };
+    expect(await systemdBackend.probe(env)).toEqual({ ok: false, reason: NO_SYSTEMCTL });
+  });
+
+  it("gives a named schedule the journal command for its own unit", () => {
+    expect(systemdBackend.logCommand("/w/log", "nightly")).toBe(`journalctl --user -u ${unitName("/w/log", "nightly")}.service`);
+  });
+});
 
 describe("unit text", () => {
   it("names a project's units by its repository key", () => {

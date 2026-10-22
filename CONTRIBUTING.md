@@ -65,6 +65,8 @@ which records each call and answers `show` with the properties the test sets.
 `src/cli/schedule/systemd.test.ts` checks the generated units with the real `systemd-analyze` where it is
 installed, and skips that check where it is not.
 
+A scheduler adapter for `delivery schedule` implements `SchedulerBackend` from `src/cli/schedule/backend.ts`, and its test file adds one `backendContract(...)` call from `src/cli/schedule/backend.contract.ts`, which runs the shared suite of behaviour every adapter must have. `src/cli/schedule/systemd.test.ts` is the example. The contract file is excluded from the build, so it never ships in `dist`.
+
 The built-in reviews `delivery review` runs are data-only folders under `packs/`, shipped in
 the package: a `pack.json` manifest, the agent's `scan.md` and `fix.md` instructions, and the
 `fixtures/` that `delivery packs check` runs. `src/packs/` reads and checks them. To see a review
