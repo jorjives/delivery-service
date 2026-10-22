@@ -1,42 +1,11 @@
 import { existsSync } from "node:fs";
-import { z } from "zod";
 import { load } from "./case-file.js";
 import { closeError, closerFromAcceptedHandler, commitAccepted, taskSummary } from "./closer-support.js";
-import { ghAccess, ghFailureOf, ghReason, runGh, type GhFailure } from "./gh.js";
+import { ghFailureOf, ghReason, runGh } from "./gh.js";
 import { git, tryGit } from "./git-exec.js";
-import { mergedPullRequestTips } from "./merged-pull-requests.js";
+import { listPullRequests, prAccessProblem } from "./pull-requests.js";
 import type { CloseContext, CloseReport, CloserPort, DeliveredTask } from "./ports.js";
 import type { TaskDef } from "./schema.js";
-
-export const OpenPullRequests = z.array(z.object({ url: z.string() }));
-
-/**
- * The GitHub access problems any gh call can hit, each an ERROR naming its
- * fix; null when the failure is something else.
- */
-function accessProblem(failure: GhFailure): CloseReport | null {
-  switch (ghAccess(failure)) {
-    case "missing":
-      return closeError(
-        "The GitHub command-line tool (gh) is not installed, or not on the PATH the harness runs with, so no pull " +
-          "request could be opened. Install it from https://cli.github.com, run gh auth login, then close again.",
-      );
-    case "signed-out":
-      return closeError(
-        "GitHub sign-in is needed: gh is not signed in, or its sign-in has expired, so no pull request could be " +
-          "opened. Run gh auth login as the person or account the harness runs as, then close again.",
-      );
-    case "forbidden":
-      return closeError(
-        "gh is signed in, but that GitHub account lacks permission to open pull requests on this repository. Run " +
-          "gh auth refresh -s repo, or get write access to the repository, then close again.",
-      );
-    case "offline":
-      return closeError("gh could not reach GitHub, so no pull request could be opened. Check the network and close again.");
-    case null:
-      return null;
-  }
-}
 
 /**
  * Title and body for the pull request. The title is the first line of the
@@ -105,8 +74,8 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
     const listed = await git(ctx.repoPath, ["ls-remote", "origin", `refs/heads/${ctx.branch}`]).catch(() => "");
     const remote = listed.split(/\s+/)[0] ?? "";
     if (remote === "") return false;
-    const merged = await mergedPullRequestTips(ctx.repoPath, ctx.branch, { command: ghCommand }).catch(() => new Set<string>());
-    if (!merged.has(remote)) return false;
+    const listing = await listPullRequests(ctx.repoPath, { heads: [ctx.branch] }, { state: "merged", command: ghCommand });
+    if (!listing.ok || !listing.pullRequests.some((pr) => pr.headRefOid === remote)) return false;
     return tryGit(ctx.repoPath, ["push", "--set-upstream", `--force-with-lease=refs/heads/${ctx.branch}:${remote}`, "origin", refspec]);
   }
 
@@ -133,20 +102,18 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
       );
     }
 
-    let listed: string;
-    try {
-      listed = await gh(ctx.repoPath, ["pr", "list", `--head=${ctx.branch}`, "--state=open", "--json=url"]);
-    } catch (err) {
-      const failure = ghFailureOf(err);
+    const listing = await listPullRequests(ctx.repoPath, { heads: [ctx.branch] }, { command: ghCommand });
+    if (!listing.ok) {
+      const { failure } = listing;
       return (
-        accessProblem(failure) ??
+        prAccessProblem(failure) ??
         closeError(
           `gh could not check whether ${ctx.branch} already has an open pull request: ${ghReason(failure)}. ` +
             `Check that origin is the GitHub repository and that gh can reach it from ${ctx.repoPath}, then close again.`,
         )
       );
     }
-    const existing = OpenPullRequests.parse(JSON.parse(listed))[0];
+    const existing = listing.pullRequests[0];
     if (existing) {
       // A delivery branch's pull request is its own from an earlier run: bring its list up to date (spec §5.7).
       if (ctx.delivery !== undefined) {
@@ -154,7 +121,7 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
           await gh(ctx.repoPath, ["pr", "edit", existing.url, `--body=${describeDelivery(ctx, ctx.delivery.landed).body}`]);
         } catch (err) {
           const failure = ghFailureOf(err);
-          return accessProblem(failure) ?? closeError(`gh could not update ${existing.url} with what has landed on ${ctx.branch}: ${ghReason(failure)}. The work is pushed to it. Close again.`);
+          return prAccessProblem(failure) ?? closeError(`gh could not update ${existing.url} with what has landed on ${ctx.branch}: ${ghReason(failure)}. The work is pushed to it. Close again.`);
         }
         return { status: "DONE", detail: `${existing.url}: updated this pull request from ${ctx.branch} with everything landed on it so far, and pushed the new work.` };
       }
@@ -186,7 +153,7 @@ export function createOpenPrCloser(options: { ghCommand?: string } = {}): Closer
       // request (branch protection, no commits between the branches): a
       // decision a person can make, so FAIL rather than ERROR.
       return (
-        accessProblem(failure) ?? {
+        prAccessProblem(failure) ?? {
           status: "FAIL",
           detail:
             `GitHub refused to open a pull request from ${ctx.branch} into ${ctx.baseBranch}: ${ghReason(failure)}. ` +

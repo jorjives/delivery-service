@@ -1,11 +1,11 @@
 import { prepareContinuation } from "../continuation.js";
 import { baseTip, closeDeliveryBranch, deliveryBranchOf, deliveryMerged, fetchBase, reconcileDeliveryBranch } from "../delivery-branch.js";
 import { deliveryLedgerPath, readDelivery, type LandedEntry } from "../delivery-ledger.js";
-import { ghFailureOf, ghReason } from "../gh.js";
+import { ghReason } from "../gh.js";
 import { branchExists, git } from "../git-exec.js";
 import { DEFAULT_PARK_AFTER, ledgerPath, readItemLedger, recordDispatched, settleRun, type ItemState } from "../item-ledger.js";
 import { heldPath, recordHeld } from "../held-sequences.js";
-import { mergedPullRequestTips } from "../merged-pull-requests.js";
+import { listPullRequests } from "../pull-requests.js";
 import { runIdFor } from "../run-location.js";
 import type { CloseReport } from "../ports.js";
 import type { RunRecord } from "../run-records.js";
@@ -98,11 +98,9 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   // other closer, and when there is no branch yet to have merged, so reconciling is unchanged for them.
   let mergedTips: ReadonlySet<string> = new Set();
   if (asksGitHub && (await branchExists(repoPath, branch))) {
-    try {
-      mergedTips = await mergedPullRequestTips(repoPath, branch);
-    } catch (err) {
-      ctx.report.note(couldNotAskGitHub(branch, ghReason(ghFailureOf(err))));
-    }
+    const listing = await listPullRequests(repoPath, { heads: [branch] }, { state: "merged" });
+    if (listing.ok) mergedTips = new Set(listing.pullRequests.map((pr) => pr.headRefOid));
+    else ctx.report.note(couldNotAskGitHub(branch, ghReason(listing.failure)));
   }
   const after = afterLanding({ repoPath, config, project, itemLedger: path, branch, base, records: () => allRuns(repoPath) }, ctx);
   // Steps an earlier run left pending are tried first, from the one that failed (spec §5.7); they never stop new work.
