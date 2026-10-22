@@ -144,7 +144,7 @@ export async function runCli(io: CliIo): Promise<number> {
 
   program
     .command("backlog")
-    .description("list the ideas, open, held and parked items in your backlog in plain words, or show one in full with the detail for engineers; changes nothing")
+    .description("list the ideas, open, held and parked items in your backlog, and the issues a github source would supply, in plain words, or show one in full with the detail for engineers; changes nothing")
     .argument("[id]", "show this item in full, as the list names it")
     .option("--repo <path>", "the git repository the backlog belongs to (default: the current folder)")
     .action(async (id: string | undefined, options: { repo?: string }, command: Command) => {

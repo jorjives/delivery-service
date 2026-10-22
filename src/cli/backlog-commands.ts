@@ -1,11 +1,12 @@
 import { resolve } from "node:path";
 import { BACKLOG_DIR, commitItemFields, itemsCalled, itemTask, readBacklog, uncommittedItemFiles, type BacklogItem, type ItemStatus } from "../backlog.js";
 import { git } from "../git-exec.js";
+import { listGithub } from "../github-source.js";
 import { describeCheck } from "../item-check.js";
 import { ledgerPath, readItemLedger, type ItemState } from "../item-ledger.js";
 import { branchName, resolveBaseRef } from "../provision.js";
 import { taskIntent } from "../task-list.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, sourceName, type SourceConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
@@ -113,8 +114,24 @@ const isUntracked = (state: ItemState, items: readonly BacklogItem[]): boolean =
 // A tracker's held or parked item has no file in the backlog folder, so it is named by its ledger key and intent.
 const untrackedLine = (state: ItemState): string => `  ${state.key}  ${state.intent ?? state.key}`;
 
-/** The backlog in the owner's words: four groups, each item by its id and title. Resolved and declined items are not shown. */
-export function backlogLines(items: readonly BacklogItem[], ledger: Map<string, ItemState>): string[] {
+/** What each github source would supply, as a group of lines per source, with a line for any source gh could not read. */
+async function githubLines(sources: readonly SourceConfig[], repoPath: string, env: NodeJS.ProcessEnv): Promise<string[]> {
+  const lines: string[] = [];
+  for (const source of sources) {
+    if (source.type !== "github") continue;
+    const name = sourceName(source);
+    const { items, notes } = await listGithub(source, name, { repoPath, env });
+    if (items.length > 0) {
+      lines.push(`From the ${name} source, taken by delivery run --sources:`);
+      for (const item of items) lines.push(`  ${item.key}  ${item.taskDef.intent ?? item.key}${item.issue?.parked ? " (parked)" : ""}`);
+    }
+    lines.push(...notes);
+  }
+  return lines;
+}
+
+/** The backlog in the owner's words: four groups, each item by its id and title, then any lines from other sources. Resolved and declined items are not shown. */
+export function backlogLines(items: readonly BacklogItem[], ledger: Map<string, ItemState>, sourced: readonly string[] = []): string[] {
   const parked = (item: BacklogItem): ItemState["parked"] => stateOf(item, ledger)?.parked ?? null;
   const untracked = [...ledger.values()].filter((state) => state.parked !== null && isUntracked(state, items));
   const groups: [string, string[]][] = [
@@ -123,7 +140,7 @@ export function backlogLines(items: readonly BacklogItem[], ledger: Map<string, 
     ["Held, finished and waiting for your sign-off:", [...items.filter((i) => i.status === "open" && parked(i) === "held").map(line), ...untracked.filter((s) => s.parked === "held").map(untrackedLine)]],
     ["Parked, stopped for you:", [...items.filter((i) => i.status === "open" && parked(i) !== null && parked(i) !== "held").map(line), ...untracked.filter((s) => s.parked !== "held").map(untrackedLine)]],
   ];
-  const shown = groups.filter(([, lines]) => lines.length > 0).flatMap(([heading, lines]) => [heading, ...lines]);
+  const shown = [...groups.filter(([, lines]) => lines.length > 0).flatMap(([heading, lines]) => [heading, ...lines]), ...sourced];
   return shown.length === 0 ? ["Your backlog has nothing waiting. Ask for a review with: delivery review code"] : [...shown, "", "Read one in full with: delivery backlog <id>"];
 }
 
@@ -164,7 +181,8 @@ export async function backlogCommand(id: string | undefined, options: { repo?: s
   const { items } = await readBacklog(repoPath, { at: "HEAD" });
   const ledger = await readItemLedger(ledgerPath(repoPath, ctx.env));
   if (id === undefined) {
-    for (const text of backlogLines(items, ledger)) ctx.writeLine(text);
+    const config = await loadConfig({ startDir: resolve(ctx.cwd, options.repo ?? "."), repoPath, flag: undefined, env: ctx.env });
+    for (const text of backlogLines(items, ledger, await githubLines(config.sources ?? [], repoPath, ctx.env))) ctx.writeLine(text);
     return EXIT.ok;
   }
   const named = itemsCalled(id.replace(/^[^:]+:/, ""), items);

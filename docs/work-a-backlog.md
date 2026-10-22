@@ -25,7 +25,7 @@ git commit -m "Add a backlog item to tidy the greeting copy"
 ## Run the backlog
 
 ```bash
-delivery backlog                # list the ideas, open, held and parked items
+delivery backlog                # list the ideas, open, held and parked items, and the issues a github source would supply
 delivery run --sources          # take one item
 delivery run --sources --max 3  # take up to three items in this run
 ```
@@ -37,7 +37,7 @@ Open, to be worked on the next delivery run --sources:
 Read one in full with: delivery backlog <id>
 ```
 
-`<id>` is the file name without `.md`, as `delivery backlog` prints it. Ideas come from a [review](task-packs.md); held items wait for [sign-off](use-workflows.md#hold-serious-work-for-your-sign-off). `delivery run --sources` also reads the other [work sources](work-sources.md) in your configuration file, in order: due recurring items first, then each source in turn, and a fallback source only when nothing else has work. `--max N` takes up to N items in one run; the default is one. Each item becomes a run of its own, with its workflow.
+`<id>` is the file name without `.md`, as `delivery backlog` prints it. `delivery backlog` also lists the open issues that a `github` source in your configuration would supply, under "From the github source", with parked ones marked; other source types are not listed. Ideas come from a [review](task-packs.md); held items wait for [sign-off](use-workflows.md#hold-serious-work-for-your-sign-off). `delivery run --sources` also reads the other [work sources](work-sources.md) in your configuration file, in order: due recurring items first, then each source in turn, and a fallback source only when nothing else has work. `--max N` takes up to N items in one run; the default is one. Each item becomes a run of its own, with its workflow.
 
 Every item lands on one delivery branch, `delivery/<base>`, and your closer takes that branch once per run. A delivered item is marked `resolved` on the delivery branch and is not taken again until that branch is merged. See [The delivery branch](concepts.md#the-delivery-branch).
 
