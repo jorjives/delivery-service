@@ -218,6 +218,66 @@ describe("the stack publisher", () => {
     ]);
   });
 
+  it("pushes a level moved since it was published, over the head GitHub reported, and retargets the new bottom", async () => {
+    const [l1, l2] = threeLevels();
+    await close([l1, l2]);
+    const n2 = commitOn("main", "two-again.txt", "two again\n");
+
+    const report = await close([levelAt(R2, n2, "main", { reported: l2.commit })]);
+
+    expect(report.status).toBe("DONE");
+    expect(git(origin, ["rev-parse", `refs/heads/${R2}`])).toBe(n2);
+    expect(gh.pullRequests().find((pr) => pr.head === R2)?.base).toBe("main");
+  });
+
+  it("refuses to overwrite a commit pushed to a level after GitHub reported it, and reports an error", async () => {
+    const [l1, l2] = threeLevels();
+    await close([l1, l2]);
+    const owner = commitOn(l2.commit, "owner.txt", "owner\n");
+    git(repo, ["push", "-q", "origin", `${owner}:refs/heads/${R2}`]);
+    const n2 = commitOn("main", "two-again.txt", "two again\n");
+
+    const report = await close([levelAt(R2, n2, "main", { reported: l2.commit })]);
+
+    expect(report.status).toBe("ERROR");
+    expect(git(origin, ["rev-parse", `refs/heads/${R2}`])).toBe(owner);
+  });
+
+  it("pushes a moved level that was pushed but never got a pull request, leasing on the earlier commit origin still holds", async () => {
+    const [, l2] = threeLevels();
+    git(repo, ["push", "-q", "origin", `${l2.commit}:refs/heads/${R2}`]);
+    const n2 = commitOn("main", "two-again.txt", "two again\n");
+
+    const report = await close([levelAt(R2, n2, "main", { earlier: [l2.commit] })]);
+
+    expect(report.status).toBe("DONE");
+    expect(git(origin, ["rev-parse", `refs/heads/${R2}`])).toBe(n2);
+    expect(gh.pullRequests()).toEqual([expect.objectContaining({ head: R2, base: "main" })]);
+  });
+
+  it("refuses to overwrite a head it did not make on a level with no pull request, and reports an error", async () => {
+    const [, l2] = threeLevels();
+    git(repo, ["push", "-q", "origin", `${l2.commit}:refs/heads/${R2}`]);
+    const owner = commitOn(l2.commit, "owner.txt", "owner\n");
+    git(repo, ["push", "-q", "origin", `${owner}:refs/heads/${R2}`]);
+    const n2 = commitOn("main", "two-again.txt", "two again\n");
+
+    const report = await close([levelAt(R2, n2, "main", { earlier: [l2.commit] })]);
+
+    expect(report.status).toBe("ERROR");
+    expect(git(origin, ["rev-parse", `refs/heads/${R2}`])).toBe(owner);
+    expect(gh.pullRequests()).toEqual([]);
+  });
+
+  it("pushes a new level plainly when origin holds no branch for it", async () => {
+    const [l1] = threeLevels();
+
+    const report = await close([l1]);
+
+    expect(report.status).toBe("DONE");
+    expect(git(origin, ["rev-parse", `refs/heads/${R1}`])).toBe(l1.commit);
+  });
+
   it("reports gh signed out as an ERROR naming the fix", async () => {
     gh.setMode("signed-out");
 

@@ -32,7 +32,7 @@ export async function baseTip(repoPath: string): Promise<{ base: string; commit:
 }
 
 /** Long enough for a slow network; short enough that an unreachable origin does not hold the run. */
-const FETCH_TIMEOUT_MS = 60_000;
+export const FETCH_TIMEOUT_MS = 60_000;
 
 /**
  * Bring the base's remote-tracking branch up to date from origin (spec §5.8), so a pull request merged on GitHub is
@@ -120,6 +120,14 @@ export async function deliveryMerged(repoPath: string, mergedTips: ReadonlySet<s
   return tip !== undefined && tip !== commit && (mergedTips.has(tip) || (await isAncestor(repoPath, tip, commit)));
 }
 
+/**
+ * The gate context for a check of a scratch copy on a delivery branch: the same shape run-gate's gateContext builds,
+ * with DELIVERY_STEP_START set to `start`, the commit the work is judged from.
+ */
+export function deliveryGateContext(scratch: string, { intent, gateRef, base, start, env }: { intent: string; gateRef: GateRef; base: string; start: string; env?: NodeJS.ProcessEnv }): GateContext {
+  return { worktreePath: scratch, taskDef: { intent }, gateRef, baseBranch: base, env: { ...(env ?? process.env), DELIVERY_STEP_START: start } };
+}
+
 /** Merge the base into a scratch copy of the delivery tip and check it as a task's work is checked: against the tip's baseline. */
 async function mergeBaseIn(
   scratch: string,
@@ -127,8 +135,7 @@ async function mergeBaseIn(
 ): Promise<{ commit: string } | { reason: string }> {
   // repoPath is where a custom gate's module resolves from; the gate measures the scratch copy via gateCtx.worktreePath.
   const gate = resolveGate(gateRef, repoPath);
-  // The same shape run-gate's gateContext builds; DELIVERY_STEP_START is the delivery tip the merge is judged from.
-  const gateCtx: GateContext = { worktreePath: scratch, taskDef: { intent: `Bring ${base} into ${branch}` }, gateRef, baseBranch: base, env: { ...(env ?? process.env), DELIVERY_STEP_START: tip } };
+  const gateCtx = deliveryGateContext(scratch, { intent: `Bring ${base} into ${branch}`, gateRef, base, start: tip, env });
   const owner = `Bring ${base} into ${branch} yourself, or land ${branch} through your closer, then run again.`;
   const before = await gate.baseline(gateCtx);
   if (before.status === "ERROR") return { reason: `The checks could not run on ${branch}, so ${base}'s new commits could not be brought in. ${owner}` };

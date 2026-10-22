@@ -43,19 +43,22 @@ export function takeTurn<T>(cwd: string, work: () => Promise<T>): Promise<T> {
  * git somewhere on purpose (a private index); `maxBuffer` bounds the output
  * accepted, and past it the call rejects with ERR_CHILD_PROCESS_STDIO_MAXBUFFER.
  * `timeout`, in milliseconds, ends the call and rejects when it runs longer;
- * `raw` returns standard output exactly as git wrote it, for file contents.
+ * `raw` returns standard output exactly as git wrote it, for file contents;
+ * `input` is written to standard input, then closed, for a call such as `hash-object --stdin`.
  *
  * ponytail: no retry on an index.lock left by a person running git in the checkout at the same moment; add a bounded retry here if that is seen in practice (design §4).
  */
-export async function git(cwd: string, args: string[], options: { env?: NodeJS.ProcessEnv; maxBuffer?: number; timeout?: number; raw?: boolean } = {}): Promise<string> {
-  const { stdout } = await takeTurn(cwd, () =>
-    execFile("git", args, {
+export async function git(cwd: string, args: string[], options: { env?: NodeJS.ProcessEnv; maxBuffer?: number; timeout?: number; raw?: boolean; input?: string } = {}): Promise<string> {
+  const { stdout } = await takeTurn(cwd, () => {
+    const call = execFile("git", args, {
       cwd,
       env: { ...cleanGitEnv(), ...options.env },
       ...(options.maxBuffer === undefined ? {} : { maxBuffer: options.maxBuffer }),
       ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
-    }),
-  );
+    });
+    if (options.input !== undefined) call.child.stdin?.end(options.input);
+    return call;
+  });
   return options.raw === true ? stdout : stdout.trim();
 }
 

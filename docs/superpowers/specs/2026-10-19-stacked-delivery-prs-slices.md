@@ -182,6 +182,9 @@ facing one growing diff.
 
 ## Slice 4: Merge the Bottom Pull Request and the Rest Follow
 
+**Status:** ✅ Complete — 2026-10-22 — `cd0ac47`
+**Tests:** ✅ Recorded — 2026-10-22 — `773579b` — cli — 1 UAT + 7 AC, 6 skipped
+
 **Delivers:** After the operator merges pull requests from the bottom, the next run moves the
 remaining ones onto the new base, checks each, retargets them on GitHub, and carries on delivering
 on top.
@@ -240,6 +243,8 @@ never stranded or made to conflict.
 ---
 
 ## Slice 5: Close a Pull Request to Say No, and the Item Is Done Again
+
+**Status:** ✅ Complete — 2026-10-22 — `715e9a4`
 
 **Delivers:** Closing a stacked pull request without merging it makes the harness drop that level
 and everything built on it, and deliver the item again.

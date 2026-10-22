@@ -6,19 +6,22 @@ import { PullRequestState } from "./pull-requests.js";
 
 /**
  * What happened to each delivery branch (spec §5.7): opened at a base tip, a task landed, the base merged in, an attempt
- * to merge the base in blocked, and what the project's closer did. Machine-local, beside the item ledger.
+ * to merge the base in blocked, levels dropped because their pull request was closed, and what the project's closer did. Machine-local, beside the item ledger.
  */
 export const DeliveryEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("opened"), branch: z.string(), base: z.string(), from: z.string(), stack: z.literal(true).optional(), at: z.string() }),
   z.object({ t: z.literal("landed"), branch: z.string(), runId: z.string(), key: z.string(), intent: z.string(), commit: z.string(), empty: z.literal(true).optional(), at: z.string() }),
   z.object({ t: z.literal("observed"), branch: z.string(), pullRequests: z.array(z.object({ ref: z.string(), url: z.string(), state: PullRequestState })), at: z.string() }),
   z.object({ t: z.literal("base_merged"), branch: z.string(), base: z.string(), commit: z.string(), at: z.string() }),
-  z.object({ t: z.literal("blocked"), branch: z.string(), base: z.string(), baseTip: z.string(), tip: z.string(), reason: z.string(), at: z.string() }),
+  z.object({ t: z.literal("blocked"), branch: z.string(), base: z.string(), baseTip: z.string(), tip: z.string(), reason: z.string(), pulls: z.string().optional(), at: z.string() }),
+  z.object({ t: z.literal("restacked"), branch: z.string(), onto: z.string(), merged: z.array(z.string()), levels: z.array(z.object({ runId: z.string(), commit: z.string() })), at: z.string() }),
+  z.object({ t: z.literal("dropped"), branch: z.string(), runs: z.array(z.string()), at: z.string() }),
   z.object({ t: z.literal("closed"), branch: z.string(), status: z.enum(["DONE", "FAIL", "ERROR"]), detail: z.string(), at: z.string() }),
 ]);
 export type DeliveryEntry = z.infer<typeof DeliveryEntry>;
 export type LandedEntry = Extract<DeliveryEntry, { t: "landed" }>;
 export type BlockedEntry = Extract<DeliveryEntry, { t: "blocked" }>;
+type RestackedEntry = Extract<DeliveryEntry, { t: "restacked" }>;
 type Unstamped = DeliveryEntry extends infer E ? (E extends DeliveryEntry ? Omit<E, "at"> : never) : never;
 
 export interface DeliveryState {
@@ -34,8 +37,12 @@ export interface DeliveryState {
   blocked: BlockedEntry | null;
   /** The current section was opened in stack mode: its landings are read as levels of a stack, not as a rolling branch. */
   stacked: boolean;
-  /** The current section's opening commit: the base tip the delivery branch was cut at. */
+  /** The current section's opening commit, or the base tip the last restack moved it onto. */
   from: string | null;
+  /** The current section was restacked since the closer last succeeded. */
+  restacked: boolean;
+  /** Per run, the commits its level stood at before its current one, oldest first. */
+  earlier: ReadonlyMap<string, readonly string[]>;
   /** Per level ref, what GitHub last showed for its pull request in the current section. */
   pullRequests: ReadonlyMap<string, { url: string; state: PullRequestState }>;
 }
@@ -50,13 +57,37 @@ export function foldDelivery(entries: readonly DeliveryEntry[], branch: string):
   const section = own.slice(Math.max(0, own.findLastIndex((e) => e.t === "opened")));
   const opened = section[0]?.t === "opened" ? section[0] : undefined;
   // A run settled twice (a crash between the two writes) lands once.
-  const landed = section.filter((e): e is LandedEntry => e.t === "landed").filter((e, i, all) => all.findIndex((x) => x.runId === e.runId) === i);
+  let landed = section.filter((e): e is LandedEntry => e.t === "landed").filter((e, i, all) => all.findIndex((x) => x.runId === e.runId) === i);
   const lastDone = section.findLastIndex((e) => e.t === "closed" && e.status === "DONE");
-  const pending = landed.filter((e) => section.indexOf(e) > lastDone);
+  let pending = landed.filter((e) => section.indexOf(e) > lastDone);
+  // Each restack moves the levels it kept onto their new commits, and drops the levels it merged into the base.
+  const earlier = new Map<string, string[]>();
+  for (const restack of section.filter((e): e is RestackedEntry => e.t === "restacked")) {
+    const moved = new Map(restack.levels.map((level) => [level.runId, level.commit]));
+    for (const e of landed) {
+      const commit = moved.get(e.runId);
+      if (commit !== undefined && commit !== e.commit) earlier.set(e.runId, [...(earlier.get(e.runId) ?? []), e.commit]);
+    }
+    const restackOf = (entries: readonly LandedEntry[]): LandedEntry[] =>
+      entries
+        .filter((e) => !restack.merged.includes(e.runId))
+        .map((e) => {
+          const commit = moved.get(e.runId);
+          return commit === undefined ? e : { ...e, commit };
+        });
+    landed = restackOf(landed);
+    pending = restackOf(pending);
+  }
+  // A dropped level was closed without merging: its landing no longer stands, whatever restacks came before.
+  const dropped = new Set(section.flatMap((e) => (e.t === "dropped" ? e.runs : [])));
+  landed = landed.filter((e) => !dropped.has(e.runId));
+  pending = pending.filter((e) => !dropped.has(e.runId));
   const closed = section.findLast((e) => e.t === "closed");
+  const restackedAt = section.findLastIndex((e) => e.t === "restacked");
   const blockedAt = section.findLastIndex((e) => e.t === "blocked");
-  const cleared = section.findLastIndex((e) => e.t === "base_merged" || e.t === "opened");
+  const cleared = section.findLastIndex((e) => e.t === "base_merged" || e.t === "opened" || e.t === "restacked" || e.t === "dropped");
   const blocked = blockedAt > cleared ? (section[blockedAt] as BlockedEntry) : null;
+  const lastRestack = section.findLast((e): e is RestackedEntry => e.t === "restacked");
   const pullRequests = new Map<string, { url: string; state: PullRequestState }>();
   for (const e of section) if (e.t === "observed") for (const pr of e.pullRequests) pullRequests.set(pr.ref, { url: pr.url, state: pr.state });
   return {
@@ -68,7 +99,9 @@ export function foldDelivery(entries: readonly DeliveryEntry[], branch: string):
     closer: closed?.t === "closed" ? { status: closed.status, detail: closed.detail, at: closed.at } : null,
     blocked,
     stacked: opened?.stack === true,
-    from: opened?.from ?? null,
+    from: lastRestack?.onto ?? opened?.from ?? null,
+    restacked: restackedAt > lastDone,
+    earlier,
     pullRequests,
   };
 }
