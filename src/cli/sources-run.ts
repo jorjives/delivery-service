@@ -3,7 +3,7 @@ import { baseTip, closeDeliveryBranch, deliveryBranchOf, deliveryMerged, fetchBa
 import { deliveryLedgerPath, readDelivery, type LandedEntry } from "../delivery-ledger.js";
 import { ghReason } from "../gh.js";
 import { branchExists, git } from "../git-exec.js";
-import { DEFAULT_PARK_AFTER, ledgerPath, readItemLedger, recordDispatched, settleRun, type ItemState } from "../item-ledger.js";
+import { awaitsMerge, DEFAULT_PARK_AFTER, ledgerPath, readItemLedger, recordDispatched, settleRun, type ItemState } from "../item-ledger.js";
 import { heldPath, recordHeld } from "../held-sequences.js";
 import { listPullRequests } from "../pull-requests.js";
 import { readStack } from "../delivery-stack.js";
@@ -142,28 +142,37 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
     const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch }, ctx);
     if (claim !== undefined) claims.push(claim);
   }
-  const landAndFinish = async (exitCode: ExitCode, list: TaskDef[] = []): Promise<ExitCode> => {
-    const handed = await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base, sources }, exitCode, ctx);
-    // Replaces, not combines with, the start-of-run answer: a step that failed then may since have been superseded.
-    if (handed.closed !== undefined) afterDone = await after.landed(handed.closed);
-    return finish(!afterDone && handed.exitCode === EXIT.ok ? EXIT.escalated : handed.exitCode, list);
-  };
   // Readied before any task starts, so every task builds on the owner's latest commits (spec §5.7). Also readied when
   // nothing is to be worked but earlier landings still wait for the closer: the closer is retried "after bringing in
   // any base commits" (spec §5.7), since a moved base is the usual reason a merge-back failed. And, with open-pr, readied
   // when the delivery branch's pull request has merged, so it starts again from the base and stops listing what merged.
-  // A run with none of these opens no branch. A stack is readied the same way, but as a stacked section, never merged into.
+  // A run with none of these opens no branch. A stack is readied the same way, but as a stacked section, never merged into,
+  // and every stacked run asks GitHub about its levels, so a merge is acted on even when there is nothing to claim.
   const waiting = (await readDelivery(deliveryLedger, branch)).pending.length > 0;
   const mergedOnGitHub = !stacked && asksGitHub && (await deliveryMerged(repoPath, mergedTips));
-  const reconciled = claims.length === 0 && !waiting && !mergedOnGitHub
+  const stackReconciled = stacked
+    ? await reconcileStackBranch(repoPath, deliveryLedger, { gateRef: project.gateRef, itemLedger: path, env: ctx.env, opens: claims.length > 0 || waiting })
+    : undefined;
+  const reconciled = stackReconciled ?? (claims.length === 0 && !waiting && !mergedOnGitHub
     ? undefined
-    : stacked
-      ? await reconcileStackBranch(repoPath, deliveryLedger, { gateRef: project.gateRef, itemLedger: path, env: ctx.env })
-      : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env, mergedTips);
+    : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env, mergedTips));
   if (reconciled?.ready === false) {
     ctx.report.note(blockedNote(reconciled.reason));
     return finish(EXIT.escalated);
   }
+  // A ready stack may have repaired the item ledger after a restack (see reconcileStackBranch), so a claim chosen before
+  // that may now be for an item that awaits merge: such a claim is dropped, not run again.
+  if (stackReconciled?.ready === true) {
+    const items = await readItemLedger(path);
+    for (const claim of [...claims]) if (await awaitsMerge(repoPath, items.get(claim.key))) claims.splice(claims.indexOf(claim), 1);
+  }
+  const reported = stackReconciled?.ready === true ? stackReconciled.reported : undefined;
+  const landAndFinish = async (exitCode: ExitCode, list: TaskDef[] = []): Promise<ExitCode> => {
+    const handed = await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base, sources, ...(reported === undefined ? {} : { reported }) }, exitCode, ctx);
+    // Replaces, not combines with, the start-of-run answer: a step that failed then may since have been superseded.
+    if (handed.closed !== undefined) afterDone = await after.landed(handed.closed);
+    return finish(!afterDone && handed.exitCode === EXIT.ok ? EXIT.escalated : handed.exitCode, list);
+  };
   if (claims.length === 0) {
     ctx.report.note(NOTHING_TO_WORK);
     return landAndFinish(EXIT.ok);
@@ -194,15 +203,18 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
 
 type HandedOff = { exitCode: ExitCode; closed?: { landed: LandedEntry[]; commit: string } };
 
-/** The project's closer, once per run, when tasks have landed on the delivery branch since it last took it. A failed closer leaves the branch for the next run, and the run reports a stop. */
-async function handOff(target: { repoPath: string; closerRef: CloserRef; ledger: string; branch: string; base: string; sources: readonly SourceConfig[] }, exitCode: ExitCode, ctx: CommandContext): Promise<HandedOff> {
+/**
+ * The project's closer, once per run, when tasks have landed on the delivery branch since it last took it, or a stack was
+ * restacked since it last succeeded. A failed closer leaves the branch for the next run, and the run reports a stop.
+ */
+async function handOff(target: { repoPath: string; closerRef: CloserRef; ledger: string; branch: string; base: string; sources: readonly SourceConfig[]; reported?: ReadonlyMap<string, string> }, exitCode: ExitCode, ctx: CommandContext): Promise<HandedOff> {
   const { branch } = target;
-  const { pending, landed } = await readDelivery(target.ledger, branch);
-  if (pending.length === 0) return { exitCode };
+  const { pending, landed, restacked } = await readDelivery(target.ledger, branch);
+  if (pending.length === 0 && !restacked) return { exitCode };
   // Read before the closer acts: merge-back deletes the branch, and this is the commit every after step is about.
   const commit = await git(target.repoPath, ["rev-parse", `refs/heads/${branch}`]);
   const closed: { report: CloseReport; unobserved?: string } = isStacked(target.closerRef)
-    ? await closeDeliveryStack(target, await stackLevels(target))
+    ? await closeDeliveryStack(target, await stackLevels(target, target.reported))
     : { report: await closeDeliveryBranch(target, landed.map((e) => {
         const issue = githubIssueOf(e.key, target.sources);
         return { intent: e.intent, item: e.key, run: e.runId, at: e.at, ...(issue === undefined ? {} : { closes: `#${issue}` }) };
@@ -215,14 +227,16 @@ async function handOff(target: { repoPath: string; closerRef: CloserRef; ledger:
 
 /**
  * The levels of a stacked branch as its closer takes them: in landing order, each with the text of the task it carries
- * and the issue it closes. An item that landed nothing has no level, so it is not here.
+ * and the issue it closes. An item that landed nothing has no level, so it is not here. `reported` is the head GitHub
+ * showed for each level at the start of the run; a level GitHub showed no pull request for has none.
  */
-async function stackLevels(target: { repoPath: string; ledger: string; branch: string; sources: readonly SourceConfig[] }): Promise<DeliveredLevel[]> {
+async function stackLevels(target: { repoPath: string; ledger: string; branch: string; sources: readonly SourceConfig[] }, reported: ReadonlyMap<string, string> = new Map()): Promise<DeliveredLevel[]> {
   const stack = await readStack(target.repoPath, target.ledger, target.branch);
   const records = await allRuns(target.repoPath);
   return stack.map((level) => {
     const record = records.find((r) => r.runId === level.run);
     const issue = githubIssueOf(level.item, target.sources);
+    const head = reported.get(level.ref);
     return {
       intent: level.intent,
       item: level.item,
@@ -233,6 +247,8 @@ async function stackLevels(target: { repoPath: string; ledger: string; branch: s
       commit: level.commit,
       parent: level.parent,
       ...(issue === undefined ? {} : { closes: `#${issue}` }),
+      ...(head === undefined ? {} : { reported: head }),
+      earlier: level.earlier,
     };
   });
 }

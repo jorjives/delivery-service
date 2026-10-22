@@ -150,8 +150,17 @@ on. The delivery branch itself is not pushed; each level's branch is named `deli
 
 Stack mode needs git 2.38 or later, for `rebase --update-refs`. It also refuses to start while a
 rolling pull request for the delivery branch is open, and names it: merge or close that pull request
-on GitHub, then run again, or take `stack` off to keep rolling mode. Handling a level once you merge
-or close it is part of a later release.
+on GitHub, then run again, or take `stack` off to keep rolling mode. Each run asks GitHub about every
+level once; after you merge from the bottom (any merge method), the next run moves the levels still
+open onto your base, runs your gate on each, and retargets the new bottom pull request to the base. A
+merge commit needs no rewrite. A pull request merged into the one beneath it while that one is still
+open is carried along once that one merges, with no action from you. If a level conflicts or fails its
+gate, or a pull request was closed without merging or pushed to by someone else, the run starts no
+task, leaves every branch and pull request as it is, says which level and why, and does not try again
+until something changes. A pull request merged into the one beneath it after that one had already
+merged (or into a branch outside the stack) blocks the stack until its merge commit reaches your base
+through a pull request from a new branch merged with a merge commit, because a merge cannot be undone
+and a squash or rebase of it cannot be recognised. Handling a closed level is part of a later release.
 
 ## Reading the outcome
 
