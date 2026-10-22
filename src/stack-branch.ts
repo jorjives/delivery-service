@@ -227,7 +227,7 @@ async function restackStack(
   }
 
   const levels: RestackLevel[] = remaining.map((level, i) => ({ ref: level.ref, commit: level.commit, intent: level.intent, position: merged.length + i + 1, pull: observed.get(level.ref)?.url ?? null }));
-  const restacked = await restackLevels({ repoPath, gateRef, base, ...(env === undefined ? {} : { env }) }, { onto: baseCommit, upstream, levels });
+  const restacked = await restackLevels({ repoPath, gateRef, base, ...(env === undefined ? {} : { env }) }, { onto: baseCommit, upstream, at: `${base} at ${baseCommit.slice(0, 7)}`, levels });
   if ("reason" in restacked) {
     await recordDelivery(ledger, { t: "blocked", branch, base, baseTip: baseCommit, tip, reason: restacked.reason, pulls });
     return restacked.reason;

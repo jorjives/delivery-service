@@ -65,7 +65,7 @@ describe("restackLevels", () => {
     const { repo, c1, c2, c3 } = stack();
     const onto = mergeIntoMain(repo, "squash");
 
-    const result = await restackLevels(target(repo), { onto, upstream: c1, levels: [withCommit(level2, c2), withCommit(level3, c3)] });
+    const result = await restackLevels(target(repo), { onto, upstream: c1, at: "main", levels: [withCommit(level2, c2), withCommit(level3, c3)] });
 
     expect(result).toMatchObject({ commits: [expect.stringMatching(SHA), expect.stringMatching(SHA)] });
     const [n2, n3] = (result as { commits: string[] }).commits as [string, string];
@@ -85,7 +85,7 @@ describe("restackLevels", () => {
     const { repo, c1, c2, c3 } = stack();
     const onto = mergeIntoMain(repo, "rebase");
 
-    const result = await restackLevels(target(repo), { onto, upstream: c1, levels: [withCommit(level2, c2), withCommit(level3, c3)] });
+    const result = await restackLevels(target(repo), { onto, upstream: c1, at: "main", levels: [withCommit(level2, c2), withCommit(level3, c3)] });
 
     expect(result).toMatchObject({ commits: [expect.stringMatching(SHA), expect.stringMatching(SHA)] });
     const [n2] = (result as { commits: string[] }).commits as [string];
@@ -98,7 +98,7 @@ describe("restackLevels", () => {
     // main edits the line level 2 edits, differently, so level 2 cannot be replayed onto it.
     const onto = commit(repo, "shared.txt", "one\ntwo\nthree\nfive\n", "main's own edit");
 
-    const result = await restackLevels(target(repo), { onto, upstream: c1, levels: [withCommit(level2, c2), withCommit(level3, c3)] });
+    const result = await restackLevels(target(repo), { onto, upstream: c1, at: "main", levels: [withCommit(level2, c2), withCommit(level3, c3)] });
 
     expect(result).toHaveProperty("reason");
     const { reason } = result as { reason: string };
@@ -115,7 +115,7 @@ describe("restackLevels", () => {
     const { repo, c1, c2, c3 } = stack("thanks.txt");
     const onto = mergeIntoMain(repo, "squash");
 
-    const result = await restackLevels(target(repo), { onto, upstream: c1, levels: [withCommit(level2, c2), withCommit(level3, c3)] });
+    const result = await restackLevels(target(repo), { onto, upstream: c1, at: "main", levels: [withCommit(level2, c2), withCommit(level3, c3)] });
 
     expect(result).toHaveProperty("reason");
     const { reason } = result as { reason: string };
@@ -133,11 +133,61 @@ describe("restackLevels", () => {
     const onto = git(repo, ["commit-tree", tree, "-p", "main", "-m", "main already has level 2"]);
     git(repo, ["reset", "-q", "--hard", onto]);
 
-    const result = await restackLevels(target(repo), { onto, upstream: c1, levels: [withCommit(level2, c2), withCommit(level3, c3)] });
+    const result = await restackLevels(target(repo), { onto, upstream: c1, at: "main", levels: [withCommit(level2, c2), withCommit(level3, c3)] });
 
     expect(result).toMatchObject({ commits: [onto, expect.stringMatching(SHA)] });
     const [, n3] = (result as { commits: string[] }).commits as [string, string];
     expect(git(repo, ["rev-parse", `${n3}^`])).toBe(onto);
+  });
+
+  it("takes a pushed head on a level nothing beneath moved as it is, merge commits and all, and checks it", async () => {
+    const { repo, c1, c2, c3 } = stack();
+    // The owner merges a side branch into level 2's branch, as GitHub's "Update branch" would.
+    git(repo, ["checkout", "-q", "--detach", c1]);
+    const side = commit(repo, "side.txt", "side\n", "side");
+    git(repo, ["checkout", "-q", "--detach", c2]);
+    git(repo, ["merge", "-q", "--no-ff", "-m", "owner merge", side]);
+    const pushed = git(repo, ["rev-parse", "HEAD"]);
+    git(repo, ["checkout", "-q", "main"]);
+
+    const result = await restackLevels(target(repo), { onto: c1, upstream: c1, at: "the commits pushed to level 2", levels: [{ ...withCommit(level2, c2), adopted: pushed }, withCommit(level3, c3)] });
+
+    const [n2, n3] = (result as { commits: string[] }).commits as [string, string];
+    expect(n2).toBe(pushed);
+    expect(git(repo, ["rev-parse", `${n3}^`])).toBe(pushed);
+    expect(git(repo, ["diff", "--name-only", pushed, n3])).toBe("third.txt");
+  });
+
+  it("replays an adopted level's pushed commits with its own when the level below moved", async () => {
+    const { repo, c1, c2, c3 } = stack();
+    git(repo, ["checkout", "-q", "--detach", c2]);
+    const pushed = commit(repo, "fix.txt", "fix\n", "owner fix");
+    git(repo, ["checkout", "-q", "main"]);
+    const onto = mergeIntoMain(repo, "squash");
+
+    const result = await restackLevels(target(repo), { onto, upstream: c1, at: "main", levels: [{ ...withCommit(level2, c2), adopted: pushed }, withCommit(level3, c3)] });
+
+    const [n2, n3] = (result as { commits: string[] }).commits as [string, string];
+    expect(git(repo, ["rev-parse", `${n2}~2`])).toBe(onto);
+    expect(git(repo, ["show", `${n2}:fix.txt`])).toBe("fix");
+    expect(git(repo, ["diff", "--name-only", n2, n3])).toBe("third.txt");
+  });
+
+  it("names the adopted level, its pull request and the pushed commits when they fail the check", async () => {
+    const { repo, c1, c2, c3 } = stack();
+    git(repo, ["checkout", "-q", "--detach", c2]);
+    // CHECK is this file's passing check script; the owner's push makes the same assertion fail.
+    const pushed = commit(repo, "check.sh", 'echo "1..1"\necho "not ok 1 - no thanks file"\n', "owner breaks the check");
+    git(repo, ["checkout", "-q", "main"]);
+
+    const result = await restackLevels(target(repo), { onto: c1, upstream: c1, at: "the commits pushed to level 2", levels: [{ ...withCommit(level2, c2), adopted: pushed }, withCommit(level3, c3)] });
+
+    const { reason } = result as { reason: string };
+    expect(reason).toContain("level 2");
+    expect(reason).toContain(URL2);
+    expect(reason).toContain("with the commits pushed to its branch, fails the checks: 1 - no thanks file");
+    expect(reason).not.toContain("Moved onto");
+    expect(git(repo, ["rev-parse", "level-2"])).toBe(c2);
   });
 });
 
