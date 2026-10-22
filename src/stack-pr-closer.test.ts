@@ -223,7 +223,7 @@ describe("the stack publisher", () => {
     await close([l1, l2]);
     const n2 = commitOn("main", "two-again.txt", "two again\n");
 
-    const report = await close([levelAt(R2, n2, "main", { reported: l2.commit })]);
+    const report = await close([levelAt(R2, n2, "main", { reported: l2.commit, earlier: [l2.commit] })]);
 
     expect(report.status).toBe("DONE");
     expect(git(origin, ["rev-parse", `refs/heads/${R2}`])).toBe(n2);
@@ -241,6 +241,45 @@ describe("the stack publisher", () => {
 
     expect(report.status).toBe("ERROR");
     expect(git(origin, ["rev-parse", `refs/heads/${R2}`])).toBe(owner);
+  });
+
+  it("never leases on a reported head it did not make, so the owner's commits on that branch are not overwritten", async () => {
+    const [l1, l2] = threeLevels();
+    await close([l1, l2]);
+    const owner = commitOn(l2.commit, "owner.txt", "owner\n");
+    git(repo, ["push", "-q", "origin", `${owner}:refs/heads/${R2}`]);
+    const n2 = commitOn("main", "two-again.txt", "two again\n");
+
+    const report = await close([levelAt(R2, n2, "main", { reported: owner, earlier: [l2.commit] })]);
+
+    expect(report.status).toBe("ERROR");
+    expect(git(origin, ["rev-parse", `refs/heads/${R2}`])).toBe(owner);
+  });
+
+  it("refuses to push a level it did not move when the owner pushed to it during the run", async () => {
+    const [l1, l2] = threeLevels();
+    await close([l1, l2]);
+    const owner = commitOn(l2.commit, "owner.txt", "owner\n");
+    git(repo, ["push", "-q", "origin", `${owner}:refs/heads/${R2}`]);
+
+    const report = await close([l1, levelAt(R2, l2.commit, R1, { reported: l2.commit })]);
+
+    expect(report.status).toBe("ERROR");
+    expect(git(origin, ["rev-parse", `refs/heads/${R2}`])).toBe(owner);
+  });
+
+  it("keeps an adopted level's pushed head and moves the level above it, leasing on that level's earlier head", async () => {
+    const [l1, l2, l3] = threeLevels();
+    await close([l1, l2, l3]);
+    const owner = commitOn(l2.commit, "owner.txt", "owner\n");
+    git(repo, ["push", "-q", "origin", `${owner}:refs/heads/${R2}`]);
+    const n3 = commitOn(owner, "three.txt", "three\n");
+
+    const report = await close([l1, levelAt(R2, owner, R1, { reported: owner, earlier: [l2.commit] }), levelAt(R3, n3, R2, { reported: l3.commit, earlier: [l3.commit] })]);
+
+    expect(report.status).toBe("DONE");
+    expect(git(origin, ["rev-parse", `refs/heads/${R2}`])).toBe(owner);
+    expect(git(origin, ["rev-parse", `refs/heads/${R3}`])).toBe(n3);
   });
 
   it("pushes a moved level that was pushed but never got a pull request, leasing on the earlier commit origin still holds", async () => {
