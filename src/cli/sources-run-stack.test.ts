@@ -88,6 +88,24 @@ function ownerPushes(origin: string, file: string, text: string): void {
   }
 }
 
+/** The owner commits `file` on top of a pull request's branch on origin, as a fix pushed to answer review; returns the commit. */
+function ownerPushesTo(origin: string, ref: string, file: string, text: string): string {
+  const clone = mkdtempSync(join(tmpdir(), "stack-run-owner-"));
+  try {
+    git(tmpdir(), ["clone", "-q", origin, clone]);
+    git(clone, ["config", "user.name", "Owner"]);
+    git(clone, ["config", "user.email", "owner@example.invalid"]);
+    git(clone, ["checkout", "-q", "--detach", `origin/${ref}`]);
+    writeFileSync(join(clone, file), text);
+    git(clone, ["add", "-A"]);
+    git(clone, ["commit", "-q", "-m", `owner: ${file}`]);
+    git(clone, ["push", "-q", "origin", `HEAD:refs/heads/${ref}`]);
+    return git(clone, ["rev-parse", "HEAD"]);
+  } finally {
+    rmSync(clone, { recursive: true, force: true });
+  }
+}
+
 describe("delivery run --sources with the stacked open-pr closer", () => {
   let gh: GhStandIn;
 
@@ -249,6 +267,29 @@ describe("delivery run --sources with the stacked open-pr closer", () => {
     const levels = status.stdout.split("\n").filter((line) => /- \d+\. /.test(line));
     expect(levels.map((line) => /goodbye|thanks|farewell/.exec(line)?.[0])).toEqual(["goodbye", "thanks", "farewell"]);
     expect(status.stdout).not.toContain("Blocked");
+  }, RUN_TIMEOUT * 3);
+
+  it("adopts a fix the owner pushed to the second pull request, moves the third onto it and keeps the fix through the publish", async () => {
+    const { repo, origin } = project(STACK, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye."), [C]: brief(3, "Add a function that says thanks.") });
+    const env = await envFor(threeWays);
+    expect((await delivery(["run", "--sources", "--max", "3"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const [, pr2, pr3] = gh.pullRequests();
+    const fix = ownerPushesTo(origin, pr2?.head ?? "", "fix.txt", "fix\n");
+
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+
+    expect(git(origin, ["rev-parse", `refs/heads/${pr2?.head}`])).toBe(fix);
+    // The third level is replayed on the fix: the fix is beneath it, and its pull request shows only its own work.
+    expect(git(origin, ["merge-base", fix, `refs/heads/${pr3?.head}`])).toBe(fix);
+    expect(filesOf(origin, pr2?.head ?? "", pr3?.head ?? "").filter((f) => !f.startsWith(".delivery/"))).toEqual(["thanks.js"]);
+    expect(gh.pullRequests()[2]?.base).toBe(pr2?.head);
+    const status = await delivery(["status"], { cwd: repo, env });
+    const levels = status.stdout.split("\n").filter((line) => /- \d+\. /.test(line));
+    expect(levels.map((line) => /hello|goodbye|thanks/.exec(line)?.[0])).toEqual(["hello", "goodbye", "thanks"]);
+    expect(status.stdout).not.toContain("Blocked");
+
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    expect(git(origin, ["rev-parse", `refs/heads/${pr2?.head}`])).toBe(fix);
   }, RUN_TIMEOUT * 3);
 
   it("acts on a merge on a run with nothing to claim, asking GitHub once at the start", async () => {

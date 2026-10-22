@@ -70,8 +70,8 @@ export interface ObservedPull {
 
 export type StackPlan =
   | { kind: "none" }
-  | { kind: "restack"; merged: StackLevel[]; remaining: StackLevel[] }
-  | { kind: "drop"; merged: StackLevel[]; remaining: StackLevel[]; closed: StackLevel[] }
+  | { kind: "restack"; merged: StackLevel[]; remaining: StackLevel[]; adopted: ReadonlyMap<string, string> }
+  | { kind: "drop"; merged: StackLevel[]; remaining: StackLevel[]; closed: StackLevel[]; adopted: ReadonlyMap<string, string> }
   | { kind: "blocked"; reason: string };
 
 /**
@@ -88,9 +88,10 @@ export function planStack(
     base: string;
     held: ReadonlySet<string>;
     carried: ReadonlyMap<string, boolean>;
+    extended: ReadonlyMap<string, boolean>;
   },
 ): StackPlan {
-  const { base, held, carried } = context;
+  const { base, held, carried, extended } = context;
   const pullAt = (i: number): ObservedPull | undefined => observed.get(levels[i]?.ref ?? "");
   const stateAt = (i: number): ObservedPull["state"] => pullAt(i)?.state ?? "OPEN";
   const belowRefAt = (i: number): string | undefined => (i > 0 ? levels[i - 1]?.ref : undefined);
@@ -137,13 +138,16 @@ export function planStack(
     return blocked(`${pull?.url}, the pull request for ${levels[mergedAboveOpen]?.intent}, was merged into ${pull?.base} while ${linkAt(mergedAboveOpen)}, below it, is not merged yet. Once that is merged, the next run carries on.`);
   }
 
-  const openWithForeignHead = levels.findIndex((level, i) => {
+  const adopted = new Map<string, string>();
+  for (const [i, level] of levels.entries()) {
     const pull = pullAt(i);
-    return i < staying && pull?.state === "OPEN" && pull.head !== level.commit && !level.earlier.includes(pull.head);
-  });
-  if (openWithForeignHead >= 0) {
-    const pull = pullAt(openWithForeignHead);
-    return blocked(`${pull?.url}, the pull request for ${levels[openWithForeignHead]?.intent}, has commits on ${levels[openWithForeignHead]?.ref} that this machine did not make, so the stack was left as it is rather than overwrite them.`);
+    if (i >= staying || pull?.state !== "OPEN" || pull.head === level.commit || level.earlier.includes(pull.head)) continue;
+    if (extended.get(level.ref) === true) {
+      adopted.set(level.ref, pull.head);
+      continue;
+    }
+    const lost = level.commit.slice(0, 7);
+    return blocked(`${pull.url}, the pull request for ${level.intent}, no longer holds ${lost}, the commit this machine last made for ${level.ref}: its branch was rewritten, so the stack was left as it is rather than overwrite it. Push commits on top of ${lost} to that branch, or close the pull request to drop it.`);
   }
 
   let prefix = 0;
@@ -159,11 +163,12 @@ export function planStack(
 
   const reachedBase = prefix === 0 || reached.slice(0, prefix).every((ok) => ok);
   if (closedAt >= 0) {
-    return reachedBase ? { kind: "drop", merged: levels.slice(0, prefix), remaining: levels.slice(prefix, closedAt), closed: levels.slice(closedAt) } : { kind: "none" };
+    return reachedBase ? { kind: "drop", merged: levels.slice(0, prefix), remaining: levels.slice(prefix, closedAt), closed: levels.slice(closedAt), adopted } : { kind: "none" };
   }
   if (prefix >= 1 && reachedBase) {
-    return { kind: "restack", merged: levels.slice(0, prefix), remaining: levels.slice(prefix) };
+    return { kind: "restack", merged: levels.slice(0, prefix), remaining: levels.slice(prefix), adopted };
   }
+  if (adopted.size > 0) return { kind: "restack", merged: [], remaining: [...levels], adopted };
   return { kind: "none" };
 }
 

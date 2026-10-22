@@ -80,6 +80,23 @@ describe("the gh stand-in's pull requests", () => {
     expect(search.status).not.toBe(0);
   });
 
+  it("reports a head set by reportHead in the listing while origin's branch is unchanged", () => {
+    const repo = initTempRepo("stand-in-", { "a.txt": "a\n" });
+    const origin = addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    const url = run(gh.command, ["pr", "create", "--base=main", "--head=a", "--title=T", "--body=B"], repo).stdout.trim();
+    run("git", ["push", "origin", "main:refs/heads/a"], repo);
+    const held = execFileSync("git", ["rev-parse", "refs/heads/a"], { cwd: origin, encoding: "utf-8" }).trim();
+    const reported = "f".repeat(40);
+
+    gh.reportHead(url, reported);
+
+    const query = "query($owner:String!,$name:String!,$h0:String!){repository(owner:$owner,name:$name){p0:pullRequests(headRefName:$h0,states:[OPEN,MERGED,CLOSED],first:100){nodes{url state headRefName headRefOid baseRefName mergeCommit{oid}}}}}";
+    const answer = run(gh.command, ["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "name={repo}", "-f", "h0=a"], repo);
+    expect(JSON.parse(answer.stdout).data.repository.p0.nodes[0].headRefOid).toBe(reported);
+    expect(execFileSync("git", ["rev-parse", "refs/heads/a"], { cwd: origin, encoding: "utf-8" }).trim()).toBe(held);
+  });
+
   it("sets a pull request's base with pr edit --base", () => {
     const repo = initTempRepo("stand-in-edit-", { "a.txt": "a\n" });
     addLocalOrigin(repo);

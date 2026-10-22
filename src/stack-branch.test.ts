@@ -10,7 +10,7 @@ import { readStack } from "./delivery-stack.js";
 import { createGhStandIn, type GhStandIn } from "./gh-stand-in.js";
 import { landFollowUps } from "./follow-ups.js";
 import { awaitsMerge, readItemLedger } from "./item-ledger.js";
-import { closeDeliveryStack, reconcileStackBranch } from "./stack-branch.js";
+import { closeDeliveryStack, couldNotFetchPushed, reconcileStackBranch } from "./stack-branch.js";
 import { addLocalOrigin, initTempRepo } from "./temp-repo.js";
 import type { DeliveredLevel } from "./ports.js";
 import type { GateRef } from "./schema.js";
@@ -89,6 +89,20 @@ const pushToMain = (origin: string, file: string, text: string): void =>
     git(clone, ["commit", "-q", "-m", `owner: ${file}`]);
     git(clone, ["push", "-q", "origin", "HEAD:refs/heads/main"]);
   });
+
+/** The owner pushes a commit adding `file` on top of `ref` on origin, as a fix pushed to a pull request's branch; returns it. */
+const pushToLevel = (origin: string, ref: string, file: string, text: string): string => {
+  let pushed = "";
+  onOrigin(origin, (clone) => {
+    git(clone, ["checkout", "-q", "--detach", `origin/${ref}`]);
+    writeFileSync(join(clone, file), text);
+    git(clone, ["add", "-A"]);
+    git(clone, ["commit", "-q", "-m", `owner: ${file}`]);
+    pushed = git(clone, ["rev-parse", "HEAD"]);
+    git(clone, ["push", "-q", "origin", `HEAD:refs/heads/${ref}`]);
+  });
+  return pushed;
+};
 
 /** The run's fetch of the base into origin/main. */
 const fetchMain = (repo: string): void => {
@@ -473,6 +487,133 @@ describe("reconcileStackBranch on a stack of three pull requests", () => {
       expect([rev(repo, R1), rev(repo, R2), rev(repo, R3), rev(repo, D)]).toEqual([c1, c2, c3, c3]);
       expect(remoteBranches(origin)).toEqual([R1, R2, R3]);
       expect(readFileSync(book.delivery, "utf-8")).toBe(delivery);
+    });
+  });
+
+  describe("when the owner pushes commits to a level's branch", () => {
+    it("adopts a fix pushed to the second level and moves the third onto it, re-checking both", async () => {
+      const { repo, origin, book, c1, c3 } = await stacked();
+      const fix = pushToLevel(origin, R2, "fix.txt", "fix\n");
+      const gateLog = join(book.dir, "gate.log");
+
+      const result = await reconcile(repo, book, { ...process.env, GATE_LOG: gateLog });
+
+      expect(result).toMatchObject({ ready: true, reported: new Map([[R1, c1], [R2, fix], [R3, c3]]) });
+      expect([rev(repo, R1), rev(repo, R2), rev(repo, `${R3}^`), rev(repo, D)]).toEqual([c1, fix, fix, rev(repo, R3)]);
+      expect(git(repo, ["diff", "--name-only", R2, R3])).toBe("three.txt");
+      expect(linesOf(gateLog)).toBe(4);
+      expect((await entriesOf(book)).at(-1)).toMatchObject({ t: "restacked", merged: [], adopted: [{ runId: "r2", commit: fix }] });
+      expect((await readStack(repo, book.delivery, D)).map((level) => level.run)).toEqual(["r1", "r2", "r3"]);
+      const items = await readItemLedger(book.items);
+      expect(items.get("backlog:r2.md")?.commit).toBe(fix);
+      expect(await awaitsMerge(repo, items.get("backlog:r3.md"))).toBe(true);
+    });
+
+    it("adopts a fix pushed to the bottom level, checked against the section's opening", async () => {
+      const { repo, origin, book } = await stacked();
+      const fix = pushToLevel(origin, R1, "fix.txt", "fix\n");
+
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true });
+
+      expect([rev(repo, R1), rev(repo, `${R2}^`), rev(repo, D)]).toEqual([fix, fix, rev(repo, R3)]);
+    });
+
+    it("adopts fixes pushed to two levels at once, each keeping its own", async () => {
+      const { repo, origin, book } = await stacked();
+      const fix2 = pushToLevel(origin, R2, "fix2.txt", "fix2\n");
+      pushToLevel(origin, R3, "fix3.txt", "fix3\n");
+
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true });
+
+      expect(rev(repo, R2)).toBe(fix2);
+      expect(rev(repo, `${R3}^^`)).toBe(rev(repo, R2));
+      expect(git(repo, ["diff", "--name-only", R2, R3]).split("\n").sort()).toEqual(["fix3.txt", "three.txt"]);
+    });
+
+    it("blocks, naming the level and its pull request, and moves nothing when the pushed commits fail the check; adopts once a passing fix is pushed", async () => {
+      const { repo, origin, book, c1, c2, c3 } = await stacked();
+      const broken = pushToLevel(origin, R2, "check.sh", 'echo "1..1"\necho "not ok 1 - broken"\n');
+
+      const result = await reconcile(repo, book);
+
+      expect(result).toMatchObject({ ready: false, repeated: false });
+      expect(result.ready === false && result.reason).toContain("level 2");
+      expect(result.ready === false && result.reason).toContain(URL2);
+      expect([rev(repo, R1), rev(repo, R2), rev(repo, R3), rev(repo, D)]).toEqual([c1, c2, c3, c3]);
+      expect(rev(origin, `refs/heads/${R2}`)).toBe(broken);
+      expect((await entriesOf(book)).at(-1)).toMatchObject({ t: "blocked" });
+      expect(await reconcile(repo, book)).toMatchObject({ ready: false, repeated: true });
+
+      const fix = pushToLevel(origin, R2, "check.sh", CHECK);
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true });
+      expect(rev(repo, R2)).toBe(fix);
+    });
+
+    it("blocks, naming the pull request, and overwrites nothing when the level's branch was rewritten", async () => {
+      const { repo, origin, book, c1, c2 } = await stacked();
+      let rewrite = "";
+      onOrigin(origin, (clone) => {
+        git(clone, ["checkout", "-q", "--detach", c1]);
+        writeFileSync(join(clone, "other.txt"), "other\n");
+        git(clone, ["add", "-A"]);
+        git(clone, ["commit", "-q", "-m", "owner: rewrite"]);
+        rewrite = git(clone, ["rev-parse", "HEAD"]);
+        git(clone, ["push", "-q", "--force", "origin", `HEAD:refs/heads/${R2}`]);
+      });
+
+      const result = await reconcile(repo, book);
+
+      expect(result).toMatchObject({ ready: false, repeated: false });
+      expect(result.ready === false && result.reason).toContain(URL2);
+      expect(result.ready === false && result.reason).toContain(c2.slice(0, 7));
+      expect(result.ready === false && result.reason).toContain("rewritten");
+      expect(rev(repo, R2)).toBe(c2);
+      expect(rev(origin, `refs/heads/${R2}`)).toBe(rewrite);
+      expect((await entriesOf(book)).at(-1)).toMatchObject({ t: "blocked" });
+    });
+
+    it("starts no task and records nothing while GitHub reports a pushed head origin cannot serve, then adopts", async () => {
+      const { repo, origin, gh, book } = await stacked();
+      const before = (await entriesOf(book)).length;
+      gh.reportHead(URL2, "f".repeat(40));
+
+      expect(await reconcile(repo, book)).toEqual({ ready: false, branch: D, base: "main", reason: couldNotFetchPushed([URL2]), repeated: false });
+      expect(await entriesOf(book)).toHaveLength(before);
+
+      const fix = pushToLevel(origin, R2, "fix.txt", "fix\n");
+      gh.reportHead(URL2, fix);
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true });
+      expect(rev(repo, R2)).toBe(fix);
+    });
+
+    it("adopts a fix above a squash-merged bottom in the same move onto the base, keeping the fix", async () => {
+      const { repo, origin, gh, book } = await stacked();
+      const fix = pushToLevel(origin, R2, "fix.txt", "fix\n");
+      gh.merge(URL1, "squash", origin);
+      fetchMain(repo);
+
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true });
+
+      expect(rev(repo, `${R2}^^`)).toBe(rev(repo, "refs/remotes/origin/main"));
+      expect(git(repo, ["diff", "--name-only", `${R2}^^`, R2]).split("\n").sort()).toEqual(["fix.txt", "two.txt"]);
+      expect((await entriesOf(book)).at(-1)).toMatchObject({ t: "restacked", merged: ["r1"], adopted: [{ runId: "r2", commit: fix }] });
+      expect((await readStack(repo, book.delivery, D)).find((level) => level.run === "r2")?.earlier).toContain(fix);
+    });
+
+    it("drops a closed level, then adopts a fix below it, then moves what remains onto a merged bottom", async () => {
+      const { repo, origin, gh, book } = await stacked();
+      const fix = pushToLevel(origin, R2, "fix.txt", "fix\n");
+      gh.merge(URL1, "squash", origin);
+      gh.closePullRequest(URL3);
+      fetchMain(repo);
+
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true });
+
+      expect((await entriesOf(book)).map((e) => e.t).slice(-2)).toEqual(["dropped", "restacked"]);
+      expect((await entriesOf(book)).at(-1)).toMatchObject({ merged: ["r1"], adopted: [{ runId: "r2", commit: fix }] });
+      expect(git(repo, ["branch", "--list", R3])).toBe("");
+      expect(git(origin, ["branch", "--list", R3])).toBe("");
+      expect(git(repo, ["diff", "--name-only", "refs/remotes/origin/main", R2]).split("\n").sort()).toEqual(["fix.txt", "two.txt"]);
     });
   });
 

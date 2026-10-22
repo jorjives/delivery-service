@@ -188,10 +188,11 @@ describe("planStack", () => {
     }
     return observed;
   };
-  const ctx = (over: { held?: string[]; carried?: Record<string, boolean> } = {}) => ({
+  const ctx = (over: { held?: string[]; carried?: Record<string, boolean>; extended?: Record<string, boolean> } = {}) => ({
     base: "main",
     held: new Set(over.held ?? []),
     carried: new Map(Object.entries(over.carried ?? {})),
+    extended: new Map(Object.entries(over.extended ?? {})),
   });
   const reasonOf = (plan: StackPlan): string => {
     expect(plan.kind).toBe("blocked");
@@ -337,10 +338,54 @@ describe("planStack", () => {
     expect(reasonOf(planStack(three, observed, ctx({ carried: { [R2]: false } })))).toContain(urlOf("r2"));
   });
 
-  it("blocks on an open level whose head this machine did not make, but not on a commit it stood at before", () => {
-    expect(reasonOf(planStack(three, observe({ r1: pull("OPEN", "x"), r2: pull("OPEN", "c2") }), ctx()))).toContain(urlOf("r1"));
+  it("adopts an open level whose head extends the commit the ledger expects", () => {
+    const observed = observe({ r1: pull("OPEN", "c1"), r2: pull("OPEN", "f2"), r3: pull("OPEN", "c3") });
+    expect(planStack(three, observed, ctx({ extended: { [R2]: true } }))).toEqual({ kind: "restack", merged: [], remaining: three, adopted: new Map([[R2, "f2"]]) });
+  });
+
+  it("blocks on a rewritten branch, naming its pull request and the commit it lost, but not on a commit it stood at before", () => {
+    const reason = reasonOf(planStack(three, observe({ r1: pull("OPEN", "x"), r2: pull("OPEN", "c2") }), ctx({ extended: { [R1]: false } })));
+    expect(reason).toContain(urlOf("r1"));
+    expect(reason).toContain("c1");
+    expect(reason).toContain("rewritten");
+    expect(reasonOf(planStack(three, observe({ r1: pull("OPEN", "x") }), ctx()))).toContain("rewritten");
     const formerly = [{ ...r1, earlier: ["old"] }, r2, r3];
     expect(planStack(formerly, observe({ r1: pull("OPEN", "old"), r2: pull("OPEN", "c2"), r3: pull("OPEN", "c3") }), ctx())).toEqual({ kind: "none" });
+  });
+
+  it("adopts every level with a pushed head, bottom first", () => {
+    const observed = observe({ r1: pull("OPEN", "c1"), r2: pull("OPEN", "f2"), r3: pull("OPEN", "f3") });
+    expect(planStack(three, observed, ctx({ extended: { [R2]: true, [R3]: true } }))).toMatchObject({ kind: "restack", merged: [], adopted: new Map([[R2, "f2"], [R3, "f3"]]) });
+  });
+
+  it("adopts a level above a merged bottom in the same move onto the base", () => {
+    const observed = observe({ r1: pull("MERGED", "c1", { mergeCommit: "m1" }), r2: pull("OPEN", "f2"), r3: pull("OPEN", "c3") });
+    expect(planStack(three, observed, ctx({ held: ["m1"], extended: { [R2]: true } }))).toMatchObject({ kind: "restack", merged: [{ run: "r1" }], remaining: [{ run: "r2" }, { run: "r3" }], adopted: new Map([[R2, "f2"]]) });
+  });
+
+  it("still adopts while a merged bottom has not reached this machine's base, leaving the merge for later", () => {
+    const observed = observe({ r1: pull("MERGED", "c1", { mergeCommit: "m1" }), r2: pull("OPEN", "f2"), r3: pull("OPEN", "c3") });
+    expect(planStack(three, observed, ctx({ extended: { [R2]: true } }))).toEqual({ kind: "restack", merged: [], remaining: three, adopted: new Map([[R2, "f2"]]) });
+  });
+
+  it("drops a closed level, adopts a pushed head below it and names the merged prefix, in one plan", () => {
+    const observed = observe({ r1: pull("MERGED", "c1", { mergeCommit: "m1" }), r2: pull("OPEN", "f2"), r3: pull("CLOSED", "c3") });
+    expect(planStack(three, observed, ctx({ held: ["m1"], extended: { [R2]: true } }))).toMatchObject({ kind: "drop", merged: [{ run: "r1" }], remaining: [{ run: "r2" }], closed: [{ run: "r3" }], adopted: new Map([[R2, "f2"]]) });
+  });
+
+  it("waits, adopting nothing, while a close stands above a merged bottom that has not reached the base", () => {
+    const observed = observe({ r1: pull("MERGED", "c1", { mergeCommit: "m1" }), r2: pull("OPEN", "f2"), r3: pull("CLOSED", "c3") });
+    expect(planStack(three, observed, ctx({ extended: { [R2]: true } }))).toEqual({ kind: "none" });
+  });
+
+  it("does not adopt a pushed head above a closed level, which is dropped", () => {
+    const observed = observe({ r1: pull("OPEN", "c1"), r2: pull("CLOSED", "c2"), r3: pull("OPEN", "f3") });
+    expect(planStack(three, observed, ctx({ extended: { [R3]: true } }))).toMatchObject({ kind: "drop", adopted: new Map() });
+  });
+
+  it("blocks rather than adopts when a level was merged into a level below it that has pushed commits", () => {
+    const observed = observe({ r1: pull("OPEN", "f1"), r2: pull("MERGED", "c2", { base: R1, mergeCommit: "m2" }) });
+    expect(reasonOf(planStack(three, observed, ctx({ extended: { [R1]: true } })))).toContain("is not merged yet");
   });
 
   it("fingerprints observations independently of insertion order", () => {

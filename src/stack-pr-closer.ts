@@ -31,9 +31,9 @@ async function commitOf(repoPath: string, ref: string): Promise<string | undefin
 
 /**
  * The `--force-with-lease` flags for the levels whose origin head is not the commit they push. A level's expected head is
- * the one GitHub reported for its pull request at the start of the run; a level with no pull request is leased on the
- * head origin holds, but only when that head is one of the level's own earlier commits. Any other head gets no lease, so
- * a plain push refuses to overwrite it. Undefined when origin cannot be read, which the push then reports as an error.
+ * the one GitHub reported for its pull request at the start of the run, but only when this machine made it (the level's
+ * commit, or one of its earlier commits); otherwise it is the head origin holds, when that is one of the level's earlier
+ * commits. Any other head gets no lease, so a plain push refuses to overwrite it, the owner's commits included. Undefined when origin cannot be read, which the push then reports as an error.
  */
 async function leasesFor(repoPath: string, levels: readonly DeliveredLevel[]): Promise<string[] | undefined> {
   const listing = await git(repoPath, ["ls-remote", "origin", ...levels.map((level) => `refs/heads/${level.ref}`)]).catch(
@@ -48,7 +48,8 @@ async function leasesFor(repoPath: string, levels: readonly DeliveredLevel[]): P
   const leases: string[] = [];
   for (const level of levels) {
     const head = heads.get(`refs/heads/${level.ref}`);
-    const expected = level.reported ?? (head !== undefined && level.earlier?.includes(head) ? head : undefined);
+    const ours = (sha: string | undefined): sha is string => sha !== undefined && (sha === level.commit || level.earlier?.includes(sha) === true);
+    const expected = ours(level.reported) ? level.reported : ours(head) ? head : undefined;
     if (expected !== undefined && expected !== level.commit) {
       leases.push(`--force-with-lease=refs/heads/${level.ref}:${expected}`);
     }
