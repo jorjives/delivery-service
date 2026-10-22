@@ -69,6 +69,8 @@ export interface GhStandIn {
   closePullRequest(url: string): void;
   /** Mark a pull request merged at this head commit, as merging it on GitHub would. Moves no branch: merge into origin yourself. */
   mergePullRequest(url: string, headRefOid: string, mergeCommit?: string): void;
+  /** GitHub reports this head for the pull request whatever origin holds, as when GitHub is ahead of the git server. */
+  reportHead(url: string, headRefOid: string): void;
   /**
    * Merge a pull request on `origin` by `method`, as GitHub would, and mark it merged. The head is read from origin's head
    * branch now. Pushes the base and `refs/pull/<number>/head`. Returns the base's new commit.
@@ -363,6 +365,13 @@ export function createGhStandIn(): GhStandIn {
       write(state);
     },
     mergePullRequest,
+    reportHead: (url, headRefOid) => {
+      const state = read();
+      const pr = state.pullRequests.find((p) => p.url === url);
+      if (!pr) throw new Error(`no pull request ${url}`);
+      pr.headRefOid = headRefOid;
+      write(state);
+    },
     merge: (url, method, origin) => {
       const pr = read().pullRequests.find((p) => p.url === url);
       if (!pr) throw new Error(`no pull request ${url}`);
