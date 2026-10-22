@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { appendEntry, create, load, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
-import type { CaseFileOutcome, CloserRef } from "../schema.js";
+import type { CaseFileOutcome, CloserRef, PinnedWorkflow } from "../schema.js";
 import type { EscalationPacket } from "../triage-role-config.js";
 import { EXIT } from "./failures.js";
 import { summariseOutcome } from "./outcome.js";
@@ -23,7 +23,7 @@ const packet: EscalationPacket = {
 /** A finished run's record, as the run loop leaves it: the closer it was started with, and what that closer reported. */
 async function finishedRun(
   outcome: (dir: string) => Promise<CaseFileOutcome>,
-  { closerRef = { type: "commit-to-branch" }, closeDetail }: { closerRef?: CloserRef; closeDetail?: string } = {},
+  { closerRef = { type: "commit-to-branch" }, closeDetail, workflow }: { closerRef?: CloserRef; closeDetail?: string; workflow?: PinnedWorkflow } = {},
 ) {
   const dir = await mkdtemp(join(tmpdir(), "outcome-"));
   await create(
@@ -33,6 +33,7 @@ async function finishedRun(
       taskDef: { intent: "add a hello function" },
       gateRef: { type: "command", command: "npm test", parseMode: "exitcode" },
       closerRef,
+      ...(workflow ? { workflow } : {}),
     },
     DEFAULT_BUDGETS,
   );
@@ -171,5 +172,25 @@ describe("where a closed run says its work went", () => {
     await setOutcome(dir, await closed());
     const summary = await summariseOutcome(dir, await load(dir));
     expect(summary.headline).toContain(`is committed on branch surface/${RUN_ID}.`);
+  });
+});
+
+describe("the check a closed run says it passed", () => {
+  it("does not name the project's check when every step of its workflow ran its own", async () => {
+    const workflow: PinnedWorkflow = {
+      name: "scout",
+      steps: [
+        { name: "attempt", prompt: "...", gateRef: { type: "command", command: "node scripts/changed.mjs .", parseMode: "exitcode" } },
+        {
+          name: "notes",
+          prompt: "...",
+          continue: true,
+          gateRef: { type: "command", command: "node scripts/changed.mjs --only plans/", parseMode: "exitcode" },
+        },
+      ],
+    };
+    const { dir, caseFile } = await finishedRun(closed, { workflow });
+    const summary = await summariseOutcome(dir, caseFile);
+    expect(summary.headline).not.toContain("npm test");
   });
 });
