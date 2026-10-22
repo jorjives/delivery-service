@@ -74,6 +74,7 @@ silently stacked on a pull request that has already gone.
 
 ## Slice 2: Slices Run in Order, and a Stalled Slice Holds Only Its Own Spec
 
+**Tests:** ✅ Recorded — 2026-10-22 — `204d807` — cli — 1 UAT + 1 AC, 2 skipped
 **Delivers:** Work items can belong to a named sequence, and the run never starts a later item of a
 sequence while an earlier one is parked, waiting for an answer, or in flight; other work carries on.
 
