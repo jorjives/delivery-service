@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { mkdtemp } from "node:fs/promises";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
-import { create, load } from "./case-file.js";
+import { create, load, updateCursor } from "./case-file.js";
 import { DELIVERY, commitOn, deliveryRepo } from "./delivery-fixtures.js";
 import { advance, run, type AdvanceResult } from "./surface.js";
 import { deterministicRouter } from "./router.js";
@@ -155,5 +155,86 @@ describe("a rebuild that conflicts", () => {
     expect(git(repo, ["show", `${DELIVERY}:shared.txt`])).toBe("theirs\nmine");
     // Kept only until the task lands.
     expect(git(repo, ["branch", "--list", `${BRANCH}-conflict-*`])).toBe("");
+  });
+});
+
+describe("the commit a close records", () => {
+  /**
+   * The crash window between the closer and the close entry: the last close entry is lost, with the outcome that is set after it,
+   * and the cursor is back before the close.
+   */
+  async function loseLastClose(dir: string): Promise<void> {
+    const log = join(dir, "log.jsonl");
+    const lines = readFileSync(log, "utf-8").split("\n").filter(Boolean);
+    expect(JSON.parse(lines.at(-1) ?? "").t).toBe("close");
+    writeFileSync(log, lines.slice(0, -1).map((line) => `${line}\n`).join(""));
+    const caseJsonPath = join(dir, "case.json");
+    const { outcome: _lost, ...caseJson } = JSON.parse(readFileSync(caseJsonPath, "utf-8"));
+    writeFileSync(caseJsonPath, JSON.stringify(caseJson));
+    await updateCursor(dir, { state: "CLOSING" });
+  }
+
+  const lastClose = async (dir: string) => (await load(dir)).history.findLast((e) => e.t === "close");
+
+  it("records on its close the delivery-branch commit it landed at", async () => {
+    const repo = deliveryRepo();
+    const ports = portsWith(writes("feature.txt", "the feature\n"));
+    const { dir, location } = await toClosing(ports, repo);
+
+    await run(dir, location, ports);
+
+    expect(await lastClose(dir)).toMatchObject({ status: "DONE", commit: git(repo, ["rev-parse", DELIVERY]) });
+  });
+
+  it("records the landed commit on a close replayed after merge-back already landed and deleted the branch", async () => {
+    const repo = deliveryRepo();
+    const ports = portsWith(writes("feature.txt", "the feature\n"));
+    const { dir, location } = await toClosing(ports, repo);
+    await run(dir, location, ports);
+    const landedAt = git(repo, ["rev-parse", DELIVERY]);
+    await loseLastClose(dir);
+    await commitOn(repo, DELIVERY, "other.txt", "another task's work\n");
+
+    const result = await run(dir, location, ports);
+
+    expect(result.state).toBe("CLOSED");
+    expect(await lastClose(dir)).toMatchObject({ status: "DONE", commit: landedAt });
+    expect(git(repo, ["rev-parse", DELIVERY])).not.toBe(landedAt);
+  });
+
+  it("records a close that landed nothing of its own as empty, and one that landed as not", async () => {
+    const repo = deliveryRepo();
+    const landing = portsWith(writes("feature.txt", "the feature\n"));
+    const first = await toClosing(landing, repo);
+    await run(first.dir, first.location, landing);
+    const landedAt = git(repo, ["rev-parse", DELIVERY]);
+    const idle = portsWith(() => Promise.resolve({ status: "completed", rationale: "found nothing to change" }));
+    const second = await toClosing(idle, repo);
+
+    const result = await run(second.dir, second.location, idle);
+
+    expect(result.state).toBe("CLOSED");
+    const firstClose = (await load(first.dir)).history.findLast((e) => e.t === "close");
+    expect(firstClose).toMatchObject({ status: "DONE", commit: landedAt });
+    expect(firstClose).not.toHaveProperty("empty");
+    expect(await lastClose(second.dir)).toMatchObject({ status: "DONE", commit: landedAt, empty: true });
+  });
+
+  it("keeps a real landing non-empty on a close replayed after the landing, while the task branch still exists", async () => {
+    const repo = deliveryRepo();
+    const ports = portsWith(writes("feature.txt", "the feature\n"));
+    const { dir, location } = await toClosing(ports, repo);
+    await run(dir, location, ports);
+    const landedAt = git(repo, ["rev-parse", DELIVERY]);
+    // Stands for a crash after the fast-forward and before merge-back deleted the task branch.
+    git(repo, ["branch", BRANCH, landedAt]);
+    await loseLastClose(dir);
+
+    const result = await run(dir, location, ports);
+
+    expect(result.state).toBe("CLOSED");
+    const replayed = await lastClose(dir);
+    expect(replayed).toMatchObject({ status: "DONE", commit: landedAt });
+    expect(replayed).not.toHaveProperty("empty");
   });
 });
