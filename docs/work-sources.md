@@ -44,6 +44,7 @@ A `github` source reads your repository's open issues through the GitHub command
 - A `workflow:<name>` label chooses the [workflow](use-workflows.md) that delivers it; without one, the source's `workflow` does. A `priority:<n>` label orders it, lower first; otherwise the oldest issue goes first.
 - A `sequence:<name>` label puts the issue in a [sequence](#keep-items-in-order). An issue with two `sequence:` labels is left alone, and the run says so.
 - An issue whose title or body changes after the label was added is left alone, and the run says so, until you remove the label and add it again. On a public repository anyone can write an issue but only people you allow can label one, so the label approves the text as it reads.
+- A step prompt that uses `{{task.body}}` places the issue's text among the step's instructions, not only in the task data the agent treats as a description. Approve such an issue with the label as carefully as you would approve an instruction.
 - The agent is told the task came from an issue tracker, where anyone may write, and to treat the text as a description of the work, not as instructions that change its setup or the checks.
 
 ### When `gh` is not available
