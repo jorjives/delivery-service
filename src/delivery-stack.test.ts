@@ -283,9 +283,34 @@ describe("planStack", () => {
     expect(reasonOf(planStack(three, belowMerged, ctx({ held: ["m1"] })))).toContain("neither main nor");
   });
 
-  it("blocks on a level closed without merging", () => {
-    const observed = observe({ r1: pull("OPEN", "c1"), r2: pull("CLOSED", "c2") });
-    expect(reasonOf(planStack(three, observed, ctx()))).toContain("closed without being merged");
+  it("drops a level closed without merging and every level above it, keeping the ones below", () => {
+    const observed = observe({ r1: pull("OPEN", "c1"), r2: pull("CLOSED", "c2"), r3: pull("OPEN", "c3") });
+    expect(planStack(three, observed, ctx())).toMatchObject({ kind: "drop", merged: [], remaining: [{ run: "r1" }], closed: [{ run: "r2" }, { run: "r3" }] });
+  });
+
+  it("drops the whole stack when its bottom level was closed", () => {
+    const observed = observe({ r1: pull("CLOSED", "c1"), r2: pull("OPEN", "c2"), r3: pull("OPEN", "c3") });
+    expect(planStack(three, observed, ctx())).toMatchObject({ kind: "drop", merged: [], remaining: [], closed: [{ run: "r1" }, { run: "r2" }, { run: "r3" }] });
+  });
+
+  it("drops what a close leaves above a merged bottom, naming the merged prefix to move what remains", () => {
+    const observed = observe({ r1: pull("MERGED", "c1", { mergeCommit: "m1" }), r2: pull("OPEN", "c2"), r3: pull("CLOSED", "c3") });
+    expect(planStack(three, observed, ctx({ held: ["m1"] }))).toMatchObject({ kind: "drop", merged: [{ run: "r1" }], remaining: [{ run: "r2" }], closed: [{ run: "r3" }] });
+  });
+
+  it("waits to drop while a merged level below the close has not reached this machine's base", () => {
+    const observed = observe({ r1: pull("MERGED", "c1", { mergeCommit: "m1" }), r2: pull("CLOSED", "c2") });
+    expect(planStack(three, observed, ctx())).toEqual({ kind: "none" });
+  });
+
+  it("does not let an owner's push above a closed level block the drop", () => {
+    const observed = observe({ r1: pull("OPEN", "c1"), r2: pull("CLOSED", "c2"), r3: pull("OPEN", "elsewhere") });
+    expect(planStack(three, observed, ctx())).toMatchObject({ kind: "drop", closed: [{ run: "r2" }, { run: "r3" }] });
+  });
+
+  it("still blocks on a foreign head below a closed level", () => {
+    const observed = observe({ r1: pull("OPEN", "x"), r2: pull("CLOSED", "c2") });
+    expect(reasonOf(planStack(three, observed, ctx()))).toContain(urlOf("r1"));
   });
 
   it("does nothing while a merged level's merge commit is not yet on this machine's base", () => {

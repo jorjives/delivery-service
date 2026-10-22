@@ -71,12 +71,15 @@ export interface ObservedPull {
 export type StackPlan =
   | { kind: "none" }
   | { kind: "restack"; merged: StackLevel[]; remaining: StackLevel[] }
+  | { kind: "drop"; merged: StackLevel[]; remaining: StackLevel[]; closed: StackLevel[] }
   | { kind: "blocked"; reason: string };
 
 /**
  * What a stack should do, given GitHub's view of its pull requests (`observed`, keyed by level ref; a level with no entry is
  * OPEN with no head). A merged level has reached the base when its merge commit is held by the base, or when it was merged
  * into the level below before that level merged and that level has itself reached the base. Blocks are checked before waits.
+ * A level closed without merging is the owner saying no: it and every level above it are dropped, and only the levels below
+ * it are checked for blocks.
  */
 export function planStack(
   levels: readonly StackLevel[],
@@ -111,13 +114,12 @@ export function planStack(
     reached.push(ok);
   });
 
-  const closed = levels.findIndex((_, i) => stateAt(i) === "CLOSED");
-  if (closed >= 0) {
-    const pull = pullAt(closed);
-    return blocked(`${pull?.url}, the pull request for ${levels[closed]?.intent}, was closed without being merged, so the levels above it cannot move. Reopen it on GitHub to carry on.`);
-  }
+  const closedAt = levels.findIndex((_, i) => stateAt(i) === "CLOSED");
+  // The levels that stay: a level above a close is going, so what it shows cannot block.
+  const staying = closedAt >= 0 ? closedAt : levels.length;
 
   const elsewhere = levels.findIndex((_, i) => {
+    if (i >= staying) return false;
     const pull = pullAt(i);
     return pull?.state === "MERGED" && !isHeld(pull) && pull.base !== base && pull.base !== belowRefAt(i);
   });
@@ -137,7 +139,7 @@ export function planStack(
 
   const openWithForeignHead = levels.findIndex((level, i) => {
     const pull = pullAt(i);
-    return pull?.state === "OPEN" && pull.head !== level.commit && !level.earlier.includes(pull.head);
+    return i < staying && pull?.state === "OPEN" && pull.head !== level.commit && !level.earlier.includes(pull.head);
   });
   if (openWithForeignHead >= 0) {
     const pull = pullAt(openWithForeignHead);
@@ -147,7 +149,7 @@ export function planStack(
   let prefix = 0;
   while (prefix < levels.length && stateAt(prefix) === "MERGED") prefix++;
 
-  const stranded = levels.findIndex((_, i) => i < prefix && !reached[i] && pullAt(i)?.base === belowRefAt(i) && carried.get(levels[i]?.ref ?? "") === false);
+  const stranded = levels.findIndex((_, i) => i < prefix && i < staying && !reached[i] && pullAt(i)?.base === belowRefAt(i) && carried.get(levels[i]?.ref ?? "") === false);
   if (stranded >= 0) {
     const pull = pullAt(stranded);
     if (pull) {
@@ -155,7 +157,11 @@ export function planStack(
     }
   }
 
-  if (prefix >= 1 && reached.slice(0, prefix).every((ok) => ok)) {
+  const reachedBase = prefix === 0 || reached.slice(0, prefix).every((ok) => ok);
+  if (closedAt >= 0) {
+    return reachedBase ? { kind: "drop", merged: levels.slice(0, prefix), remaining: levels.slice(prefix, closedAt), closed: levels.slice(closedAt) } : { kind: "none" };
+  }
+  if (prefix >= 1 && reachedBase) {
     return { kind: "restack", merged: levels.slice(0, prefix), remaining: levels.slice(prefix) };
   }
   return { kind: "none" };
