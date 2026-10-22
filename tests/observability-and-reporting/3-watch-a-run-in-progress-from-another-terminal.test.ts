@@ -44,7 +44,7 @@ async function project(concurrency?: number) {
   git(repo, ["commit", "-q", "-m", "configure"]);
   const script = join(mkdtempSync(join(tmpdir(), "uat-watch-script-")), "mock.json");
   await writeMockScript(script, {
-    delayMs: 3000,
+    delayMs: 6000, // long enough that, on a machine under heavy load, task 1 is still in this step when the watch has started
     expectations: TASKS.map((task, i) => ({
       when: { promptContains: task },
       effects: [{ write: { path: `f${i}.js`, content: `export const f${i} = () => ${i};\n` } }],
