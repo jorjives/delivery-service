@@ -251,6 +251,20 @@ describe("what it says about a file it can't use", () => {
     );
   });
 
+  it("names a closing action's setting of the wrong kind for stack, the same way", () => {
+    expect(problemFor({ closer: { type: "open-pr", stack: "yes" } })).toBe(
+      'I can\'t use delivery.config.json: the setting `closer.stack` is `"yes"`. ' +
+        "It says what happens to work that passes: see docs/writing-a-closer.md for the choices and what each one takes.",
+    );
+  });
+
+  it("refuses stack on any closer but open-pr", () => {
+    const refused = "I can't use delivery.config.json: there's no setting called `stack`. `closer` doesn't take it.";
+    expect(problemFor({ closer: { type: "merge-back", stack: true } })).toBe(refused);
+    expect(problemFor({ closer: { type: "commit-to-branch", stack: true } })).toBe(refused);
+    expect(problemFor({ closer: { type: "custom", modulePath: "./closers/mine.mjs", stack: true } })).toBe(refused);
+  });
+
   it("names limits given as something other than a set of limits", () => {
     expect(problemFor({ budgets: "lots" })).toBe(
       'I can\'t use delivery.config.json: the setting `budgets` is `"lots"`. ' +

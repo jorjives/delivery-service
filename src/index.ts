@@ -33,6 +33,7 @@ export type {
   TriagePort,
   CloseContext,
   DeliveredTask,
+  DeliveredLevel,
   CloseOutcome,
   CloseReport,
   CloserPort,

@@ -2,6 +2,7 @@ import type { CloserPort } from "./ports.js";
 import { createMergeBackCloser } from "./merge-back-closer.js";
 import { createCommitToBranchCloser } from "./commit-to-branch-closer.js";
 import { createOpenPrCloser } from "./open-pr-closer.js";
+import { createStackPrCloser } from "./stack-pr-closer.js";
 import { createCustomCloser } from "./custom-closer.js";
 import { failedCloser } from "./closer-support.js";
 import { CloserRef } from "./schema.js";
@@ -31,7 +32,7 @@ export function resolveCloser(closerRef: CloserRef, repoPath: string): CloserPor
     case "commit-to-branch":
       return createCommitToBranchCloser();
     case "open-pr":
-      return createOpenPrCloser();
+      return ref.stack === true ? createStackPrCloser() : createOpenPrCloser();
     case "custom":
       return createCustomCloser(repoPath, ref.modulePath, ref.exportName);
   }

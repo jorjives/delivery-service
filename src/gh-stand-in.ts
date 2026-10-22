@@ -7,10 +7,11 @@ import { join } from "node:path";
  * can be exercised with no network and no GitHub account. It is the same
  * swap-the-executable approach claude-mock takes for the agent: a real
  * executable named `gh`, honouring the argv and output of the commands the
- * closer uses (`gh pr list --json url,headRefOid`, by `--state`, `gh pr create`, `gh pr edit --body`; a test marks a pull request merged with `mergePullRequest`) and
- * the issue commands the github work source uses (`gh api graphql` listing
- * issues by label, `gh issue create|close|comment|edit`, `gh label create`), with
- * their failure messages and exit codes copied from gh 2.94 itself.
+ * closer uses (`gh api graphql` answering the aliased exact-head `pullRequests(headRefName:…)` lookup, `gh pr create`,
+ * `gh pr edit --body` and `--base`; a test marks a pull request merged with `mergePullRequest`) and the issue commands the github
+ * work source uses (`gh api graphql` listing issues by label, `gh issue create|close|comment|edit`, `gh label create`),
+ * with their failure messages and exit codes copied from gh 2.94 itself. It refuses any query that searches: search
+ * lags, and nothing may depend on it. Every invocation's argv is logged, so a test can count requests.
  */
 
 export type GhStandInMode = "signed-in" | "signed-out" | "expired" | "forbidden" | "offline";
@@ -46,9 +47,11 @@ export interface GhStandIn {
   /** The directory holding it, to put first on PATH. */
   binDir: string;
   setMode(mode: GhStandInMode): void;
-  /** Make every later `gh pr create` fail with this message, as GitHub refusing the pull request would. */
-  refuseCreate(message: string): void;
+  /** Make every later `gh pr create` fail with this message, as GitHub refusing the pull request would; null clears it. */
+  refuseCreate(message: string | null): void;
   pullRequests(): StandInPullRequest[];
+  /** The argv of every gh invocation so far, in order. */
+  calls(): string[][];
   /** Mark a pull request merged at this head commit, as merging it on GitHub would. Moves no branch: merge into origin yourself. */
   mergePullRequest(url: string, headRefOid: string): void;
   openIssue(issue: { title: string; body: string; labels?: string[]; at?: string }): number;
@@ -67,6 +70,7 @@ interface StandInState {
   issues: StandInIssue[];
   labels: string[];
   refuseLabels?: boolean;
+  calls?: string[][];
 }
 
 // CommonJS, because an extensionless file outside any package is loaded as
@@ -75,8 +79,11 @@ interface StandInState {
 const SCRIPT = String.raw`#!/usr/bin/env node
 const fs = require("node:fs");
 const path = require("node:path");
+const { execFileSync } = require("node:child_process");
 const statePath = path.join(__dirname, "state.json");
 const state = JSON.parse(fs.readFileSync(statePath, "utf-8"));
+state.calls = (state.calls || []).concat([process.argv.slice(2)]);
+fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
 
 function fail(message, code) {
   process.stderr.write(message + "\n");
@@ -110,12 +117,18 @@ if (state.mode === "offline") {
 const [group, command, ...rest] = process.argv.slice(2);
 const flags = flagsOf(rest);
 
-if (group === "pr" && command === "list") {
-  // gh lists open pull requests unless told --state; one written before states existed is open.
-  const wanted = (flags.state || "open").toUpperCase();
-  const listed = state.pullRequests.filter((pr) => pr.head === flags.head && (wanted === "ALL" || (pr.state || "OPEN") === wanted));
-  process.stdout.write(JSON.stringify(listed.map((pr) => (pr.headRefOid ? { url: pr.url, headRefOid: pr.headRefOid } : { url: pr.url }))) + "\n");
-  process.exit(0);
+// True when origin holds both refs and the head is an ancestor of, or equal to, the base: the state GitHub refuses a pull request for.
+function headAncestorOfBase(head, base) {
+  const headSha = remoteHead(head);
+  const baseSha = remoteHead(base);
+  if (headSha === "" || baseSha === "") return false;
+  try {
+    const origin = execFileSync("git", ["remote", "get-url", "origin"], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    execFileSync("git", ["-C", origin, "merge-base", "--is-ancestor", headSha, baseSha], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 if (group === "pr" && command === "create") {
@@ -123,6 +136,8 @@ if (group === "pr" && command === "create") {
     fail("pull request create failed: GraphQL: operator does not have the correct permissions to execute 'CreatePullRequest' (createPullRequest)", 1);
   }
   if (state.refusal) fail(state.refusal, 1);
+  // GitHub refuses a head with nothing beyond its base. Only checked when origin holds both refs, so a head never pushed is created as before.
+  if (headAncestorOfBase(flags.head, flags.base)) fail("No commits between " + flags.base + " and " + flags.head, 1);
   const url = "https://github.com/example/project/pull/" + (state.pullRequests.length + 1);
   state.pullRequests.push({ url, head: flags.head, base: flags.base, title: flags.title, body: flags.body, state: "OPEN" });
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
@@ -134,6 +149,7 @@ if (group === "pr" && command === "edit") {
   const pr = state.pullRequests.find((p) => p.url === rest[0]);
   if (!pr) fail("no pull requests found for " + rest[0], 1);
   if (flags.body !== undefined) pr.body = flags.body;
+  if (flags.base !== undefined) pr.base = flags.base;
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
   process.stdout.write(pr.url + "\n");
   process.exit(0);
@@ -158,7 +174,37 @@ function issueAt(n) {
   return issue;
 }
 
+// The head commit GitHub reports for a branch still on origin: what git ls-remote says, empty when absent.
+function remoteHead(head) {
+  try {
+    const listed = execFileSync("git", ["ls-remote", "origin", "refs/heads/" + head], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+    return listed.split(/\s+/)[0] || "";
+  } catch {
+    return "";
+  }
+}
+
 if (group === "api" && command === "graphql") {
+  const query = fieldsOf(rest).query || "";
+  if (query.includes("search(")) {
+    fail("GraphQL: this stand-in does not answer search, which lags behind a pull request just opened", 1);
+  }
+  if (query.includes("pullRequests(")) {
+    // One alias per exact head: p<i> lists the pull requests whose head is the value of h<i>, in the states its query names.
+    const repository = {};
+    for (const alias of query.matchAll(/\bp(\d+):pullRequests\(headRefName:\$h\1,states:\[([A-Z,]+)\]/g)) {
+      const head = fieldsOf(rest)["h" + alias[1]];
+      const wanted = alias[2].split(",");
+      const nodes = state.pullRequests
+        .filter((pr) => pr.head === head && wanted.includes(pr.state || "OPEN"))
+        .map((pr) => ({
+          url: pr.url, state: pr.state || "OPEN", headRefName: pr.head, headRefOid: pr.headRefOid || remoteHead(head), baseRefName: pr.base,
+        }));
+      repository["p" + alias[1]] = { nodes };
+    }
+    process.stdout.write(JSON.stringify({ data: { repository } }) + "\n");
+    process.exit(0);
+  }
   const label = fieldsOf(rest).label;
   const nodes = state.issues
     .filter((i) => i.state === "OPEN" && i.labels.includes(label))
@@ -248,6 +294,7 @@ export function createGhStandIn(): GhStandIn {
     setMode: (mode) => write({ ...read(), mode }),
     refuseCreate: (message) => write({ ...read(), refusal: message }),
     pullRequests: () => read().pullRequests,
+    calls: () => read().calls ?? [],
     mergePullRequest: (url, headRefOid) => {
       const state = read();
       const pr = state.pullRequests.find((p) => p.url === url);

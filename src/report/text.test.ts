@@ -616,6 +616,7 @@ describe("the delivery branch", () => {
     ],
     closer: { status: "DONE" as const, detail: "Committed on delivery/main.", at: "2026-10-17T09:21:00.000Z" },
     blocked: null,
+    stack: [],
   };
 
   it("names the branch, what landed on it since it opened and when, and what the closer did", () => {
@@ -635,6 +636,27 @@ describe("the delivery branch", () => {
       "- nothing has landed on it yet",
       "Your closer has not taken it yet.",
       "Blocked, 17 Oct 10:00 UTC: main has new commits that conflict.",
+    ]);
+  });
+
+  it("lists the stack bottom up with intent, item, link and state, or no pull request yet", () => {
+    const stacked = {
+      ...delivery,
+      stack: [
+        { run: "add-a-hello-1", item: "backlog:hello.md", intent: "Add a hello.", ref: "delivery-stack/main/add-a-hello-1", commit: "c1", pr: { url: "https://example.invalid/pull/1", state: "OPEN" as const } },
+        { run: "add-a-goodbye-1", item: "backlog:goodbye.md", intent: "Add a goodbye.", ref: "delivery-stack/main/add-a-goodbye-1", commit: "c2", pr: null },
+      ],
+    };
+
+    expect(deliveryLines(stacked)).toEqual([
+      "",
+      "Delivery branch delivery/main, for main, open since 17 Oct 09:00 UTC:",
+      "- 17 Oct 09:10 UTC: Add a hello. (backlog:hello.md, run add-a-hello-1)",
+      "- 17 Oct 09:20 UTC: Add a goodbye. (backlog:goodbye.md, run add-a-goodbye-1)",
+      "Your closer, 17 Oct 09:21 UTC: Committed on delivery/main.",
+      "Stacked pull requests on main, bottom first:",
+      "- 1. Add a hello. (backlog:hello.md): https://example.invalid/pull/1, open",
+      "- 2. Add a goodbye. (backlog:goodbye.md): no pull request yet",
     ]);
   });
 

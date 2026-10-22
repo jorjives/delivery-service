@@ -57,6 +57,18 @@ describe("resolveCloser", () => {
     expect(report.detail).toMatch(/closer reference/i);
   });
 
+  it("resolves open-pr with stack to the stack publisher, and without it to the rolling one", async () => {
+    const stacked = await resolveCloser({ type: "open-pr", stack: true }, repo).close(
+      { ...ctx, delivery: { landed: [], stack: [] } },
+      accepted,
+    );
+    const rolling = await resolveCloser({ type: "open-pr" }, repo).close(ctx, accepted);
+
+    expect(stacked).toEqual({ status: "DONE", detail: "Nothing is stacked on main yet, so no pull request was needed." });
+    expect(rolling.status).toBe("ERROR");
+    expect(rolling.detail).toMatch(/no remote named origin/);
+  });
+
   it("resolves a commit-to-branch reference to a closer that keeps the branch", async () => {
     writeFileSync(join(tree, "feature.txt"), "the work\n");
     const mainTip = git(repo, ["rev-parse", "main"]);

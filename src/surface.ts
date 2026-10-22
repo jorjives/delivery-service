@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { readFile, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { load, logTail, deriveStateFromEntry, setOutcome, updateCursor, appendEntry, deriveBudgetsFromLog, writeRef, readRef, setbackOf, setBaseBranch, setBaseline } from "./case-file.js";
-import { IllegalStateTransition, ProvisioningFailure } from "./errors.js";
+import { FileNotFound, IllegalStateTransition, ProvisioningFailure } from "./errors.js";
 import { provisionWorktree, branchName } from "./provision.js";
 import { messageOf } from "./gate-support.js";
 import { recordBaseline, runCheck } from "./run-gate.js";
 import { currentStep, nextStepOf, stepIndexOf, stepKey, stepView } from "./workflow-step.js";
-import { ensureCommitted, git } from "./git-exec.js";
+import { branchTip, ensureCommitted, git, tryGit } from "./git-exec.js";
 import { commitAccepted } from "./closer-support.js";
 import { dropKeptBranches, rebuildIfMoved, restartFrom } from "./delivery-landing.js";
 import { holdFollowUps } from "./follow-ups.js";
@@ -824,8 +825,9 @@ async function closing(
   const ctx: CloseContext = { ...closeContextOf(dir, caseFile, location), ...(repairBrief ? { repairBrief } : {}) };
 
   // A task on a delivery branch is rebuilt and re-checked first if the branch moved after it started (spec §5.7).
+  // A replayed close after merge-back removed the worktree has nothing left to commit, and must not run git in it.
   if (caseFile.header.delivery !== undefined) {
-    await commitAccepted(ctx);
+    if (existsSync(ctx.worktreePath)) await commitAccepted(ctx);
     const rebuilt = await onSharedGround(ports, caseFile, () => rebuildIfMoved(dir, ctx, ports.env));
     if (rebuilt !== undefined && "report" in rebuilt) return recordClose(dir, caseFile, location, rebuilt.report);
     if (rebuilt !== undefined) {
@@ -844,15 +846,48 @@ async function closing(
     await holdFollowUps(dir, ctx.worktreePath, caseFile.header.delivery?.branch ?? ctx.baseBranch, item.source);
   }
 
+  const landedAt = caseFile.header.delivery === undefined ? undefined : await landingCommitOf(dir, caseFile, ctx);
   const report = await onSharedGround(ports, caseFile, () => ports.closer.close(ctx, { kind: "accepted" }));
-  return recordClose(dir, caseFile, location, report);
+  return recordClose(dir, caseFile, location, report, landedAt);
 }
 
-/** Record what the close did: a refusal goes to triage, an accepted close ends the run. */
-async function recordClose(dir: string, caseFile: CaseFile, location: SurfaceLocation, report: CloseReport): Promise<AdvanceResult> {
+/** What a close on a delivery branch lands: the task branch's tip, and whether that tip was already on the delivery branch. */
+const LandingRef = z.object({ commit: z.string(), empty: z.boolean() });
+type LandingRef = z.infer<typeof LandingRef>;
+
+/**
+ * The commit a close on a delivery branch lands, decided once before the first close attempt for a given tip and kept in a ref,
+ * so a replay never re-derives it: after a real landing the task branch is an ancestor of the delivery branch too.
+ * The tip is undefined once merge-back has landed and deleted the branch; the ref then holds the tip that landed, since no rebuild
+ * can run once the branch is gone. Absent only for a run that crashed before this was recorded.
+ */
+async function landingCommitOf(dir: string, caseFile: CaseFile, ctx: CloseContext): Promise<LandingRef | undefined> {
+  const refId = stepKey(caseFile, "landing-commit");
+  const stored = await readStoredLanding(dir, refId);
+  const tip = await branchTip(ctx.repoPath, ctx.branch);
+  if (tip === undefined) return stored;
+  if (stored?.commit === tip) return stored;
+  const delivery = caseFile.header.delivery?.branch ?? ctx.baseBranch;
+  const landed: LandingRef = { commit: tip, empty: await tryGit(ctx.repoPath, ["merge-base", "--is-ancestor", tip, `refs/heads/${delivery}`]) };
+  await writeRef(dir, refId, landed);
+  return landed;
+}
+
+async function readStoredLanding(dir: string, refId: string): Promise<LandingRef | undefined> {
+  try {
+    return LandingRef.parse(await readRef(dir, refId));
+  } catch (err) {
+    if (err instanceof FileNotFound) return undefined;
+    throw err;
+  }
+}
+
+/** Record what the close did: a refusal goes to triage, an accepted close ends the run. A DONE close records the commit it landed at. */
+async function recordClose(dir: string, caseFile: CaseFile, location: SurfaceLocation, report: CloseReport, landedAt?: LandingRef): Promise<AdvanceResult> {
   const priorCloses = caseFile.history.filter((e) => e.t === "close").length;
   const detailRef = await writeRef(dir, stepKey(caseFile, `close-${priorCloses}`), report);
-  await appendEntry(dir, { t: "close", status: report.status, detailRef });
+  const landed = report.status === "DONE" && landedAt !== undefined ? { commit: landedAt.commit, ...(landedAt.empty ? { empty: true as const } : {}) } : {};
+  await appendEntry(dir, { t: "close", status: report.status, detailRef, ...landed });
 
   if (report.status !== "DONE") {
     await updateCursor(dir, { state: "TRIAGE" });

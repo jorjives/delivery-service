@@ -47,10 +47,11 @@ export async function holdFollowUps(dir: string, worktreePath: string, deliveryB
  * An after pass's follow-ups on a project whose backlog is its own folder: committed onto the delivery branch, which
  * is opened again at the base's tip when the closer merged and deleted it, and recorded as landed so the next run's
  * closer takes them (spec §5.7). Idempotent: an item already on the tip is not added again, and the landing is recorded
- * once per `runId` (the delivery ledger keeps one landing per run).
+ * once per `runId` (the delivery ledger keeps one landing per run). `stack` opens a branch that is not open as a stacked
+ * section, for a closer that publishes a stack.
  */
 export async function landFollowUps(
-  { repoPath, ledger, branch, base, runId }: { repoPath: string; ledger: string; branch: string; base: string; runId: string },
+  { repoPath, ledger, branch, base, runId, stack }: { repoPath: string; ledger: string; branch: string; base: string; runId: string; stack?: boolean },
   items: readonly HeldItem[],
 ): Promise<void> {
   const open = await branchExists(repoPath, branch);
@@ -75,7 +76,7 @@ export async function landFollowUps(
   if (open && commit !== from) await git(repoPath, ["update-ref", `refs/heads/${branch}`, commit, from]);
   if (!open) {
     await git(repoPath, ["branch", "--", branch, commit]);
-    await recordDelivery(ledger, { t: "opened", branch, base, from });
+    await recordDelivery(ledger, { t: "opened", branch, base, from, ...(stack === true ? { stack: true as const } : {}) });
   }
   await recordDelivery(ledger, { t: "landed", branch, runId, key: "after:follow-ups", intent: "Follow-ups raised after landing", commit });
 }

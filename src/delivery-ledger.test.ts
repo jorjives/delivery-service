@@ -14,7 +14,44 @@ describe("the delivery ledger", () => {
   });
 
   it("knows nothing of a branch it never opened", () => {
-    expect(foldDelivery([], B)).toEqual({ branch: B, base: null, openedAt: null, landed: [], pending: [], closer: null, blocked: null });
+    expect(foldDelivery([], B)).toEqual({ branch: B, base: null, openedAt: null, landed: [], pending: [], closer: null, blocked: null, stacked: false, from: null, pullRequests: new Map() });
+  });
+
+  it("marks a section opened in stack mode as stacked, and a rolling one not", () => {
+    expect(foldDelivery([{ t: "opened", branch: B, base: "main", from: "a", stack: true, at: at(0) }], B).stacked).toBe(true);
+    expect(foldDelivery([{ t: "opened", branch: B, base: "main", from: "a", at: at(0) }], B).stacked).toBe(false);
+  });
+
+  it("keeps the section's opening commit", () => {
+    const state = foldDelivery([
+      { t: "opened", branch: B, base: "main", from: "a", at: at(0) },
+      { t: "opened", branch: B, base: "main", from: "b", at: at(1) },
+    ], B);
+
+    expect(state.from).toBe("b");
+  });
+
+  it("keeps, per ref, the latest pull request observed since the section opened", () => {
+    const state = foldDelivery([
+      { t: "opened", branch: B, base: "main", from: "a", stack: true, at: at(0) },
+      { t: "observed", branch: B, pullRequests: [{ ref: "delivery-stack/main/r1", url: "https://example.invalid/1", state: "OPEN" }], at: at(1) },
+      { t: "observed", branch: B, pullRequests: [{ ref: "delivery-stack/main/r1", url: "https://example.invalid/1", state: "MERGED" }, { ref: "delivery-stack/main/r2", url: "https://example.invalid/2", state: "OPEN" }], at: at(2) },
+    ], B);
+
+    expect([...state.pullRequests]).toEqual([
+      ["delivery-stack/main/r1", { url: "https://example.invalid/1", state: "MERGED" }],
+      ["delivery-stack/main/r2", { url: "https://example.invalid/2", state: "OPEN" }],
+    ]);
+  });
+
+  it("ignores a pull request observed before the latest opened", () => {
+    const state = foldDelivery([
+      { t: "opened", branch: B, base: "main", from: "a", stack: true, at: at(0) },
+      { t: "observed", branch: B, pullRequests: [{ ref: "delivery-stack/main/r1", url: "https://example.invalid/1", state: "OPEN" }], at: at(1) },
+      { t: "opened", branch: B, base: "main", from: "b", stack: true, at: at(2) },
+    ], B);
+
+    expect(state.pullRequests.size).toBe(0);
   });
 
   it("lists what landed since the branch opened, once per run, and what the closer has not yet handed off", () => {
@@ -32,6 +69,16 @@ describe("the delivery ledger", () => {
     expect(state.landed.map((e) => e.runId)).toEqual(["r1", "r2"]);
     expect(state.pending.map((e) => e.runId)).toEqual(["r2"]);
     expect(state.closer).toEqual({ status: "FAIL", detail: "refused", at: at(5) });
+  });
+
+  it("keeps an empty landing as delivered: still landed and pending, marked empty", () => {
+    const state = foldDelivery([
+      { t: "opened", branch: B, base: "main", from: "a", at: at(0) },
+      { t: "landed", branch: B, runId: "r1", key: "backlog:r1.md", intent: "r1", commit: "c", empty: true, at: at(1) },
+    ], B);
+
+    expect(state.landed).toMatchObject([{ runId: "r1", empty: true }]);
+    expect(state.pending).toMatchObject([{ runId: "r1", empty: true }]);
   });
 
   it("starts a new section when the branch opens again", () => {

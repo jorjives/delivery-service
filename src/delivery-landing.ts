@@ -1,7 +1,7 @@
 import { appendEntry, load, writeRef } from "./case-file.js";
 import { closeError } from "./closer-support.js";
 import { inDetachedWorktree } from "./disposable-copy.js";
-import { conflictedFiles, git, tryGit } from "./git-exec.js";
+import { branchExists, conflictedFiles, git, tryGit } from "./git-exec.js";
 import { takeBaseline } from "./run-gate.js";
 import { stepKey, stepView } from "./workflow-step.js";
 import type { CloseContext, CloseReport } from "./ports.js";
@@ -19,6 +19,8 @@ const lines = (text: string): string[] => text.split("\n").filter(Boolean);
  * re-checked against the tip's baseline; conflicting, the rebase is undone and the next attempt starts at the tip.
  */
 export async function rebuildIfMoved(dir: string, ctx: CloseContext, env?: NodeJS.ProcessEnv): Promise<Rebuilt | undefined> {
+  // A task whose branch is gone has already landed and cleaned up: there is nothing left to rebuild.
+  if (!(await branchExists(ctx.repoPath, ctx.branch))) return undefined;
   const raw = await load(dir);
   const landed = raw.history.findLast((e): e is LandingEntry => e.t === "landing");
   const start = landed?.onto ?? raw.header.startCommit;

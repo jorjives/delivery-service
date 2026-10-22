@@ -132,6 +132,27 @@ same thing again, until your base branch or the delivery branch moves.
 
 To use it, see [Work through a backlog](work-a-backlog.md).
 
+## Stacked pull requests
+
+With `open-pr`, the delivery branch can be published as a stack instead: one pull request per item,
+each built on the pull request for the item beneath it. Switch it on in `delivery.config.json`:
+
+```json
+{ "closer": { "type": "open-pr", "stack": true } }
+```
+
+A run that hands work off opens a pull request for each item that landed, bottom first. The lowest
+targets your base branch, and each other targets the pull request beneath it, so each shows only its
+own item's changes. An item that changed nothing is still delivered, but it has no pull request.
+
+Review and merge from the bottom up: merge the lowest pull request, then the one above it, and so
+on. The delivery branch itself is not pushed; each level's branch is named `delivery-stack/<base>/<run>`.
+
+Stack mode needs git 2.38 or later, for `rebase --update-refs`. It also refuses to start while a
+rolling pull request for the delivery branch is open, and names it: merge or close that pull request
+on GitHub, then run again, or take `stack` off to keep rolling mode. Handling a level once you merge
+or close it is part of a later release.
+
 ## Reading the outcome
 
 Two commands read a run without changing it. `delivery status` gives the full account of one run,

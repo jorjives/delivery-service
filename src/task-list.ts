@@ -59,3 +59,9 @@ export function queuePositionOf(tasks: TaskDef[], taskDef: TaskDef): QueuePositi
   const index = tasks.findIndex((task) => isDeepStrictEqual(task, taskDef));
   return index === -1 ? undefined : { task: index + 1, of: tasks.length };
 }
+
+/** The text a task's pull request is written from: its body when that is non-empty text, else its intent. */
+export function taskText(taskDef: TaskDef): string {
+  const body = taskDef.body;
+  return typeof body === "string" && body.trim() !== "" ? body.trim() : taskIntent(taskDef);
+}
