@@ -16,62 +16,65 @@ This roadmap makes the architecture pluggable in two phases:
 1. **Shareable packs (data only).** Broaden what a pack is, then let people inspect,
    install, adapt and publish packs. Packs stay data (prompts, guards, hold policy,
    choices from built-in gates and closers). Sharing data is safe to open up first.
-2. **Code plugins.** Add a trust model, then open the code-bearing extension points
-   (custom gates and closers inside packs, scheduler backends, work sources, notifiers,
-   triggers, agent backends). Packs gain the ability to reference custom items here.
+2. **Code plugins.** Settle a trust model, then open the code-bearing extension points
+   (custom gates and closers inside packs, scheduler backends, work sources, triggers,
+   notifiers, agent backends). Packs gain the ability to reference custom items here.
 
 Success at the roadmap level: a project owner can find a pack someone else wrote, see
 exactly what it will do, install it at a pinned version, adapt it to their project and run
 it; a stranger can publish a pack the same way; and, in phase 2, an extender can add a
 new scheduler backend, work source or gate without changing delivery-service itself.
 
+The phases are not a strict serial gate. Phase 2 starts once packs can be inspected and
+installed (Items 2 and 3); Items 4 to 6 can run alongside it.
+
 ### Decisions reversed
 
-Earlier specs recorded these as non-goals: a plugin distribution mechanism (CLI and
-configuration spec), a hosted registry (task-packs spec), and a runtime registry (gate and
-closer specs). This roadmap reverses the first deliberately. It keeps the other two:
-discovery goes through an existing package ecosystem, not a registry we host, and loading
-stays explicit and path- or package-based, not a global runtime registry.
+This roadmap reverses the non-goal of a plugin distribution mechanism (CLI and
+configuration spec), and promotes task-packs COULD 23 (package discovery, `delivery packs
+add`, trust prompts, packs carrying code) into scope as Items 3, 8 and 9. It keeps the
+hosted-registry non-goal (task-packs spec) and the no-runtime-registry decision (gate and
+closer specs): discovery goes through an existing package ecosystem, and loading stays
+explicit.
 
-### Two audiences
+### Audiences
 
-Matching the harness roadmap: **project owners** install and run packs and should never
-need to write code; **extenders** publish packs and, in phase 2, code plugins.
+As in the harness roadmap: **project owners** install and run packs and should never need
+to write code; **extenders** publish packs and, in phase 2, code plugins.
 
 ### Prior art in this estate
 
-- `loadPlugin` and `guardMethod` already load and guard third-party modules for custom gates
-  and closers. Phase 2 extends that seam; it does not add a second loader.
-- The named-schedules draft spec already plans a scheduler backend port with a contract
-  test suite. That is the pattern for every later adapter.
+- `loadPlugin` and `guardMethod` (`src/plugin-loader.ts`) already load and guard
+  third-party modules for custom gates and closers. Phase 2 builds on that seam.
+- The named-schedules draft spec (`2026-10-21-named-schedules-design.md`, §7) plans a
+  scheduler backend port with a contract test suite. That is the pattern later adapters
+  follow, as a pattern and not a prerequisite.
 - The AI workflow examples (branch `claude/ai-workflow-examples-gaps-40kgns`, not yet
-  merged) show many non-review workflows with the find-then-act shape, and name the gaps
-  that later items address: event triggers, answer-only tasks, task fields visible to
-  command gates, and a second vendor's model.
+  merged) show many non-review workflows with the find-then-act shape, and name gaps that
+  later items address: event triggers, task fields visible to command gates, and a second
+  vendor's model. The unmerged branch is a source for Items 1 and 5, not a dependency of
+  the roadmap.
 
 ### Not in this roadmap
 
-A hosted registry or marketplace; paid or signed distribution; a sandbox for arbitrary
-third-party code (phase 2 decides the trust model first); plugins that change the state
-machine itself.
+A hosted registry or marketplace; paid or signed distribution; plugins that change the
+state machine itself. Whether third-party code is contained at all is decided by Item 7.
 
 ---
 
 ## Phase 1: Shareable packs
 
-## Item 1: Packs for any workflow
+### Item 1: Packs for any workflow
 
 **Delivers:** A project owner can use a pack for any find-then-act job, such as a
 dependency upgrade, a migration sweep or a docs-drift check, not only a code or security
 review.
 
 **Success criteria:**
-- The documentation describes a pack as a shareable bundle of workflows, and review is one
-  example among several.
+- A new user can tell from the documentation that packs cover more than reviews.
 - A pack can define workflows other than a scan followed by a fix, each with its own
   prompts, guards and hold policy.
-- At least one built-in pack that is not a review ships and runs end to end against the
-  scripted agent.
+- At least one built-in pack that is not a review ships and can be run by a project owner.
 - Existing review packs, and projects that name them, keep working unchanged.
 
 **Dependencies:**
@@ -79,28 +82,28 @@ review.
 
 **Detail level:** brief
 
-**Constraints:** Packs remain data only in this phase. A pack may choose among built-in
-gate presets and closer kinds but may not reference custom modules.
+**Constraints:** Packs remain data only in this phase.
 
-**Notes:** The pack format is currently strict and shaped around scan and fix, so the
-format version will change; the spec decides how old packs are read. The name "pack" is
-kept. The merged AI workflow examples are the source for the first non-review packs and
-for test cases.
+**Notes:** The pack format is strict and shaped around scan and fix, so its version will
+change; the spec decides how old packs are read. The name "pack" is kept. The AI workflow
+examples are the source for the first non-review packs and their tests, once that branch
+merges. The built-in non-review pack should run end to end against the scripted agent.
 
 ---
 
-## Item 2: Inspect a pack before trusting it
+### Item 2: Inspect a pack before trusting it
 
 **Delivers:** A project owner can see exactly what a pack will tell the agent to do and
 what it is allowed to touch, before it is installed or run.
 
 **Success criteria:**
-- One command shows a pack's workflows, the full prompts, guards, hold policy, and the
-  gates and closers it selects.
-- The same command flags anything that widens what an agent may do beyond the project's
-  own defaults.
-- A pack that carries a key the format does not name is refused with a plain explanation.
-- The output is readable by a non-engineer.
+- Before installing or running, the owner can see a pack's workflows, full prompts,
+  guards, hold policy, and the gates and closers it selects.
+- Anything that widens what an agent may do beyond the project's own defaults is flagged.
+- A pack that carries something the format does not name is refused with a plain
+  explanation.
+- A project owner who did not write the pack can say, from the output alone, what it will
+  do.
 
 **Dependencies:**
 - Packs can describe workflows of any shape (Item 1)
@@ -112,17 +115,18 @@ real risk of sharing. Inspection is the first control and comes before install.
 
 ---
 
-## Item 3: Install a pack from elsewhere, pinned
+### Item 3: Install a pack from elsewhere, pinned
 
 **Delivers:** A project owner can add a pack published by someone else and get the same
 pack on every machine and every run.
 
 **Success criteria:**
-- A pack can be added from a package or a repository, not only a local folder.
-- The version is recorded, and a later run uses that version until the owner deliberately
+- A pack can be added from a public source, not only a local folder.
+- The version is recorded, and later runs use that version until the owner deliberately
   updates it.
 - The owner sees what changed when updating a pack.
-- A pack whose content differs from the recorded version is refused.
+- A pack that has changed since the owner approved it is refused until they approve the
+  change.
 - Two packs that define the same workflow name are reported plainly, as for local packs.
 
 **Dependencies:**
@@ -132,11 +136,12 @@ pack on every machine and every run.
 
 **Constraints:** Discovery uses an existing package ecosystem; no registry is hosted.
 
-**Notes:** The task-packs spec already sketches npm-package discovery as a COULD.
+**Notes:** Task-packs COULD 23 already sketches this (a `delivery-pack` package field,
+`delivery packs add`, trust prompts). Start from it.
 
 ---
 
-## Item 4: Adapt a shared pack to my project
+### Item 4: Adapt a shared pack to my project
 
 **Delivers:** A project owner can make a pack written for someone else's project work in
 theirs, without editing or forking the pack.
@@ -150,27 +155,29 @@ theirs, without editing or forking the pack.
 - Inspection (Item 2) shows the settings and the values that would apply.
 
 **Dependencies:**
-- A pack can be installed from elsewhere (Item 3)
+- Packs can describe workflows of any shape (Item 1)
+- A pack can be inspected before it is trusted (Item 2)
 
 **Detail level:** brief
 
-**Notes:** The AI workflow research found that examples need task fields, such as a file
-or package name, visible to command gates; this item should decide whether pack settings
-and task fields share one mechanism.
+**Notes:** Settings are part of the pack format, so they are designed with Item 1's format
+change and not as a second one. The AI workflow research found that examples need task
+fields, such as a file or package name, visible to command gates; this item decides whether
+settings and task fields share one mechanism. If they do, this removes the commonest reason
+for a custom gate (see Item 9).
 
 ---
 
-## Item 5: Publish a pack
+### Item 5: Publish a pack
 
 **Delivers:** An extender can write, test and publish a pack that others can install.
 
 **Success criteria:**
-- A scaffold command creates a pack with a manifest, prompts and a fixture project.
-- A validate command checks a pack against the format and runs its fixtures against the
-  scripted agent.
-- The documentation walks through writing and publishing a pack, including the non-review
+- An extender can start a new pack from a working starting point.
+- An extender can check a pack, and see it work end to end, before publishing it.
+- The documentation walks through writing and publishing a pack, using the non-review
   built-in as a worked example.
-- A published pack installs with Item 3 with no extra steps.
+- A published pack installs (Item 3) with no extra steps.
 
 **Dependencies:**
 - A pack can be installed from elsewhere (Item 3)
@@ -179,213 +186,240 @@ and task fields share one mechanism.
 **Detail level:** brief
 
 **Notes:** Built-in packs already ship `fixtures/`; this item makes that the contract for
-everyone.
+everyone. Start from `docs/writing-a-pack.md` and confirm what it already covers; no
+scaffold or validate command exists today.
 
 ---
 
-## Item 6: Published configuration schema
+### Item 6: Editor support for project configuration
 
-**Delivers:** A project owner gets editor completion and errors for `delivery.config.json`
-before running anything, including keys that packs contribute.
+**Delivers:** A project owner gets completion and errors for `delivery.config.json` in their
+editor before running anything, including settings that packs contribute.
 
 **Success criteria:**
-- A JSON Schema for the project configuration is published and referenced from generated
-  configurations.
-- An editor flags an unknown key or a wrong value the same way `delivery validate` does.
-- Pack settings (Item 4) appear in the schema for the packs the project names.
+- The editor offers completion and flags unknown keys or wrong values in the project
+  configuration.
+- The editor's complaints match what `delivery validate` reports.
+- Settings contributed by the packs the project names are included.
 
 **Dependencies:**
-- A pack can declare settings (Item 4)
+- A pack can declare settings (Item 4), for the last criterion only
 
 **Detail level:** brief
 
-**Notes:** Packs and reports already generate JSON Schema; the project configuration is
-validated only by its in-code definition.
+**Notes:** The first two criteria need nothing else and can land at any time. Packs and
+reports already generate a machine-readable schema; the project configuration is validated
+only by its in-code definition.
 
 ---
 
 ## Phase 2: Code plugins
 
-## Item 7: Trust and install for code plugins
+### Item 7: Know what a plugin can do before enabling it
 
-**Delivers:** A project owner can decide whether to run code from a plugin, knowing what
-it can do, and can install it pinned like a pack.
+**Delivers:** A project owner can see what a code plugin is able to do, and decide whether
+to run it.
 
 **Success criteria:**
-- A plugin declares which extension points it uses and the access it needs, and the owner
-  sees that before enabling it.
-- A plugin is enabled explicitly per project; installing one does not run it.
-- A plugin that fails to load, or breaks its contract at run time, is reported by name and
-  does not crash a run (the existing guarded-call behaviour).
-- Version and compatibility are checked, and a plugin built for another major version is
-  refused.
+- Before enabling a plugin, the owner sees which parts of delivery-service it extends and
+  what access it needs.
+- The documentation states plainly how far third-party code is contained, and what the
+  owner is trusting when they enable one.
+- A plugin that needs more access than its declaration is stopped, and the owner is told
+  which plugin.
 
 **Dependencies:**
-- A pack can be installed from elsewhere, pinned (Item 3)
 - A pack can be inspected before it is trusted (Item 2)
 
 **Detail level:** brief
 
-**Constraints:** Extend the existing plugin loader; do not add a second one.
-
-**Notes:** The sandbox question (how far to contain third-party code, given the existing
-fence) is the central decision of the spec and gates every later item.
+**Notes:** Whether to contain third-party code at all, given the existing sandbox, is the
+central decision of this spec and gates every later item in this phase.
 
 ---
 
-## Item 8: Packs that carry custom gates and closers
+### Item 8: Install and enable plugins
+
+**Delivers:** A project owner can add a code plugin pinned to a version, enable it
+deliberately, and stay safe when it misbehaves.
+
+**Success criteria:**
+- Installing a plugin does not run it; it is enabled explicitly, per project.
+- The version is recorded, and updating shows what changed.
+- A plugin built for an incompatible version of delivery-service is refused with a clear
+  reason.
+- A plugin that fails to load, or breaks its contract during a run, is reported by name and
+  the run carries on, as it does for custom gates and closers today.
+
+**Dependencies:**
+- A pack can be installed from elsewhere, pinned (Item 3)
+- The owner can see what a plugin can do before enabling it (Item 7)
+
+**Detail level:** brief
+
+**Constraints:** Builds on how custom gates and closers are loaded today.
+
+---
+
+### Item 9: Packs that carry custom gates and closers
 
 **Delivers:** An extender can publish a pack that includes its own check or its own way of
 landing work, and a project owner can install it as one thing.
 
 **Success criteria:**
 - A pack can reference a custom gate or closer shipped with it.
-- Installing such a pack follows Item 7: the code is shown, enabled explicitly and pinned.
+- Installing such a pack shows the code, requires explicit enabling and records a pinned
+  version.
 - A pack with no custom items stays data only and needs no enabling.
 - Inspection shows which workflows depend on custom code.
 
 **Dependencies:**
-- A plugin can be enabled with declared access (Item 7)
-- A pack can be installed from elsewhere, pinned (Item 3)
+- Plugins can be installed and enabled (Item 8)
 
 **Detail level:** brief
 
-**Notes:** Several surveyed examples need a custom gate only to read task fields, so
-Item 4 may remove the commonest reason before this item is needed.
+**Notes:** Re-scope or defer this item once Item 4 ships, based on how many surveyed
+examples still need custom code; Item 4 may remove the commonest need.
 
 ---
 
-## Item 9: Schedule runs on any operating system
+### Item 10: Schedule runs on any operating system
 
 **Delivers:** A project owner on macOS or Windows can schedule recurring runs, and an
 extender can add a scheduler for another platform without changing delivery-service.
 
 **Success criteria:**
-- Named schedules work with a second scheduler backend on another operating system.
-- A backend is added by implementing one contract and passing a shared contract test suite.
-- A backend ships as a plugin under Item 7.
+- Named schedules work on a second operating system's scheduler.
+- An extender can add support for another operating system's scheduler, and it behaves the
+  same as the built-in one.
+- The new scheduler is delivered as a plugin.
 
 **Dependencies:**
 - Named schedules exist with a scheduler backend port (the named-schedules draft spec)
-- A plugin can be enabled with declared access (Item 7)
+- Plugins can be installed and enabled (Item 8)
 
 **Detail level:** brief
 
-**Notes:** This is the pilot adapter: the contract test suite it creates is the template
-for Items 10 to 12.
+**Notes:** The pilot adapter. Its shared contract test suite is the pattern Items 11, 13
+and 14 follow where it helps. Harness roadmap Item 13 is the user-facing schedule feature;
+this item adds the second backend only.
 
 ---
 
-## Item 10: Bring work in from any tracker
+### Item 11: Bring work in from any tracker
 
 **Delivers:** A project owner can work from Linear, Jira or another tracker by installing a
 source, and can have outcomes raised back there.
 
 **Success criteria:**
-- A work source is added by implementing a contract and passing a shared test suite.
-- GitHub, backlog, list and command sources continue to work and use the same contract.
-- Raising a follow-up and reporting the outcome go back to the same tracker.
+- An extender can add a new tracker, and it behaves the same as GitHub for bringing in
+  work.
+- GitHub, backlog, list and command sources keep working unchanged.
+- Raising a follow-up and reporting an outcome go back to the same tracker.
 
 **Dependencies:**
-- A plugin can be enabled with declared access (Item 7)
-- A scheduler backend can be added by contract (Item 9)
+- Plugins can be installed and enabled (Item 8)
 
 **Detail level:** brief
 
-**Notes:** Today sources are a closed union with no interface, and the tracker is entangled
-with the GitHub source. Extracting the interface first is the refactor that pays here.
+**Notes:** Sources are a closed set and the tracker is entangled with the GitHub source.
+The first spec may deliver only the separation, with GitHub as the one source behind it.
 
 ---
 
-## Item 11: Start runs from events
+### Item 12: Runs remember their history anywhere
+
+**Delivers:** A project owner running delivery-service from a short-lived machine, such as
+a CI job, keeps the history of earlier attempts and parked work.
+
+**Success criteria:**
+- A run started on a fresh machine knows which items have been tried, parked or landed.
+- Running the same project from two machines does not lose or duplicate that history.
+- Existing local use is unchanged.
+
+**Dependencies:**
+- None
+
+**Detail level:** brief
+
+**Notes:** This history lives on one machine today. The AI workflow research names it as a
+prerequisite for running in CI. It is split out because it is useful without any plugin.
+
+---
+
+### Item 13: Start runs from events
 
 **Delivers:** A project owner can start a run when something happens, such as a pull request
 opening, a comment, a failed check or a merge, not only from the command line or a timer.
 
 **Success criteria:**
-- A trigger is added by implementing a contract, as a plugin.
-- A run started by an event keeps its retry and parking history even when the runner is
-  short-lived.
-- The outcome can be sent back to where the request came from.
+- An extender can add a new kind of event trigger as a plugin.
+- A run started by an event remembers its earlier attempts and parked state (Item 12).
+- The outcome can be sent back to the source the request came from.
 
 **Dependencies:**
-- A work source can be added by contract (Item 10)
-- A plugin can be enabled with declared access (Item 7)
+- Plugins can be installed and enabled (Item 8)
+- Runs remember their history anywhere (Item 12)
+- Work can come from a tracker by contract (Item 11), so an outcome can return to the
+  originating source
 
 **Detail level:** brief
 
-**Notes:** The AI workflow research ranks this the most-wanted missing capability; it
-unlocks five surveyed workflows. It also needs run state that survives an ephemeral runner,
-which may be a separate spec.
+**Notes:** Harness roadmap Item 14 owns the trigger behaviour: repository and webhook events,
+filters, history, and queue or skip. This item makes triggers a plugin contract. Deliver
+Item 14's behaviour as the first trigger, or mark Item 14 as superseded here. The AI workflow
+research ranks event triggers the most-wanted missing capability; they would unlock five
+surveyed workflows.
 
 ---
 
-## Item 12: Notify and report anywhere
+### Item 14: Notify and report anywhere
 
 **Delivers:** A project owner can send run outcomes to Slack, email or a dashboard of their
 choice by installing a plugin.
 
 **Success criteria:**
-- A notifier and a reporter are each added by implementing a contract, as a plugin.
-- The existing `notify` command keeps working.
-- A plugin receives the same event stream the built-in reporters use.
+- An extender can add a new notification or reporting destination.
+- The existing `notify` setting keeps working.
+- A plugin sees the same run outcomes the built-in reports do.
 
 **Dependencies:**
-- A plugin can be enabled with declared access (Item 7)
-- A scheduler backend can be added by contract (Item 9)
+- Plugins can be installed and enabled (Item 8)
 
 **Detail level:** brief
 
-**Notes:** The event stream is output-only today and has no stability promise; the spec
-decides how stable to make it.
+**Notes:** Run outcomes are output-only today with no stability promise; the spec decides
+how stable to make them.
 
 ---
 
-## Item 13: Use a different agent or model
+### Item 15: Use a different agent or model
 
 **Delivers:** A project owner can have a different vendor's model do a step, for example to
 review another model's work.
 
 **Success criteria:**
-- An agent backend is added by implementing the agent contract, as a plugin.
-- A step can choose its backend; the default behaviour is unchanged.
-- The gate, not the backend, remains the judge of whether work is accepted.
+- An extender can add support for another agent or model as a plugin.
+- A step can choose which agent it uses; the default behaviour is unchanged.
+- The gate, not the agent, remains the judge of whether work is accepted.
 
 **Dependencies:**
-- A plugin can be enabled with declared access (Item 7)
+- Plugins can be installed and enabled (Item 8)
 
 **Detail level:** brief
 
-**Notes:** Placed last: it touches the core loop and the most credentials. Every run is
-Claude-only today; a second backend would also exercise the contract-test pattern against a
-non-trivial adapter.
+**Notes:** Sequenced last by choice, not by dependency: it touches the core loop and the
+most credentials. Every run is Claude-only today.
 
 ---
 
 ## Deferred
 
 - **Answer-only tasks, diff-scoped reviews, step approval checkpoints.** The AI workflow
-  research ranks these highly, but they are new workflow capabilities, not extension
-  points. They belong on the harness roadmap, not this one.
-- **Fence and sandbox backends, storage backends, VCS backends.** Hardwired and not yet
-  requested. Revisit after Item 9 shows what the extraction costs.
+  research ranks these highly, but they are new workflow capabilities, not extension points.
+  They are to be added to the harness roadmap, whose Deferred section is empty.
+- **Fence and sandbox backends, test-result parsers, storage backends, VCS backends.**
+  Hardwired and not yet requested. Revisit after Item 10 shows what the extraction costs.
 - **Dashboard and console plugins.** Wait for the delivery-console roadmap.
-
----
-
-## Appendix: pluggable points considered
-
-| Point | Roadmap item |
-|---|---|
-| Packs | 1 to 5 |
-| Custom gates, closers | 8 |
-| Gate presets | Not planned; packs choose among built-ins |
-| Agent backend | 13 |
-| Triage, repair coordinator | Not planned |
-| Reporters, notifier | 12 |
-| Scheduler backend | 9 |
-| Work sources, issue tracker | 10 |
-| Event triggers (new) | 11 |
-| Fence, test-result parsers, storage, VCS, dashboard | Deferred |
-| Plugin manifest, discovery, trust | 3, 7 |
-| Config contributions, published schema | 4, 6 |
+- **Gate presets, triage, repair coordinator.** Not planned. Packs choose among the built-in
+  presets, and the others have no demand yet.
