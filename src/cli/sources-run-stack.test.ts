@@ -6,6 +6,7 @@ import { git } from "../../tests/helpers.js";
 import { readStack } from "../delivery-stack.js";
 import { deliveryLedgerPath, readDeliveryEntries } from "../delivery-ledger.js";
 import { createGhStandIn, type GhStandIn } from "../gh-stand-in.js";
+import { afterLedgerPath, readAfter } from "../after-ledger.js";
 import { readItemLedger, ledgerPath } from "../item-ledger.js";
 import type { MockScript } from "../mock-script.js";
 import { addLocalOrigin, initTempRepo } from "../temp-repo.js";
@@ -252,7 +253,8 @@ describe("delivery run --sources with the stacked open-pr closer", () => {
 
   it("acts on a merge on a run with nothing to claim, asking GitHub once at the start", async () => {
     const { repo, origin } = project(STACK, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye."), [C]: brief(3, "Add a function that says thanks.") });
-    const env = await envFor(threeWays);
+    const state = stateDir();
+    const env = await envFor(threeWays, state);
     expect((await delivery(["run", "--sources", "--max", "3"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
     const [pr1, pr2, pr3] = gh.pullRequests();
     gh.merge(pr1?.url ?? "", "squash", origin);
@@ -266,6 +268,8 @@ describe("delivery run --sources with the stacked open-pr closer", () => {
     expect(during[0]).toEqual(expect.arrayContaining([`h0=${pr1?.head}`, `h1=${pr2?.head}`, `h2=${pr3?.head}`]));
     expect(during.filter((argv) => argv[1] === "graphql")).toHaveLength(3);
     expect(gh.pullRequests().slice(1).map((pr) => pr.base)).toEqual(["main", pr2?.head]);
+    // A restack-only close lands nothing, so no after batch is recorded and no after step fires.
+    expect(await readAfter(afterLedgerPath(ledgerPath(repo, { XDG_STATE_HOME: state })))).toEqual([]);
   }, RUN_TIMEOUT * 2);
 
   it("starts no task and shows the block in status and the report when a level fails its check after a merge", async () => {
