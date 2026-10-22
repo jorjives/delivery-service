@@ -182,6 +182,8 @@ facing one growing diff.
 
 ## Slice 4: Merge the Bottom Pull Request and the Rest Follow
 
+**Tests:** ✅ Recorded — 2026-10-22 — `773579b` — cli — 1 UAT + 7 AC, 6 skipped
+
 **Delivers:** After the operator merges pull requests from the bottom, the next run moves the
 remaining ones onto the new base, checks each, retargets them on GitHub, and carries on delivering
 on top.
