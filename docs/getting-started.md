@@ -5,10 +5,10 @@ command, point it at a small sample project, and watch an agent do a task that
 your own tests check. It takes about ten minutes, and you need not read any
 harness source.
 
-`delivery` is a global command, installed once and run from inside any of your projects. A
-project needs only an optional `delivery.config.json`; it does not depend on the harness. The
-harness also ships a TypeScript library, but only for writing your own gates, closers and packs
-(see [Extending delivery with TypeScript](#extending-delivery-with-typescript-optional)).
+`delivery` is a global command: install it once, then run it from inside any of your projects.
+A project needs at most a [`delivery.config.json`](project-configuration.md) and takes no dependency on the harness. The
+TypeScript library is only for writing your own gates, closers and packs (see
+[Extending delivery with TypeScript](#extending-delivery-with-typescript-optional)).
 
 ## What you need
 
@@ -57,8 +57,9 @@ delivery --version
 
 ### Extending delivery with TypeScript (optional)
 
-You can skip this section for now: step 1 puts `delivery` on your `PATH`, which is all this guide
-needs. The guides to [write a gate](writing-a-gate.md) and
+The command and `delivery.config.json` are the whole product; the library is only for writing
+TypeScript against `delivery-service`. You can skip this section for now: step 1 puts `delivery` on
+your `PATH`, which is all this guide needs. The guides to [write a gate](writing-a-gate.md) and
 [test your pipeline](testing-your-pipeline.md) `import` the library in a project of your own, and a
 global install does not support that: a bare `import "delivery-service"` resolves through a
 project's own `node_modules`. Install the same packed file there too, without `-g`:
