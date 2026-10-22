@@ -1,18 +1,20 @@
 import { prepareContinuation } from "../continuation.js";
 import { baseTip, closeDeliveryBranch, deliveryBranchOf, deliveryMerged, fetchBase, reconcileDeliveryBranch } from "../delivery-branch.js";
 import { deliveryLedgerPath, readDelivery, type LandedEntry } from "../delivery-ledger.js";
-import { ghFailureOf, ghReason } from "../gh.js";
+import { ghReason } from "../gh.js";
 import { branchExists, git } from "../git-exec.js";
 import { DEFAULT_PARK_AFTER, ledgerPath, readItemLedger, recordDispatched, settleRun, type ItemState } from "../item-ledger.js";
 import { heldPath, recordHeld } from "../held-sequences.js";
-import { mergedPullRequestTips } from "../merged-pull-requests.js";
+import { listPullRequests } from "../pull-requests.js";
+import { readStack } from "../delivery-stack.js";
 import { runIdFor } from "../run-location.js";
-import type { CloseReport } from "../ports.js";
+import type { CloseReport, DeliveredLevel } from "../ports.js";
 import type { RunRecord } from "../run-records.js";
 import type { CloserRef, Continues, TaskDef } from "../schema.js";
 import { runShell } from "../shell.js";
 import { clearParked, githubIssueOf, markParked } from "../github-source.js";
-import { taskIntent } from "../task-list.js";
+import { taskIntent, taskText } from "../task-list.js";
+import { closeDeliveryStack, isStacked, reconcileStackBranch } from "../stack-branch.js";
 import { chooseWork, type WorkItem } from "../work-sources.js";
 import { afterLanding } from "./after-landing.js";
 import { DEFAULT_SOURCES, sourceName, type DeliveryConfig, type SourceConfig } from "./config.js";
@@ -23,6 +25,7 @@ import { runQueue, type ClaimSource, type QueueClaim } from "./queue.js";
 import { closingReport } from "./report-command.js";
 import { allRuns, readRun } from "./runs.js";
 import { checkCustomModules, maxItems, resolveProject, workflowFrom, type ProjectSettings, type RunFlags } from "./settings.js";
+import { checkStackSetup } from "./stack-setup.js";
 
 export const NOTHING_TO_WORK =
   "Nothing to work on: every item is done, parked, waiting behind an earlier item of its sequence, or not due yet. Add an item under .delivery/backlog/, or run `delivery status` to see what is parked or held.";
@@ -48,6 +51,9 @@ export const deliveryClosedNote = (branch: string, report: CloseReport): string 
 
 export const couldNotFetch = (base: string, reason: string): string =>
   `Could not fetch ${base} from origin (${reason}), so a pull request merged on GitHub since the last run may not be seen yet. This run carries on with what this machine already has.`;
+
+export const couldNotAskStack = (reason: string): string =>
+  `Could not ask GitHub for the stack's pull requests (${reason}); \`delivery status\` shows them after a later run can.`;
 
 export const couldNotAskGitHub = (branch: string, reason: string): string =>
   `Could not ask GitHub whether ${branch}'s pull request has merged (${reason}), so a merge by squash or rebase may not be seen yet. This run carries on as if it had not.`;
@@ -94,15 +100,23 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   // The one branch every task of this run lands on, named after the base before any task is claimed.
   const { base } = await baseTip(repoPath);
   const branch = deliveryBranchOf(base);
-  // GitHub's state, not the shape of history, says a rolling pull request merged (design §9 decision 5). Empty for every
-  // other closer, and when there is no branch yet to have merged, so reconciling is unchanged for them.
-  let mergedTips: ReadonlySet<string> = new Set();
-  if (asksGitHub && (await branchExists(repoPath, branch))) {
-    try {
-      mergedTips = await mergedPullRequestTips(repoPath, branch);
-    } catch (err) {
-      ctx.report.note(couldNotAskGitHub(branch, ghReason(ghFailureOf(err))));
+  const deliveryLedger = deliveryLedgerPath(path);
+  // A stack the setup cannot take stops the run before anything is claimed or landed (spec §9).
+  const stacked = isStacked(project.closerRef);
+  if (stacked) {
+    const blocked = await checkStackSetup(repoPath, deliveryLedger, branch);
+    if (blocked !== undefined) {
+      ctx.report.note(blockedNote(blocked));
+      return finish(EXIT.escalated);
     }
+  }
+  // GitHub's state, not the shape of history, says a rolling pull request merged (design §9 decision 5). Empty for every
+  // other closer, for a stack (which never merges its base in), and when there is no branch yet to have merged.
+  let mergedTips: ReadonlySet<string> = new Set();
+  if (asksGitHub && !stacked && (await branchExists(repoPath, branch))) {
+    const listing = await listPullRequests(repoPath, { heads: [branch] }, { state: "merged" });
+    if (listing.ok) mergedTips = new Set(listing.pullRequests.map((pr) => pr.headRefOid));
+    else ctx.report.note(couldNotAskGitHub(branch, ghReason(listing.failure)));
   }
   const after = afterLanding({ repoPath, config, project, itemLedger: path, branch, base, records: () => allRuns(repoPath) }, ctx);
   // Steps an earlier run left pending are tried first, from the one that failed (spec §5.7); they never stop new work.
@@ -128,7 +142,6 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
     const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch }, ctx);
     if (claim !== undefined) claims.push(claim);
   }
-  const deliveryLedger = deliveryLedgerPath(path);
   const landAndFinish = async (exitCode: ExitCode, list: TaskDef[] = []): Promise<ExitCode> => {
     const handed = await handOff({ repoPath, closerRef: project.closerRef, ledger: deliveryLedger, branch, base, sources }, exitCode, ctx);
     // Replaces, not combines with, the start-of-run answer: a step that failed then may since have been superseded.
@@ -139,10 +152,14 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   // nothing is to be worked but earlier landings still wait for the closer: the closer is retried "after bringing in
   // any base commits" (spec §5.7), since a moved base is the usual reason a merge-back failed. And, with open-pr, readied
   // when the delivery branch's pull request has merged, so it starts again from the base and stops listing what merged.
-  // A run with none of these opens no branch.
+  // A run with none of these opens no branch. A stack is readied the same way, but as a stacked section, never merged into.
   const waiting = (await readDelivery(deliveryLedger, branch)).pending.length > 0;
-  const mergedOnGitHub = asksGitHub && (await deliveryMerged(repoPath, mergedTips));
-  const reconciled = claims.length === 0 && !waiting && !mergedOnGitHub ? undefined : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env, mergedTips);
+  const mergedOnGitHub = !stacked && asksGitHub && (await deliveryMerged(repoPath, mergedTips));
+  const reconciled = claims.length === 0 && !waiting && !mergedOnGitHub
+    ? undefined
+    : stacked
+      ? await reconcileStackBranch(repoPath, deliveryLedger)
+      : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env, mergedTips);
   if (reconciled?.ready === false) {
     ctx.report.note(blockedNote(reconciled.reason));
     return finish(EXIT.escalated);
@@ -184,13 +201,40 @@ async function handOff(target: { repoPath: string; closerRef: CloserRef; ledger:
   if (pending.length === 0) return { exitCode };
   // Read before the closer acts: merge-back deletes the branch, and this is the commit every after step is about.
   const commit = await git(target.repoPath, ["rev-parse", `refs/heads/${branch}`]);
-  const report = await closeDeliveryBranch(target, landed.map((e) => {
-    const issue = githubIssueOf(e.key, target.sources);
-    return { intent: e.intent, item: e.key, run: e.runId, at: e.at, ...(issue === undefined ? {} : { closes: `#${issue}` }) };
-  }));
-  ctx.report.note(deliveryClosedNote(branch, report));
-  if (report.status !== "DONE") return { exitCode: exitCode !== EXIT.ok ? exitCode : EXIT.escalated };
+  const closed: { report: CloseReport; unobserved?: string } = isStacked(target.closerRef)
+    ? await closeDeliveryStack(target, await stackLevels(target))
+    : { report: await closeDeliveryBranch(target, landed.map((e) => {
+        const issue = githubIssueOf(e.key, target.sources);
+        return { intent: e.intent, item: e.key, run: e.runId, at: e.at, ...(issue === undefined ? {} : { closes: `#${issue}` }) };
+      })) };
+  ctx.report.note(deliveryClosedNote(branch, closed.report));
+  if (closed.unobserved !== undefined) ctx.report.note(couldNotAskStack(closed.unobserved));
+  if (closed.report.status !== "DONE") return { exitCode: exitCode !== EXIT.ok ? exitCode : EXIT.escalated };
   return { exitCode, closed: { landed: pending, commit } };
+}
+
+/**
+ * The levels of a stacked branch as its closer takes them: in landing order, each with the text of the task it carries
+ * and the issue it closes. An item that landed nothing has no level, so it is not here.
+ */
+async function stackLevels(target: { repoPath: string; ledger: string; branch: string; sources: readonly SourceConfig[] }): Promise<DeliveredLevel[]> {
+  const stack = await readStack(target.repoPath, target.ledger, target.branch);
+  const records = await allRuns(target.repoPath);
+  return stack.map((level) => {
+    const record = records.find((r) => r.runId === level.run);
+    const issue = githubIssueOf(level.item, target.sources);
+    return {
+      intent: level.intent,
+      item: level.item,
+      run: level.run,
+      at: level.at,
+      text: record === undefined ? level.intent : taskText(record.caseFile.header.taskDef),
+      ref: level.ref,
+      commit: level.commit,
+      parent: level.parent,
+      ...(issue === undefined ? {} : { closes: `#${issue}` }),
+    };
+  });
 }
 
 /** The claim a chosen item becomes: carried on from its last run, or a fresh run, with its workflow and item pinned. */

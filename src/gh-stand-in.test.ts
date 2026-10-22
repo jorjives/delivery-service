@@ -1,8 +1,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createGhStandIn } from "./gh-stand-in.js";
+import { addLocalOrigin, initTempRepo } from "./temp-repo.js";
 
-const run = (bin: string, args: string[]) => spawnSync(bin, args, { encoding: "utf-8" });
+const run = (bin: string, args: string[], cwd?: string) => spawnSync(bin, args, { encoding: "utf-8", ...(cwd === undefined ? {} : { cwd }) });
 
 describe("the gh stand-in's issues", () => {
   it("answers the listing query with open issues carrying the label, oldest first, with their label and rename events", () => {
@@ -50,20 +53,58 @@ describe("the gh stand-in's issues", () => {
 });
 
 describe("the gh stand-in's pull requests", () => {
-  it("lists only open pull requests for a head by default, as gh does, others by --state, and reports a merged head", () => {
+  it("answers gh api graphql with each aliased head's pull requests, reporting each head commit from origin, and refuses a search query", () => {
+    const repo = initTempRepo("stand-in-", { "a.txt": "a\n" });
+    const origin = addLocalOrigin(repo);
     const gh = createGhStandIn();
-    const first = run(gh.command, ["pr", "create", "--base=main", "--head=delivery/main", "--title=T", "--body=B"]).stdout.trim();
-    expect(gh.pullRequests()[0]?.state).toBe("OPEN");
-    gh.mergePullRequest(first, "abc123");
+    const urlA = run(gh.command, ["pr", "create", "--base=main", "--head=a", "--title=T", "--body=B"], repo).stdout.trim();
+    const urlB = run(gh.command, ["pr", "create", "--base=main", "--head=b", "--title=T", "--body=B"], repo).stdout.trim();
+    gh.mergePullRequest(urlB, "bbb");
+    run("git", ["push", "origin", "main:refs/heads/a"], repo);
+    const headA = execFileSync("git", ["rev-parse", "refs/heads/a"], { cwd: origin, encoding: "utf-8" }).trim();
 
-    const list = (args: string[]) => JSON.parse(run(gh.command, ["pr", "list", "--head=delivery/main", "--json=url,headRefOid", ...args]).stdout) as { url: string; headRefOid?: string }[];
-    expect(list([])).toEqual([]);
-    expect(list(["--state=open"])).toEqual([]);
-    expect(list(["--state=merged"])).toEqual([{ url: first, headRefOid: "abc123" }]);
-    expect(list(["--state=all"])).toEqual([{ url: first, headRefOid: "abc123" }]);
+    const query = "query($owner:String!,$name:String!,$h0:String!,$h1:String!){repository(owner:$owner,name:$name){p0:pullRequests(headRefName:$h0,states:[OPEN,MERGED,CLOSED],first:100){nodes{url state headRefName headRefOid baseRefName}} p1:pullRequests(headRefName:$h1,states:[OPEN,MERGED,CLOSED],first:100){nodes{url state headRefName headRefOid baseRefName}}}}";
+    const answer = run(gh.command, ["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "name={repo}", "-f", "h0=a", "-f", "h1=b"], repo);
+    expect(answer.status).toBe(0);
+    expect(JSON.parse(answer.stdout)).toEqual({
+      data: {
+        repository: {
+          p0: { nodes: [{ url: urlA, state: "OPEN", headRefName: "a", headRefOid: headA, baseRefName: "main" }] },
+          p1: { nodes: [{ url: urlB, state: "MERGED", headRefName: "b", headRefOid: "bbb", baseRefName: "main" }] },
+        },
+      },
+    });
 
-    const second = run(gh.command, ["pr", "create", "--base=main", "--head=delivery/main", "--title=T2", "--body=B2"]).stdout.trim();
-    expect(second).not.toBe(first);
-    expect(list(["--state=open"])).toEqual([{ url: second }]);
+    const search = run(gh.command, ["api", "graphql", "-f", 'query=query{search(query:"a",type:ISSUE,first:1){nodeCount}}'], repo);
+    expect(search.status).not.toBe(0);
+  });
+
+  it("sets a pull request's base with pr edit --base", () => {
+    const repo = initTempRepo("stand-in-edit-", { "a.txt": "a\n" });
+    addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    const url = run(gh.command, ["pr", "create", "--base=main", "--head=a", "--title=T", "--body=B"], repo).stdout.trim();
+
+    expect(run(gh.command, ["pr", "edit", url, "--base=other"], repo).status).toBe(0);
+
+    expect(gh.pullRequests()[0]).toMatchObject({ url, base: "other" });
+  });
+
+  it("refuses to create a pull request whose head has no commits beyond its base", () => {
+    const repo = initTempRepo("stand-in-empty-", { "a.txt": "a\n" });
+    addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    run("git", ["push", "origin", "main:refs/heads/empty"], repo);
+    const refused = run(gh.command, ["pr", "create", "--base=main", "--head=empty", "--title=T", "--body=B"], repo);
+
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain("No commits between main and empty");
+    expect(gh.pullRequests()).toEqual([]);
+
+    writeFileSync(join(repo, "b.txt"), "b\n");
+    run("git", ["add", "-A"], repo);
+    run("git", ["commit", "-m", "b"], repo);
+    run("git", ["push", "origin", "HEAD:refs/heads/ahead"], repo);
+    expect(run(gh.command, ["pr", "create", "--base=main", "--head=ahead", "--title=T", "--body=B"], repo).status).toBe(0);
   });
 });

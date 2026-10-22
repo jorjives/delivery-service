@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BreakerState, FenceMode, GuardName, OutcomeCause, Population, RepairChanges, RepairStatus, SurfaceState, TriageEntry, Trip, UsageLimit } from "../schema.js";
 import { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
 import { HoldReason } from "../held-sequences.js";
+import { PullRequestState } from "../pull-requests.js";
 
 /** The version every report document names itself by. A later version adds keys; it never renames or removes one. */
 export const REPORT_SCHEMA = "delivery.report/1";
@@ -43,8 +44,23 @@ export const HeldSequence = z.object({
 export type HeldSequence = z.infer<typeof HeldSequence>;
 
 /**
+ * One level of a stacked delivery branch: the item that landed it, the commit that holds it, and the pull request that
+ * carries it, `null` until one was seen.
+ */
+export const ReportStackLevel = z.object({
+  run: z.string(),
+  item: z.string(),
+  intent: z.string(),
+  ref: z.string(),
+  commit: z.string(),
+  pr: z.object({ url: z.string(), state: PullRequestState }).nullable(),
+});
+export type ReportStackLevel = z.infer<typeof ReportStackLevel>;
+
+/**
  * The delivery branch a `--sources` run lands its tasks on: what has landed on it since it opened, what the closer last
- * did with it, and what blocks it. From this machine's ledger.
+ * did with it, and what blocks it. From this machine's ledger. `stack` is its levels bottom first when it is stacked,
+ * and empty in rolling mode.
  */
 export const ReportDelivery = z.object({
   branch: z.string(),
@@ -54,6 +70,7 @@ export const ReportDelivery = z.object({
   landed: z.array(z.object({ run: z.string(), item: z.string(), intent: z.string(), commit: z.string(), at: z.string() })),
   closer: z.object({ status: z.enum(["DONE", "FAIL", "ERROR"]), detail: z.string(), at: z.string() }).nullable(),
   blocked: z.object({ reason: z.string(), at: z.string() }).nullable(),
+  stack: z.array(ReportStackLevel),
 });
 export type ReportDelivery = z.infer<typeof ReportDelivery>;
 

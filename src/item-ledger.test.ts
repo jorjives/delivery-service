@@ -123,6 +123,52 @@ describe("the ledger", () => {
     expect(delivery.landed).toMatchObject([{ runId: "greet-20261016T090000Z", key: KEY, intent: "greet people", commit: tip }]);
   });
 
+  it("records the commit the close landed at, not the delivery branch's later tip", async () => {
+    const repo = initTempRepo("ledger-later-", { "seed.txt": "seed\n" });
+    git(repo, ["checkout", "-q", "-b", "delivery/main"]);
+    git(repo, ["commit", "-q", "--allow-empty", "-m", "landed"]);
+    const landedAt = git(repo, ["rev-parse", "HEAD"]);
+    git(repo, ["commit", "-q", "--allow-empty", "-m", "a later landing"]);
+    git(repo, ["checkout", "-q", "main"]);
+    const path = scratch();
+    const record = {
+      runId: "greet-20261016T090000Z", repoPath: repo, dir: "dir",
+      caseFile: {
+        header: { taskDef: { intent: "greet people" }, delivery: { branch: "delivery/main" } }, cursor: {},
+        history: [{ t: "close", status: "DONE", detailRef: "close-0", commit: landedAt }],
+        outcome: { kind: "closed", source: "closer", reason: "r", at },
+      },
+    } as unknown as RunRecord;
+
+    const state = await settleRun(path, KEY, record, 3);
+
+    expect(state).toMatchObject({ lastClass: "delivered", commit: landedAt });
+    const delivery = await readDelivery(deliveryLedgerPath(path), "delivery/main");
+    expect(delivery.landed).toMatchObject([{ key: KEY, commit: landedAt }]);
+  });
+
+  it("marks the landing empty when the close landed nothing, still settling the item as delivered", async () => {
+    const repo = initTempRepo("ledger-empty-", { "seed.txt": "seed\n" });
+    git(repo, ["branch", "delivery/main"]);
+    const landedAt = git(repo, ["rev-parse", "delivery/main"]);
+    const path = scratch();
+    const record = {
+      runId: "greet-20261016T090000Z", repoPath: repo, dir: "dir",
+      caseFile: {
+        header: { taskDef: { intent: "greet people" }, delivery: { branch: "delivery/main" } }, cursor: {},
+        history: [{ t: "close", status: "DONE", detailRef: "close-0", commit: landedAt, empty: true }],
+        outcome: { kind: "closed", source: "closer", reason: "r", at },
+      },
+    } as unknown as RunRecord;
+
+    const state = await settleRun(path, KEY, record, 3);
+
+    expect(state).toMatchObject({ lastClass: "delivered", commit: landedAt });
+    const delivery = await readDelivery(deliveryLedgerPath(path), "delivery/main");
+    expect(delivery.landed).toMatchObject([{ key: KEY, commit: landedAt, empty: true }]);
+    expect(delivery.pending).toMatchObject([{ key: KEY, commit: landedAt, empty: true }]);
+  });
+
   describe("awaitsMerge", () => {
     const delivered = (over: { branch: string | null; commit: string | null }) => ({ key: KEY, lastClass: "delivered" as const, ...over }) as never;
 
