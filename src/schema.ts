@@ -443,6 +443,11 @@ export const CloseEntry = z.object({
   t: z.literal("close"),
   status: z.enum(["DONE", "FAIL", "ERROR"]),
   detailRef: z.string(),
+  // A DONE close of a task pinned to a delivery branch: the task branch's tip as handed to the closer, which the landing
+  // fast-forwards the delivery branch to (or, when empty, the commit already on it).
+  commit: z.string().optional(),
+  // Beside commit: that tip was already on the delivery branch before the close, so the item landed no commits of its own.
+  empty: z.literal(true).optional(),
   at: At.optional(),
 });
 export type CloseEntry = z.infer<typeof CloseEntry>;

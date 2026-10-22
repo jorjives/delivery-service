@@ -9,7 +9,7 @@ import { appendLine, isEnoent, parseLines } from "./journal.js";
  */
 export const DeliveryEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("opened"), branch: z.string(), base: z.string(), from: z.string(), at: z.string() }),
-  z.object({ t: z.literal("landed"), branch: z.string(), runId: z.string(), key: z.string(), intent: z.string(), commit: z.string(), at: z.string() }),
+  z.object({ t: z.literal("landed"), branch: z.string(), runId: z.string(), key: z.string(), intent: z.string(), commit: z.string(), empty: z.literal(true).optional(), at: z.string() }),
   z.object({ t: z.literal("base_merged"), branch: z.string(), base: z.string(), commit: z.string(), at: z.string() }),
   z.object({ t: z.literal("blocked"), branch: z.string(), base: z.string(), baseTip: z.string(), tip: z.string(), reason: z.string(), at: z.string() }),
   z.object({ t: z.literal("closed"), branch: z.string(), status: z.enum(["DONE", "FAIL", "ERROR"]), detail: z.string(), at: z.string() }),

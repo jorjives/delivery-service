@@ -34,6 +34,16 @@ describe("the delivery ledger", () => {
     expect(state.closer).toEqual({ status: "FAIL", detail: "refused", at: at(5) });
   });
 
+  it("keeps an empty landing as delivered: still landed and pending, marked empty", () => {
+    const state = foldDelivery([
+      { t: "opened", branch: B, base: "main", from: "a", at: at(0) },
+      { ...landed("r1", 1), empty: true },
+    ], B);
+
+    expect(state.landed).toMatchObject([{ runId: "r1", empty: true }]);
+    expect(state.pending).toMatchObject([{ runId: "r1", empty: true }]);
+  });
+
   it("starts a new section when the branch opens again", () => {
     const state = foldDelivery([
       { t: "opened", branch: B, base: "main", from: "a", at: at(0) },
