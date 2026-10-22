@@ -290,6 +290,8 @@ resting on something that was rejected.
 
 ## Slice 6: Fix a Pull Request in Place and the Stack Keeps Up
 
+**Tests:** ✅ Recorded — 2026-10-22 — `9119c7f` — cli — 1 UAT + 3 AC, 2 skipped
+
 **Delivers:** The operator pushes a fix to a stacked pull request's branch and the next run adopts
 it and moves the levels above onto it, rather than overwriting it.
 
