@@ -8,7 +8,7 @@ import { branchName, resolveBaseRef } from "./provision.js";
 import { repoKey, stateHome } from "./run-location.js";
 import type { RunRecord } from "./run-records.js";
 import { taskIntent } from "./task-list.js";
-import type { CaseFile } from "./schema.js";
+import type { CaseFile, CloseEntry } from "./schema.js";
 
 /** Autoloop's retry budget: how many runs in a row an item may end undelivered before it is set aside. */
 export const DEFAULT_PARK_AFTER = 3;
@@ -134,12 +134,20 @@ function parkReasonOf(state: ItemState, parkAfter: number): ParkReason | null {
   return null;
 }
 
+/** The last DONE close of `record`: the close that ended its run as delivered. */
+function lastDoneClose(record: RunRecord): CloseEntry | undefined {
+  return record.caseFile.history.findLast((e): e is CloseEntry => e.t === "close" && e.status === "DONE");
+}
+
 /**
- * The tip of the work a delivered run landed: its delivery branch, or its own branch, while that exists; otherwise a closer has merged it and
- * deleted the branch, and the local base branch's tip is it (a fast-forward merge-back leaves the two equal).
- * ponytail: read at settle time, straight after the close; a base that moved on in between still contains the work.
+ * The commit a delivered run landed at. A DONE close records it (`commit`), exact even when a later run has landed on top since.
+ * Close entries written before that read the tip at settle time instead: the delivery branch, or its own branch, while that exists;
+ * otherwise a closer has merged it and deleted the branch, and the local base branch's tip is it (a fast-forward merge-back leaves the two equal).
+ * ponytail: that settle-time read can include a later landing, so it is only the fallback for records written before close entries carried a commit.
  */
 async function deliveredCommit(record: RunRecord): Promise<string> {
+  const recorded = lastDoneClose(record)?.commit;
+  if (recorded !== undefined) return recorded;
   const branch = record.caseFile.header.delivery?.branch ?? branchName(record.runId);
   return (await branchTip(record.repoPath, branch)) ?? git(record.repoPath, ["rev-parse", (await resolveBaseRef(record.repoPath)).localBranch]);
 }
@@ -152,9 +160,10 @@ export async function settleRun(path: string, key: string, record: RunRecord, pa
   const delivery = record.caseFile.header.delivery;
   const commit = kind === "delivered" ? await deliveredCommit(record) : undefined;
   const heldCommit = kind === "held" ? await branchTip(record.repoPath, branchName(record.runId)) : undefined;
+  const empty = lastDoneClose(record)?.empty === true ? { empty: true as const } : {};
   // Landed before it is settled, so a crash between the two leaves the landing recorded and the run settled on the next run.
   if (delivery !== undefined && commit !== undefined) {
-    await recordDelivery(deliveryLedgerPath(path), { t: "landed", branch: delivery.branch, runId: record.runId, key, intent: taskIntent(record.caseFile.header.taskDef), commit });
+    await recordDelivery(deliveryLedgerPath(path), { t: "landed", branch: delivery.branch, runId: record.runId, key, intent: taskIntent(record.caseFile.header.taskDef), commit, ...empty });
   }
   await append(path, {
     t: "ended", key, runId: record.runId, class: kind, at: now(),

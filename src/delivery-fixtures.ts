@@ -4,6 +4,8 @@ import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { cleanGitEnv } from "./git-env.js";
+import { recordDelivery } from "./delivery-ledger.js";
+import { levelRefOf } from "./delivery-stack.js";
 import { initTempRepo } from "./temp-repo.js";
 
 /** Test support: a repository with an open delivery branch, and another task landing on it. */
@@ -26,4 +28,30 @@ export async function commitOn(repo: string, branch: string, file: string, conte
   git(scratch, ["commit", "-q", "-m", `land ${file}`]);
   git(repo, ["worktree", "remove", "--force", scratch]);
   return git(repo, ["rev-parse", branch]);
+}
+
+/**
+ * Test support: open the delivery branch in `repo` (a stack when `stacked`), land `landings` on it in order, and note the
+ * pull requests `pulls` names. An empty landing changed nothing, so it sits on the commit before it. Returns each landing's commit.
+ */
+export async function stackedDelivery(
+  repo: string,
+  ledger: string,
+  { stacked, landings, pulls = [] }: {
+    stacked: boolean;
+    landings: { runId: string; key: string; intent: string; empty?: true }[];
+    pulls?: { runId: string; url: string; state: "OPEN" | "MERGED" | "CLOSED" }[];
+  },
+): Promise<string[]> {
+  git(repo, ["branch", DELIVERY]);
+  const from = git(repo, ["rev-parse", "main"]);
+  await recordDelivery(ledger, { t: "opened", branch: DELIVERY, base: "main", from, ...(stacked ? { stack: true as const } : {}) });
+  const commits: string[] = [];
+  for (const landing of landings) {
+    const commit = landing.empty === true ? (commits.at(-1) ?? from) : await commitOn(repo, DELIVERY, `${landing.runId}.txt`, "work\n");
+    commits.push(commit);
+    await recordDelivery(ledger, { t: "landed", branch: DELIVERY, runId: landing.runId, key: landing.key, intent: landing.intent, commit, ...(landing.empty === true ? { empty: true as const } : {}) });
+  }
+  for (const pr of pulls) await recordDelivery(ledger, { t: "observed", branch: DELIVERY, pullRequests: [{ ref: levelRefOf("main", pr.runId), url: pr.url, state: pr.state }] });
+  return commits;
 }

@@ -123,6 +123,8 @@ stall in one spec does not stop everything else, nor does it hide.
 
 ## Slice 3: Review Delivered Work as a Stack of Pull Requests
 
+**Status:** ✅ Complete — 2026-10-22 — `35f5c5e`
+**Tests:** ✅ Recorded — 2026-10-22 — `bffd77a` — cli — 1 UAT + 5 AC, 3 skipped
 **Delivers:** With stack mode switched on, each item that lands gets its own pull request, each
 targeting the one below it, so the operator can review and try each item separately.
 

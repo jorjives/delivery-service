@@ -5,6 +5,7 @@ import { runBatch, stillPending, supersedeOlder, type AfterDeps } from "../after
 import { deliveryLedgerPath, type LandedEntry } from "../delivery-ledger.js";
 import { githubIssueOf, closeIssue } from "../github-source.js";
 import { heldFollowUps, landFollowUps } from "../follow-ups.js";
+import { isStacked } from "../stack-branch.js";
 import type { RunRecord } from "../run-records.js";
 import { runIdFor } from "../run-location.js";
 import type { CloserRef, FenceRecord } from "../schema.js";
@@ -48,8 +49,11 @@ export async function newBatch(
   });
   if (tasks.length === 0) return undefined;
   const sources = config.sources ?? DEFAULT_SOURCES;
-  // With open-pr, the pull request's Closes lines close the issues when it merges; every other closer closes them here.
-  const issues = closer.type === "open-pr" ? [] : tasks.flatMap(({ entry }) => {
+  // With open-pr, a pull request's Closes lines close the issues of the work it carries when it merges. A stack's levels are
+  // such pull requests, so only an item that landed nothing (and so has no level) is closed here; every other closer closes here.
+  const closedOnMerge = (entry: LandedEntry): boolean => closer.type === "open-pr" && (!isStacked(closer) || entry.empty !== true);
+  const issues = tasks.flatMap(({ entry }) => {
+    if (closedOnMerge(entry)) return [];
     const number = githubIssueOf(entry.key, sources);
     return number === undefined ? [] : [{ item: entry.key, number }];
   });
@@ -114,7 +118,7 @@ export function afterLanding(
       }),
     closeIssue: (number, comment) => closeIssue(number, comment, { repoPath, env: ctx.env }),
     landFollowUps: (items, { state, index }) =>
-      landFollowUps({ repoPath, ledger: deliveryLedgerPath(itemLedger), branch: state.batch.branch, base: state.batch.base, runId: `${state.batch.batch}-${index}` }, items),
+      landFollowUps({ repoPath, ledger: deliveryLedgerPath(itemLedger), branch: state.batch.branch, base: state.batch.base, runId: `${state.batch.batch}-${index}`, stack: isStacked(project.closerRef) }, items),
     note: (line) => ctx.report.note(line),
   };
   const noteStillPending = async (): Promise<void> =>

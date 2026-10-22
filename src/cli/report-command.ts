@@ -16,6 +16,7 @@ import { listTasks } from "./status-command.js";
 import { loadConfig } from "./config.js";
 import { runShell } from "../shell.js";
 import { deliveryLedgerPath, foldDelivery, readDeliveryEntries } from "../delivery-ledger.js";
+import { readStack } from "../delivery-stack.js";
 import { git } from "../git-exec.js";
 import { ledgerPath, parkedItems, readItemLedger, type ItemState } from "../item-ledger.js";
 import { afterLedgerPath, isPending, readAfter } from "../after-ledger.js";
@@ -60,6 +61,7 @@ export async function deliveryIn(repoPath: string, env: NodeJS.ProcessEnv): Prom
   if (opened?.t !== "opened") return null;
   const state = foldDelivery(entries, opened.branch);
   const tip = await git(repoPath, ["rev-parse", "--verify", "--quiet", `refs/heads/${opened.branch}`]).catch(() => null);
+  const stack = await readStack(repoPath, deliveryLedgerPath(ledgerPath(repoPath, env)), opened.branch);
   return {
     branch: opened.branch,
     base: opened.base,
@@ -68,6 +70,7 @@ export async function deliveryIn(repoPath: string, env: NodeJS.ProcessEnv): Prom
     landed: state.landed.map((e) => ({ run: e.runId, item: e.key, intent: e.intent, commit: e.commit, at: e.at })),
     closer: state.closer,
     blocked: state.blocked === null ? null : { reason: state.blocked.reason, at: state.blocked.at },
+    stack: stack.map(({ run, item, intent, ref, commit, pr }) => ({ run, item, intent, ref, commit, pr })),
   };
 }
 

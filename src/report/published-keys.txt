@@ -504,6 +504,19 @@ delivery.report/1.delivery.closer.at: string
 delivery.report/1.delivery.blocked: null|object
 delivery.report/1.delivery.blocked.reason: string
 delivery.report/1.delivery.blocked.at: string
+delivery.report/1.delivery.stack: array
+delivery.report/1.delivery.stack[].commit: string
+delivery.report/1.delivery.stack[].intent: string
+delivery.report/1.delivery.stack[].item: string
+delivery.report/1.delivery.stack[].pr.state = "CLOSED"
+delivery.report/1.delivery.stack[].pr.state = "MERGED"
+delivery.report/1.delivery.stack[].pr.state = "OPEN"
+delivery.report/1.delivery.stack[].pr.state: string
+delivery.report/1.delivery.stack[].pr.url: string
+delivery.report/1.delivery.stack[].pr: null|object
+delivery.report/1.delivery.stack[].ref: string
+delivery.report/1.delivery.stack[].run: string
+delivery.report/1.delivery.stack[]: object
 delivery.report/1.after: array
 delivery.report/1.after[].at: string
 delivery.report/1.after[].batch: string

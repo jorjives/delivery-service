@@ -32,6 +32,9 @@ import { heldPath, recordHeld } from "../held-sequences.js";
 import { ledgerPath } from "../item-ledger.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
 import { notifyFailed, SCHEMA_AND_REPORT } from "./report-command.js";
+import { stackedDelivery } from "../delivery-fixtures.js";
+import { deliveryLedgerPath } from "../delivery-ledger.js";
+import { levelRefOf } from "../delivery-stack.js";
 import { EXIT } from "./failures.js";
 
 const LIST = [FORM, FOOTER, HOMEPAGE, BANNER];
@@ -477,6 +480,61 @@ describe("delivery report --json", () => {
     const repo = await project("report-json-unknown-", LIST, [formDone, { runId: ID.footer, task: FOOTER, history: attempt(1, "first go") }]);
 
     expect(documentIn((await delivery(["report", "--json"], { cwd: repo })).stdout).live).toBeNull();
+  });
+
+  it("carries the stack bottom up, with each level's pull request", async () => {
+    const repo = await project("report-json-stack-", LIST, []);
+    const env = { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "report-state-")) };
+    const commits = await stackedDelivery(repo, deliveryLedgerPath(ledgerPath(repo, env)), {
+      stacked: true,
+      landings: [
+        { runId: ID.form, key: "backlog:form.md", intent: "Add a contact form." },
+        { runId: ID.footer, key: "backlog:footer.md", intent: "Fix the footer." },
+      ],
+      pulls: [{ runId: ID.form, url: "https://example.invalid/pull/1", state: "OPEN" }],
+    });
+
+    const { exitCode, stdout } = await delivery(["report", "--json"], { cwd: repo, env });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect(documentIn(stdout).delivery?.stack).toEqual([
+      { run: ID.form, item: "backlog:form.md", intent: "Add a contact form.", ref: levelRefOf("main", ID.form), commit: commits[0], pr: { url: "https://example.invalid/pull/1", state: "OPEN" } },
+      { run: ID.footer, item: "backlog:footer.md", intent: "Fix the footer.", ref: levelRefOf("main", ID.footer), commit: commits[1], pr: null },
+    ]);
+  });
+
+  it("carries an empty stack in rolling mode", async () => {
+    const repo = await project("report-json-rolling-", LIST, []);
+    const env = { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "report-state-")) };
+    await stackedDelivery(repo, deliveryLedgerPath(ledgerPath(repo, env)), {
+      stacked: false,
+      landings: [{ runId: ID.form, key: "backlog:form.md", intent: "Add a contact form." }],
+    });
+
+    const doc = documentIn((await delivery(["report", "--json"], { cwd: repo, env })).stdout);
+
+    expect(doc.delivery?.landed).toHaveLength(1);
+    expect(doc.delivery?.stack).toEqual([]);
+  });
+
+  it("leaves an item that landed nothing out of the stack", async () => {
+    const repo = await project("report-json-empty-level-", LIST, []);
+    const env = { XDG_STATE_HOME: mkdtempSync(join(tmpdir(), "report-state-")) };
+    const commits = await stackedDelivery(repo, deliveryLedgerPath(ledgerPath(repo, env)), {
+      stacked: true,
+      landings: [
+        { runId: ID.form, key: "backlog:form.md", intent: "Add a contact form." },
+        { runId: ID.footer, key: "backlog:footer.md", intent: "Fix the footer.", empty: true },
+        { runId: ID.homepage, key: "backlog:homepage.md", intent: "Replace the homepage." },
+      ],
+    });
+
+    const doc = documentIn((await delivery(["report", "--json"], { cwd: repo, env })).stdout);
+
+    expect(doc.delivery?.stack.map((level) => [level.run, level.commit])).toEqual([
+      [ID.form, commits[0]],
+      [ID.homepage, commits[2]],
+    ]);
   });
 
   it("marks a damaged task record as making the document incomplete, and still carries the other tasks", async () => {

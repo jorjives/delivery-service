@@ -98,22 +98,28 @@ export const countsNewAssertions = (gateRef: GateRef): boolean =>
  * repository root, never the worktree, exactly as a custom gate's does.
  */
 export const CloserRef = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("merge-back"),
-    deleteBranch: z.boolean().optional(),
-  }),
+  z
+    .object({
+      type: z.literal("merge-back"),
+      deleteBranch: z.boolean().optional(),
+    })
+    .strict(),
   // No parameters: the branch to commit to is the surface's own, and the COULD-tier
   // `push` is deliberately absent until it is built rather than parsed and ignored.
-  z.object({ type: z.literal("commit-to-branch") }),
-  // No parameters: the pull request targets the pinned base branch. The spec's
+  z.object({ type: z.literal("commit-to-branch") }).strict(),
+  // The pull request targets the pinned base branch. `stack` is opt-in: left out or false
+  // is rolling mode, the behaviour before stacking; true opens one pull request per
+  // delivered item, each on the one below. The spec's
   // titleTemplate/bodyTemplate are deliberately absent until an owner needs
   // them; the defaults name the surface and the task.
-  z.object({ type: z.literal("open-pr") }),
-  z.object({
-    type: z.literal("custom"),
-    modulePath: z.string(),
-    exportName: z.string().optional(),
-  }),
+  z.object({ type: z.literal("open-pr"), stack: z.boolean().optional() }).strict(),
+  z
+    .object({
+      type: z.literal("custom"),
+      modulePath: z.string(),
+      exportName: z.string().optional(),
+    })
+    .strict(),
 ]);
 export type CloserRef = z.infer<typeof CloserRef>;
 
@@ -437,6 +443,11 @@ export const CloseEntry = z.object({
   t: z.literal("close"),
   status: z.enum(["DONE", "FAIL", "ERROR"]),
   detailRef: z.string(),
+  // A DONE close of a task pinned to a delivery branch: the task branch's tip as handed to the closer, which the landing
+  // fast-forwards the delivery branch to (or, when empty, the commit already on it).
+  commit: z.string().optional(),
+  // Beside commit: that tip was already on the delivery branch before the close, so the item landed no commits of its own.
+  empty: z.literal(true).optional(),
   at: At.optional(),
 });
 export type CloseEntry = z.infer<typeof CloseEntry>;

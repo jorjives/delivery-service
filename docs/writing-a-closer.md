@@ -71,6 +71,8 @@ If GitHub merged a delivery pull request and kept its branch, `open-pr` replaces
 commit someone else pushed to it since is never overwritten: the push is reported as `"ERROR"`
 instead.
 
+With `"stack": true` the closer publishes one pull request per item in `delivery.stack`, bottom first, each opened on the item below it (the bottom on the base). It pushes every level's branch in one atomic push and never pushes the delivery branch. A repeat close changes only what is wrong: it retargets or repairs a pull request, opens one that a refused create left out, and leaves alone any level whose pull request GitHub reports merged or closed.
+
 To watch it open a pull request, reuse it on a repeat close, and report an expired sign-in,
 against a stand-in for `gh` with no network, run `npm run demo:close-slice-5`.
 
