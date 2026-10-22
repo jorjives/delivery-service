@@ -8,7 +8,7 @@ import { join } from "node:path";
  * swap-the-executable approach claude-mock takes for the agent: a real
  * executable named `gh`, honouring the argv and output of the commands the
  * closer uses (`gh api graphql` answering the aliased exact-head `pullRequests(headRefName:…)` lookup, `gh pr create`,
- * `gh pr edit --body`; a test marks a pull request merged with `mergePullRequest`) and the issue commands the github
+ * `gh pr edit --body` and `--base`; a test marks a pull request merged with `mergePullRequest`) and the issue commands the github
  * work source uses (`gh api graphql` listing issues by label, `gh issue create|close|comment|edit`, `gh label create`),
  * with their failure messages and exit codes copied from gh 2.94 itself. It refuses any query that searches: search
  * lags, and nothing may depend on it. Every invocation's argv is logged, so a test can count requests.
@@ -47,8 +47,8 @@ export interface GhStandIn {
   /** The directory holding it, to put first on PATH. */
   binDir: string;
   setMode(mode: GhStandInMode): void;
-  /** Make every later `gh pr create` fail with this message, as GitHub refusing the pull request would. */
-  refuseCreate(message: string): void;
+  /** Make every later `gh pr create` fail with this message, as GitHub refusing the pull request would; null clears it. */
+  refuseCreate(message: string | null): void;
   pullRequests(): StandInPullRequest[];
   /** The argv of every gh invocation so far, in order. */
   calls(): string[][];
@@ -117,11 +117,27 @@ if (state.mode === "offline") {
 const [group, command, ...rest] = process.argv.slice(2);
 const flags = flagsOf(rest);
 
+// True when origin holds both refs and the head is an ancestor of, or equal to, the base: the state GitHub refuses a pull request for.
+function headAncestorOfBase(head, base) {
+  const headSha = remoteHead(head);
+  const baseSha = remoteHead(base);
+  if (headSha === "" || baseSha === "") return false;
+  try {
+    const origin = execFileSync("git", ["remote", "get-url", "origin"], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    execFileSync("git", ["-C", origin, "merge-base", "--is-ancestor", headSha, baseSha], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 if (group === "pr" && command === "create") {
   if (state.mode === "forbidden") {
     fail("pull request create failed: GraphQL: operator does not have the correct permissions to execute 'CreatePullRequest' (createPullRequest)", 1);
   }
   if (state.refusal) fail(state.refusal, 1);
+  // GitHub refuses a head with nothing beyond its base. Only checked when origin holds both refs, so a head never pushed is created as before.
+  if (headAncestorOfBase(flags.head, flags.base)) fail("No commits between " + flags.base + " and " + flags.head, 1);
   const url = "https://github.com/example/project/pull/" + (state.pullRequests.length + 1);
   state.pullRequests.push({ url, head: flags.head, base: flags.base, title: flags.title, body: flags.body, state: "OPEN" });
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
@@ -133,6 +149,7 @@ if (group === "pr" && command === "edit") {
   const pr = state.pullRequests.find((p) => p.url === rest[0]);
   if (!pr) fail("no pull requests found for " + rest[0], 1);
   if (flags.body !== undefined) pr.body = flags.body;
+  if (flags.base !== undefined) pr.base = flags.base;
   fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
   process.stdout.write(pr.url + "\n");
   process.exit(0);

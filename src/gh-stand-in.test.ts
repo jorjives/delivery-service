@@ -1,4 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createGhStandIn } from "./gh-stand-in.js";
 import { addLocalOrigin, initTempRepo } from "./temp-repo.js";
@@ -75,5 +77,34 @@ describe("the gh stand-in's pull requests", () => {
 
     const search = run(gh.command, ["api", "graphql", "-f", 'query=query{search(query:"a",type:ISSUE,first:1){nodeCount}}'], repo);
     expect(search.status).not.toBe(0);
+  });
+
+  it("sets a pull request's base with pr edit --base", () => {
+    const repo = initTempRepo("stand-in-edit-", { "a.txt": "a\n" });
+    addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    const url = run(gh.command, ["pr", "create", "--base=main", "--head=a", "--title=T", "--body=B"], repo).stdout.trim();
+
+    expect(run(gh.command, ["pr", "edit", url, "--base=other"], repo).status).toBe(0);
+
+    expect(gh.pullRequests()[0]).toMatchObject({ url, base: "other" });
+  });
+
+  it("refuses to create a pull request whose head has no commits beyond its base", () => {
+    const repo = initTempRepo("stand-in-empty-", { "a.txt": "a\n" });
+    addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    run("git", ["push", "origin", "main:refs/heads/empty"], repo);
+    const refused = run(gh.command, ["pr", "create", "--base=main", "--head=empty", "--title=T", "--body=B"], repo);
+
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain("No commits between main and empty");
+    expect(gh.pullRequests()).toEqual([]);
+
+    writeFileSync(join(repo, "b.txt"), "b\n");
+    run("git", ["add", "-A"], repo);
+    run("git", ["commit", "-m", "b"], repo);
+    run("git", ["push", "origin", "HEAD:refs/heads/ahead"], repo);
+    expect(run(gh.command, ["pr", "create", "--base=main", "--head=ahead", "--title=T", "--body=B"], repo).status).toBe(0);
   });
 });
