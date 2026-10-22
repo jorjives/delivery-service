@@ -3,7 +3,7 @@ import { z } from "zod";
 import { itemTask, parseItem } from "./backlog.js";
 import { sourceName, type SourceConfig } from "./cli/config.js";
 import type { HeldItem } from "./follow-ups.js";
-import { ghAccess, ghFailureOf, ghReason, runGh, type GhAccess } from "./gh.js";
+import { ghAccess, ghFailureOf, ghReason, runGh, type GhAccess, type GhFailure } from "./gh.js";
 import type { TaskDef } from "./schema.js";
 import { taskIntent } from "./task-list.js";
 import { sourceSkipped, type Listed, type Raised, type WorkItem } from "./work-sources.js";
@@ -139,17 +139,20 @@ export function accessReason(access: GhAccess): string {
     case "signed-out":
       return "gh is not signed in, or its sign-in has expired. Run gh auth login as the account the harness runs as.";
     case "forbidden":
-      return "the account gh is signed in as lacks permission to change this repository's issues. Run gh auth refresh -s repo, or get access to the repository.";
+      return "the account gh is signed in as lacks permission on this repository. Run gh auth refresh -s repo, or get access to the repository.";
     case "offline":
       return "gh could not reach GitHub. Check the network.";
   }
 }
 
 /** Why a gh call failed, in plain words: an access problem with its fix, else gh's own first line. */
-export function ghProblem(err: unknown): string {
-  const failure = ghFailureOf(err);
+export function ghFailureReason(failure: GhFailure): string {
   const access = ghAccess(failure);
   return access === null ? `gh said: ${ghReason(failure)}` : accessReason(access);
+}
+
+export function ghProblem(err: unknown): string {
+  return ghFailureReason(ghFailureOf(err));
 }
 
 /** The source's open issues as work items, in its order, with a note for each issue left alone; the whole source skipped, with the reason, when gh cannot answer. */

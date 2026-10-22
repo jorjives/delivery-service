@@ -664,7 +664,7 @@ describe("delivery run --sources", () => {
     gh.refuseLabels();
     const { stdout } = await delivery(["run", "--sources"], { cwd: repo, env });
     expect((await readItemLedger(ledgerPath(repo, { XDG_STATE_HOME: state }))).get("github:1")?.parked).toBe("decision");
-    expect(stdout).toContain("Could not show that it is parked on GitHub issue #1: the account gh is signed in as lacks permission to change this repository's issues.");
+    expect(stdout).toContain("Could not show that it is parked on GitHub issue #1: the account gh is signed in as lacks permission on this repository.");
   }, RUN_TIMEOUT);
 
   describe("with the open-pr closer", () => {
