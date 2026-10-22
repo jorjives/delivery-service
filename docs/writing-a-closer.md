@@ -28,9 +28,9 @@ What the harness does with the report:
 A failed close is never sent back to the worker: the work is already accepted.
 
 Everything in this guide is imported from the harness's single entry point,
-`delivery-service`. Install it in your project as
-[Get started](getting-started.md) describes, then run the snippets with
-`npx tsx`.
+`delivery-service`. This guide uses the optional TypeScript library. Install it in your project (see
+[Extending delivery with TypeScript](getting-started.md#extending-delivery-with-typescript-optional)); the
+`delivery` command itself needs no such install. Run the snippets with `npx tsx`.
 
 ## Choosing a closer
 
