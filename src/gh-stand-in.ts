@@ -63,6 +63,8 @@ export interface GhStandIn {
   openFromFork(head: string, base: string): string;
   /** The argv of every gh invocation so far, in order. */
   calls(): string[][];
+  /** Make every later `gh pr close` fail with this message, as GitHub refusing the close would; null clears it. */
+  refuseClose(message: string | null): void;
   /** Close a pull request without merging it, as the owner closing it on GitHub would. */
   closePullRequest(url: string): void;
   /** Mark a pull request merged at this head commit, as merging it on GitHub would. Moves no branch: merge into origin yourself. */
@@ -84,6 +86,7 @@ export interface GhStandIn {
 interface StandInState {
   mode: GhStandInMode;
   refusal: string | null;
+  closeRefusal?: string | null;
   pullRequests: StandInPullRequest[];
   issues: StandInIssue[];
   labels: string[];
@@ -174,6 +177,7 @@ if (group === "pr" && command === "edit") {
 }
 
 if (group === "pr" && command === "close") {
+  if (state.closeRefusal) fail(state.closeRefusal, 1);
   const pr = state.pullRequests.find((p) => p.url === rest[0]);
   if (!pr) fail("no pull requests found for " + rest[0], 1);
   if (pr.state === "CLOSED") {
@@ -341,6 +345,7 @@ export function createGhStandIn(): GhStandIn {
     binDir,
     setMode: (mode) => write({ ...read(), mode }),
     refuseCreate: (message) => write({ ...read(), refusal: message }),
+    refuseClose: (message) => write({ ...read(), closeRefusal: message }),
     pullRequests: () => read().pullRequests,
     openFromFork: (head, base) => {
       const state = read();
