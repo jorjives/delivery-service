@@ -20,7 +20,7 @@ import { BOTH_TASKS, unknownWorkflow, WORKFLOW_NEEDS_TASK } from "./settings.js"
 import { NO_TASK } from "./run-command.js";
 import { FENCE_ABSENT } from "./drive.js";
 import { EVERY_TASK_DONE, taskEnded, runPickedUp, STOPPED_PART_WAY } from "./queue.js";
-import { liveRunFound } from "./run-exclusion.js";
+import { liveRunFound, SKIPPED_IDLE } from "./run-exclusion.js";
 import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import { supervisedPlace, supervisorLockPath } from "../run-location.js";
 import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
@@ -1199,6 +1199,32 @@ describe("delivery run with several tasks at once", () => {
     expect((await first).exitCode).toBe(EXIT.ok);
     expect(await repoLocked(repo)).toBe(false);
   }, RUN_TIMEOUT * 2);
+
+  it("with --if-idle, skips quietly in one line while another run is going, running no notify and writing no report", async () => {
+    const repo = listRepo("run-command-if-idle-busy-", { tasks: [PAGE], notify: "touch notified" });
+    const release = await takeRepoLock(repo);
+    try {
+      const { exitCode, stdout, stderr } = await delivery(["run", "--if-idle"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toBe(`${SKIPPED_IDLE}\n`);
+      expect(stderr).toBe("");
+      expect(existsSync(runsRoot(repo))).toBe(false);
+      expect(existsSync(join(repo, "notified"))).toBe(false);
+      expect(existsSync(join(repo, SAVED_TEXT))).toBe(false);
+      expect(existsSync(join(repo, SAVED_DATA))).toBe(false);
+    } finally {
+      await release?.();
+    }
+  });
+
+  it("with --if-idle and no run going, runs exactly as without it", async () => {
+    const repo = listRepo("run-command-if-idle-free-", { tasks: [PAGE] });
+    const { exitCode, stdout } = await delivery(["run", "--if-idle"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).not.toContain(SKIPPED_IDLE);
+    expect(stdout).toContain(EVERY_TASK_DONE);
+    expect(await repoLocked(repo)).toBe(false);
+  }, RUN_TIMEOUT);
 
   it("lets the lock go when it refuses for another reason after taking it", async () => {
     const repo = listRepo("run-command-lock-refused-", { tasks: [PAGE] });

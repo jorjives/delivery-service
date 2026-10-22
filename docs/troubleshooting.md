@@ -46,7 +46,7 @@ Full message: `Another run is already going here (started `<time>`, <shape>: `<r
 
 **Why.** Another `delivery run`, `resume`, `sign-off` or `review` is under way in this repository, one at a time or several at once, and only one may drive it.
 
-**Fix.** Run `delivery status` to watch it. Start the next command when it has finished.
+**Fix.** Run `delivery status` to watch it. Start the next command when it has finished. A run started by a timer, cron or CI can pass `--if-idle` to `delivery run` instead, which skips quietly while another run is going.
 
 ### `--max` says how many items `--sources` takes
 

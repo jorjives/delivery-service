@@ -118,6 +118,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--config <path>", "use this config file instead of looking for a delivery.config.json")
     .option("--repo <path>", "the git repository to work on (default: the current folder)")
     .option("--fresh", "start a new run even though one didn't finish, leaving that one to pick up later")
+    .option("--if-idle", "if another run is already going in this repository, say so in one line and end successfully instead of refusing; for runs nobody is watching, such as from a timer, cron or CI")
     .action(async (options: RunOptions, command: Command) => {
       // A throw here rejects parseAsync with the original error, rendered once below.
       exitCode = await runCommand(options, ctxFor(command));

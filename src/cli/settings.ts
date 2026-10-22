@@ -45,6 +45,8 @@ export interface RunFlags {
   config?: string;
   repo?: string;
   fresh?: boolean;
+  /** When another run holds the repository, skip quietly instead of refusing. */
+  ifIdle?: boolean;
   workflow?: string;
   /** Work through the work sources in the config file, instead of one task or the list. */
   sources?: boolean;

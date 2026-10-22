@@ -44,7 +44,7 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
   const repoPath = await findRepository(startDir);
 
   // Whatever this run would be, it would drive git in the checkout another run is using, so it holds the repository while it runs.
-  return holdingRepo(repoPath, { ifIdle: false }, ctx, () => runIn(options, { startDir, repoPath }, ctx));
+  return holdingRepo(repoPath, { ifIdle: options.ifIdle === true }, ctx, () => runIn(options, { startDir, repoPath }, ctx));
 }
 
 /** The body of `delivery run`, once the repository is found and held. */

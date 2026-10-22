@@ -47,6 +47,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `--config <path>` | Uses this config file instead of searching for `delivery.config.json` |
 | `--repo <path>` | Works on this git repository (default: the current folder) |
 | `--fresh` | Starts a new run even though one did not finish |
+| `--if-idle` | If another run is already going in this repository, prints "Skipped: another run is going here" and exits 0 instead of refusing. For any run nobody is watching: a timer, cron or CI |
 
 ## Options for the other commands
 
