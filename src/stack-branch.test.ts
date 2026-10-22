@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -14,6 +14,7 @@ import { closeDeliveryStack, reconcileStackBranch } from "./stack-branch.js";
 import { addLocalOrigin, initTempRepo } from "./temp-repo.js";
 import type { DeliveredLevel } from "./ports.js";
 import type { GateRef } from "./schema.js";
+import { chooseWork } from "./work-sources.js";
 
 const D = "delivery/main";
 const R1 = "delivery-stack/main/r1";
@@ -335,6 +336,22 @@ describe("reconcileStackBranch on a stack of three pull requests", () => {
     if (method === "squash") {
       expect(await awaitsMerge(repo, items.get("backlog:r1.md"))).toBe(false);
       expect(await awaitsMerge(repo, items.get("backlog:r2.md"))).toBe(false);
+    } else {
+      // The delivery branch still holds c1 and c2, so they await merge; the backlog read from the fetched base resolves
+      // them, so the source no longer lists them and a following chooseWork claims neither (nor r3, which awaits merge).
+      const entry = (status: string) => `---\nstatus: ${status}\nworkflow: build\n---\nDo the thing.\n`;
+      onOrigin(origin, (clone) => {
+        mkdirSync(join(clone, ".delivery/backlog"), { recursive: true });
+        for (const [run, status] of [["r1", "resolved"], ["r2", "resolved"], ["r3", "open"]]) writeFileSync(join(clone, `.delivery/backlog/${run}.md`), entry(status));
+        git(clone, ["add", "-A"]);
+        git(clone, ["commit", "-q", "-m", "owner: resolve r1 and r2 in the backlog"]);
+        git(clone, ["push", "-q", "origin", "HEAD:refs/heads/main"]);
+      });
+      fetchMain(repo);
+      const chosen = await chooseWork([{ type: "backlog" }], {
+        repoPath: repo, config: {}, env: process.env, ledger: items, records: [], now: new Date(AT), max: 5, taken: new Set<string>(),
+      });
+      expect(chosen.items.map((i) => i.key)).toEqual([]);
     }
   });
 
