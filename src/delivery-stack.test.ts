@@ -163,4 +163,10 @@ describe("readStack", () => {
     const levels = await readStack(repo, path, DELIVERY);
     expect(levels.map((l) => [l.run, l.parent])).toEqual([["r1", "main"], ["r2", levelRefOf("main", "r1")]]);
   });
+
+  it("reads restacked levels on the new line, each knowing the commits it stood at before", () => {
+    const levels = stackOf(foldDelivery([open(), landed("r1", "c1"), landed("r2", "c2"),
+      { t: "restacked", branch: DELIVERY, onto: "B2", merged: ["r1"], levels: [{ runId: "r2", commit: "n2" }], at }], DELIVERY), ["n2"]);
+    expect(levels.map((l) => [l.run, l.parent, l.commit, l.earlier])).toEqual([["r2", "main", "n2", ["c2"]]]);
+  });
 });

@@ -14,6 +14,8 @@ export interface StackLevel {
   ref: string;
   parent: string;
   at: string;
+  /** The commits this level stood at before its current one, oldest first. */
+  earlier: readonly string[];
   pr: { url: string; state: PullRequestState } | null;
 }
 
@@ -41,7 +43,7 @@ export function stackOf(state: DeliveryState, line: readonly string[]): StackLev
     if (held.has(entry.commit)) continue;
     held.add(entry.commit);
     const ref = levelRefOf(base, entry.runId);
-    levels.push({ run: entry.runId, item: entry.key, intent: entry.intent, commit: entry.commit, ref, parent, at: entry.at, pr: state.pullRequests.get(ref) ?? null });
+    levels.push({ run: entry.runId, item: entry.key, intent: entry.intent, commit: entry.commit, ref, parent, at: entry.at, earlier: state.earlier.get(entry.runId) ?? [], pr: state.pullRequests.get(ref) ?? null });
     parent = ref;
   }
   return levels;
