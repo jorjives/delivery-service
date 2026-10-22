@@ -2,14 +2,16 @@ import { mkdir, readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 import { appendLine, isEnoent, parseLines } from "./journal.js";
+import { PullRequestState } from "./pull-requests.js";
 
 /**
  * What happened to each delivery branch (spec §5.7): opened at a base tip, a task landed, the base merged in, an attempt
  * to merge the base in blocked, and what the project's closer did. Machine-local, beside the item ledger.
  */
 export const DeliveryEntry = z.discriminatedUnion("t", [
-  z.object({ t: z.literal("opened"), branch: z.string(), base: z.string(), from: z.string(), at: z.string() }),
+  z.object({ t: z.literal("opened"), branch: z.string(), base: z.string(), from: z.string(), stack: z.literal(true).optional(), at: z.string() }),
   z.object({ t: z.literal("landed"), branch: z.string(), runId: z.string(), key: z.string(), intent: z.string(), commit: z.string(), empty: z.literal(true).optional(), at: z.string() }),
+  z.object({ t: z.literal("observed"), branch: z.string(), pullRequests: z.array(z.object({ ref: z.string(), url: z.string(), state: PullRequestState })), at: z.string() }),
   z.object({ t: z.literal("base_merged"), branch: z.string(), base: z.string(), commit: z.string(), at: z.string() }),
   z.object({ t: z.literal("blocked"), branch: z.string(), base: z.string(), baseTip: z.string(), tip: z.string(), reason: z.string(), at: z.string() }),
   z.object({ t: z.literal("closed"), branch: z.string(), status: z.enum(["DONE", "FAIL", "ERROR"]), detail: z.string(), at: z.string() }),
@@ -30,6 +32,12 @@ export interface DeliveryState {
   closer: { status: "DONE" | "FAIL" | "ERROR"; detail: string; at: string } | null;
   /** The last blocked attempt, unless the branch was opened or the base merged in since. */
   blocked: BlockedEntry | null;
+  /** The current section was opened in stack mode: its landings are read as levels of a stack, not as a rolling branch. */
+  stacked: boolean;
+  /** The current section's opening commit: the base tip the delivery branch was cut at. */
+  from: string | null;
+  /** Per level ref, what GitHub last showed for its pull request in the current section. */
+  pullRequests: ReadonlyMap<string, { url: string; state: PullRequestState }>;
 }
 
 export function deliveryLedgerPath(itemLedger: string): string {
@@ -49,6 +57,8 @@ export function foldDelivery(entries: readonly DeliveryEntry[], branch: string):
   const blockedAt = section.findLastIndex((e) => e.t === "blocked");
   const cleared = section.findLastIndex((e) => e.t === "base_merged" || e.t === "opened");
   const blocked = blockedAt > cleared ? (section[blockedAt] as BlockedEntry) : null;
+  const pullRequests = new Map<string, { url: string; state: PullRequestState }>();
+  for (const e of section) if (e.t === "observed") for (const pr of e.pullRequests) pullRequests.set(pr.ref, { url: pr.url, state: pr.state });
   return {
     branch,
     base: opened?.base ?? null,
@@ -57,6 +67,9 @@ export function foldDelivery(entries: readonly DeliveryEntry[], branch: string):
     pending,
     closer: closed?.t === "closed" ? { status: closed.status, detail: closed.detail, at: closed.at } : null,
     blocked,
+    stacked: opened?.stack === true,
+    from: opened?.from ?? null,
+    pullRequests,
   };
 }
 

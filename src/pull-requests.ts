@@ -4,6 +4,7 @@ import { ghAccess, ghFailureOf, runGh, type GhFailure } from "./gh.js";
 import type { CloseReport } from "./ports.js";
 
 export const PullRequestState = z.enum(["OPEN", "MERGED", "CLOSED"]);
+export type PullRequestState = z.infer<typeof PullRequestState>;
 
 export const PullRequest = z.object({
   url: z.string(),
