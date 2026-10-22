@@ -244,7 +244,7 @@ version, and they stay as they are. To follow a run from a script, use `delivery
 
 ## From your own code
 
-The functions the commands are built on are part of the optional TypeScript library (see
+The functions the commands are built on are part of the TypeScript library (see
 [Extending delivery with TypeScript](getting-started.md#extending-delivery-with-typescript-optional)). Run this as an ES module (a
 `.mjs` file, or `"type": "module"` in your `package.json`), because it uses top-level `await`:
 
