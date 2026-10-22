@@ -66,6 +66,7 @@ function contextFor(io: CliIo, command: Command): CommandContext {
     interactive: !json && io.stdin.isTTY === true && io.stdout.isTTY === true,
     stdin: io.stdin,
     writeLine: (line) => io.stdout.write(`${line}\n`),
+    writeWarning: (line) => io.stderr.write(`${line}\n`),
     report: reporterFor(io, { json, colour }),
     exitOnInterrupt: io.exitOnInterrupt,
   };
