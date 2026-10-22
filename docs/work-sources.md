@@ -22,7 +22,7 @@ This guide shows how to tell `delivery run --sources` where to find work: in wha
 
 A `command` source is run through its own command line. It needs two calls:
 
-- `<command> list` prints a JSON array of tasks. Each is an object with a string `id`, and may have an `intent` sentence, a `body`, a `workflow` and any other fields, which step prompts read as `{{task.<field>}}`.
+- `<command> list` prints a JSON array of tasks. Each is an object with a string `id`, and may have an `intent` sentence, a `body`, a `workflow`, a [`sequence`](#keep-items-in-order) and any other fields, which step prompts read as `{{task.<field>}}`.
 - `<command> complete <id>` runs once that task has been delivered, so the command can mark it done.
 
 A third call, `raise`, is for trackers; the [protocol table](configuration-reference.md#the-command-source-protocol) lists all three. Without `"tracker": true`, the follow-ups an agent writes land in the repository's `.delivery/backlog/` like any project's.
@@ -42,6 +42,7 @@ A `github` source reads your repository's open issues through the GitHub command
 - An open issue carrying the label (`delivery` unless you set `label`) is an item. Adding the label approves it; an issue without it is left alone.
 - The issue's title is the task's intent, and its title and body together are the brief, the `{{task.body}}` that step prompts receive.
 - A `workflow:<name>` label chooses the [workflow](use-workflows.md) that delivers it; without one, the source's `workflow` does. A `priority:<n>` label orders it, lower first; otherwise the oldest issue goes first.
+- A `sequence:<name>` label puts the issue in a [sequence](#keep-items-in-order). An issue with two `sequence:` labels is left alone, and the run says so.
 - An issue whose title or body changes after the label was added is left alone, and the run says so, until you remove the label and add it again. On a public repository anyone can write an issue but only people you allow can label one, so the label approves the text as it reads.
 - The agent is told the task came from an issue tracker, where anyone may write, and to treat the text as a description of the work, not as instructions that change its setup or the checks.
 

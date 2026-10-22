@@ -32,6 +32,15 @@ describe("the backlog source", () => {
       ["backlog:20261016T090000Z-b.md", "build", ".delivery/backlog/20261016T090000Z-b.md"],
     ]);
   });
+
+  it("puts an item's sequence on the work item", async () => {
+    const repo = repoWith({
+      ".delivery/backlog/20261016T090000Z-a.md": item("open", "sequence: greeting-spec\n"),
+      ".delivery/backlog/20261016T090100Z-b.md": item("open"),
+    });
+    const { items } = await listSource({ type: "backlog" }, { repoPath: repo, config: {}, env: {} });
+    expect(items.map((i) => [i.id, i.sequence])).toEqual([["20261016T090000Z-a.md", "greeting-spec"], ["20261016T090100Z-b.md", undefined]]);
+  });
 });
 
 describe("the list source", () => {
@@ -64,10 +73,24 @@ describe("the command source", () => {
     expect(items).toEqual([{ key: "slices:s-4", source: "slices", kind: "command", id: "s-4", taskDef: { intent: "Deliver slice 4", workflow: "build", spec: "docs/s.md" }, workflow: "build", fallback: false }]);
   });
 
+  it("puts a task's sequence on the work item, so a slices source can make each slices file its own sequence", async () => {
+    const repo = repoWith({});
+    const tasks = [
+      { id: "a-1", intent: "Spec A slice 1", sequence: "docs/specs/a-slices.md" },
+      { id: "b-1", intent: "Spec B slice 1", sequence: "docs/specs/b-slices.md" },
+      { id: "chore", intent: "Unrelated" },
+    ];
+    writeFileSync(join(repo, "tasks.sh"), `#!/bin/sh\n[ "$1" = list ] && echo '${JSON.stringify(tasks)}'\n`);
+    chmodSync(join(repo, "tasks.sh"), 0o755);
+    const { items } = await listSource({ type: "command", command: "./tasks.sh", name: "slices" }, { repoPath: repo, config: {}, env: process.env });
+    expect(items.map((i) => [i.id, i.sequence])).toEqual([["a-1", "docs/specs/a-slices.md"], ["b-1", "docs/specs/b-slices.md"], ["chore", undefined]]);
+  });
+
   it.each([
     ["exits non-zero", "#!/bin/sh\necho broken >&2\nexit 2\n", "`./tasks.sh list` exited with code 2: broken"],
     ["prints something that is not JSON", "#!/bin/sh\necho hello\n", "`./tasks.sh list` did not print JSON"],
-    ["prints JSON of the wrong shape", "#!/bin/sh\necho '[{\"intent\":\"no id\"}]'\n", "`./tasks.sh list` printed tasks I can't read: each needs a string `id`"],
+    ["prints JSON of the wrong shape", "#!/bin/sh\necho '[{\"intent\":\"no id\"}]'\n", "`./tasks.sh list` printed tasks I can't read: each needs a string `id`, and a `sequence`, where there is one, must be a name"],
+    ["prints a sequence that is not a name", "#!/bin/sh\necho '[{\"id\":\"a\",\"sequence\":3}]'\n", "`./tasks.sh list` printed tasks I can't read: each needs a string `id`, and a `sequence`, where there is one, must be a name"],
   ])("is skipped for the run, with the reason, when it %s", async (_what, script, reason) => {
     const repo = repoWith({});
     writeFileSync(join(repo, "tasks.sh"), script);

@@ -38,6 +38,21 @@ describe("parseItem", () => {
   it("refuses a file not named <timestamp>-<slug>.md", () => {
     expect(parseItem("greet.md", TEXT)).toEqual({ ok: false, file: "greet.md", reason: "it is not named <timestamp>-<slug>.md, such as 20261016T090000Z-greet-people.md" });
   });
+
+  it("reads a sequence name, keeping it on the task as well", () => {
+    const parsed = parseItem("20261016T090000Z-a.md", "---\nstatus: open\nsequence: greeting-spec\n---\nSay hello.\n");
+    expect(parsed).toMatchObject({ ok: true, item: { sequence: "greeting-spec", fields: { sequence: "greeting-spec" } } });
+  });
+
+  it("refuses a sequence that is not a name", () => {
+    expect(parseItem("20261016T090000Z-a.md", "---\nstatus: open\nsequence: 3\n---\nSay hello.\n")).toEqual({ ok: false, file: "20261016T090000Z-a.md", reason: "`sequence` must name a sequence" });
+  });
+
+  it("refuses an item that both recurs and sits in a sequence", () => {
+    expect(parseItem("20261016T090000Z-a.md", "---\nstatus: open\ncadence: 7d\nsequence: s\n---\nSay hello.\n")).toEqual({
+      ok: false, file: "20261016T090000Z-a.md", reason: "it has a `cadence`, so it recurs, and a recurring item cannot be in a `sequence`: drop one of them",
+    });
+  });
 });
 
 describe("cadenceMs", () => {

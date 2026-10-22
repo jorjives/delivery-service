@@ -19,6 +19,8 @@ export interface WorkItem {
   resolve?: string;
   cadenceMs?: number;
   fallback: boolean;
+  /** Items sharing a name form one sequence, in the order sources list them: only its earliest undelivered item is taken (spec §5.10). */
+  sequence?: string;
   /** Set for a github source's items, and for a command source that says it is a tracker: follow-ups its items add are raised through it, not landed (spec §5.5). */
   raise?: true;
   /** Set only for an item from a github source: its issue, and whether it carries the parked label. */
@@ -31,12 +33,13 @@ export interface Listed {
 }
 
 /** What `<command> list` prints: a JSON array of tasks, each with a string `id` and anything else the task carries. */
-export const COMMAND_TASKS = z.array(z.looseObject({ id: z.string().min(1), intent: z.string().optional(), workflow: z.string().optional() }));
+export const COMMAND_TASKS = z.array(z.looseObject({ id: z.string().min(1), intent: z.string().optional(), workflow: z.string().optional(), sequence: z.string().min(1).optional() }));
 
 export const sourceSkipped = (name: string, reason: string): string => `Skipped the ${name} source for this run: ${reason}`;
 
 const LIST_TIMEOUT_MS = 60_000;
 const withWorkflow = ({ workflow }: TaskDef): { workflow?: string } => (typeof workflow === "string" ? { workflow } : {});
+const withSequence = (sequence: unknown): { sequence?: string } => (typeof sequence === "string" ? { sequence } : {});
 
 async function listCommand(source: Extract<SourceConfig, { type: "command" }>, name: string, repoPath: string, env: NodeJS.ProcessEnv): Promise<Listed> {
   const skip = (reason: string): Listed => ({ items: [], notes: [sourceSkipped(name, reason)] });
@@ -55,10 +58,10 @@ async function listCommand(source: Extract<SourceConfig, { type: "command" }>, n
     return skip(`${what} did not print JSON`);
   }
   const tasks = COMMAND_TASKS.safeParse(raw);
-  if (!tasks.success) return skip(`${what} printed tasks I can't read: each needs a string \`id\``);
+  if (!tasks.success) return skip(`${what} printed tasks I can't read: each needs a string \`id\`, and a \`sequence\`, where there is one, must be a name`);
   return {
     items: tasks.data.map(({ id, ...taskDef }) => ({
-      key: `${name}:${id}`, source: name, kind: "command" as const, id, taskDef, fallback: source.fallback === true, ...withWorkflow(taskDef),
+      key: `${name}:${id}`, source: name, kind: "command" as const, id, taskDef, fallback: source.fallback === true, ...withWorkflow(taskDef), ...withSequence(taskDef.sequence),
       ...(source.tracker === true ? { raise: true as const } : {}),
     })),
     notes: [],
@@ -78,6 +81,7 @@ export async function listSource(source: SourceConfig, { repoPath, config, env }
           .map((item) => ({
             key: `${name}:${item.file}`, source: name, kind: "backlog" as const, id: item.file, taskDef: itemTask(item), fallback,
             ...(item.workflow === undefined ? {} : { workflow: item.workflow }),
+            ...withSequence(item.sequence),
             ...(item.cadenceMs === undefined ? { resolve: `${BACKLOG_DIR}/${item.file}` } : { cadenceMs: item.cadenceMs }),
           })),
         notes: [
