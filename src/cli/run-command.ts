@@ -5,7 +5,8 @@ import { agentSession } from "./agent-session.js";
 import { loadConfig, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
-import { queueTasks, refuseIfRunGoing, runQueue } from "./queue.js";
+import { queueTasks, runQueue } from "./queue.js";
+import { refuseIfRunGoing } from "./run-exclusion.js";
 import { chooseRun, unfinishedRuns, unfinishedRunFound } from "./runs.js";
 import {
   checkCustomModules,

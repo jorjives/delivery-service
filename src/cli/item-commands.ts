@@ -7,7 +7,7 @@ import { DEFAULT_SOURCES, loadConfig, sourceName } from "./config.js";
 import { uncommittedItems } from "./backlog-commands.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
-import { refuseIfRunGoing } from "./queue.js";
+import { refuseIfRunGoing } from "./run-exclusion.js";
 import { runSources } from "./sources-run.js";
 
 export interface ItemOptions {

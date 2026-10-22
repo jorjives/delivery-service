@@ -1,5 +1,5 @@
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { FenceRecord, RunHeader, SlotOutcome, TaskDef, UsageLimit } from "../schema.js";
+import type { FenceRecord, SlotOutcome, TaskDef, UsageLimit } from "../schema.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { createRunBreaker, repairsUsed, tripsOf, type RunBreaker } from "../breaker.js";
 import { RunHalted } from "../errors.js";
@@ -14,8 +14,9 @@ import { reportOutcome } from "./outcome.js";
 import { prepareRunDir, runIdFor, supervisedPlace, supervisedRunId } from "../run-location.js";
 import type { RunRecord } from "../run-records.js";
 import { findQueueRun, stillToTake, taskIntent, type QueuePosition } from "../task-list.js";
-import { allRuns, describeRun, readRun, startedAt, unfinishedSupervisedRun } from "./runs.js";
-import { repoLocked, takeRepoLock } from "../repo-lock.js";
+import { allRuns, describeRun, readRun, unfinishedSupervisedRun } from "./runs.js";
+import { takeRepoLock } from "../repo-lock.js";
+import { liveRunFound } from "./run-exclusion.js";
 import type { ProjectSettings } from "./settings.js";
 
 /** Everything this project's list asks for, in the order it was written. */
@@ -108,24 +109,6 @@ export const runShape = (runId: string, tasks: number, concurrency: number): str
 /** The line a run of several at once that was stopped opens with when it is picked up again. */
 export const runPickedUp = (runId: string, tasks: number, concurrency: number): string =>
   `Picking up run ${runId}: ${shapeOf(tasks, concurrency)}`;
-
-/**
- * Why a run cannot start: a run of several at once is already going in this
- * repository, and which one, so the owner can look at it rather than start a
- * second that would fight it over the same checkout. `live` is that run's
- * header, when its record can be found.
- */
-export function liveRunFound(live: RunHeader | undefined): string {
-  const which = live === undefined ? "" : ` (started \`${startedAt(live.runId)}\`, ${shapeOf(live.tasks, live.concurrency)}: \`${live.runId}\`)`;
-  return `Another run is already going here${which}. Run \`delivery status\` to see how it is getting on, or wait for it to finish before starting another.`;
-}
-
-/** Refuse to go on while a run of several at once holds this repository. Every command that drives a run asks this first. */
-export async function refuseIfRunGoing(repoPath: string): Promise<void> {
-  if (await repoLocked(repoPath)) {
-    throw new Refusal(liveRunFound((await unfinishedSupervisedRun(repoPath))?.runFile.header), EXIT.configuration);
-  }
-}
 
 /** How a task that was not delivered ended, said once a run of several at once is over. */
 export function taskEnded(position: QueuePosition, outcome: SlotOutcome): string {

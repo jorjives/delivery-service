@@ -3,7 +3,7 @@ import type { CommandContext } from "./context.js";
 import { resumeRun } from "./drive.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
-import { refuseIfRunGoing } from "./queue.js";
+import { refuseIfRunGoing } from "./run-exclusion.js";
 import type { RunRecord } from "../run-records.js";
 import { alreadyFinished, chooseRun, readRun, unfinishedRuns } from "./runs.js";
 import { closingReport, projectNotify } from "./report-command.js";
