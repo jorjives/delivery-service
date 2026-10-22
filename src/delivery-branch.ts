@@ -32,7 +32,7 @@ export async function baseTip(repoPath: string): Promise<{ base: string; commit:
 }
 
 /** Long enough for a slow network; short enough that an unreachable origin does not hold the run. */
-const FETCH_TIMEOUT_MS = 60_000;
+export const FETCH_TIMEOUT_MS = 60_000;
 
 /**
  * Bring the base's remote-tracking branch up to date from origin (spec §5.8), so a pull request merged on GitHub is

@@ -158,7 +158,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const reconciled = claims.length === 0 && !waiting && !mergedOnGitHub
     ? undefined
     : stacked
-      ? await reconcileStackBranch(repoPath, deliveryLedger)
+      ? await reconcileStackBranch(repoPath, deliveryLedger, { gateRef: project.gateRef, itemLedger: path, env: ctx.env })
       : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env, mergedTips);
   if (reconciled?.ready === false) {
     ctx.report.note(blockedNote(reconciled.reason));
