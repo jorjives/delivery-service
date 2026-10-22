@@ -31,6 +31,8 @@ export const LedgerEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("answered"), key: z.string(), answer: z.string().min(1), at: z.string() }),
   z.object({ t: z.literal("unparked"), key: z.string(), at: z.string() }),
   z.object({ t: z.literal("signed_off"), key: z.string(), at: z.string() }),
+  // A restack rewrote the level's commit on its branch: only where the work sits moves, so it still awaits merge.
+  z.object({ t: z.literal("moved"), key: z.string(), branch: z.string(), commit: z.string(), at: z.string() }),
 ]);
 export type LedgerEntry = z.infer<typeof LedgerEntry>;
 
@@ -76,6 +78,8 @@ function apply(state: ItemState, entry: LedgerEntry): ItemState {
       return { ...fresh(state.key), intent: state.intent, lastClosedAt: state.lastClosedAt };
     case "signed_off":
       return { ...state, parked: null, attempts: 0, signedOff: true };
+    case "moved":
+      return { ...state, branch: entry.branch, commit: entry.commit };
   }
 }
 
@@ -188,6 +192,11 @@ export async function recordUnpark(path: string, key: string): Promise<void> {
 
 export async function recordSignOff(path: string, key: string): Promise<void> {
   await append(path, { t: "signed_off", key, at: now() });
+}
+
+/** A restack moved the delivered level to `commit` on `branch`: the item keeps awaiting merge there, and its attempts and close time stay as they were. */
+export async function recordMoved(path: string, key: string, branch: string, commit: string): Promise<void> {
+  await append(path, { t: "moved", key, branch, commit, at: now() });
 }
 
 export function parkedItems(ledger: Map<string, ItemState>): ItemState[] {

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
 import { initTempRepo } from "./temp-repo.js";
-import { awaitsMerge, classOf, foldLedger, ledgerPath, parkedItems, readItemLedger, recordAnswer, recordDispatched, recordUnpark, settleRun } from "./item-ledger.js";
+import { awaitsMerge, classOf, foldLedger, ledgerPath, parkedItems, readItemLedger, recordAnswer, recordDispatched, recordMoved, recordUnpark, settleRun } from "./item-ledger.js";
 import { deliveryLedgerPath, readDelivery } from "./delivery-ledger.js";
 import type { CaseFile, CaseFileOutcome } from "./schema.js";
 import type { RunRecord } from "./run-records.js";
@@ -209,6 +209,27 @@ describe("the ledger", () => {
     it("is false for an item that was never delivered", async () => {
       const repo = initTempRepo("await-", { "package.json": "{}" });
       expect(await awaitsMerge(repo, undefined)).toBe(false);
+    });
+
+    it("still awaits merge after its level is moved to a new commit on the delivery branch", async () => {
+      const repo = initTempRepo("ledger-moved-", { "seed.txt": "seed\n" });
+      git(repo, ["branch", "delivery/main"]);
+      const path = scratch();
+      const record = {
+        runId: "greet-20261016T090000Z", repoPath: repo, dir: "dir",
+        caseFile: { header: { taskDef: { intent: "greet people" }, delivery: { branch: "delivery/main" } }, cursor: {}, history: [], outcome: { kind: "closed", source: "closer", reason: "r", at } },
+      } as unknown as RunRecord;
+      await settleRun(path, KEY, record, 3);
+      const c1 = (await readItemLedger(path)).get(KEY)?.commit;
+      // A restack rewrites the branch to a commit that does not descend from c1, so c1 is no longer reachable from it.
+      const n1 = git(repo, ["commit-tree", "HEAD^{tree}", "-m", "restacked"]);
+      git(repo, ["update-ref", "refs/heads/delivery/main", n1]);
+      expect(c1).not.toBe(n1);
+
+      await recordMoved(path, KEY, "delivery/main", n1);
+
+      expect(await awaitsMerge(repo, (await readItemLedger(path)).get(KEY))).toBe(true);
+      expect((await readItemLedger(path)).get(KEY)).toMatchObject({ commit: n1, attempts: 0, lastClass: "delivered" });
     });
   });
 
