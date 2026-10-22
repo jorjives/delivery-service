@@ -355,6 +355,127 @@ describe("reconcileStackBranch on a stack of three pull requests", () => {
     }
   });
 
+  describe("when the owner closes a pull request without merging it", () => {
+    const remoteBranches = (origin: string): string[] => git(origin, ["for-each-ref", "--format=%(refname:short)", "refs/heads/delivery-stack"]).split("\n").filter((ref) => ref !== "");
+    const closeCalls = (gh: GhStandIn): string[][] => gh.calls().filter((argv) => argv[0] === "pr" && argv[1] === "close");
+
+    it("drops that level and the ones above it, closing their pull requests with a comment and removing their branches", async () => {
+      const { repo, origin, gh, book, c1 } = await stacked();
+      gh.closePullRequest(URL2);
+
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true, branch: D, base: "main" });
+
+      expect(closeCalls(gh)).toEqual([["pr", "close", URL3, "--comment", expect.stringContaining(URL2)]]);
+      expect(gh.pullRequests().map((pr) => pr.state)).toEqual(["OPEN", "CLOSED", "CLOSED"]);
+      expect(gh.pullRequests()[2]?.comments?.[0]).toMatch(/delivered again/);
+      expect(rev(repo, R1)).toBe(c1);
+      expect(rev(repo, D)).toBe(c1);
+      expect(git(repo, ["branch", "--list", R2, R3])).toBe("");
+      expect(remoteBranches(origin)).toEqual([R1]);
+      expect((await entriesOf(book)).at(-1)).toMatchObject({ t: "dropped", runs: ["r2", "r3"] });
+      expect((await readStack(repo, book.delivery, D)).map((level) => level.run)).toEqual(["r1"]);
+    });
+
+    it("counts the closed item as a rejected attempt and releases the ones above it, so none awaits merge", async () => {
+      const { repo, gh, book } = await stacked();
+      gh.closePullRequest(URL2);
+
+      await reconcile(repo, book);
+
+      const items = await readItemLedger(book.items);
+      expect(items.get("backlog:r2.md")).toMatchObject({ rejections: 1, attempts: 0, parked: null });
+      expect(items.get("backlog:r3.md")).toMatchObject({ rejections: 0, attempts: 0 });
+      expect(await awaitsMerge(repo, items.get("backlog:r1.md"))).toBe(true);
+      expect(await awaitsMerge(repo, items.get("backlog:r2.md"))).toBe(false);
+      expect(await awaitsMerge(repo, items.get("backlog:r3.md"))).toBe(false);
+    });
+
+    it("parks an item whose pull request has now been closed parkAfter times", async () => {
+      const { repo, gh, book } = await stacked();
+      gh.closePullRequest(URL2);
+
+      await reconcileStackBranch(repo, book.delivery, { gateRef: GATE, itemLedger: book.items, parkAfter: 1 });
+
+      expect((await readItemLedger(book.items)).get("backlog:r2.md")).toMatchObject({ parked: "attempts" });
+      expect((await readItemLedger(book.items)).get("backlog:r3.md")?.parked).toBeNull();
+    });
+
+    it("starts again from the base when the bottom was closed", async () => {
+      const { repo, origin, gh, book } = await stacked();
+      gh.closePullRequest(URL1);
+
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true, reported: new Map() });
+
+      expect(rev(repo, D)).toBe(rev(repo, "main"));
+      expect(await readStack(repo, book.delivery, D)).toEqual([]);
+      expect(remoteBranches(origin)).toEqual([]);
+      expect(gh.pullRequests().map((pr) => pr.state)).toEqual(["CLOSED", "CLOSED", "CLOSED"]);
+      expect(closeCalls(gh).map((argv) => argv[2])).toEqual([URL2, URL3]);
+    });
+
+    it("makes the closed item deliverable again, first in its sequence, with the items above it waiting", async () => {
+      const { repo, gh, book } = await stacked();
+      const tasks = JSON.stringify(["r1", "r2", "r3", "r4"].map((run) => ({ id: `${run}.md`, sequence: "spec" })));
+      writeFileSync(join(repo, "tasks.sh"), `echo '${tasks}'\n`);
+      const choose = async () =>
+        chooseWork([{ type: "command", command: "sh tasks.sh", name: "backlog" }], {
+          repoPath: repo, config: {}, env: process.env, ledger: await readItemLedger(book.items), records: [], now: new Date(AT), max: 5, taken: new Set<string>(),
+        });
+      expect((await choose()).items.map((item) => item.key)).toEqual(["backlog:r4.md"]);
+      gh.closePullRequest(URL2);
+
+      await reconcile(repo, book);
+
+      expect((await choose()).items.map((item) => item.key)).toEqual(["backlog:r2.md"]);
+    });
+
+    it("moves what remains onto the base when a merged level lies below the close, dropping first", async () => {
+      const { repo, origin, gh, book } = await stacked();
+      gh.merge(URL1, "squash", origin);
+      gh.closePullRequest(URL3);
+      fetchMain(repo);
+      const base = rev(repo, "refs/remotes/origin/main");
+
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true });
+
+      expect(closeCalls(gh)).toEqual([]);
+      expect(rev(repo, `${R2}^`)).toBe(base);
+      expect(rev(repo, D)).toBe(rev(repo, R2));
+      expect(git(repo, ["branch", "--list", R3])).toBe("");
+      expect((await entriesOf(book)).map((e) => e.t).slice(-2)).toEqual(["dropped", "restacked"]);
+      expect((await readStack(repo, book.delivery, D)).map((level) => [level.run, level.parent])).toEqual([["r2", "main"]]);
+    });
+
+    it("does nothing more when run again", async () => {
+      const { repo, gh, book } = await stacked();
+      gh.closePullRequest(URL2);
+      await reconcile(repo, book);
+      const delivery = readFileSync(book.delivery, "utf-8");
+      const items = readFileSync(book.items, "utf-8");
+
+      expect(await reconcile(repo, book)).toMatchObject({ ready: true });
+
+      expect(closeCalls(gh)).toHaveLength(1);
+      expect(readFileSync(book.delivery, "utf-8")).toBe(delivery);
+      expect(readFileSync(book.items, "utf-8")).toBe(items);
+    });
+
+    it("changes nothing and starts no task when a pull request above cannot be closed", async () => {
+      const { repo, origin, gh, book, c1, c2, c3 } = await stacked();
+      gh.closePullRequest(URL2);
+      gh.refuseClose("pull request close failed: GraphQL: operator does not have the correct permissions to execute 'ClosePullRequest'");
+      const delivery = readFileSync(book.delivery, "utf-8");
+
+      const result = await reconcile(repo, book);
+
+      expect(result).toMatchObject({ ready: false, repeated: false });
+      expect(result.ready === false && result.reason).toContain(URL3);
+      expect([rev(repo, R1), rev(repo, R2), rev(repo, R3), rev(repo, D)]).toEqual([c1, c2, c3, c3]);
+      expect(remoteBranches(origin)).toEqual([R1, R2, R3]);
+      expect(readFileSync(book.delivery, "utf-8")).toBe(delivery);
+    });
+  });
+
   it("leaves the stack alone and starts nothing when GitHub cannot be asked", async () => {
     const { repo, gh, book, c1, c2, c3 } = await stacked();
     const before = (await entriesOf(book)).length;

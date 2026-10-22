@@ -1,10 +1,10 @@
 import { FETCH_TIMEOUT_MS, baseTip, closeDeliveryBranch, deliveryBranchOf } from "./delivery-branch.js";
 import { readDelivery, recordDelivery } from "./delivery-ledger.js";
 import { planStack, pullsFingerprint, readStack, type ObservedPull, type StackLevel } from "./delivery-stack.js";
-import { ghReason } from "./gh.js";
+import { ghFailureOf, ghReason, runGh } from "./gh.js";
 import { ghFailureReason } from "./github-source.js";
 import { branchExists, git, tryGit } from "./git-exec.js";
-import { readItemLedger, recordMoved } from "./item-ledger.js";
+import { DEFAULT_PARK_AFTER, readItemLedger, recordMoved, recordReleased } from "./item-ledger.js";
 import { listPullRequests, standingPullRequest } from "./pull-requests.js";
 import { moveRefs, restackLevels, type RestackLevel } from "./restack.js";
 import type { CloseReport, DeliveredLevel } from "./ports.js";
@@ -34,9 +34,9 @@ const NOTHING: ReadonlyMap<string, string> = new Map();
 export async function reconcileStackBranch(
   repoPath: string,
   ledger: string,
-  options: { gateRef: GateRef; itemLedger: string; env?: NodeJS.ProcessEnv; opens?: boolean },
+  options: { gateRef: GateRef; itemLedger: string; env?: NodeJS.ProcessEnv; opens?: boolean; parkAfter?: number },
 ): Promise<StackReconciled> {
-  const { gateRef, itemLedger, env, opens = true } = options;
+  const { gateRef, itemLedger, env, opens = true, parkAfter = DEFAULT_PARK_AFTER } = options;
   const { base, commit: baseCommit } = await baseTip(repoPath);
   const branch = deliveryBranchOf(base);
   const ready = (reported: ReadonlyMap<string, string>): StackReconciled => ({ ready: true, branch, base, reported });
@@ -86,8 +86,14 @@ export async function reconcileStackBranch(
     await recordDelivery(ledger, { t: "blocked", branch, base, baseTip: baseCommit, tip, reason: plan.reason, pulls });
     return { ready: false, branch, base, reason: plan.reason, repeated: false };
   }
-  if (plan.kind === "restack") {
-    const reason = await restackStack(repoPath, { ledger, itemLedger, gateRef, env, branch, base, baseCommit, tip, pulls }, observed, plan.merged, plan.remaining);
+  const run: StackRun = { ledger, itemLedger, gateRef, env, branch, base, baseCommit, tip, pulls, parkAfter };
+  if (plan.kind === "drop") {
+    const dropped = await dropLevels(repoPath, run, observed, plan);
+    if (typeof dropped === "string") return { ready: false, branch, base, reason: dropped, repeated: false };
+    run.tip = dropped.tip;
+  }
+  if (plan.kind === "restack" || (plan.kind === "drop" && plan.merged.length > 0)) {
+    const reason = await restackStack(repoPath, run, observed, plan.merged, plan.remaining);
     if (reason !== undefined) return { ready: false, branch, base, reason, repeated: false };
   }
 
@@ -148,6 +154,49 @@ interface StackRun {
   baseCommit: string;
   tip: string;
   pulls: string;
+  parkAfter: number;
+}
+
+/**
+ * Act on a stack with a level whose pull request was closed without merging: the pull requests of the levels built on it
+ * are closed with a comment, the delivery branch goes back to the highest level that stays (or the base), the dropped
+ * levels' branches are deleted here and on origin, and the items are rejected (the closed one) or released (the rest).
+ * Closing comes first and the ledger last, so a drop that stopped part way is done again from the top. Returns the
+ * reason nothing was changed, or the delivery branch's tip now. A merged prefix below the close is the restack's to move.
+ */
+async function dropLevels(
+  repoPath: string,
+  run: StackRun,
+  observed: ReadonlyMap<string, ObservedPull>,
+  { merged, remaining, closed }: { merged: readonly StackLevel[]; remaining: readonly StackLevel[]; closed: readonly StackLevel[] },
+): Promise<{ tip: string } | string> {
+  const { ledger, itemLedger, env, branch, base, baseCommit, parkAfter } = run;
+  const [rejected, ...above] = closed;
+  if (rejected === undefined) throw new Error("A stack drop starts at a closed level");
+  const closedAt = observed.get(rejected.ref)?.url ?? rejected.ref;
+
+  for (const level of above) {
+    const pull = observed.get(level.ref);
+    if (pull?.state !== "OPEN") continue;
+    const comment = `This was built on ${closedAt}, which was closed without being merged, so it has been closed too. ${level.intent} will be delivered again.`;
+    try {
+      await runGh(["pr", "close", pull.url, "--comment", comment], { cwd: repoPath, ...(env === undefined ? {} : { env }) });
+    } catch (err) {
+      return `Could not close ${pull.url}, built on ${closedAt}, which was closed without being merged: ${ghFailureReason(ghFailureOf(err))} The stack was left as it is.`;
+    }
+  }
+
+  const tip = remaining.at(-1)?.commit ?? (merged.length > 0 ? run.tip : baseCommit);
+  await git(repoPath, ["update-ref", `refs/heads/${branch}`, tip]);
+  const refs = closed.map((level) => level.ref);
+  for (const ref of refs) await git(repoPath, ["update-ref", "-d", `refs/heads/${ref}`]);
+  await tryGit(repoPath, ["push", "--quiet", "origin", "--delete", ...refs.map((ref) => `refs/heads/${ref}`)]);
+
+  await recordReleased(itemLedger, rejected.item, { rejected: true, parkAfter });
+  for (const level of above) await recordReleased(itemLedger, level.item, { rejected: false, parkAfter });
+  await recordDelivery(ledger, { t: "dropped", branch, runs: closed.map((level) => level.run) });
+  if (merged.length === 0 && remaining.length === 0) await recordDelivery(ledger, { t: "opened", branch, base, from: baseCommit, stack: true });
+  return { tip };
 }
 
 /**
