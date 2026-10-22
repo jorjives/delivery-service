@@ -25,7 +25,7 @@ import {
 } from "./report-fixtures.js";
 import type { RecordSnapshot } from "./snapshot.js";
 import type { FenceRecord, HistoryEntry } from "../schema.js";
-import { afterLines, closingSentence, costLine, deliveryLines, durationWords, parkedLines, renderText, reportPointer, stripControl, usageSentence } from "./text.js";
+import { afterLines, closingSentence, costLine, deliveryLines, durationWords, heldLines, parkedLines, renderText, reportPointer, stripControl, usageSentence } from "./text.js";
 
 const report = (snapshot: RecordSnapshot): string[] => renderText(deriveReport(snapshot), { colour: false });
 
@@ -665,5 +665,30 @@ describe("after-landing lines", () => {
       "- old notes: skipped: superseded by b2, which runs the same steps on a later commit",
       "The next `delivery run --sources` tries the waiting steps first, from the one that did not work; `delivery drop-after` gives them up.",
     ]);
+  });
+});
+
+describe("held sequences", () => {
+  it("names each held sequence, the item holding it, and why", () => {
+    expect(heldLines([
+      { sequence: "docs/specs/a-slices.md", item: "slices:a-2", reason: "parked" },
+      { sequence: "spec-b", item: "backlog:b1.md", reason: "decision" },
+      { sequence: "spec-c", item: "backlog:c1.md", reason: "in_flight" },
+    ])).toEqual([
+      "",
+      "Sequences waiting, nothing later in each is started until the item holding it moves on:",
+      "- docs/specs/a-slices.md: held by slices:a-2, which is parked (see Parked above).",
+      '- spec-b: held by backlog:b1.md, which waits for your answer. Answer with: delivery answer backlog:b1.md "your answer"',
+      "- spec-c: held by backlog:c1.md, which is being worked.",
+    ]);
+  });
+
+  it("shows hostile names as plain text and quotes the item in the command", () => {
+    const [, , line] = heldLines([{ sequence: "s\u001B[2J", item: "backlog:it's.md", reason: "decision" }]);
+    expect(line).toBe(`- s: held by backlog:it's.md, which waits for your answer. Answer with: delivery answer 'backlog:it'\\''s.md' "your answer"`);
+  });
+
+  it("says nothing when no sequence is held", () => {
+    expect(heldLines([])).toEqual([]);
   });
 });

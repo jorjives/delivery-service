@@ -1,7 +1,7 @@
 import { paint, type Tone } from "../paint.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { Population } from "../schema.js";
-import { lastActivity, type BudgetRow, type DamagedRecord, type ParkedItem, type ReportAfter, type ReportDelivery, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type UsageCoverage, type UsageTotal } from "./document.js";
+import { lastActivity, type BudgetRow, type DamagedRecord, type HeldSequence, type ParkedItem, type ReportAfter, type ReportDelivery, type ReportDocument, type ReportRepair, type ReportRun, type ReportSurface, type UsageCoverage, type UsageTotal } from "./document.js";
 import { completedWords, landedWords, RETRY_WORDS, whereTheWorkIs, type Landing } from "./plain.js";
 
 export const NO_RUNS_YET = "No runs yet in this folder. Start one with: delivery run";
@@ -198,6 +198,23 @@ export function parkedLines(parked: readonly ParkedItem[]): string[] {
   return ["", "Parked, skipped until you deal with them:", ...parked.map(line)];
 }
 
+/** Sequences held behind an earlier item: which, by what, and what it waits on. */
+export function heldLines(held: readonly HeldSequence[]): string[] {
+  if (held.length === 0) return [];
+  const line = ({ sequence, item, reason }: HeldSequence): string => {
+    const head = `- ${pathName(sequence)}: held by ${pathName(item)}`;
+    switch (reason) {
+      case "parked":
+        return `${head}, which is parked (see Parked above).`;
+      case "decision":
+        return `${head}, which waits for your answer. Answer with: delivery answer ${shellQuoted(item)} "your answer"`;
+      case "in_flight":
+        return `${head}, which is being worked.`;
+    }
+  };
+  return ["", "Sequences waiting, nothing later in each is started until the item holding it moves on:", ...held.map(line)];
+}
+
 /** The delivery branch: what landed on it since it opened, what the closer last did with it, and what blocks it. */
 export function deliveryLines(delivery: ReportDelivery | null): string[] {
   if (delivery === null) return [];
@@ -230,6 +247,11 @@ export function afterLines(after: readonly ReportAfter[]): string[] {
     lines.push("The next `delivery run --sources` tries the waiting steps first, from the one that did not work; `delivery drop-after` gives them up.");
   }
   return lines;
+}
+
+/** The ledger sections every report and status ends with: parked items, the delivery branch, after-landing steps. */
+export function ledgerLines(doc: Pick<ReportDocument, "parked" | "held" | "delivery" | "after">): string[] {
+  return [...parkedLines(doc.parked), ...heldLines(doc.held), ...deliveryLines(doc.delivery), ...afterLines(doc.after)];
 }
 
 export function incompleteLines(doc: ReportDocument): string[] {
@@ -505,9 +527,7 @@ export function renderText(doc: ReportDocument, { colour, saved }: { colour: boo
     ...SECTIONS.flatMap((section) => sectionLines(doc, section, colour)),
     ...worthALookLines(doc, colour),
     ...tuningLines(doc, colour, saved),
-    ...parkedLines(doc.parked),
-    ...deliveryLines(doc.delivery),
-    ...afterLines(doc.after),
+    ...ledgerLines(doc),
     "",
     nextLine(doc),
   ];

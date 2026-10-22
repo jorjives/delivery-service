@@ -22,7 +22,7 @@ This guide shows how to tell `delivery run --sources` where to find work: in wha
 
 A `command` source is run through its own command line. It needs two calls:
 
-- `<command> list` prints a JSON array of tasks. Each is an object with a string `id`, and may have an `intent` sentence, a `body`, a `workflow` and any other fields, which step prompts read as `{{task.<field>}}`.
+- `<command> list` prints a JSON array of tasks. Each is an object with a string `id`, and may have an `intent` sentence, a `body`, a `workflow`, a [`sequence`](#keep-items-in-order) and any other fields, which step prompts read as `{{task.<field>}}`.
 - `<command> complete <id>` runs once that task has been delivered, so the command can mark it done.
 
 A third call, `raise`, is for trackers; the [protocol table](configuration-reference.md#the-command-source-protocol) lists all three. Without `"tracker": true`, the follow-ups an agent writes land in the repository's `.delivery/backlog/` like any project's.
@@ -42,6 +42,7 @@ A `github` source reads your repository's open issues through the GitHub command
 - An open issue carrying the label (`delivery` unless you set `label`) is an item. Adding the label approves it; an issue without it is left alone.
 - The issue's title is the task's intent, and its title and body together are the brief, the `{{task.body}}` that step prompts receive.
 - A `workflow:<name>` label chooses the [workflow](use-workflows.md) that delivers it; without one, the source's `workflow` does. A `priority:<n>` label orders it, lower first; otherwise the oldest issue goes first.
+- A `sequence:<name>` label puts the issue in a [sequence](#keep-items-in-order). An issue with two `sequence:` labels is left alone, and the run says so.
 - An issue whose title or body changes after the label was added is left alone, and the run says so, until you remove the label and add it again. On a public repository anyone can write an issue but only people you allow can label one, so the label approves the text as it reads.
 - The agent is told the task came from an issue tracker, where anyone may write, and to treat the text as a description of the work, not as instructions that change its setup or the checks.
 
@@ -61,6 +62,30 @@ A follow-up an agent raises while working an issue is not committed to your repo
 ### Parked issues
 
 An item that is [parked](work-a-backlog.md#handle-a-parked-item), whether it needs your answer or keeps ending undelivered, is marked on the issue with a `delivery:parked` label and a comment saying why, including the agent's question if it asked one. Answer or unpark it as usual; the label comes off when the issue is next worked. `delivery status` still lists it.
+
+## Keep items in order
+
+Some items build on each other: a spec's second slice assumes its first is there. Give such items the same `sequence` name and `delivery run --sources` works them one at a time, in order:
+
+- A backlog item names it in its front matter (`sequence: greeting-spec`), a command source's task in a `sequence` field, and a GitHub issue with a `sequence:<name>` label.
+- Items with the same name form one sequence, in the order the sources are listed and, within a source, in that source's own order.
+- Only the earliest item of a sequence that is not yet delivered is taken. An item counts as delivered once it has landed, even while its pull request waits to be merged.
+- If that item is parked, waiting for your answer, or still being worked, nothing later in its sequence is taken. Items without a sequence, and other sequences, carry on as usual.
+- A run takes at most one item of each sequence, whatever `--max` says, since the next cannot start until the one before it lands.
+
+A source of slices should name each slices file as the sequence, so every spec is its own sequence and a stalled slice holds only its own spec. For example, a `next-slice.sh` source's `list` prints:
+
+```json
+[
+  { "id": "greeting-2", "intent": "Greet people by name", "sequence": "docs/specs/greeting-slices.md" },
+  { "id": "greeting-3", "intent": "Greet people in their language", "sequence": "docs/specs/greeting-slices.md" },
+  { "id": "export-1", "intent": "Export a report as CSV", "sequence": "docs/specs/export-slices.md" }
+]
+```
+
+`delivery status` and `delivery report` name each held sequence, the item holding it, and why. In the [report's data](reporting.md) this is `held`.
+
+A sequence is an order only. To make one spec's slices wait for another's, give them the same sequence name. A recurring backlog item (one with a `cadence`) cannot be in a sequence, and a `sequence` on a fallback source's items is ignored. An item the run leaves alone (an issue not approved, a backlog file it cannot read) is not part of its sequence until the run can use it; the run's note about it says why.
 
 ## Next steps
 

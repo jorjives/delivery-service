@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { BreakerState, FenceMode, GuardName, OutcomeCause, Population, RepairChanges, RepairStatus, SurfaceState, TriageEntry, Trip, UsageLimit } from "../schema.js";
 import { EscalationPacket, SharpenedBrief } from "../triage-role-config.js";
+import { HoldReason } from "../held-sequences.js";
 
 /** The version every report document names itself by. A later version adds keys; it never renames or removes one. */
 export const REPORT_SCHEMA = "delivery.report/1";
@@ -32,6 +33,14 @@ export const ParkedItem = z.object({
   lastRun: z.string().nullable(),
 });
 export type ParkedItem = z.infer<typeof ParkedItem>;
+
+/** A sequence waiting behind its earliest undelivered item, and why that item has not moved on (spec §5.10). */
+export const HeldSequence = z.object({
+  sequence: z.string(),
+  item: z.string(),
+  reason: HoldReason,
+});
+export type HeldSequence = z.infer<typeof HeldSequence>;
 
 /**
  * The delivery branch a `--sources` run lands its tasks on: what has landed on it since it opened, what the closer last
@@ -300,6 +309,8 @@ export const ReportDocument = z.object({
   usageRecorded: UsageCoverage,
   /** Items the item ledger has set aside on this machine, oldest key first; empty when none or no ledger. */
   parked: z.array(ParkedItem),
+  /** Sequences waiting behind an earlier item, as the latest `--sources` run found them and the item ledger still says; empty when none. */
+  held: z.array(HeldSequence),
   /** The delivery branch this machine's runs land on, or null when none was ever opened. */
   delivery: ReportDelivery.nullable(),
   /** After-landing steps: every batch still waiting on a step, then the most recent, oldest first; empty when none ran on this machine. */

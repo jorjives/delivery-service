@@ -71,12 +71,16 @@ export function issueItem(issue: Issue, source: GithubSource, name: string): { i
   const workflowLabels = issue.labels.filter((l) => l.startsWith("workflow:")).sort();
   if (workflowLabels.length > 1) return skip(`it has more than one workflow: label (${workflowLabels.join(", ")}), so I can't tell which workflow delivers it.`);
   const workflow = workflowLabels[0]?.slice("workflow:".length) ?? (typeof blockWorkflow === "string" ? blockWorkflow : undefined) ?? source.workflow;
+  const sequenceLabels = issue.labels.filter((l) => l.startsWith("sequence:")).sort();
+  if (sequenceLabels.length > 1) return skip(`it has more than one sequence: label (${sequenceLabels.join(", ")}), so I can't tell which sequence it belongs to.`);
+  const sequence = sequenceLabels[0]?.slice("sequence:".length);
   // The block's fields go first, so an `intent:` or `body:` in it can never replace the title and text that were approved.
   const taskDef: TaskDef = { ...fields, intent: issue.title, body: split.text === "" ? issue.title : `${issue.title}\n\n${split.text}` };
   return {
     item: {
       key: `${name}:${issue.number}`, source: name, kind: "github", id: String(issue.number), taskDef, fallback: source.fallback === true,
       ...(workflow === undefined ? {} : { workflow }),
+      ...(sequence === undefined || sequence === "" ? {} : { sequence }),
       raise: true,
       issue: { number: issue.number, parked: issue.labels.includes(PARKED_LABEL) },
     },

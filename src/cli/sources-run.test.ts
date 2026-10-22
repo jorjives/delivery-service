@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { git } from "../../tests/helpers.js";
@@ -9,6 +9,7 @@ import { promptsSent, readJournal, type MockScript } from "../mock-script.js";
 import { addLocalOrigin, initTempRepo } from "../temp-repo.js";
 import { deliveryLedgerPath, readDelivery, readDeliveryEntries } from "../delivery-ledger.js";
 import { ledgerPath, readItemLedger, recordDispatched } from "../item-ledger.js";
+import { heldPath, readHeld, recordHeld } from "../held-sequences.js";
 import { readRef } from "../case-file.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { completes, delivery, interruptedRun, PACKAGE, RUN_TIMEOUT, scriptFile, writesHello } from "./command-fixtures.js";
@@ -78,6 +79,55 @@ const writesThenStops: MockScript = {
 };
 
 describe("delivery run --sources", () => {
+  it("does not start a later item of a sequence while its earliest is parked, works everything else, and records the hold", async () => {
+    const A1 = "20261016T090000Z-a1.md";
+    const A2 = "20261016T090100Z-a2.md";
+    const OTHER = "20261016T090200Z-other.md";
+    const repo = initTempRepo("sources-run-", {
+      "package.json": PACKAGE,
+      [`.delivery/backlog/${A1}`]: "---\nstatus: open\npriority: 1\nsequence: spec-a\n---\nAdd a function that says hello to a name.\n",
+      [`.delivery/backlog/${A2}`]: "---\nstatus: open\npriority: 2\nsequence: spec-a\n---\nAdd a function that says goodbye.\n",
+      [`.delivery/backlog/${OTHER}`]: "---\nstatus: open\npriority: 3\n---\nAdd a function that says hello to a name, unrelated.\n",
+    });
+    const state = stateDir();
+    const env = { XDG_STATE_HOME: state };
+    const items = ledgerPath(repo, env);
+    mkdirSync(dirname(items), { recursive: true });
+    appendFileSync(items, `${JSON.stringify({ t: "parked", key: `backlog:${A1}`, reason: "escalated", at: "2026-10-22T09:00:00.000Z" })}\n`);
+
+    const { exitCode } = await delivery(["run", "--sources", "--max", "3"], { cwd: repo, env: { ...env, [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const ledger = await readItemLedger(items);
+    expect(ledger.get(`backlog:${OTHER}`)).toMatchObject({ lastClass: "delivered" });
+    expect(ledger.has(`backlog:${A2}`)).toBe(false);
+    expect(await readHeld(heldPath(items))).toEqual([{ sequence: "spec-a", item: `backlog:${A1}`, source: "backlog", reason: "parked" }]);
+  }, RUN_TIMEOUT);
+
+  // AC 7 at the default --max 1: the first item taken fills the run, so the `slices` source below is never listed.
+  it("keeps a held sequence from a source this run did not read, at the default --max 1", async () => {
+    const OTHER = "20261016T090200Z-other.md";
+    const repo = initTempRepo("sources-run-", {
+      "package.json": PACKAGE,
+      [`.delivery/backlog/${OTHER}`]: "---\nstatus: open\npriority: 1\n---\nAdd a function that says hello to a name, unrelated.\n",
+      "next-slice.sh": "#!/bin/sh\n[ \"$1\" = list ] && echo '[{\"id\":\"b-1\",\"intent\":\"B1\",\"sequence\":\"spec-b\"},{\"id\":\"b-2\",\"intent\":\"B2\",\"sequence\":\"spec-b\"}]'\n",
+      // The backlog first, then a command source named "slices"; `sh next-slice.sh` as the existing command-source tests in this file run theirs, so no chmod is needed.
+      "delivery.config.json": JSON.stringify({ sources: [{ type: "backlog" }, { type: "command", command: "sh next-slice.sh", name: "slices" }] }),
+    });
+    const state = stateDir();
+    const env = { XDG_STATE_HOME: state };
+    const items = ledgerPath(repo, env);
+    mkdirSync(dirname(items), { recursive: true });
+    appendFileSync(items, `${JSON.stringify({ t: "parked", key: "slices:b-1", reason: "escalated", at: "2026-10-22T09:00:00.000Z" })}\n`);
+    await recordHeld(heldPath(items), [{ sequence: "spec-b", item: "slices:b-1", source: "slices", reason: "parked" }], ["slices"]);
+
+    const { exitCode } = await delivery(["run", "--sources"], { cwd: repo, env: { ...env, [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+    expect(exitCode).toBe(EXIT.ok);
+    expect((await readItemLedger(items)).get(`backlog:${OTHER}`)).toMatchObject({ lastClass: "delivered" });
+    expect(await readHeld(heldPath(items))).toEqual([{ sequence: "spec-b", item: "slices:b-1", source: "slices", reason: "parked" }]);
+  }, RUN_TIMEOUT);
+
   it("picks up a backlog item, delivers it onto the delivery branch, and marks it resolved there", async () => {
     const repo = project();
     const state = stateDir();

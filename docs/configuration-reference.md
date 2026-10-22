@@ -296,7 +296,7 @@ The harness runs a `command` source with one argument:
 
 | Call | When | Must do |
 |---|---|---|
-| `<command> list` | Each run | Print a JSON array of tasks. Each task is an object with a string `id`, and optionally `intent`, `body`, `workflow` and any other fields |
+| `<command> list` | Each run | Print a JSON array of tasks. Each task is an object with a string `id`, and optionally `intent`, `body`, `workflow`, `sequence` and any other fields |
 | `<command> complete <id>` | After the task is delivered | Mark the task done, wherever the list is kept |
 | `<command> raise` | Only with `"tracker": true`, once the closer has taken the work | Read a follow-up item as JSON on standard input (`file`, its front matter and `body`), open it in your tracker, and print the new item's id |
 
@@ -348,6 +348,7 @@ Tidy the greeting copy so it matches the spec.
 | `workflow` | Text | The workflow that delivers the item |
 | `priority` | Whole number | Lower goes first; items without one go last |
 | `cadence` | A number and `m`, `h`, `d` or `w`, such as `7d` | Makes the item recur: it is due again that long after it last closed |
+| `sequence` | Text | Puts the item in a named sequence: items with the same name are worked one at a time, in order. See [Keep items in order](work-sources.md#keep-items-in-order). Not allowed with `cadence` |
 | `severity` | `critical`, `high`, `medium` or `low` | How serious the item's problem is; a workflow's `hold` acts on it |
 | `check` | Object | How the harness knows the problem is gone. Every step's check then also requires it, as `item:<id>:resolved` |
 

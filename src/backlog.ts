@@ -21,6 +21,7 @@ export interface BacklogItem {
   workflow?: string;
   priority?: number;
   cadenceMs?: number;
+  sequence?: string;
   severity?: Severity;
   check?: ItemCheck;
   fields: Record<string, unknown>;
@@ -43,6 +44,7 @@ export const ItemFrontMatter = z
     workflow: z.string().min(1, "`workflow` must name a workflow").optional(),
     priority: z.number({ error: "`priority` must be a whole number" }).int("`priority` must be a whole number").optional(),
     cadence: z.string().refine((text) => cadenceMs(text) !== undefined, "`cadence` must be a number and a unit, such as 30m, 12h, 7d or 2w").optional(),
+    sequence: z.string({ error: "`sequence` must name a sequence" }).min(1, "`sequence` must name a sequence").optional(),
     severity: z.enum(SEVERITIES, { error: "`severity` must be one of critical, high, medium or low" }).optional(),
     check: z
       .custom<ItemCheck>((value) => ItemCheck.safeParse(value).success, {
@@ -70,6 +72,7 @@ export function parseItem(file: string, text: string): ParsedItem {
   if (!parsed.success) return refuse(parsed.error.issues[0]?.message ?? "its front matter does not match the item format");
   const body = split[2] ?? "";
   if (body.trim() === "") return refuse("it has no brief below its front matter");
+  if (parsed.data.cadence !== undefined && parsed.data.sequence !== undefined) return refuse("it has a `cadence`, so it recurs, and a recurring item cannot be in a `sequence`: drop one of them");
   const { status, workflow, priority, cadence, severity, check, ...rest } = parsed.data;
   // Severity and check stay in `fields` too, so `itemTask` hands them to the task as it does every other field.
   const fields = { ...rest, ...(severity === undefined ? {} : { severity }), ...(check === undefined ? {} : { check }) };
@@ -81,6 +84,7 @@ export function parseItem(file: string, text: string): ParsedItem {
       ...(workflow === undefined ? {} : { workflow }),
       ...(priority === undefined ? {} : { priority }),
       ...(cadence === undefined ? {} : { cadenceMs: cadenceMs(cadence) }),
+      ...(parsed.data.sequence === undefined ? {} : { sequence: parsed.data.sequence }),
       ...(severity === undefined ? {} : { severity }),
       ...(check === undefined ? {} : { check }),
       fields,

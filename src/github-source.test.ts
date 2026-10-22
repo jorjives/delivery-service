@@ -32,6 +32,16 @@ describe("reading an issue as a work item", () => {
     expect(pick({ labels: ["delivery", "workflow:a", "workflow:b"] })).toBe("Left GitHub issue #12 alone: it has more than one workflow: label (workflow:a, workflow:b), so I can't tell which workflow delivers it.");
   });
 
+  it("reads a sequence from a sequence: label, and leaves an issue with two alone", () => {
+    const read = issueItem(issue({ labels: ["delivery", "sequence:greeting-spec"] }), SOURCE, "github");
+    expect("item" in read && read.item.sequence).toBe("greeting-spec");
+    const plain = issueItem(issue(), SOURCE, "github");
+    expect("item" in plain && plain.item.sequence).toBeUndefined();
+    expect(issueItem(issue({ labels: ["delivery", "sequence:b", "sequence:a"] }), SOURCE, "github")).toEqual({
+      skip: "Left GitHub issue #12 alone: it has more than one sequence: label (sequence:a, sequence:b), so I can't tell which sequence it belongs to.",
+    });
+  });
+
   it("carries the delivery block's fields into the task and out of the brief", () => {
     const read = issueItem(issue({ body: "Remove eval.\n\n```delivery\nseverity: high\ncheck:\n  kind: pattern-absent\n  pattern: eval\n```\n" }), SOURCE, "github");
     expect(read).toMatchObject({ item: { taskDef: { intent: "Say hello", body: "Say hello\n\nRemove eval.", severity: "high", check: { kind: "pattern-absent", pattern: "eval" } } } });
