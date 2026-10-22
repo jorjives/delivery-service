@@ -59,6 +59,7 @@ export const BARE_ARG = /^[A-Za-z0-9_./=-]+$/;
 
 /** The arguments `delivery` runs with on each tick. Every scheduled run skips quietly when another run holds the repository. */
 export function runArgs(_schedule: Schedule): string[] {
+  void _schedule; // every schedule runs alike today; the parameter keeps the seam for per-schedule arguments
   return ["run", "--sources", "--if-idle"];
 }
 
