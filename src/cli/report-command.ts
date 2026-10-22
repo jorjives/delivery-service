@@ -64,6 +64,11 @@ export async function deliveryIn(repoPath: string, env: NodeJS.ProcessEnv): Prom
   };
 }
 
+/** What this machine's ledgers add to any report: parked items, the delivery branch, and after-landing steps. */
+export async function ledgerParts(repoPath: string, env: NodeJS.ProcessEnv): Promise<Pick<ReportDocument, "parked" | "delivery" | "after">> {
+  return { parked: await parkedIn(repoPath, env), delivery: await deliveryIn(repoPath, env), after: await afterIn(repoPath, env) };
+}
+
 /** What `delivery report` was given on the command line besides the run id. */
 export interface ReportOptions {
   repo?: string;
@@ -95,7 +100,7 @@ export function namedSubject(repoPath: string, runId: string): ReportSubject {
 export async function readReport(repoPath: string, named: ReportSubject | undefined, list: TaskDef[], { env }: { env: NodeJS.ProcessEnv }): Promise<Report> {
   const snapshot = await loadSnapshot(repoPath, named ?? { kind: "list" }, { live: await repoLocked(repoPath), list });
   const recent = named === undefined && list.length === 0 ? mostRecentSubject(snapshot) : undefined;
-  const doc = { ...deriveReport(recent ? { ...snapshot, subject: recent } : snapshot), parked: await parkedIn(repoPath, env), delivery: await deliveryIn(repoPath, env), after: await afterIn(repoPath, env) };
+  const doc = { ...deriveReport(recent ? { ...snapshot, subject: recent } : snapshot), ...(await ledgerParts(repoPath, env)) };
   return {
     doc,
     empty: holdsNoRun(snapshot),

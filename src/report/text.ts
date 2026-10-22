@@ -232,6 +232,11 @@ export function afterLines(after: readonly ReportAfter[]): string[] {
   return lines;
 }
 
+/** The ledger sections every report and status ends with: parked items, the delivery branch, after-landing steps. */
+export function ledgerLines(doc: Pick<ReportDocument, "parked" | "delivery" | "after">): string[] {
+  return [...parkedLines(doc.parked), ...deliveryLines(doc.delivery), ...afterLines(doc.after)];
+}
+
 export function incompleteLines(doc: ReportDocument): string[] {
   const others = doc.surfaces.length;
   const rest = others === 0 ? "nothing else could be read" : `the other ${tasksWord(others)} ${others === 1 ? "is" : "are"} reported below`;
@@ -505,9 +510,7 @@ export function renderText(doc: ReportDocument, { colour, saved }: { colour: boo
     ...SECTIONS.flatMap((section) => sectionLines(doc, section, colour)),
     ...worthALookLines(doc, colour),
     ...tuningLines(doc, colour, saved),
-    ...parkedLines(doc.parked),
-    ...deliveryLines(doc.delivery),
-    ...afterLines(doc.after),
+    ...ledgerLines(doc),
     "",
     nextLine(doc),
   ];
