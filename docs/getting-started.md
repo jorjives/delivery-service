@@ -5,6 +5,11 @@ command, point it at a small sample project, and watch an agent do a task that
 your own tests check. It takes about ten minutes, and you need not read any
 harness source.
 
+`delivery` is a global command, installed once and run from inside any of your projects. A
+project needs only an optional `delivery.config.json`; it does not depend on the harness. The
+harness also ships a TypeScript library, but only for writing your own gates, closers and packs
+(see [Extending delivery with TypeScript](#extending-delivery-with-typescript-optional)).
+
 ## What you need
 
 - Node.js 22 or later, and `git`.
@@ -50,7 +55,7 @@ delivery --version
 <version>
 ```
 
-### Importing the library in your own project
+### Extending delivery with TypeScript (optional)
 
 You can skip this section for now: step 1 puts `delivery` on your `PATH`, which is all this guide
 needs. The guides to [write a gate](writing-a-gate.md) and
