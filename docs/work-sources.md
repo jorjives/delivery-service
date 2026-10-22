@@ -63,6 +63,30 @@ A follow-up an agent raises while working an issue is not committed to your repo
 
 An item that is [parked](work-a-backlog.md#handle-a-parked-item), whether it needs your answer or keeps ending undelivered, is marked on the issue with a `delivery:parked` label and a comment saying why, including the agent's question if it asked one. Answer or unpark it as usual; the label comes off when the issue is next worked. `delivery status` still lists it.
 
+## Keep items in order
+
+Some items build on each other: a spec's second slice assumes its first is there. Give such items the same `sequence` name and `delivery run --sources` works them one at a time, in order:
+
+- A backlog item names it in its front matter (`sequence: greeting-spec`), a command source's task in a `sequence` field, and a GitHub issue with a `sequence:<name>` label.
+- Items with the same name form one sequence, in the order the sources are listed and, within a source, in that source's own order.
+- Only the earliest item of a sequence that is not yet delivered is taken. An item counts as delivered once it has landed, even while its pull request waits to be merged.
+- If that item is parked, waiting for your answer, or still being worked, nothing later in its sequence is taken. Items without a sequence, and other sequences, carry on as usual.
+- A run takes at most one item of each sequence, whatever `--max` says, since the next cannot start until the one before it lands.
+
+A source of slices should name each slices file as the sequence, so every spec is its own sequence and a stalled slice holds only its own spec. For example, a `next-slice.sh` source's `list` prints:
+
+```json
+[
+  { "id": "greeting-2", "intent": "Greet people by name", "sequence": "docs/specs/greeting-slices.md" },
+  { "id": "greeting-3", "intent": "Greet people in their language", "sequence": "docs/specs/greeting-slices.md" },
+  { "id": "export-1", "intent": "Export a report as CSV", "sequence": "docs/specs/export-slices.md" }
+]
+```
+
+`delivery status` and `delivery report` name each held sequence, the item holding it, and why. In the [report's data](reporting.md) this is `held`.
+
+A sequence is an order only. To make one spec's slices wait for another's, give them the same sequence name. A recurring backlog item (one with a `cadence`) cannot be in a sequence, and a `sequence` on a fallback source's items is ignored. An item the run leaves alone (an issue not approved, a backlog file it cannot read) is not part of its sequence until the run can use it; the run's note about it says why.
+
 ## Next steps
 
 - [Work through a backlog](work-a-backlog.md): items kept in the repository.

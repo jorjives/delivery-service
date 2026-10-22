@@ -8,6 +8,7 @@ import { addLocalOrigin } from "./temp-repo.js";
 import { taskId } from "./task-list.js";
 import { chooseWork, listSource, raiseThrough } from "./work-sources.js";
 import type { SourceConfig } from "./cli/config.js";
+import type { RunRecord } from "./run-records.js";
 
 const item = (status: string, extra = "") => `---\nstatus: ${status}\nworkflow: build\n${extra}---\nDo the thing.\n`;
 const at = "2026-10-16T09:00:00.000Z";
@@ -204,5 +205,145 @@ describe("the github source", () => {
     const chosen = await chooseWork([{ type: "github" }, { type: "backlog" }], { ...base, repoPath: repo, env: { ...process.env, PATH: "/nonexistent" } });
     expect(chosen.items.map((i) => i.key)).toEqual(["backlog:20261016T090000Z-a.md"]);
     expect(chosen.notes[0]).toMatch(/^Skipped the github source for this run: the GitHub command-line tool \(gh\) is not installed/);
+  });
+});
+
+describe("chooseWork with sequences", () => {
+  // Spec A has three slices and spec B two, by priority; one unrelated item comes last.
+  const A1 = "backlog:20261016T090000Z-a1.md";
+  const A2 = "backlog:20261016T090100Z-a2.md";
+  const A3 = "backlog:20261016T090200Z-a3.md";
+  const B1 = "backlog:20261016T090300Z-b1.md";
+  const X = "backlog:20261016T090500Z-x.md";
+  const specs = () => repoWith({
+    ".delivery/backlog/20261016T090000Z-a1.md": item("open", "priority: 1\nsequence: spec-a\n"),
+    ".delivery/backlog/20261016T090100Z-a2.md": item("open", "priority: 2\nsequence: spec-a\n"),
+    ".delivery/backlog/20261016T090200Z-a3.md": item("open", "priority: 3\nsequence: spec-a\n"),
+    ".delivery/backlog/20261016T090300Z-b1.md": item("open", "priority: 4\nsequence: spec-b\n"),
+    ".delivery/backlog/20261016T090400Z-b2.md": item("open", "priority: 5\nsequence: spec-b\n"),
+    ".delivery/backlog/20261016T090500Z-x.md": item("open", "priority: 6\n"),
+  });
+  const keys = (chosen: { items: { key: string }[] }) => chosen.items.map((i) => i.key);
+
+  it("takes only the earliest item of each sequence, and items without one as usual", async () => {
+    const chosen = await chooseWork([{ type: "backlog" }], { ...base, repoPath: specs() });
+    expect(keys(chosen)).toEqual([A1, B1, X]);
+    expect(chosen.held).toEqual([{ sequence: "spec-a", item: A1, source: "backlog", reason: "in_flight" }, { sequence: "spec-b", item: B1, source: "backlog", reason: "in_flight" }]);
+  });
+
+  it("holds a sequence behind a parked earliest item, and nothing else", async () => {
+    const ledger = foldLedger([{ t: "parked", key: A1, reason: "escalated", at }]);
+    const chosen = await chooseWork([{ type: "backlog" }], { ...base, repoPath: specs(), ledger });
+    expect(keys(chosen)).toEqual([B1, X]);
+    expect(chosen.held).toEqual([{ sequence: "spec-a", item: A1, source: "backlog", reason: "parked" }, { sequence: "spec-b", item: B1, source: "backlog", reason: "in_flight" }]);
+  });
+
+  it("says a sequence waits for an answer when its earliest item asked a question", async () => {
+    const ledger = foldLedger([{ t: "parked", key: A1, reason: "decision", at }]);
+    const chosen = await chooseWork([{ type: "backlog" }], { ...base, repoPath: specs(), ledger });
+    expect(chosen.held[0]).toEqual({ sequence: "spec-a", item: A1, source: "backlog", reason: "decision" });
+  });
+
+  it("holds a sequence behind an item still being worked, whether carried on in this run or by a run without an outcome", async () => {
+    const carried = await chooseWork([{ type: "backlog" }], { ...base, repoPath: specs(), taken: new Set([A1]) });
+    expect(keys(carried)).toEqual([B1, X]);
+    expect(carried.held[0]).toEqual({ sequence: "spec-a", item: A1, source: "backlog", reason: "in_flight" });
+
+    const ledger = foldLedger([{ t: "dispatched", key: A1, runId: "a1-run", intent: "x", at }]);
+    // Only the fields dispatch reads: which run, and that it has no outcome yet.
+    const records = [{ runId: "a1-run", caseFile: { outcome: undefined } }] as unknown as RunRecord[];
+    const running = await chooseWork([{ type: "backlog" }], { ...base, repoPath: specs(), ledger, records });
+    expect(keys(running)).toEqual([B1, X]);
+    expect(running.held[0]).toEqual({ sequence: "spec-a", item: A1, source: "backlog", reason: "in_flight" });
+  });
+
+  it("counts a landed item whose pull request is not merged as delivered, and takes the next", async () => {
+    const repo = specs();
+    git(repo, ["branch", "delivery/main"]);
+    const ledger = foldLedger([{ t: "ended", key: A1, runId: "a1-run", class: "delivered", branch: "delivery/main", commit: git(repo, ["rev-parse", "HEAD"]), at }]);
+    expect(keys(await chooseWork([{ type: "backlog" }], { ...base, repoPath: repo, ledger }))).toEqual([A2, B1, X]);
+  });
+
+  it("takes at most one item of a sequence however many a run may take", async () => {
+    const repo = repoWith({
+      ".delivery/backlog/20261016T090000Z-a1.md": item("open", "priority: 1\nsequence: spec-a\n"),
+      ".delivery/backlog/20261016T090100Z-a2.md": item("open", "priority: 2\nsequence: spec-a\n"),
+      ".delivery/backlog/20261016T090200Z-a3.md": item("open", "priority: 3\nsequence: spec-a\n"),
+    });
+    expect(keys(await chooseWork([{ type: "backlog" }], { ...base, repoPath: repo, max: 3 }))).toEqual([A1]);
+  });
+
+  // `only` is how `delivery sign-off` runs one named item: it must not jump its sequence either.
+  it("does not take a later item named alone while an earlier one is undelivered", async () => {
+    const chosen = await chooseWork([{ type: "backlog" }], { ...base, repoPath: specs(), only: A3 });
+    expect(keys(chosen)).toEqual([]);
+  });
+
+  it("holds nothing up when the earliest undelivered item is the last of its sequence", async () => {
+    const repo = repoWith({ ".delivery/backlog/20261016T090000Z-a1.md": item("open", "sequence: spec-a\n") });
+    const ledger = foldLedger([{ t: "parked", key: A1, reason: "escalated", at }]);
+    expect((await chooseWork([{ type: "backlog" }], { ...base, repoPath: repo, ledger })).held).toEqual([]);
+  });
+
+  it("joins items of the same name from different sources into one sequence, in source order", async () => {
+    const repo = repoWith({ ".delivery/backlog/20261016T090000Z-a1.md": item("open", "sequence: spec-a\n") });
+    writeFileSync(join(repo, "tasks.sh"), `#!/bin/sh\n[ "$1" = list ] && echo '[{"id":"a2","intent":"A2","sequence":"spec-a"}]'\n`);
+    chmodSync(join(repo, "tasks.sh"), 0o755);
+    const chosen = await chooseWork([{ type: "backlog" }, { type: "command", command: "./tasks.sh", name: "slices" }], { ...base, repoPath: repo, env: process.env });
+    expect(keys(chosen)).toEqual([A1]);
+  });
+
+  it("gives each slices file its own sequence, so a parked slice holds only its own spec", async () => {
+    const repo = repoWith({ ".delivery/backlog/20261016T090500Z-x.md": item("open") });
+    const tasks = ["a", "b"].flatMap((spec) => [1, 2, 3].map((n) => ({ id: `${spec}-${n}`, intent: `Spec ${spec} slice ${n}`, sequence: `docs/specs/${spec}-slices.md` })));
+    writeFileSync(join(repo, "next-slice.sh"), `#!/bin/sh\n[ "$1" = list ] && echo '${JSON.stringify(tasks)}'\n`);
+    chmodSync(join(repo, "next-slice.sh"), 0o755);
+    const repoHead = git(repo, ["rev-parse", "HEAD"]);
+    git(repo, ["branch", "delivery/main"]);
+    const ledger = foldLedger([
+      { t: "ended", key: "slices:a-1", runId: "a1-run", class: "delivered", branch: "delivery/main", commit: repoHead, at },
+      { t: "parked", key: "slices:a-2", reason: "escalated", at },
+    ]);
+    const chosen = await chooseWork([{ type: "backlog" }, { type: "command", command: "./next-slice.sh", name: "slices" }], { ...base, repoPath: repo, env: process.env, ledger, max: 3 });
+    expect(keys(chosen)).toEqual([X, "slices:b-1"]);
+    expect(chosen.held).toEqual([
+      { sequence: "docs/specs/a-slices.md", item: "slices:a-2", source: "slices", reason: "parked" },
+      { sequence: "docs/specs/b-slices.md", item: "slices:b-1", source: "slices", reason: "in_flight" },
+    ]);
+    expect(chosen.read).toEqual(["backlog", "slices"]);
+  });
+
+  // The default --max 1: the backlog item fills the run, so the slices source is never listed.
+  it("reads no further source once max are chosen, and says which it read, so a later source's holds are not claimed", async () => {
+    const repo = repoWith({ ".delivery/backlog/20261016T090500Z-x.md": item("open") });
+    writeFileSync(join(repo, "next-slice.sh"), `#!/bin/sh\n[ "$1" = list ] && echo '[{"id":"a-1","intent":"A1","sequence":"spec-a"},{"id":"a-2","intent":"A2","sequence":"spec-a"}]'\n`);
+    chmodSync(join(repo, "next-slice.sh"), 0o755);
+    const ledger = foldLedger([{ t: "parked", key: "slices:a-1", reason: "escalated", at }]);
+    const chosen = await chooseWork([{ type: "backlog" }, { type: "command", command: "./next-slice.sh", name: "slices" }], { ...base, repoPath: repo, env: process.env, ledger, max: 1 });
+    expect(keys(chosen)).toEqual([X]);
+    expect(chosen.read).toEqual(["backlog"]);
+    expect(chosen.held).toEqual([]);
+  });
+
+  it("scans a source it reads to its end, even after max is chosen within it, so holds behind the chosen item are seen", async () => {
+    const chosen = await chooseWork([{ type: "backlog" }], { ...base, repoPath: specs(), max: 1, ledger: foldLedger([{ t: "parked", key: B1, reason: "escalated", at }]) });
+    expect(keys(chosen)).toEqual([A1]);
+    expect(chosen.read).toEqual(["backlog"]);
+    expect(chosen.held).toEqual([{ sequence: "spec-a", item: A1, source: "backlog", reason: "in_flight" }, { sequence: "spec-b", item: B1, source: "backlog", reason: "parked" }]);
+  });
+
+  it("ignores a sequence on a fallback source's items, which are never delivered", async () => {
+    const repo = repoWith({});
+    writeFileSync(join(repo, "tasks.sh"), `#!/bin/sh\n[ "$1" = list ] && echo '[{"id":"f1","intent":"F1","sequence":"s"},{"id":"f2","intent":"F2","sequence":"s"}]'\n`);
+    chmodSync(join(repo, "tasks.sh"), 0o755);
+    const chosen = await chooseWork([{ type: "command", command: "./tasks.sh", name: "chores", fallback: true }], { ...base, repoPath: repo, env: process.env, max: 3 });
+    expect(keys(chosen)).toEqual(["chores:f1", "chores:f2"]);
+    expect(chosen.held).toEqual([]);
+  });
+
+  it("reads only the sources up to the named item when one item is run alone", async () => {
+    const chosen = await chooseWork([{ type: "backlog" }, { type: "command", command: "./never-run.sh", name: "slices" }], { ...base, repoPath: specs(), env: process.env, only: X, max: 1 });
+    expect(keys(chosen)).toEqual([X]);
+    expect(chosen.read).toEqual(["backlog"]);
   });
 });

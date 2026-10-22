@@ -117,6 +117,12 @@ A stand-in for Claude Code that replies from a script you write, so you can test
 closer or pack with no real agent and no cost. See
 [Test your pipeline](testing-your-pipeline.md).
 
+## Sequence
+
+Items that share a `sequence` name, worked one at a time in order: a later item is not started
+while an earlier one is parked, waiting for your answer, or still being worked. See
+[Keep items in order](work-sources.md#keep-items-in-order).
+
 ## Shared environment
 
 Whatever several tasks running at once rely on outside their own working copies, such as a
