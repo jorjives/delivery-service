@@ -116,6 +116,14 @@ describe("prepareContinuation", () => {
       expect(carried?.continues.turn).toEqual({ kind: "interrupted" });
     });
 
+    it("is no longer signed off when the copy is clean but sits on a commit other than the reviewed one", async () => {
+      const { repo, env, copy, reviewed } = await heldRun("signed-off-elsewhere-");
+      // The branch still names the reviewed commit, but the copy has been detached onto its parent.
+      git(copy, ["checkout", "-q", "--detach", `${reviewed}~1`]);
+      const carried = await prepareContinuation(await readRun(repo, RUN), SIGNED_OFF, env, reviewed);
+      expect(carried?.continues.turn).toEqual({ kind: "interrupted" });
+    });
+
     it("is no longer signed off when no reviewed commit was recorded", async () => {
       const { repo, env } = await heldRun("signed-off-unrecorded-");
       const carried = await prepareContinuation(await readRun(repo, RUN), SIGNED_OFF, env, null);
