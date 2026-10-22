@@ -37,7 +37,7 @@ describe("the delivery ledger", () => {
   it("keeps an empty landing as delivered: still landed and pending, marked empty", () => {
     const state = foldDelivery([
       { t: "opened", branch: B, base: "main", from: "a", at: at(0) },
-      { ...landed("r1", 1), empty: true },
+      { t: "landed", branch: B, runId: "r1", key: "backlog:r1.md", intent: "r1", commit: "c", empty: true, at: at(1) },
     ], B);
 
     expect(state.landed).toMatchObject([{ runId: "r1", empty: true }]);
