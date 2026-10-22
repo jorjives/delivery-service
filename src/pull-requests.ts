@@ -35,8 +35,8 @@ const Answer = z.object({
  * The pull requests GitHub holds for each of `query.heads`, in the states asked for (default `"open"`), from one
  * `gh api graphql` request whatever the number of heads. It reads GitHub's primary store by exact head name, so a
  * pull request is seen the moment it exists; nothing here goes through search. Pull requests from a fork are dropped,
- * since a stranger's branch may share a delivery branch's name but is never that level's pull request. Never throws: a failure, including gh
- * missing, signed out or offline, is a listing that says so, and each caller words its own fix.
+ * since a stranger's branch may share a delivery branch's name but is never that level's pull request. Never throws:
+ * a failure, including gh missing, signed out or offline, is a listing that says so, and each caller words its own fix.
  */
 export async function listPullRequests(
   repoPath: string,
@@ -62,8 +62,8 @@ export async function listPullRequests(
     }
     if (answer.data === undefined || answer.data === null) throw new Error("gh answered with no data");
     const repository = answer.data.repository;
-    const pullRequests = query.heads.flatMap((_, i) => repository[`p${i}`]?.nodes ?? []);
-    return { ok: true, pullRequests: pullRequests.filter((pr) => !pr.isCrossRepository).map((pr) => PullRequest.parse(pr)) };
+    const own = query.heads.flatMap((_, i) => (repository[`p${i}`]?.nodes ?? []).flatMap(({ isCrossRepository, ...pr }) => (isCrossRepository ? [] : [pr])));
+    return { ok: true, pullRequests: own };
   } catch (err) {
     return { ok: false, failure: ghFailureOf(err) };
   }
