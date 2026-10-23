@@ -23,6 +23,8 @@ export interface CommandContext {
   stdin: CliStdin;
   /** The answer this command was asked for, on standard output. */
   writeLine(line: string): void;
+  /** Something the person should know that is not part of the answer, on standard error so the answer stays clean. Absent: it is not said. */
+  writeWarning?(line: string): void;
   /** How a run is told while it happens, and anything said alongside it. */
   report: RunReporter;
   /** How a stop ends this command, when the process it runs in lets it choose. Absent: a stop ends it as the platform does. */

@@ -508,6 +508,13 @@ describe("the Step slot", () => {
     expect(prompt).toContain("Read SPEC=docs/x.md BODY=Add a slug helper.");
   });
 
+  it("fills strings, numbers and booleans as written, and any other value as compact JSON", () => {
+    const withPlaceholder = { name: "w", steps: [{ name: "build", prompt: "S={{task.s}} N={{task.n}} B={{task.b}} O={{task.o}} A={{task.a}} Z={{task.z}}." }] };
+    const cf = caseFileWith({ workflow: withPlaceholder, taskDef: { intent: "x", s: "text", n: 3, b: false, o: { id: 7, tags: ["a"] }, a: [1, "two"], z: null } });
+    const { prompt } = assemblePrompt(stepView(cf), workerRoleConfig, NOTHING);
+    expect(prompt).toContain('S=text N=3 B=false O={"id":7,"tags":["a"]} A=[1,"two"] Z=null.');
+  });
+
   it("says the check is the step's own only when the step names one, and the guards diff from the step's start", () => {
     const own: GateRef = { type: "command", command: "test -f PLAN.md", parseMode: "exitcode", checkOnly: true };
     const named = { ...workflow, steps: [{ name: "plan", prompt: "Write PLAN.md.", gateRef: own }, workflow.steps[1] as (typeof workflow.steps)[number]] };

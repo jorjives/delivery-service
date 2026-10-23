@@ -319,3 +319,24 @@ describe("delivery preview --step", () => {
     expect((await delivery(["preview"], { cwd: repo })).stdout).not.toContain("## Step");
   });
 });
+
+describe("delivery preview with an unmatched {{task.<field>}} placeholder", () => {
+  const TYPO = {
+    "plan-then-build": { steps: [{ name: "plan", prompt: "Read {{task.sepc}} and plan.", gate: { type: "file-exists", path: "PLAN.md" } }] },
+  };
+
+  it("warns, naming the placeholder and the step, no task in the configuration can supply it", async () => {
+    const repo = repoWith({ ...PROJECT, workflows: TYPO });
+    const { stdout, stderr, exitCode } = await delivery(["preview", "--step", "plan"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(`${stdout}${stderr}`).toMatch(/\{\{task\.sepc\}\}/);
+    expect(stderr).toMatch(/warn/i);
+    expect(stderr).toContain("plan");
+  });
+
+  it("does not warn for a placeholder the task supplies", async () => {
+    const repo = repoWith({ gate: PROJECT.gate, task: { intent: FIRST, sepc: "docs/x.md" }, workflows: TYPO });
+    const { stderr } = await delivery(["preview", "--step", "plan"], { cwd: repo });
+    expect(stderr).not.toMatch(/warn/i);
+  });
+});

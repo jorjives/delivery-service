@@ -33,6 +33,9 @@ export const LedgerEntry = z.discriminatedUnion("t", [
   z.object({ t: z.literal("signed_off"), key: z.string(), at: z.string() }),
   // A restack rewrote the level's commit on its branch: only where the work sits moves, so it still awaits merge.
   z.object({ t: z.literal("moved"), key: z.string(), branch: z.string(), commit: z.string(), at: z.string() }),
+  // The level's pull request was closed, or built on one that was: its work no longer awaits merge. `rejected` is the
+  // owner's no to this very item, an attempt that counts towards parking; a level above it is released without one.
+  z.object({ t: z.literal("released"), key: z.string(), rejected: z.literal(true).optional(), at: z.string() }),
 ]);
 export type LedgerEntry = z.infer<typeof LedgerEntry>;
 
@@ -50,11 +53,12 @@ export interface ItemState {
   lastClosedAt: string | null;
   branch: string | null; // the delivered run's branch
   heldCommit: string | null; // the branch tip a held run waits at: what the operator reviews, and all a sign-off covers
+  rejections: number; // times the owner closed this item's pull request, kept across redeliveries until unparked
   commit: string | null; // the delivered work's tip: the branch tip, or the base tip when a closer already merged and deleted the branch
 }
 
 const fresh = (key: string): ItemState => ({
-  key, intent: null, attempts: 0, lastRunId: null, settled: true, lastClass: null, question: null, answer: null, parked: null, signedOff: false, lastClosedAt: null, branch: null, heldCommit: null, commit: null,
+  key, intent: null, attempts: 0, lastRunId: null, settled: true, lastClass: null, question: null, answer: null, parked: null, signedOff: false, lastClosedAt: null, branch: null, heldCommit: null, rejections: 0, commit: null,
 });
 
 /** Machine-local, beside the worktrees: it describes this machine's runs and means nothing in another clone. */
@@ -80,6 +84,8 @@ function apply(state: ItemState, entry: LedgerEntry): ItemState {
       return { ...state, parked: null, attempts: 0, signedOff: true };
     case "moved":
       return { ...state, branch: entry.branch, commit: entry.commit };
+    case "released":
+      return { ...state, lastClass: null, branch: null, commit: null, rejections: state.rejections + (entry.rejected === true ? 1 : 0) };
   }
 }
 
@@ -197,6 +203,19 @@ export async function recordSignOff(path: string, key: string): Promise<void> {
 /** A restack moved the delivered level to `commit` on `branch`: the item keeps awaiting merge there, and its attempts and close time stay as they were. */
 export async function recordMoved(path: string, key: string, branch: string, commit: string): Promise<void> {
   await append(path, { t: "moved", key, branch, commit, at: now() });
+}
+
+/**
+ * A dropped level's item is released: it no longer awaits merge, so it is for another run. A rejected one (the level whose
+ * pull request was closed) counts towards parking, and parks the item at `parkAfter` rejections, however often it is redelivered
+ * in between. Returns the item's state after.
+ */
+export async function recordReleased(path: string, key: string, { rejected, parkAfter }: { rejected: boolean; parkAfter: number }): Promise<ItemState> {
+  await append(path, { t: "released", key, ...(rejected ? { rejected: true as const } : {}), at: now() });
+  const state = (await readItemLedger(path)).get(key) ?? fresh(key);
+  if (!rejected || state.rejections < parkAfter) return state;
+  await append(path, { t: "parked", key, reason: "attempts", at: now() });
+  return { ...state, parked: "attempts" };
 }
 
 export function parkedItems(ledger: Map<string, ItemState>): ItemState[] {

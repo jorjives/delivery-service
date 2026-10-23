@@ -10,7 +10,7 @@ import { cleanGitEnv } from "./git-env.js";
  * swap-the-executable approach claude-mock takes for the agent: a real
  * executable named `gh`, honouring the argv and output of the commands the
  * closer uses (`gh api graphql` answering the aliased exact-head `pullRequests(headRefName:…)` lookup, `gh pr create`,
- * `gh pr edit --body` and `--base`; a test merges a pull request with `merge`, which merges it on origin by squash, rebase or merge
+ * `gh pr edit --body` and `--base`, `gh pr close --comment`; a test closes one as the owner would with `closePullRequest`; a test merges a pull request with `merge`, which merges it on origin by squash, rebase or merge
  * commit as GitHub would, or marks it merged with `mergePullRequest`) and the issue commands the github
  * work source uses (`gh api graphql` listing issues by label, `gh issue create|close|comment|edit`, `gh label create`),
  * with their failure messages and exit codes copied from gh 2.94 itself. It refuses any query that searches: search
@@ -30,6 +30,10 @@ export interface StandInPullRequest {
   headRefOid?: string;
   /** The base's commit the merge made; set by `merge` or `mergePullRequest`, answered as `mergeCommit{oid}`. */
   mergeCommit?: string;
+  /** True when the head branch lives in a fork rather than this repository; answered as `isCrossRepository`. */
+  fork?: boolean;
+  /** What `gh pr close --comment` left on it. */
+  comments?: string[];
 }
 
 export type StandInEvent = { type: "labeled"; label: string; at: string } | { type: "renamed"; at: string };
@@ -55,10 +59,18 @@ export interface GhStandIn {
   /** Make every later `gh pr create` fail with this message, as GitHub refusing the pull request would; null clears it. */
   refuseCreate(message: string | null): void;
   pullRequests(): StandInPullRequest[];
+  /** Open a pull request whose head branch lives in a fork, as a stranger's would; returns its URL. */
+  openFromFork(head: string, base: string): string;
   /** The argv of every gh invocation so far, in order. */
   calls(): string[][];
+  /** Make every later `gh pr close` fail with this message, as GitHub refusing the close would; null clears it. */
+  refuseClose(message: string | null): void;
+  /** Close a pull request without merging it, as the owner closing it on GitHub would. */
+  closePullRequest(url: string): void;
   /** Mark a pull request merged at this head commit, as merging it on GitHub would. Moves no branch: merge into origin yourself. */
   mergePullRequest(url: string, headRefOid: string, mergeCommit?: string): void;
+  /** GitHub reports this head for the pull request whatever origin holds, as when GitHub is ahead of the git server. */
+  reportHead(url: string, headRefOid: string): void;
   /**
    * Merge a pull request on `origin` by `method`, as GitHub would, and mark it merged. The head is read from origin's head
    * branch now. Pushes the base and `refs/pull/<number>/head`. Returns the base's new commit.
@@ -76,6 +88,7 @@ export interface GhStandIn {
 interface StandInState {
   mode: GhStandInMode;
   refusal: string | null;
+  closeRefusal?: string | null;
   pullRequests: StandInPullRequest[];
   issues: StandInIssue[];
   labels: string[];
@@ -165,6 +178,21 @@ if (group === "pr" && command === "edit") {
   process.exit(0);
 }
 
+if (group === "pr" && command === "close") {
+  if (state.closeRefusal) fail(state.closeRefusal, 1);
+  const pr = state.pullRequests.find((p) => p.url === rest[0]);
+  if (!pr) fail("no pull requests found for " + rest[0], 1);
+  if (pr.state === "CLOSED") {
+    process.stderr.write("! Pull request " + pr.url.replace(/^.*\/pull\//, "#") + " (" + pr.title + ") is already closed\n");
+    process.exit(0);
+  }
+  pr.state = "CLOSED";
+  if (flags.comment !== undefined) pr.comments = (pr.comments || []).concat([flags.comment]);
+  fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
+  process.stderr.write("✓ Closed pull request " + pr.url.replace(/^.*\/pull\//, "#") + " (" + pr.title + ")\n");
+  process.exit(0);
+}
+
 // gh api's -f/-F (and --raw-field/--field) take "key=value" as the next argument.
 function fieldsOf(args) {
   const fields = {};
@@ -209,7 +237,7 @@ if (group === "api" && command === "graphql") {
         .filter((pr) => pr.head === head && wanted.includes(pr.state || "OPEN"))
         .map((pr) => ({
           url: pr.url, state: pr.state || "OPEN", headRefName: pr.head, headRefOid: pr.headRefOid || remoteHead(head), baseRefName: pr.base,
-          mergeCommit: pr.mergeCommit ? { oid: pr.mergeCommit } : null,
+          isCrossRepository: pr.fork === true, mergeCommit: pr.mergeCommit ? { oid: pr.mergeCommit } : null,
         }));
       repository["p" + alias[1]] = { nodes };
     }
@@ -319,9 +347,31 @@ export function createGhStandIn(): GhStandIn {
     binDir,
     setMode: (mode) => write({ ...read(), mode }),
     refuseCreate: (message) => write({ ...read(), refusal: message }),
+    refuseClose: (message) => write({ ...read(), closeRefusal: message }),
     pullRequests: () => read().pullRequests,
+    openFromFork: (head, base) => {
+      const state = read();
+      const url = "https://github.com/example/project/pull/" + (state.pullRequests.length + 1);
+      state.pullRequests.push({ url, head, base, title: "T", body: "B", state: "OPEN", fork: true });
+      write(state);
+      return url;
+    },
     calls: () => read().calls ?? [],
+    closePullRequest: (url) => {
+      const state = read();
+      const pr = state.pullRequests.find((p) => p.url === url);
+      if (!pr) throw new Error(`no pull request ${url}`);
+      pr.state = "CLOSED";
+      write(state);
+    },
     mergePullRequest,
+    reportHead: (url, headRefOid) => {
+      const state = read();
+      const pr = state.pullRequests.find((p) => p.url === url);
+      if (!pr) throw new Error(`no pull request ${url}`);
+      pr.headRefOid = headRefOid;
+      write(state);
+    },
     merge: (url, method, origin) => {
       const pr = read().pullRequests.find((p) => p.url === url);
       if (!pr) throw new Error(`no pull request ${url}`);

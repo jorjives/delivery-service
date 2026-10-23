@@ -63,6 +63,16 @@ describe("listPullRequests", () => {
     expect(gh.calls().length - before).toBe(1);
   });
 
+  it("ignores a pull request from a fork whose branch has the same name", async () => {
+    const { repo } = repoWithOrigin();
+    const gh = createGhStandIn();
+    gh.openFromFork("a", "main");
+    const own = create(gh, repo, "a");
+    const listing = await listPullRequests(repo, { heads: ["a"] }, { state: "all", command: gh.command });
+    expect(listing).toMatchObject({ ok: true, pullRequests: [{ url: own }] });
+    expect(listing.ok && listing.pullRequests).toHaveLength(1);
+  });
+
   it("asks gh nothing for no heads", async () => {
     const { repo } = repoWithOrigin();
     const gh = createGhStandIn();

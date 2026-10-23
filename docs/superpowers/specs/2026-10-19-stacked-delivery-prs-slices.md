@@ -1,6 +1,7 @@
 # Delivery Service: Stacked Delivery Pull Requests — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-10-19-stacked-delivery-prs-design.md`
+> **Status:** ✅ Complete — 2026-10-22 — all 6 slices delivered
 > Next step: invoke writing-plans with this document
 
 **Audience note:** as in the earlier scopes, the product surface is the `delivery` command, so
@@ -244,6 +245,8 @@ never stranded or made to conflict.
 
 ## Slice 5: Close a Pull Request to Say No, and the Item Is Done Again
 
+**Status:** ✅ Complete — 2026-10-22 — `715e9a4`
+
 **Delivers:** Closing a stacked pull request without merging it makes the harness drop that level
 and everything built on it, and deliver the item again.
 
@@ -287,6 +290,9 @@ resting on something that was rejected.
 ---
 
 ## Slice 6: Fix a Pull Request in Place and the Stack Keeps Up
+
+**Status:** ✅ Complete — 2026-10-22 — `245b160`
+**Tests:** ✅ Recorded — 2026-10-22 — `9119c7f` — cli — 1 UAT + 3 AC, 2 skipped
 
 **Delivers:** The operator pushes a fix to a stacked pull request's branch and the next run adopts
 it and moves the levels above onto it, rather than overwriting it.

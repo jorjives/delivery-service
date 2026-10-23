@@ -151,7 +151,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const waiting = (await readDelivery(deliveryLedger, branch)).pending.length > 0;
   const mergedOnGitHub = !stacked && asksGitHub && (await deliveryMerged(repoPath, mergedTips));
   const stackReconciled = stacked
-    ? await reconcileStackBranch(repoPath, deliveryLedger, { gateRef: project.gateRef, itemLedger: path, env: ctx.env, opens: claims.length > 0 || waiting })
+    ? await reconcileStackBranch(repoPath, deliveryLedger, { gateRef: project.gateRef, itemLedger: path, env: ctx.env, opens: claims.length > 0 || waiting, parkAfter })
     : undefined;
   const reconciled = stackReconciled ?? (claims.length === 0 && !waiting && !mergedOnGitHub
     ? undefined

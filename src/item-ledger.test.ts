@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { git } from "../tests/helpers.js";
 import { initTempRepo } from "./temp-repo.js";
-import { awaitsMerge, classOf, foldLedger, ledgerPath, parkedItems, readItemLedger, recordAnswer, recordDispatched, recordMoved, recordUnpark, settleRun } from "./item-ledger.js";
+import { awaitsMerge, classOf, foldLedger, ledgerPath, parkedItems, readItemLedger, recordAnswer, recordDispatched, recordMoved, recordReleased, recordUnpark, settleRun } from "./item-ledger.js";
 import { deliveryLedgerPath, readDelivery } from "./delivery-ledger.js";
 import type { CaseFile, CaseFileOutcome } from "./schema.js";
 import type { RunRecord } from "./run-records.js";
@@ -88,6 +88,29 @@ describe("the ledger", () => {
     await recordDispatched(path, KEY, "gone", "Greet people.");
     const state = await settleRun(path, KEY, recordWith("gone", { kind: "closed", source: "closer", reason: "r", at }, repo), 3);
     expect(state.commit).toBe(git(repo, ["rev-parse", "main"]));
+  });
+
+  it("releases a delivered item whose level was dropped: no longer awaiting merge, no attempt counted", async () => {
+    const repo = initTempRepo("ledger-", { "package.json": "{}" });
+    const path = scratch();
+    git(repo, ["branch", "delivery/main"]);
+    await recordDispatched(path, KEY, "r1", "Greet people.");
+    await settleRun(path, KEY, recordWith("r1", { kind: "closed", source: "closer", reason: "r", at }, repo), 3);
+    expect(await recordReleased(path, KEY, { rejected: false, parkAfter: 3 })).toMatchObject({ lastClass: null, branch: null, commit: null, attempts: 0, parked: null });
+    expect(await awaitsMerge(repo, (await readItemLedger(path)).get(KEY))).toBe(false);
+  });
+
+  it("counts a rejected level across its redeliveries, and parks the item after parkAfter rejections", async () => {
+    const repo = initTempRepo("ledger-", { "package.json": "{}" });
+    const path = scratch();
+    for (const [i, parked] of [[1, null], [2, null], [3, "attempts"]] as const) {
+      await recordDispatched(path, KEY, `r${i}`, "Greet people.");
+      await settleRun(path, KEY, recordWith(`r${i}`, { kind: "closed", source: "closer", reason: "r", at }, repo), 3);
+      expect(await recordReleased(path, KEY, { rejected: true, parkAfter: 3 })).toMatchObject({ rejections: i, parked });
+    }
+    expect((await readItemLedger(path)).get(KEY)?.parked).toBe("attempts");
+    await recordUnpark(path, KEY);
+    expect((await readItemLedger(path)).get(KEY)?.rejections).toBe(0);
   });
 
   it("drops an unparked item's state back to fresh", async () => {

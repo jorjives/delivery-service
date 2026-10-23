@@ -257,7 +257,9 @@ Each step takes:
 | `guards` | Object | `add` and `off` lists of [guards](#guards), for this step only |
 | `continue` | `true` or `false` | Picks up the previous step's agent session. Not allowed on the first step |
 
-A step's prompt can use `{{task.<field>}}` for any field of the task, such as `{{task.body}}`.
+A step's prompt can use `{{task.<field>}}` for any field of the task, such as `{{task.body}}`. A string is written as it is, and a number or `true` or `false` as written. Any other value, such as an object, an array or `null`, is written as compact JSON, for example `{"id":7}` or `["a","b"]`.
+
+Interpolated text is placed among the step's instructions. When it comes from an issue tracker, where anyone may write, approve the issue with the label as carefully as you would approve an instruction. See [work sources](work-sources.md).
 
 ```json
 "workflows": {
