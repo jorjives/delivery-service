@@ -209,6 +209,7 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 6: Machines Without a Scheduler Get a Crontab Line per Schedule, and the Docs Say How
 
+**Tests:** ✅ Recorded — 2026-10-23 — `722fcb2` — cli (vitest) — 1 UAT + 5 AC checks, 0 skipped
 **Delivers:** On a machine where no scheduler backend is available, `schedule enable` explains why and prints a ready-to-paste crontab line for each schedule, and the user documentation covers named schedules end to end.
 
 **Operational note:** The documentation set (scheduling guide and CLI reference) gains a worked two-schedule example, the idle option and the exclusion behaviour, and a release note is recorded.
