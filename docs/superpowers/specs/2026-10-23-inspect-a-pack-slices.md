@@ -7,6 +7,7 @@
 
 ## Slice 1: Read a built-in pack in plain words
 
+**Status:** ✅ Complete — 2026-10-23 — `52b38bf`
 **Tests:** ✅ Recorded — 2026-10-23 — `a9972ec` — cli — 1 UAT + 9 AC, 0 skipped
 **Delivers:** A project owner can ask what a built-in pack will do and get an account in plain sentences, followed by every instruction the pack gives the agent, without running anything.
 
