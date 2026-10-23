@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { backendContract } from "./backend.contract.js";
 import { DEFAULT_NAME, parseInterval, type Schedule } from "./model.js";
 import { createSystemctlStandIn } from "../../systemctl-stand-in.js";
-import { NO_SYSTEMCTL, MARKER, TEST_SYSTEMCTL, execTokens, parseShow, serviceUnit, systemdBackend, timerUnit, unitDir, unitName } from "./systemd.js";
+import { NO_SYSTEMCTL, MARKER, TEST_SYSTEMCTL, execTokens, needsUserTimers, parseShow, serviceUnit, systemdBackend, timerUnit, unitDir, unitName } from "./systemd.js";
 
 const target: Schedule = {
   repoPath: "/home/op/my project",
@@ -88,7 +88,7 @@ describe("systemd scheduler backend", () => {
 
   it("reports that systemctl is missing when the probe cannot run it", async () => {
     const env = { XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), "systemd-only-config-")), [TEST_SYSTEMCTL]: join(tmpdir(), "no-such-systemctl") };
-    expect(await systemdBackend.probe(env)).toEqual({ ok: false, reason: NO_SYSTEMCTL });
+    expect(await systemdBackend.probe(env)).toEqual({ ok: false, reason: needsUserTimers(NO_SYSTEMCTL) });
   });
 
   it("gives a named schedule the journal command for its own unit", () => {

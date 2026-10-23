@@ -10,6 +10,7 @@ import { delivery, PACKAGE } from "./command-fixtures.js";
 import { NO_SUCH_CONFIG } from "./config.js";
 import { EXIT } from "./failures.js";
 import { findRepository } from "./project.js";
+import { noBackend, TEST_PLATFORM } from "./schedule/backend.js";
 import { badInterval, badName, emptySetting } from "./schedule/model.js";
 import { execTokens, NO_SYSTEMCTL, parseShow, TEST_SYSTEMCTL, unitName } from "./schedule/systemd.js";
 import { allAlreadyOff, alreadyOff, BY_HAND, heldElsewhere, journalHint, lastRun, NAME_AND_ALL, nextRun, noSuchSchedule, runSettings, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
@@ -33,6 +34,11 @@ async function sibling(repo: string, suffix: string): Promise<string> {
   execFileSync("git", ["init", "-q"], { cwd: path, env: cleanGitEnv() });
   return findRepository(path);
 }
+
+it("uses the platform the seam names, so tests never depend on the host", async () => {
+  const { repo, env } = await project();
+  expect((await delivery(["schedule", "enable", "--every", "5m"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+});
 
 describe("delivery schedule enable", () => {
   it("installs and starts a timer running delivery run --sources on the interval, catching up missed runs", async () => {
@@ -99,6 +105,28 @@ describe("delivery schedule enable", () => {
     expect(stderr).toContain(NO_SYSTEMCTL);
     expect(stderr).toMatch(/^0 \*\/1 \* \* \* cd /m);
     expect(existsSync(units)).toBe(false);
+  });
+
+  it("refuses where systemd has no user manager in the words it always used", async () => {
+    const { repo, standIn, env } = await project();
+    standIn.noBus();
+    const { stderr } = await delivery(["schedule", "enable", "--every", "5m"], { cwd: repo, env });
+    expect(stderr).toContain("This machine can't run delivery on a schedule: it needs systemd's user timers, and systemctl --user said: Failed to connect to bus: No medium found.\n");
+  });
+
+  it("refuses on a platform with no scheduler backend, printing the schedule's crontab line and the missed-run caveat", async () => {
+    const { repo, units, standIn, env } = await project();
+    const { exitCode, stderr } = await delivery(
+      ["schedule", "enable", "--name", "nightly", "--every", "1d", "--workflow", "deep", "--max", "3"],
+      { cwd: repo, env: { ...env, [TEST_PLATFORM]: "darwin" } });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(`This machine can't run delivery on a schedule: ${noBackend("darwin")}.`);
+    expect(stderr).toContain("Cron skips a run missed while the machine is off");
+    const lines = stderr.split("\n").filter((line) => line.includes(" run --sources"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(new RegExp(`^0 0 \\* \\* \\* cd '${repo}' && PATH='/opt/tools:/usr/bin' '.+' '.+main\\.js' run --sources --workflow deep --max 3 --if-idle$`));
+    expect(existsSync(units)).toBe(false);
+    expect(standIn.calls()).toEqual([]);
   });
 
   it("sets up a named schedule alongside the default one", async () => {
@@ -181,6 +209,14 @@ describe("delivery schedule enable", () => {
 });
 
 describe("delivery schedule status", () => {
+  it("says scheduling is off on a platform with no scheduler backend, without asking systemd", async () => {
+    const { repo, standIn, env } = await project();
+    const { exitCode, stdout } = await delivery(["schedule", "status"], { cwd: repo, env: { ...env, [TEST_PLATFORM]: "darwin" } });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(scheduledOff(repo));
+    expect(standIn.calls()).toEqual([]);
+  });
+
   it("says scheduling is on, and when it last and next ran, as systemd reports", async () => {
     const { repo, name, standIn, env } = await project();
     await delivery(["schedule", "enable", "--every", "5m"], { cwd: repo, env });
@@ -350,6 +386,22 @@ describe("delivery schedule status", () => {
 });
 
 describe("delivery schedule disable", () => {
+  it("says the named schedule is already off on a platform with no scheduler backend, without asking systemd", async () => {
+    const { repo, standIn, env } = await project();
+    const { exitCode, stdout } = await delivery(["schedule", "disable", "--name", "nightly"], { cwd: repo, env: { ...env, [TEST_PLATFORM]: "darwin" } });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(alreadyOff("nightly", repo));
+    expect(standIn.calls()).toEqual([]);
+  });
+
+  it("says every schedule is already off on a platform with no scheduler backend, without asking systemd", async () => {
+    const { repo, standIn, env } = await project();
+    const { exitCode, stdout } = await delivery(["schedule", "disable", "--all"], { cwd: repo, env: { ...env, [TEST_PLATFORM]: "darwin" } });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain(allAlreadyOff(repo));
+    expect(standIn.calls()).toEqual([]);
+  });
+
   it("stops and removes the timer, leaving the project to run by hand", async () => {
     const { repo, units, name, standIn, env } = await project();
     await delivery(["schedule", "enable", "--every", "5m"], { cwd: repo, env });

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
-import { selectBackend, type InstalledSchedule } from "./schedule/backend.js";
+import { platformOf, selectBackend, type InstalledSchedule } from "./schedule/backend.js";
 import { cronLine } from "./schedule/cron.js";
 import { BARE_ARG, DEFAULT_INTERVAL, describeSchedule, parseInterval, parseName, parseScheduleArgs, settingsArgs, type Schedule, type ScheduleArgs, type ScheduleFlags } from "./schedule/model.js";
 
@@ -15,8 +15,8 @@ export interface ScheduleOptions extends ScheduleFlags {
 }
 
 export const unsupported = (reason: string, line: string): string =>
-  `This machine can't run delivery on a schedule: it needs systemd's user timers, and ${reason}.\n` +
-  `Add this line to your own scheduler (crontab -e) instead. Unlike the timer, cron skips a run missed while the machine is off:\n${line}`;
+  `This machine can't run delivery on a schedule: ${reason}.\n` +
+  `Add this line to your own crontab (crontab -e) instead. Cron skips a run missed while the machine is off:\n${line}`;
 export const scheduledOn = (description: string, catchesUp: boolean): string =>
   `Scheduling is on: ${description}. ` +
   (catchesUp
@@ -67,7 +67,7 @@ export async function scheduleEnableCommand(options: ScheduleOptions, ctx: Comma
     launcher: { node: process.execPath, main: MAIN, path: ctx.env.PATH ?? "" },
     args,
   };
-  const backend = selectBackend();
+  const backend = selectBackend(platformOf(ctx.env));
   const probe = await backend.probe(ctx.env);
   if (!probe.ok) throw new Refusal(unsupported(probe.reason, cronLine(schedule)), EXIT.configuration);
 
@@ -86,7 +86,7 @@ export async function scheduleEnableCommand(options: ScheduleOptions, ctx: Comma
 export async function scheduleStatusCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
   const repoPath = await repositoryOf(options, ctx);
   const wanted = options.name === undefined ? undefined : parseName(options.name);
-  const installed = await selectBackend().list(repoPath, ctx.env);
+  const installed = await selectBackend(platformOf(ctx.env)).list(repoPath, ctx.env);
   const shown = wanted === undefined ? installed : installed.filter((schedule) => schedule.name === wanted);
   if (wanted !== undefined && shown.length === 0) {
     ctx.writeLine(noSuchSchedule(wanted, repoPath));
@@ -116,7 +116,7 @@ export async function scheduleDisableCommand(options: ScheduleOptions, ctx: Comm
   if (options.all) return disableAllSchedules(options, ctx);
   const name = parseName(options.name);
   const repoPath = await repositoryOf(options, ctx);
-  const removed = await selectBackend().remove(repoPath, name, ctx.env);
+  const removed = await selectBackend(platformOf(ctx.env)).remove(repoPath, name, ctx.env);
   if (removed) {
     ctx.writeLine(turnedOff(name, repoPath));
     ctx.writeLine(BY_HAND);
@@ -129,7 +129,7 @@ export async function scheduleDisableCommand(options: ScheduleOptions, ctx: Comm
 /** `delivery schedule disable --all`: remove every schedule this project has, default first, then by name. */
 async function disableAllSchedules(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
   const repoPath = await repositoryOf(options, ctx);
-  const backend = selectBackend();
+  const backend = selectBackend(platformOf(ctx.env));
   const installed = await backend.list(repoPath, ctx.env);
   if (installed.length === 0) {
     ctx.writeLine(allAlreadyOff(repoPath));

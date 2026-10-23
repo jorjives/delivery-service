@@ -13,6 +13,9 @@ export type SystemctlResult = { ok: true; stdout: string } | { ok: false; reason
 
 export const NO_SYSTEMCTL = "systemctl isn't installed";
 
+/** The probe's reason when systemd's user manager cannot be reached. */
+export const needsUserTimers = (detail: string): string => `it needs systemd's user timers, and ${detail}`;
+
 /** The `[Unit]` key that records which schedule a unit pair is, so a repository's schedules are found without a registry. */
 export const MARKER = "X-Delivery-Schedule";
 
@@ -209,7 +212,7 @@ const byName = (a: InstalledSchedule, b: InstalledSchedule): number => {
 export const systemdBackend: SchedulerBackend = {
   async probe(env) {
     const result = await systemctl(env, ["show-environment"]);
-    return result.ok ? { ok: true, catchesUp: true } : { ok: false, reason: result.reason };
+    return result.ok ? { ok: true, catchesUp: true } : { ok: false, reason: needsUserTimers(result.reason) };
   },
 
   async install(schedule, env) {

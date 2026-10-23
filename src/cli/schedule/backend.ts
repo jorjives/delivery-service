@@ -31,6 +31,30 @@ export interface SchedulerBackend {
   logCommand(repoPath: string, name: string): string;
 }
 
-export function selectBackend(): SchedulerBackend {
-  return systemdBackend;
+/** The contributor seam that names the platform in tests, so they never depend on the host. */
+export const TEST_PLATFORM = "DELIVERY_TEST_PLATFORM";
+export const platformOf = (env: NodeJS.ProcessEnv): string => env[TEST_PLATFORM] ?? process.platform;
+export const noBackend = (platform: string): string => `${platform} has no scheduler backend yet`;
+
+/** Reached only after a failed probe, which the caller checks first; anything else is a programming error. */
+const unreachable = (): never => {
+  throw new Error("no scheduler backend on this platform; install and logCommand need a passing probe first");
+};
+
+const noBackendOn = (platform: string): SchedulerBackend => ({
+  async probe() {
+    return { ok: false, reason: noBackend(platform) };
+  },
+  install: async () => unreachable(),
+  async remove() {
+    return false;
+  },
+  async list() {
+    return [];
+  },
+  logCommand: () => unreachable(),
+});
+
+export function selectBackend(platform: string): SchedulerBackend {
+  return platform === "linux" ? systemdBackend : noBackendOn(platform);
 }

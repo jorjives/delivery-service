@@ -23,6 +23,7 @@ import { runCli } from "./program.js";
 import { prepareRunDir, runIdFor, runPlace, runsRoot, supervisedPlace } from "../run-location.js";
 import { DEFAULT_CLOSER } from "./settings.js";
 import { TEST_SYSTEMCTL } from "./schedule/systemd.js";
+import { TEST_PLATFORM } from "./schedule/backend.js";
 
 export { runsRoot };
 
@@ -92,6 +93,7 @@ export async function delivery(args: string[], { cwd, env = {}, isTTY = false, a
       XDG_CONFIG_HOME: mkdtempSync(join(tmpdir(), "command-config-")),
       [TEST_BWRAP]: NO_BWRAP,
       [TEST_SYSTEMCTL]: NO_SYSTEMCTL_STAND_IN,
+      [TEST_PLATFORM]: "linux",
       ...env,
     },
     stdin: Object.assign(Readable.from(answers.map((answer) => `${answer}\n`)), { isTTY: answers.length > 0 || undefined }),
