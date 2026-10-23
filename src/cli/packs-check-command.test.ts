@@ -9,7 +9,7 @@ import { delivery } from "./command-fixtures.js";
 import { EXIT, Refusal } from "./failures.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import type { PackCheck } from "./pack-check.js";
-import { builtInPackClash, packWorkflowClash } from "./pack-workflows.js";
+import { builtInPackClash } from "./pack-workflows.js";
 import { checkingLine, NEEDS_CONFIRMATION, NOT_TRUSTED, PACK_SENT_NOTHING, packsCheckCommand, readyLine, SENT_NOTHING } from "./packs-check-command.js";
 
 const CHECK_TIMEOUT = 120_000;

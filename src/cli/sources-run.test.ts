@@ -611,7 +611,7 @@ describe("delivery run --sources", () => {
     const repo = project({ "delivery.config.json": JSON.stringify({ workflows: { quiet: { steps: [{ name: "do", prompt: "do it" }] } } }) });
     const { exitCode, stderr } = await delivery(["run", "--sources", "--workflow", "nope"], { cwd: repo, env: { XDG_STATE_HOME: stateDir() } });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stderr).toContain(unknownWorkflow("nope", ["quiet", "code:scan", "code:fix", "security:scan", "security:fix"]));
+    expect(stderr).toContain(unknownWorkflow("nope", ["quiet", "code:scan", "code:fix", "deprecations:scan", "deprecations:code", "deprecations:tests", "security:scan", "security:fix"]));
     expect(await allRuns(repo)).toEqual([]);
   });
 
