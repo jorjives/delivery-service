@@ -92,6 +92,7 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 3: Prove a pack works end to end before sharing it
 
+**Status:** ✅ Complete — 2026-10-23 — `de3532f`
 **Tests:** ✅ Recorded — 2026-10-23 — `c1613db` — cli (vitest) — 1 UAT (covers AC 1-2) + 3 AC, 0 skipped
 
 **Delivers:** Priya can run `delivery packs check` on a pack of the new format and watch the scripted find, approval and every act run, with a refused cheat, using no real agent and in the pack's own workflow names.
