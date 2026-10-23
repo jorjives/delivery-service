@@ -78,6 +78,22 @@ export function runGuideTest(file: string, env?: NodeJS.ProcessEnv): { stdout: s
 /** Text with every run of whitespace as one space, so a match on prose does not depend on where a page wraps. */
 export const flatten = (text: string): string => text.replace(/\s+/g, " ");
 
+/** A page's opening paragraph: the first block of lines after its `# ` heading, skipping YAML front matter, flattened. */
+export function firstParagraph(markdown: string): string {
+  const lines = markdown.replace(/^---\n[^]*?\n---\n/, "").split("\n");
+  const heading = lines.findIndex((line) => line.startsWith("# "));
+  if (heading === -1) throw new Error("the page has no # heading");
+  const block: string[] = [];
+  for (const line of lines.slice(heading + 1)) {
+    if (line.trim() === "") {
+      if (block.length > 0) break;
+      continue;
+    }
+    block.push(line);
+  }
+  return flatten(block.join("\n"));
+}
+
 /** Slices a UAT demo's numbered console output between two section headings. */
 export function sectionOf(stdout: string, from: string, to?: string): string {
   const start = stdout.indexOf(from);
