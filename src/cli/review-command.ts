@@ -5,7 +5,7 @@ import { heldFollowUps } from "../follow-ups.js";
 import { projectPath } from "../item-check.js";
 import { ledgerPath } from "../item-ledger.js";
 import { resolveBaseRef } from "../provision.js";
-import { resolvePack, scanWorkflowOf, type Pack } from "../packs/manifest.js";
+import { resolvePack, type Pack } from "../packs/manifest.js";
 import { runIdFor } from "../run-location.js";
 import type { RunRecord } from "../run-records.js";
 import { taskIntent } from "../task-list.js";
@@ -67,11 +67,12 @@ export async function reviewCommand(packName: string, repoArg: string | undefine
   const repoPath = await findRepository(startDir);
   const { config, packs } = await loadConfigAndPacks({ startDir, repoPath, flag: undefined, env: ctx.env });
   const pack = await resolvePack(packName, ctx.cwd, packs);
-  const workflowName = scanWorkflowOf(pack.manifest.name);
-  if (config.workflows?.[workflowName] === undefined) throw new Refusal(packNotListed(pack), EXIT.configuration);
+  const workflowName = pack.find;
+  const findSteps = config.workflows?.[workflowName]?.steps;
+  if (findSteps === undefined) throw new Refusal(packNotListed(pack), EXIT.configuration);
   const part = options.path === undefined ? undefined : await partToReview(ctx.cwd, options.path);
   const taskDef = reviewTask(pack, part);
-  if (options.preview === true) return previewCommand({ repo: repoPath, role: "worker", step: "scan", workflow: workflowName, task: taskIntent(taskDef) }, ctx);
+  if (options.preview === true) return previewCommand({ repo: repoPath, role: "worker", step: findSteps[0]?.name, workflow: workflowName, task: taskIntent(taskDef) }, ctx);
 
   // Scanning drives the checkout as any run does, so the review holds the repository while its agent works.
   return holdingRepo(repoPath, {}, ctx, async () => {

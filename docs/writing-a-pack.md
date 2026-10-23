@@ -92,7 +92,7 @@ This is a complete `delivery.pack/3` manifest: a find called `scan` that offers 
 
 Save it as `pack.json`. Put `scan.md`, `code.md` and `tests.md` beside it with your instructions, list the folder under `packs`, and `delivery packs` lists it.
 
-In this release, `delivery review` and `delivery packs check` still run only `delivery.pack/2` packs. Running a `delivery.pack/3` pack's find with them comes in a later release.
+`delivery review <name>` starts a `delivery.pack/3` pack's find, whatever it is called. In this release `delivery packs check` still checks only `delivery.pack/2` packs; checking a `delivery.pack/3` pack end to end comes in a later release.
 
 ## The delivery.pack/3 manifest, field by field
 

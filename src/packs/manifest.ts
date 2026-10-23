@@ -10,8 +10,6 @@ import type { WorkflowConfig } from "../cli/config.js";
 import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, upgradeV2, type PackSchemaVersion } from "./pack-format.js";
 import { formatSentence, ruleProblems } from "./pack-rules.js";
 
-export const scanWorkflowOf = (name: string): string => `${name}:scan`;
-
 /** One act workflow a find's ideas may name, and what it is for, in the words the scanner is shown. */
 export interface IdeaTarget {
   workflow: string;
