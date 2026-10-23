@@ -173,6 +173,7 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 5: Similarly Named Projects Never See or Overwrite Each Other's Schedules
 
+**Status:** ✅ Complete — 2026-10-23 — `a4be3e6`
 **Tests:** ✅ Recorded — 2026-10-23 — `55135b5` — cli (vitest) — 1 UAT + 4 AC checks, 0 skipped
 **Delivers:** Schedules are attributed to exactly the project they were made for, so projects with similar paths or names that could clash stay separate.
 
