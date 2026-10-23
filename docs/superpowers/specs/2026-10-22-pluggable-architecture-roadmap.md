@@ -95,6 +95,7 @@ merges. The built-in non-review pack should run end to end against the scripted 
 
 ### Item 2: Inspect a pack before trusting it
 
+**Spec:** `docs/superpowers/specs/2026-10-23-inspect-a-pack-design.md`
 **Delivers:** A project owner can see exactly what a pack will tell the agent to do and
 what it is allowed to touch, before it is installed or run.
 
