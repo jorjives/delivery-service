@@ -7,6 +7,7 @@
     {
       "name": "reinstall",
       "run": "make reinstall",
+      "in": "base",
       "check": "test -f $HOME/.local/lib/node_modules/delivery-service/dist/stack-pr-closer.js"
     }
   ],
