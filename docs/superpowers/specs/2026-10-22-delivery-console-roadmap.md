@@ -2,7 +2,7 @@
 
 > **Type:** new-project (a graphical front end for an existing tool)
 > **Created:** 2026-10-22
-> **Revised:** 2026-10-23 (aligned with delivered named schedules and the pluggable architecture roadmap; riskiest items moved earlier)
+> **Revised:** 2026-10-23
 
 ## Context
 
@@ -108,8 +108,6 @@ running now.
 - Closing the window or stopping the command leaves no process running
 - The same walkthrough passes on macOS, Windows and Linux, and the spec lists what in the CLI
   is Linux-specific (gate commands run through a shell, path handling, detaching a process)
-- The spec prices the desktop shell options, including code signing and notarisation on macOS
-  and Windows, so the shell decision is made knowing the cost
 - One person who does not use a terminal is watched using it, and what they could not do is recorded
 
 **Dependencies:**
@@ -118,13 +116,12 @@ running now.
 **Detail level:** brief
 
 **Notes:** Stubs on purpose: one project given by folder path, no registry, no actions, no
-history beyond the latest run, desktop shell absent. Proves the shell choice, the CLI-as-API
-principle and the Ember pipeline (token CSS and components copied from the mirror, never linked
-into `~/dev/design-systems`) before anything depends on them. Also the right moment to confirm
-that the existing `delivery.report/1` document carries everything a status screen needs.
-This item carries the platform and audience risk the roadmap would otherwise meet at the end:
-if it cannot run on all three systems, or a non-terminal person cannot read it, the later items
-are revised now, while they are cheap.
+history beyond the latest run, desktop shell absent. Proves the shell choice (priced here,
+including signing and notarisation; see the decisions table), the CLI-as-API principle and the
+Ember pipeline before anything depends on them. Also the right moment to confirm that the
+existing `delivery.report/1` document carries everything a status screen needs. If it cannot
+run on all three systems, or a non-terminal person cannot read it, the later items are revised
+now, while they are cheap.
 
 ---
 
@@ -188,9 +185,9 @@ its schedules, its workflows and their steps, its task list and its backlog.
 **Notes:** Read only by design, so the rest of the roadmap adds actions to screens the person
 already trusts. Where a project uses packs, the packs it names are listed with their workflows;
 showing what a pack will tell the agent reuses the inspection output once that is built
-(`2026-10-23-inspect-a-pack-design.md`), and is not a prerequisite. A person on a system with no
-scheduler adapter sees schedules as unavailable, with the reason. The sentence-level wording of config concepts (gate, closer, workflow, source)
-is a content task that belongs in this item's spec; `docs/glossary.md` is the starting point.
+(`2026-10-23-inspect-a-pack-design.md`), and is not a prerequisite. The sentence-level wording of
+config concepts (gate, closer, workflow, source) is a content task that belongs in this item's
+spec; `docs/glossary.md` is the starting point.
 
 ---
 
@@ -258,8 +255,9 @@ the console cannot disagree with what will actually happen.
 will be told, and can stop or resume one.
 
 **Success criteria:**
-- From a project, a person can choose to run a typed task, the next item from the backlog, or a
-  named workflow, and starts it with one confirmation
+- From a project, a person can choose to run a typed task, the next item from the backlog, a
+  named workflow, or a pack workflow (a review, or any other find-then-act job) from those
+  available to the project, and starts it with one confirmation
 - Before it starts, the console shows the instructions the agent will receive, the same text
   `delivery preview` prints, and the check that will decide the result
 - A run already going on the project is shown, and starting a second is refused with the reason,
@@ -275,6 +273,7 @@ will be told, and can stop or resume one.
 - A person can preview what the agent will be told (exists: `delivery preview`)
 - Runs refuse to overlap on one project (exists: the named-schedules design, repository lock for
   every run, delivered)
+- Packs can describe workflows of any shape (exists: packs for any workflow, delivered)
 
 **Detail level:** brief
 
@@ -299,8 +298,6 @@ decision, and can resolve each without a terminal.
   an action that changes shared history (landing a fix) needs an explicit confirmation
 - An item that stops needing a decision (resolved from the terminal, or delivered) leaves the
   list on the next view without a manual refresh
-- A person can run a pack workflow (a review, or any other find-then-act job) from a list of
-  those available to the project, and the ideas it finds arrive in this list
 - While the console is open, a desktop notification appears when a project needs a decision or
   a run fails, and not for routine success
 
@@ -309,7 +306,6 @@ decision, and can resolve each without a terminal.
 - A person can start and follow a run
 - A person can approve, decline, sign off, reject, answer and unpark from the command line
   (exists)
-- Packs can describe workflows of any shape (exists: packs for any workflow, delivered)
 
 **Detail level:** brief
 
@@ -434,11 +430,9 @@ text.
 
 ## Ember gaps
 
-Ember has Button, IconButton, Input, Select, Switch, SegmentedControl, Card, ActivityRow,
-Disclosure, Tabs, Badge, StatusPill, StatusDot, ProgressBar, Stat, CodeBlock, EmptyState, Kbd,
-Menu, ThemeToggle, DensityControl, and UI kits for `spec-view` and `systemd-viewer`. The roadmap
-needs components it does not yet have. To be designed in Claude Design and re-pulled with
-`~/dev/design-systems/refresh.sh ember`, not hand-rolled, ahead of the item that needs each:
+The roadmap needs components Ember (`~/dev/design-systems/ember/`) does not yet have. To be
+designed in Claude Design and re-pulled with `~/dev/design-systems/refresh.sh ember`, not
+hand-rolled, ahead of the item that needs each:
 
 | Component | Needed by |
 |---|---|
@@ -460,8 +454,6 @@ needs components it does not yet have. To be designed in Claude Design and re-pu
 - **Event triggers in the console** (run on a pull request, on a webhook). Reason: event
   triggers (Item 13 of the pluggable architecture roadmap) have not been built; the console
   surfaces them once they exist.
-- **Scheduling on macOS and Windows as a console item.** Reason: delivered by Item 10 of the
-  pluggable architecture roadmap as a scheduler plugin; building it here would make two.
 - **Installing and managing packs and plugins from the console, and console extension points.**
   Reason: depends on pack installation and the plugin trust model (Items 3, 7 and 8 of the
   pluggable architecture roadmap), none built; revisit once they are.
