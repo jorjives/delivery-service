@@ -204,7 +204,7 @@ export const DeliveryConfig = z
     fence: FenceSetting.optional(),
     // Named ways of doing a task in more than one checked step, chosen with `delivery run --workflow <name>`.
     workflows: z.record(Written, WorkflowConfig).optional(),
-    // Review folders of the project's own, relative to this file; each adds its <name>:scan and <name>:fix workflows (spec 5.13).
+    // Pack folders of the project's own, relative to this file; each adds the workflows it holds, named <pack>:<workflow> (spec 5.13).
     packs: z.array(Written).optional(),
     // Where `delivery run --sources` finds work, in order; a fallback is read only when nothing else has any.
     sources: z.array(SourceConfig).min(1).optional(),
@@ -291,7 +291,7 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     'It says whether the agent works inside a fence that keeps your main folder read-only: "preferred", "required" or "off", ' +
     'or an object such as `{ "mode": "required", "devices": ["/dev/kvm"] }`.',
   packs:
-    'It is a list of folders of review packs of your own, relative to this file, such as `["reviews/mine"]`: each adds its `<name>:scan` and `<name>:fix` workflows.',
+    'It is a list of folders of packs of your own, relative to this file, such as `["reviews/mine"]`: each adds its workflows, named `<pack>:<workflow>`, such as `mine:scan` and `mine:fix`.',
   workflows:
     'It names ways of doing a task in steps, each a list of `steps` run in order, for example ' +
     '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +

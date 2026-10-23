@@ -120,7 +120,7 @@ On a project whose backlog is GitHub issues, the review raises each idea as an i
 
 ## Write your own reviews
 
-`delivery packs` lists the available reviews, each with a sentence saying what it looks for. List a review folder of your own under `packs` in `delivery.config.json`, then run it by name with `delivery review <name>`. To write one, see [Write a pack](writing-a-pack.md).
+`delivery packs` lists the available reviews, each with a sentence saying what it looks for, and any pack folder your project lists under `packs`. List a review folder of your own under `packs` in `delivery.config.json`, then run it by name with `delivery review <name>`. To write one, see [Write a pack](writing-a-pack.md).
 
 ## When something goes wrong
 

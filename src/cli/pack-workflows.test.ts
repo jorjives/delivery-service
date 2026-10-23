@@ -12,6 +12,24 @@ function writePack(dir: string, name: string): void {
   writeFileSync(join(dir, "fix.md"), "# Fix\n");
 }
 
+/** A pack folder named `name`, with a minimal delivery.pack/3 manifest: a find named `find` offering an act `code`, and the two prompt files. */
+function writeV3Pack(dir: string, name: string, find = "scan"): void {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "pack.json"),
+    JSON.stringify({
+      schema: "delivery.pack/3",
+      name,
+      version: "1.0.0",
+      title: "Mine",
+      summary: "Mine.",
+      workflows: { [find]: { kind: "find", prompt: "scan.md", ideasFor: ["code"] }, code: { kind: "act", prompt: "code.md" } },
+    }),
+  );
+  writeFileSync(join(dir, "scan.md"), "# Scan\n");
+  writeFileSync(join(dir, "code.md"), "# Code\n");
+}
+
 describe("pack workflows", () => {
   it("adds every built-in pack's workflows to the config's own", async () => {
     const config = await withPackWorkflows({ workflows: { mine: { steps: [{ name: "a", prompt: "a" }] } } }, "/");
@@ -22,6 +40,25 @@ describe("pack workflows", () => {
     const root = mkdtempSync(join(tmpdir(), "pack-workflows-"));
     writePack(join(root, "reviews/mine"), "mine");
     expect((await withPackWorkflows({ packs: ["reviews/mine"] }, root)).workflows?.["mine:fix"]).toBeDefined();
+  });
+
+  it("adds a delivery.pack/3 pack's own workflows", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pack-workflows-"));
+    writeV3Pack(join(root, "moves"), "moves");
+    expect(Object.keys((await withPackWorkflows({ packs: ["moves"] }, root)).workflows ?? {})).toEqual(expect.arrayContaining(["moves:scan", "moves:code"]));
+  });
+
+  it("refuses two listed packs that define the same workflow, by the existing sentence", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pack-workflows-"));
+    writePack(join(root, "a"), "mine"); // /2: mine:scan, mine:fix
+    writeV3Pack(join(root, "b"), "mine"); // /3: mine:scan, mine:code
+    await expect(withPackWorkflows({ packs: ["a", "b"] }, root)).rejects.toThrow(packWorkflowClash("mine:scan"));
+  });
+
+  it("refuses a delivery.pack/3 pack that takes a built-in's workflow name", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pack-workflows-"));
+    writeV3Pack(join(root, "code"), "code");
+    await expect(withPackWorkflows({ packs: ["code"] }, root)).rejects.toThrow(packWorkflowClash("code:scan"));
   });
 
   it("refuses a workflow name two of them define", async () => {

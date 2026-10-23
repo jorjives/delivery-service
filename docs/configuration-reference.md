@@ -162,9 +162,10 @@ An object of named workflows: ways of doing a task in more than one checked step
 
 ### `packs`
 
-A list of folders, relative to the configuration file, each holding a review pack of your own.
-Each adds the workflows `<name>:scan` and `<name>:fix`. The built-in `code` and `security` packs
-are always available. See [Write a pack](writing-a-pack.md).
+A list of folders, relative to the configuration file, each holding a pack of your own. Each adds
+its workflows, named `<pack name>:<workflow name>`: a review pack's are `<name>:scan` and `<name>:fix`.
+The built-in `code` and `security` packs are always available. `delivery packs` lists every pack the
+project can use. See [Write a pack](writing-a-pack.md).
 
 ```json
 "packs": ["./my-review"]
