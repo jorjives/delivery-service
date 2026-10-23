@@ -1,10 +1,9 @@
-import { dirname } from "node:path";
 import type { Pack } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
-import { type DeliveryConfig, findConfig, readConfig } from "./config.js";
+import { loadConfigAndPacks } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode, Refusal } from "./failures.js";
-import { projectPacks, withWorkflowsOf } from "./pack-workflows.js";
+import { projectPacks } from "./pack-workflows.js";
 import { findRepository } from "./project.js";
 
 export interface PacksOptions {
@@ -19,11 +18,7 @@ async function packsFor(ctx: CommandContext): Promise<Pack[]> {
     throw error;
   });
   if (repoPath === undefined) return projectPacks({}, ctx.cwd);
-  const file = findConfig({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
-  const config: DeliveryConfig = file === undefined ? {} : await readConfig(file);
-  const packs = await projectPacks(config, file === undefined ? repoPath : dirname(file));
-  withWorkflowsOf(config, packs); // Called for its refusal of a clashing workflow name, as every other lookup refuses it.
-  return packs;
+  return (await loadConfigAndPacks({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env })).packs;
 }
 
 /** The lines `delivery packs` prints: each pack with its sentence and the command that starts it, the names aligned on the longest. */
