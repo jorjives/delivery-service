@@ -5,6 +5,7 @@ seeded_by: []
 # Delivery Service: Packs for Any Workflow: Design
 
 > **Roadmap:** `docs/superpowers/specs/2026-10-22-pluggable-architecture-roadmap.md` — Item 1
+> **Status:** ✅ Complete — 2026-10-23 — all 5 slices delivered
 > **Status:** Draft, awaiting slicing
 > **Created:** 2026-10-23
 > **Builds on:** task packs (`docs/superpowers/specs/2026-10-03-task-packs-design.md`, `src/packs/`, `docs/task-packs.md`, `docs/writing-a-pack.md`).

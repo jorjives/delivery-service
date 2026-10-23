@@ -66,6 +66,7 @@ state machine itself. Whether third-party code is contained at all is decided by
 
 ### Item 1: Packs for any workflow
 
+**Status:** ✅ Complete — 2026-10-23 — spec: `docs/superpowers/specs/2026-10-23-packs-for-any-workflow-design.md`
 **Spec:** `docs/superpowers/specs/2026-10-23-packs-for-any-workflow-design.md`
 **Delivers:** A project owner can use a pack for any find-then-act job, such as a
 dependency upgrade, a migration sweep or a docs-drift check, not only a code or security
