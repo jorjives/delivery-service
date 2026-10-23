@@ -245,11 +245,11 @@ export async function builtInPacks(): Promise<Pack[]> {
 /**
  * The pack `delivery review` was given: a path (anything with a slash, or
  * starting with a dot) is a folder, resolved from `cwd`; anything else is the
- * name of a built-in pack.
+ * name of a pack among `packs`, the built-in ones by default.
  */
-export async function resolvePack(nameOrPath: string, cwd: string): Promise<Pack> {
+export async function resolvePack(nameOrPath: string, cwd: string, packs?: readonly Pack[]): Promise<Pack> {
   if (nameOrPath.includes("/") || nameOrPath.includes("\\") || nameOrPath.startsWith(".")) return loadPack(resolve(cwd, nameOrPath));
-  const packs = await builtInPacks();
+  packs ??= await builtInPacks();
   const found = packs.find((pack) => pack.manifest.name === nameOrPath);
   if (found === undefined) throw new UnknownPack(nameOrPath, packs.map((pack) => pack.manifest.name));
   return found;

@@ -60,6 +60,13 @@ describe("the built-in packs", () => {
     expect(err).toMatchObject({ packName: "nope", available: ["code", "security"] });
   });
 
+  it("finds a pack by name among the packs it is given, and names them all when none matches", async () => {
+    const mine = await loadPack(editedPack((m) => { m.name = "mine"; }));
+    const packs = [...(await builtInPacks()), mine];
+    expect((await resolvePack("mine", "/anywhere", packs)).dir).toBe(mine.dir);
+    await expect(resolvePack("nope", "/anywhere", packs)).rejects.toMatchObject({ packName: "nope", available: ["code", "security", "mine"] });
+  });
+
   it("ship the code review at 2.0.0, its scan instructions keeping matters of taste out", async () => {
     const code = await resolvePack("code", "/");
     expect(code.manifest.version).toBe("2.0.0");

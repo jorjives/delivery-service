@@ -8,7 +8,7 @@ import type { MockScript } from "../mock-script.js";
 import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
-import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
+import { delivery, MOVES_FILES, PACKAGE, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { liveRunFound } from "./run-exclusion.js";
 import { reviewed } from "./review-command.js";
@@ -88,5 +88,32 @@ describe("delivery review", () => {
     const { exitCode, stdout } = await delivery(["review", "security", "--preview"], { cwd: project() });
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain("workflow: security:fix");
+  });
+
+  it("starts a pack the project lists by its name", async () => {
+    const repo = initTempRepo("listed-", {
+      "package.json": PACKAGE,
+      "delivery.config.json": JSON.stringify({ packs: ["mine-pack"] }),
+      "mine-pack/pack.json": JSON.stringify({ schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } }),
+      "mine-pack/scan.md": "# Scan mine\n",
+      "mine-pack/fix.md": "# Fix mine\n",
+    });
+    const { exitCode, stdout } = await delivery(["review", "mine", "--preview"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain("# Scan mine");
+  });
+
+  it("refuses a pack folder the project does not list, naming the pack and how to list it", async () => {
+    const repo = initTempRepo("unlisted-", { "package.json": PACKAGE, ...MOVES_FILES });
+    const { exitCode, stderr } = await delivery(["review", "./moves-pack"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr.trimEnd()).toBe(`The pack "moves" in ${join(repo, "moves-pack")} is not one your project uses yet. List its folder under "packs" in delivery.config.json, then start it with: delivery review moves`);
+    expect(stderr).not.toMatch(/the review/i);
+  });
+
+  it("refuses a name no pack has, naming the built-in ones, in a project that lists none", async () => {
+    const { exitCode, stderr } = await delivery(["review", "moves"], { cwd: project() });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain('There is no review called "moves". The reviews available are: code, security.');
   });
 });

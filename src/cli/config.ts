@@ -9,7 +9,8 @@ import { AgentOptions, CloserRef, GuardName, GuardSwitches, Severity, TaskDef, W
 import { FenceSetting } from "../fence.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
-import { withPackWorkflows } from "./pack-workflows.js";
+import { projectPacks, withWorkflowsOf } from "./pack-workflows.js";
+import type { Pack } from "../packs/manifest.js";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 
 /** The one filename family a project uses, and the forms it may take. A `.js` or `.mjs` file exports the same object, for a project that computes a value. */
@@ -531,9 +532,15 @@ export async function readConfig(file: string): Promise<DeliveryConfig> {
  * because every setting has a default.
  */
 export async function loadConfig(lookup: ConfigLookup): Promise<DeliveryConfig> {
+  return (await loadConfigAndPacks(lookup)).config;
+}
+
+/** The settings a run starts from, as `loadConfig` gives them, and the packs the project can use, built-in and listed. */
+export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config: DeliveryConfig; packs: Pack[] }> {
   const file = findConfig(lookup);
-  const config = file === undefined ? {} : await readConfig(file);
-  return withPackWorkflows(config, file === undefined ? lookup.repoPath : dirname(file));
+  const settings = file === undefined ? {} : await readConfig(file);
+  const packs = await projectPacks(settings, file === undefined ? lookup.repoPath : dirname(file));
+  return { config: withWorkflowsOf(settings, packs), packs };
 }
 
 /** The source a project's ideas are raised to instead of committed: its first tracker, if it has one. */

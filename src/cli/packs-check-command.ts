@@ -12,7 +12,7 @@ export interface PacksCheckOptions {
 
 export const SENT_NOTHING = "Nothing was sent to a real agent: every reply came from the review's fixtures.";
 export const checkingLine = (shown: string): string => `Checking the review in ${shown}…`;
-/** `delivery review` reads a bare word as a built-in pack's name, so a folder is always shown as a path it will read as one (resolvePack's rule). */
+/** `delivery review` reads a bare word as the name of a pack the project uses, so a folder is always shown as a path it will read as one (resolvePack's rule). */
 export const readyLine = (pathArg: string): string =>
   `Ready to use: delivery review ${pathArg.includes("/") || pathArg.includes("\\") || pathArg.startsWith(".") ? pathArg : `./${pathArg}`}`;
 

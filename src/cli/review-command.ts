@@ -11,7 +11,7 @@ import type { RunRecord } from "../run-records.js";
 import { taskIntent } from "../task-list.js";
 import type { TaskDef } from "../schema.js";
 import { agentSession } from "./agent-session.js";
-import { loadConfig, sourceName, trackerSource } from "./config.js";
+import { loadConfigAndPacks, sourceName, trackerSource } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { startRun, fenceAtStart } from "./drive.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
@@ -34,7 +34,7 @@ export const reviewed = (n: number): string[] =>
   n === 0 ? [NOTHING_FOUND] : [`The review added ${n === 1 ? "1 idea" : `${n} ideas`} to your backlog.`, "Read them with: delivery backlog", "Choose what to fix with: delivery approve <ids>, or delivery approve --all"];
 export const raised = (n: number, source: string): string[] =>
   n === 0 ? [NOTHING_FOUND] : [`The review raised ${n === 1 ? "1 idea" : `${n} ideas`} in ${source}, without the label you deliver by.`, "On GitHub, adding the label is the approval: the next delivery run --sources fixes each one you label."];
-export const packNotListed = (dir: string): string => `The review in ${dir} is not one your project uses yet. Add its folder under "packs" in delivery.config.json, then run delivery review with its name.`;
+export const packNotListed = (pack: Pack): string => `The pack "${pack.manifest.name}" in ${pack.dir} is not one your project uses yet. List its folder under "packs" in delivery.config.json, then start it with: delivery review ${pack.manifest.name}`;
 const outsideProject = (raw: string): string => `"${raw}" is not inside your project. Name a folder or file in it, relative to where you are, for example: delivery review code --path src`;
 
 /**
@@ -65,10 +65,10 @@ export function reviewTask(pack: Pack, part: string | undefined): TaskDef {
 export async function reviewCommand(packName: string, repoArg: string | undefined, options: ReviewCommandOptions, ctx: CommandContext): Promise<ExitCode> {
   const startDir = resolve(ctx.cwd, repoArg ?? ".");
   const repoPath = await findRepository(startDir);
-  const config = await loadConfig({ startDir, repoPath, flag: undefined, env: ctx.env });
-  const pack = await resolvePack(packName, ctx.cwd);
+  const { config, packs } = await loadConfigAndPacks({ startDir, repoPath, flag: undefined, env: ctx.env });
+  const pack = await resolvePack(packName, ctx.cwd, packs);
   const workflowName = scanWorkflowOf(pack.manifest.name);
-  if (config.workflows?.[workflowName] === undefined) throw new Refusal(packNotListed(pack.dir), EXIT.configuration);
+  if (config.workflows?.[workflowName] === undefined) throw new Refusal(packNotListed(pack), EXIT.configuration);
   const part = options.path === undefined ? undefined : await partToReview(ctx.cwd, options.path);
   const taskDef = reviewTask(pack, part);
   if (options.preview === true) return previewCommand({ repo: repoPath, role: "worker", step: "scan", workflow: workflowName, task: taskIntent(taskDef) }, ctx);
