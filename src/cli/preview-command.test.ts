@@ -8,7 +8,8 @@ import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { agentOptionsLine, CONTINUES, noSuchStep, noSuchTask, OWN_SETUP, previewIntro, RULE, SINGLE_TASK, stepHeading, stepInMany, TASK_NUMBER } from "./preview-command.js";
+import { agentOptionsLine, CONTINUES, noSuchStep, noSuchTask, previewIntro, RULE, SINGLE_TASK, stepHeading, stepInMany, TASK_NUMBER } from "./preview-command.js";
+import { OWN_SETUP } from "./own-setup.js";
 import { EVERY_TASK_DONE } from "./queue.js";
 import { NO_TASK } from "./settings.js";
 

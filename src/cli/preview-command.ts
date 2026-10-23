@@ -12,6 +12,7 @@ import { findRepository } from "./project.js";
 import { EVERY_TASK_DONE, nextQueueTask, queueTasks, taskHeading } from "./queue.js";
 import { allRuns } from "./runs.js";
 import { taskIntent } from "../task-list.js";
+import { OWN_SETUP } from "./own-setup.js";
 import { NO_TASK, unknownWorkflow, workflowFrom } from "./settings.js";
 import { defaultProject, readProject, type ValidateOptions } from "./validate-command.js";
 
@@ -85,12 +86,6 @@ const WHO: Record<PreviewRole, string> = {
 
 /** The line above the instructions: whose they are, and that they are added to Claude Code's own rather than replacing them. */
 export const previewIntro = (role: PreviewRole): string => `What ${WHO[role]} will be told (before any run starts), added to Claude Code's own instructions:`;
-
-/** What a run has besides the instructions shown, in the operator's terms. */
-export const OWN_SETUP = [
-  "Your own Claude Code settings, CLAUDE.md, skills, plugins, hooks and MCP servers also apply.",
-  "It can use every tool your setup allows.",
-];
 
 /** The options passed to every session, as written in the file. `append` is left out: it is already in the instructions above. */
 export function agentOptionsLine(agent: AgentOptions | undefined): string {
