@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { REPO_ROOT, runDelivery } from "./helpers.js";
 
-const READMES = ["examples/code-review-example/README.md", "examples/no-tests-example/README.md"];
+const READMES = ["examples/code-review-example/README.md", "examples/no-tests-example/README.md", "examples/moves-pack/README.md"];
 
 /** The commands `delivery --help` lists under "Commands:". */
 function listedCommands(): Set<string> {

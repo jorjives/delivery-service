@@ -1,0 +1,5 @@
+{
+  "found": ["Prices still use the old doubling code", "Labels still use the old doubling code", "The price test still uses the old doubling code"],
+  "fixed": ["Prices still use the old doubling code", "The price test still uses the old doubling code"],
+  "refused": ["Labels still use the old doubling code"]
+}

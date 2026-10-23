@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
 import { FIXTURES } from "../packs/pack-fixtures.js";
+import { MOVES_PACK, MOVES_TITLES } from "../packs/review-fixtures.js";
 import { checkPack, NotTrusted, sandboxedEnv, WEAKENED_TESTS } from "./pack-check.js";
 
 const RUN_TIMEOUT = 120_000;
@@ -37,6 +38,17 @@ describe("the pack check", () => {
       found: ["The total can go below zero", "A missing or broken settings file gives an unhelpful error"],
       fixed: ["The total can go below zero"],
       refused: [{ title: "A missing or broken settings file gives an unhelpful error", why: WEAKENED_TESTS }],
+    });
+  }, RUN_TIMEOUT);
+
+  it("runs a delivery.pack/3 pack's find, approves its ideas and runs every act", async () => {
+    const check = await checkPack(MOVES_PACK);
+    expect(check.problems).toEqual([]);
+    expect(check.ready).toBe(true);
+    expect(check.run).toMatchObject({
+      found: [MOVES_TITLES.prices, MOVES_TITLES.labels, MOVES_TITLES.priceTest],
+      fixed: [MOVES_TITLES.prices, MOVES_TITLES.priceTest],
+      refused: [{ title: MOVES_TITLES.labels, why: WEAKENED_TESTS }],
     });
   }, RUN_TIMEOUT);
 
