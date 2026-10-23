@@ -1,7 +1,7 @@
 import { GUARD_REFUSES } from "../guards.js";
 import type { Inspection } from "../packs/inspection.js";
 import { atOrAbove } from "../item-check.js";
-import { showHidden } from "../packs/hidden-characters.js";
+import { hiddenAt, showHidden, type HiddenAt } from "../packs/hidden-characters.js";
 import { SEVERITIES } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
 
@@ -129,6 +129,52 @@ function checksBlock(): string[] {
   return ["Checks and landing", ...wrap("This pack chooses no checks and no way of landing. Every workflow uses your project's own.", "  ")];
 }
 
+/** A hidden character found in the pack's words, and which of them it was found in. */
+interface Finding extends HiddenAt {
+  where: string;
+  /** Instructions have lines; a one-line field is placed by column alone. */
+  lined: boolean;
+}
+
+const inOneLine = (where: string, text: string): Finding[] =>
+  hiddenAt(text, { newline: false, tab: false }).map((found) => ({ ...found, where, lined: false }));
+
+const inInstructions = (where: string, text: string): Finding[] =>
+  hiddenAt(text, { newline: true, tab: true }).map((found) => ({ ...found, where, lined: true }));
+
+/** Every hidden character in the pack's own words, in the order a reader meets them. */
+function hiddenFindings({ pack, workflows }: Inspection): Finding[] {
+  return [
+    ...inOneLine("the title", pack.title),
+    ...inOneLine("the summary", pack.summary),
+    ...inOneLine("the source path", pack.source.path),
+    ...workflows.flatMap((workflow) => [
+      ...inOneLine(`the summary of ${workflow.local}`, workflow.summary ?? ""),
+      // Every step of a workflow runs the same instructions; each distinct text is counted once.
+      ...unique(workflow.steps.map(({ instructions }) => instructions.authored)).flatMap((text) =>
+        inInstructions(`the pack's own instructions for ${workflow.local}`, text),
+      ),
+      ...unique(workflow.steps.map(({ instructions }) => instructions.harness ?? "")).flatMap((text) =>
+        inInstructions(`the words delivery-service adds to ${workflow.local}`, text),
+      ),
+    ]),
+  ];
+}
+
+/** The count of hidden characters and where each is. Empty when there are none, so the list appears only when there is something to look at. */
+function lookAtBlock(inspection: Inspection): string[] {
+  const findings = hiddenFindings(inspection);
+  if (findings.length === 0) return [];
+  return [
+    "Things to look at",
+    ...wrap(`${plural(findings.length, "hidden character")} in the pack's words. Each is shown as visible text where it sits.`, "  "),
+    ...findings.flatMap((found, index) => {
+      const place = found.lined ? `line ${found.line}, column ${found.column}` : `column ${found.column}`;
+      return wrap(`${index + 1}. ${found.shown} in ${found.where}, ${place}.`, "  ", "     ");
+    }),
+  ];
+}
+
 /** Each step's instructions, shown unaltered: the pack's words, then the harness's words when the harness adds any. */
 function instructionBlocks(inspection: Inspection): string[][] {
   return inspection.workflows.flatMap((workflow) =>
@@ -156,7 +202,8 @@ export function renderInspection(inspection: Inspection): string[] {
     touchBlock(),
     limitsBlock(inspection),
     checksBlock(),
+    lookAtBlock(inspection),
     ...instructionBlocks(inspection),
   ];
-  return blocks.flatMap((block, index) => (index === 0 ? block : ["", ...block]));
+  return blocks.filter((block) => block.length > 0).flatMap((block, index) => (index === 0 ? block : ["", ...block]));
 }

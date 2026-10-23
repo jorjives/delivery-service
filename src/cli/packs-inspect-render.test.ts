@@ -166,3 +166,54 @@ it("keeps pack metadata and the source path on the lines it writes, with control
   expect(lines.join("\n")).toContain("Pack: Title\\x1b[31m\\nforged");
   expect(lines.join("")).not.toMatch(RAW);
 });
+
+const thingsToLookAt = (lines: string[]): string[] => {
+  const start = lines.indexOf("Things to look at");
+  if (start === -1) return [];
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => l !== "" && !l.startsWith(" "));
+  return (end === -1 ? rest : rest.slice(0, end)).filter((l) => l !== "");
+};
+
+it("counts hidden characters and lists each with where it is, in a Things to look at list before the instructions", () => {
+  const authored = `fine\nab${RLO}cd${ZWSP}\n${ESC}[2A`;
+  const lines = renderInspection(model({ authored }));
+  expect(thingsToLookAt(lines)).toEqual([
+    "  3 hidden characters in the pack's words. Each is shown as",
+    "  visible text where it sits.",
+    "  1. \\u202e in the pack's own instructions for act, line 2,",
+    "     column 3.",
+    "  2. \\u200b in the pack's own instructions for act, line 2,",
+    "     column 6.",
+    "  3. \\x1b in the pack's own instructions for act, line 3,",
+    "     column 1.",
+  ]);
+  expect(lines.indexOf("Things to look at")).toBeLessThan(lines.indexOf(INSPECT_RULE));
+});
+
+it("lists hidden characters in the title, summaries, the source path and the harness's words, each by where", () => {
+  const inspection = model();
+  inspection.pack.title = `T${ESC}`;
+  inspection.pack.summary = `S\n`;
+  inspection.pack.source = { kind: "folder", path: `/p${RLO}` };
+  const act = inspection.workflows[1];
+  if (act) act.summary = `A${ZWSP}`;
+  const find = inspection.workflows[0];
+  const scan = find?.steps[0];
+  if (scan) scan.instructions.harness = `H${ESC}`;
+  const text = thingsToLookAt(renderInspection(inspection)).join(" ").replace(/\s+/g, " ");
+  expect(text).toContain("5 hidden characters");
+  expect(text).toContain("\\x1b in the title, column 2");
+  expect(text).toContain("\\n in the summary, column 2");
+  expect(text).toContain("\\u202e in the source path, column 3");
+  expect(text).toContain("\\u200b in the summary of act, column 2");
+  expect(text).toContain("\\x1b in the words delivery-service adds to find, line 1, column 2");
+});
+
+it("has no Things to look at list when the pack's words hold no hidden character", () => {
+  for (const inspection of builtInInspections) expect(renderInspection(inspection)).not.toContain("Things to look at");
+});
+
+it("keeps a tab and a line break in an instruction out of the count", () => {
+  expect(renderInspection(model({ authored: "a\tb\nc" }))).not.toContain("Things to look at");
+});
