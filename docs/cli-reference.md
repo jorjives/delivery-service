@@ -28,7 +28,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery unpark <item>` | Puts a parked item back in the queue | [Work through a backlog](work-a-backlog.md) |
 | `delivery drop-after [batch]` | Gives up after-landing steps that are waiting, such as a deploy you cannot fix | [Set up a project](project-configuration.md) |
 | `delivery packs check <path>` | Checks a review folder of your own, then runs its fixtures against a scripted agent | [Write a pack](writing-a-pack.md) |
-| `delivery schedule enable` | Turns on a timer that runs `delivery run --sources` with its own config file, workflow, item cap and concurrency, or changes how often it runs | [Run on a schedule](run-on-a-schedule.md) |
+| `delivery schedule enable` | Turns on a timer that runs `delivery run --sources` with its own config file, workflow, item cap and concurrency, or changes how often it runs. On a platform that has no scheduler backend yet, refuses and prints the crontab line to use instead: see [Use cron where there is no scheduler](run-on-a-schedule.md#use-cron-where-there-is-no-scheduler) | [Run on a schedule](run-on-a-schedule.md) |
 | `delivery schedule status` | Says, for every schedule the project has, whether it is on, when it last ran and will next run, and shows each schedule's run settings | [Run on a schedule](run-on-a-schedule.md) |
 | `delivery schedule disable` | Turns the default schedule off, the one `--name` names, or every schedule with `--all`; `delivery run --sources` still works by hand | [Run on a schedule](run-on-a-schedule.md) |
 
@@ -48,6 +48,8 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `--repo <path>` | Works on this git repository (default: the current folder) |
 | `--fresh` | Starts a new run even though one did not finish |
 | `--if-idle` | If another run is already going in this repository, prints "Skipped: another run is going here" and exits 0 instead of refusing. For any run nobody is watching: a timer, cron or CI |
+
+Every run holds the repository while it runs, so a second run started while one is going is refused. `--if-idle` turns that refusal into a quiet skip, which is what every scheduled run uses. See [when runs overlap](run-on-a-schedule.md#when-runs-overlap).
 
 ## Options for the other commands
 
@@ -71,7 +73,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `packs` | `--schema` | Prints the JSON Schema of a review folder's `pack.json` |
 | `packs check` | `--yes` | Skips the question about trusting the pack's code before its fixtures run; needed when there is no terminal |
 | `schedule enable` | `--every <interval>` | Sets how often it runs: minutes that divide an hour (such as `5m`, `15m` or `30m`), hours that divide a day (such as `1h`, `6h` or `12h`), or `1d` (the default) |
-| `schedule enable` | `--name <name>` | Names the schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens. Without it, sets up the project's default schedule. Refused when another project already holds that schedule's timer |
+| `schedule enable` | `--name <name>` | Names the schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens. Without it, sets up the project's default schedule. Refused when another project already holds that schedule's timer. For a worked example, see [two schedules on one project](run-on-a-schedule.md#worked-example-two-schedules-on-one-project) |
 | `schedule enable` | `--config <path>` | The config file each scheduled run uses (default: the project's own) |
 | `schedule enable` | `--workflow <name>` | The workflow for items that do not name one |
 | `schedule enable` | `--max <n>` | How many items each scheduled run takes (default 1) |

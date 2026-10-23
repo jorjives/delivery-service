@@ -248,9 +248,9 @@ Full message: `` `--workflow` is empty. Give it a value, or leave it out to use 
 
 ### This machine can't run delivery on a schedule
 
-**Why.** `delivery schedule enable` uses systemd's user timers, and this machine has none; the reason follows.
+**Why.** `delivery schedule enable` installs a timer, and this machine cannot run one. Either the platform has no scheduler backend yet (the message says `<platform> has no scheduler backend yet`), or it is Linux and systemd's user timers are not available; the reason follows.
 
-**Fix.** Add the `cron` line the message prints to your own crontab with `crontab -e`.
+**Fix.** Add the `cron` line the message prints to your own crontab with `crontab -e`, once per schedule. See [Use cron where there is no scheduler](run-on-a-schedule.md#use-cron-where-there-is-no-scheduler).
 
 ### `delivery init` asks you a few questions, so it needs a terminal
 
