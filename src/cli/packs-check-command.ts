@@ -18,7 +18,7 @@ export const checkingLine = (shown: string): string => `Checking the review in $
 export const readyLine = (pathArg: string): string =>
   `Ready to use: delivery review ${pathArg.includes("/") || pathArg.includes("\\") || pathArg.startsWith(".") ? pathArg : `./${pathArg}`}`;
 
-/** The words a `delivery.pack/3` pack is checked in, named by its own find and act workflows. */
+/** What a `delivery.pack/3` pack's check says before it starts and when it did not reach a real agent. */
 export const PACK_SENT_NOTHING = "Nothing was sent to a real agent: every reply came from the pack's fixtures.";
 export const packCheckingLine = (shown: string): string => `Checking the pack in ${shown}…`;
 
