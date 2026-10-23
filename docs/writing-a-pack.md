@@ -259,7 +259,7 @@ Checking the review in my-review…
 ✓ The scripted fix for "The total can go below zero" passed its check.
 ✓ The scripted cheat for "A missing or broken settings file gives an unhelpful error" was refused: it removed, changed or skipped tests.
 Nothing was sent to a real agent: every reply came from the review's fixtures.
-Ready to use: delivery review ./my-review
+Ready to use: list ./my-review under "packs" in delivery.config.json, then start it with: delivery review mypack
 ```
 
 Exit code 0.

@@ -70,9 +70,22 @@ describe("delivery packs check", () => {
       '✓ The scripted fix for "The total can go below zero" passed its check.',
       '✓ The scripted cheat for "A missing or broken settings file gives an unhelpful error" was refused: it removed, changed or skipped tests.',
       SENT_NOTHING,
-      "Ready to use: delivery review ./my-pack",
+      'Ready to use: list my-pack under "packs" in delivery.config.json, then start it with: delivery review mine',
     ]);
-    expect(readyLine("./my-pack")).toBe("Ready to use: delivery review ./my-pack");
+    expect(readyLine("my-pack", "mine", false)).toBe('Ready to use: list my-pack under "packs" in delivery.config.json, then start it with: delivery review mine');
+    expect(readyLine("packs/deprecations", "deprecations", true)).toBe("Ready to use: delivery review deprecations");
+  }, CHECK_TIMEOUT);
+
+  it("tells a built-in pack's folder to start by name, not to be listed", async () => {
+    const { exitCode, stdout } = await delivery(["packs", "check", join(BUILT_IN_PACKS, "deprecations"), "--yes"], { cwd: mkdtempSync(join(tmpdir(), "packs-check-")) });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.trim().split("\n").at(-1)).toBe("Ready to use: delivery review deprecations");
+  }, CHECK_TIMEOUT);
+
+  it("tells a built-in /2 review's folder to start by name, not to be listed", async () => {
+    const { exitCode, stdout } = await delivery(["packs", "check", join(BUILT_IN_PACKS, "code-review"), "--yes"], { cwd: mkdtempSync(join(tmpdir(), "packs-check-")) });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.trim().split("\n").at(-1)).toBe("Ready to use: delivery review code");
   }, CHECK_TIMEOUT);
 
   it("on a valid /3 pack, names the find, each act and what each proved, in the pack's own words", async () => {
