@@ -67,10 +67,10 @@ installed, and skips that check where it is not.
 
 A scheduler adapter for `delivery schedule` implements `SchedulerBackend` from `src/cli/schedule/backend.ts`, and its test file adds one `backendContract(...)` call from `src/cli/schedule/backend.contract.ts`, which runs the shared suite of behaviour every adapter must have. `src/cli/schedule/systemd.test.ts` is the example. The contract file is excluded from the build, so it never ships in `dist`.
 
-The built-in reviews `delivery review` runs are data-only folders under `packs/`, shipped in
-the package: a `pack.json` manifest, the agent's `scan.md` and `fix.md` instructions, and the
-`fixtures/` that `delivery packs check` runs. `src/packs/` reads and checks them. To see a review
-work without an agent, run `delivery packs check packs/code-review`: it runs the pack's fixtures
+The built-in packs `delivery review` starts are data-only folders under `packs/`, shipped in
+the package: a `pack.json` manifest, one instruction file per workflow and the `fixtures/` that
+`delivery packs check` runs. `code` and `security` are `delivery.pack/2` reviews; `deprecations`
+is `delivery.pack/3`. `src/packs/` reads and checks them. To see a review work without an agent, run `delivery packs check packs/code-review`: it runs the pack's fixtures
 against the scripted agent and says what was found, fixed and refused. Tests script a review's
 findings with `ideasScript(ideas)` from `src/packs/review-fixtures.ts`, against a copy of
 `examples/code-review-example` made with `exampleRepo()`.
