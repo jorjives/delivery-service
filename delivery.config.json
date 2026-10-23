@@ -1,8 +1,16 @@
 {
   "domain": "delivery-service: a deterministically gated agent delivery harness. A TypeScript (strict, ESM) Node.js 22 command-line tool and library; tests run with vitest, linting with ESLint, and the user documentation is an MkDocs site built from docs/.",
   "gate": { "type": "command", "command": "make verify", "parseMode": "exitcode", "checkOnly": true },
-  "closer": { "type": "open-pr" },
+  "closer": { "type": "open-pr", "stack": true },
   "sources": [{ "type": "github", "label": "delivery", "workflow": "resolve-issue" }],
+  "after": [
+    {
+      "name": "reinstall",
+      "run": "make reinstall",
+      "in": "base",
+      "check": "test -f $HOME/.local/lib/node_modules/delivery-service/dist/stack-pr-closer.js"
+    }
+  ],
   "workflows": {
     "resolve-issue": {
       "steps": [

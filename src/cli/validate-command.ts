@@ -1,8 +1,9 @@
 import { realpathSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import type { CloserRef, GateRef } from "../schema.js";
+import { DEFAULT_LABEL } from "../github-source.js";
 import { CloserModuleLoadFailure, GateModuleLoadFailure, InvalidCloserExport, InvalidGateExport } from "../errors.js";
-import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig } from "./config.js";
+import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig, type SourceConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, renderFailure, type ExitCode } from "./failures.js";
 import { presetPhrase } from "./gate-presets.js";
@@ -52,10 +53,22 @@ function closerPhrase(closerRef: CloserRef): string {
   }
 }
 
+/** Where one source finds work, as a person reads it; a fallback says it is read only when nothing else has any. */
+function sourcePhrase(source: SourceConfig): string {
+  const where = {
+    backlog: "the backlog",
+    list: "the list",
+    command: source.type === "command" ? `\`${source.command}\`` : "",
+    github: source.type === "github" ? `github issues labelled \`${source.label ?? DEFAULT_LABEL}\`` : "",
+  }[source.type];
+  return source.fallback === true ? `${where} (only when nothing else has work)` : where;
+}
+
 /**
  * How many things the file asks for. No task at all is not a problem: `delivery
  * run --task "..."` names one each time, which is how the harness is used before
- * a project has a list.
+ * a project has a list. A project with sources is run with `delivery run --sources`
+ * instead, and says where that looks.
  */
 function tasksPhrase(config: DeliveryConfig, concurrency: number): string {
   if (config.tasks) {
@@ -64,12 +77,21 @@ function tasksPhrase(config: DeliveryConfig, concurrency: number): string {
     return `${queued} ${queued === 1 ? "task" : "tasks"} queued`;
   }
   if (config.task) return "1 task, set in `task`";
+  if (config.sources) return `work sources: ${config.sources.map(sourcePhrase).join(", then ")}, then nothing else; run with \`delivery run --sources\``;
   return 'no tasks listed: name one when you run, with `delivery run --task "..."`';
+}
+
+/** The workflows a project with sources can deliver by, each with its step count: the ones a source may name wrongly. Other projects run no workflow of their choosing, so list none. */
+function workflowsLines(config: DeliveryConfig): string[] {
+  const named = Object.entries(config.workflows ?? {});
+  if (config.sources === undefined || named.length === 0) return [];
+  const phrases = named.map(([name, { steps }]) => `${name} (${steps.length} ${steps.length === 1 ? "step" : "steps"})`);
+  return [`workflows: ${phrases.join(", ")}`];
 }
 
 /**
  * One line per thing `validate` checked, in the owner's terms: the description,
- * the tasks, what the check runs, what the closing action does, and the agent
+ * the tasks or sources, the workflows, what the check runs, what the closing action does, and the agent
  * options the file sets. The check and closing action are the ones a run would
  * use, inferred and defaulted values included, so what is reported is what would
  * happen. When more than one task may run at once, the line says so, with how many are queued.
@@ -78,6 +100,7 @@ export function checkedLines(config: DeliveryConfig, project: ProjectSettings): 
   return [
     `domain description: ${project.domainPrompt === undefined ? "none (it's optional)" : "present"}`,
     tasksPhrase(config, project.concurrency),
+    ...workflowsLines(config),
     `gate: ${gateLine(project)}`,
     `closer: ${closerPhrase(project.closerRef)}`,
     ...(config.agent === undefined ? [] : [`agent options: ${Object.keys(config.agent).join(", ")}`]),

@@ -1,5 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { ghAccess } from "./gh.js";
 import { createGhStandIn } from "./gh-stand-in.js";
 import { cleanGitEnv } from "./git-env.js";
@@ -34,7 +36,7 @@ describe("listPullRequests", () => {
 
     expect(await listPullRequests(repo, { heads: ["a"] }, { command: gh.command })).toEqual({
       ok: true,
-      pullRequests: [{ url, state: "OPEN", headRefName: "a", headRefOid: headOid, baseRefName: "main" }],
+      pullRequests: [{ url, state: "OPEN", headRefName: "a", headRefOid: headOid, baseRefName: "main", mergeCommit: null }],
     });
     expect(await listPullRequests(repo, { heads: ["a"] }, { state: "merged", command: gh.command })).toEqual({ ok: true, pullRequests: [] });
   });
@@ -54,11 +56,21 @@ describe("listPullRequests", () => {
     expect(listing).toEqual({
       ok: true,
       pullRequests: [
-        { url: url1, state: "OPEN", headRefName: "delivery-stack/main/r1", headRefOid: r1Oid, baseRefName: "main" },
-        { url: url2, state: "MERGED", headRefName: "delivery-stack/main/r2", headRefOid: "bbb", baseRefName: "main" },
+        { url: url1, state: "OPEN", headRefName: "delivery-stack/main/r1", headRefOid: r1Oid, baseRefName: "main", mergeCommit: null },
+        { url: url2, state: "MERGED", headRefName: "delivery-stack/main/r2", headRefOid: "bbb", baseRefName: "main", mergeCommit: null },
       ],
     });
     expect(gh.calls().length - before).toBe(1);
+  });
+
+  it("ignores a pull request from a fork whose branch has the same name", async () => {
+    const { repo } = repoWithOrigin();
+    const gh = createGhStandIn();
+    gh.openFromFork("a", "main");
+    const own = create(gh, repo, "a");
+    const listing = await listPullRequests(repo, { heads: ["a"] }, { state: "all", command: gh.command });
+    expect(listing).toMatchObject({ ok: true, pullRequests: [{ url: own }] });
+    expect(listing.ok && listing.pullRequests).toHaveLength(1);
   });
 
   it("asks gh nothing for no heads", async () => {
@@ -85,6 +97,29 @@ describe("listPullRequests", () => {
     gh.mergePullRequest(create(gh, repo, "delivery/main"), "bbb");
     gh.mergePullRequest(create(gh, repo, "delivery/other"), "ccc");
     expect(await mergedTips(repo, gh.command, "delivery/main")).toEqual(new Set(["aaa", "bbb"]));
+  });
+
+  it("reports the merge commit of a pull request merged by the stand-in, and none for one still open", async () => {
+    const { repo, origin } = repoWithOrigin();
+    const gh = createGhStandIn();
+    git(repo, ["checkout", "-q", "-b", "a"]);
+    writeFileSync(join(repo, "a2.txt"), "a2\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "a2"]);
+    git(repo, ["push", "-q", "origin", "a"]);
+    git(repo, ["checkout", "-q", "main"]);
+    const merged = create(gh, repo, "a");
+    const open = create(gh, repo, "b");
+    const mergeCommit = gh.merge(merged, "merge", origin);
+
+    const listing = await listPullRequests(repo, { heads: ["a", "b"] }, { state: "all", command: gh.command });
+    expect(listing).toMatchObject({
+      ok: true,
+      pullRequests: [
+        { url: merged, state: "MERGED", mergeCommit: { oid: mergeCommit } },
+        { url: open, state: "OPEN", mergeCommit: null },
+      ],
+    });
   });
 
   it("says it could not ask, never throws, when gh is offline", async () => {

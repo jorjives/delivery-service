@@ -25,9 +25,9 @@ reached](#how-the-verdict-is-reached)). Your gate never decides pass or fail for
 reports what it measured.
 
 Everything in this guide is imported from the harness's single entry point,
-`delivery-service`. Install it in your project as
-[Get started](getting-started.md) describes, then run the snippets with
-`npx tsx`.
+`delivery-service`. This guide uses the optional TypeScript library. Install it in your project (see
+[Extending delivery with TypeScript](getting-started.md#extending-delivery-with-typescript-optional)); the
+`delivery` command itself needs no such install. Run the snippets with `npx tsx`.
 
 ## The contract
 
@@ -128,7 +128,7 @@ was wrong.
 
 For the common checks you need not write this out at all: `delivery.config.json` takes a
 ready-made check by name, such as `{ "type": "file-exists", "path": "CHANGES.md" }`. Each of the
-five ready-made checks is turned into a command gate, judged by exit code. The five names are
+six ready-made checks is turned into a command gate, judged by exit code. The six names are
 listed in [Configuration reference](configuration-reference.md#ready-made-checks).
 
 Most projects need nothing more. The command runs with `/bin/sh -c` inside the

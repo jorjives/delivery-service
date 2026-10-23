@@ -7,13 +7,16 @@ hide:
 # delivery-service
 
 **Hand an AI agent a task in plain English.** It works on a copy of your repository, your own
-tests check the result, and the work is left on a branch for you.
+tests check the result, and the work is left on a branch for you. [Packs](packs.md) are repeatable find-then-act jobs: a review is one kind, and the built-ins are `code`, `security` and `deprecations`.
 
 After you [install the command](getting-started.md), run:
 
 ```bash
 delivery run --task "add a function that says hello to a name, with a test"
 ```
+
+`delivery` is a global command: install it once, then run it from inside any of your projects.
+A project needs at most a [`delivery.config.json`](project-configuration.md) and takes no dependency on the harness.
 
 You need Node 22 or later, git and a signed-in Claude Code. [Get started](getting-started.md){ .md-button .md-button--primary }
 [How it works](concepts.md){ .md-button }
@@ -35,6 +38,10 @@ You need Node 22 or later, git and a signed-in Claude Code. [Get started](gettin
 -   **[Read the report](read-a-report.md)**
 
     One command says what happened overnight and what to do next.
+
+-   **[Packs](packs.md)**
+
+    Hand off a repeatable job: a code or security review, or moving off deprecated code.
 
 -   **[Review your project](task-packs.md)**
 
@@ -58,7 +65,7 @@ You need Node 22 or later, git and a signed-in Claude Code. [Get started](gettin
 
 - **Get started** is a tutorial: one path from install to a finished run.
 - **Guides** are task-led. Each one gets you to a goal, such as running a list, reading a report or resuming a run.
-- **Extend** shows how to replace the parts of a run with your own: a role ([Configure a role](configuring-a-role.md)), a gate ([Write a gate](writing-a-gate.md)), a closer ([Write a closer](writing-a-closer.md)) or a review pack ([Write a pack](writing-a-pack.md)), and how to [test your pipeline](testing-your-pipeline.md).
+- **Extend** shows how to replace the parts of a run with your own: a role ([Configure a role](configuring-a-role.md)), a gate ([Write a gate](writing-a-gate.md)), a closer ([Write a closer](writing-a-closer.md)) or a pack ([Write a pack](writing-a-pack.md)), and how to [test your pipeline](testing-your-pipeline.md).
 - **How it works** explains the model, so the behaviour makes sense.
 - **Reference** lists every command, setting and data format, and the [Glossary](glossary.md) defines the terms the pages use.
 

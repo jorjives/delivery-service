@@ -58,6 +58,17 @@ describe("what validate says a project is set up to do", () => {
     expect(checkedLines({}, project())[1]).toBe('✓ no tasks listed: name one when you run, with `delivery run --task "..."`');
   });
 
+  it("points a project with sources at `delivery run --sources`, and lists its sources and workflows", () => {
+    const config: DeliveryConfig = {
+      sources: [{ type: "github", label: "delivery", workflow: "resolve-issue" }],
+      workflows: { "resolve-issue": { steps: [{ name: "fix", prompt: "Fix it." }] } },
+    };
+    const lines = checkedLines(config, project());
+    expect(lines).toContain("✓ work sources: github issues labelled `delivery`, then nothing else; run with `delivery run --sources`");
+    expect(lines).toContain("✓ workflows: resolve-issue (1 step)");
+    expect(lines.join("\n")).not.toContain("no tasks listed");
+  });
+
   it("names a custom check by the module it lives in", () => {
     const gateRef: GateRef = { type: "custom", modulePath: "./gates/mine.mjs" };
     expect(checkedLines({}, project({ gateRef }))[2]).toBe("✓ gate: your own check, in `./gates/mine.mjs`");
@@ -234,7 +245,7 @@ describe("delivery validate on a configuration with a problem", () => {
     [
       "a misspelt ready-made check",
       { ...COMPLETE, gate: { type: "file-exist", path: "CHANGES.md" } },
-      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds`, `schema-validates` and `commits-ahead`. To write one out in full, see docs/writing-a-gate.md.",
+      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds`, `schema-validates`, `commits-ahead` and `fails-with-new-test`. To write one out in full, see docs/writing-a-gate.md.",
     ],
     [
       "a ready-made check missing its detail",

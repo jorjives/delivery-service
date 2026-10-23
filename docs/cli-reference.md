@@ -17,8 +17,8 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery resume [run-id]` | Picks up a run that did not finish, and never starts a new one | [Pick up an interrupted run](resume-a-run.md) |
 | `delivery status [run-id]` | Says what happened to a run; follows one with `--watch`; lists them with `--all` | [See what happened to a run](check-a-run.md) |
 | `delivery report [run-id]` | Says in plain words what happened to the task list and what to do next | [Read the report](read-a-report.md) |
-| `delivery review <pack> [repo]` | Has an agent review the project and add ideas to the backlog | [Review your project](task-packs.md) |
-| `delivery packs` | Lists the available reviews | [Review your project](task-packs.md) |
+| `delivery review <pack> [repo]` | Starts a pack's find: an agent reads the project and adds ideas to the backlog | [Review your project](task-packs.md) |
+| `delivery packs` | Lists the packs you can use | [Packs](packs.md) |
 | `delivery backlog [id]` | Lists the ideas, open, held and parked items; shows one in full | [Work through a backlog](work-a-backlog.md) |
 | `delivery approve [ids...]` | Chooses ideas to be fixed by the next `run --sources` | [Review your project](task-packs.md) |
 | `delivery decline [ids...]` | Sets ideas aside | [Review your project](task-packs.md) |
@@ -27,10 +27,10 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery answer <item> <answer>` | Answers the question a parked item is waiting on | [Work through a backlog](work-a-backlog.md) |
 | `delivery unpark <item>` | Puts a parked item back in the queue | [Work through a backlog](work-a-backlog.md) |
 | `delivery drop-after [batch]` | Gives up after-landing steps that are waiting, such as a deploy you cannot fix | [Set up a project](project-configuration.md) |
-| `delivery packs check <path>` | Checks a review folder of your own, then runs its fixtures against a scripted agent | [Write a pack](writing-a-pack.md) |
-| `delivery schedule enable` | Turns on a timer that runs `delivery run --sources`, or changes how often it runs | [Run on a schedule](run-on-a-schedule.md) |
-| `delivery schedule status` | Says whether the project runs on a schedule, and when it last ran and will next run | [Run on a schedule](run-on-a-schedule.md) |
-| `delivery schedule disable` | Turns the timer off; `delivery run --sources` still works by hand | [Run on a schedule](run-on-a-schedule.md) |
+| `delivery packs check <path>` | Checks a pack folder of your own, then runs its fixtures against a scripted agent | [Write a pack](writing-a-pack.md) |
+| `delivery schedule enable` | Turns on a timer that runs `delivery run --sources` with its own config file, workflow, item cap and concurrency, or changes how often it runs. On a platform that has no scheduler backend yet, refuses and prints the crontab line to use instead: see [Use cron where there is no scheduler](run-on-a-schedule.md#use-cron-where-there-is-no-scheduler) | [Run on a schedule](run-on-a-schedule.md) |
+| `delivery schedule status` | Says, for every schedule the project has, whether it is on, when it last ran and will next run, and shows each schedule's run settings | [Run on a schedule](run-on-a-schedule.md) |
+| `delivery schedule disable` | Turns the default schedule off, the one `--name` names, or every schedule with `--all`; `delivery run --sources` still works by hand | [Run on a schedule](run-on-a-schedule.md) |
 
 ## Options for `delivery run`
 
@@ -38,7 +38,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 |---|---|
 | `--task <text>` | Runs exactly this task and leaves the list alone |
 | `--task-file <path>` | Reads the task from a file |
-| `--workflow <name>` | Does the task in the steps of a [workflow](configuration-reference.md#workflows) |
+| `--workflow <name>` | Does the task in the steps of a [workflow](configuration-reference.md#workflows); with `--sources`, the workflow for items that do not name one |
 | `--gate-command <command>` | Sets the check: it passes when the command exits 0 |
 | `--closer <type>` | Sets what happens to accepted work: `commit-to-branch`, `merge-back` or `open-pr` |
 | `--concurrency <n>` | Sets how many tasks from the list run at once (default 1) |
@@ -47,6 +47,9 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `--config <path>` | Uses this config file instead of searching for `delivery.config.json` |
 | `--repo <path>` | Works on this git repository (default: the current folder) |
 | `--fresh` | Starts a new run even though one did not finish |
+| `--if-idle` | If another run is already going in this repository, prints "Skipped: another run is going here" and exits 0 instead of refusing. For any run nobody is watching: a timer, cron or CI |
+
+Every run holds the repository while it runs, so a second run started while one is going is refused. `--if-idle` turns that refusal into a quiet skip, which is what every scheduled run uses. See [when runs overlap](run-on-a-schedule.md#when-runs-overlap).
 
 ## Options for the other commands
 
@@ -63,13 +66,21 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `preview` | `--task <text>`, `--step <name>`, `--workflow <name>` | Previews a typed task, or one step of a workflow |
 | `preview` | `--queue-index <n>` | Shows the nth task on the list, counted from 1 |
 | `preview` | `--role <role>` | Shows `worker` (the default) or `gate-maintenance` instructions |
-| `review` | `--path <part>` | Reviews only this folder or file |
-| `review` | `--preview` | Shows what the review agent would be told, and starts nothing |
+| `review` | `--path <part>` | Looks only at this folder or file |
+| `review` | `--preview` | Shows what the find's agent would be told, and starts nothing |
 | `approve` | `--all`, `--workflow <name>` | Approves every idea; names the workflow to fix them through |
 | `decline` | `--all` | Declines every idea |
-| `packs` | `--schema` | Prints the JSON Schema of a review folder's `pack.json` |
+| `packs` | `--schema` | Prints the JSON Schema of a pack folder's `pack.json` |
 | `packs check` | `--yes` | Skips the question about trusting the pack's code before its fixtures run; needed when there is no terminal |
 | `schedule enable` | `--every <interval>` | Sets how often it runs: minutes that divide an hour (such as `5m`, `15m` or `30m`), hours that divide a day (such as `1h`, `6h` or `12h`), or `1d` (the default) |
+| `schedule enable` | `--name <name>` | Names the schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens. Without it, sets up the project's default schedule. Refused when another project already holds that schedule's timer. For a worked example, see [two schedules on one project](run-on-a-schedule.md#worked-example-two-schedules-on-one-project) |
+| `schedule enable` | `--config <path>` | The config file each scheduled run uses (default: the project's own) |
+| `schedule enable` | `--workflow <name>` | The workflow for items that do not name one |
+| `schedule enable` | `--max <n>` | How many items each scheduled run takes (default 1) |
+| `schedule enable` | `--concurrency <n>` | How many items each scheduled run works at once (default 1) |
+| `schedule status` | `--name <name>` | Shows only this schedule |
+| `schedule disable` | `--name <name>` | Turns off only this schedule. Without it, turns off the default schedule |
+| `schedule disable` | `--all` | Turns off every schedule this project has. Refused together with `--name` |
 
 `--config` and `--repo` mean the same on every command that takes them (`delivery --help` shows
 which). `review` takes the repository as an argument, `delivery review <pack> [repo]`, not as

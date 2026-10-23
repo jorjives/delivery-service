@@ -7,7 +7,7 @@ import { DEFAULT_SOURCES, loadConfig, sourceName } from "./config.js";
 import { uncommittedItems } from "./backlog-commands.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
-import { refuseIfRunGoing } from "./queue.js";
+import { holdingRepo } from "./run-exclusion.js";
 import { runSources } from "./sources-run.js";
 
 export interface ItemOptions {
@@ -59,11 +59,12 @@ export async function unparkCommand(item: string, options: ItemOptions, ctx: Com
 export async function signOffCommand(item: string, options: ItemOptions & { config?: string }, ctx: CommandContext): Promise<ExitCode> {
   const { repoPath, path, state } = await parkedNamed(item, options, ctx);
   if (state.parked !== "held") throw new Refusal(notHeld(state.key), EXIT.configuration);
-  await refuseIfRunGoing(repoPath);
-  const config = await loadConfig({ startDir: repoPath, repoPath, flag: options.config, env: ctx.env });
-  await recordSignOff(path, state.key);
-  ctx.writeLine(signedOff(state.key));
-  return runSources({ sources: true, ...(options.config === undefined ? {} : { config: options.config }) }, { repoPath, config }, ctx, { only: state.key });
+  return holdingRepo(repoPath, {}, ctx, async () => {
+    const config = await loadConfig({ startDir: repoPath, repoPath, flag: options.config, env: ctx.env });
+    await recordSignOff(path, state.key);
+    ctx.writeLine(signedOff(state.key));
+    return runSources({ sources: true, ...(options.config === undefined ? {} : { config: options.config }) }, { repoPath, config }, ctx, { only: state.key });
+  });
 }
 
 /** `delivery reject <item>`: decline a held backlog item in a commit of that file alone; its work stays on its branch. */

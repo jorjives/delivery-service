@@ -15,7 +15,7 @@ import { existsSync, mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PACKAGE } from "../../src/cli/command-fixtures.js";
-import { TEST_SYSTEMCTL, unitName } from "../../src/cli/schedule.js";
+import { TEST_SYSTEMCTL, unitName } from "../../src/cli/schedule/systemd.js";
 import { initTempRepo } from "../../src/temp-repo.js";
 import { createSystemctlStandIn } from "../../src/systemctl-stand-in.js";
 import { runDelivery } from "../helpers.js";
@@ -27,7 +27,7 @@ function project() {
   const env = { ...process.env, XDG_CONFIG_HOME: config, [TEST_SYSTEMCTL]: standIn.command };
   const units = join(config, "systemd", "user");
   // The unit name is derived from the resolved repository path, as the command derives it.
-  const name = unitName(repo);
+  const name = unitName(repo, "default");
   return { repo, standIn, env, units, name };
 }
 
@@ -42,7 +42,7 @@ describe("UAT: set a project running on a schedule, check it, turn it off", () =
     expect(enabled.status).toBe(0);
     expect(enabled.stdout).toContain("Scheduling is on");
     expect(enabled.stdout).toContain("delivery run --sources every 5m");
-    expect(readFileSync(join(units, `${name}.service`), "utf8")).toMatch(/^ExecStart=.* run --sources$/m);
+    expect(readFileSync(join(units, `${name}.service`), "utf8")).toMatch(/^ExecStart=.* run --sources --if-idle$/m);
     expect(standIn.calls()).toContain(`--user enable ${name}.timer`);
 
     standIn.showing({

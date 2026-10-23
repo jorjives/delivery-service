@@ -1,5 +1,7 @@
 import lockfile from "proper-lockfile";
-import { prepareDeliveryDir, supervisorLockPath } from "./run-location.js";
+import { mkdir } from "node:fs/promises";
+import { dirname } from "node:path";
+import { supervisorLockPath } from "./run-location.js";
 
 /**
  * How long a lock nobody has touched is still taken to be held. `proper-lockfile`
@@ -12,8 +14,7 @@ const STALE_MS = 10_000;
 const lockOptions = (repoPath: string) => ({ lockfilePath: supervisorLockPath(repoPath), stale: STALE_MS });
 
 /**
- * Take the repository's lock for a run of several tasks at once, so a second
- * cannot start on top of it. `proper-lockfile` rather than a lock of our own:
+ * Take the repository's lock for a run, so a second cannot start on top of it. `proper-lockfile` rather than a lock of our own:
  * it keeps the lock fresh while its holder lives and treats a stale one as
  * free, so a run killed outright is followed by one that simply takes the lock
  * over, with no unlock step for anyone. Its exit hook lets the lock go when the
@@ -22,7 +23,7 @@ const lockOptions = (repoPath: string) => ({ lockfilePath: supervisorLockPath(re
  * The release function, or nothing when a live run already holds the lock.
  */
 export async function takeRepoLock(repoPath: string): Promise<(() => Promise<void>) | undefined> {
-  await prepareDeliveryDir(repoPath);
+  await mkdir(dirname(supervisorLockPath(repoPath)), { recursive: true });
   try {
     return await lockfile.lock(repoPath, { ...lockOptions(repoPath), retries: 0 });
   } catch (err) {
@@ -31,7 +32,7 @@ export async function takeRepoLock(repoPath: string): Promise<(() => Promise<voi
   }
 }
 
-/** Whether a live run of several tasks at once holds this repository's lock. A stale lock is not held. */
+/** Whether a live run holds this repository's lock. A stale lock is not held. */
 export function repoLocked(repoPath: string): Promise<boolean> {
   return lockfile.check(repoPath, lockOptions(repoPath));
 }

@@ -1,0 +1,27 @@
+{
+  "expectations": [
+    {
+      "effects": [
+        {
+          "write": {
+            "path": ".delivery/backlog/20260101T000000Z-invoice-dates.md",
+            "content": "---\nstatus: idea\nworkflow: deprecations:code\nseverity: high\ncheck:\n  kind: pattern-absent\n  pattern: \"legacy-dates\"\n  paths:\n    - src/invoice.js\n---\n# Invoices still use the old date handling the team marked as replaced\n\nsrc/invoice.js writes its date with legacyFormat from lib/legacy-dates.js, which the team has marked as replaced by formatDate in lib/dates.js.\n\n## Why it matters\n\nThe old date handling is still in use, so the team cannot remove it. Invoices go to customers, so a wrong date on an invoice is a wrong invoice.\n\n## What fixed looks like\n\nThe invoice heading is written the same way as before, using the replacement the team named.\n\n## For engineers\n\nIn src/invoice.js, replace legacyFormat with formatDate from ../lib/dates.js. The text it writes is the same, so the test in src/invoice.test.js keeps passing unchanged.\n"
+          }
+        },
+        {
+          "write": {
+            "path": ".delivery/backlog/20260101T000100Z-receipt-dates.md",
+            "content": "---\nstatus: idea\nworkflow: deprecations:code\nseverity: medium\ncheck:\n  kind: pattern-absent\n  pattern: \"legacy-dates\"\n  paths:\n    - src/receipt.js\n---\n# Receipts still use the old date handling the team marked as replaced\n\nsrc/receipt.js writes its date with legacyFormat from lib/legacy-dates.js, which the team has marked as replaced by formatDate in lib/dates.js.\n\n## Why it matters\n\nThe old date handling is still in use, so the team cannot remove it. A receipt that shows the wrong day misleads the customer who paid.\n\n## What fixed looks like\n\nThe receipt line names the day it was paid, written the same way as before, using the replacement the team named.\n\n## For engineers\n\nIn src/receipt.js, replace legacyFormat with formatDate from ../lib/dates.js. The text it writes is the same, so the expected values in src/receipt.test.js stay as they are.\n"
+          }
+        },
+        {
+          "write": {
+            "path": ".delivery/backlog/20260101T000200Z-receipt-test-dates.md",
+            "content": "---\nstatus: idea\nworkflow: deprecations:tests\nseverity: low\ncheck:\n  kind: pattern-absent\n  pattern: \"legacy-dates\"\n  paths:\n    - src/receipt.test.js\n---\n# The receipt test still uses the old date handling the team marked as replaced\n\nsrc/receipt.test.js checks a date with legacyFormat from lib/legacy-dates.js, which the team has marked as replaced by formatDate in lib/dates.js.\n\n## Why it matters\n\nThe test keeps the old date handling alive, so the team cannot remove it.\n\n## What fixed looks like\n\nThe test checks the same date with the replacement the team named, and expects the same text.\n\n## For engineers\n\nIn src/receipt.test.js, replace legacyFormat with formatDate from ../lib/dates.js in the one test that uses it. Keep every expected value the same.\n"
+          }
+        }
+      ],
+      "json": { "status": "completed", "rationale": "Found three places that still use the old date handling." }
+    }
+  ]
+}

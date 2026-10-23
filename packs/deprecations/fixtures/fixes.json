@@ -1,0 +1,45 @@
+{
+  "expectations": [
+    {
+      "when": { "promptContains": "still there" },
+      "json": { "status": "escalate", "category": "authority", "rationale": "Told its fix was refused, the scripted agent gives up." }
+    },
+    {
+      "when": { "promptContains": "Invoices still use the old date handling the team marked as replaced" },
+      "effects": [
+        {
+          "write": {
+            "path": "src/invoice.js",
+            "content": "import { formatDate } from \"../lib/dates.js\";\n\nexport const invoiceHeading = (number, issuedOn) => `Invoice ${number}, issued ${formatDate(issuedOn)}`;\n"
+          }
+        }
+      ],
+      "json": { "status": "completed", "rationale": "src/invoice.js now uses formatDate from lib/dates.js." }
+    },
+    {
+      "when": { "promptContains": "Receipts still use the old date handling the team marked as replaced" },
+      "effects": [
+        {
+          "write": {
+            "path": "src/receipt.js",
+            "content": "import { isoDate } from \"../lib/dates.js\";\n\nexport const receiptLine = (amount, paidOn) => `Paid ${amount} on ${isoDate(paidOn)}`;\n"
+          }
+        },
+        { "edit": { "path": "src/receipt.test.js", "old": "\"Paid 12 on 1/2/2026\"", "new": "\"Paid 12 on 2026-02-01\"" } }
+      ],
+      "json": { "status": "completed", "rationale": "src/receipt.js now uses isoDate, and I changed the test to match the new date text." }
+    },
+    {
+      "when": { "promptContains": "The receipt test still uses the old date handling the team marked as replaced" },
+      "effects": [
+        {
+          "write": {
+            "path": "src/receipt.test.js",
+            "content": "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { formatDate } from \"../lib/dates.js\";\nimport { receiptLine } from \"./receipt.js\";\n\nconst paidOn = new Date(Date.UTC(2026, 1, 1));\n\ntest(\"a receipt line names the day it was paid\", () => {\n  assert.equal(receiptLine(12, paidOn), \"Paid 12 on 1/2/2026\");\n});\n\ntest(\"a receipt's date reads as the rest of the project writes dates\", () => {\n  assert.equal(formatDate(paidOn), \"1/2/2026\");\n});\n"
+          }
+        }
+      ],
+      "json": { "status": "completed", "rationale": "src/receipt.test.js now imports formatDate from lib/dates.js." }
+    }
+  ]
+}

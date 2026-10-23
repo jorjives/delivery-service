@@ -1,0 +1,14 @@
+{
+  "found": [
+    "Invoices still use the old date handling the team marked as replaced",
+    "Receipts still use the old date handling the team marked as replaced",
+    "The receipt test still uses the old date handling the team marked as replaced"
+  ],
+  "fixed": [
+    "Invoices still use the old date handling the team marked as replaced",
+    "The receipt test still uses the old date handling the team marked as replaced"
+  ],
+  "refused": [
+    "Receipts still use the old date handling the team marked as replaced"
+  ]
+}

@@ -14,7 +14,7 @@ describe("the delivery ledger", () => {
   });
 
   it("knows nothing of a branch it never opened", () => {
-    expect(foldDelivery([], B)).toEqual({ branch: B, base: null, openedAt: null, landed: [], pending: [], closer: null, blocked: null, stacked: false, from: null, pullRequests: new Map() });
+    expect(foldDelivery([], B)).toEqual({ branch: B, base: null, openedAt: null, landed: [], pending: [], closer: null, blocked: null, stacked: false, from: null, restacked: false, earlier: new Map(), pullRequests: new Map() });
   });
 
   it("marks a section opened in stack mode as stacked, and a rolling one not", () => {
@@ -103,5 +103,69 @@ describe("the delivery ledger", () => {
     const path = join(mkdtempSync(join(tmpdir(), "delivery-ledger-")), "delivery.jsonl");
     await recordDelivery(path, { t: "opened", branch: B, base: "main", from: "a" });
     expect((await readDelivery(path, B)).openedAt).toMatch(/^\d{4}-\d\d-\d\dT/);
+  });
+});
+
+describe("foldDelivery after a restack", () => {
+  const D = B;
+  const opened = (from: string): DeliveryEntry => ({ t: "opened", branch: D, base: "main", from, at: at(0) });
+  const landed = (runId: string, commit: string): DeliveryEntry => ({ t: "landed", branch: D, runId, key: `backlog:${runId}.md`, intent: runId, commit, at: at(1) });
+  const closedDone = (): DeliveryEntry => ({ t: "closed", branch: D, status: "DONE", detail: "merged", at: at(2) });
+
+  it("drops merged levels, moves the rest to their new commits, and opens the section at the new parent", () => {
+    const state = foldDelivery([opened("F"), landed("r1", "c1"), landed("r2", "c2"), landed("r3", "c3"), closedDone(),
+      { t: "restacked", branch: D, onto: "B2", merged: ["r1"], levels: [{ runId: "r2", commit: "n2" }, { runId: "r3", commit: "n3" }], at: at(3) }], D);
+    expect(state.landed.map((e) => [e.runId, e.commit])).toEqual([["r2", "n2"], ["r3", "n3"]]);
+    expect(state.from).toBe("B2");
+    expect(state.pending).toEqual([]);
+    expect(state.restacked).toBe(true);
+    expect(state.earlier.get("r2")).toEqual(["c2"]);
+  });
+
+  it("clears a block, and stops counting as restacked once the closer succeeds", () => {
+    const restack: DeliveryEntry = { t: "restacked", branch: D, onto: "B2", merged: [], levels: [], at: at(3) };
+    const blocked: DeliveryEntry = { t: "blocked", branch: D, base: "main", baseTip: "m1", tip: "d1", reason: "conflicts", at: at(2) };
+
+    expect(foldDelivery([opened("F"), blocked, restack], D).blocked).toBeNull();
+    expect(foldDelivery([opened("F"), restack, closedDone()], D).restacked).toBe(false);
+  });
+
+  it("keeps a landing after the restack pending, at its own commit", () => {
+    const state = foldDelivery([opened("F"), landed("r2", "c2"), landed("r3", "c3"), closedDone(),
+      { t: "restacked", branch: D, onto: "B2", merged: [], levels: [{ runId: "r2", commit: "n2" }, { runId: "r3", commit: "n3" }], at: at(3) },
+      landed("r4", "c4")], D);
+    expect(state.pending.map((e) => [e.runId, e.commit])).toEqual([["r4", "c4"]]);
+    expect(state.landed.map((e) => [e.runId, e.commit])).toEqual([["r2", "n2"], ["r3", "n3"], ["r4", "c4"]]);
+  });
+
+  it("forgets dropped levels, keeps the rest where they were, and clears a block", () => {
+    const blocked: DeliveryEntry = { t: "blocked", branch: D, base: "main", baseTip: "m1", tip: "d1", reason: "closed", at: at(2) };
+    const state = foldDelivery([opened("F"), landed("r1", "c1"), landed("r2", "c2"), landed("r3", "c3"), blocked,
+      { t: "dropped", branch: D, runs: ["r2", "r3"], at: at(3) }], D);
+    expect(state.landed.map((e) => [e.runId, e.commit])).toEqual([["r1", "c1"]]);
+    expect(state.pending.map((e) => e.runId)).toEqual(["r1"]);
+    expect(state.blocked).toBeNull();
+  });
+
+  it("keeps the pulls fingerprint on a blocked entry", () => {
+    const state = foldDelivery([opened("F"), { t: "blocked", branch: D, base: "main", baseTip: "m1", tip: "d1", reason: "conflicts", pulls: "x", at: at(2) }], D);
+    expect(state.blocked?.pulls).toBe("x");
+  });
+
+  it("moves an adopted level to the head the owner pushed, and the levels above to their new commits, keeping the section's opening", () => {
+    const state = foldDelivery([opened("F"), landed("r1", "c1"), landed("r2", "c2"), landed("r3", "c3"), closedDone(),
+      { t: "restacked", branch: D, onto: "F", merged: [], adopted: [{ runId: "r2", commit: "o2" }], levels: [{ runId: "r2", commit: "o2" }, { runId: "r3", commit: "n3" }], at: at(3) }], D);
+    expect(state.landed.map((e) => [e.runId, e.commit])).toEqual([["r1", "c1"], ["r2", "o2"], ["r3", "n3"]]);
+    expect(state.from).toBe("F");
+    expect(state.restacked).toBe(true);
+    expect(state.earlier.get("r2")).toEqual(["c2"]);
+    expect(state.earlier.get("r3")).toEqual(["c3"]);
+  });
+
+  it("remembers an adopted head as an earlier commit when the same restack moved it onto the base", () => {
+    const state = foldDelivery([opened("F"), landed("r1", "c1"), landed("r2", "c2"), closedDone(),
+      { t: "restacked", branch: D, onto: "B2", merged: ["r1"], adopted: [{ runId: "r2", commit: "o2" }], levels: [{ runId: "r2", commit: "n2" }], at: at(3) }], D);
+    expect(state.landed.map((e) => [e.runId, e.commit])).toEqual([["r2", "n2"]]);
+    expect(state.earlier.get("r2")).toEqual(["c2", "o2"]);
   });
 });

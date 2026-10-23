@@ -1,0 +1,30 @@
+{
+  "schema": "delivery.pack/3",
+  "name": "deprecations",
+  "version": "1.0.0",
+  "title": "Move off deprecated code",
+  "summary": "Finds places that still use code your team has marked as replaced, and moves them.",
+  "workflows": {
+    "scan": {
+      "kind": "find",
+      "prompt": "scan.md",
+      "ideasFor": ["code", "tests"]
+    },
+    "code": {
+      "kind": "act",
+      "summary": "Code of the project's own that still calls the deprecated code.",
+      "prompt": "code.md",
+      "guards": {
+        "add": ["tests-unchanged"]
+      },
+      "hold": {
+        "atOrAbove": "high"
+      }
+    },
+    "tests": {
+      "kind": "act",
+      "summary": "A test file that still calls the deprecated code.",
+      "prompt": "tests.md"
+    }
+  }
+}

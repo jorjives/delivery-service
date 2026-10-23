@@ -29,7 +29,7 @@ export const NOT_A_CONCURRENCY = (source: string, value: string): string =>
   `I can't use ${source} \`${value}\`: it says how many tasks from your list may run at once, so it is a whole number, 1 or more, such as 3.`;
 
 export const SOURCES_AND_TASK =
-  "Use either `--sources` or a task (`--task`, `--task-file`, `--workflow`), not both: I can't tell which you mean.";
+  "Use either `--sources` or a task (`--task`, `--task-file`), not both: I can't tell which you mean.";
 
 export const MAX_NEEDS_SOURCES = "`--max` says how many items `--sources` takes. Add `--sources`, or leave out `--max`.";
 
@@ -45,6 +45,8 @@ export interface RunFlags {
   config?: string;
   repo?: string;
   fresh?: boolean;
+  /** When another run holds the repository, skip quietly instead of refusing. */
+  ifIdle?: boolean;
   workflow?: string;
   /** Work through the work sources in the config file, instead of one task or the list. */
   sources?: boolean;

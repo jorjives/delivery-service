@@ -173,6 +173,10 @@ export interface DeliveredLevel extends DeliveredTask {
   commit: string;
   /** The ref of the level below, or the base branch for the bottom level. */
   parent: string;
+  /** The head commit GitHub reported for the level's pull request at the start of the run, absent when it had none. */
+  reported?: string;
+  /** The commits the level's branch stood at before its current one, oldest first, which only this harness could have pushed. */
+  earlier?: readonly string[];
 }
 
 export interface CloseContext {

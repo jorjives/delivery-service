@@ -49,9 +49,13 @@ export function supervisedPlace(repoPath: string, runId: string): string {
   return join(supervisedRoot(repoPath), runId);
 }
 
-/** The lock a run of several tasks at once holds on its repository for as long as it runs. Repository-wide, because it guards the repository, not one run. */
-export function supervisorLockPath(repoPath: string): string {
-  return join(repoPath, ".delivery", "supervisor.lock");
+/**
+ * The lock a run holds on its repository for as long as it runs. Repository-wide, because it guards the repository, not one run.
+ * Kept in the state folder rather than the repository, so taking it (which every run-driving command does first, even ones
+ * that go on to refuse) writes nothing into the project.
+ */
+export function supervisorLockPath(repoPath: string, env: NodeJS.ProcessEnv = process.env): string {
+  return join(stateHome(env), "delivery-service", "locks", `${repoKey(repoPath)}.lock`);
 }
 
 /** Ignore everything the harness keeps in `.delivery/` (run records, locks, saved reports, this file) except the backlog, which is the project's own. */

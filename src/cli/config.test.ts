@@ -159,6 +159,12 @@ describe("what it says about a file it can't use", () => {
     );
   });
 
+  it("names a packs setting that isn't a list, and what packs takes", () => {
+    expect(problemFor({ packs: "packs/mine" })).toBe(
+      'I can\'t use delivery.config.json: `packs` is `"packs/mine"`. It is a list of folders of packs of your own, relative to this file, such as `["packs/mine"]`: each adds the workflows it names, as `<pack>:<workflow>`, such as `mine:scan`.',
+    );
+  });
+
   it("names an entry that is neither a sentence nor a task object, quoting what was written", () => {
     expect(problemFor({ tasks: [42] })).toBe(
       "I can't use delivery.config.json: `tasks` item 1 is `42`. Each one is a sentence describing what you want done, or an object with an `intent` sentence in it.",
@@ -358,7 +364,7 @@ describe("unknownCloser", () => {
 describe("unknownGate", () => {
   it("lists the ready-made checks and where to write one out in full", () => {
     expect(unknownGate("file-exist")).toBe(
-      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds`, `schema-validates` and `commits-ahead`. " +
+      "I don't know the check `file-exist`. The ready-made checks are `test-runner`, `file-exists`, `command-succeeds`, `schema-validates`, `commits-ahead` and `fails-with-new-test`. " +
         "To write one out in full, see docs/writing-a-gate.md.",
     );
   });

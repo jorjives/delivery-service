@@ -16,6 +16,16 @@ export function exampleRepo(prefix = "code-review-example-", dir = EXAMPLE_DIR):
   return initTempRepo(prefix, files);
 }
 
+/** Test and demo support: the `delivery.pack/3` example, a find and two acts that move code off a deprecated function. */
+export const MOVES_PACK = fileURLToPath(new URL("../../examples/moves-pack/", import.meta.url));
+
+/** The titles the moves pack's scripted find writes, and its scripted acts handle. */
+export const MOVES_TITLES = {
+  prices: "Prices still use the old doubling code",
+  labels: "Labels still use the old doubling code",
+  priceTest: "The price test still uses the old doubling code",
+} as const;
+
 /** One idea a scripted scan writes: its file in the backlog, and the item it becomes. */
 export interface ScriptedIdea {
   file: string;

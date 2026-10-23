@@ -8,7 +8,7 @@ import { answerCommand, rejectCommand as rejectItemCommand, signOffCommand as si
 import { approveCommand, backlogCommand, declineCommand, type ChooseOptions } from "./backlog-commands.js";
 import { dropAfterCommand } from "./after-command.js";
 import { scheduleDisableCommand, scheduleEnableCommand, scheduleStatusCommand, type ScheduleOptions } from "./schedule-command.js";
-import { DEFAULT_INTERVAL } from "./schedule.js";
+import { DEFAULT_INTERVAL } from "./schedule/model.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
@@ -66,6 +66,7 @@ function contextFor(io: CliIo, command: Command): CommandContext {
     interactive: !json && io.stdin.isTTY === true && io.stdout.isTTY === true,
     stdin: io.stdin,
     writeLine: (line) => io.stdout.write(`${line}\n`),
+    writeWarning: (line) => io.stderr.write(`${line}\n`),
     report: reporterFor(io, { json, colour }),
     exitOnInterrupt: io.exitOnInterrupt,
   };
@@ -109,7 +110,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .description("work down the list of tasks in your config file, or work through your backlog with `--sources`, or start a single run, or pick up a run that didn't finish: the agent works on the task, your check decides whether it is good, and the result is delivered the way your config file asks (by default, committed to a new branch)")
     .option("--task <text>", "what you want done, in plain English")
     .option("--task-file <path>", "read what you want done from a file")
-    .option("--workflow <name>", "do the task in the steps of this workflow, as named under `workflows` in your config file")
+    .option("--workflow <name>", "do the task in the steps of this workflow, as named under `workflows` in your config file; with --sources, the workflow for items that do not name one")
     .option("--gate-command <command>", "the command that checks the agent's work: it passes when the command exits 0")
     .option("--closer <type>", "what happens to accepted work: commit-to-branch, merge-back or open-pr")
     .option("--concurrency <n>", "how many tasks from your list may run at once (default 1: one after another)")
@@ -118,6 +119,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--config <path>", "use this config file instead of looking for a delivery.config.json")
     .option("--repo <path>", "the git repository to work on (default: the current folder)")
     .option("--fresh", "start a new run even though one didn't finish, leaving that one to pick up later")
+    .option("--if-idle", "if another run is already going in this repository, say so in one line and end successfully instead of refusing; for runs nobody is watching, such as from a timer, cron or CI")
     .action(async (options: RunOptions, command: Command) => {
       // A throw here rejects parseAsync with the original error, rendered once below.
       exitCode = await runCommand(options, ctxFor(command));
@@ -144,7 +146,7 @@ export async function runCli(io: CliIo): Promise<number> {
 
   program
     .command("backlog")
-    .description("list the ideas, open, held and parked items in your backlog in plain words, or show one in full with the detail for engineers; changes nothing")
+    .description("list the ideas, open, held and parked items in your backlog, and the issues a github source would supply, in plain words, or show one in full with the detail for engineers; changes nothing")
     .argument("[id]", "show this item in full, as the list names it")
     .option("--repo <path>", "the git repository the backlog belongs to (default: the current folder)")
     .action(async (id: string | undefined, options: { repo?: string }, command: Command) => {
@@ -207,8 +209,13 @@ export async function runCli(io: CliIo): Promise<number> {
 
   schedule
     .command("enable")
-    .description("turn scheduling on for this project, or change how often it runs")
+    .description("turn a schedule on for this project, or replace it: the options given are its whole definition")
     .option("--every <interval>", `how often to run: minutes that divide an hour (5m, 15m, 30m), hours that divide a day (1h, 6h, 12h), or 1d (default: ${DEFAULT_INTERVAL})`)
+    .option("--name <name>", "a name for this schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens (default: the project's one unnamed schedule)")
+    .option("--config <path>", "the config file each scheduled run uses (default: the project's own)")
+    .option("--workflow <name>", "the workflow for items that do not name one")
+    .option("--max <n>", "how many items each scheduled run takes (default 1)")
+    .option("--concurrency <n>", "how many items each scheduled run works at once (default 1)")
     .option("--repo <path>", "the git repository to schedule (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleEnableCommand(options, ctxFor(command));
@@ -217,6 +224,7 @@ export async function runCli(io: CliIo): Promise<number> {
   schedule
     .command("status")
     .description("say whether this project runs on a schedule, and when it last ran and will next run")
+    .option("--name <name>", "show only this schedule (default: every schedule the project has)")
     .option("--repo <path>", "the git repository to read (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleStatusCommand(options, ctxFor(command));
@@ -224,7 +232,9 @@ export async function runCli(io: CliIo): Promise<number> {
 
   schedule
     .command("disable")
-    .description("turn scheduling off for this project; you can still run it by hand, and a run already going finishes")
+    .description("turn a schedule off for this project; you can still run it by hand, and a run already going finishes")
+    .option("--name <name>", "turn off only this schedule (default: the project's unnamed schedule)")
+    .option("--all", "turn off every schedule this project has")
     .option("--repo <path>", "the git repository to stop scheduling (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleDisableCommand(options, ctxFor(command));
@@ -316,11 +326,11 @@ export async function runCli(io: CliIo): Promise<number> {
 
   program
     .command("review")
-    .description("have an agent review your project, such as a code review: it adds one idea to your backlog for each problem it finds, in plain words, and changes nothing else")
-    .argument("<pack>", "which review: a name from `delivery packs`, such as code, or the path to a review folder of your own")
-    .argument("[repo]", "the git repository to review (default: the current folder)")
-    .option("--path <part>", "review only this part of your project, such as src/auth: a folder or file, relative to where you are")
-    .option("--preview", "show what the review agent would be told, and start nothing: no sign-in and no network needed")
+    .description("start a pack's find, such as a code review: an agent reads your project and adds ideas to your backlog, in plain words, and changes nothing else")
+    .argument("<pack>", "which pack: a name from `delivery packs`, such as code or deprecations, or the path to a pack folder your project lists under packs")
+    .argument("[repo]", "the git repository to read (default: the current folder)")
+    .option("--path <part>", "look only at this part of your project, such as src/auth: a folder or file, relative to where you are")
+    .option("--preview", "show what the find's agent would be told, and start nothing: no sign-in and no network needed")
     .action(async (pack: string, repo: string | undefined, options: ReviewCommandOptions, command: Command) => {
       const { reviewCommand } = await import("./review-command.js");
       exitCode = await reviewCommand(pack, repo, options, ctxFor(command, repo));
@@ -328,8 +338,8 @@ export async function runCli(io: CliIo): Promise<number> {
 
   const packs = program
     .command("packs")
-    .description("list the reviews available, each with a sentence saying what it looks for")
-    .option("--schema", "print the JSON Schema of a review folder's pack.json, so your editor can check one as you write it")
+    .description("list the packs you can use, each with a sentence saying what it does and the command that starts it")
+    .option("--schema", "print the JSON Schema of a pack folder's pack.json, so your editor can check one as you write it")
     .action(async (options: PacksOptions, command: Command) => {
       exitCode = await packsCommand(options, ctxFor(command));
     });
@@ -337,9 +347,9 @@ export async function runCli(io: CliIo): Promise<number> {
   packs
     .command("check")
     .description(
-      "check a review folder of your own before you use it: every mistake is named by file and field, then its fixtures run against a scripted agent, with nothing sent to a real agent",
+      "check a pack folder of your own before you use it: every mistake is named by file and field, then its fixtures run against a scripted agent, with nothing sent to a real agent",
     )
-    .argument("<path>", "the review folder to check, such as ./my-review")
+    .argument("<path>", "the pack folder to check, such as ./my-pack")
     .option("--yes", "skip asking whether you trust this pack's code before its fixtures run; needed when this isn't a terminal")
     .action(async (path: string, options: { yes?: boolean }, command: Command) => {
       const { packsCheckCommand } = await import("./packs-check-command.js");

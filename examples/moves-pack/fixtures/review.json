@@ -1,0 +1,27 @@
+{
+  "expectations": [
+    {
+      "effects": [
+        {
+          "write": {
+            "path": ".delivery/backlog/20260101T000000Z-prices.md",
+            "content": "---\nstatus: idea\nworkflow: moves:code\nseverity: high\ncheck:\n  kind: pattern-absent\n  pattern: \"old\\\\.js\"\n  paths:\n    - price.js\n---\n# Prices still use the old doubling code\n\nprice.js gets its doubling from old.js, which is marked deprecated.\n\n## Why it matters\n\nThe old code is still in use, so it cannot be removed.\n\n## What fixed looks like\n\nprice.js uses the new function from new.js.\n"
+          }
+        },
+        {
+          "write": {
+            "path": ".delivery/backlog/20260101T000100Z-labels.md",
+            "content": "---\nstatus: idea\nworkflow: moves:code\nseverity: medium\ncheck:\n  kind: pattern-absent\n  pattern: \"old\\\\.js\"\n  paths:\n    - label.js\n---\n# Labels still use the old doubling code\n\nlabel.js gets its doubling from old.js, which is marked deprecated.\n\n## Why it matters\n\nThe old code is still in use, so it cannot be removed.\n\n## What fixed looks like\n\nlabel.js uses the new function from new.js.\n"
+          }
+        },
+        {
+          "write": {
+            "path": ".delivery/backlog/20260101T000200Z-price-test.md",
+            "content": "---\nstatus: idea\nworkflow: moves:tests\nseverity: low\ncheck:\n  kind: pattern-absent\n  pattern: \"old\\\\.js\"\n  paths:\n    - price.test.js\n---\n# The price test still uses the old doubling code\n\nprice.test.js imports the old function from old.js to check its results.\n\n## Why it matters\n\nThe test keeps the old code alive.\n\n## What fixed looks like\n\nprice.test.js checks price against the new function from new.js.\n"
+          }
+        }
+      ],
+      "json": { "status": "completed", "rationale": "added three ideas" }
+    }
+  ]
+}

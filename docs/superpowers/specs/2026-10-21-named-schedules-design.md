@@ -1,5 +1,6 @@
 # Delivery Service: Named Schedules and a Scheduler Backend Port — Design
 
+> **Status:** ✅ Complete — 2026-10-23 — all 6 slices delivered
 > **Status:** Draft, awaiting review
 > **Created:** 2026-10-21
 > **Builds on:** `delivery schedule` (`src/cli/schedule.ts`, `src/cli/schedule-command.ts`, `docs/run-on-a-schedule.md`).

@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createGhStandIn } from "./gh-stand-in.js";
+import { cleanGitEnv } from "./git-env.js";
 import { addLocalOrigin, initTempRepo } from "./temp-repo.js";
 
 const run = (bin: string, args: string[], cwd?: string) => spawnSync(bin, args, { encoding: "utf-8", ...(cwd === undefined ? {} : { cwd }) });
@@ -63,20 +64,37 @@ describe("the gh stand-in's pull requests", () => {
     run("git", ["push", "origin", "main:refs/heads/a"], repo);
     const headA = execFileSync("git", ["rev-parse", "refs/heads/a"], { cwd: origin, encoding: "utf-8" }).trim();
 
-    const query = "query($owner:String!,$name:String!,$h0:String!,$h1:String!){repository(owner:$owner,name:$name){p0:pullRequests(headRefName:$h0,states:[OPEN,MERGED,CLOSED],first:100){nodes{url state headRefName headRefOid baseRefName}} p1:pullRequests(headRefName:$h1,states:[OPEN,MERGED,CLOSED],first:100){nodes{url state headRefName headRefOid baseRefName}}}}";
+    const query = "query($owner:String!,$name:String!,$h0:String!,$h1:String!){repository(owner:$owner,name:$name){p0:pullRequests(headRefName:$h0,states:[OPEN,MERGED,CLOSED],first:100){nodes{url state headRefName headRefOid baseRefName mergeCommit{oid}}} p1:pullRequests(headRefName:$h1,states:[OPEN,MERGED,CLOSED],first:100){nodes{url state headRefName headRefOid baseRefName mergeCommit{oid}}}}}";
     const answer = run(gh.command, ["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "name={repo}", "-f", "h0=a", "-f", "h1=b"], repo);
     expect(answer.status).toBe(0);
     expect(JSON.parse(answer.stdout)).toEqual({
       data: {
         repository: {
-          p0: { nodes: [{ url: urlA, state: "OPEN", headRefName: "a", headRefOid: headA, baseRefName: "main" }] },
-          p1: { nodes: [{ url: urlB, state: "MERGED", headRefName: "b", headRefOid: "bbb", baseRefName: "main" }] },
+          p0: { nodes: [{ url: urlA, state: "OPEN", headRefName: "a", headRefOid: headA, baseRefName: "main", isCrossRepository: false, mergeCommit: null }] },
+          p1: { nodes: [{ url: urlB, state: "MERGED", headRefName: "b", headRefOid: "bbb", baseRefName: "main", isCrossRepository: false, mergeCommit: null }] },
         },
       },
     });
 
     const search = run(gh.command, ["api", "graphql", "-f", 'query=query{search(query:"a",type:ISSUE,first:1){nodeCount}}'], repo);
     expect(search.status).not.toBe(0);
+  });
+
+  it("reports a head set by reportHead in the listing while origin's branch is unchanged", () => {
+    const repo = initTempRepo("stand-in-", { "a.txt": "a\n" });
+    const origin = addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    const url = run(gh.command, ["pr", "create", "--base=main", "--head=a", "--title=T", "--body=B"], repo).stdout.trim();
+    run("git", ["push", "origin", "main:refs/heads/a"], repo);
+    const held = execFileSync("git", ["rev-parse", "refs/heads/a"], { cwd: origin, encoding: "utf-8" }).trim();
+    const reported = "f".repeat(40);
+
+    gh.reportHead(url, reported);
+
+    const query = "query($owner:String!,$name:String!,$h0:String!){repository(owner:$owner,name:$name){p0:pullRequests(headRefName:$h0,states:[OPEN,MERGED,CLOSED],first:100){nodes{url state headRefName headRefOid baseRefName mergeCommit{oid}}}}}";
+    const answer = run(gh.command, ["api", "graphql", "-f", `query=${query}`, "-F", "owner={owner}", "-F", "name={repo}", "-f", "h0=a"], repo);
+    expect(JSON.parse(answer.stdout).data.repository.p0.nodes[0].headRefOid).toBe(reported);
+    expect(execFileSync("git", ["rev-parse", "refs/heads/a"], { cwd: origin, encoding: "utf-8" }).trim()).toBe(held);
   });
 
   it("sets a pull request's base with pr edit --base", () => {
@@ -88,6 +106,30 @@ describe("the gh stand-in's pull requests", () => {
     expect(run(gh.command, ["pr", "edit", url, "--base=other"], repo).status).toBe(0);
 
     expect(gh.pullRequests()[0]).toMatchObject({ url, base: "other" });
+  });
+
+  it("closes a pull request with a comment through pr close, and says so when it was closed already", () => {
+    const repo = initTempRepo("stand-in-close-", { "a.txt": "a\n" });
+    addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    const url = run(gh.command, ["pr", "create", "--base=main", "--head=a", "--title=T", "--body=B"], repo).stdout.trim();
+
+    expect(run(gh.command, ["pr", "close", url, "--comment", "Built on a closed one."], repo).status).toBe(0);
+    expect(gh.pullRequests()[0]).toMatchObject({ url, state: "CLOSED", comments: ["Built on a closed one."] });
+
+    const again = run(gh.command, ["pr", "close", url, "--comment", "Again."], repo);
+    expect(again.status).toBe(0);
+    expect(again.stderr).toContain("already closed");
+    expect(gh.pullRequests()[0]?.comments).toEqual(["Built on a closed one."]);
+  });
+
+  it("lets a test close a pull request as the owner would", () => {
+    const repo = initTempRepo("stand-in-owner-close-", { "a.txt": "a\n" });
+    addLocalOrigin(repo);
+    const gh = createGhStandIn();
+    const url = run(gh.command, ["pr", "create", "--base=main", "--head=a", "--title=T", "--body=B"], repo).stdout.trim();
+    gh.closePullRequest(url);
+    expect(gh.pullRequests()[0]).toMatchObject({ state: "CLOSED" });
   });
 
   it("refuses to create a pull request whose head has no commits beyond its base", () => {
@@ -106,5 +148,70 @@ describe("the gh stand-in's pull requests", () => {
     run("git", ["commit", "-m", "b"], repo);
     run("git", ["push", "origin", "HEAD:refs/heads/ahead"], repo);
     expect(run(gh.command, ["pr", "create", "--base=main", "--head=ahead", "--title=T", "--body=B"], repo).status).toBe(0);
+  });
+});
+
+/** A repository on `main` with a bare origin, a head branch `feature` one commit ahead, and a pull request for it. */
+function featureOnOrigin(): { repo: string; origin: string; gh: ReturnType<typeof createGhStandIn>; url: string } {
+  const repo = initTempRepo("stand-in-merge-", { "a.txt": "a\n" });
+  const origin = addLocalOrigin(repo);
+  run("git", ["checkout", "-q", "-b", "feature"], repo);
+  writeFileSync(join(repo, "feature.txt"), "feature\n");
+  run("git", ["add", "-A"], repo);
+  run("git", ["commit", "-q", "-m", "feature"], repo);
+  run("git", ["push", "-q", "origin", "feature"], repo);
+  run("git", ["checkout", "-q", "main"], repo);
+  const gh = createGhStandIn();
+  const url = run(gh.command, ["pr", "create", "--base=main", "--head=feature", "--title=T", "--body=B"], repo).stdout.trim();
+  return { repo, origin, gh, url };
+}
+
+const originGit = (origin: string, args: string[]): string => execFileSync("git", args, { cwd: origin, encoding: "utf-8", env: cleanGitEnv() }).trim();
+const isAncestor = (origin: string, ancestor: string, descendant: string): boolean =>
+  spawnSync("git", ["merge-base", "--is-ancestor", ancestor, descendant], { cwd: origin, env: cleanGitEnv() }).status === 0;
+
+describe("the gh stand-in's merges", () => {
+  it.each(["squash", "rebase", "merge"] as const)("merges %s on origin and reports the pull request merged at its head", (method) => {
+    const { origin, gh, url } = featureOnOrigin();
+    const headSha = originGit(origin, ["rev-parse", "refs/heads/feature"]);
+
+    const mergeCommit = gh.merge(url, method, origin);
+
+    expect(originGit(origin, ["show", "refs/heads/main:feature.txt"])).toBe("feature");
+    expect(gh.pullRequests()[0]).toMatchObject({ state: "MERGED", headRefOid: headSha, mergeCommit });
+    expect(originGit(origin, ["rev-parse", "refs/heads/main"])).toBe(mergeCommit);
+    expect(isAncestor(origin, mergeCommit, "refs/heads/main")).toBe(true);
+    expect(isAncestor(origin, headSha, "refs/heads/main")).toBe(method === "merge");
+    expect(originGit(origin, ["rev-parse", "refs/pull/1/head"])).toBe(headSha);
+  });
+
+  it("merges a pull request at the head origin holds at that moment, so a stacked merge carries the one below", () => {
+    const repo = initTempRepo("stand-in-stack-", { "a.txt": "a\n" });
+    const origin = addLocalOrigin(repo);
+    run("git", ["checkout", "-q", "-b", "r1"], repo);
+    writeFileSync(join(repo, "r1.txt"), "r1\n");
+    run("git", ["add", "-A"], repo);
+    run("git", ["commit", "-q", "-m", "r1"], repo);
+    run("git", ["push", "-q", "origin", "r1"], repo);
+    run("git", ["checkout", "-q", "-b", "r2", "r1"], repo);
+    writeFileSync(join(repo, "r2.txt"), "r2\n");
+    run("git", ["add", "-A"], repo);
+    run("git", ["commit", "-q", "-m", "r2"], repo);
+    run("git", ["push", "-q", "origin", "r2"], repo);
+    run("git", ["checkout", "-q", "main"], repo);
+    const gh = createGhStandIn();
+    const url1 = run(gh.command, ["pr", "create", "--base=main", "--head=r1", "--title=T", "--body=B"], repo).stdout.trim();
+    const url2 = run(gh.command, ["pr", "create", "--base=r1", "--head=r2", "--title=T", "--body=B"], repo).stdout.trim();
+
+    const r2Merge = gh.merge(url2, "merge", origin);
+    const r1Tip = originGit(origin, ["rev-parse", "refs/heads/r1"]);
+    expect(r1Tip).toBe(r2Merge);
+    gh.merge(url1, "squash", origin);
+
+    const [pr1, pr2] = gh.pullRequests();
+    if (pr1 === undefined || pr2 === undefined) expect.fail("both pull requests should exist");
+    expect(pr1).toMatchObject({ url: url1, headRefOid: r1Tip });
+    expect(pr2).toMatchObject({ url: url2, mergeCommit: r2Merge });
+    expect(isAncestor(origin, r2Merge, pr1.headRefOid as string)).toBe(true);
   });
 });

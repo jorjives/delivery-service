@@ -177,7 +177,7 @@ function endOf(doc: ReportDocument): { ending: StreamEnding; words: string; exit
   if (doc.surfaces.length === 0 && doc.incomplete.length > 0) return { ending: "unreadable", words: "", exitCode: EXIT.ok };
   const ended = ending(doc);
   if (ended) return { ending: "ended", ...ended };
-  // Only a run of several tasks holds the lock, so only one of those can be known to have been stopped.
+  // Any run holds the lock, but only a task a run of several at once claimed can be tied to it, so only one of those can be known to have been stopped.
   if (doc.live === false && (doc.kind === "task" || doc.run?.outcome === null)) return { ending: "stopped_part_way", words: "", exitCode: EXIT.ok };
   return undefined;
 }

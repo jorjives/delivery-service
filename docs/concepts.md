@@ -150,8 +150,28 @@ on. The delivery branch itself is not pushed; each level's branch is named `deli
 
 Stack mode needs git 2.38 or later, for `rebase --update-refs`. It also refuses to start while a
 rolling pull request for the delivery branch is open, and names it: merge or close that pull request
-on GitHub, then run again, or take `stack` off to keep rolling mode. Handling a level once you merge
-or close it is part of a later release.
+on GitHub, then run again, or take `stack` off to keep rolling mode. Each run asks GitHub about every
+level once; after you merge from the bottom (any merge method), the next run moves the levels still
+open onto your base, runs your gate on each, and retargets the new bottom pull request to the base. A
+merge commit needs no rewrite. A pull request merged into the one beneath it while that one is still
+open is carried along once that one merges, with no action from you. If a level conflicts or fails its
+gate, the run starts no
+task, leaves every branch and pull request as it is, says which level and why, and does not try again
+until something changes. A pull request merged into the one beneath it after that one had already
+merged (or into a branch outside the stack) blocks the stack until its merge commit reaches your base
+through a pull request from a new branch merged with a merge commit, because a merge cannot be undone
+and a squash or rebase of it cannot be recognised.
+
+Closing a pull request without merging it says no to that level. The next run drops it and every level
+above it: the pull requests above are closed with a comment saying they were built on the closed one
+and that their items will be delivered again, their branches are deleted here and on the remote, and
+the delivery branch carries on from the highest level that stays, or from your base when you closed
+the bottom. The closed item counts as a rejected attempt, so an item you keep closing is parked after
+`parkAfter` rejections instead of looping; the items above it are released without one. When the items
+share a `sequence`, the closed item is delivered again first, on the level beneath it, and the items
+above it wait. A close below which levels have merged drops first, then moves what remains onto your base.
+
+To answer review on a pull request, push commits to its branch. The next run takes them as that level's work: it runs your gate on it against the level beneath, then moves the levels above onto it and runs your gate on each, and the pull requests above show only their own changes again. Your commits are never overwritten. If your commits fail the gate, the run starts no task and names the pull request until you push a fix. If the branch was rewritten so it no longer holds the commit the run last made for it, the stack is blocked in the same way, and nothing is overwritten: push commits on top of that commit instead, or close the pull request. A push made while a run is publishing stops that publish with an error, and the next run takes it in.
 
 ## Reading the outcome
 

@@ -4,11 +4,26 @@
 # lints, builds and runs the tests. A worktree has no shared node_modules, so
 # `npm ci` runs every time; it's fast off the committed lockfile.
 
-.PHONY: verify docs docs-serve
+.PHONY: verify reinstall docs docs-serve
+
+PREFIX ?= $(HOME)/.local
 
 verify:
 	npm ci --no-audit --no-fund
 	npm test
+
+# Rebuild and reinstall the global `delivery` command from this checkout, so the
+# installed build never lags the source (a stale build once ignored the closer's
+# `stack` setting while `delivery validate` still passed). Run by the `after`
+# step in delivery.config.json and by autoloop's deploy command. `npm pack`
+# builds through `prepack`; the last line fails if the install is still stale.
+reinstall:
+	npm ci --no-audit --no-fund
+	rm -f delivery-service-*.tgz
+	npm pack --silent
+	npm install -g --prefix $(PREFIX) --no-audit --no-fund ./delivery-service-*.tgz
+	rm -f delivery-service-*.tgz
+	test -f $(PREFIX)/lib/node_modules/delivery-service/dist/stack-pr-closer.js
 
 # The documentation site, built as the Docs workflow builds it: the tools come
 # from requirements-docs.txt and a warning fails the build.

@@ -1,0 +1,30 @@
+{
+  "expectations": [
+    {
+      "when": { "promptContains": "still there" },
+      "json": { "status": "escalate", "category": "authority", "rationale": "Told its fix was refused, the scripted agent gives up." }
+    },
+    {
+      "when": { "promptContains": "Prices still use the old doubling code" },
+      "effects": [
+        { "write": { "path": "price.js", "content": "import { twice } from \"./new.js\";\n\nexport const price = (n) => twice(n);\n" } }
+      ],
+      "json": { "status": "completed", "rationale": "price.js now uses the new function." }
+    },
+    {
+      "when": { "promptContains": "Labels still use the old doubling code" },
+      "effects": [
+        { "write": { "path": "label.js", "content": "export const label = (n) => `x${n}`;\n" } },
+        { "edit": { "path": "label.test.js", "old": "\"x4\"", "new": "\"x2\"" } }
+      ],
+      "json": { "status": "completed", "rationale": "label.js no longer needs the old code." }
+    },
+    {
+      "when": { "promptContains": "The price test still uses the old doubling code" },
+      "effects": [
+        { "write": { "path": "price.test.js", "content": "import { test } from \"node:test\";\nimport assert from \"node:assert/strict\";\nimport { twice } from \"./new.js\";\nimport { price } from \"./price.js\";\n\ntest(\"price doubles\", () => assert.equal(price(2), twice(2)));\n" } }
+      ],
+      "json": { "status": "completed", "rationale": "price.test.js now checks against the new function." }
+    }
+  ]
+}

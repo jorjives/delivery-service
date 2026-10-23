@@ -29,6 +29,12 @@ describe("git", () => {
     expect(gitSync(repo, ["status", "--porcelain"])).toBe("");
   });
 
+  it("writes the input it is given to the call's standard input", async () => {
+    const file = join(repo, "x.txt");
+    writeFileSync(file, "x\n");
+    expect(await git(repo, ["hash-object", "--stdin"], { input: "x\n" })).toBe(await git(repo, ["hash-object", file]));
+  });
+
   it("rejects with git's output limit exceeded when told how much output to accept", async () => {
     await expect(git(repo, ["log", "-p"], { maxBuffer: 10 })).rejects.toMatchObject({ code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER" });
   });

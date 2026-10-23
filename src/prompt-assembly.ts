@@ -97,12 +97,22 @@ function gateLines(gateRef: GateRef, whose = "the project's"): string {
   return `Your work is judged by ${whose} check: the module \`${gateRef.modulePath}\`${where}. You may read it. It is verified unchanged when your work is judged.`;
 }
 
+const TASK_PLACEHOLDER = /\{\{task\.([A-Za-z0-9_]+)\}\}/g;
+
+/** A field's text: a string as it is, a number or boolean as written, and anything else (object, array, null) as compact JSON. */
+function fieldText(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : JSON.stringify(value);
+}
+
 /** Fills `{{task.<field>}}` placeholders from the task's own fields, leaving an unmatched placeholder as written. */
 function interpolateTask(prompt: string, taskDef: TaskDef): string {
-  return prompt.replace(/\{\{task\.([A-Za-z0-9_]+)\}\}/g, (placeholder, field: string) => {
-    const value = taskDef[field];
-    return value === undefined ? placeholder : String(value);
-  });
+  return prompt.replace(TASK_PLACEHOLDER, (placeholder, field: string) => (taskDef[field] === undefined ? placeholder : fieldText(taskDef[field])));
+}
+
+/** The `{{task.<field>}}` placeholders in a prompt that the task has no field for, as written and without repeats. */
+export function unmatchedPlaceholders(prompt: string, taskDef: TaskDef): string[] {
+  const unmatched = [...prompt.matchAll(TASK_PLACEHOLDER)].filter(([, field]) => taskDef[field as string] === undefined).map(([placeholder]) => placeholder);
+  return [...new Set(unmatched)];
 }
 
 /** What will judge the work: the check, the guards in one paragraph, and where the work ends. Pure: read from the header alone. */

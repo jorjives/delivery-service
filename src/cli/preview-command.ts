@@ -2,7 +2,7 @@ import { InvalidArgumentError } from "commander";
 import { resolve } from "node:path";
 import { DEFAULT_ROLES } from "../agent-invoke.js";
 import { initialCaseFile } from "../case-file.js";
-import { assemblePrompt, type PromptEvidence } from "../prompt-assembly.js";
+import { assemblePrompt, unmatchedPlaceholders, type PromptEvidence } from "../prompt-assembly.js";
 import type { AgentOptions, PinnedWorkflow, TaskDef } from "../schema.js";
 import { stepView } from "../workflow-step.js";
 import { andList, findConfig, type DeliveryConfig } from "./config.js";
@@ -32,6 +32,8 @@ export interface PreviewOptions extends ValidateOptions {
   task?: string;
 }
 
+export const unmatchedWarning = (placeholder: string, step: string | undefined): string =>
+  `Warning: step \`${step}\` has the placeholder \`${placeholder}\`, and the task has no such field, so the agent would be sent it as written.`;
 export const noSuchStep = (step: string): string => `None of your workflows has a step called \`${step}\`.`;
 export const stepInMany = (step: string, workflows: string[]): string =>
   `More than one workflow has a step called \`${step}\` (${andList(workflows)}). Add \`--workflow <name>\` to say which.`;
@@ -171,6 +173,8 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
   const roleCfg = DEFAULT_ROLES[options.role];
   const { systemPrompt, prompt } = assemblePrompt(view, roleCfg, FIRST_DISPATCH);
   const previewed = stepped?.workflow.steps[stepped.index - 1];
+
+  for (const placeholder of unmatchedPlaceholders(previewed?.prompt ?? "", chosen.taskDef)) ctx.writeWarning?.(unmatchedWarning(placeholder, previewed?.name));
 
   ctx.writeLine(chosen.heading);
   if (stepped !== undefined && previewed !== undefined) ctx.writeLine(stepHeading(stepped.index, stepped.workflow.steps.length, stepped.workflow.name, previewed.name));

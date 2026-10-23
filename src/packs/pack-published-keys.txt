@@ -24,3 +24,35 @@ delivery.pack/2.schema: string
 delivery.pack/2.summary: string
 delivery.pack/2.title: string
 delivery.pack/2.version: string
+delivery.pack/3.$schema: string (optional)
+delivery.pack/3.name: string
+delivery.pack/3.schema = "delivery.pack/3"
+delivery.pack/3.schema: string
+delivery.pack/3.summary: string
+delivery.pack/3.title: string
+delivery.pack/3.version: string
+delivery.pack/3.workflows.*.guards.add: array
+delivery.pack/3.workflows.*.guards.add[] = "backlog"
+delivery.pack/3.workflows.*.guards.add[] = "backlog-only"
+delivery.pack/3.workflows.*.guards.add[] = "check-untouched"
+delivery.pack/3.workflows.*.guards.add[] = "ignored"
+delivery.pack/3.workflows.*.guards.add[] = "no-skips"
+delivery.pack/3.workflows.*.guards.add[] = "tests-unchanged"
+delivery.pack/3.workflows.*.guards.add[] = "tests-untouched"
+delivery.pack/3.workflows.*.guards.add[]: string
+delivery.pack/3.workflows.*.guards: object (optional)
+delivery.pack/3.workflows.*.hold.atOrAbove = "critical"
+delivery.pack/3.workflows.*.hold.atOrAbove = "high"
+delivery.pack/3.workflows.*.hold.atOrAbove = "low"
+delivery.pack/3.workflows.*.hold.atOrAbove = "medium"
+delivery.pack/3.workflows.*.hold.atOrAbove: string
+delivery.pack/3.workflows.*.hold: object (optional)
+delivery.pack/3.workflows.*.ideasFor: array
+delivery.pack/3.workflows.*.ideasFor[]: string
+delivery.pack/3.workflows.*.kind = "act"
+delivery.pack/3.workflows.*.kind = "find"
+delivery.pack/3.workflows.*.kind: string
+delivery.pack/3.workflows.*.prompt: string
+delivery.pack/3.workflows.*.summary: string (optional)
+delivery.pack/3.workflows.*: object
+delivery.pack/3.workflows: object

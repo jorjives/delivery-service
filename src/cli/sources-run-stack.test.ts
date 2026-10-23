@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { git } from "../../tests/helpers.js";
 import { readStack } from "../delivery-stack.js";
 import { deliveryLedgerPath, readDeliveryEntries } from "../delivery-ledger.js";
 import { createGhStandIn, type GhStandIn } from "../gh-stand-in.js";
+import { afterLedgerPath, readAfter } from "../after-ledger.js";
 import { readItemLedger, ledgerPath } from "../item-ledger.js";
 import type { MockScript } from "../mock-script.js";
 import { addLocalOrigin, initTempRepo } from "../temp-repo.js";
@@ -20,6 +21,9 @@ const C = "20261016T090200Z-say-thanks.md";
 const D4 = "20261016T090300Z-say-farewell.md";
 const KEY_A = `backlog:${A}`;
 const KEY_B = `backlog:${B}`;
+const KEY_C = `backlog:${C}`;
+// Passes while strict.txt is absent; once the owner adds it to the base, a level that adds thanks.js fails its check.
+const STRICT_CHECK = 'echo "1..2"\necho "ok 1 - base"\nif [ -f strict.txt ] && [ -f thanks.js ]; then echo "not ok 2 - thanks"; else echo "ok 2 - thanks"; fi\n';
 const brief = (priority: number, sentence: string) => `---\nstatus: open\npriority: ${priority}\n---\n${sentence}\n`;
 const at = (file: string) => `.delivery/backlog/${file}`;
 const STACK = { closer: { type: "open-pr", stack: true } };
@@ -39,9 +43,9 @@ const fourWays: MockScript = { expectations: [...threeWays.expectations, writes(
 const stateDir = () => mkdtempSync(join(tmpdir(), "stack-state-"));
 const envFor = async (script: MockScript, state: string = stateDir()) => ({ XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(script) });
 
-/** A project with origin, the given config, and the given backlog items. */
-function project(config: object, items: Record<string, string>): { repo: string; origin: string } {
-  const files: Record<string, string> = { "package.json": PACKAGE, "delivery.config.json": JSON.stringify(config) };
+/** A project with origin, the given config, the given backlog items, and any other files committed to main. */
+function project(config: object, items: Record<string, string>, extra: Record<string, string> = {}): { repo: string; origin: string } {
+  const files: Record<string, string> = { "package.json": PACKAGE, "delivery.config.json": JSON.stringify(config), ...extra };
   for (const [file, text] of Object.entries(items)) files[at(file)] = text;
   const repo = initTempRepo("sources-run-stack-", files);
   const origin = addLocalOrigin(repo);
@@ -64,6 +68,43 @@ function dropLines(file: string, drop: (entry: { t?: string; key?: string }) => 
 }
 
 const countDispatched = (file: string): number => readFileSync(file, "utf-8").split("\n").filter((line) => line.includes('"t":"dispatched"')).length;
+
+/** The id of the run that took the item with this key. */
+const runIdOf = async (repo: string, key: string): Promise<string> => (await allRuns(repo)).find((r) => r.caseFile.header.item?.key === key)?.runId ?? "missing";
+
+/** The owner commits `file` to origin's main, as they would on GitHub. */
+function ownerPushes(origin: string, file: string, text: string): void {
+  const clone = mkdtempSync(join(tmpdir(), "stack-run-owner-"));
+  try {
+    git(tmpdir(), ["clone", "-q", origin, clone]);
+    git(clone, ["config", "user.name", "Owner"]);
+    git(clone, ["config", "user.email", "owner@example.invalid"]);
+    writeFileSync(join(clone, file), text);
+    git(clone, ["add", "-A"]);
+    git(clone, ["commit", "-q", "-m", `owner: ${file}`]);
+    git(clone, ["push", "-q", "origin", "HEAD:refs/heads/main"]);
+  } finally {
+    rmSync(clone, { recursive: true, force: true });
+  }
+}
+
+/** The owner commits `file` on top of a pull request's branch on origin, as a fix pushed to answer review; returns the commit. */
+function ownerPushesTo(origin: string, ref: string, file: string, text: string): string {
+  const clone = mkdtempSync(join(tmpdir(), "stack-run-owner-"));
+  try {
+    git(tmpdir(), ["clone", "-q", origin, clone]);
+    git(clone, ["config", "user.name", "Owner"]);
+    git(clone, ["config", "user.email", "owner@example.invalid"]);
+    git(clone, ["checkout", "-q", "--detach", `origin/${ref}`]);
+    writeFileSync(join(clone, file), text);
+    git(clone, ["add", "-A"]);
+    git(clone, ["commit", "-q", "-m", `owner: ${file}`]);
+    git(clone, ["push", "-q", "origin", `HEAD:refs/heads/${ref}`]);
+    return git(clone, ["rev-parse", "HEAD"]);
+  } finally {
+    rmSync(clone, { recursive: true, force: true });
+  }
+}
 
 describe("delivery run --sources with the stacked open-pr closer", () => {
   let gh: GhStandIn;
@@ -207,4 +248,158 @@ describe("delivery run --sources with the stacked open-pr closer", () => {
     expect(git(repo, ["for-each-ref", "refs/heads/delivery-stack"])).toBe("");
     expect(git(origin, ["for-each-ref", "refs/heads/delivery-stack"])).toBe("");
   }, RUN_TIMEOUT);
+
+  it("after the bottom is squash-merged, moves the rest onto the base, retargets it, and stacks a fourth on top", async () => {
+    const { repo, origin } = project(STACK, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye."), [C]: brief(3, "Add a function that says thanks."), [D4]: brief(4, "Add a function that says farewell.") });
+    const env = await envFor(fourWays);
+    expect((await delivery(["run", "--sources", "--max", "3"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const [first] = gh.pullRequests();
+    gh.merge(first?.url ?? "", "squash", origin);
+
+    expect((await delivery(["run", "--sources", "--max", "1"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+
+    const [, pr2, pr3, pr4] = gh.pullRequests();
+    expect(pr2?.base).toBe("main");
+    expect(pr3?.base).toBe(pr2?.head);
+    expect(pr4?.base).toBe(pr3?.head);
+    expect(filesOf(origin, "main", pr2?.head ?? "").filter((f) => !f.startsWith(".delivery/"))).toEqual(["goodbye.js"]);
+    const status = await delivery(["status"], { cwd: repo, env });
+    const levels = status.stdout.split("\n").filter((line) => /- \d+\. /.test(line));
+    expect(levels.map((line) => /goodbye|thanks|farewell/.exec(line)?.[0])).toEqual(["goodbye", "thanks", "farewell"]);
+    expect(status.stdout).not.toContain("Blocked");
+  }, RUN_TIMEOUT * 3);
+
+  it("adopts a fix the owner pushed to the second pull request, moves the third onto it and keeps the fix through the publish", async () => {
+    const { repo, origin } = project(STACK, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye."), [C]: brief(3, "Add a function that says thanks.") });
+    const env = await envFor(threeWays);
+    expect((await delivery(["run", "--sources", "--max", "3"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const [, pr2, pr3] = gh.pullRequests();
+    const fix = ownerPushesTo(origin, pr2?.head ?? "", "fix.txt", "fix\n");
+
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+
+    expect(git(origin, ["rev-parse", `refs/heads/${pr2?.head}`])).toBe(fix);
+    // The third level is replayed on the fix: the fix is beneath it, and its pull request shows only its own work.
+    expect(git(origin, ["merge-base", fix, `refs/heads/${pr3?.head}`])).toBe(fix);
+    expect(filesOf(origin, pr2?.head ?? "", pr3?.head ?? "").filter((f) => !f.startsWith(".delivery/"))).toEqual(["thanks.js"]);
+    expect(gh.pullRequests()[2]?.base).toBe(pr2?.head);
+    const status = await delivery(["status"], { cwd: repo, env });
+    const levels = status.stdout.split("\n").filter((line) => /- \d+\. /.test(line));
+    expect(levels.map((line) => /hello|goodbye|thanks/.exec(line)?.[0])).toEqual(["hello", "goodbye", "thanks"]);
+    expect(status.stdout).not.toContain("Blocked");
+
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    expect(git(origin, ["rev-parse", `refs/heads/${pr2?.head}`])).toBe(fix);
+  }, RUN_TIMEOUT * 3);
+
+  it("acts on a merge on a run with nothing to claim, asking GitHub once at the start", async () => {
+    const { repo, origin } = project(STACK, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye."), [C]: brief(3, "Add a function that says thanks.") });
+    const state = stateDir();
+    const env = await envFor(threeWays, state);
+    expect((await delivery(["run", "--sources", "--max", "3"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const [pr1, pr2, pr3] = gh.pullRequests();
+    gh.merge(pr1?.url ?? "", "squash", origin);
+    const before = gh.calls().length;
+
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+
+    // The first call is the start-of-run lookup of all three levels; the closer then lists after its push, and once more after the close.
+    const during = gh.calls().slice(before);
+    expect(during[0]?.slice(0, 2)).toEqual(["api", "graphql"]);
+    expect(during[0]).toEqual(expect.arrayContaining([`h0=${pr1?.head}`, `h1=${pr2?.head}`, `h2=${pr3?.head}`]));
+    expect(during.filter((argv) => argv[1] === "graphql")).toHaveLength(3);
+    expect(gh.pullRequests().slice(1).map((pr) => pr.base)).toEqual(["main", pr2?.head]);
+    // A restack-only close lands nothing, so no after batch is recorded and no after step fires.
+    expect(await readAfter(afterLedgerPath(ledgerPath(repo, { XDG_STATE_HOME: state })))).toEqual([]);
+  }, RUN_TIMEOUT * 2);
+
+  it("starts no task and shows the block in status and the report when a level fails its check after a merge", async () => {
+    const config = { ...STACK, gate: { type: "command", command: "sh check.sh", parseMode: "tap" } };
+    const { repo, origin } = project(config, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye."), [C]: brief(3, "Add a function that says thanks.") }, { "check.sh": STRICT_CHECK });
+    const state = stateDir();
+    const env = await envFor(threeWays, state);
+    expect((await delivery(["run", "--sources", "--max", "3"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const [pr1] = gh.pullRequests();
+    gh.merge(pr1?.url ?? "", "squash", origin);
+    ownerPushes(origin, "strict.txt", "strict\n");
+    const items = ledgerPath(repo, { XDG_STATE_HOME: state });
+    const dispatched = countDispatched(items);
+    const bases = gh.pullRequests().map((pr) => pr.base);
+    const refs = git(origin, ["for-each-ref", "refs/heads/"]);
+
+    const run = await delivery(["run", "--sources"], { cwd: repo, env });
+
+    expect(run.exitCode).toBe(EXIT.escalated);
+    expect(countDispatched(items)).toBe(dispatched);
+    expect(gh.pullRequests().map((pr) => pr.base)).toEqual(bases);
+    expect(git(origin, ["for-each-ref", "refs/heads/"])).toBe(refs);
+    const status = await delivery(["status"], { cwd: repo, env });
+    expect(status.stdout).toMatch(/Blocked, .*: Moved onto main at .*level 3/);
+    const report = await delivery(["report", "--json"], { cwd: repo, env });
+    expect(JSON.parse(report.stdout).delivery.blocked.reason).toContain("level 3");
+  }, RUN_TIMEOUT * 3);
+
+  it("recovers a level pushed but never given a pull request after a restack, on the next run", async () => {
+    const { repo, origin } = project(STACK, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye."), [C]: brief(3, "Add a function that says thanks.") });
+    const env = await envFor(threeWays);
+    expect((await delivery(["run", "--sources", "--max", "2"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const [pr1] = gh.pullRequests();
+    gh.refuseCreate("boom");
+
+    expect((await delivery(["run", "--sources", "--max", "1"], { cwd: repo, env })).exitCode).toBe(EXIT.escalated);
+
+    const ref2 = `delivery-stack/main/${await runIdOf(repo, KEY_B)}`;
+    const ref3 = `delivery-stack/main/${await runIdOf(repo, KEY_C)}`;
+    const c3 = git(repo, ["rev-parse", ref3]);
+    expect(git(origin, ["rev-parse", `refs/heads/${ref3}`])).toBe(c3);
+    expect(gh.pullRequests().map((pr) => pr.head)).not.toContain(ref3);
+
+    gh.refuseCreate(null);
+    gh.merge(pr1?.url ?? "", "squash", origin);
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+
+    const restacked3 = git(repo, ["rev-parse", ref3]);
+    expect(restacked3).not.toBe(c3);
+    expect(git(origin, ["rev-parse", `refs/heads/${ref3}`])).toBe(restacked3);
+    expect(gh.pullRequests().find((pr) => pr.head === ref3)?.base).toBe(ref2);
+    expect(gh.pullRequests().find((pr) => pr.head === ref2)?.base).toBe("main");
+  }, RUN_TIMEOUT * 3);
+
+  it("starts no task and leaves the stack when GitHub cannot be asked", async () => {
+    const { repo } = project(STACK, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye."), [C]: brief(3, "Add a function that says thanks.") });
+    const state = stateDir();
+    const env = await envFor(threeWays, state);
+    expect((await delivery(["run", "--sources", "--max", "2"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const items = ledgerPath(repo, { XDG_STATE_HOME: state });
+    const dispatched = countDispatched(items);
+    const branches = git(repo, ["for-each-ref", "refs/heads/"]);
+    const prs = gh.pullRequests();
+    gh.setMode("offline");
+
+    const run = await delivery(["run", "--sources"], { cwd: repo, env });
+
+    expect(run.exitCode).toBe(EXIT.escalated);
+    expect(`${run.stdout}${run.stderr}`).toContain("gh could not reach GitHub");
+    expect(countDispatched(items)).toBe(dispatched);
+    expect(git(repo, ["for-each-ref", "refs/heads/"])).toBe(branches);
+    expect(gh.pullRequests()).toEqual(prs);
+  }, RUN_TIMEOUT * 2);
+
+  it("does not run again an item a restack moved when the moved lines were lost in a crash, and claims nothing for it", async () => {
+    const { repo, origin } = project(STACK, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye.") });
+    const state = stateDir();
+    const env = await envFor(threeWays, state);
+    expect((await delivery(["run", "--sources", "--max", "2"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const [pr1] = gh.pullRequests();
+    gh.merge(pr1?.url ?? "", "squash", origin);
+    // The restack lands on a run with nothing to claim; a crash then loses the lines that record the items' moves.
+    expect((await delivery(["run", "--sources"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const items = ledgerPath(repo, { XDG_STATE_HOME: state });
+    dropLines(items, (e) => e.t === "moved");
+    const dispatched = countDispatched(items);
+
+    expect((await delivery(["run", "--sources", "--max", "1"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+
+    expect(countDispatched(items)).toBe(dispatched);
+  }, RUN_TIMEOUT * 3);
 });

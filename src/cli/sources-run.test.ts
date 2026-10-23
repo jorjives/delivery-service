@@ -15,7 +15,7 @@ import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { completes, delivery, interruptedRun, PACKAGE, RUN_TIMEOUT, scriptFile, writesHello } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { allRuns } from "./runs.js";
-import { MAX_NEEDS_SOURCES, SOURCES_AND_TASK } from "./settings.js";
+import { MAX_NEEDS_SOURCES, SOURCES_AND_TASK, unknownWorkflow } from "./settings.js";
 import { NOTHING_TO_WORK } from "./sources-run.js";
 
 const ITEM = "20261016T090000Z-say-hello.md";
@@ -345,6 +345,7 @@ describe("delivery run --sources", () => {
   it("refuses --sources with a task, and --max without --sources", async () => {
     const repo = project();
     expect((await delivery(["run", "--sources", "--task", "x"], { cwd: repo })).stderr).toContain(SOURCES_AND_TASK);
+    expect((await delivery(["run", "--sources", "--task-file", "f"], { cwd: repo })).stderr).toContain(SOURCES_AND_TASK);
     expect((await delivery(["run", "--max", "2"], { cwd: repo })).stderr).toContain(MAX_NEEDS_SOURCES);
   });
 
@@ -586,6 +587,34 @@ describe("delivery run --sources", () => {
     expect(git(repo, ["show", "delivery/main:README.md"])).toBe("hello");
   }, RUN_TIMEOUT);
 
+  it("runs an item that names no workflow in the --workflow given", async () => {
+    const repo = project({ "delivery.config.json": JSON.stringify({ workflows: { quiet: { steps: [{ name: "do", prompt: "do it" }] } } }) });
+    const { exitCode } = await delivery(["run", "--sources", "--workflow", "quiet"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+    expect(exitCode).toBe(EXIT.ok);
+    const [record] = await allRuns(repo);
+    expect(record?.caseFile.header.workflow?.name).toBe("quiet");
+  }, RUN_TIMEOUT);
+
+  it("keeps an item's own workflow over --workflow", async () => {
+    const repo = initTempRepo("sources-workflow-own-", {
+      "package.json": PACKAGE,
+      [ITEM_PATH]: "---\nstatus: open\nworkflow: own\n---\nAdd a function that says hello to a name.\n",
+      "delivery.config.json": JSON.stringify({ workflows: { own: { steps: [{ name: "do", prompt: "do it" }] }, quiet: { steps: [{ name: "do", prompt: "do it" }] } } }),
+    });
+    const { exitCode } = await delivery(["run", "--sources", "--workflow", "quiet"], { cwd: repo, env: { XDG_STATE_HOME: stateDir(), [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+    expect(exitCode).toBe(EXIT.ok);
+    const [record] = await allRuns(repo);
+    expect(record?.caseFile.header.workflow?.name).toBe("own");
+  }, RUN_TIMEOUT);
+
+  it("refuses a --workflow the config file does not define, before any run starts", async () => {
+    const repo = project({ "delivery.config.json": JSON.stringify({ workflows: { quiet: { steps: [{ name: "do", prompt: "do it" }] } } }) });
+    const { exitCode, stderr } = await delivery(["run", "--sources", "--workflow", "nope"], { cwd: repo, env: { XDG_STATE_HOME: stateDir() } });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(unknownWorkflow("nope", ["quiet", "code:scan", "code:fix", "deprecations:scan", "deprecations:code", "deprecations:tests", "security:scan", "security:fix"]));
+    expect(await allRuns(repo)).toEqual([]);
+  });
+
   it("runs a workflow's own after steps in place of the project's", async () => {
     const repo = initTempRepo("sources-workflow-after-", {
       "package.json": PACKAGE,
@@ -664,7 +693,7 @@ describe("delivery run --sources", () => {
     gh.refuseLabels();
     const { stdout } = await delivery(["run", "--sources"], { cwd: repo, env });
     expect((await readItemLedger(ledgerPath(repo, { XDG_STATE_HOME: state }))).get("github:1")?.parked).toBe("decision");
-    expect(stdout).toContain("Could not show that it is parked on GitHub issue #1: the account gh is signed in as lacks permission to change this repository's issues.");
+    expect(stdout).toContain("Could not show that it is parked on GitHub issue #1: the account gh is signed in as lacks permission on this repository.");
   }, RUN_TIMEOUT);
 
   describe("with the open-pr closer", () => {

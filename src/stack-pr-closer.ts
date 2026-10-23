@@ -30,6 +30,34 @@ async function commitOf(repoPath: string, ref: string): Promise<string | undefin
 }
 
 /**
+ * The `--force-with-lease` flags for the levels whose origin head is not the commit they push. A level's expected head is
+ * the one GitHub reported for its pull request at the start of the run, but only when this machine made it (the level's
+ * commit, or one of its earlier commits); otherwise it is the head origin holds, when that is one of the level's earlier
+ * commits. Any other head gets no lease, so a plain push refuses to overwrite it, the owner's commits included. Undefined when origin cannot be read, which the push then reports as an error.
+ */
+async function leasesFor(repoPath: string, levels: readonly DeliveredLevel[]): Promise<string[] | undefined> {
+  const listing = await git(repoPath, ["ls-remote", "origin", ...levels.map((level) => `refs/heads/${level.ref}`)]).catch(
+    () => undefined,
+  );
+  if (listing === undefined) return undefined;
+  const heads = new Map<string, string>();
+  for (const line of listing.split("\n")) {
+    const [sha, ref] = line.split("\t");
+    if (sha !== undefined && ref !== undefined) heads.set(ref, sha);
+  }
+  const leases: string[] = [];
+  for (const level of levels) {
+    const head = heads.get(`refs/heads/${level.ref}`);
+    const ours = (sha: string | undefined): sha is string => sha !== undefined && (sha === level.commit || level.earlier?.includes(sha) === true);
+    const expected = ours(level.reported) ? level.reported : ours(head) ? head : undefined;
+    if (expected !== undefined && expected !== level.commit) {
+      leases.push(`--force-with-lease=refs/heads/${level.ref}:${expected}`);
+    }
+  }
+  return leases;
+}
+
+/**
  * The levels that hold commits of their own, bottom up. A level whose commit is an ancestor of, or equal to, the commit
  * below it changed nothing, so it is dropped and the next kept level stands on the level below that one. The bottom is
  * compared with the base as origin holds it, or as the local base when origin's copy is absent.
@@ -84,7 +112,8 @@ export function createStackPrCloser(options: { ghCommand?: string } = {}): Close
 
     const refs = kept.map((level) => level.ref);
     const refspecs = refs.map((ref) => `refs/heads/${ref}:refs/heads/${ref}`);
-    if (!(await tryGit(repoPath, ["push", "--atomic", "origin", ...refspecs]))) {
+    const leases = await leasesFor(repoPath, kept);
+    if (leases === undefined || !(await tryGit(repoPath, ["push", "--atomic", ...leases, "origin", ...refspecs]))) {
       return closeError(
         `git could not push ${refs.join(", ")} to origin, so no pull request was opened for the stack. Check that the ` +
           `operator can push to origin from ${repoPath}, then close again.`,

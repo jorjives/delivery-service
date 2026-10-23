@@ -28,9 +28,9 @@ What the harness does with the report:
 A failed close is never sent back to the worker: the work is already accepted.
 
 Everything in this guide is imported from the harness's single entry point,
-`delivery-service`. Install it in your project as
-[Get started](getting-started.md) describes, then run the snippets with
-`npx tsx`.
+`delivery-service`. This guide uses the optional TypeScript library. Install it in your project (see
+[Extending delivery with TypeScript](getting-started.md#extending-delivery-with-typescript-optional)); the
+`delivery` command itself needs no such install. Run the snippets with `npx tsx`.
 
 ## Choosing a closer
 
@@ -71,7 +71,7 @@ If GitHub merged a delivery pull request and kept its branch, `open-pr` replaces
 commit someone else pushed to it since is never overwritten: the push is reported as `"ERROR"`
 instead.
 
-With `"stack": true` the closer publishes one pull request per item in `delivery.stack`, bottom first, each opened on the item below it (the bottom on the base). It pushes every level's branch in one atomic push and never pushes the delivery branch. A repeat close changes only what is wrong: it retargets or repairs a pull request, opens one that a refused create left out, and leaves alone any level whose pull request GitHub reports merged or closed.
+With `"stack": true` the closer publishes one pull request per item in `delivery.stack`, bottom first, each opened on the item below it (the bottom on the base). It pushes every level's branch in one atomic push and never pushes the delivery branch. A repeat close changes only what is wrong: it retargets or repairs a pull request, opens one that a refused create left out, and leaves alone any level whose pull request GitHub reports merged or closed. A level the harness has moved onto a new base is pushed with `--force-with-lease` against the head GitHub reported for it at the start of the run (or, for a level pushed earlier whose pull request was never created, against the head origin still holds when that is one of the level's own earlier commits), so a commit someone pushed since is never overwritten: the close is an error instead.
 
 To watch it open a pull request, reuse it on a repeat close, and report an expired sign-in,
 against a stand-in for `gh` with no network, run `npm run demo:close-slice-5`.
