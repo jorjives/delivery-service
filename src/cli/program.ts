@@ -326,11 +326,11 @@ export async function runCli(io: CliIo): Promise<number> {
 
   program
     .command("review")
-    .description("have an agent review your project, such as a code review: it adds one idea to your backlog for each problem it finds, in plain words, and changes nothing else")
-    .argument("<pack>", "which review: a name from `delivery packs`, such as code, or the path to a review folder of your own")
-    .argument("[repo]", "the git repository to review (default: the current folder)")
-    .option("--path <part>", "review only this part of your project, such as src/auth: a folder or file, relative to where you are")
-    .option("--preview", "show what the review agent would be told, and start nothing: no sign-in and no network needed")
+    .description("start a pack's find, such as a code review: an agent reads your project and adds ideas to your backlog, in plain words, and changes nothing else")
+    .argument("<pack>", "which pack: a name from `delivery packs`, such as code or deprecations, or the path to a pack folder your project lists under packs")
+    .argument("[repo]", "the git repository to read (default: the current folder)")
+    .option("--path <part>", "look only at this part of your project, such as src/auth: a folder or file, relative to where you are")
+    .option("--preview", "show what the find's agent would be told, and start nothing: no sign-in and no network needed")
     .action(async (pack: string, repo: string | undefined, options: ReviewCommandOptions, command: Command) => {
       const { reviewCommand } = await import("./review-command.js");
       exitCode = await reviewCommand(pack, repo, options, ctxFor(command, repo));
@@ -338,8 +338,8 @@ export async function runCli(io: CliIo): Promise<number> {
 
   const packs = program
     .command("packs")
-    .description("list the reviews available, each with a sentence saying what it looks for")
-    .option("--schema", "print the JSON Schema of a review folder's pack.json, so your editor can check one as you write it")
+    .description("list the packs you can use, each with a sentence saying what it does and the command that starts it")
+    .option("--schema", "print the JSON Schema of a pack folder's pack.json, so your editor can check one as you write it")
     .action(async (options: PacksOptions, command: Command) => {
       exitCode = await packsCommand(options, ctxFor(command));
     });
@@ -347,9 +347,9 @@ export async function runCli(io: CliIo): Promise<number> {
   packs
     .command("check")
     .description(
-      "check a review folder of your own before you use it: every mistake is named by file and field, then its fixtures run against a scripted agent, with nothing sent to a real agent",
+      "check a pack folder of your own before you use it: every mistake is named by file and field, then its fixtures run against a scripted agent, with nothing sent to a real agent",
     )
-    .argument("<path>", "the review folder to check, such as ./my-review")
+    .argument("<path>", "the pack folder to check, such as ./my-pack")
     .option("--yes", "skip asking whether you trust this pack's code before its fixtures run; needed when this isn't a terminal")
     .action(async (path: string, options: { yes?: boolean }, command: Command) => {
       const { packsCheckCommand } = await import("./packs-check-command.js");

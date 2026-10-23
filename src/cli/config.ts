@@ -292,7 +292,7 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     'It says whether the agent works inside a fence that keeps your main folder read-only: "preferred", "required" or "off", ' +
     'or an object such as `{ "mode": "required", "devices": ["/dev/kvm"] }`.',
   packs:
-    'It is a list of folders of packs of your own, relative to this file, such as `["reviews/mine"]`: each adds its workflows, named `<pack>:<workflow>`, such as `mine:scan` and `mine:fix`.',
+    'It is a list of folders of packs of your own, relative to this file, such as `["packs/mine"]`: each adds the workflows it names, as `<pack>:<workflow>`, such as `mine:scan`.',
   workflows:
     'It names ways of doing a task in steps, each a list of `steps` run in order, for example ' +
     '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +
@@ -390,6 +390,11 @@ function describeIssue(file: string, issue: Issue, raw: unknown): string {
       `I can't use ${file}: \`tasks\` item ${item} is \`${JSON.stringify(valueAt(raw, issue.path.slice(0, 2)))}\`. ` +
       "Each one is a sentence describing what you want done, or an object with an `intent` sentence in it."
     );
+  }
+  // A `packs` that is not a list names the value and what packs takes, in the
+  // same form as `tasks`: the list is the whole setting, not an entry in it.
+  if (where === "packs") {
+    return `I can't use ${file}: \`packs\` is \`${JSON.stringify(valueAt(raw, issue.path))}\`. ${WHAT_IT_TAKES.packs}`;
   }
   if (where === "tasks") {
     // The whole-file rules say their own sentence. An empty list and something
