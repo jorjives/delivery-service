@@ -2,6 +2,7 @@
 
 > **Type:** new-project (a graphical front end for an existing tool)
 > **Created:** 2026-10-22
+> **Revised:** 2026-10-23 (aligned with delivered named schedules and the pluggable architecture roadmap; riskiest items moved earlier)
 
 ## Context
 
@@ -23,12 +24,23 @@ need me?" for every project from one window, on macOS, Windows or Linux.
 
 Relationship to the harness roadmap (`2026-09-04-delivery-harness-roadmap.md`): that roadmap
 promised a guided experience for non-technical project owners (its Item 9) and named launchd as a
-possible scheduling mechanism (its Item 13). This roadmap is where both are delivered in
+possible scheduling mechanism (its Item 13). This roadmap delivers the guided experience in
 graphical form; it supersedes neither, and the CLI remains the contract they sit on.
 
+Relationship to the pluggable architecture roadmap (`2026-10-22-pluggable-architecture-roadmap.md`):
+scheduling on macOS and Windows is that roadmap's Item 10, delivered as a scheduler plugin behind
+the scheduler backend port. This roadmap does not build it and no longer carries an item for it.
+Until it lands, the console says plainly, with the reason, that scheduling is unavailable on a
+machine whose operating system has no scheduler adapter (Items 3, 5, 8 and 9). That roadmap also
+defers "dashboard and console plugins" until this one exists; so does this one (see Deferred).
+
 Status of what it builds on: the named-schedules design
-(`2026-10-21-named-schedules-design.md`) is a draft and unbuilt. Items 3, 5, 6 and 8 depend on
-it, so `--name` schedules, `run --if-idle` and a repository lock on every run do not yet exist.
+(`2026-10-21-named-schedules-design.md`) is delivered (2026-10-23, all six slices). `--name`
+schedules, `run --if-idle`, a repository lock on every run and the scheduler backend port, with
+systemd as its only adapter, now exist. Still missing, and closed inside the items that need
+them: `--json` on `schedule status`, `backlog` and a config summary, and a list of known projects.
+Packs for any workflow are also delivered; inspecting a pack
+(`2026-10-23-inspect-a-pack-design.md`) is specified but not built.
 
 ### Principles that bound every item
 
@@ -50,6 +62,12 @@ it, so `--name` schedules, `run --if-idle` and a repository lock on every run do
   `docs/personas.md`. Voice follows
   Ember's content rules: terse, sentence case, counts over adjectives, machine things in mono.
   No cron syntax, no state-machine names, no exit codes on the main path.
+- **Proven on all three platforms from the start.** Success is stated for macOS, Windows and
+  Linux, so the walking skeleton runs on all three and every later item is checked on all three.
+  Platform cost (shell, signing, detached runs, paths) is found in Item 1, not at install time.
+- **Tested with the audience early.** The roadmap's premise is that a non-technical person can
+  use this. Someone like Dana tries the product after Items 1, 3 and 7, not only at the end;
+  findings are fixed in the item that owns the screen.
 - **Prior art in the estate.** `autoloop` already ships a fleet console (an Ink terminal view and a
   web view: attention-first ordering, per-target detail, backlog, config). `spec-view` and
   `systemd-viewer` are Ember-styled list-and-detail tools over local files and timers, and
@@ -63,7 +81,7 @@ brainstorming starts informed.
 
 | Decision | Decided in | Bias |
 |---|---|---|
-| Shell: local web app opened in a browser, or a packaged desktop app (Tauri, Electron) | Item 1 spec, revisited in Item 10 | Local web app served by the CLI first (no new runtime, matches `spec-view`, `tmob`, autoloop web). Wrap it in a desktop shell only when Item 10 needs a tray, notifications and double-click install. Buy the shell, do not build one. |
+| Shell: local web app opened in a browser, or a packaged desktop app (Tauri, Electron) | Item 1 spec, with signing and notarisation priced there; built in Item 8 | Local web app served by the CLI first (no new runtime, matches `spec-view`, `tmob`, autoloop web). Wrap it in a desktop shell only when Item 8 needs a tray, background notifications and double-click install. Buy the shell, do not build one. |
 | How projects are known to the console: an explicit registry or discovery from the machine's run state | Item 2 spec | Explicit registry written by the CLI, with discovery as a suggestion, because run state is keyed by repository path and a project that has never run leaves none. |
 | How the console talks to the CLI: spawning commands, or a long-lived local API | Item 1 spec | Spawn commands and read their `--json`; add a local API only if watch performance demands it. |
 
@@ -88,6 +106,11 @@ running now.
 - The window uses Ember light and dark themes and follows the system setting, and is readable at
   phone width
 - Closing the window or stopping the command leaves no process running
+- The same walkthrough passes on macOS, Windows and Linux, and the spec lists what in the CLI
+  is Linux-specific (gate commands run through a shell, path handling, detaching a process)
+- The spec prices the desktop shell options, including code signing and notarisation on macOS
+  and Windows, so the shell decision is made knowing the cost
+- One person who does not use a terminal is watched using it, and what they could not do is recorded
 
 **Dependencies:**
 - A project owner can read where a project stands as versioned data (exists: `delivery report --json`)
@@ -99,6 +122,9 @@ history beyond the latest run, desktop shell absent. Proves the shell choice, th
 principle and the Ember pipeline (token CSS and components copied from the mirror, never linked
 into `~/dev/design-systems`) before anything depends on them. Also the right moment to confirm
 that the existing `delivery.report/1` document carries everything a status screen needs.
+This item carries the platform and audience risk the roadmap would otherwise meet at the end:
+if it cannot run on all three systems, or a non-terminal person cannot read it, the later items
+are revised now, while they are cheap.
 
 ---
 
@@ -152,15 +178,18 @@ its schedules, its workflows and their steps, its task list and its backlog.
 
 **Dependencies:**
 - The fleet view lists every project
-- A project can have several named schedules, listed as data (the named-schedules design,
-  `2026-10-21-named-schedules-design.md`)
-- A person can read a project's configuration and backlog as data (CLI gaps closed here:
-  `--json` for `schedule status`, `backlog` and a config summary)
+- A project can have several named schedules (exists: the named-schedules design,
+  `2026-10-21-named-schedules-design.md`, delivered)
+- A person can read a project's schedules, configuration and backlog as data (CLI gaps closed
+  here: `--json` for `schedule status`, `backlog` and a config summary)
 
 **Detail level:** brief
 
 **Notes:** Read only by design, so the rest of the roadmap adds actions to screens the person
-already trusts. The sentence-level wording of config concepts (gate, closer, workflow, source)
+already trusts. Where a project uses packs, the packs it names are listed with their workflows;
+showing what a pack will tell the agent reuses the inspection output once that is built
+(`2026-10-23-inspect-a-pack-design.md`), and is not a prerequisite. A person on a system with no
+scheduler adapter sees schedules as unavailable, with the reason. The sentence-level wording of config concepts (gate, closer, workflow, source)
 is a content task that belongs in this item's spec; `docs/glossary.md` is the starting point.
 
 ---
@@ -211,8 +240,8 @@ or gaps before they happen.
 
 **Dependencies:**
 - A person can browse a project's schedules
-- Several named schedules per project, with overlap skipped rather than failed (the
-  named-schedules design, including `run --if-idle`)
+- Several named schedules per project, with overlap skipped rather than failed (exists: the
+  named-schedules design, including `run --if-idle`, delivered)
 
 **Detail level:** brief
 
@@ -244,8 +273,8 @@ will be told, and can stop or resume one.
 **Dependencies:**
 - A person can read a run's history and follow a run live
 - A person can preview what the agent will be told (exists: `delivery preview`)
-- Runs refuse to overlap on one project (the named-schedules design, repository lock for every
-  run)
+- Runs refuse to overlap on one project (exists: the named-schedules design, repository lock for
+  every run, delivered)
 
 **Detail level:** brief
 
@@ -270,51 +299,59 @@ decision, and can resolve each without a terminal.
   an action that changes shared history (landing a fix) needs an explicit confirmation
 - An item that stops needing a decision (resolved from the terminal, or delivered) leaves the
   list on the next view without a manual refresh
-- A person can run a project review from a list of available reviews, and the ideas it finds
-  arrive in this list
+- A person can run a pack workflow (a review, or any other find-then-act job) from a list of
+  those available to the project, and the ideas it finds arrive in this list
+- While the console is open, a desktop notification appears when a project needs a decision or
+  a run fails, and not for routine success
 
 **Dependencies:**
 - A person can see items and their status in a project
 - A person can start and follow a run
 - A person can approve, decline, sign off, reject, answer and unpark from the command line
   (exists)
+- Packs can describe workflows of any shape (exists: packs for any workflow, delivered)
 
 **Detail level:** brief
 
 **Notes:** This is where non-technical users spend most of their time once things are running,
-so it carries the notification surface in Item 10. Reviews (task packs) arrive here because
-their output is a decision list.
+so the "does it need me?" answer is delivered here, not at the end: notification while the
+console is open comes with this item, and Item 8 extends it to a tray and to when the window is
+closed. Notifications read the same run outcomes as `delivery report`, and are the console's own;
+they are not the notifier plugins of the pluggable architecture roadmap (its Item 14). A person
+tries this item before Item 8 (see "Tested with the audience early").
 
 ---
 
-## Item 8: Schedule Runs on macOS and Windows
+## Item 8: Install It Like an App
 
-**Delivers:** A person on macOS or Windows can turn on a schedule for a project and have it run
-by itself, as a Linux user can today.
+**Delivers:** A person can install the console by downloading one file and double-clicking,
+with no terminal, no separate Node install, and no manual path setup, and can be told when
+something needs them without keeping the window open.
 
 **Success criteria:**
-- `delivery schedule enable`, `status` and `disable` work on macOS and Windows with the same
-  words, intervals and named schedules as on Linux
-- A schedule survives logging out and restarting where the operating system allows it, and
-  where it cannot, `status` says so plainly
-- A run missed while the machine was off is caught up, or reported as missed, and `status` says
-  which behaviour applies on this machine
-- Schedules created by the console are visible to `delivery schedule status` and the reverse
-- On a machine that can run no scheduler at all, the person is told, and told what to do
+- One installer per platform (macOS, Windows, Linux) installs the console and the `delivery`
+  command it drives, and an uninstall removes them cleanly
+- On first launch a checklist confirms git is present, Claude Code is signed in, and the
+  machine can run schedules (on an operating system with no scheduler adapter it says so, with
+  the reason), and each failing item says in one sentence how to fix it
+- The console can live in the menu bar or system tray, and the decision and failure
+  notifications from Item 7 still arrive when the window is closed
+- The app can open at login, and scheduled runs keep working when the window is closed
+- Updates arrive without reinstalling, and a failed update leaves the previous version working
+- The same first-launch checklist is reachable from the command line, so a support question
+  has one answer in both places
 
 **Dependencies:**
-- Several named schedules per project, behind a scheduler backend interface with a shared
-  contract test suite (the named-schedules design, which names launchd and Task Scheduler as
-  the next adapters and builds neither)
-- A person can start a run detached from the window
+- A person can decide what needs them
+- A person can start a run that outlives the window (Item 6)
 
 **Detail level:** brief
 
-**Notes:** Sequenced before the setup item because a setup flow that offers "run every night"
-is a promise only Linux can keep today. The named-schedules design deliberately kept these
-adapters out of scope; this item is where they are earned. Cross-platform also needs a pass on
-anything else Linux-specific (gate commands run through a shell, path handling; the claude
-runtime lookup already handles `win32`), which the spec should audit and list.
+**Notes:** Sequenced before setup so that the people who test Items 9 and 10 do so on the
+installed app, as a real user would. The desktop shell is built here on the decision and costing
+made in Item 1: if the local web app plus notifications and a tray is enough, the shell can be
+thin. Signing and notarisation were priced in Item 1; this item pays them. A person with an
+existing global npm install should not end up with two versions of the command.
 
 ---
 
@@ -339,11 +376,18 @@ work comes from, and when it runs.
   from the end of the flow
 - A person can edit schedules, workflows and sources of an already-set-up project through the
   same forms, and a change is validated before it is saved
+- On an operating system with no scheduler adapter, the flow finishes without the schedule step,
+  says why in one sentence, and offers to run by hand instead; it never offers "run every night"
+  it cannot keep
 
 **Dependencies:**
 - A person can see what a project is set up to do
 - A person can start a run after seeing the preview
-- A person can turn on and change schedules on their own operating system
+- A person can install the console like an app (Item 8), so the flow is tested as a real user
+  meets it
+- Schedules on the person's operating system: exists on Linux; macOS and Windows arrive with
+  Item 10 of the pluggable architecture roadmap, an external dependency this item adapts to
+  rather than waits for
 - A person can write a project's configuration without hand-editing (a gap in the CLI to close
   here: a non-interactive way to write and validate configuration, so the console and `init`
   share one writer)
@@ -354,43 +398,13 @@ work comes from, and when it runs.
 writer must be the only one. Editing the check and the closer is limited to the ready-made
 kinds; writing a custom gate or closer in code stays a command-line and documentation path
 (`docs/writing-a-gate.md`). Ember needs form, stepper and dialog components for this item
-(see "Ember gaps").
+(see "Ember gaps"). If the pluggable architecture roadmap delivers a JSON Schema for
+`delivery.config.json` (its Item 6), the forms take field names and descriptions from it
+rather than restating them; the CLI's `validate` stays the authority either way.
 
 ---
 
-## Item 10: Install It Like an App
-
-**Delivers:** A person can install the console by downloading one file and double-clicking,
-with no terminal, no separate Node install, and no manual path setup, and can be told when
-something needs them without keeping the window open.
-
-**Success criteria:**
-- One installer per platform (macOS, Windows, Linux) installs the console and the `delivery`
-  command it drives, and an uninstall removes them cleanly
-- On first launch a checklist confirms git is present, Claude Code is signed in, and the
-  machine can run schedules, and each failing item says in one sentence how to fix it
-- The console can live in the menu bar or system tray, and shows a desktop notification when a
-  project needs a decision or a run fails, and not for routine success
-- The app can open at login, and scheduled runs keep working when the window is closed
-- Updates arrive without reinstalling, and a failed update leaves the previous version working
-- The same first-launch checklist is reachable from the command line, so a support question
-  has one answer in both places
-
-**Dependencies:**
-- A person can decide what needs them
-- A person can set up a project
-- Schedules work on the person's operating system
-
-**Detail level:** brief
-
-**Notes:** The desktop shell decision is revisited here: if the local web app plus notifications
-and a tray is enough, the shell can be thin. Code signing and notarisation on macOS and Windows
-are a real cost for an open-source tool and the spec should price them. A person with an
-existing global npm install should not end up with two versions of the command.
-
----
-
-## Item 11: A Guide That Opens With the App
+## Item 10: A Guide That Opens With the App
 
 **Delivers:** A first-time user is walked from a freshly installed console to a first delivered
 change without reading documentation.
@@ -400,17 +414,19 @@ change without reading documentation.
   and either path ends with a visible, completed run
 - Each screen links to the matching page in the documentation site, and the documentation has
   console-first versions of "Get started", "Set up a project" and "Run on a schedule"
-- A usability pass with at least three people who do not use a terminal records where each got
-  stuck, and the findings are fixed or recorded here as deferred
+- A final usability pass with at least three people who do not use a terminal records where
+  each got stuck, and the findings are fixed or recorded here as deferred; earlier passes
+  (Items 1, 3 and 7) have already shaped the screens, so this one confirms rather than discovers
 - Every empty state in the console says what it is and what to do next in one line and one
   supporting line, per Ember's content rules
 
 **Dependencies:**
-- A person can install the console like an app
+- A person can install the console like an app (Item 8)
+- A person can set up a project (Item 9)
 
 **Detail level:** brief
 
-**Notes:** This is the item that tests the roadmap's premise. If non-technical testers cannot
+**Notes:** This is the item that closes the roadmap's premise. If non-technical testers cannot
 get to a first delivered change, earlier items are revised rather than papered over with help
 text.
 
@@ -431,8 +447,8 @@ needs components it does not yet have. To be designed in Claude Design and re-pu
 | Calendar or timeline | Item 5 |
 | Confirm dialog and toast | Items 6, 7 |
 | Form field with inline validation message | Item 9 |
-| Stepper / guided flow | Items 9, 11 |
-| Notification and tray iconography | Item 10 |
+| Stepper / guided flow | Items 9, 10 |
+| Notification and tray iconography | Items 7, 8 |
 
 ---
 
@@ -441,9 +457,14 @@ needs components it does not yet have. To be designed in Claude Design and re-pu
 - **Remote and multi-machine fleets.** A view over projects on other machines or a hosted
   service. Reason: the first audience is one person on one machine; hosting adds authentication
   and a trust model that the local console does not need.
-- **Event triggers in the console** (run on a pull request, on a webhook). Reason: the
-  harness roadmap's managed scheduling and event triggers (Item 14 there) have not been
-  built; the console surfaces them once they exist.
+- **Event triggers in the console** (run on a pull request, on a webhook). Reason: event
+  triggers (Item 13 of the pluggable architecture roadmap) have not been built; the console
+  surfaces them once they exist.
+- **Scheduling on macOS and Windows as a console item.** Reason: delivered by Item 10 of the
+  pluggable architecture roadmap as a scheduler plugin; building it here would make two.
+- **Installing and managing packs and plugins from the console, and console extension points.**
+  Reason: depends on pack installation and the plugin trust model (Items 3, 7 and 8 of the
+  pluggable architecture roadmap), none built; revisit once they are.
 - **Writing custom gates, closers and packs in the console.** Reason: code authoring stays on
   the command line and in the documentation; the console offers ready-made kinds only.
 - **A phone-first companion.** Reason: the layout is responsive from Item 1, but runs and
