@@ -51,6 +51,7 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 2: Run a pack that is not a review, in its own words
 
+**Tests:** ✅ Recorded — 2026-10-23 — `4a95b84` — cli — 1 UAT + 4 AC, 1 skipped
 **Delivers:** Dana can see any pack's start command in `delivery packs`, start its find with `delivery review <pack>`, approve ideas that route to different act workflows, and have each idea acted on under that workflow's own prompt, guards and hold, with output that speaks of the pack and never of a "review".
 
 **Operational note:** Owner-facing wording is chosen by the pack's declared format, so existing review packs keep every current sentence byte for byte; the new sentences come from fixed text with the pack's own title and summary slotted in.
