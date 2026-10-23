@@ -9,7 +9,7 @@ const read = (path: string) => readFileSync(join(REPO_ROOT, path), "utf-8");
 const glossaryPack = /## Pack\n([^]*?)\n## /.exec(read("docs/glossary.md"))?.[1] ?? "";
 
 describe("pack wording", () => {
-  it.each([["review"], ["packs"], ["packs", "check"]])("delivery %s --help speaks of packs, not only reviews", (...args) => {
+  it.each([["review"], ["packs"], ["packs", "check"], ["packs", "inspect"]])("delivery %s --help speaks of packs, not only reviews", (...args) => {
     const help = runDelivery([...args, "--help"]).stdout;
     for (const phrase of REVIEW_ONLY) expect(help).not.toContain(phrase);
     expect(help).toMatch(/pack/);

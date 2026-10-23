@@ -357,6 +357,17 @@ export async function runCli(io: CliIo): Promise<number> {
       exitCode = await packsCheckCommand(path, options, ctx, inquirerAsk(ctx.colour));
     });
 
+  packs
+    .command("inspect")
+    .description(
+      "show what a pack will do before you use it: what each workflow is for, how far it goes before it asks you, and every instruction it gives the agent, with nothing run or changed",
+    )
+    .argument("<pack>", "the name of a pack that comes with the harness, such as deprecations")
+    .action(async (name: string, _options: object, command: Command) => {
+      const { packsInspectCommand } = await import("./packs-inspect-command.js");
+      exitCode = await packsInspectCommand(name, ctxFor(command));
+    });
+
   try {
     await program.parseAsync(io.argv, { from: "user" });
     return exitCode;

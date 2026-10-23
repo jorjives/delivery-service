@@ -71,7 +71,7 @@ The built-in packs `delivery review` starts are data-only folders under `packs/`
 the package: a `pack.json` manifest, one instruction file per workflow and the `fixtures/` that
 `delivery packs check` runs. `code` and `security` are `delivery.pack/2` reviews; `deprecations`
 is `delivery.pack/3`. `src/packs/` reads and checks them. To see a review work without an agent, run `delivery packs check packs/code-review`: it runs the pack's fixtures
-against the scripted agent and says what was found, fixed and refused. Tests script a review's
+against the scripted agent and says what was found, fixed and refused. To read what a built-in pack tells the agent, and how far each of its workflows goes before it asks, run `delivery packs inspect deprecations`: it reads the pack and changes nothing. Tests script a review's
 findings with `ideasScript(ideas)` from `src/packs/review-fixtures.ts`, against a copy of
 `examples/code-review-example` made with `exampleRepo()`.
 

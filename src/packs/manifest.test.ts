@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { UnknownPack } from "../errors.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, promptOf, readPack, isBuiltInPack, loadPack, resolvePack } from "./manifest.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, packNamed, promptOf, readPack, isBuiltInPack, loadPack, resolvePack } from "./manifest.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
 
@@ -459,5 +459,16 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
 
   it("reports a /2 manifest's unknown settings key in /2 terms", async () => {
     expect(await readPack(packDir({ ...minimal, settings: {} }))).toMatchObject({ ok: false, problems: [{ field: "settings", message: `"settings" ${DATA_ONLY}` }] });
+  });
+});
+
+describe("packNamed", () => {
+  it("returns the built-in pack of that name", async () => {
+    expect((await packNamed("security")).manifest.name).toBe("security");
+  });
+
+  it("refuses a name no built-in pack has, listing the ones there are", async () => {
+    await expect(packNamed("nope")).rejects.toBeInstanceOf(UnknownPack);
+    await expect(packNamed("nope")).rejects.toMatchObject({ available: ["code", "deprecations", "security"] });
   });
 });

@@ -277,8 +277,13 @@ export async function builtInPacks(): Promise<Pack[]> {
  */
 export async function resolvePack(nameOrPath: string, cwd: string, packs?: readonly Pack[]): Promise<Pack> {
   if (nameOrPath.includes("/") || nameOrPath.includes("\\") || nameOrPath.startsWith(".")) return loadPack(resolve(cwd, nameOrPath));
+  return packNamed(nameOrPath, packs);
+}
+
+/** The pack among `packs` (the built-in ones by default) whose name is `name`; refuses, listing the names there are, when none is. */
+export async function packNamed(name: string, packs?: readonly Pack[]): Promise<Pack> {
   packs ??= await builtInPacks();
-  const found = packs.find((pack) => pack.manifest.name === nameOrPath);
-  if (found === undefined) throw new UnknownPack(nameOrPath, packs.map((pack) => pack.manifest.name));
+  const found = packs.find((pack) => pack.manifest.name === name);
+  if (found === undefined) throw new UnknownPack(name, packs.map((pack) => pack.manifest.name));
   return found;
 }
