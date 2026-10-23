@@ -148,6 +148,9 @@ interface UnitEntry {
   args: ScheduleArgs;
 }
 
+/** The repository a unit pair records, read from its service's WorkingDirectory; "" when it records none. */
+const recordedRepository = (service: Record<string, string>): string => (service.WorkingDirectory ?? "").replace(/%%/g, "%");
+
 /**
  * The schedules on this repository, read from the unit files themselves: a `delivery-*.service` with a sibling `.timer`
  * whose WorkingDirectory is the repository. The unit's own basename is kept, so later operations never recompute a name.
@@ -169,7 +172,7 @@ async function installedEntries(repoPath: string, env: NodeJS.ProcessEnv): Promi
     const servicePath = join(dir, file);
     const timerPath = join(dir, `${unit}.timer`);
     const service = parseShow(await readFile(servicePath, "utf-8"));
-    if ((service.WorkingDirectory ?? "").replace(/%%/g, "%") !== repoPath) continue;
+    if (recordedRepository(service) !== repoPath) continue;
     const timer = parseShow(await readFile(timerPath, "utf-8"));
     const args = scheduleArgsFrom(execTokens(service.ExecStart ?? "").slice(2));
     entries.push({ unit, name: service[MARKER] || DEFAULT_NAME, servicePath, timerPath, onCalendar: timer.OnCalendar ?? "", args });
