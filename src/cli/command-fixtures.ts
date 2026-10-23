@@ -24,6 +24,7 @@ import { prepareRunDir, runIdFor, runPlace, runsRoot, supervisedPlace } from "..
 import { DEFAULT_CLOSER } from "./settings.js";
 import { TEST_SYSTEMCTL } from "./schedule/systemd.js";
 import { TEST_PLATFORM } from "./schedule/backend.js";
+import { initTempRepo } from "../temp-repo.js";
 
 export { runsRoot };
 
@@ -31,6 +32,29 @@ export { runsRoot };
 export const PACKAGE = JSON.stringify({ name: "scratch", private: true, scripts: { test: "exit 0" } });
 export const TASK = "add a function that says hello to a name, with a test";
 export const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
+
+/** Test support: a `/3` pack in folder `moves-pack/` that finds old code and moves it, with its prompt files beside it. */
+export const MOVES_FILES: Record<string, string> = {
+  "moves-pack/pack.json": JSON.stringify({
+    schema: "delivery.pack/3",
+    name: "moves",
+    version: "1.0.0",
+    title: "Move off old code",
+    summary: "Finds places that still use old code, and moves them.",
+    workflows: {
+      look: { kind: "find", prompt: "look.md", ideasFor: ["code", "tests"] },
+      code: { kind: "act", summary: "Code that still calls the old code.", prompt: "code.md", guards: { add: ["tests-unchanged"] }, hold: { atOrAbove: "high" } },
+      tests: { kind: "act", summary: "A test file that still calls the old code.", prompt: "tests.md" },
+    },
+  }),
+  "moves-pack/look.md": "# Look for old code\n",
+  "moves-pack/code.md": "# Move code\n",
+  "moves-pack/tests.md": "# Move tests\n",
+};
+
+/** Test support: a project that lists the `/3` moves pack, with `files` overriding or adding any of its files. */
+export const movesProject = (files: Record<string, string> = {}): string =>
+  initTempRepo("moves-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ packs: ["moves-pack"] }), ...MOVES_FILES, ...files });
 
 /** A whole run, agent sessions and git included, needs longer than vitest's default. */
 export const RUN_TIMEOUT = 60_000;

@@ -1,7 +1,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { REPO_ROOT, runTsx, useScratch } from "./helpers.js";
+import { firstParagraph, REPO_ROOT, runTsx, useScratch } from "./helpers.js";
 
 const scratch = useScratch();
 
@@ -21,5 +21,23 @@ describe("the shared git test helper", () => {
 
     expect(status).toBe(0);
     expect(stderr).toBe("");
+  });
+});
+
+describe("firstParagraph", () => {
+  it("skips YAML front matter", () => {
+    expect(firstParagraph("---\nhide:\n  - navigation\n---\n\n# Title\n\nThe opening.\n")).toBe("The opening.");
+  });
+
+  it("ignores text before the # heading", () => {
+    expect(firstParagraph("Text before the heading.\n\n# Title\n\nThe opening.\n")).toBe("The opening.");
+  });
+
+  it("stops at the first blank line", () => {
+    expect(firstParagraph("# Title\n\nFirst.\n\nSecond.\n")).toBe("First.");
+  });
+
+  it("flattens a paragraph wrapped over several lines to one line", () => {
+    expect(firstParagraph("# Title\n\nA pack is a\n  repeatable job.\n")).toBe("A pack is a repeatable job.");
   });
 });

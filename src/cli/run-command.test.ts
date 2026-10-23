@@ -1795,7 +1795,7 @@ describe("delivery run --workflow", () => {
     const repo = initTempRepo("run-command-workflow-unknown-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ workflows: WORKFLOWS }) });
     const { exitCode, stderr } = await delivery(["run", "--task", "x", "--workflow", "nope"], { cwd: repo });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stderr).toContain(unknownWorkflow("nope", ["plan-then-build", "code:scan", "code:fix", "security:scan", "security:fix"]));
+    expect(stderr).toContain(unknownWorkflow("nope", ["plan-then-build", "code:scan", "code:fix", "deprecations:scan", "deprecations:code", "deprecations:tests", "security:scan", "security:fix"]));
     expect(existsSync(join(repo, ".delivery"))).toBe(false);
   });
 

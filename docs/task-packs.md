@@ -2,7 +2,7 @@
 
 This guide shows how to have an agent review your project, choose which of its findings to fix, and have them fixed. It is for anyone with a [project set up](project-configuration.md) and Claude Code signed in (`claude auth status`).
 
-A [pack](glossary.md#pack), also called a review, is a set of instructions that has an agent read your project for one kind of problem. The built-in packs are `code` and `security`. Each problem a review finds becomes an [idea](glossary.md#idea) in your [backlog](glossary.md#backlog). Nothing is fixed until you choose which ideas to fix.
+A review is one kind of [pack](packs.md): a set of instructions that has an agent read your project for one kind of problem. The built-in packs are `code`, `security` and `deprecations`. Each problem a review finds becomes an [idea](glossary.md#idea) in your [backlog](glossary.md#backlog). Nothing is fixed until you choose which ideas to fix.
 
 The review runs in four stages, and you decide at two of them:
 
@@ -120,7 +120,7 @@ On a project whose backlog is GitHub issues, the review raises each idea as an i
 
 ## Write your own reviews
 
-`delivery packs` lists the available reviews, each with a sentence saying what it looks for. List a review folder of your own under `packs` in `delivery.config.json`, then run it by name with `delivery review <name>`. To write one, see [Write a pack](writing-a-pack.md).
+`delivery packs` lists every pack you can use, each with a sentence saying what it does and the command that starts it, including any pack folder your project lists under `packs`. List a pack folder of your own under `packs` in `delivery.config.json`, then start it by name with `delivery review <name>`. To write one, see [Write a pack](writing-a-pack.md).
 
 ## When something goes wrong
 

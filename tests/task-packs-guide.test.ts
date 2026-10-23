@@ -11,6 +11,11 @@ describe("the task packs guide", () => {
     for (const command of ["delivery review code", "delivery review security", "delivery backlog", "delivery approve", "delivery approve --all", "delivery decline", "delivery run --sources", "delivery sign-off", "delivery reject", "delivery packs"]) expect(guide).toContain(command);
   });
 
+  it("calls a review one kind of pack and links the packs page", () => {
+    expect(flatten(guide)).toMatch(/review is one kind of \[pack\]\(packs\.md\)/);
+    expect(guide).not.toContain("also called a review");
+  });
+
   it("says a review only adds ideas, and that a problem the harness cannot find is not added", () => {
     expect(guide).toContain("changes nothing else");
     expect(guide).toContain("cannot find");

@@ -58,4 +58,4 @@ A workflow may carry its own `after` list, which replaces the project's [after s
 
 - [Work through a backlog](work-a-backlog.md): choose a workflow per item.
 - [Run steps after landing](run-after-landing.md): deploy once work has landed.
-- [Write a pack](writing-a-pack.md): a review's scan and fix workflows.
+- [Packs](packs.md): a pack's find workflow, and the act workflows that fix the ideas it adds.

@@ -9,7 +9,8 @@ import { AgentOptions, CloserRef, GuardName, GuardSwitches, Severity, TaskDef, W
 import { FenceSetting } from "../fence.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
-import { withPackWorkflows } from "./pack-workflows.js";
+import { projectPacks, withWorkflowsOf } from "./pack-workflows.js";
+import type { Pack } from "../packs/manifest.js";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 
 /** The one filename family a project uses, and the forms it may take. A `.js` or `.mjs` file exports the same object, for a project that computes a value. */
@@ -204,7 +205,7 @@ export const DeliveryConfig = z
     fence: FenceSetting.optional(),
     // Named ways of doing a task in more than one checked step, chosen with `delivery run --workflow <name>`.
     workflows: z.record(Written, WorkflowConfig).optional(),
-    // Review folders of the project's own, relative to this file; each adds its <name>:scan and <name>:fix workflows (spec 5.13).
+    // Pack folders of the project's own, relative to this file; each adds the workflows it holds, named <pack>:<workflow> (spec 5.13).
     packs: z.array(Written).optional(),
     // Where `delivery run --sources` finds work, in order; a fallback is read only when nothing else has any.
     sources: z.array(SourceConfig).min(1).optional(),
@@ -291,7 +292,7 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     'It says whether the agent works inside a fence that keeps your main folder read-only: "preferred", "required" or "off", ' +
     'or an object such as `{ "mode": "required", "devices": ["/dev/kvm"] }`.',
   packs:
-    'It is a list of folders of review packs of your own, relative to this file, such as `["reviews/mine"]`: each adds its `<name>:scan` and `<name>:fix` workflows.',
+    'It is a list of folders of packs of your own, relative to this file, such as `["packs/mine"]`: each adds the workflows it names, as `<pack>:<workflow>`, such as `mine:scan`.',
   workflows:
     'It names ways of doing a task in steps, each a list of `steps` run in order, for example ' +
     '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +
@@ -389,6 +390,11 @@ function describeIssue(file: string, issue: Issue, raw: unknown): string {
       `I can't use ${file}: \`tasks\` item ${item} is \`${JSON.stringify(valueAt(raw, issue.path.slice(0, 2)))}\`. ` +
       "Each one is a sentence describing what you want done, or an object with an `intent` sentence in it."
     );
+  }
+  // A `packs` that is not a list names the value and what packs takes, in the
+  // same form as `tasks`: the list is the whole setting, not an entry in it.
+  if (where === "packs") {
+    return `I can't use ${file}: \`packs\` is \`${JSON.stringify(valueAt(raw, issue.path))}\`. ${WHAT_IT_TAKES.packs}`;
   }
   if (where === "tasks") {
     // The whole-file rules say their own sentence. An empty list and something
@@ -531,9 +537,15 @@ export async function readConfig(file: string): Promise<DeliveryConfig> {
  * because every setting has a default.
  */
 export async function loadConfig(lookup: ConfigLookup): Promise<DeliveryConfig> {
+  return (await loadConfigAndPacks(lookup)).config;
+}
+
+/** The settings a run starts from, as `loadConfig` gives them, and the packs the project can use, built-in and listed. */
+export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config: DeliveryConfig; packs: Pack[] }> {
   const file = findConfig(lookup);
-  const config = file === undefined ? {} : await readConfig(file);
-  return withPackWorkflows(config, file === undefined ? lookup.repoPath : dirname(file));
+  const settings = file === undefined ? {} : await readConfig(file);
+  const packs = await projectPacks(settings, file === undefined ? lookup.repoPath : dirname(file));
+  return { config: withWorkflowsOf(settings, packs), packs };
 }
 
 /** The source a project's ideas are raised to instead of committed: its first tracker, if it has one. */

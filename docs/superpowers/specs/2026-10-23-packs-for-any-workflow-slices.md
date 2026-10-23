@@ -9,6 +9,9 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 1: Write a pack with workflows of your own and have mistakes named plainly
 
+**Status:** ✅ Complete — 2026-10-23 — `eac7605`
+**Tests:** ✅ Recorded — 2026-10-23 — `dd6b7fc` — cli — 1 UAT + 7 AC groups, 2 AC skipped
+
 **Delivers:** Priya can write a pack that names its own find and act workflows (each with its own prompt, guards and hold), list it, and be told by file and field when she gets it wrong; her existing review packs and the built-in `code` and `security` packs are listed and behave exactly as before.
 
 **Operational note:** Compatibility of the new format is enforced from its first release by the published-keys promise, per format version. Existing review packs are proved unchanged by a characterisation captured against today's behaviour before any change is made.
@@ -48,6 +51,8 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 2: Run a pack that is not a review, in its own words
 
+**Status:** ✅ Complete — 2026-10-23 — `3ee1e70`
+**Tests:** ✅ Recorded — 2026-10-23 — `4a95b84` — cli — 1 UAT + 4 AC, 1 skipped
 **Delivers:** Dana can see any pack's start command in `delivery packs`, start its find with `delivery review <pack>`, approve ideas that route to different act workflows, and have each idea acted on under that workflow's own prompt, guards and hold, with output that speaks of the pack and never of a "review".
 
 **Operational note:** Owner-facing wording is chosen by the pack's declared format, so existing review packs keep every current sentence byte for byte; the new sentences come from fixed text with the pack's own title and summary slotted in.
@@ -87,6 +92,9 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 3: Prove a pack works end to end before sharing it
 
+**Status:** ✅ Complete — 2026-10-23 — `de3532f`
+**Tests:** ✅ Recorded — 2026-10-23 — `c1613db` — cli (vitest) — 1 UAT (covers AC 1-2) + 3 AC, 0 skipped
+
 **Delivers:** Priya can run `delivery packs check` on a pack of the new format and watch the scripted find, approval and every act run, with a refused cheat, using no real agent and in the pack's own workflow names.
 
 **Operational note:** Every built-in pack folder is run through the pack check by the normal test suite, so a broken built-in fails the build rather than every user's command. Third-party authors can use the same check from the testing entry point.
@@ -122,6 +130,8 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 4: Move off deprecated code with the built-in `deprecations` pack
 
+**Status:** ✅ Complete — 2026-10-23 — `f1e7214`
+**Tests:** ✅ Recorded — 2026-10-23 — `46bc0e0` — cli (vitest) — 1 UAT (covers AC 1-3, 5) + 4 AC groups, 2 skipped (proved elsewhere)
 **Delivers:** Dana can run a built-in pack that is not a review: `deprecations` finds places that still use code her team has marked as replaced and moves each to the replacement, with risky moves held for sign-off and a test-editing cheat refused.
 
 **Operational note:** A new built-in loads in every project, so its name and its workflow names are reserved everywhere; the changeset and packs page must say so. The set of built-ins pinned by name in existing tests moves to include it.
@@ -160,6 +170,9 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 ---
 
 ## Slice 5: Learn from the documentation that packs cover more than reviews
+
+**Status:** ✅ Complete — 2026-10-23 — `2a428e6`
+**Tests:** ✅ Recorded — 2026-10-23 — `575a73a` — cli (vitest) — 1 UAT (4 steps) + 4 AC groups, 1 skipped (proved in depth elsewhere)
 
 **Delivers:** Dana and Priya can tell from the documentation, before reading about manifests, that a pack is a repeatable find-then-act job and a review is one kind; Priya can follow a worked example of a non-review pack.
 

@@ -1,4 +1,6 @@
 import { relative, resolve } from "node:path";
+import { inspectPack, isBuiltInPack } from "../packs/manifest.js";
+import type { PackSchemaVersion } from "../packs/pack-format.js";
 import { FIXTURES } from "../packs/pack-fixtures.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
@@ -12,11 +14,43 @@ export interface PacksCheckOptions {
 
 export const SENT_NOTHING = "Nothing was sent to a real agent: every reply came from the review's fixtures.";
 export const checkingLine = (shown: string): string => `Checking the review in ${shown}…`;
-/** `delivery review` reads a bare word as a built-in pack's name, so a folder is always shown as a path it will read as one (resolvePack's rule). */
-export const readyLine = (pathArg: string): string =>
-  `Ready to use: delivery review ${pathArg.includes("/") || pathArg.includes("\\") || pathArg.startsWith(".") ? pathArg : `./${pathArg}`}`;
+/** The last line of a passed check: a built-in is started by name, since the project does not list it; a folder of your own is listed first. */
+export const readyLine = (pathArg: string, name: string, builtIn: boolean): string =>
+  builtIn ? `Ready to use: delivery review ${name}` : `Ready to use: list ${pathArg} under "packs" in delivery.config.json, then start it with: delivery review ${name}`;
+
+/** What a `delivery.pack/3` pack's check says before it starts and when it did not reach a real agent. */
+export const PACK_SENT_NOTHING = "Nothing was sent to a real agent: every reply came from the pack's fixtures.";
+export const packCheckingLine = (shown: string): string => `Checking the pack in ${shown}…`;
 
 const quoted = (titles: readonly string[]): string => titles.map((title) => `"${title}"`).join(", ");
+
+/** What a `delivery.pack/3` pack that passed showed, one fact per line, in its own find and act names. */
+export function packPassedLines({ pack, run }: PackCheck, pathArg: string, builtIn: boolean): string[] {
+  if (pack === null || run === null) return [];
+  const count = run.found.length;
+  const under = (title: string): string => (run.workflowOf[title] === undefined ? "" : ` under ${run.workflowOf[title]}`);
+  const acts = [...new Set(run.found.flatMap((title) => run.workflowOf[title] ?? []))];
+  return [
+    `✓ pack.json: the ${pack.name} pack, version ${pack.version}.`,
+    `✓ The scripted find ${run.find} added ${count} ${count === 1 ? "idea" : "ideas"}, as ${FIXTURES.expect} expects: ${quoted(run.found)}.`,
+    `✓ Every idea was approved and run under the act workflow it names: ${acts.join(", ")}.`,
+    ...run.fixed.map((title) => `✓ The scripted change for "${title}" passed its check${under(title)}.`),
+    ...run.refused.map(({ title, why }) => `✓ The scripted cheat for "${title}" was refused${under(title)}: ${why}.`),
+    PACK_SENT_NOTHING,
+    readyLine(pathArg, pack.name, builtIn),
+  ];
+}
+
+/** The words a pack's check is said in: a `delivery.pack/3` pack's own, and a `delivery.pack/2` or unreadable one's as they always were. */
+export interface CheckWords {
+  checking(shown: string): string;
+  passed(check: PackCheck, pathArg: string, builtIn: boolean): string[];
+  sentNothing: string;
+}
+
+export function checkWords(schema: PackSchemaVersion | null): CheckWords {
+  return schema === "delivery.pack/3" ? { checking: packCheckingLine, passed: packPassedLines, sentNothing: PACK_SENT_NOTHING } : { checking: checkingLine, passed: passedLines, sentNothing: SENT_NOTHING };
+}
 
 /**
  * Checking a pack runs its own test command: real code, with the real
@@ -34,7 +68,7 @@ export const NOT_TRUSTED = (shown: string): string => `Left ${shown} alone: I on
 export const NEEDS_CONFIRMATION = "This isn't a terminal, so I can't ask whether you trust this pack's code. Pass --yes once you do.";
 
 /** What a pack that passed showed, one fact per line. */
-export function passedLines({ pack, run }: PackCheck, pathArg: string): string[] {
+export function passedLines({ pack, run }: PackCheck, pathArg: string, builtIn: boolean): string[] {
   if (pack === null || run === null) return [];
   const count = run.found.length;
   return [
@@ -43,7 +77,7 @@ export function passedLines({ pack, run }: PackCheck, pathArg: string): string[]
     ...run.fixed.map((title) => `✓ The scripted fix for "${title}" passed its check.`),
     ...run.refused.map(({ title, why }) => `✓ The scripted cheat for "${title}" was refused: ${why}.`),
     SENT_NOTHING,
-    readyLine(pathArg),
+    readyLine(pathArg, pack.name, builtIn),
   ];
 }
 
@@ -58,7 +92,9 @@ export function passedLines({ pack, run }: PackCheck, pathArg: string): string[]
 export async function packsCheckCommand(pathArg: string, options: PacksCheckOptions, ctx: CommandContext, ask: Ask): Promise<ExitCode> {
   const dir = resolve(ctx.cwd, pathArg);
   const shown = (file: string): string => relative(ctx.cwd, file) || ".";
-  if (!ctx.json) ctx.writeLine(checkingLine(shown(dir)));
+  const inspected = await inspectPack(dir);
+  const words = checkWords(inspected.ok ? inspected.pack.schema : inspected.schema);
+  if (!ctx.json) ctx.writeLine(words.checking(shown(dir)));
   const confirm =
     options.yes === true
       ? undefined
@@ -83,7 +119,7 @@ export async function packsCheckCommand(pathArg: string, options: PacksCheckOpti
   }
   // A problem is usually a clause; one carrying a refusal is already a sentence.
   for (const problem of result.problems) ctx.writeLine(`${shown(problem.file)}: ${problem.message.replace(/\.?$/, ".")}`);
-  if (result.ready) for (const line of passedLines(result, pathArg)) ctx.writeLine(line);
-  else if (result.run !== null) ctx.writeLine(SENT_NOTHING);
+  if (result.ready) for (const line of words.passed(result, pathArg, isBuiltInPack(dir))) ctx.writeLine(line);
+  else if (result.run !== null) ctx.writeLine(words.sentNothing);
   return exitCode;
 }

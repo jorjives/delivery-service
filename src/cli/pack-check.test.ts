@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
 import { FIXTURES } from "../packs/pack-fixtures.js";
-import { checkPack, NotTrusted, sandboxedEnv, WEAKENED_TESTS } from "./pack-check.js";
+import { MOVES_PACK, MOVES_TITLES } from "../packs/review-fixtures.js";
+import { checkPack, NotTrusted, sandboxedEnv, unreachedAct, WEAKENED_TESTS } from "./pack-check.js";
 
 const RUN_TIMEOUT = 120_000;
 const TOTAL = "The total can go below zero";
@@ -20,11 +21,23 @@ function copyPack(folder = "code-review", file?: string, edit?: (json: Record<st
   const manifest = JSON.parse(readFileSync(join(dir, "pack.json"), "utf-8"));
   manifest.name = "mine";
   writeFileSync(join(dir, "pack.json"), JSON.stringify(manifest, null, 2));
+  const reviewFile = join(dir, FIXTURES.review);
+  writeFileSync(reviewFile, readFileSync(reviewFile, "utf-8").replaceAll("workflow: code:fix", "workflow: mine:fix"));
   if (file !== undefined && edit !== undefined) {
     const json = JSON.parse(readFileSync(join(dir, file), "utf-8"));
     edit(json);
     writeFileSync(join(dir, file), JSON.stringify(json, null, 2));
   }
+  return dir;
+}
+
+/** A copy of the moves pack in a fresh folder, with `edit` applied to its review, and `expectJson` written as its expect. */
+function copyMoves(edit?: (reviewText: string) => string, expectJson?: object): string {
+  const dir = join(mkdtempSync(join(tmpdir(), "pack-check-")), "my-pack");
+  cpSync(MOVES_PACK, dir, { recursive: true });
+  const reviewFile = join(dir, FIXTURES.review);
+  if (edit !== undefined) writeFileSync(reviewFile, edit(readFileSync(reviewFile, "utf-8")));
+  if (expectJson !== undefined) writeFileSync(join(dir, FIXTURES.expect), JSON.stringify(expectJson));
   return dir;
 }
 
@@ -37,6 +50,19 @@ describe("the pack check", () => {
       found: ["The total can go below zero", "A missing or broken settings file gives an unhelpful error"],
       fixed: ["The total can go below zero"],
       refused: [{ title: "A missing or broken settings file gives an unhelpful error", why: WEAKENED_TESTS }],
+      find: "code:scan",
+      workflowOf: { "The total can go below zero": "code:fix", "A missing or broken settings file gives an unhelpful error": "code:fix" },
+    });
+  }, RUN_TIMEOUT);
+
+  it("runs a delivery.pack/3 pack's find, approves its ideas and runs every act", async () => {
+    const check = await checkPack(MOVES_PACK);
+    expect(check.problems).toEqual([]);
+    expect(check.ready).toBe(true);
+    expect(check.run).toMatchObject({
+      found: [MOVES_TITLES.prices, MOVES_TITLES.labels, MOVES_TITLES.priceTest],
+      fixed: [MOVES_TITLES.prices, MOVES_TITLES.priceTest],
+      refused: [{ title: MOVES_TITLES.labels, why: WEAKENED_TESTS }],
     });
   }, RUN_TIMEOUT);
 
@@ -53,6 +79,57 @@ describe("the pack check", () => {
     expect(result).toMatchObject({ ready: false, pack: null, run: null });
     expect(result.problems.map((p) => p.field)).toEqual(["scan.checks"]);
   });
+
+  it("records the find that ran and the act each idea named", async () => {
+    const check = await checkPack(MOVES_PACK);
+    expect(check.run).toEqual({
+      found: [MOVES_TITLES.prices, MOVES_TITLES.labels, MOVES_TITLES.priceTest],
+      fixed: [MOVES_TITLES.prices, MOVES_TITLES.priceTest],
+      refused: [{ title: MOVES_TITLES.labels, why: WEAKENED_TESTS }],
+      find: "moves:look",
+      workflowOf: { [MOVES_TITLES.prices]: "moves:code", [MOVES_TITLES.labels]: "moves:code", [MOVES_TITLES.priceTest]: "moves:tests" },
+    });
+  }, RUN_TIMEOUT);
+
+  it("fails a pack with an act workflow no scripted idea reaches, naming it, and runs no act", async () => {
+    const dir = copyMoves((text) => text.replace("workflow: moves:tests", "workflow: moves:code"));
+    const check = await checkPack(dir);
+    expect(check.ready).toBe(false);
+    expect(check.problems).toEqual([{ file: join(dir, FIXTURES.review), field: null, message: 'the scripted find moves:look added no idea for the act workflow "moves:tests", so the check never ran it' }]);
+    expect(check.run).toMatchObject({ fixed: [], refused: [] });
+  }, RUN_TIMEOUT);
+
+  it("names every act left unreached, in manifest order, when ideas name no workflow", async () => {
+    // review.json holds each idea file as a JSON string, so its line breaks are the two characters `\` `n`.
+    const dir = copyMoves((text) => text.replaceAll(/workflow: moves:[a-z]+\\n/g, ""));
+    const check = await checkPack(dir);
+    expect(check.problems.map((p) => p.message)).toEqual([
+      unreachedAct("the scripted find moves:look", "moves:code"),
+      unreachedAct("the scripted find moves:look", "moves:tests"),
+    ]);
+  }, RUN_TIMEOUT);
+
+  it("fails a /3 pack whose expected cheat is not refused, naming the act it ran under", async () => {
+    const dir = copyMoves(undefined, { found: [MOVES_TITLES.prices, MOVES_TITLES.labels, MOVES_TITLES.priceTest], fixed: [MOVES_TITLES.prices, MOVES_TITLES.labels], refused: [MOVES_TITLES.priceTest] });
+    const check = await checkPack(dir);
+    expect(check.ready).toBe(false);
+    expect(check.problems).toEqual(expect.arrayContaining([
+      expect.objectContaining({ message: `the scripted cheat for "${MOVES_TITLES.priceTest}" under moves:tests was not refused: it ended delivered` }),
+      expect.objectContaining({ message: expect.stringMatching(new RegExp(`^the scripted change for "${MOVES_TITLES.labels}" under moves:code did not pass its check`)) }),
+    ]));
+  }, RUN_TIMEOUT);
+
+  it("fails a /2 pack whose ideas name another pack's fix, naming its own fix", async () => {
+    const dir = copyPack("code-review");
+    writeFileSync(join(dir, FIXTURES.review), readFileSync(join(dir, FIXTURES.review), "utf-8").replaceAll("workflow: mine:fix", "workflow: code:fix"));
+    const check = await checkPack(dir);
+    expect(check.problems).toEqual([{ file: join(dir, FIXTURES.review), field: null, message: unreachedAct("the scripted review", "mine:fix") }]);
+  }, RUN_TIMEOUT);
+
+  it("needs no sign-in: runs with nothing but PATH from the caller", async () => {
+    const check = await checkPack(MOVES_PACK, { env: { PATH: process.env.PATH } });
+    expect(check).toMatchObject({ ready: true, sentToAgent: false });
+  }, RUN_TIMEOUT);
 });
 
 describe("confirming trust before running a pack's fixtures", () => {

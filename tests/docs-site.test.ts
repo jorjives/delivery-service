@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { REPO_ROOT, runDelivery } from "./helpers.js";
+import { helpOf, REPO_ROOT } from "./helpers.js";
 
 const config = parse(readFileSync(join(REPO_ROOT, "mkdocs.yml"), "utf-8"), { logLevel: "error" }) as {
   exclude_docs: string;
@@ -42,13 +42,18 @@ describe("the docs site", () => {
     const listed = new Set(Object.values(llmsPlugin?.llmstxt.sections ?? {}).flat());
     expect(pages.filter((page) => !listed.has(page))).toEqual([]);
   });
+
+  it("groups the pack pages under Packs", () => {
+    const nav = JSON.stringify(config.nav);
+    expect(nav).toMatch(/"Packs":\[[^\]]*"packs\.md"[^\]]*"task-packs\.md"[^\]]*"move-off-deprecated-code\.md"/);
+  });
 });
 
 // Flows are drawn, not just described: Mermaid blocks in the Markdown, rendered
 // by the theme. Each page below explains a flow a reader may want to follow.
 describe("the diagrams", () => {
   // The flows a reader is meant to be able to follow, not only read about.
-  const drawn = ["concepts.md", "work-a-backlog.md", "task-packs.md", "writing-a-gate.md"];
+  const drawn = ["concepts.md", "work-a-backlog.md", "task-packs.md", "packs.md", "writing-a-gate.md"];
   const textOf = (page: string): string => readFileSync(join(REPO_ROOT, "docs", page), "utf-8");
   const blocks = pages.flatMap((page) =>
     [...textOf(page).matchAll(/^([^\n]*)\n\n```mermaid\n([^]*?)\n```$/gm)].map(([, before, body]) => ({ page, before: before ?? "", body: body ?? "" })),
@@ -72,25 +77,6 @@ describe("the diagrams", () => {
     expect(blocks.filter((block) => block.body.trim() === "")).toEqual([]);
   });
 });
-
-/** The names and long options a `--help` text lists, read from its own sections. */
-const helpCache = new Map<string, { commands: string[]; options: string[] }>();
-function helpOf(args: string[]): { commands: string[]; options: string[] } {
-  const cached = helpCache.get(args.join(" "));
-  if (cached) return cached;
-  const text = runDelivery([...args, "--help"]).stdout;
-  const section = (heading: string): string[] => {
-    const start = text.indexOf(`\n${heading}:\n`);
-    if (start === -1) return [];
-    const rest = text.slice(start + heading.length + 3).split(/\n(?=\S)/)[0] ?? "";
-    return rest.split("\n");
-  };
-  const commands = section("Commands").flatMap((line) => /^ {2}([a-z][a-z-]*)/.exec(line)?.[1] ?? []).filter((name) => name !== "help");
-  const options = section("Options").flatMap((line) => /^ {2}(?:-\w, )?(--[a-z-]+)/.exec(line)?.[1] ?? []).filter((flag) => flag !== "--help");
-  const result = { commands, options };
-  helpCache.set(args.join(" "), result);
-  return result;
-}
 
 describe("the command reference", () => {
   const reference = readFileSync(join(REPO_ROOT, "docs/cli-reference.md"), "utf-8");

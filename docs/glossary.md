@@ -77,7 +77,7 @@ least as serious as its workflow's `hold`. See [Review your project](task-packs.
 
 ## Idea
 
-A backlog item with `status: idea`, usually from a review. It is not worked until you choose it
+A backlog item with `status: idea`, usually from a pack's find. It is not worked until you choose it
 with `delivery approve`.
 
 ## Item
@@ -86,9 +86,9 @@ One piece of work from a work source: a backlog file, a task from a command, or 
 
 ## Pack
 
-A review: instructions that have an agent read your project for one kind of problem and add
-what it finds to the backlog as ideas. The built-in packs are `code` and `security`. See
-[Review your project](task-packs.md).
+A repeatable find-then-act job: a find workflow has an agent read your project and add ideas to the
+backlog, and act workflows change the project for the ideas you approve. A review is one kind. The
+built-in packs are `code`, `security` and `deprecations`. See [Packs](packs.md).
 
 ## Parked
 

@@ -3,14 +3,36 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
+import { FIXTURES } from "../packs/pack-fixtures.js";
+import { MOVES_PACK, MOVES_TITLES } from "../packs/review-fixtures.js";
 import { delivery } from "./command-fixtures.js";
 import { EXIT, Refusal } from "./failures.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import type { PackCheck } from "./pack-check.js";
-import { packWorkflowClash } from "./pack-workflows.js";
-import { checkingLine, NEEDS_CONFIRMATION, NOT_TRUSTED, packsCheckCommand, readyLine, SENT_NOTHING } from "./packs-check-command.js";
+import { builtInPackClash } from "./pack-workflows.js";
+import { checkingLine, NEEDS_CONFIRMATION, NOT_TRUSTED, PACK_SENT_NOTHING, packsCheckCommand, readyLine, SENT_NOTHING } from "./packs-check-command.js";
 
 const CHECK_TIMEOUT = 120_000;
+
+/**
+ * A copy of the moves pack as `moves-pack` in a fresh folder, which is returned as the place to run from. `editReview`
+ * changes the text of its review, and `editManifest` its parsed manifest.
+ */
+function movesHere(editReview?: (text: string) => string, editManifest?: (manifest: Record<string, unknown>) => void): string {
+  const cwd = mkdtempSync(join(tmpdir(), "packs-check-moves-"));
+  cpSync(MOVES_PACK, join(cwd, "moves-pack"), { recursive: true });
+  if (editManifest !== undefined) {
+    const file = join(cwd, "moves-pack", "pack.json");
+    const manifest = JSON.parse(readFileSync(file, "utf-8")) as Record<string, unknown>;
+    editManifest(manifest);
+    writeFileSync(file, JSON.stringify(manifest, null, 2));
+  }
+  if (editReview !== undefined) {
+    const review = join(cwd, "moves-pack", FIXTURES.review);
+    writeFileSync(review, editReview(readFileSync(review, "utf-8")));
+  }
+  return cwd;
+}
 
 /**
  * A copy of the built-in code review as `my-pack` in a fresh folder, which is returned as the place to run from.
@@ -24,6 +46,8 @@ function myPack(edit?: (manifest: { scan: { checks: string[] } }) => void): stri
   manifest.name = "mine";
   edit?.(manifest);
   writeFileSync(file, JSON.stringify(manifest, null, 2));
+  const review = join(cwd, "my-pack", FIXTURES.review);
+  writeFileSync(review, readFileSync(review, "utf-8").replaceAll("workflow: code:fix", "workflow: mine:fix"));
   return cwd;
 }
 
@@ -39,18 +63,66 @@ describe("delivery packs check", () => {
   it("on a valid pack, says what the scripted review found, which fix passed, which cheat was refused, and that nothing reached a real agent", async () => {
     const { exitCode, stdout } = await delivery(["packs", "check", "my-pack", "--yes"], { cwd: myPack() });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout.split("\n")).toEqual(
-      expect.arrayContaining([
-        "Checking the review in my-pack…",
-        "✓ pack.json: the mine review, version 2.0.0.",
-        '✓ The scripted review found 2 problems, as fixtures/expect.json expects: "The total can go below zero", "A missing or broken settings file gives an unhelpful error".',
-        '✓ The scripted fix for "The total can go below zero" passed its check.',
-        '✓ The scripted cheat for "A missing or broken settings file gives an unhelpful error" was refused: it removed, changed or skipped tests.',
-        SENT_NOTHING,
-        "Ready to use: delivery review ./my-pack",
-      ]),
-    );
-    expect(readyLine("./my-pack")).toBe("Ready to use: delivery review ./my-pack");
+    expect(stdout.trim().split("\n")).toEqual([
+      "Checking the review in my-pack…",
+      "✓ pack.json: the mine review, version 2.0.0.",
+      '✓ The scripted review found 2 problems, as fixtures/expect.json expects: "The total can go below zero", "A missing or broken settings file gives an unhelpful error".',
+      '✓ The scripted fix for "The total can go below zero" passed its check.',
+      '✓ The scripted cheat for "A missing or broken settings file gives an unhelpful error" was refused: it removed, changed or skipped tests.',
+      SENT_NOTHING,
+      'Ready to use: list my-pack under "packs" in delivery.config.json, then start it with: delivery review mine',
+    ]);
+    expect(readyLine("my-pack", "mine", false)).toBe('Ready to use: list my-pack under "packs" in delivery.config.json, then start it with: delivery review mine');
+    expect(readyLine("packs/deprecations", "deprecations", true)).toBe("Ready to use: delivery review deprecations");
+  }, CHECK_TIMEOUT);
+
+  it("tells a built-in pack's folder to start by name, not to be listed", async () => {
+    const { exitCode, stdout } = await delivery(["packs", "check", join(BUILT_IN_PACKS, "deprecations"), "--yes"], { cwd: mkdtempSync(join(tmpdir(), "packs-check-")) });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.trim().split("\n").at(-1)).toBe("Ready to use: delivery review deprecations");
+  }, CHECK_TIMEOUT);
+
+  it("tells a built-in /2 review's folder to start by name, not to be listed", async () => {
+    const { exitCode, stdout } = await delivery(["packs", "check", join(BUILT_IN_PACKS, "code-review"), "--yes"], { cwd: mkdtempSync(join(tmpdir(), "packs-check-")) });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.trim().split("\n").at(-1)).toBe("Ready to use: delivery review code");
+  }, CHECK_TIMEOUT);
+
+  it("on a valid /3 pack, names the find, each act and what each proved, in the pack's own words", async () => {
+    const { exitCode, stdout } = await delivery(["packs", "check", "moves-pack", "--yes"], { cwd: movesHere() });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.trim().split("\n")).toEqual([
+      "Checking the pack in moves-pack…",
+      "✓ pack.json: the moves pack, version 1.0.0.",
+      `✓ The scripted find moves:look added 3 ideas, as fixtures/expect.json expects: "${MOVES_TITLES.prices}", "${MOVES_TITLES.labels}", "${MOVES_TITLES.priceTest}".`,
+      "✓ Every idea was approved and run under the act workflow it names: moves:code, moves:tests.",
+      `✓ The scripted change for "${MOVES_TITLES.prices}" passed its check under moves:code.`,
+      `✓ The scripted change for "${MOVES_TITLES.priceTest}" passed its check under moves:tests.`,
+      `✓ The scripted cheat for "${MOVES_TITLES.labels}" was refused under moves:code: it removed, changed or skipped tests.`,
+      PACK_SENT_NOTHING,
+      'Ready to use: list moves-pack under "packs" in delivery.config.json, then start it with: delivery review moves',
+    ]);
+    expect(stdout).not.toMatch(/scripted review|scripted fix|problem/i);
+  }, CHECK_TIMEOUT);
+
+  it("on a /3 pack with an unreached act, names the act and says nothing reached a real agent, in the pack's words", async () => {
+    const { exitCode, stdout } = await delivery(["packs", "check", "moves-pack", "--yes"], { cwd: movesHere((t) => t.replace("workflow: moves:tests", "workflow: moves:code")) });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stdout.trim().split("\n")).toEqual([
+      "Checking the pack in moves-pack…",
+      'moves-pack/fixtures/review.json: the scripted find moves:look added no idea for the act workflow "moves:tests", so the check never ran it.',
+      PACK_SENT_NOTHING,
+    ]);
+  }, CHECK_TIMEOUT);
+
+  it("opens on the pack, not a review, when a /3 manifest has a mistake", async () => {
+    const { stdout } = await delivery(["packs", "check", "moves-pack", "--yes"], { cwd: movesHere(undefined, (m) => (m.extra = 1)) });
+    expect(stdout.split("\n")[0]).toBe("Checking the pack in moves-pack…");
+  });
+
+  it("gives a /3 pack's find and each idea's act in --json", async () => {
+    const { stdout } = await delivery(["packs", "check", "moves-pack", "--json", "--yes"], { cwd: movesHere() });
+    expect((JSON.parse(stdout) as PackCheck).run).toMatchObject({ find: "moves:look", workflowOf: { [MOVES_TITLES.priceTest]: "moves:tests" } });
   }, CHECK_TIMEOUT);
 
   it("ends a problem whose reason is already a sentence with one full stop, not two", async () => {
@@ -59,7 +131,7 @@ describe("delivery packs check", () => {
     cpSync(join(BUILT_IN_PACKS, "code-review"), join(cwd, "my-pack"), { recursive: true });
     const { exitCode, stdout } = await delivery(["packs", "check", "my-pack", "--yes"], { cwd });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stdout.split("\n")).toContain(`my-pack/fixtures/review.json: the scripted review could not be used: ${packWorkflowClash("code:scan")}`);
+    expect(stdout.split("\n")).toContain(`my-pack/fixtures/review.json: the scripted review could not be used: ${builtInPackClash("code", join(cwd, "my-pack", "pack.json"))}`);
   }, CHECK_TIMEOUT);
 
   it("names a folder with no pack in it, and exits as validate does", async () => {
