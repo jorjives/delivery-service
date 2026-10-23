@@ -34,7 +34,8 @@ describe.each(packs.map((p) => [p.manifest.name, p] as const))("the built-in pac
     const inspection = inspectionOf(pack);
     expect(inspection.workflows.map((w) => w.name).sort()).toEqual(Object.keys(pack.workflows).sort());
     for (const workflow of inspection.workflows) {
-      const ran = run[workflow.name]!;
+      const ran = run[workflow.name];
+      if (!ran) throw new Error(`${workflow.name} did not run`);
       expect(workflow.hold).toEqual(ran.hold ?? null);
       workflow.steps.forEach((step, i) => {
         expect(promptOf(step.instructions)).toBe(ran.steps[i]?.prompt);
@@ -45,11 +46,12 @@ describe.each(packs.map((p) => [p.manifest.name, p] as const))("the built-in pac
   });
 
   it("shows its find exactly as delivery review --preview gives it to the agent", async () => {
-    const find = inspectionOf(pack).workflows.find((w) => w.kind === "find")!;
+    const find = inspectionOf(pack).workflows.find((w) => w.kind === "find");
+    if (!find?.steps[0]) throw new Error("no find workflow");
     const project = initTempRepo("inspect-preview-", { "package.json": PACKAGE, "a.js": "x\n" });
     const { exitCode, stdout } = await delivery(["review", name, "--preview"], { cwd: project });
     expect(exitCode).toBe(0);
-    expect(stdout).toContain(promptOf(find.steps[0]!.instructions));
+    expect(stdout).toContain(promptOf(find.steps[0].instructions));
   });
 
   it("reads at 60 columns from the command line, the short account first and the instructions last", () => {

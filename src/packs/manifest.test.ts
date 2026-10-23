@@ -82,10 +82,13 @@ describe("the built-in packs", () => {
   it("keeps each workflow's instructions as the author's words and the harness's, and pins exactly their join", async () => {
     for (const pack of await builtInPacks()) {
       for (const [name, workflow] of Object.entries(pack.workflows)) {
-        expect(workflow.steps[0]?.prompt).toBe(promptOf(pack.instructions[name]!));
+        const instructions = pack.instructions[name];
+        if (!instructions) throw new Error(`no instructions for ${name}`);
+        expect(workflow.steps[0]?.prompt).toBe(promptOf(instructions));
       }
     }
-    const deprecations = (await builtInPacks()).find((p) => p.manifest.name === "deprecations")!;
+    const deprecations = (await builtInPacks()).find((p) => p.manifest.name === "deprecations");
+    if (!deprecations) throw new Error("the deprecations pack is not built in");
     expect(deprecations.instructions["deprecations:scan"]?.authored).toBe(readFileSync(join(deprecations.dir, "scan.md"), "utf-8").trim());
     expect(deprecations.instructions["deprecations:scan"]?.harness).toMatch(/^## What to hand back\n/);
     expect(deprecations.instructions["deprecations:tests"]).toEqual({ authored: readFileSync(join(deprecations.dir, "tests.md"), "utf-8").trim(), harness: null });

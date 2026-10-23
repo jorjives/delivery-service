@@ -6,7 +6,8 @@ import { OWN_SETUP } from "./own-setup.js";
 import { INSPECT_RULE, INSPECT_WIDTH, renderInspection } from "./packs-inspect-render.js";
 
 const packs = await builtInPacks();
-const deprecations = packs.find((pack) => pack.manifest.name === "deprecations")!;
+const deprecations = packs.find((pack) => pack.manifest.name === "deprecations");
+if (!deprecations) throw new Error("the deprecations pack is not built in");
 const builtInInspections = packs.map((pack) => inspectionOf(pack));
 
 const DEFAULT_SUMMARY = "Changes the code a little.";
@@ -74,7 +75,7 @@ it("puts the short account first, then limits, then the full instructions last",
   const lines = renderInspection(inspectionOf(deprecations));
   const at = (text: string) => lines.indexOf(text);
   expect(lines.slice(0, 2)).toEqual(["Pack: Move off deprecated code", "deprecations, version 1.0.0, built in to delivery-service."]);
-  expect(lines[3]! + lines[4]!).toBe(`  ${deprecations.hash.slice(0, 32)}  ${deprecations.hash.slice(32)}`);
+  expect(`${lines[3]}${lines[4]}`).toBe(`  ${deprecations.hash.slice(0, 32)}  ${deprecations.hash.slice(32)}`);
   expect(at("In short")).toBeLessThan(at("What it may touch"));
   expect(at("What it may touch")).toBeLessThan(at("How far each workflow goes before it asks you"));
   expect(at("How far each workflow goes before it asks you")).toBeLessThan(at("Checks and landing"));
@@ -130,7 +131,8 @@ it("says a hold of critical as one severity, and an act with no summary in a fix
 it("carries no colour, no box drawing and none of the words safe, clean or verified", () => {
   for (const inspection of builtInInspections) {
     const ours = withoutPackWords(renderInspection(inspection), inspection);
-    expect(ours).not.toMatch(/\x1b|[─-╿]/);
+    expect(ours.includes(String.fromCharCode(27))).toBe(false);
+    expect(ours).not.toMatch(/[─-╿]/);
     expect(ours).not.toMatch(/\b(safe|clean|verified)\b/i);
   }
 });
