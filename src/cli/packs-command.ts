@@ -22,7 +22,7 @@ async function packsFor(ctx: CommandContext): Promise<Pack[]> {
   const file = findConfig({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
   const config: DeliveryConfig = file === undefined ? {} : await readConfig(file);
   const packs = await projectPacks(config, file === undefined ? repoPath : dirname(file));
-  withWorkflowsOf(config, packs);
+  withWorkflowsOf(config, packs); // Called for its refusal of a clashing workflow name, as every other lookup refuses it.
   return packs;
 }
 

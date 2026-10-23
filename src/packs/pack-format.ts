@@ -12,7 +12,7 @@ export const PACK_SCHEMA = "delivery.pack/3";
 
 const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lower-case letters, digits and dashes");
 const Sentence = z.string().trim().min(1, "must not be empty");
-export const PackFile = z.string().refine((file) => file !== "" && basename(file) === file, "must be the name of a file in the pack folder");
+const PackFile = z.string().refine((file) => file !== "" && basename(file) === file, "must be the name of a file in the pack folder");
 const Version = z.string().regex(/^\d+\.\d+\.\d+$/, "must be a version such as 1.0.0");
 
 /**

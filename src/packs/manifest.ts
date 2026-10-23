@@ -195,7 +195,8 @@ export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack }
     return { ok: false, problems: [{ file: manifestFile, field: "schema", message: `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)` }] };
   }
   let manifest: PackManifest;
-  if (declared === "delivery.pack/2") {
+  const schema: PackSchemaVersion = declared === "delivery.pack/2" ? "delivery.pack/2" : PACK_SCHEMA;
+  if (schema === "delivery.pack/2") {
     const v2 = PackManifestV2.safeParse(json);
     if (!v2.success) return { ok: false, problems: packProblems(manifestFile, v2.error, json) };
     manifest = upgradeV2(v2.data);
@@ -206,16 +207,13 @@ export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack }
     if (rules.length > 0) return { ok: false, problems: rules };
     manifest = v3.data;
   }
-  const schema: PackSchemaVersion = declared === "delivery.pack/2" ? "delivery.pack/2" : PACK_SCHEMA;
 
   // Each prompt file is read once, however many workflows name it, and every missing one is named.
+  const prompts = [...new Set(Object.values(manifest.workflows).map(({ prompt }) => prompt))];
+  const read = await Promise.all(prompts.map(async (prompt) => [prompt, await packFile(dir, prompt)] as const));
   const texts = new Map<string, string>();
   const problems: PackProblem[] = [];
-  const seen = new Set<string>();
-  for (const { prompt } of Object.values(manifest.workflows)) {
-    if (seen.has(prompt)) continue;
-    seen.add(prompt);
-    const text = await packFile(dir, prompt);
+  for (const [prompt, text] of read) {
     if (typeof text === "string") texts.set(prompt, text);
     else problems.push(text);
   }
