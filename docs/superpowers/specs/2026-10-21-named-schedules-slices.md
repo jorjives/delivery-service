@@ -97,6 +97,7 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 3: Give a Schedule Its Own Run Settings
 
+**Tests:** ✅ Recorded — 2026-10-23 — `210260b` — cli (vitest) — 1 UAT + 5 AC groups (13 checks), 0 skipped
 **Delivers:** Each schedule can carry its own config file, workflow, item cap and concurrency, so different schedules do different kinds of work.
 
 ### Prerequisites
