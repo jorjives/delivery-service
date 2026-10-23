@@ -6,7 +6,7 @@ import { allRuns } from "./runs.js";
 import { readBacklog, itemTask, type BacklogItem } from "../backlog.js";
 import { ledgerPath, readItemLedger } from "../item-ledger.js";
 import { taskIntent } from "../task-list.js";
-import { inspectPack, BUILT_IN_PACKS, type Pack, type PackProblem } from "../packs/manifest.js";
+import { inspectPack, isBuiltInPack, type Pack, type PackProblem } from "../packs/manifest.js";
 import { FIXTURES, readFixtures } from "../packs/pack-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { git } from "../git-exec.js";
@@ -138,7 +138,7 @@ export async function checkPack(dir: string, { env = process.env, confirm }: { e
     const failed = (problem: PackProblem, run: PackCheckRun | null = null): PackCheck => ({ ready: false, pack, problems: [problem], run, sentToAgent: false });
 
     // A pack of the author's own is used the way a project uses one: listed under `packs`, committed with the project.
-    const builtIn = resolve(dir).startsWith(resolve(BUILT_IN_PACKS));
+    const builtIn = isBuiltInPack(dir);
     if (!builtIn) {
       await writeFile(join(repo, "delivery.config.json"), JSON.stringify({ packs: [resolve(dir)] }));
       await git(repo, ["add", "delivery.config.json"]);

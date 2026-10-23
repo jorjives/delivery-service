@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { UnknownPack } from "../errors.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, loadPack, resolvePack } from "./manifest.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, isBuiltInPack, loadPack, resolvePack } from "./manifest.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
 
@@ -71,6 +71,12 @@ describe("the built-in packs", () => {
     const code = await resolvePack("code", "/");
     expect(code.manifest.version).toBe("2.0.0");
     expect(code.workflows["code:scan"]?.steps[0]?.prompt).toContain("not matters of taste");
+  });
+
+  it("knows a built-in pack's folder, and not a folder that only starts like the built-in folder", () => {
+    expect(isBuiltInPack(join(BUILT_IN_PACKS, "code-review"))).toBe(true);
+    expect(isBuiltInPack(join(BUILT_IN_PACKS, "..", "packs-mine", "code-review"))).toBe(false);
+    expect(isBuiltInPack(BUILT_IN_PACKS)).toBe(false);
   });
 });
 

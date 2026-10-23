@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
@@ -115,6 +115,11 @@ export function packProblems(file: string, error: z.ZodError, raw: unknown, spec
 
 /** Where the built-in packs are: `packs/` beside `src/` in a checkout, and beside `dist/` in the installed package. */
 export const BUILT_IN_PACKS = fileURLToPath(new URL("../../packs/", import.meta.url));
+
+/** Whether `dir` is one of the built-in packs' folders: directly inside `BUILT_IN_PACKS`, not merely named like its folder. */
+export function isBuiltInPack(dir: string): boolean {
+  return dirname(resolve(dir)) === resolve(BUILT_IN_PACKS);
+}
 
 /** The text of a file in the pack, or the problem of its absence. */
 async function packFile(dir: string, name: string): Promise<string | PackProblem> {

@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { packWorkflowClash, withPackWorkflows } from "./pack-workflows.js";
+import { builtInPackClash, builtInWorkflowClash, packWorkflowClash, withPackWorkflows } from "./pack-workflows.js";
 
 /** A pack folder named `name`, with a minimal delivery.pack/2 manifest and its two instruction files. */
 function writePack(dir: string, name: string): void {
@@ -55,13 +55,19 @@ describe("pack workflows", () => {
     await expect(withPackWorkflows({ packs: ["a", "b"] }, root)).rejects.toThrow(packWorkflowClash("mine:scan"));
   });
 
-  it("refuses a delivery.pack/3 pack that takes a built-in's workflow name", async () => {
+  it("refuses a listed pack named like a built-in, naming its manifest and what to change", async () => {
     const root = mkdtempSync(join(tmpdir(), "pack-workflows-"));
     writeV3Pack(join(root, "code"), "code");
-    await expect(withPackWorkflows({ packs: ["code"] }, root)).rejects.toThrow(packWorkflowClash("code:scan"));
+    await expect(withPackWorkflows({ packs: ["code"] }, root)).rejects.toThrow(builtInPackClash("code", join(root, "code", "pack.json")));
   });
 
-  it("refuses a workflow name two of them define", async () => {
-    await expect(withPackWorkflows({ workflows: { "code:fix": { steps: [{ name: "a", prompt: "a" }] } } }, "/")).rejects.toThrow(packWorkflowClash("code:fix"));
+  it("refuses a listed pack named like a built-in even when no workflow name overlaps", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pack-workflows-"));
+    writeV3Pack(join(root, "mine"), "security", "look"); // security:look, security:code: neither is a built-in name
+    await expect(withPackWorkflows({ packs: ["mine"] }, root)).rejects.toThrow(builtInPackClash("security", join(root, "mine", "pack.json")));
+  });
+
+  it("refuses a project workflow named like a built-in's, naming the built-in", async () => {
+    await expect(withPackWorkflows({ workflows: { "code:fix": { steps: [{ name: "a", prompt: "a" }] } } }, "/")).rejects.toThrow(builtInWorkflowClash("code:fix", "code"));
   });
 });

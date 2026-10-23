@@ -1,9 +1,15 @@
-import { resolve } from "node:path";
-import { builtInPacks, loadPack, type Pack } from "../packs/manifest.js";
+import { join, resolve } from "node:path";
+import { builtInPacks, isBuiltInPack, loadPack, type Pack } from "../packs/manifest.js";
 import type { DeliveryConfig } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 
 export const packWorkflowClash = (name: string): string => `Two things define the workflow "${name}": rename your own workflow, or the pack, so each name is used once.`;
+
+export const builtInPackClash = (name: string, manifestFile: string): string =>
+  `The pack in ${manifestFile} is named "${name}", the name of a pack that comes with the harness: change its "name" so each pack is named once.`;
+
+export const builtInWorkflowClash = (workflow: string, builtIn: string): string =>
+  `The workflow "${workflow}" in your configuration has the name of a workflow in "${builtIn}", a pack that comes with the harness: rename your workflow so each name is used once.`;
 
 /** Every pack the config can use, in order: the built-in ones, then each pack folder it lists, relative to `configDir`. */
 export async function projectPacks(config: DeliveryConfig, configDir: string): Promise<Pack[]> {
@@ -12,10 +18,18 @@ export async function projectPacks(config: DeliveryConfig, configDir: string): P
 
 /** The config with the workflows of every pack in `packs` beside its own: one place every lookup reads. */
 export function withWorkflowsOf(config: DeliveryConfig, packs: readonly Pack[]): DeliveryConfig {
+  const builtInNames = new Set(packs.filter((pack) => isBuiltInPack(pack.dir)).map((pack) => pack.manifest.name));
+  for (const pack of packs) {
+    if (!isBuiltInPack(pack.dir) && builtInNames.has(pack.manifest.name)) throw new Refusal(builtInPackClash(pack.manifest.name, join(pack.dir, "pack.json")), EXIT.configuration, "packs");
+  }
   const workflows = { ...(config.workflows ?? {}) };
+  const own = new Set(Object.keys(workflows));
   for (const pack of packs) {
     for (const [name, workflow] of Object.entries(pack.workflows)) {
-      if (name in workflows) throw new Refusal(packWorkflowClash(name), EXIT.configuration, "packs");
+      if (name in workflows) {
+        if (own.has(name) && isBuiltInPack(pack.dir)) throw new Refusal(builtInWorkflowClash(name, pack.manifest.name), EXIT.configuration, "workflows");
+        throw new Refusal(packWorkflowClash(name), EXIT.configuration, "packs");
+      }
       workflows[name] = workflow;
     }
   }
