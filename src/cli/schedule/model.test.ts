@@ -98,8 +98,8 @@ describe("runArgs", () => {
   it("puts each setting given between --sources and --if-idle, in a fixed order", () =>
     expect(runArgs({ ...schedule("nightly"), args: { concurrency: 2, max: 3, workflow: "deep", config: "/c/n.json" } }))
       .toEqual(["run", "--sources", "--config", "/c/n.json", "--workflow", "deep", "--max", "3", "--concurrency", "2", "--if-idle"]));
-  it.each([{}, { workflow: "deep" }, { config: "/c/n.json", max: 3 }, { config: "/a b/100% $x \"q\" \\.json", workflow: "it's", max: 1, concurrency: 4 }])
-    ("reads %j back from its own argument list", (args) => expect(scheduleArgsFrom(runArgs({ ...schedule("n"), args }))).toEqual(args));
+  it.each([{}, { workflow: "deep" }, { config: "/c/n.json", max: 3 }, { config: "/a b/100% $x \"q\" \\.json", workflow: "it's", max: 1, concurrency: 4 }])(
+    "reads %j back from its own argument list", (args) => expect(scheduleArgsFrom(runArgs({ ...schedule("n"), args }))).toEqual(args));
   it("reads nothing from tokens it does not know, or a count that is not a whole number", () =>
     expect(scheduleArgsFrom(["run", "--sources", "--max", "lots", "--frob", "x"])).toEqual({}));
 });
