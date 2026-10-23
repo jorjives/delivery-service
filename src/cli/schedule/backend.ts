@@ -17,10 +17,14 @@ export interface InstalledSchedule {
   logCommand: string;
 }
 
+/** `installed: false` when the place this schedule needs is held by another repository's schedule; `heldBy` is that repository's path, or "" when it records none. Nothing was written. */
+export type InstallOutcome = { installed: true } | { installed: false; heldBy: string };
+
 /** What a scheduler adapter provides. A platform's adapter implements this and passes the contract suite in backend.contract.ts. */
 export interface SchedulerBackend {
   probe(env: NodeJS.ProcessEnv): Promise<Probe>;
-  install(schedule: Schedule, env: NodeJS.ProcessEnv): Promise<void>;
+  /** Install or replace one schedule of this repository, enabled and running. Never replaces another repository's schedule: reports it held instead, having written nothing. */
+  install(schedule: Schedule, env: NodeJS.ProcessEnv): Promise<InstallOutcome>;
   remove(repoPath: string, name: string, env: NodeJS.ProcessEnv): Promise<boolean>;
   /** Default first, then by name. */
   list(repoPath: string, env: NodeJS.ProcessEnv): Promise<InstalledSchedule[]>;

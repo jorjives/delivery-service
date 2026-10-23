@@ -152,6 +152,22 @@ interface UnitEntry {
 const recordedRepository = (service: Record<string, string>): string => (service.WorkingDirectory ?? "").replace(/%%/g, "%");
 
 /**
+ * The repository another schedule holds this unit slot for, or undefined when the slot is free or already this
+ * repository's. A slot whose service records no repository is held by "".
+ */
+async function heldBy(servicePath: string, repoPath: string): Promise<string | undefined> {
+  let text: string;
+  try {
+    text = await readFile(servicePath, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw err;
+  }
+  const holder = recordedRepository(parseShow(text));
+  return holder === repoPath ? undefined : holder;
+}
+
+/**
  * The schedules on this repository, read from the unit files themselves: a `delivery-*.service` with a sibling `.timer`
  * whose WorkingDirectory is the repository. The unit's own basename is kept, so later operations never recompute a name.
  */
@@ -199,12 +215,15 @@ export const systemdBackend: SchedulerBackend = {
   async install(schedule, env) {
     const unit = unitName(schedule.repoPath, schedule.name);
     const dir = unitDir(env);
+    const held = await heldBy(join(dir, `${unit}.service`), schedule.repoPath);
+    if (held !== undefined) return { installed: false, heldBy: held };
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, `${unit}.service`), serviceUnit(schedule));
     await writeFile(join(dir, `${unit}.timer`), timerUnit(schedule));
     await must(env, ["daemon-reload"]);
     await must(env, ["enable", `${unit}.timer`]);
     await must(env, ["restart", `${unit}.timer`]); // so a changed interval takes effect on a timer already running
+    return { installed: true };
   },
 
   async remove(repoPath, name, env) {

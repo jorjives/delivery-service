@@ -66,6 +66,28 @@ export function backendContract(label: string, rig: () => ContractRig): void {
       expect(await backend.list(sibling, env)).toMatchObject([{ name: "nightly", every: "1h" }]);
     });
 
+    it("never replaces another repository's schedule, even one whose path the name would extend to", async () => {
+      const { backend, env, repo } = rig();
+      const path = repo();
+      const sibling = repo(".nightly");
+      await backend.install(at(sibling, DEFAULT_NAME, "1h"), env);
+      const outcome = await backend.install(at(path, "nightly", "1d"), env);
+      expect(await backend.list(sibling, env)).toMatchObject([{ name: DEFAULT_NAME, every: "1h" }]);
+      expect((await backend.list(path, env)).map((s) => s.name)).toEqual(outcome.installed ? ["nightly"] : []);
+    });
+
+    it("removing every schedule of one repository leaves a repository whose path extends its own", async () => {
+      const { backend, env, repo } = rig();
+      const path = repo();
+      const sibling = repo(".c");
+      await backend.install(at(path, DEFAULT_NAME, "1d"), env);
+      await backend.install(at(path, "nightly", "1d"), env);
+      await backend.install(at(sibling, "nightly", "1h"), env);
+      for (const { name } of await backend.list(path, env)) await backend.remove(path, name, env);
+      expect(await backend.list(path, env)).toEqual([]);
+      expect(await backend.list(sibling, env)).toMatchObject([{ name: "nightly", every: "1h" }]);
+    });
+
     it("removes a schedule once, and says when there was nothing to remove", async () => {
       const { backend, env, repo } = rig();
       const path = repo();

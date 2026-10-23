@@ -94,6 +94,73 @@ describe("systemd scheduler backend", () => {
   it("gives a named schedule the journal command for its own unit", () => {
     expect(systemdBackend.logCommand("/w/log", "nightly")).toBe(`journalctl --user -u ${unitName("/w/log", "nightly")}.service`);
   });
+
+  it("refuses a named schedule whose unit another repository's default holds, writing nothing", async () => {
+    const { env, standIn } = systemdEnv();
+    await systemdBackend.install({ ...target, repoPath: "/w/a" + ".nightly", every: parseInterval("1h") }, env);
+    const dir = unitDir(env);
+    const unit = unitName("/w/a", "nightly");
+    const files = [join(dir, `${unit}.service`), join(dir, `${unit}.timer`)];
+    const before = files.map((file) => readFileSync(file, "utf-8"));
+    const calls = standIn.calls().length;
+    expect(await systemdBackend.install({ ...target, repoPath: "/w/a", name: "nightly", every: parseInterval("1d") }, env)).toEqual({
+      installed: false,
+      heldBy: "/w/a.nightly",
+    });
+    expect(files.map((file) => readFileSync(file, "utf-8"))).toEqual(before);
+    expect(standIn.calls()).toHaveLength(calls);
+  });
+
+  it("refuses the default schedule whose unit a named schedule of another repository holds", async () => {
+    const { env } = systemdEnv();
+    await systemdBackend.install({ ...target, repoPath: "/w/b", name: "nightly", every: parseInterval("1d") }, env);
+    expect(await systemdBackend.install({ ...target, repoPath: "/w/b.nightly", every: parseInterval("1d") }, env)).toEqual({
+      installed: false,
+      heldBy: "/w/b",
+    });
+    expect(await systemdBackend.list("/w/b", env)).toMatchObject([{ name: "nightly" }]);
+  });
+
+  it("refuses a slot whose service records no project, naming none", async () => {
+    const { env } = systemdEnv();
+    const dir = unitDir(env);
+    mkdirSync(dir, { recursive: true });
+    const unit = unitName("/w/c", "nightly");
+    writeFileSync(join(dir, `${unit}.service`), "[Service]\nExecStart=/bin/true\n");
+    writeFileSync(join(dir, `${unit}.timer`), "[Timer]\nOnCalendar=*-*-* 00:00:00\n");
+    const before = readFileSync(join(dir, `${unit}.service`), "utf-8");
+    expect(await systemdBackend.install({ ...target, repoPath: "/w/c", name: "nightly", every: parseInterval("1d") }, env)).toEqual({
+      installed: false,
+      heldBy: "",
+    });
+    expect(readFileSync(join(dir, `${unit}.service`), "utf-8")).toBe(before);
+  });
+
+  it("replaces its own schedule in a repository whose path holds a percent sign", async () => {
+    const { env } = systemdEnv();
+    const repo = "/w/100% done";
+    await systemdBackend.install({ ...target, repoPath: repo, every: parseInterval("1d") }, env);
+    expect(await systemdBackend.install({ ...target, repoPath: repo, every: parseInterval("6h") }, env)).toEqual({ installed: true });
+    expect(await systemdBackend.list(repo, env)).toMatchObject([{ name: "default", every: "6h" }]);
+  });
+
+  it("replaces a default unit pair written before named schedules existed", async () => {
+    const { env } = systemdEnv();
+    const repo = "/w/old";
+    const dir = unitDir(env);
+    mkdirSync(dir, { recursive: true });
+    const unit = unitName(repo, DEFAULT_NAME);
+    writeFileSync(
+      join(dir, `${unit}.service`),
+      `[Unit]\nDescription=old\n\n[Service]\nType=oneshot\nWorkingDirectory=${repo}\nExecStart="/usr/bin/node" "/x/main.js" run --sources\n`,
+    );
+    writeFileSync(join(dir, `${unit}.timer`), "[Timer]\nOnCalendar=*-*-* 00:00:00\n");
+    expect(await systemdBackend.install({ ...target, repoPath: repo, every: parseInterval("6h") }, env)).toEqual({ installed: true });
+    expect(await systemdBackend.list(repo, env)).toMatchObject([{ name: "default", every: "6h" }]);
+    const service = readFileSync(join(dir, `${unit}.service`), "utf-8");
+    expect(service).toContain(`${MARKER}=default`);
+    expect(service.trimEnd().endsWith("run --sources --if-idle")).toBe(true);
+  });
 });
 
 describe("unit text", () => {
