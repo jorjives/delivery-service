@@ -3,6 +3,13 @@
   "gate": { "type": "command", "command": "make verify", "parseMode": "exitcode", "checkOnly": true },
   "closer": { "type": "open-pr", "stack": true },
   "sources": [{ "type": "github", "label": "delivery", "workflow": "resolve-issue" }],
+  "after": [
+    {
+      "name": "reinstall",
+      "run": "make reinstall",
+      "check": "test -f $HOME/.local/lib/node_modules/delivery-service/dist/stack-pr-closer.js"
+    }
+  ],
   "workflows": {
     "resolve-issue": {
       "steps": [
