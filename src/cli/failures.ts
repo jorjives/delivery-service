@@ -164,12 +164,12 @@ function renderKnown(err: KnownError): RenderedFailure {
     case "MOCK_NOT_INSTALLED":
       return { message: `${err.message} ${MOCK_MISSING_REMEDY}`, exitCode: EXIT.configuration };
     case "INVALID_PACK":
-      return { message: `I can't use the review in ${err.filePath}: ${err.detail}.`, exitCode: EXIT.configuration };
+      return { message: `I can't use the pack in ${err.filePath}: ${err.detail}.`, exitCode: EXIT.configuration };
     case "UNKNOWN_PACK":
       return {
         message:
-          `There is no review called "${err.packName}". The reviews available are: ${err.available.join(", ")}. ` +
-          "To use a review from a folder of your own, give its path, such as ./my-review.",
+          `There is no pack called "${err.packName}". The packs available are: ${err.available.join(", ")}. ` +
+          "To use a pack folder of your own, list it under packs in delivery.config.json.",
         exitCode: EXIT.configuration,
       };
     case "DAMAGED_REVIEW":

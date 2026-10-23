@@ -94,16 +94,16 @@ describe("renderFailure", () => {
     expect(renderFailure("boom")).toEqual({ message: `boom\n${UNEXPECTED_FOOTER}`, exitCode: EXIT.unexpected });
   });
 
-  it("says which review does not exist and lists the ones that do", () => {
+  it("says which pack does not exist and lists the ones that do", () => {
     expect(renderFailure(new UnknownPack("nope", ["code"]))).toEqual({
-      message: 'There is no review called "nope". The reviews available are: code. To use a review from a folder of your own, give its path, such as ./my-review.',
+      message: 'There is no pack called "nope". The packs available are: code. To use a pack folder of your own, list it under packs in delivery.config.json.',
       exitCode: EXIT.configuration,
     });
   });
 
-  it("names the file and the field of a pack it cannot use", () => {
-    expect(renderFailure(new InvalidPack("/p/pack.json", '"version" must be a version such as 1.0.0'))).toEqual({
-      message: 'I can\'t use the review in /p/pack.json: "version" must be a version such as 1.0.0.',
+  it("names the pack folder it cannot use", () => {
+    expect(renderFailure(new InvalidPack("/p/pack.json", '"name" is missing'))).toEqual({
+      message: 'I can\'t use the pack in /p/pack.json: "name" is missing.',
       exitCode: EXIT.configuration,
     });
   });
