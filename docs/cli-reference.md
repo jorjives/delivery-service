@@ -77,6 +77,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `schedule enable` | `--max <n>` | How many items each scheduled run takes (default 1) |
 | `schedule enable` | `--concurrency <n>` | How many items each scheduled run works at once (default 1) |
 | `schedule status` | `--name <name>` | Shows only this schedule |
+| `schedule disable` | `--name <name>` | Turns off only this schedule. Without it, turns off the default schedule |
 
 `--config` and `--repo` mean the same on every command that takes them (`delivery --help` shows
 which). `review` takes the repository as an argument, `delivery review <pack> [repo]`, not as

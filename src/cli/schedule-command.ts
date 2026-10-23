@@ -5,7 +5,7 @@ import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
 import { selectBackend, type InstalledSchedule } from "./schedule/backend.js";
 import { cronLine } from "./schedule/cron.js";
-import { BARE_ARG, DEFAULT_INTERVAL, DEFAULT_NAME, describeSchedule, parseInterval, parseName, parseScheduleArgs, settingsArgs, type Schedule, type ScheduleArgs, type ScheduleFlags } from "./schedule/model.js";
+import { BARE_ARG, DEFAULT_INTERVAL, describeSchedule, parseInterval, parseName, parseScheduleArgs, settingsArgs, type Schedule, type ScheduleArgs, type ScheduleFlags } from "./schedule/model.js";
 
 export interface ScheduleOptions extends ScheduleFlags {
   repo?: string;
@@ -30,9 +30,11 @@ export const runSettings = (args: ScheduleArgs): string => {
 
 export const scheduledOff = (repoPath: string): string =>
   `Scheduling is off for ${repoPath}. Turn it on with: delivery schedule enable --every <interval>`;
-export const alreadyOff = (repoPath: string): string => `Scheduling is already off for ${repoPath}.`;
-export const turnedOff = (repoPath: string): string =>
-  `Scheduling is off for ${repoPath}. You can still run it by hand at any time: delivery run --sources`;
+export const alreadyOff = (name: string, repoPath: string): string =>
+  `Scheduling is already off for the ${name} schedule in ${repoPath}.`;
+export const turnedOff = (name: string, repoPath: string): string =>
+  `Scheduling is off for the ${name} schedule in ${repoPath}.`;
+export const BY_HAND = "You can still run it by hand at any time: delivery run --sources";
 export const lastRun = (when: string): string => `Last run: ${when}`;
 export const nextRun = (when: string): string => `Next run: ${when}`;
 export const scheduleHeading = ({ name, every, enabled }: InstalledSchedule): string =>
@@ -99,10 +101,19 @@ export async function scheduleStatusCommand(options: ScheduleOptions, ctx: Comma
   return EXIT.ok;
 }
 
-/** `delivery schedule disable`: stop and remove this project's timer. A run already going finishes; running by hand is untouched. */
+/**
+ * `delivery schedule disable`: stop and remove this project's default timer, or only the one `--name` names. A run already
+ * going finishes; running by hand is untouched.
+ */
 export async function scheduleDisableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
+  const name = parseName(options.name);
   const repoPath = await repositoryOf(options, ctx);
-  const removed = await selectBackend().remove(repoPath, DEFAULT_NAME, ctx.env);
-  ctx.writeLine(removed ? turnedOff(repoPath) : alreadyOff(repoPath));
+  const removed = await selectBackend().remove(repoPath, name, ctx.env);
+  if (removed) {
+    ctx.writeLine(turnedOff(name, repoPath));
+    ctx.writeLine(BY_HAND);
+  } else {
+    ctx.writeLine(alreadyOff(name, repoPath));
+  }
   return EXIT.ok;
 }

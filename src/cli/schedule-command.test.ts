@@ -10,7 +10,7 @@ import { EXIT } from "./failures.js";
 import { findRepository } from "./project.js";
 import { badInterval, badName, emptySetting } from "./schedule/model.js";
 import { execTokens, NO_SYSTEMCTL, parseShow, TEST_SYSTEMCTL, unitName } from "./schedule/systemd.js";
-import { alreadyOff, journalHint, lastRun, nextRun, noSuchSchedule, runSettings, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
+import { alreadyOff, BY_HAND, journalHint, lastRun, nextRun, noSuchSchedule, runSettings, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
 import { NOT_A_CONCURRENCY, NOT_A_MAX } from "./settings.js";
 
 async function project() {
@@ -287,7 +287,7 @@ describe("delivery schedule disable", () => {
     await delivery(["schedule", "enable", "--every", "5m"], { cwd: repo, env });
     const { exitCode, stdout } = await delivery(["schedule", "disable"], { cwd: repo, env });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain(turnedOff(repo));
+    expect(stdout).toBe(`${turnedOff("default", repo)}\n${BY_HAND}\n`);
     expect(existsSync(join(units, `${name}.timer`))).toBe(false);
     expect(existsSync(join(units, `${name}.service`))).toBe(false);
     expect(standIn.calls().slice(-2)).toEqual([`--user disable --now ${name}.timer`, "--user daemon-reload"]);
@@ -304,7 +304,7 @@ describe("delivery schedule disable", () => {
     writeFileSync(join(units, `${name}.timer`), "[Timer]\nOnCalendar=*-*-* 00:00:00\nPersistent=true\n");
     const { exitCode, stdout } = await delivery(["schedule", "disable"], { cwd: repo, env });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain(turnedOff(repo));
+    expect(stdout).toBe(`${turnedOff("default", repo)}\n${BY_HAND}\n`);
     expect(existsSync(join(units, `${name}.timer`))).toBe(false);
     expect(existsSync(join(units, `${name}.service`))).toBe(false);
     expect(standIn.calls()).toEqual([`--user disable --now ${name}.timer`, "--user daemon-reload"]);
@@ -314,8 +314,58 @@ describe("delivery schedule disable", () => {
     const { repo, standIn, env } = await project();
     const { exitCode, stdout } = await delivery(["schedule", "disable"], { cwd: repo, env });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain(alreadyOff(repo));
+    expect(stdout).toBe(`${alreadyOff("default", repo)}\n`);
     expect(standIn.calls()).toEqual([]);
+  });
+
+  it("removes only the default schedule when no name is given", async () => {
+    const { repo, units, name, env } = await project();
+    await delivery(["schedule", "enable"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    const { exitCode, stdout } = await delivery(["schedule", "disable"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(`${turnedOff("default", repo)}\n${BY_HAND}\n`);
+    expect(existsSync(join(units, `${name}.timer`))).toBe(false);
+    expect(existsSync(join(units, `${name}.nightly.timer`))).toBe(true);
+  });
+
+  it("removes only the schedule named, and status stops listing it", async () => {
+    const { repo, units, name, standIn, env } = await project();
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    const hourlyBefore = readFileSync(join(units, `${name}.hourly.timer`), "utf-8");
+    const { exitCode, stdout } = await delivery(["schedule", "disable", "--name", "nightly"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(`${turnedOff("nightly", repo)}\n${BY_HAND}\n`);
+    expect(existsSync(join(units, `${name}.nightly.timer`))).toBe(false);
+    expect(existsSync(join(units, `${name}.nightly.service`))).toBe(false);
+    expect(readFileSync(join(units, `${name}.hourly.timer`), "utf-8")).toBe(hourlyBefore);
+    expect(standIn.calls().slice(-2)).toEqual([`--user disable --now ${name}.nightly.timer`, "--user daemon-reload"]);
+    const status = (await delivery(["schedule", "status"], { cwd: repo, env })).stdout;
+    expect(status).toContain("for the hourly schedule");
+    expect(status).not.toContain("for the nightly schedule");
+  });
+
+  it("says a named schedule that is not there is already off, and leaves the others", async () => {
+    const { repo, units, name, standIn, env } = await project();
+    await delivery(["schedule", "enable"], { cwd: repo, env });
+    const callsBefore = standIn.calls().length;
+    const { exitCode, stdout } = await delivery(["schedule", "disable", "--name", "nightly"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(`${alreadyOff("nightly", repo)}\n`);
+    expect(existsSync(join(units, `${name}.timer`))).toBe(true);
+    expect(standIn.calls().length).toBe(callsBefore);
+  });
+
+  it.each(["Nightly", "default", ""])("refuses to disable the name %j, touching nothing", async (bad) => {
+    const { repo, units, name, standIn, env } = await project();
+    await delivery(["schedule", "enable"], { cwd: repo, env });
+    const callsBefore = standIn.calls().length;
+    const { exitCode, stderr } = await delivery(["schedule", "disable", "--name", bad], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(badName(bad));
+    expect(existsSync(join(units, `${name}.timer`))).toBe(true);
+    expect(standIn.calls().length).toBe(callsBefore);
   });
 });
 

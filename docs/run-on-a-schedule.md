@@ -52,7 +52,7 @@ A schedule's settings are its whole definition. Enabling a schedule again replac
 
 ```bash
 delivery schedule status    # every schedule: on or off, and when it last ran and will next run
-delivery schedule disable   # turn the default schedule off; `delivery run --sources` still works by hand
+delivery schedule disable   # turn the default schedule off; `--name nightly` turns off only that one
 ```
 
 `status` prints one block per schedule: the default first, then the others by name.
@@ -72,6 +72,8 @@ Each scheduled run's output: journalctl --user -u delivery-<key>.nightly.service
 ```
 
 Each block ends with the exact `journalctl --user -u ...` command that shows that schedule's run output. `delivery schedule status --name nightly` shows only that one. When the project has no schedule, `status` says `Scheduling is off for <repo>` and how to turn one on, and `--name` for a schedule that is not there says so, with the command that would set it up.
+
+`disable` turns off the default schedule, or with `--name nightly` only that one: it names the schedule it turned off, says a schedule that is not there is already off, and never touches the others; `delivery run --sources` still works by hand.
 
 ## Run while you are logged out
 

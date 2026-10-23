@@ -231,7 +231,8 @@ export async function runCli(io: CliIo): Promise<number> {
 
   schedule
     .command("disable")
-    .description("turn scheduling off for this project; you can still run it by hand, and a run already going finishes")
+    .description("turn a schedule off for this project; you can still run it by hand, and a run already going finishes")
+    .option("--name <name>", "turn off only this schedule (default: the project's unnamed schedule)")
     .option("--repo <path>", "the git repository to stop scheduling (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleDisableCommand(options, ctxFor(command));
