@@ -7,6 +7,7 @@
 
 ## Slice 1: Read a built-in pack in plain words
 
+**Tests:** ✅ Recorded — 2026-10-23 — `a9972ec` — cli — 1 UAT + 9 AC, 0 skipped
 **Delivers:** A project owner can ask what a built-in pack will do and get an account in plain sentences, followed by every instruction the pack gives the agent, without running anything.
 
 **Operational note:** The command reads and writes nothing, calls no agent and runs no pack code, so it is safe on any pack. A check that every built-in pack can be read this way, and that what is shown matches what a run would use, belongs in the project's normal checks.
