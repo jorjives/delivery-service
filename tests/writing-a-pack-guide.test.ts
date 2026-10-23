@@ -6,7 +6,8 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ItemCheck } from "../src/schema.js";
-import { packSchema } from "../src/packs/manifest.js";
+import { PackManifest } from "../src/packs/pack-format.js";
+import { ruleProblems } from "../src/packs/pack-rules.js";
 import { FIXTURES, FixtureExpectations } from "../src/packs/pack-fixtures.js";
 import { flatten, REPO_ROOT } from "./helpers.js";
 
@@ -20,10 +21,21 @@ describe("the 'writing a pack' guide", () => {
     expect(guide).toContain("`packs`");
   });
 
-  it("names every top-level and scan key of pack.json", () => {
-    const schema = packSchema() as { properties: Record<string, { properties?: Record<string, unknown> }> };
-    for (const key of Object.keys(schema.properties)) expect(guide).toContain(`\`${key}\``);
-    for (const key of Object.keys(schema.properties.scan?.properties ?? {})) expect(guide).toContain(`\`${key}\``);
+  it("names every key of a delivery.pack/3 pack.json, the find's and the act's included", () => {
+    const keys = ["$schema", "schema", "name", "version", "title", "summary", "workflows", "kind", "prompt", "ideasFor", "guards", "add", "hold", "atOrAbove", "find", "act"];
+    for (const key of keys) expect(guide).toContain(`\`${key}\``);
+  });
+
+  it("shows a delivery.pack/3 example that the harness reads with no mistake", () => {
+    const block = /```json\n(\{\s*"schema": "delivery\.pack\/3"[\s\S]*?)```/.exec(guide)?.[1];
+    const parsed = PackManifest.safeParse(JSON.parse(block ?? ""));
+    expect(parsed.success && ruleProblems("pack.json", parsed.data)).toEqual([]);
+  });
+
+  it("says delivery.pack/2 packs still work and that settings are reserved", () => {
+    expect(flat).toMatch(/delivery\.pack\/2 packs? (still|keep)/);
+    expect(guide).toContain("`settings`");
+    expect(guide).toContain("{{settings.");
   });
 
   it("lists every check a pack may offer", () => {

@@ -1,4 +1,5 @@
-import { builtInPacks, packSchema } from "../packs/manifest.js";
+import { builtInPacks } from "../packs/manifest.js";
+import { packSchema } from "../packs/pack-format.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
 

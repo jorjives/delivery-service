@@ -51,6 +51,109 @@ Then make the folder yours:
 3. In `fixtures/review.json`, change every `workflow: code:fix` to `workflow: <name>:fix`, using the name from step 1.
 4. Replace the contents of `fixtures/` to match your review: see [Fixtures](#fixtures). The copied ones describe the code review's own problems.
 
+## Name your own workflows
+
+A pack in `delivery.pack/3` names its own workflows, where a `delivery.pack/2` pack has a fixed `scan` and `fix`. It holds exactly one `find` workflow, which reads the project and may only add ideas, and one or more `act` workflows, each of which changes the project to fix one idea. A workflow's full name is `<name>:<workflow>`, such as `mymoves:scan`.
+
+This is a complete `delivery.pack/3` manifest: a find called `scan` that offers two acts, `code` and `tests`.
+
+```json
+{
+  "schema": "delivery.pack/3",
+  "name": "mymoves",
+  "version": "1.0.0",
+  "title": "My moves",
+  "summary": "Moves calls off retired code.",
+  "workflows": {
+    "scan": {
+      "kind": "find",
+      "ideasFor": ["code", "tests"],
+      "prompt": "scan.md"
+    },
+    "code": {
+      "kind": "act",
+      "summary": "Code of the project's own that still calls the retired code.",
+      "prompt": "code.md",
+      "guards": {
+        "add": ["tests-unchanged"]
+      },
+      "hold": {
+        "atOrAbove": "high"
+      }
+    },
+    "tests": {
+      "kind": "act",
+      "summary": "A test file that still calls the retired code.",
+      "prompt": "tests.md"
+    }
+  }
+}
+```
+
+Save it as `pack.json`. Put `scan.md`, `code.md` and `tests.md` beside it with your instructions, list the folder under `packs`, and `delivery packs` lists it.
+
+In this release, `delivery review` and `delivery packs check` still run only `delivery.pack/2` packs. Running a `delivery.pack/3` pack's find with them comes in a later release.
+
+## The delivery.pack/3 manifest, field by field
+
+Every key a `delivery.pack/3` `pack.json` may hold is listed here, and any other key is refused. Bump `version` when you change the pack's manifest or instructions.
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `$schema` | `string` | Where an editor finds the schema to check this file against while it is written. Ignored by the harness. Optional. |
+| `schema` | `string` | Always `delivery.pack/3` in this format. Required. |
+| `name` | `string` | Short name of the pack, such as `mymoves`: lower-case letters, digits and dashes, starting with a letter or digit. Its workflows are `<name>:<workflow>`. Required. |
+| `version` | `string` | Three numbers separated by dots, such as `1.0.0`. Required. |
+| `title` | `string` | The pack's title, such as `My moves`. Required. |
+| `summary` | `string` | One sentence saying what the pack is for. Required. |
+| `workflows` | `object` | The workflows, each named by its key: exactly one find, and one or more acts, as described below. Required. |
+| `settings` | (reserved) | Reserved for pack settings. This release does not read them, so a pack that has one is refused. |
+
+### A find workflow
+
+The find workflow reads your project and may only add ideas to `.delivery/backlog/`. Holds:
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `kind` | `"find"` | Required. |
+| `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `scan.md`. The harness adds its own description of an idea after your instructions. Required. |
+| `ideasFor` | `array` | The names of the act workflows this find's ideas may name, such as `["code", "tests"]`. At least one. Required. |
+
+### An act workflow
+
+An act workflow changes the project to fix one idea. Holds:
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `kind` | `"act"` | Required. |
+| `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `code.md`. Required. |
+| `summary` | `string` | One sentence saying what the act is for, in the words the scanner is shown. Required when the find offers more than one act, so the scanner can choose between them. |
+| `guards` | `object` | `{ "add": ["tests-unchanged"] }`: [guards](glossary.md#guard) this act turns on. Each name must be one that `delivery packs --schema` lists. Holds only `add`. Optional. |
+| `hold` | `object` | `{ "atOrAbove": "high" }`: fixes of ideas rated this or more serious wait for the owner's sign-off. `atOrAbove` is `critical`, `high`, `medium` or `low`. Holds only `atOrAbove`. Optional. |
+
+### The rules a pack keeps
+
+- Exactly one workflow has `"kind": "find"`.
+- Every name in a find's `ideasFor` is an act workflow in the same pack.
+- Every act workflow is named in some find's `ideasFor`, so an idea can reach it.
+- An act that a find chooses between has a `summary`.
+- `{{settings.` is reserved in prompts, for pack settings this release does not read.
+- A pack cannot name a gate, an agent, tools, a closer, `after` steps or commands. A key that tries is refused with a sentence such as `"gate" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check`.
+
+### The sentences you may see
+
+`delivery packs check` names each mistake by its file and field, in one sentence. Among the sentences a `delivery.pack/3` pack may draw:
+
+| Sentence | What to change |
+|----------|----------------|
+| `"workflows" must hold exactly one workflow with "kind": "find", but it holds 2 ("scan", "other")` | Keep one find; make the other an act workflow, or remove it. |
+| `"workflows.scan.ideasFor.0" is "fix", but this pack's act workflows are: code, tests` | Name one of the act workflows the pack holds. |
+| `"workflows.scan.ideasFor.0" is a find workflow; it can only offer act workflows` | Name an act workflow, not a find. |
+| `"workflows.tests" is not listed in any find workflow's "ideasFor", so no idea could reach it` | Add it to a find's `ideasFor`, or remove it. |
+| `"workflows.code.summary" is missing: the find workflow "scan" needs it to choose between "code" and "tests"` | Add a one-sentence `summary` to the act. |
+| `"workflows.scan.summary" is only for act workflows` | Remove the key from the find. |
+| `"settings" is reserved for pack settings, which this harness does not read yet` | Remove `settings`. |
+
 ## Check it as you type
 
 Get the JSON Schema so your editor can check your `pack.json`:
@@ -64,17 +167,19 @@ Then put `"$schema"` first in `pack.json`:
 ```json
 {
   "$schema": "./pack.schema.json",
-  "schema": "delivery.pack/2",
+  "schema": "delivery.pack/3",
   "name": "mypack",
   "version": "1.0.0",
   "title": "My review",
   "summary": "Looks for issues in my code.",
-  "scan": { "prompt": "scan.md" },
-  "fix": { "prompt": "fix.md" }
+  "workflows": {
+    "scan": { "kind": "find", "ideasFor": ["code"], "prompt": "scan.md" },
+    "code": { "kind": "act", "prompt": "code.md" }
+  }
 }
 ```
 
-Your editor flags unknown keys and invalid values as you type.
+Your editor flags unknown keys and invalid values as you type. Existing delivery.pack/2 packs keep working with no edit; keep the schema file you printed earlier for them.
 
 ## Fixtures
 
@@ -206,14 +311,14 @@ To have the ideas fixed with `delivery approve` and `delivery run --sources`, li
 
 See [`packs`](configuration-reference.md#packs).
 
-## The manifest, field by field
+## The delivery.pack/2 manifest, field by field
 
-Every key `pack.json` may hold is listed here, and any other key is refused. Bump `version` when you change the pack's manifest or instructions.
+Every key a `delivery.pack/2` `pack.json` may hold is listed here, and any other key is refused. Bump `version` when you change the pack's manifest or instructions.
 
 | Field | Value | Notes |
 |-------|-------|-------|
 | `$schema` | `string` | Where an editor finds the schema to check this file against while it is written. Ignored by the harness. Optional. |
-| `schema` | `string` | Always `delivery.pack/2`, the format this harness reads. Required. |
+| `schema` | `string` | Always `delivery.pack/2` in this format. Required. |
 | `name` | `string` | Short name of the review, such as `code`: lower-case letters, digits and dashes, starting with a letter or digit. Its two workflows are `<name>:scan` and `<name>:fix`. Required. |
 | `version` | `string` | Three numbers separated by dots, such as `1.0.0`. Required. |
 | `title` | `string` | The review's title, such as `Code review`. Required. |

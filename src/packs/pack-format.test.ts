@@ -1,5 +1,8 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, upgradeV2 } from "./pack-format.js";
+import { z } from "zod";
+import { openSchema, publishedKeys } from "../report/json-schema.js";
+import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, packSchema, upgradeV2 } from "./pack-format.js";
 
 const v2 = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } } as const;
 const expected = { schema: "delivery.pack/3", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.",
@@ -46,4 +49,35 @@ describe("upgradeV2", () => {
   it("reads the spec's example /3 manifest", () => {
     expect(PackManifest.safeParse(EXAMPLE_V3).success).toBe(true);
   });
+});
+
+describe("the pack format's JSON Schema", () => {
+  type Manifest = { workflows: Record<string, Record<string, unknown>> } & Record<string, unknown>;
+  const at = (m: Manifest, name: string): Record<string, unknown> => m.workflows[name] as Record<string, unknown>;
+  const schema = z.fromJSONSchema(packSchema());
+  it("names itself by the version written", () => expect(packSchema().title).toBe(PACK_SCHEMA));
+  it("accepts a delivery.pack/3 manifest", () => expect(schema.safeParse(EXAMPLE_V3).error).toBeUndefined());
+  it.each([
+    ["an unknown key on a find", (m: Manifest) => (at(m, "scan").tools = ["Bash"])],
+    ["an act-only key on a find", (m: Manifest) => (at(m, "scan").hold = { atOrAbove: "high" })],
+    ["an unknown key on an act", (m: Manifest) => (at(m, "code").gate = "npm test")],
+    ["a kind it does not name", (m: Manifest) => (at(m, "scan").kind = "scna")],
+    ["a guard it does not name", (m: Manifest) => (at(m, "code").guards = { add: ["no-such-guard"] })],
+    ["a top-level key it does not name", (m: Manifest) => (m.settings = {})],
+  ])("flags %s as an editor would", (_, edit) => {
+    const m = structuredClone(EXAMPLE_V3) as Manifest;
+    edit(m);
+    expect(schema.safeParse(m).success).toBe(false);
+  });
+});
+
+/** The stability promise, per version: a pack valid under a version stays valid. A line may be added, never removed or changed. */
+describe("the pack format's stability promise", () => {
+  const promised = readFileSync(new URL("./pack-published-keys.txt", import.meta.url), "utf-8").trimEnd().split("\n");
+  const current = [...publishedKeys(openSchema(PackManifestV2), "delivery.pack/2"), ...publishedKeys(openSchema(PackManifest), PACK_SCHEMA)];
+  it("covers every version this harness reads", () => {
+    for (const v of PACK_SCHEMAS_READ) expect(promised.some((l) => l.startsWith(`${v}.`))).toBe(true);
+  });
+  it("keeps every key and name ever published, each the kind of value it was", () => expect(promised.filter((l) => !current.includes(l))).toEqual([]));
+  it("puts every key and name published now under the promise: add its line to pack-published-keys.txt", () => expect(current.filter((l) => !promised.includes(l))).toEqual([]));
 });

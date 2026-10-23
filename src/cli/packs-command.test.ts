@@ -1,6 +1,7 @@
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
-import { builtInPacks, packSchema } from "../packs/manifest.js";
+import { builtInPacks } from "../packs/manifest.js";
+import { packSchema } from "../packs/pack-format.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";

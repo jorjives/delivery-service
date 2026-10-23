@@ -7,7 +7,6 @@ import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 import { InvalidPack, UnknownPack } from "../errors.js";
 import { isEnoent } from "../journal.js";
 import type { WorkflowConfig } from "../cli/config.js";
-import type { JsonSchema } from "../report/json-schema.js";
 import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, upgradeV2, type PackSchemaVersion } from "./pack-format.js";
 import { formatSentence, ruleProblems } from "./pack-rules.js";
 
@@ -80,12 +79,6 @@ export interface Pack {
   find: string;
   workflows: Record<string, WorkflowConfig>;
 }
-
-/**
- * The JSON Schema of `pack.json` as an author writes it: strict, so an editor flags a key the format
- * does not name or a guard it does not have while it is typed. What `delivery packs --schema` prints.
- */
-export const packSchema = (): JsonSchema => ({ ...z.toJSONSchema(PackManifestV2, { io: "input" }), title: "delivery.pack/2" });
 
 /** One thing wrong with a pack, as an author fixes it: the file (absolute), the field in it, and one plain sentence starting with that field. */
 export interface PackProblem {

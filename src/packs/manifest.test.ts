@@ -2,11 +2,8 @@ import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
 import { UnknownPack } from "../errors.js";
-import { openSchema, publishedKeys } from "../report/json-schema.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, loadPack, packSchema, resolvePack } from "./manifest.js";
-import { PackManifestV2 } from "./pack-format.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, loadPack, resolvePack } from "./manifest.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
 
@@ -253,41 +250,10 @@ describe("inspecting a pack", () => {
   });
 });
 
-describe("the pack format's JSON Schema", () => {
-  const schema = z.fromJSONSchema(packSchema());
-  const builtIn = (folder: string): unknown => JSON.parse(readFileSync(join(BUILT_IN_PACKS, folder, "pack.json"), "utf-8"));
-
-  it("accepts every built-in pack's manifest, so an editor holds a copy to the same rules", () => {
-    for (const folder of ["code-review", "security-review"]) expect(schema.safeParse(builtIn(folder)).error).toBeUndefined();
-  });
-
-  it("flags an unknown key as an editor would while it is typed", () => {
-    const manifest = builtIn("code-review") as Record<string, unknown>;
-    expect(schema.safeParse({ ...manifest, tools: ["Bash"] }).success).toBe(false);
-  });
-
-  it("names itself by the format's version", () => {
-    expect(packSchema().title).toBe("delivery.pack/2");
-  });
-
+describe("a manifest's $schema", () => {
   it("lets a manifest name the schema it is written against, for an editor", async () => {
     const dir = editedPack((m) => (m.$schema = "./pack.schema.json"));
     expect((await loadPack(dir)).manifest.name).toBe("code");
-  });
-
-});
-
-/** The stability promise: a pack valid under delivery.pack/2 stays valid. A line may be added, never removed or changed. */
-describe("the pack format's stability promise", () => {
-  const promised = readFileSync(new URL("./pack-published-keys.txt", import.meta.url), "utf-8").trimEnd().split("\n");
-  const current = publishedKeys(openSchema(PackManifestV2), "delivery.pack/2");
-
-  it("keeps every key and name ever published, each the kind of value it was", () => {
-    expect(promised.filter((line) => !current.includes(line))).toEqual([]);
-  });
-
-  it("puts every key and name published now under the promise: add its line to pack-published-keys.txt", () => {
-    expect(current.filter((line) => !promised.includes(line))).toEqual([]);
   });
 });
 

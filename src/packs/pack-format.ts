@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import { z } from "zod";
 import { GuardName, Severity } from "../schema.js";
+import type { JsonSchema } from "../report/json-schema.js";
 
 /** The versions of the pack format this build reads. `/2` is read, never written. */
 export const PACK_SCHEMAS_READ = ["delivery.pack/2", "delivery.pack/3"] as const;
@@ -71,6 +72,13 @@ export const PackManifest = z.strictObject({
   workflows: z.record(Slug, PackWorkflow),
 });
 export type PackManifest = z.infer<typeof PackManifest>;
+
+/**
+ * The JSON Schema of `pack.json` as an author writes it: strict, so an editor flags a key the format
+ * does not name, or a guard it does not have, while it is typed. Describes `delivery.pack/3` only; what
+ * `delivery packs --schema` prints.
+ */
+export const packSchema = (): JsonSchema => ({ ...z.toJSONSchema(PackManifest, { io: "input" }), title: PACK_SCHEMA });
 
 /** The same pack as `delivery.pack/3` means it: `scan` becomes a find offering `fix`, and `fix` an act. Pure and total. */
 export function upgradeV2(v2: PackManifestV2): PackManifest {
