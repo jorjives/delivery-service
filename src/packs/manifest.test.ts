@@ -93,8 +93,17 @@ describe("a delivery.pack/2 manifest", () => {
   it.each(["delivery.pack/1", "delivery.pack/9"])("refuses %s, naming both versions it reads", async (schema) => {
     expect(await inspectPack(packDir({ ...minimal, schema }))).toEqual({
       ok: false,
+      schema: null,
       problems: [{ file: expect.any(String), field: "schema", message: `"schema" is "${schema}", but this harness reads delivery.pack/2 and delivery.pack/3 (see docs/writing-a-pack.md)` }],
     });
+  });
+
+  it("says which version it read a manifest as, even when the manifest has a mistake", async () => {
+    expect(await inspectPack(v3Dir({ ...v3, extra: 1 }))).toMatchObject({ ok: false, schema: "delivery.pack/3" });
+    expect(await inspectPack(packDir({ ...minimal, extra: 1 }))).toMatchObject({ ok: false, schema: "delivery.pack/2" });
+    const undeclared: Record<string, unknown> = { ...v3, extra: 1 };
+    delete undeclared.schema;
+    expect(await inspectPack(v3Dir(undeclared))).toMatchObject({ ok: false, schema: "delivery.pack/3" });
   });
 
   it("reports a /2 pack as /2, its find as <name>:scan", async () => {
@@ -178,7 +187,7 @@ describe("a delivery.pack/3 manifest", () => {
 
   it("names a missing prompt file once, though two workflows share it", async () => {
     const dir = v3Dir({ ...v3, workflows: { scan: v3.workflows.scan, code: { kind: "act", summary: "Code.", prompt: "act.md" }, tests: { kind: "act", summary: "Test.", prompt: "act.md" } } }, { "scan.md": "# Scan\n" });
-    expect(await inspectPack(dir)).toEqual({ ok: false, problems: [{ file: join(dir, "act.md"), field: null, message: "is missing" }] });
+    expect(await inspectPack(dir)).toEqual({ ok: false, schema: "delivery.pack/3", problems: [{ file: join(dir, "act.md"), field: null, message: "is missing" }] });
   });
 
   it("changes its identity when any workflow's instructions change", async () => {
@@ -212,7 +221,7 @@ describe("a pack from a folder", () => {
   it("names a missing instructions file by its own path", async () => {
     const dir = editedPack(() => undefined);
     rmSync(join(dir, "scan.md"));
-    expect(await inspectPack(dir)).toEqual({ ok: false, problems: [{ file: join(dir, "scan.md"), field: null, message: "is missing" }] });
+    expect(await inspectPack(dir)).toEqual({ ok: false, schema: "delivery.pack/2", problems: [{ file: join(dir, "scan.md"), field: null, message: "is missing" }] });
   });
 
   it("refuses instructions outside the folder", async () => {
@@ -289,6 +298,7 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
     const dir = v3Dir(manifest);
     expect(await inspectPack(dir)).toEqual({
       ok: false,
+      schema: "delivery.pack/3",
       problems: problems.map(([field, message]) => ({ file: join(dir, "pack.json"), field, message })),
     });
   }

@@ -92,7 +92,7 @@ This is a complete `delivery.pack/3` manifest: a find called `scan` that offers 
 
 Save it as `pack.json`. Put `scan.md`, `code.md` and `tests.md` beside it with your instructions, list the folder under `packs`, and `delivery packs` lists it.
 
-`delivery review <name>` starts a `delivery.pack/3` pack's find, whatever it is called. In this release `delivery packs check` still checks only `delivery.pack/2` packs; checking a `delivery.pack/3` pack end to end comes in a later release.
+`delivery review <name>` starts a `delivery.pack/3` pack's find, whatever it is called. `delivery packs check ./my-pack` checks a `delivery.pack/3` pack end to end, running its find, approving every idea and running each under the act workflow it names, and fails a pack with an act workflow no scripted idea reaches. `examples/moves-pack` is a `delivery.pack/3` pack with fixtures to copy.
 
 ## The delivery.pack/3 manifest, field by field
 
@@ -264,6 +264,20 @@ Ready to use: delivery review ./my-review
 
 Exit code 0.
 
+A `delivery.pack/3` pack is checked in the words of its own find and acts. The check of `examples/moves-pack` passes like this:
+
+```text
+Checking the pack in moves-pack…
+✓ pack.json: the moves pack, version 1.0.0.
+✓ The scripted find moves:look added 3 ideas, as fixtures/expect.json expects: "Prices still use the old doubling code", "Labels still use the old doubling code", "The price test still uses the old doubling code".
+✓ Every idea was approved and run under the act workflow it names: moves:code, moves:tests.
+✓ The scripted change for "Prices still use the old doubling code" passed its check under moves:code.
+✓ The scripted change for "The price test still uses the old doubling code" passed its check under moves:tests.
+✓ The scripted cheat for "Labels still use the old doubling code" was refused under moves:code: it removed, changed or skipped tests.
+Nothing was sent to a real agent: every reply came from the pack's fixtures.
+Ready to use: list moves-pack under "packs" in delivery.config.json, then start it with: delivery review moves
+```
+
 ### When the check finds a problem
 
 Each problem is printed as `<file>: <what is wrong>.` and the command exits 2. For example, when `expect.json` lists a title the scripted review did not write:
@@ -294,7 +308,7 @@ A `delivery.pack/3` pack's messages name its find (`the scripted find <name>:<fi
 delivery packs check ./my-review --json
 ```
 
-Prints the whole result as one JSON document, with the same exit codes. Its keys are `ready`, `pack` (`name`, `version` and `hash`), `problems`, `run` (`found`, `fixed` and `refused`) and `sentToAgent`, which is always `false`.
+Prints the whole result as one JSON document, with the same exit codes. Its keys are `ready`, `pack` (`name`, `version` and `hash`), `problems`, `run` (`found`, `fixed`, `refused`, `find` and `workflowOf`) and `sentToAgent`, which is always `false`. `find` is the full name of the find workflow that ran, and `workflowOf` maps each found title to the full name of the act workflow its idea names.
 
 ## Use it
 

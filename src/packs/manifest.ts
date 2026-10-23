@@ -179,33 +179,37 @@ function packHash(raw: string, texts: string[]): string {
   return hash.digest("hex");
 }
 
-/** Read and check the pack in `dir`, naming every problem with it by file and field rather than stopping at the first. */
-export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack } | { ok: false; problems: PackProblem[] }> {
+/**
+ * Read and check the pack in `dir`, naming every problem with it by file and field rather than stopping at the first.
+ * A failure says which version the manifest was read as, so the words it is named in can follow that version; it is
+ * null when the manifest could not be read as any version at all.
+ */
+export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack } | { ok: false; schema: PackSchemaVersion | null; problems: PackProblem[] }> {
   const manifestFile = join(dir, "pack.json");
   const raw = await packFile(dir, "pack.json");
-  if (typeof raw !== "string") return { ok: false, problems: [raw] };
+  if (typeof raw !== "string") return { ok: false, schema: null, problems: [raw] };
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    return { ok: false, problems: [{ file: manifestFile, field: null, message: "is not valid JSON" }] };
+    return { ok: false, schema: null, problems: [{ file: manifestFile, field: null, message: "is not valid JSON" }] };
   }
   // A manifest in a format this build does not read is refused with its own sentence and never read further: its keys mean something else.
   const declared = typeof json === "object" && json !== null ? (json as { schema?: unknown }).schema : undefined;
   if (declared !== undefined && !(PACK_SCHEMAS_READ as readonly unknown[]).includes(declared)) {
-    return { ok: false, problems: [{ file: manifestFile, field: "schema", message: `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)` }] };
+    return { ok: false, schema: null, problems: [{ file: manifestFile, field: "schema", message: `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)` }] };
   }
   let manifest: PackManifest;
   const schema: PackSchemaVersion = declared === "delivery.pack/2" ? "delivery.pack/2" : PACK_SCHEMA;
   if (schema === "delivery.pack/2") {
     const v2 = PackManifestV2.safeParse(json);
-    if (!v2.success) return { ok: false, problems: packProblems(manifestFile, v2.error, json) };
+    if (!v2.success) return { ok: false, schema, problems: packProblems(manifestFile, v2.error, json) };
     manifest = upgradeV2(v2.data);
   } else {
     const v3 = PackManifest.safeParse(json);
-    if (!v3.success) return { ok: false, problems: packProblems(manifestFile, v3.error, json, formatSentence) };
+    if (!v3.success) return { ok: false, schema, problems: packProblems(manifestFile, v3.error, json, formatSentence) };
     const rules = ruleProblems(manifestFile, v3.data);
-    if (rules.length > 0) return { ok: false, problems: rules };
+    if (rules.length > 0) return { ok: false, schema, problems: rules };
     manifest = v3.data;
   }
 
@@ -218,7 +222,7 @@ export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack }
     if (typeof text === "string") texts.set(prompt, text);
     else problems.push(text);
   }
-  if (problems.length > 0) return { ok: false, problems };
+  if (problems.length > 0) return { ok: false, schema, problems };
 
   const { find, workflows } = packWorkflows(manifest, texts);
   // A /2 pack hashes its prompts in the order it wrote them, scan then fix; a /3 pack in the sorted order of its workflow names.
