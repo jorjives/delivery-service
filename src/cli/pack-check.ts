@@ -6,7 +6,7 @@ import { allRuns } from "./runs.js";
 import { readBacklog, itemTask, type BacklogItem } from "../backlog.js";
 import { ledgerPath, readItemLedger } from "../item-ledger.js";
 import { taskIntent } from "../task-list.js";
-import { inspectPack, BUILT_IN_PACKS, type PackProblem } from "../packs/manifest.js";
+import { inspectPack, BUILT_IN_PACKS, type Pack, type PackProblem } from "../packs/manifest.js";
 import { FIXTURES, readFixtures } from "../packs/pack-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { git } from "../git-exec.js";
@@ -22,12 +22,41 @@ export const WEAKENED_TESTS = "it removed, changed or skipped tests";
 export const CHECK_FAILED = "its check did not pass";
 
 export interface PackCheckRun {
-  /** The titles the scripted review found, in the review's order. */
+  /** The titles the find added ideas for, in the order it added them. */
   found: string[];
-  /** The titles whose scripted fix passed its check. */
+  /** The titles whose idea's change passed its check. */
   fixed: string[];
-  /** The titles whose scripted cheat was refused, and why. */
+  /** The titles whose idea's cheat was refused, and why. */
   refused: { title: string; why: string }[];
+  /** The find that ran, by its full name, such as `moves:look`. */
+  find: string;
+  /** Each found title to the full name of the workflow its idea names, such as `moves:code`; a title whose idea names none is absent. */
+  workflowOf: Record<string, string>;
+}
+
+/** The problem with an act workflow that no idea reaches: the check never ran it, so it proved nothing about it. */
+export const unreachedAct = (subject: string, workflow: string): string => `${subject} added no idea for the act workflow "${workflow}", so the check never ran it`;
+
+/**
+ * The words a pack's problems are named in. A `delivery.pack/2` pack keeps the words it always had; a
+ * `delivery.pack/3` pack is named by its own find and workflows.
+ */
+function runWords(pack: Pack): { find: string; acts: string; change(title: string, workflow: string | undefined): string; cheat(title: string, workflow: string | undefined): string } {
+  if (pack.schema === "delivery.pack/2") {
+    return {
+      find: "the scripted review",
+      acts: "the scripted fixes",
+      change: (title) => `the scripted fix for "${title}"`,
+      cheat: (title) => `the scripted cheat for "${title}"`,
+    };
+  }
+  const under = (workflow: string | undefined): string => (workflow === undefined ? "" : ` under ${workflow}`);
+  return {
+    find: `the scripted find ${pack.find}`,
+    acts: "the scripted acts",
+    change: (title, workflow) => `the scripted change for "${title}"${under(workflow)}`,
+    cheat: (title, workflow) => `the scripted cheat for "${title}"${under(workflow)}`,
+  };
 }
 
 /** What checking a pack showed: every problem with it, and what its scripted run did. */
@@ -82,6 +111,8 @@ export async function checkPack(dir: string, { env = process.env, confirm }: { e
   if (!inspected.ok || !read.ok) return { ready: false, pack, problems, run: null, sentToAgent: false };
   if (confirm !== undefined && !(await confirm())) throw new NotTrusted();
   const { fixtures } = read;
+  const loaded = inspected.pack;
+  const words = runWords(loaded);
   const expectFile = join(dir, FIXTURES.expect);
   const fixesFile = join(dir, FIXTURES.fixes);
 
@@ -118,24 +149,36 @@ export async function checkPack(dir: string, { env = process.env, confirm }: { e
     try {
       await reviewCommand(packRef, undefined, {}, ctxWith(reviewScript));
     } catch (err) {
-      if (err instanceof Refusal) return failed({ file: join(dir, FIXTURES.review), field: null, message: `the scripted review could not be used: ${err.message}` });
+      if (err instanceof Refusal) return failed({ file: join(dir, FIXTURES.review), field: null, message: `${words.find} could not be used: ${err.message}` });
       throw err;
     }
     const ideas = (await readBacklog(repo, { at: "HEAD" })).items.filter((item) => item.status === "idea");
     const titleOf = (file: string): string => taskIntent(itemTask(ideas.find((item) => item.file === file) as BacklogItem));
     const titles = ideas.map((item) => titleOf(item.file));
-    const run: PackCheckRun = { found: titles, fixed: [], refused: [] };
+    const workflowOf: Record<string, string> = {};
+    for (const item of ideas) if (item.workflow !== undefined) workflowOf[titleOf(item.file)] = item.workflow;
+    const run: PackCheckRun = { found: titles, fixed: [], refused: [], find: loaded.find, workflowOf };
     const { found, fixed, refused } = fixtures.expect;
-    const notFound = found.flatMap((title, index): PackProblem[] => (titles.includes(title) ? [] : [{ file: expectFile, field: `found.${index}`, message: `the scripted review did not add "${title}"` }]));
-    const unexpected = titles.filter((title) => !found.includes(title)).map((title): PackProblem => ({ file: expectFile, field: "found", message: `the scripted review also added "${title}", which "found" does not list` }));
+    const notFound = found.flatMap((title, index): PackProblem[] => (titles.includes(title) ? [] : [{ file: expectFile, field: `found.${index}`, message: `${words.find} did not add "${title}"` }]));
+    const unexpected = titles.filter((title) => !found.includes(title)).map((title): PackProblem => ({ file: expectFile, field: "found", message: `${words.find} also added "${title}", which "found" does not list` }));
     if (notFound.length + unexpected.length > 0) return { ready: false, pack, problems: [...notFound, ...unexpected], run, sentToAgent: false };
+
+    // Every act the pack offers must be reached by an idea, or the check would prove nothing about it.
+    const reached = new Set(Object.values(workflowOf));
+    const unreached = Object.entries(loaded.manifest.workflows)
+      .filter(([, workflow]) => workflow.kind === "act")
+      .map(([local]) => `${loaded.manifest.name}:${local}`)
+      .filter((workflow) => !reached.has(workflow));
+    if (unreached.length > 0) {
+      return { ready: false, pack, problems: unreached.map((workflow): PackProblem => ({ file: join(dir, FIXTURES.review), field: null, message: unreachedAct(words.find, workflow) })), run, sentToAgent: false };
+    }
 
     const fixesCtx = ctxWith(fixesScript);
     try {
       await approveCommand([], { all: true }, fixesCtx);
       await runCommand({ sources: true, max: String(ideas.length) }, fixesCtx);
     } catch (err) {
-      if (err instanceof Refusal) return failed({ file: fixesFile, field: null, message: `the scripted fixes could not run: ${err.message}` }, run);
+      if (err instanceof Refusal) return failed({ file: fixesFile, field: null, message: `${words.acts} could not run: ${err.message}` }, run);
       throw err;
     }
     const ledger = await readItemLedger(ledgerPath(repo, fixesCtx.env));
@@ -150,12 +193,12 @@ export async function checkPack(dir: string, { env = process.env, confirm }: { e
       const lastClass = stateOf(title)?.lastClass;
       // Held counts as passing: the fix is finished and checked, and waits only for the owner.
       if (lastClass === "delivered" || lastClass === "held") run.fixed.push(title);
-      else runProblems.push({ file: fixesFile, field: null, message: `the scripted fix for "${title}" did not pass its check: it ended ${lastClass ?? "without running"}` });
+      else runProblems.push({ file: fixesFile, field: null, message: `${words.change(title, workflowOf[title])} did not pass its check: it ended ${lastClass ?? "without running"}` });
     }
     for (const title of refused) {
       const lastClass = stateOf(title)?.lastClass;
       if (lastClass !== "delivered" && lastClass !== "held" && lastClass !== undefined && lastClass !== null) run.refused.push({ title, why: weakened(title) ? WEAKENED_TESTS : CHECK_FAILED });
-      else runProblems.push({ file: fixesFile, field: null, message: `the scripted cheat for "${title}" was not refused: it ended ${lastClass ?? "without running"}` });
+      else runProblems.push({ file: fixesFile, field: null, message: `${words.cheat(title, workflowOf[title])} was not refused: it ended ${lastClass ?? "without running"}` });
     }
     return { ready: runProblems.length === 0, pack, problems: runProblems, run, sentToAgent: false };
   } finally {

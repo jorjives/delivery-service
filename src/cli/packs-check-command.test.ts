@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BUILT_IN_PACKS } from "../packs/manifest.js";
+import { FIXTURES } from "../packs/pack-fixtures.js";
 import { delivery } from "./command-fixtures.js";
 import { EXIT, Refusal } from "./failures.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
@@ -24,6 +25,8 @@ function myPack(edit?: (manifest: { scan: { checks: string[] } }) => void): stri
   manifest.name = "mine";
   edit?.(manifest);
   writeFileSync(file, JSON.stringify(manifest, null, 2));
+  const review = join(cwd, "my-pack", FIXTURES.review);
+  writeFileSync(review, readFileSync(review, "utf-8").replaceAll("workflow: code:fix", "workflow: mine:fix"));
   return cwd;
 }
 

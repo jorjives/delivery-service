@@ -281,9 +281,12 @@ What each message means, and the fix:
 - `expect.json: ... must name at least one problem`: each of `found`, `fixed` and `refused` needs a title, and every title in `fixed` and `refused` must also be in `found`.
 - `the scripted review could not be used: ...`: the review did not run, for example because the pack name is already taken, or an idea's `workflow:` is not `<name>:fix`.
 - `the scripted review did not add "X"` and `the scripted review also added "X", which "found" does not list`: `review.json` and `found` disagree. Make them name the same titles.
+- `the scripted review added no idea for the act workflow "X", so the check never ran it`: every act workflow needs at least one idea in `review.json` naming it in `workflow:`. Check that each `workflow:` is `<name>:<act>` with your pack's own name, since an idea that names another pack's workflow does not count.
 - `the scripted fixes could not run: ...`: the fixes did not run; the rest of the message says why.
 - `the scripted fix for "X" did not pass its check: it ended ...`: the fix did not make the change it claimed, or broke a test.
 - `the scripted cheat for "X" was not refused: it ended ...`: the cheat passed its check when the fixtures say it should fail.
+
+A `delivery.pack/3` pack's messages name its find (`the scripted find <name>:<find>`) and the act an idea ran under (`under <name>:<act>`) in place of "review" and "fix".
 
 ### With --json
 
