@@ -171,6 +171,8 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 5: Learn from the documentation that packs cover more than reviews
 
+**Tests:** ✅ Recorded — 2026-10-23 — `575a73a` — cli (vitest) — 1 UAT (4 steps) + 4 AC groups, 1 skipped (proved in depth elsewhere)
+
 **Delivers:** Dana and Priya can tell from the documentation, before reading about manifests, that a pack is a repeatable find-then-act job and a review is one kind; Priya can follow a worked example of a non-review pack.
 
 **Operational note:** The documentation tests that assert guide contents are extended to check the opening claim of the packs page and docs index and that the how-to names every command it uses.
