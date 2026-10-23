@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import { z } from "zod";
 import { GuardName, Severity } from "../schema.js";
 import type { JsonSchema } from "../report/json-schema.js";
+import { hasHidden } from "./hidden-characters.js";
 
 /** The versions of the pack format this build reads. `/2` is read, never written. */
 export const PACK_SCHEMAS_READ = ["delivery.pack/2", "delivery.pack/3"] as const;
@@ -11,7 +12,11 @@ export type PackSchemaVersion = (typeof PACK_SCHEMAS_READ)[number];
 export const PACK_SCHEMA = "delivery.pack/3";
 
 const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lower-case letters, digits and dashes");
-const Sentence = z.string().trim().min(1, "must not be empty");
+const Sentence = z
+  .string()
+  .trim()
+  .min(1, "must not be empty")
+  .refine((text) => !hasHidden(text), "must be one line of plain text, with no line break, tab or hidden character");
 const PackFile = z.string().refine((file) => file !== "" && basename(file) === file, "must be the name of a file in the pack folder");
 const Version = z.string().regex(/^\d+\.\d+\.\d+$/, "must be a version such as 1.0.0");
 

@@ -81,3 +81,17 @@ describe("the pack format's stability promise", () => {
   it("keeps every key and name ever published, each the kind of value it was", () => expect(promised.filter((l) => !current.includes(l))).toEqual([]));
   it("puts every key and name published now under the promise: add its line to pack-published-keys.txt", () => expect(current.filter((l) => !promised.includes(l))).toEqual([]));
 });
+
+describe("text a pack shows the owner", () => {
+  const bad = ["two\nlines", "a\rb", `esc${String.fromCharCode(27)}[2J`, `rtl${String.fromCodePoint(0x202e)}text`, `zero${String.fromCodePoint(0x200b)}width`, "tab\there"];
+  for (const text of bad) {
+    it(`refuses ${JSON.stringify(text)} in the title and summary`, () => {
+      expect(PackManifestV2.safeParse({ ...v2, title: text }).success).toBe(false);
+      expect(PackManifest.safeParse({ ...expected, summary: text }).success).toBe(false);
+    });
+  }
+  it("refuses it in an act's summary", () => {
+    const workflows = { ...expected.workflows, fix: { kind: "act", prompt: "fix.md", summary: "two\nlines" } };
+    expect(PackManifest.safeParse({ ...expected, workflows }).success).toBe(false);
+  });
+});
