@@ -9,6 +9,7 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 1: Write a pack with workflows of your own and have mistakes named plainly
 
+**Status:** ✅ Complete — 2026-10-23 — `eac7605`
 **Tests:** ✅ Recorded — 2026-10-23 — `dd6b7fc` — cli — 1 UAT + 7 AC groups, 2 AC skipped
 
 **Delivers:** Priya can write a pack that names its own find and act workflows (each with its own prompt, guards and hold), list it, and be told by file and field when she gets it wrong; her existing review packs and the built-in `code` and `security` packs are listed and behave exactly as before.
