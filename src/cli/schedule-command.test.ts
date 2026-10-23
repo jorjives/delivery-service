@@ -154,6 +154,27 @@ describe("delivery schedule enable", () => {
     );
   });
 
+  it("replaces a default timer written before named schedules existed", async () => {
+    const { repo, units, name, standIn, env } = await project();
+    mkdirSync(units, { recursive: true });
+    writeFileSync(
+      join(units, `${name}.service`),
+      `[Unit]\nDescription=delivery run --sources every 1d in ${repo}\n\n[Service]\nType=oneshot\nWorkingDirectory=${repo}\nExecStart=/usr/bin/node /x/main.js run --sources\n`,
+    );
+    writeFileSync(join(units, `${name}.timer`), "[Timer]\nOnCalendar=*-*-* 00:00:00\nPersistent=true\n");
+    standIn.showing({ UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "" });
+    const { exitCode } = await delivery(["schedule", "enable", "--every", "6h"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    const service = readFileSync(join(units, `${name}.service`), "utf-8");
+    expect(service).toContain("X-Delivery-Schedule=default");
+    expect(service).toMatch(/run --sources --if-idle$/m);
+    expect(readFileSync(join(units, `${name}.timer`), "utf-8")).toContain("OnCalendar=*-*-* 00/6:00:00");
+    expect(readdirSync(units).sort()).toEqual([`${name}.service`, `${name}.timer`]);
+    const status = (await delivery(["schedule", "status"], { cwd: repo, env })).stdout;
+    expect(status).toContain("Scheduling is on for the default schedule, every 6h.");
+    expect(status.match(/Scheduling is/g)).toHaveLength(1);
+  });
+
   it("gives the scheduled-on line the skipped wording when the scheduler does not catch up", () => {
     expect(scheduledOn("d", false)).toBe("Scheduling is on: d. A run missed while this machine is off is skipped.");
   });
@@ -309,6 +330,23 @@ describe("delivery schedule status", () => {
     standIn.showing({ UnitFileState: "disabled", LastTriggerUSec: "", NextElapseUSecRealtime: "" });
     expect((await delivery(["schedule", "status"], { cwd: repo, env })).stdout).toContain("Scheduling is off for the default schedule, every 1d.");
   });
+
+  it("lists only its own schedules for two projects whose paths share a prefix", async () => {
+    const { repo, env, standIn } = await project();
+    const other = await sibling(repo, ".c");
+    standIn.showing({ UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "" });
+    await delivery(["schedule", "enable"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: other, env });
+    const mine = (await delivery(["schedule", "status"], { cwd: repo, env })).stdout;
+    expect(mine).toContain("the default schedule");
+    expect(mine).toContain("the nightly schedule");
+    expect(mine).not.toContain("the hourly schedule");
+    const theirs = (await delivery(["schedule", "status"], { cwd: other, env })).stdout;
+    expect(theirs).toContain("the hourly schedule");
+    expect(theirs).not.toContain("the default schedule");
+    expect(theirs).not.toContain("the nightly schedule");
+  });
 });
 
 describe("delivery schedule disable", () => {
@@ -425,6 +463,32 @@ describe("delivery schedule disable", () => {
     await delivery(["schedule", "enable"], { cwd: mine.repo, env: mine.env });
     await delivery(["schedule", "disable", "--all"], { cwd: mine.repo, env: mine.env });
     expect(existsSync(join(mine.units, `${unitName(theirs, "nightly")}.timer`))).toBe(true);
+  });
+
+  it("turning everything off leaves a project whose path extends this one's untouched", async () => {
+    const { repo, units, env } = await project();
+    const other = await sibling(repo, ".c");
+    await delivery(["schedule", "enable"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: other, env });
+    const otherBefore = (await delivery(["schedule", "status"], { cwd: other, env })).stdout;
+    const { exitCode } = await delivery(["schedule", "disable", "--all"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect((await delivery(["schedule", "status"], { cwd: repo, env })).stdout).toBe(`${scheduledOff(repo)}\n`);
+    expect((await delivery(["schedule", "status"], { cwd: other, env })).stdout).toBe(otherBefore);
+    expect(existsSync(join(units, `${unitName(other, "hourly")}.service`))).toBe(true);
+    expect(existsSync(join(units, `${unitName(other, "hourly")}.timer`))).toBe(true);
+  });
+
+  it("says a name is already off when only another project holds its timer", async () => {
+    const { repo, units, env } = await project();
+    const other = await sibling(repo, ".nightly");
+    await delivery(["schedule", "enable"], { cwd: other, env });
+    const { exitCode, stdout } = await delivery(["schedule", "disable", "--name", "nightly"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(`${alreadyOff("nightly", repo)}\n`);
+    expect(existsSync(join(units, `${unitName(other, "default")}.service`))).toBe(true);
+    expect(existsSync(join(units, `${unitName(other, "default")}.timer`))).toBe(true);
   });
 
   it("refuses --name with --all before touching anything", async () => {
