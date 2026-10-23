@@ -4,7 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { expect, it } from "vitest";
 import { packLines } from "../src/cli/packs-command.js";
 import { packAdded, packStarting, nothingFound } from "../src/cli/review-command.js";
 import { BUILT_IN_PACKS, builtInPacks, loadPack } from "../src/packs/manifest.js";
@@ -20,9 +20,9 @@ it("names every command an owner uses, from finding to the report", () => {
 it("uses only commands and options the command line has", () => {
   const top = helpOf([]).commands;
   for (const line of commandLines) {
-    const [, name] = line.split(/\s+/);
+    const name = line.split(/\s+/)[1] ?? "";
     expect(top).toContain(name);
-    for (const flag of line.match(/--[a-z-]+/g) ?? []) expect(helpOf([name!]).options).toContain(flag);
+    for (const flag of line.match(/--[a-z-]+/g) ?? []) expect(helpOf([name]).options).toContain(flag);
   }
 });
 it("quotes what the commands print", async () => {
