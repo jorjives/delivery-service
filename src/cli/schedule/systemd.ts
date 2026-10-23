@@ -37,13 +37,13 @@ const unitSection = (schedule: Schedule): string[] => [
   "",
 ];
 
+const unescapeToken = (token: string): string => token.replace(/%%/g, "%").replace(/\$\$/g, "$");
+
 /**
  * The tokens of an `ExecStart` line, the inverse of how `serviceUnit` writes one: bare tokens split on spaces, and a
  * quoted token unescapes `\\` and `\"` in one pass, then `%%` and `$$` on the token. A hand-edited line never throws;
  * an unterminated quote runs to the end of the line.
  */
-const unescapeToken = (token: string): string => token.replace(/%%/g, "%").replace(/\$\$/g, "$");
-
 export function execTokens(line: string): string[] {
   const tokens: string[] = [];
   let token = "";
