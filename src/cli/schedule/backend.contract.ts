@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SchedulerBackend } from "./backend.js";
-import { DEFAULT_NAME, parseInterval, type Schedule } from "./model.js";
+import { DEFAULT_NAME, parseInterval, type Schedule, type ScheduleArgs } from "./model.js";
 
 /** What a contract run needs: the adapter, the environment it runs under, and fresh repository paths. */
 export interface ContractRig {
@@ -10,12 +10,12 @@ export interface ContractRig {
   repo(suffix?: string): string;
 }
 
-const at = (repoPath: string, name: string, every: string): Schedule => ({
+const at = (repoPath: string, name: string, every: string, args: ScheduleArgs = {}): Schedule => ({
   repoPath,
   name,
   every: parseInterval(every),
   launcher: { node: "/usr/bin/node", main: "/opt/delivery/dist/cli/main.js", path: "/usr/local/bin:/usr/bin" },
-  args: {},
+  args,
 });
 
 /** The behaviour every scheduler adapter must have. An adapter's test file calls this once with its rig. The rig must report every installed schedule as enabled. */
@@ -79,6 +79,25 @@ export function backendContract(label: string, rig: () => ContractRig): void {
     it("lists nothing for a repository with no schedules", async () => {
       const { backend, env, repo } = rig();
       expect(await backend.list(repo(), env)).toEqual([]);
+    });
+
+    it("lists each schedule with the run settings it was installed with", async () => {
+      const { backend, env, repo } = rig();
+      const path = repo();
+      await backend.install(at(path, "nightly", "1d", { config: "/c/n.json", workflow: "deep", max: 3, concurrency: 2 }), env);
+      await backend.install(at(path, "hourly", "1h"), env);
+      expect(await backend.list(path, env)).toMatchObject([
+        { name: "hourly", args: {} },
+        { name: "nightly", args: { config: "/c/n.json", workflow: "deep", max: 3, concurrency: 2 } },
+      ]);
+    });
+
+    it("drops the settings a schedule installed again leaves out", async () => {
+      const { backend, env, repo } = rig();
+      const path = repo();
+      await backend.install(at(path, "nightly", "1d", { config: "/c/n.json", workflow: "deep", max: 3 }), env);
+      await backend.install(at(path, "nightly", "1d", { workflow: "deep" }), env);
+      expect((await backend.list(path, env))[0]?.args).toEqual({ workflow: "deep" });
     });
 
     it("gives each schedule its own log command", () => {

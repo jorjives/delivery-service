@@ -5,7 +5,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { repoKey } from "../../run-location.js";
 import type { InstalledSchedule, SchedulerBackend } from "./backend.js";
-import { BARE_ARG, DEFAULT_NAME, describeSchedule, intervalForCalendar, runArgs, type Schedule } from "./model.js";
+import { BARE_ARG, DEFAULT_NAME, describeSchedule, intervalForCalendar, runArgs, scheduleArgsFrom, type Schedule, type ScheduleArgs } from "./model.js";
 
 const execFile = promisify(execFileCb);
 
@@ -36,6 +36,43 @@ const unitSection = (schedule: Schedule): string[] => [
   `${MARKER}=${schedule.name}`,
   "",
 ];
+
+/**
+ * The tokens of an `ExecStart` line, the inverse of how `serviceUnit` writes one: bare tokens split on spaces, and a
+ * quoted token unescapes `\\` and `\"` in one pass, then `%%` and `$$` on the token. A hand-edited line never throws;
+ * an unterminated quote runs to the end of the line.
+ */
+const unescapeToken = (token: string): string => token.replace(/%%/g, "%").replace(/\$\$/g, "$");
+
+export function execTokens(line: string): string[] {
+  const tokens: string[] = [];
+  let token = "";
+  let started = false;
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (quoted) {
+      const next = line[i + 1];
+      if (ch === '"') quoted = false;
+      else if (ch === "\\" && (next === "\\" || next === '"')) {
+        token += next;
+        i++;
+      } else token += ch;
+    } else if (ch === '"') {
+      quoted = true;
+      started = true;
+    } else if (ch === " ") {
+      if (started) tokens.push(unescapeToken(token));
+      token = "";
+      started = false;
+    } else {
+      token += ch;
+      started = true;
+    }
+  }
+  if (started) tokens.push(unescapeToken(token));
+  return tokens;
+}
 
 export function serviceUnit(schedule: Schedule): string {
   const { launcher, repoPath } = schedule;
@@ -108,6 +145,7 @@ interface UnitEntry {
   servicePath: string;
   timerPath: string;
   onCalendar: string;
+  args: ScheduleArgs;
 }
 
 /**
@@ -133,7 +171,8 @@ async function installedEntries(repoPath: string, env: NodeJS.ProcessEnv): Promi
     const service = parseShow(await readFile(servicePath, "utf-8"));
     if ((service.WorkingDirectory ?? "").replace(/%%/g, "%") !== repoPath) continue;
     const timer = parseShow(await readFile(timerPath, "utf-8"));
-    entries.push({ unit, name: service[MARKER] || DEFAULT_NAME, servicePath, timerPath, onCalendar: timer.OnCalendar ?? "" });
+    const args = scheduleArgsFrom(execTokens(service.ExecStart ?? "").slice(2));
+    entries.push({ unit, name: service[MARKER] || DEFAULT_NAME, servicePath, timerPath, onCalendar: timer.OnCalendar ?? "", args });
   }
   return entries;
 }
@@ -185,6 +224,7 @@ export const systemdBackend: SchedulerBackend = {
         return {
           name: entry.name,
           every: intervalForCalendar(entry.onCalendar)?.text ?? entry.onCalendar,
+          args: entry.args,
           enabled: show.UnitFileState === "enabled",
           lastRun: show.LastTriggerUSec ?? "",
           nextRun: show.NextElapseUSecRealtime ?? "",

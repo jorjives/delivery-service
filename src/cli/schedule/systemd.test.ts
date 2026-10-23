@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { backendContract } from "./backend.contract.js";
 import { DEFAULT_NAME, parseInterval, type Schedule } from "./model.js";
 import { createSystemctlStandIn } from "../../systemctl-stand-in.js";
-import { NO_SYSTEMCTL, MARKER, TEST_SYSTEMCTL, parseShow, serviceUnit, systemdBackend, timerUnit, unitDir, unitName } from "./systemd.js";
+import { NO_SYSTEMCTL, MARKER, TEST_SYSTEMCTL, execTokens, parseShow, serviceUnit, systemdBackend, timerUnit, unitDir, unitName } from "./systemd.js";
 
 const target: Schedule = {
   repoPath: "/home/op/my project",
@@ -152,6 +152,34 @@ describe("unit text", () => {
     expect(serviceUnit(odd)).toContain("WorkingDirectory=/w/100%%");
     expect(serviceUnit(odd)).toContain('ExecStart="/usr/bin/node" "/w/$$HOME/\\"x\\"/main.js" run --sources --if-idle');
   });
+});
+
+describe("run settings in the unit", () => {
+  it.each([{ config: "/a b/100% $x \"q\" \\.json", workflow: "it's", max: 1, concurrency: 4 }])(
+    "reads hostile settings back from the unit it wrote: %j", async (args) => {
+      const { env } = systemdEnv();
+      await systemdBackend.install({ ...target, repoPath: "/w/hostile", args }, env);
+      expect((await systemdBackend.list("/w/hostile", env))[0]?.args).toEqual(args);
+    });
+
+  it("lists a unit with no settings or with ones it cannot read as having none", async () => {
+    const { env } = systemdEnv();
+    const repo = "/w/handmade";
+    const dir = unitDir(env);
+    mkdirSync(dir, { recursive: true });
+    const unit = unitName(repo, DEFAULT_NAME);
+    writeFileSync(
+      join(dir, `${unit}.service`),
+      `[Unit]\nX-Delivery-Schedule=default\n\n[Service]\nWorkingDirectory=${repo}\nExecStart="/usr/bin/node" "/x/main.js" run --sources --max lots --frob\n`,
+    );
+    writeFileSync(join(dir, `${unit}.timer`), "[Timer]\nOnCalendar=*-*-* 00:00:00\n");
+    expect(await systemdBackend.list(repo, env)).toMatchObject([{ name: "default", args: {} }]);
+  });
+
+  it.each([
+    ['"/usr/bin/node" "/x/main.js" run --sources --if-idle', ["/usr/bin/node", "/x/main.js", "run", "--sources", "--if-idle"]],
+    ['"/a b/n" "%%x$$y\\"\\\\"', ["/a b/n", '%x$y"\\']],
+  ])("splits ExecStart %j", (line, tokens) => expect(execTokens(line)).toEqual(tokens));
 });
 
 describe("parseShow", () => {

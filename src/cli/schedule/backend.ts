@@ -1,4 +1,4 @@
-import type { Schedule } from "./model.js";
+import type { Schedule, ScheduleArgs } from "./model.js";
 import { systemdBackend } from "./systemd.js";
 
 export type Probe = { ok: true; catchesUp: boolean } | { ok: false; reason: string };
@@ -7,6 +7,8 @@ export interface InstalledSchedule {
   name: string;
   /** The interval as typed (`5m`), or the scheduler's own wording when it matches none. */
   every: string;
+  /** The run settings the schedule runs with, as installed. */
+  args: ScheduleArgs;
   enabled: boolean;
   /** As the scheduler reports them; "" when there is none. */
   lastRun: string;
