@@ -48,6 +48,17 @@ export const DEFAULT_GUARDS: GuardLists = {
  * honest work. `tests-unchanged` is not among them, because test-first work and refactoring change existing tests.
  */
 export const DEFAULT_ON: readonly GuardName[] = ["tests-untouched", "check-untouched", "no-skips", "ignored", "backlog"];
+
+/** Each guard's clause completing "Refused if it …", as the configuration reference words it in its "Refuses work that" column. */
+export const GUARD_REFUSES: Record<GuardName, string> = {
+  "tests-untouched": "deletes or renames a test",
+  "check-untouched": "changes how the tests run, such as a test-runner setting or a CI file",
+  "no-skips": "adds a skip marker to a test",
+  ignored: "hides a test, test setting or skip from git",
+  backlog: "edits or removes an existing backlog item, rather than adding a new one",
+  "tests-unchanged": "edits an existing test",
+  "backlog-only": "changes anything other than adding ideas to the backlog",
+};
 export const BACKLOG_GUARD = "guard:backlog";
 export const BACKLOG_ONLY_GUARD = "guard:backlog-only";
 
