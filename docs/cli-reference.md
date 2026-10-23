@@ -30,7 +30,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery packs check <path>` | Checks a review folder of your own, then runs its fixtures against a scripted agent | [Write a pack](writing-a-pack.md) |
 | `delivery schedule enable` | Turns on a timer that runs `delivery run --sources` with its own config file, workflow, item cap and concurrency, or changes how often it runs | [Run on a schedule](run-on-a-schedule.md) |
 | `delivery schedule status` | Says, for every schedule the project has, whether it is on, when it last ran and will next run, and shows each schedule's run settings | [Run on a schedule](run-on-a-schedule.md) |
-| `delivery schedule disable` | Turns the timer off; `delivery run --sources` still works by hand | [Run on a schedule](run-on-a-schedule.md) |
+| `delivery schedule disable` | Turns the default schedule off, the one `--name` names, or every schedule with `--all`; `delivery run --sources` still works by hand | [Run on a schedule](run-on-a-schedule.md) |
 
 ## Options for `delivery run`
 
@@ -78,6 +78,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `schedule enable` | `--concurrency <n>` | How many items each scheduled run works at once (default 1) |
 | `schedule status` | `--name <name>` | Shows only this schedule |
 | `schedule disable` | `--name <name>` | Turns off only this schedule. Without it, turns off the default schedule |
+| `schedule disable` | `--all` | Turns off every schedule this project has. Refused together with `--name` |
 
 `--config` and `--repo` mean the same on every command that takes them (`delivery --help` shows
 which). `review` takes the repository as an argument, `delivery review <pack> [repo]`, not as

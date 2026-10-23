@@ -53,7 +53,10 @@ A schedule's settings are its whole definition. Enabling a schedule again replac
 ```bash
 delivery schedule status    # every schedule: on or off, and when it last ran and will next run
 delivery schedule disable   # turn the default schedule off; `--name nightly` turns off only that one
+delivery schedule disable --all   # turn every schedule on this project off
 ```
+
+`--all` turns every schedule off, and `--name` with `--all` is refused.
 
 `status` prints one block per schedule: the default first, then the others by name.
 

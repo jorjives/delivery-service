@@ -11,6 +11,7 @@ export interface ScheduleOptions extends ScheduleFlags {
   repo?: string;
   every?: string;
   name?: string;
+  all?: boolean;
 }
 
 export const unsupported = (reason: string, line: string): string =>
@@ -34,6 +35,8 @@ export const alreadyOff = (name: string, repoPath: string): string =>
   `Scheduling is already off for the ${name} schedule in ${repoPath}.`;
 export const turnedOff = (name: string, repoPath: string): string =>
   `Scheduling is off for the ${name} schedule in ${repoPath}.`;
+export const allAlreadyOff = (repoPath: string): string => `Scheduling is already off for ${repoPath}.`;
+export const NAME_AND_ALL = "Use either `--name` or `--all`, not both: `--name` turns off one schedule, and `--all` turns off every schedule this project has.";
 export const BY_HAND = "You can still run it by hand at any time: delivery run --sources";
 export const lastRun = (when: string): string => `Last run: ${when}`;
 export const nextRun = (when: string): string => `Next run: ${when}`;
@@ -102,10 +105,12 @@ export async function scheduleStatusCommand(options: ScheduleOptions, ctx: Comma
 }
 
 /**
- * `delivery schedule disable`: stop and remove this project's default timer, or only the one `--name` names. A run already
- * going finishes; running by hand is untouched.
+ * `delivery schedule disable`: stop and remove this project's default timer, or only the one `--name` names, or every one
+ * with `--all`. A run already going finishes; running by hand is untouched.
  */
 export async function scheduleDisableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
+  if (options.all && options.name !== undefined) throw new Refusal(NAME_AND_ALL, EXIT.configuration);
+  if (options.all) return disableAllSchedules(options, ctx);
   const name = parseName(options.name);
   const repoPath = await repositoryOf(options, ctx);
   const removed = await selectBackend().remove(repoPath, name, ctx.env);
@@ -115,5 +120,22 @@ export async function scheduleDisableCommand(options: ScheduleOptions, ctx: Comm
   } else {
     ctx.writeLine(alreadyOff(name, repoPath));
   }
+  return EXIT.ok;
+}
+
+/** `delivery schedule disable --all`: remove every schedule this project has, default first, then by name. */
+async function disableAllSchedules(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
+  const repoPath = await repositoryOf(options, ctx);
+  const backend = selectBackend();
+  const installed = await backend.list(repoPath, ctx.env);
+  if (installed.length === 0) {
+    ctx.writeLine(allAlreadyOff(repoPath));
+    return EXIT.ok;
+  }
+  for (const schedule of installed) {
+    await backend.remove(repoPath, schedule.name, ctx.env);
+    ctx.writeLine(turnedOff(schedule.name, repoPath));
+  }
+  ctx.writeLine(BY_HAND);
   return EXIT.ok;
 }

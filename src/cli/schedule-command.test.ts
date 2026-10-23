@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { initTempRepo } from "../temp-repo.js";
@@ -10,7 +11,7 @@ import { EXIT } from "./failures.js";
 import { findRepository } from "./project.js";
 import { badInterval, badName, emptySetting } from "./schedule/model.js";
 import { execTokens, NO_SYSTEMCTL, parseShow, TEST_SYSTEMCTL, unitName } from "./schedule/systemd.js";
-import { alreadyOff, BY_HAND, journalHint, lastRun, nextRun, noSuchSchedule, runSettings, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
+import { allAlreadyOff, alreadyOff, BY_HAND, journalHint, lastRun, NAME_AND_ALL, nextRun, noSuchSchedule, runSettings, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
 import { NOT_A_CONCURRENCY, NOT_A_MAX } from "./settings.js";
 
 async function project() {
@@ -366,6 +367,57 @@ describe("delivery schedule disable", () => {
     expect(stderr).toContain(badName(bad));
     expect(existsSync(join(units, `${name}.timer`))).toBe(true);
     expect(standIn.calls().length).toBe(callsBefore);
+  });
+
+  it("removes every schedule with --all, after which status says scheduling is off", async () => {
+    const { repo, units, env } = await project();
+    await delivery(["schedule", "enable"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    const { exitCode, stdout } = await delivery(["schedule", "disable", "--all"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe([turnedOff("default", repo), turnedOff("hourly", repo), turnedOff("nightly", repo), BY_HAND, ""].join("\n"));
+    expect(readdirSync(units).filter((file) => file.startsWith("delivery-"))).toEqual([]);
+    expect((await delivery(["schedule", "status"], { cwd: repo, env })).stdout).toBe(`${scheduledOff(repo)}\n`);
+  });
+
+  it("says scheduling is already off for --all on a project with no schedules, without asking systemd", async () => {
+    const { repo, standIn, env } = await project();
+    const { exitCode, stdout } = await delivery(["schedule", "disable", "--all"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(`${allAlreadyOff(repo)}\n`);
+    expect(standIn.calls()).toEqual([]);
+  });
+
+  it("leaves another project's schedules alone with --all", async () => {
+    const mine = await project();
+    const theirs = await findRepository(initTempRepo("schedule-other-", { "package.json": PACKAGE }));
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: theirs, env: mine.env });
+    await delivery(["schedule", "enable"], { cwd: mine.repo, env: mine.env });
+    await delivery(["schedule", "disable", "--all"], { cwd: mine.repo, env: mine.env });
+    expect(existsSync(join(mine.units, `${unitName(theirs, "nightly")}.timer`))).toBe(true);
+  });
+
+  it("refuses --name with --all before touching anything", async () => {
+    const { repo, units, standIn, env } = await project();
+    await delivery(["schedule", "enable"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    const filesBefore = readdirSync(units).sort();
+    const callsBefore = standIn.calls().length;
+    const { exitCode, stderr } = await delivery(["schedule", "disable", "--name", "nightly", "--all"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(NAME_AND_ALL);
+    expect(readdirSync(units).sort()).toEqual(filesBefore);
+    expect(standIn.calls().length).toBe(callsBefore);
+  });
+
+  it("leaves the project itself untouched, so it still runs by hand", async () => {
+    const { repo, env } = await project();
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env });
+    const treeBefore = execFileSync("git", ["status", "--porcelain", "--ignored"], { cwd: repo, encoding: "utf-8" });
+    const { stdout } = await delivery(["schedule", "disable", "--all"], { cwd: repo, env });
+    expect(stdout).toContain(BY_HAND);
+    expect(execFileSync("git", ["status", "--porcelain", "--ignored"], { cwd: repo, encoding: "utf-8" })).toBe(treeBefore);
   });
 });
 
