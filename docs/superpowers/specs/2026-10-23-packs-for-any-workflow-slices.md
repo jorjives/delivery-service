@@ -171,6 +171,7 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 5: Learn from the documentation that packs cover more than reviews
 
+**Status:** ✅ Complete — 2026-10-23 — `2a428e6`
 **Tests:** ✅ Recorded — 2026-10-23 — `575a73a` — cli (vitest) — 1 UAT (4 steps) + 4 AC groups, 1 skipped (proved in depth elsewhere)
 
 **Delivers:** Dana and Priya can tell from the documentation, before reading about manifests, that a pack is a repeatable find-then-act job and a review is one kind; Priya can follow a worked example of a non-review pack.
