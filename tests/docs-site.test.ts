@@ -48,7 +48,7 @@ describe("the docs site", () => {
 // by the theme. Each page below explains a flow a reader may want to follow.
 describe("the diagrams", () => {
   // The flows a reader is meant to be able to follow, not only read about.
-  const drawn = ["concepts.md", "work-a-backlog.md", "task-packs.md", "writing-a-gate.md"];
+  const drawn = ["concepts.md", "work-a-backlog.md", "task-packs.md", "packs.md", "writing-a-gate.md"];
   const textOf = (page: string): string => readFileSync(join(REPO_ROOT, "docs", page), "utf-8");
   const blocks = pages.flatMap((page) =>
     [...textOf(page).matchAll(/^([^\n]*)\n\n```mermaid\n([^]*?)\n```$/gm)].map(([, before, body]) => ({ page, before: before ?? "", body: body ?? "" })),
