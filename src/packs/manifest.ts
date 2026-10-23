@@ -189,7 +189,7 @@ function packHash(raw: string, texts: string[]): string {
  * A failure says which version the manifest was read as, so the words it is named in can follow that version; it is
  * null when the manifest could not be read as any version at all.
  */
-export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack } | { ok: false; schema: PackSchemaVersion | null; problems: PackProblem[] }> {
+export async function readPack(dir: string): Promise<{ ok: true; pack: Pack } | { ok: false; schema: PackSchemaVersion | null; problems: PackProblem[] }> {
   const manifestFile = join(dir, "pack.json");
   const raw = await packFile(dir, "pack.json");
   if (typeof raw !== "string") return { ok: false, schema: null, problems: [raw] };
@@ -239,7 +239,7 @@ export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack }
 
 /** Read and check the pack in `dir`. Refuses, naming the file and the field, the first thing the format does not allow. */
 export async function loadPack(dir: string): Promise<Pack> {
-  const inspected = await inspectPack(dir);
+  const inspected = await readPack(dir);
   if (inspected.ok) return inspected.pack;
   const [first] = inspected.problems;
   throw new InvalidPack(first?.file ?? join(dir, "pack.json"), first?.message ?? "is not a valid pack");

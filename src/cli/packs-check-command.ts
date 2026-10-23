@@ -1,5 +1,5 @@
 import { relative, resolve } from "node:path";
-import { inspectPack, isBuiltInPack } from "../packs/manifest.js";
+import { readPack, isBuiltInPack } from "../packs/manifest.js";
 import type { PackSchemaVersion } from "../packs/pack-format.js";
 import { FIXTURES } from "../packs/pack-fixtures.js";
 import type { CommandContext } from "./context.js";
@@ -92,7 +92,7 @@ export function passedLines({ pack, run }: PackCheck, pathArg: string, builtIn: 
 export async function packsCheckCommand(pathArg: string, options: PacksCheckOptions, ctx: CommandContext, ask: Ask): Promise<ExitCode> {
   const dir = resolve(ctx.cwd, pathArg);
   const shown = (file: string): string => relative(ctx.cwd, file) || ".";
-  const inspected = await inspectPack(dir);
+  const inspected = await readPack(dir);
   const words = checkWords(inspected.ok ? inspected.pack.schema : inspected.schema);
   if (!ctx.json) ctx.writeLine(words.checking(shown(dir)));
   const confirm =
