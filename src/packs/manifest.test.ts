@@ -173,7 +173,7 @@ describe("a delivery.pack/3 manifest", () => {
   });
 
   it("names a missing prompt file once, though two workflows share it", async () => {
-    const dir = v3Dir({ ...v3, workflows: { scan: v3.workflows.scan, code: { kind: "act", prompt: "act.md" }, tests: { kind: "act", prompt: "act.md" } } }, { "scan.md": "# Scan\n" });
+    const dir = v3Dir({ ...v3, workflows: { scan: v3.workflows.scan, code: { kind: "act", summary: "Code.", prompt: "act.md" }, tests: { kind: "act", summary: "Test.", prompt: "act.md" } } }, { "scan.md": "# Scan\n" });
     expect(await inspectPack(dir)).toEqual({ ok: false, problems: [{ file: join(dir, "act.md"), field: null, message: "is missing" }] });
   });
 
@@ -288,5 +288,168 @@ describe("the pack format's stability promise", () => {
 
   it("puts every key and name published now under the promise: add its line to pack-published-keys.txt", () => {
     expect(current.filter((line) => !promised.includes(line))).toEqual([]);
+  });
+});
+
+describe("a delivery.pack/3 manifest's mistakes", () => {
+  type Manifest = { workflows: Record<string, Record<string, unknown>> } & Record<string, unknown>;
+
+  /** The workflow `name` of a manifest copy, which every edit below names only where it is present. */
+  const at = (manifest: Manifest, name: string): Record<string, unknown> => manifest.workflows[name] as Record<string, unknown>;
+
+  /** A copy of the `v3` manifest after `edit` has changed it. */
+  const edited = (edit: (manifest: Manifest) => void): Manifest => {
+    const manifest = structuredClone(v3) as Manifest;
+    edit(manifest);
+    return manifest;
+  };
+
+  /** A copy of `manifest` in which `workflow` has `key` set to `value`. */
+  const withKey = (manifest: object, workflow: string, key: string, value: unknown): object => {
+    const copy = structuredClone(manifest) as Manifest;
+    at(copy, workflow)[key] = value;
+    return copy;
+  };
+
+  /** The folder a manifest is written to, and the exact problems it is refused with, each as its field and sentence. */
+  async function refusedWith(manifest: object, problems: Array<[string | null, string]>): Promise<void> {
+    const dir = v3Dir(manifest);
+    expect(await inspectPack(dir)).toEqual({
+      ok: false,
+      problems: problems.map(([field, message]) => ({ file: join(dir, "pack.json"), field, message })),
+    });
+  }
+
+  it("names a folder with no find, and every act no find can reach", async () => {
+    await refusedWith(
+      edited((m) => delete m.workflows.scan),
+      [
+        ["workflows", '"workflows" must hold exactly one workflow with "kind": "find", but it holds none'],
+        ["workflows.code", '"workflows.code" is not listed in any find workflow\'s "ideasFor", so no idea could reach it'],
+        ["workflows.tests", '"workflows.tests" is not listed in any find workflow\'s "ideasFor", so no idea could reach it'],
+      ],
+    );
+  });
+
+  it.each<[string, () => object, string, string]>([
+    [
+      "a second find",
+      () => edited((m) => (m.workflows.look = { kind: "find", prompt: "scan.md", ideasFor: ["code"] })),
+      "workflows",
+      '"workflows" must hold exactly one workflow with "kind": "find", but it holds 2 ("scan", "look")',
+    ],
+    [
+      "an idea for something that is not a workflow",
+      () => edited((m) => (at(m, "scan").ideasFor = ["code", "fx", "tests"])),
+      "workflows.scan.ideasFor.1",
+      '"workflows.scan.ideasFor.1" is "fx", but this pack\'s act workflows are: code, tests',
+    ],
+    [
+      "an idea in a pack with no act workflows",
+      () =>
+        edited((m) => {
+          delete m.workflows.code;
+          delete m.workflows.tests;
+          at(m, "scan").ideasFor = ["fx"];
+        }),
+      "workflows.scan.ideasFor.0",
+      '"workflows.scan.ideasFor.0" is "fx", but this pack has no act workflows',
+    ],
+    [
+      "an idea for a find",
+      () => edited((m) => (at(m, "scan").ideasFor = ["scan", "code", "tests"])),
+      "workflows.scan.ideasFor.0",
+      '"workflows.scan.ideasFor.0" is a find workflow; it can only offer act workflows',
+    ],
+    [
+      "an act no find offers",
+      () => edited((m) => (at(m, "scan").ideasFor = ["code"])),
+      "workflows.tests",
+      '"workflows.tests" is not listed in any find workflow\'s "ideasFor", so no idea could reach it',
+    ],
+    [
+      "ideasFor on an act",
+      () => edited((m) => (at(m, "code").ideasFor = ["tests"])),
+      "workflows.code.ideasFor",
+      '"workflows.code.ideasFor" is only for find workflows',
+    ],
+    [
+      "a summary missing from an act a find chooses between",
+      () => edited((m) => delete at(m, "code").summary),
+      "workflows.code.summary",
+      '"workflows.code.summary" is missing: the find workflow "scan" needs it to choose between "code" and "tests"',
+    ],
+    [
+      "settings, which are reserved",
+      () => edited((m) => (m.settings = {})),
+      "settings",
+      '"settings" is reserved for pack settings, which this harness does not read yet',
+    ],
+    ["a top-level key that is a tool list", () => edited((m) => (m.tools = ["Bash"])), "tools", `"tools" ${DATA_ONLY}`],
+    [
+      "a kind the format does not name",
+      () => edited((m) => (at(m, "scan").kind = "scna")),
+      "workflows.scan.kind",
+      '"workflows.scan.kind" is "scna" but the allowed values are: find, act',
+    ],
+    ["a workflow with no kind", () => edited((m) => delete at(m, "scan").kind), "workflows.scan.kind", '"workflows.scan.kind" is missing'],
+    [
+      "an empty ideasFor",
+      () => edited((m) => (at(m, "scan").ideasFor = [])),
+      "workflows.scan.ideasFor",
+      '"workflows.scan.ideasFor" must name at least one act workflow',
+    ],
+    [
+      "a workflow name that is not a slug",
+      () =>
+        edited((m) => {
+          m.workflows.Code = at(m, "code");
+          delete m.workflows.code;
+        }),
+      "workflows.Code",
+      '"workflows.Code" must be lower-case letters, digits and dashes',
+    ],
+  ])("names the mistake of %s", async (_, make, field, message) => {
+    await refusedWith(make(), [[field, message]]);
+  });
+
+  it.each([
+    ["hold", { atOrAbove: "high" }],
+    ["guards", { add: ["tests-unchanged"] }],
+    ["summary", "A find."],
+  ])("refuses %s on a find: it is only for act workflows", async (key, value) => {
+    await refusedWith(withKey(v3, "scan", key, value), [[`workflows.scan.${key}`, `"workflows.scan.${key}" is only for act workflows`]]);
+  });
+
+  it.each(["gate", "agent", "tools", "allowedTools", "closer", "commands", "after", "steps"])("refuses %s on an act or a find as data-only", async (key) => {
+    for (const workflow of ["code", "scan"]) {
+      const result = await inspectPack(v3Dir(withKey(v3, workflow, key, "x")));
+      expect(result).toMatchObject({ ok: false, problems: [{ field: `workflows.${workflow}.${key}`, message: `"workflows.${workflow}.${key}" ${DATA_ONLY}` }] });
+    }
+  });
+
+  it("refuses guards.off: a pack may only add guards", async () => {
+    await refusedWith(withKey(v3, "code", "guards", { add: ["tests-unchanged"], off: ["tests-unchanged"] }), [
+      ["workflows.code.guards.off", `"workflows.code.guards.off" ${DATA_ONLY}`],
+    ]);
+  });
+
+  it("names every broken rule at once", async () => {
+    await refusedWith(
+      edited((m) => (at(m, "scan").ideasFor = ["code", "fx"])),
+      [
+        ["workflows.scan.ideasFor.1", '"workflows.scan.ideasFor.1" is "fx", but this pack\'s act workflows are: code, tests'],
+        ["workflows.tests", '"workflows.tests" is not listed in any find workflow\'s "ideasFor", so no idea could reach it'],
+      ],
+    );
+  });
+
+  it("counts an act offered twice by one find as one target", async () => {
+    const dir = v3Dir({ ...v3, workflows: { scan: { kind: "find", prompt: "scan.md", ideasFor: ["code", "code"] }, code: { kind: "act", prompt: "code.md" } } });
+    expect((await inspectPack(dir)).ok).toBe(true);
+  });
+
+  it("reports a /2 manifest's unknown settings key in /2 terms", async () => {
+    expect(await inspectPack(packDir({ ...minimal, settings: {} }))).toMatchObject({ ok: false, problems: [{ field: "settings", message: `"settings" ${DATA_ONLY}` }] });
   });
 });

@@ -9,6 +9,7 @@ import { isEnoent } from "../journal.js";
 import type { WorkflowConfig } from "../cli/config.js";
 import type { JsonSchema } from "../report/json-schema.js";
 import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, upgradeV2, type PackSchemaVersion } from "./pack-format.js";
+import { formatSentence, ruleProblems } from "./pack-rules.js";
 
 export const scanWorkflowOf = (name: string): string => `${name}:scan`;
 
@@ -104,15 +105,18 @@ function describe(issue: Issue, raw: unknown): string {
   if (issue.code === "unrecognized_keys") return `${where} ${DATA_ONLY}`;
   const value = valueAt(raw, issue.path);
   if (field !== null && value === undefined) return `${where} is missing`;
-  if (issue.code === "invalid_value") {
-    const allowed = issue.values.map(String).join(", ");
-    return `${where} is ${JSON.stringify(value)} but the allowed values are: ${allowed}`;
-  }
+  const allowed = issue.code === "invalid_value" ? issue.values : issue.code === "invalid_union" && "options" in issue ? issue.options : undefined;
+  if (allowed !== undefined) return `${where} is ${JSON.stringify(value)} but the allowed values are: ${allowed.map(String).join(", ")}`;
+  if (issue.code === "invalid_key") return `${where} ${issue.issues[0]?.message ?? issue.message}`;
   return `${where} ${issue.message}`;
 }
 
-export function packProblems(file: string, error: z.ZodError, raw: unknown): PackProblem[] {
-  return eachIssue(error).map((issue) => ({ file, field: fieldOf(issue), message: describe(issue, raw) }));
+/**
+ * One problem per issue, each in the field it sits in. `special` may give a sentence of its own for an issue, and
+ * says undefined where the generic one serves.
+ */
+export function packProblems(file: string, error: z.ZodError, raw: unknown, special?: (issue: Issue, raw: unknown) => string | undefined): PackProblem[] {
+  return eachIssue(error).map((issue) => ({ file, field: fieldOf(issue), message: special?.(issue, raw) ?? describe(issue, raw) }));
 }
 
 /** Where the built-in packs are: `packs/` beside `src/` in a checkout, and beside `dist/` in the installed package. */
@@ -154,7 +158,7 @@ function packWorkflows(manifest: PackManifest, texts: ReadonlyMap<string, string
     const name = `${manifest.name}:${local}`;
     const text = promptText(texts, workflow.prompt);
     if (workflow.kind === "find") {
-      // Until one find per pack is enforced, the first find named is the one that runs.
+      // The rules refuse any pack without exactly one find, so the first find named is the only one.
       if (find === "") find = name;
       const targets = nonEmpty(
         [...new Set(workflow.ideasFor)].map((act) => {
@@ -204,7 +208,9 @@ export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack }
     manifest = upgradeV2(v2.data);
   } else {
     const v3 = PackManifest.safeParse(json);
-    if (!v3.success) return { ok: false, problems: packProblems(manifestFile, v3.error, json) };
+    if (!v3.success) return { ok: false, problems: packProblems(manifestFile, v3.error, json, formatSentence) };
+    const rules = ruleProblems(manifestFile, v3.data);
+    if (rules.length > 0) return { ok: false, problems: rules };
     manifest = v3.data;
   }
   const schema: PackSchemaVersion = declared === "delivery.pack/2" ? "delivery.pack/2" : PACK_SCHEMA;
