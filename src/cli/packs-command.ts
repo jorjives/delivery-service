@@ -26,7 +26,17 @@ async function packsFor(ctx: CommandContext): Promise<Pack[]> {
   return packs;
 }
 
-/** `delivery packs`: the reviews that come with the harness, and any the project lists, each in its own plain sentence; as data with `--json`; or the pack format's schema with `--schema`. */
+/** The lines `delivery packs` prints: each pack with its sentence and the command that starts it, the names aligned on the longest. */
+export function packLines(packs: readonly Pack[]): string[] {
+  const width = Math.max(0, ...packs.map(({ manifest }) => manifest.name.length));
+  const lines = packs.map(({ manifest }) => {
+    const sentence = /[.!?]$/.test(manifest.summary) ? manifest.summary : `${manifest.summary}.`;
+    return `  ${manifest.name.padEnd(width)}  ${sentence} Start it with: delivery review ${manifest.name}`;
+  });
+  return ["Packs you can use:", ...lines, "", "To use a pack folder of your own, list it under packs in delivery.config.json."];
+}
+
+/** `delivery packs`: every pack you can use, the built-in ones and any the project lists, each with its sentence and the command that starts it; as data with `--json`; or the pack format's schema with `--schema`. */
 export async function packsCommand(options: PacksOptions, ctx: CommandContext): Promise<ExitCode> {
   if (options.schema === true) {
     ctx.writeLine(JSON.stringify(packSchema(), null, 2));
@@ -37,11 +47,6 @@ export async function packsCommand(options: PacksOptions, ctx: CommandContext): 
     ctx.writeLine(JSON.stringify({ packs: packs.map(({ manifest }) => ({ name: manifest.name, version: manifest.version, title: manifest.title, summary: manifest.summary })) }, null, 2));
     return EXIT.ok;
   }
-  const say = (line: string): void => ctx.report.note(line);
-  say("These reviews are available:");
-  for (const { manifest } of packs) say(`  ${manifest.name}: ${manifest.summary}`);
-  say("");
-  say(`Run one with: delivery review ${packs[0]?.manifest.name ?? "code"}`);
-  say("Or use a review folder of your own: list it under packs in delivery.config.json, then delivery review <its name>");
+  for (const line of packLines(packs)) ctx.report.note(line);
   return EXIT.ok;
 }

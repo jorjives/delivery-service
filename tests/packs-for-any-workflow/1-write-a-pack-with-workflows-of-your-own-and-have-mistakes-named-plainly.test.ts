@@ -66,7 +66,7 @@ describe("UAT: write a pack of your own, get plain feedback, and keep the built-
     // 1. The example pack is listed beside the built-ins.
     const listed = packs(dir);
     expect(listed.status, listed.stdout + listed.stderr).toBe(0);
-    for (const name of ["code:", "security:", "mymoves: Moves calls off retired code."]) expect(listed.stdout).toContain(name);
+    for (const text of ["  mymoves ", "Moves calls off retired code. Start it with: delivery review mymoves"]) expect(listed.stdout).toContain(text);
 
     // 2. Delete the line saying which workflows the find offers.
     const broken = structuredClone(EXAMPLE) as { workflows: { scan: Json } };
@@ -79,7 +79,7 @@ describe("UAT: write a pack of your own, get plain feedback, and keep the built-
 
     // 3. Put it back; list again; the built-in review runs as before on a project that used it.
     writeFileSync(join(dir, "mymoves", "pack.json"), JSON.stringify(EXAMPLE));
-    expect(packs(dir).stdout).toContain("mymoves:");
+    expect(packs(dir).stdout).toContain("  mymoves ");
 
     const repo = initTempRepo("uat-pack-review-", { "package.json": PACKAGE, "total.js": "export const t = 1;\n" });
     const idea = { file: "20261023T120000Z-old.md", title: "Old total", severity: "low" as const, workflow: "code:fix", check: { kind: "anchor-gone" as const, path: "total.js", anchor: "export const t = 1;" }, body: "Old.\n\n## Why it matters\n\nIt is old.\n\n## What fixed looks like\n\nGone." };
@@ -95,15 +95,15 @@ describe("AC: a pack with several act workflows, each with its own settings, is 
   it("lists a pack with a guard and a hold on one act and a summary on each", () => {
     const listed = packs(project(EXAMPLE));
     expect(listed.status).toBe(0);
-    expect(listed.stdout).toContain("mymoves:");
+    expect(listed.stdout).toContain("  mymoves ");
   });
 });
 
 describe("AC: the built-in packs are listed with their names unchanged", () => {
   it("lists code and security and offers delivery review code", () => {
     const listed = packs(project(EXAMPLE));
-    expect(listed.stdout).toMatch(/^ {2}code: /m);
-    expect(listed.stdout).toMatch(/^ {2}security: /m);
+    expect(listed.stdout).toMatch(/^ {2}code {2,}/m);
+    expect(listed.stdout).toMatch(/^ {2}security {2,}/m);
     expect(listed.stdout).toContain("delivery review code");
   });
 });

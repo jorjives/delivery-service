@@ -25,13 +25,18 @@ const v2Pack = (name: string): string =>
   JSON.stringify({ schema: "delivery.pack/2", name, version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } });
 
 describe("delivery packs", () => {
-  it("lists every review available with its plain sentence, and how to run one", async () => {
+  it("lists every pack with its plain sentence and the command that starts it", async () => {
     const { exitCode, stdout } = await delivery(["packs"], { cwd: initTempRepo("packs-", { "a.js": "x\n" }) });
     expect(exitCode).toBe(EXIT.ok);
     const lines = stdout.trimEnd().split("\n");
-    expect(lines[0]).toBe("These reviews are available:");
-    for (const pack of await builtInPacks()) expect(lines).toContain(`  ${pack.manifest.name}: ${pack.manifest.summary}`);
-    expect(lines.slice(-2)).toEqual(["Run one with: delivery review code", "Or use a review folder of your own: list it under packs in delivery.config.json, then delivery review <its name>"]);
+    expect(lines[0]).toBe("Packs you can use:");
+    const [code, security] = await builtInPacks();
+    expect(lines.slice(1, 3)).toEqual([
+      `  code      ${code?.manifest.summary} Start it with: delivery review code`,
+      `  security  ${security?.manifest.summary} Start it with: delivery review security`,
+    ]);
+    expect(lines.at(-1)).toBe("To use a pack folder of your own, list it under packs in delivery.config.json.");
+    expect(stdout).not.toMatch(/reviews? (are|is) available/i);
   });
 
   it("prints the pack format's JSON Schema with --schema, wherever it is asked", async () => {
@@ -47,7 +52,7 @@ describe("delivery packs", () => {
     expect(JSON.parse(stdout)).toEqual({ packs: packs.map(({ manifest }) => ({ name: manifest.name, version: manifest.version, title: manifest.title, summary: manifest.summary })) });
   });
 
-  it("lists a pack the project lists beside the built-in ones", async () => {
+  it("lists a pack the project lists beside the built-in ones, aligned, with its start command", async () => {
     const repo = initTempRepo("packs-listed-", {
       "delivery.config.json": JSON.stringify({ packs: ["my-pack"] }),
       "my-pack/pack.json": v3Pack("mymoves"),
@@ -58,8 +63,24 @@ describe("delivery packs", () => {
     expect(exitCode).toBe(EXIT.ok);
     const [code, security] = await builtInPacks();
     const lines = stdout.trimEnd().split("\n");
-    expect(lines[0]).toBe("These reviews are available:");
-    expect(lines.slice(1, 4)).toEqual([`  ${code?.manifest.name}: ${code?.manifest.summary}`, `  ${security?.manifest.name}: ${security?.manifest.summary}`, "  mymoves: Moves calls off retired code."]);
+    expect(lines[0]).toBe("Packs you can use:");
+    expect(lines.slice(1, 4)).toEqual([
+      `  code      ${code?.manifest.summary} Start it with: delivery review code`,
+      `  security  ${security?.manifest.summary} Start it with: delivery review security`,
+      "  mymoves   Moves calls off retired code. Start it with: delivery review mymoves",
+    ]);
+  });
+
+  it("ends a summary with a full stop before the start command when it has none", async () => {
+    const repo = initTempRepo("packs-stop-", {
+      "delivery.config.json": JSON.stringify({ packs: ["my-pack"] }),
+      "my-pack/pack.json": v3Pack("mymoves", "Moves calls off retired code"),
+      "my-pack/scan.md": "# Scan\n",
+      "my-pack/code.md": "# Code\n",
+    });
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain("  mymoves   Moves calls off retired code. Start it with: delivery review mymoves");
   });
 
   it("lists a listed pack with --json too", async () => {
@@ -112,6 +133,6 @@ describe("delivery packs", () => {
   it("lists the built-in packs outside any repository", async () => {
     const { exitCode, stdout } = await delivery(["packs"], { cwd: mkdtempSync(join(tmpdir(), "no-repo-")) });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain("  code: ");
+    expect(stdout).toContain("Start it with: delivery review code");
   });
 });
