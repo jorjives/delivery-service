@@ -137,6 +137,7 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 4: Switch Off One Schedule, or All of Them
 
+**Tests:** ✅ Recorded — 2026-10-23 — `2b2706b` — cli (vitest) — 1 UAT + 6 AC checks, 0 skipped
 **Delivers:** Schedules can be removed individually by name or all at once, without disturbing the others.
 
 ### Prerequisites
