@@ -52,6 +52,7 @@ export async function scheduleEnableCommand(options: ScheduleOptions, ctx: Comma
     name,
     every,
     launcher: { node: process.execPath, main: MAIN, path: ctx.env.PATH ?? "" },
+    args: {},
   };
   const backend = selectBackend();
   const probe = await backend.probe(ctx.env);

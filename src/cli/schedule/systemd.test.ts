@@ -13,6 +13,7 @@ const target: Schedule = {
   name: "default",
   every: parseInterval("5m"),
   launcher: { node: "/usr/bin/node", main: "/opt/delivery/dist/cli/main.js", path: "/usr/local/bin:/usr/bin" },
+  args: {},
 };
 
 backendContract("systemd", () => {

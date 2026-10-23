@@ -1,4 +1,8 @@
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+import { NO_SUCH_CONFIG } from "../config.js";
 import { EXIT, Refusal } from "../failures.js";
+import { concurrencyNamed, maxItems, NOT_A_CONCURRENCY } from "../settings.js";
 
 /** How often a project runs: as the operator typed it, as a systemd calendar, and as a cron schedule. */
 export interface Interval {
@@ -46,21 +50,95 @@ export interface Launcher {
   path: string;
 }
 
-/** A named schedule on one project: what it runs, where, how often, and how it is launched. */
+/** The run settings a schedule carries, each left out when the project's own setting should apply. */
+export interface ScheduleArgs {
+  config?: string;
+  workflow?: string;
+  max?: number;
+  concurrency?: number;
+}
+
+/** The run settings as typed on the command line, before they are checked. */
+export interface ScheduleFlags {
+  config?: string;
+  workflow?: string;
+  max?: string;
+  concurrency?: string;
+}
+
+/** A named schedule on one project: what it runs, where, how often, how it is launched, and the settings it runs with. */
 export interface Schedule {
   repoPath: string;
   name: string;
   every: Interval;
   launcher: Launcher;
+  args: ScheduleArgs;
+}
+
+export const emptySetting = (flag: "--config" | "--workflow"): string =>
+  `\`${flag}\` is empty. Give it a value, or leave it out to use the project's own setting.`;
+
+/** Checks the run settings typed for a schedule, the way the run itself would check them, so nothing unrunnable is stored. */
+export function parseScheduleArgs(flags: ScheduleFlags, startDir: string): ScheduleArgs {
+  const args: ScheduleArgs = {};
+  if (flags.config !== undefined) {
+    if (flags.config === "") throw new Refusal(emptySetting("--config"), EXIT.configuration, "config");
+    const config = resolve(startDir, flags.config);
+    if (!existsSync(config)) throw new Refusal(NO_SUCH_CONFIG(flags.config), EXIT.configuration, "config");
+    args.config = config;
+  }
+  if (flags.workflow !== undefined) {
+    if (flags.workflow.trim() === "") throw new Refusal(emptySetting("--workflow"), EXIT.configuration, "workflow");
+    args.workflow = flags.workflow;
+  }
+  if (flags.max !== undefined) args.max = maxItems({ max: flags.max });
+  if (flags.concurrency !== undefined) {
+    const count = concurrencyNamed(flags.concurrency);
+    if (count === undefined) {
+      throw new Refusal(NOT_A_CONCURRENCY("--concurrency", flags.concurrency), EXIT.configuration, "concurrency");
+    }
+    args.concurrency = count;
+  }
+  return args;
+}
+
+/** The per-setting tokens a schedule runs with, in the fixed order the command line and the cron line both use. */
+export function settingsArgs(args: ScheduleArgs): string[] {
+  const tokens: string[] = [];
+  if (args.config !== undefined) tokens.push("--config", args.config);
+  if (args.workflow !== undefined) tokens.push("--workflow", args.workflow);
+  if (args.max !== undefined) tokens.push("--max", String(args.max));
+  if (args.concurrency !== undefined) tokens.push("--concurrency", String(args.concurrency));
+  return tokens;
+}
+
+/**
+ * The settings a unit or cron line says, read back from its tokens. Anything it does not recognise is ignored, and so is
+ * a count that is not a positive whole number, so a hand-edited line still lists rather than throws.
+ */
+export function scheduleArgsFrom(tokens: string[]): ScheduleArgs {
+  const args: ScheduleArgs = {};
+  for (let i = 0; i + 1 < tokens.length; i++) {
+    const value = tokens[i + 1];
+    if (value === undefined) break;
+    const max = Number(value);
+    const concurrency = concurrencyNamed(value);
+    if (tokens[i] === "--config") args.config = value;
+    else if (tokens[i] === "--workflow") args.workflow = value;
+    else if (tokens[i] === "--max" && Number.isInteger(max) && max >= 1) args.max = max;
+    else if (tokens[i] === "--concurrency" && concurrency !== undefined) args.concurrency = concurrency;
+    else continue;
+    i++;
+  }
+  return args;
 }
 
 /** A token a scheduler's command line can take unquoted; the renderers quote any other. */
 export const BARE_ARG = /^[A-Za-z0-9_./=-]+$/;
 
 /** The arguments `delivery` runs with on each tick. Every scheduled run skips quietly when another run holds the repository. */
-export function runArgs(_schedule: Schedule): string[] {
-  void _schedule; // every schedule runs alike today; the parameter keeps the seam for per-schedule arguments
-  return ["run", "--sources", "--if-idle"];
+export function runArgs(schedule: Schedule): string[] {
+  return ["run", "--sources", ...settingsArgs(schedule.args), "--if-idle"];
 }
 
 /** Says a schedule in words; the default schedule keeps its original wording. */

@@ -7,6 +7,7 @@ const target: Schedule = {
   name: "default",
   every: parseInterval("5m"),
   launcher: { node: "/usr/bin/node", main: "/opt/delivery/dist/cli/main.js", path: "/usr/local/bin:/usr/bin" },
+  args: {},
 };
 
 describe("cron line", () => {
@@ -16,4 +17,7 @@ describe("cron line", () => {
     );
     expect(cronLine({ ...target, repoPath: "/w/it's 100%" })).toContain("cd '/w/it'\\''s 100\\%'");
   });
+  it("carries the schedule's settings, quoted like every other token", () =>
+    expect(cronLine({ ...target, args: { config: "/home/op/my cfg/100%.json", workflow: "deep", max: 3 } })).toMatch(
+      / run --sources --config '\/home\/op\/my cfg\/100\\%\.json' --workflow deep --max 3 --if-idle$/));
 });

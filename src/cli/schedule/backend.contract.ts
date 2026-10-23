@@ -15,6 +15,7 @@ const at = (repoPath: string, name: string, every: string): Schedule => ({
   name,
   every: parseInterval(every),
   launcher: { node: "/usr/bin/node", main: "/opt/delivery/dist/cli/main.js", path: "/usr/local/bin:/usr/bin" },
+  args: {},
 });
 
 /** The behaviour every scheduler adapter must have. An adapter's test file calls this once with its rig. The rig must report every installed schedule as enabled. */
