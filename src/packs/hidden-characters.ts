@@ -1,8 +1,10 @@
 /** Control, format (direction, zero-width, byte-order mark), line-separator and paragraph-separator characters: the ones that do not show as themselves on a terminal. */
-const HIDDEN_CLASS = "\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}";
+const HIDDEN = "[\\p{Cc}\\p{Cf}\\p{Zl}\\p{Zp}]";
+const HIDDEN_ANY = new RegExp(HIDDEN, "u");
+const HIDDEN_ALL = new RegExp(HIDDEN, "gu");
 
 /** True when the text holds any hidden character, a line break and a tab included. */
-export const hasHidden = (text: string): boolean => new RegExp(`[${HIDDEN_CLASS}]`, "u").test(text);
+export const hasHidden = (text: string): boolean => HIDDEN_ANY.test(text);
 
 const SHOWN: Record<string, string> = { "\n": "\\n", "\r": "\\r", "\t": "\\t" };
 
@@ -11,7 +13,7 @@ const SHOWN: Record<string, string> = { "\n": "\\n", "\r": "\\r", "\t": "\\t" };
  * and cannot drive the terminal. A newline, and a tab, stay as they are when `keep` says so.
  */
 export function showHidden(text: string, keep: { newline: boolean; tab: boolean }): string {
-  return text.replace(new RegExp(`[${HIDDEN_CLASS}]`, "gu"), (char) => {
+  return text.replace(HIDDEN_ALL, (char) => {
     if ((char === "\n" && keep.newline) || (char === "\t" && keep.tab)) return char;
     const shown = SHOWN[char];
     if (shown !== undefined) return shown;
