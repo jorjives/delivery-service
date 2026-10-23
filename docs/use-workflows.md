@@ -20,7 +20,7 @@ Name the workflow under `workflows` at the top level of `delivery.config.json`. 
 }
 ```
 
-Each step's agent is told the task and the step's own `prompt`. The project's `gate` checks a step unless the step names its own; any [ready-made check](configuration-reference.md#ready-made-checks) works, including `commits-ahead`. `"continue": true` picks up the previous step's agent session. A step may also set `agent` options (laid over the project's) and `guards`, for that step only.
+Each step's agent is told the task and the step's own `prompt`. The project's `gate` checks a step unless the step names its own; any [ready-made check](configuration-reference.md#ready-made-checks) works, including `commits-ahead`. For a reproduce step, `fails-with-new-test` proves the step committed a test that fails, which `commits-ahead` cannot. `"continue": true` picks up the previous step's agent session. A step may also set `agent` options (laid over the project's) and `guards`, for that step only.
 
 ## Run a task through it
 

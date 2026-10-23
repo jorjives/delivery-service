@@ -208,6 +208,7 @@ A ready-made check is a `gate` chosen by name. Each runs a command and passes wh
 | `file-exists` | `path` | The file exists after the work |
 | `schema-validates` | `file`, `schema` | The JSON file matches the JSON Schema |
 | `commits-ahead` | None | The work added at least one commit |
+| `fails-with-new-test` | `command`, optional | The work changed a test file (under `test/`, `tests/` or `__tests__/`, or named `*.test.*` or `*.spec.*`), your tests pass on the commit the step started from, and fail on the work's commit. Without `command`, runs the `test` script in `package.json`. Meant for a step that commits a failing test; it runs the start commit in a temporary checkout that shares your `node_modules` |
 
 ```json
 "gate": { "type": "file-exists", "path": "CHANGES.md" }
@@ -257,7 +258,9 @@ Each step takes:
 | `guards` | Object | `add` and `off` lists of [guards](#guards), for this step only |
 | `continue` | `true` or `false` | Picks up the previous step's agent session. Not allowed on the first step |
 
-A step's prompt can use `{{task.<field>}}` for any field of the task, such as `{{task.body}}`.
+A step's prompt can use `{{task.<field>}}` for any field of the task, such as `{{task.body}}`. A string is written as it is, and a number or `true` or `false` as written. Any other value, such as an object, an array or `null`, is written as compact JSON, for example `{"id":7}` or `["a","b"]`.
+
+Interpolated text is placed among the step's instructions. When it comes from an issue tracker, where anyone may write, approve the issue with the label as carefully as you would approve an instruction. See [work sources](work-sources.md).
 
 ```json
 "workflows": {

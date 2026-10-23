@@ -142,7 +142,7 @@ Exit code 3. Full message: `I can't start the agent that does the work: the Clau
 
 **Why.** `gate.type` is not one of the ready-made checks.
 
-**Fix.** Use `test-runner`, `file-exists`, `command-succeeds`, `schema-validates` or `commits-ahead`, or write your own: see [Write a gate](writing-a-gate.md).
+**Fix.** Use `test-runner`, `file-exists`, `command-succeeds`, `schema-validates`, `commits-ahead` or `fails-with-new-test`, or write your own: see [Write a gate](writing-a-gate.md).
 
 ### I don't know the closer type `<name>`
 

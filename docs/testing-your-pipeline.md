@@ -31,8 +31,8 @@ snippets with `npx tsx`.
 ## What you need
 
 - Node.js 22 or later, and `git`.
-- The library installed in your project with `npm install`: see [Importing the
-  library in your own project](getting-started.md#importing-the-library-in-your-own-project).
+- The library installed in your project with `npm install`: see [Extending delivery
+  with TypeScript](getting-started.md#extending-delivery-with-typescript-optional).
   The scripted agent, `claude-mock`, is installed with it.
 - `tsx`, which runs the snippets with `npx tsx`. Install it in your project
   (`npm install --save-dev tsx`); otherwise `npx` fetches it the first time,

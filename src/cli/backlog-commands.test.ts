@@ -7,6 +7,7 @@ import { initTempRepo } from "../temp-repo.js";
 import { delivery } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { backlogLines, itemLines, NO_IDEAS, notAnIdea, PUSH_FIRST, uncommittedItems, unknownFixWorkflow } from "./backlog-commands.js";
+import { createGhStandIn } from "../gh-stand-in.js";
 import { foldLedger } from "../item-ledger.js";
 import type { BacklogItem } from "../backlog.js";
 
@@ -143,5 +144,19 @@ describe("delivery backlog", () => {
     const { stdout } = await delivery(["backlog", "total-below-zero"], { cwd: repo });
     expect(stdout).not.toContain(secret);
     expect(stdout).toContain("pay-… (21 characters)");
+  });
+});
+
+describe("delivery backlog with a github source", () => {
+  it("lists a labelled issue the next delivery run --sources would work", async () => {
+    const gh = createGhStandIn();
+    const repo = initTempRepo("backlog-github-", { "delivery.config.json": JSON.stringify({ sources: [{ type: "github" }] }) });
+    gh.openIssue({ title: "Say hello to a name", body: "Please.", labels: ["delivery"] });
+    gh.openIssue({ title: "Not approved yet", body: "Leave me." });
+    const { exitCode, stdout } = await delivery(["backlog"], { cwd: repo, env: { PATH: `${gh.binDir}:${process.env.PATH ?? ""}` } });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toContain("Say hello to a name");
+    expect(stdout).not.toContain("Not approved yet");
+    expect(stdout).not.toContain("Your backlog has nothing waiting");
   });
 });

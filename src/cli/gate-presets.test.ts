@@ -23,8 +23,8 @@ function folder(files: Record<string, string> = {}): string {
 const byExitCode = (command: string): GateRef => ({ type: "command", command, parseMode: "exitcode" });
 
 describe("the ready-made checks", () => {
-  it("are the four the roadmap names, in its order, then commits-ahead", () => {
-    expect(PRESET_NAMES).toEqual(["test-runner", "file-exists", "command-succeeds", "schema-validates", "commits-ahead"]);
+  it("are the four the roadmap names, in its order, then commits-ahead and fails-with-new-test", () => {
+    expect(PRESET_NAMES).toEqual(["test-runner", "file-exists", "command-succeeds", "schema-validates", "commits-ahead", "fails-with-new-test"]);
   });
 
   it("can say, in plain words, what every detail each one takes is", () => {
