@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { cleanGitEnv } from "../git-env.js";
 import { initTempRepo } from "../temp-repo.js";
 import { createSystemctlStandIn } from "../systemctl-stand-in.js";
 import { delivery, PACKAGE } from "./command-fixtures.js";
@@ -11,7 +12,7 @@ import { EXIT } from "./failures.js";
 import { findRepository } from "./project.js";
 import { badInterval, badName, emptySetting } from "./schedule/model.js";
 import { execTokens, NO_SYSTEMCTL, parseShow, TEST_SYSTEMCTL, unitName } from "./schedule/systemd.js";
-import { allAlreadyOff, alreadyOff, BY_HAND, journalHint, lastRun, NAME_AND_ALL, nextRun, noSuchSchedule, runSettings, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
+import { allAlreadyOff, alreadyOff, BY_HAND, heldElsewhere, journalHint, lastRun, NAME_AND_ALL, nextRun, noSuchSchedule, runSettings, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
 import { NOT_A_CONCURRENCY, NOT_A_MAX } from "./settings.js";
 
 async function project() {
@@ -22,6 +23,15 @@ async function project() {
   const standIn = createSystemctlStandIn();
   const env = { XDG_CONFIG_HOME: config, [TEST_SYSTEMCTL]: standIn.command, PATH: "/opt/tools:/usr/bin" };
   return { repo, units, name, standIn, env };
+}
+
+/** A git repository at `repo` + `suffix`, beside `repo`, so the two share a unit-name prefix. */
+async function sibling(repo: string, suffix: string): Promise<string> {
+  const path = repo + suffix;
+  mkdirSync(path);
+  writeFileSync(join(path, "package.json"), PACKAGE);
+  execFileSync("git", ["init", "-q"], { cwd: path, env: cleanGitEnv() });
+  return findRepository(path);
 }
 
 describe("delivery schedule enable", () => {
@@ -123,6 +133,25 @@ describe("delivery schedule enable", () => {
     expect(stderr).toContain(badName(bad));
     expect(existsSync(units)).toBe(false);
     expect(standIn.calls()).toEqual([]);
+  });
+
+  it("refuses a name another project's schedule already holds, changing nothing", async () => {
+    const { repo, units, standIn, env } = await project();
+    const other = await sibling(repo, ".nightly");
+    await delivery(["schedule", "enable"], { cwd: other, env });
+    const filesBefore = readdirSync(units).map((file) => [file, readFileSync(join(units, file), "utf-8")]);
+    const callsBefore = standIn.calls().length;
+    const { exitCode, stderr } = await delivery(["schedule", "enable", "--name", "nightly", "--every", "1h"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(heldElsewhere("nightly", repo, other));
+    expect(readdirSync(units).map((file) => [file, readFileSync(join(units, file), "utf-8")])).toEqual(filesBefore);
+    expect(standIn.calls().slice(callsBefore)).toEqual(["--user show-environment"]);
+  });
+
+  it("says another project without a path when the holder records none", () => {
+    expect(heldElsewhere("nightly", "/w/a", "")).toBe(
+      "Can't turn on the nightly schedule for /w/a: the scheduler already keeps a schedule in its place for another project. Nothing was changed. Give this schedule a different name with --name.",
+    );
   });
 
   it("gives the scheduled-on line the skipped wording when the scheduler does not catch up", () => {

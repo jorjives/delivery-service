@@ -44,6 +44,8 @@ export const scheduleHeading = ({ name, every, enabled }: InstalledSchedule): st
   `Scheduling is ${enabled ? "on" : "off"} for the ${name} schedule, every ${every}.`;
 export const noSuchSchedule = (name: string, repoPath: string): string =>
   `There is no schedule called ${name} for ${repoPath}. Turn it on with: delivery schedule enable --name ${name} --every <interval>`;
+export const heldElsewhere = (name: string, repoPath: string, heldBy: string): string =>
+  `Can't turn on the ${name} schedule for ${repoPath}: the scheduler already keeps a schedule in its place for ${heldBy === "" ? "another project" : `another project, ${heldBy}`}. Nothing was changed. Give this schedule a different name with --name.`;
 
 /** This build's own entry point: `dist/cli/main.js` beside this file once built. */
 const MAIN = fileURLToPath(new URL("./main.js", import.meta.url));
@@ -69,7 +71,8 @@ export async function scheduleEnableCommand(options: ScheduleOptions, ctx: Comma
   const probe = await backend.probe(ctx.env);
   if (!probe.ok) throw new Refusal(unsupported(probe.reason, cronLine(schedule)), EXIT.configuration);
 
-  await backend.install(schedule, ctx.env);
+  const outcome = await backend.install(schedule, ctx.env);
+  if (!outcome.installed) throw new Refusal(heldElsewhere(name, repoPath, outcome.heldBy), EXIT.configuration);
   ctx.writeLine(scheduledOn(describeSchedule(schedule), probe.catchesUp));
   ctx.writeLine(runSettings(schedule.args));
   ctx.writeLine(journalHint(backend.logCommand(repoPath, name)));

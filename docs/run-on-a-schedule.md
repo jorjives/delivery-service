@@ -33,6 +33,8 @@ A name is 1 to 32 lowercase letters, digits or hyphens, such as `nightly`. Anyth
 
 Each scheduled run is `delivery run --sources` with the schedule's settings, then `--if-idle`, so a run that would overlap another run in the repository is skipped quietly.
 
+Each schedule belongs to the project whose folder it records, so a project whose path extends another's (`/work/app` and `/work/app.v2`) never lists or turns off the other's schedules. Such projects can need the same timer, though: `/work/app`'s `nightly` and `/work/app.nightly`'s default both use one. So `enable` refuses a schedule whose timer already belongs to another project, with exit code 2, and changes nothing. Choose a different `--name`.
+
 ## Give a schedule its own settings
 
 A schedule can run with settings of its own, so one project can run a quick pass and a thorough pass that behave differently:
