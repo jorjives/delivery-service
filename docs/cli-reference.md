@@ -38,7 +38,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 |---|---|
 | `--task <text>` | Runs exactly this task and leaves the list alone |
 | `--task-file <path>` | Reads the task from a file |
-| `--workflow <name>` | Does the task in the steps of a [workflow](configuration-reference.md#workflows) |
+| `--workflow <name>` | Does the task in the steps of a [workflow](configuration-reference.md#workflows); with `--sources`, the workflow for items that do not name one |
 | `--gate-command <command>` | Sets the check: it passes when the command exits 0 |
 | `--closer <type>` | Sets what happens to accepted work: `commit-to-branch`, `merge-back` or `open-pr` |
 | `--concurrency <n>` | Sets how many tasks from the list run at once (default 1) |

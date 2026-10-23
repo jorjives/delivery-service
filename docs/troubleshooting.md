@@ -28,7 +28,7 @@ Full message: `This isn't a git repository yet. The harness needs one to track c
 
 ### Use either `--task` or `--task-file`, not both
 
-**Why.** You gave the task twice, and the harness will not guess which you meant. The same applies to `--sources` with a task: "Use either `--sources` or a task (`--task`, `--task-file`, `--workflow`), not both".
+**Why.** You gave the task twice, and the harness will not guess which you meant. The same applies to `--sources` with a task: "Use either `--sources` or a task (`--task`, `--task-file`), not both: I can't tell which you mean."
 
 **Fix.** Keep one of them.
 

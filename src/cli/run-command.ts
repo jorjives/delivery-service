@@ -51,7 +51,7 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
 async function runIn(options: RunOptions, { startDir, repoPath }: { startDir: string; repoPath: string }, ctx: CommandContext): Promise<ExitCode> {
   if (options.max !== undefined && !options.sources) throw new Refusal(MAX_NEEDS_SOURCES, EXIT.configuration, "max");
   if (options.sources) {
-    if (options.task !== undefined || options.taskFile !== undefined || options.workflow !== undefined) {
+    if (options.task !== undefined || options.taskFile !== undefined) {
       throw new Refusal(SOURCES_AND_TASK, EXIT.configuration);
     }
     const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
