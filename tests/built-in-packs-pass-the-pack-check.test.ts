@@ -11,7 +11,7 @@ const folders = readdirSync(BUILT_IN_PACKS, { withFileTypes: true }).filter((ent
 
 describe("every built-in pack", () => {
   it("is found", () => {
-    expect(folders.sort()).toEqual(["code-review", "security-review"]);
+    expect(folders.sort()).toEqual(["code-review", "deprecations", "security-review"]);
   });
 
   it.each(folders)("%s passes the pack check", async (folder) => {

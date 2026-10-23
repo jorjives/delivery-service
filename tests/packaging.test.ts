@@ -34,7 +34,7 @@ describe("the package", () => {
     const { files, bundled } = packReport();
     const own = files.filter((path) => !path.startsWith("dist/") && !path.startsWith("node_modules/"));
     expect(own.filter((path) => !path.startsWith("packs/")).sort()).toEqual(["CHANGELOG.md", "README.md", "package.json"]);
-    for (const file of ["packs/code-review/pack.json", "packs/code-review/scan.md", "packs/code-review/fix.md", "packs/code-review/fixtures/expect.json", "packs/code-review/fixtures/project/total.js", "packs/security-review/pack.json", "packs/security-review/scan.md", "packs/security-review/fix.md", "packs/security-review/fixtures/expect.json", "packs/security-review/fixtures/project/payments.js"]) expect(own).toContain(file);
+    for (const file of ["packs/code-review/pack.json", "packs/code-review/scan.md", "packs/code-review/fix.md", "packs/code-review/fixtures/expect.json", "packs/code-review/fixtures/project/total.js", "packs/deprecations/pack.json", "packs/deprecations/scan.md", "packs/deprecations/code.md", "packs/deprecations/tests.md", "packs/deprecations/fixtures/expect.json", "packs/deprecations/fixtures/project/lib/legacy-dates.js", "packs/security-review/pack.json", "packs/security-review/scan.md", "packs/security-review/fix.md", "packs/security-review/fixtures/expect.json", "packs/security-review/fixtures/project/payments.js"]) expect(own).toContain(file);
     for (const file of ["dist/cli/main.js", "dist/index.js", "dist/index.d.ts", "dist/testing.js", "dist/testing.d.ts", "dist/packs/manifest.js"]) expect(files).toContain(file);
     // The pack check runs a review folder against the scripted agent, so an installed copy carries it.
     expect(bundled).toEqual(["@jorj/claude-mock"]);

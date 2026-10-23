@@ -33,7 +33,7 @@ function writeV3Pack(dir: string, name: string, find = "scan"): void {
 describe("pack workflows", () => {
   it("adds every built-in pack's workflows to the config's own", async () => {
     const config = await withPackWorkflows({ workflows: { mine: { steps: [{ name: "a", prompt: "a" }] } } }, "/");
-    expect(Object.keys(config.workflows ?? {}).sort()).toEqual(["code:fix", "code:scan", "mine", "security:fix", "security:scan"]);
+    expect(Object.keys(config.workflows ?? {}).sort()).toEqual(["code:fix", "code:scan", "deprecations:code", "deprecations:scan", "deprecations:tests", "mine", "security:fix", "security:scan"]);
   });
 
   it("adds a pack the config lists, from a folder relative to the config file", async () => {

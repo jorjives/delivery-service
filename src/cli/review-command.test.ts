@@ -119,7 +119,7 @@ describe("delivery review", () => {
   it("refuses a name no pack has, naming the built-in ones, in a project that lists none", async () => {
     const { exitCode, stderr } = await delivery(["review", "moves"], { cwd: project() });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stderr).toContain('There is no pack called "moves". The packs available are: code, security.');
+    expect(stderr).toContain('There is no pack called "moves". The packs available are: code, deprecations, security.');
   });
 
   it("runs a pack's find when it is not called scan, landing its ideas on the current branch", async () => {

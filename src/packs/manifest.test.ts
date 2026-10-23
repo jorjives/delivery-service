@@ -49,22 +49,22 @@ function editedPack(edit: (manifest: Record<string, unknown>) => void): string {
 }
 
 describe("the built-in packs", () => {
-  it("are code and security, each found by name", async () => {
-    expect((await builtInPacks()).map((pack) => pack.manifest.name)).toEqual(["code", "security"]);
+  it("are the three built-ins, each found by name", async () => {
+    expect((await builtInPacks()).map((pack) => pack.manifest.name)).toEqual(["code", "deprecations", "security"]);
     expect((await resolvePack("code", "/anywhere")).manifest.name).toBe("code");
   });
 
   it("name the ones available when asked for one that does not exist", async () => {
     const err = await resolvePack("nope", "/anywhere").catch((e: unknown) => e);
     expect(err).toBeInstanceOf(UnknownPack);
-    expect(err).toMatchObject({ packName: "nope", available: ["code", "security"] });
+    expect(err).toMatchObject({ packName: "nope", available: ["code", "deprecations", "security"] });
   });
 
   it("finds a pack by name among the packs it is given, and names them all when none matches", async () => {
     const mine = await loadPack(editedPack((m) => { m.name = "mine"; }));
     const packs = [...(await builtInPacks()), mine];
     expect((await resolvePack("mine", "/anywhere", packs)).dir).toBe(mine.dir);
-    await expect(resolvePack("nope", "/anywhere", packs)).rejects.toMatchObject({ packName: "nope", available: ["code", "security", "mine"] });
+    await expect(resolvePack("nope", "/anywhere", packs)).rejects.toMatchObject({ packName: "nope", available: ["code", "deprecations", "security", "mine"] });
   });
 
   it("ship the code review at 2.0.0, its scan instructions keeping matters of taste out", async () => {

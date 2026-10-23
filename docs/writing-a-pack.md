@@ -33,7 +33,7 @@ cp -r packs/code-review ./my-review
 
 Then make the folder yours:
 
-1. Change `pack.json`. The `name` must not be one that is already taken: `code` and `security` are built in, and the check stops with a sentence naming your `pack.json` as having the name of a pack that comes with the harness.
+1. Change `pack.json`. The `name` must not be one that is already taken: `code`, `security` and `deprecations` are built in, and the check stops with a sentence naming your `pack.json` as having the name of a pack that comes with the harness.
 
     ```json
     {

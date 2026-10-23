@@ -2,7 +2,7 @@
 
 This guide shows how to have an agent review your project, choose which of its findings to fix, and have them fixed. It is for anyone with a [project set up](project-configuration.md) and Claude Code signed in (`claude auth status`).
 
-A [pack](glossary.md#pack), also called a review, is a set of instructions that has an agent read your project for one kind of problem. The built-in packs are `code` and `security`. Each problem a review finds becomes an [idea](glossary.md#idea) in your [backlog](glossary.md#backlog). Nothing is fixed until you choose which ideas to fix.
+A [pack](glossary.md#pack), also called a review, is a set of instructions that has an agent read your project for one kind of problem. The built-in packs are `code`, `security` and `deprecations`. Each problem a review finds becomes an [idea](glossary.md#idea) in your [backlog](glossary.md#backlog). Nothing is fixed until you choose which ideas to fix.
 
 The review runs in four stages, and you decide at two of them:
 

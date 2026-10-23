@@ -30,10 +30,11 @@ describe("delivery packs", () => {
     expect(exitCode).toBe(EXIT.ok);
     const lines = stdout.trimEnd().split("\n");
     expect(lines[0]).toBe("Packs you can use:");
-    const [code, security] = await builtInPacks();
-    expect(lines.slice(1, 3)).toEqual([
-      `  code      ${code?.manifest.summary} Start it with: delivery review code`,
-      `  security  ${security?.manifest.summary} Start it with: delivery review security`,
+    const [code, deprecations, security] = await builtInPacks();
+    expect(lines.slice(1, 4)).toEqual([
+      `  code          ${code?.manifest.summary} Start it with: delivery review code`,
+      `  deprecations  ${deprecations?.manifest.summary} Start it with: delivery review deprecations`,
+      `  security      ${security?.manifest.summary} Start it with: delivery review security`,
     ]);
     expect(lines.at(-1)).toBe("To use a pack folder of your own, list it under packs in delivery.config.json.");
     expect(stdout).not.toMatch(/reviews? (are|is) available/i);
@@ -61,13 +62,14 @@ describe("delivery packs", () => {
     });
     const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
-    const [code, security] = await builtInPacks();
+    const [code, deprecations, security] = await builtInPacks();
     const lines = stdout.trimEnd().split("\n");
     expect(lines[0]).toBe("Packs you can use:");
-    expect(lines.slice(1, 4)).toEqual([
-      `  code      ${code?.manifest.summary} Start it with: delivery review code`,
-      `  security  ${security?.manifest.summary} Start it with: delivery review security`,
-      "  mymoves   Moves calls off retired code. Start it with: delivery review mymoves",
+    expect(lines.slice(1, 5)).toEqual([
+      `  code          ${code?.manifest.summary} Start it with: delivery review code`,
+      `  deprecations  ${deprecations?.manifest.summary} Start it with: delivery review deprecations`,
+      `  security      ${security?.manifest.summary} Start it with: delivery review security`,
+      "  mymoves       Moves calls off retired code. Start it with: delivery review mymoves",
     ]);
   });
 
@@ -80,7 +82,7 @@ describe("delivery packs", () => {
     });
     const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toContain("  mymoves   Moves calls off retired code. Start it with: delivery review mymoves");
+    expect(stdout).toContain("  mymoves       Moves calls off retired code. Start it with: delivery review mymoves");
   });
 
   it("lists a listed pack with --json too", async () => {

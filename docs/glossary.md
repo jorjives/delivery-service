@@ -87,7 +87,7 @@ One piece of work from a work source: a backlog file, a task from a command, or 
 ## Pack
 
 A review: instructions that have an agent read your project for one kind of problem and add
-what it finds to the backlog as ideas. The built-in packs are `code` and `security`. See
+what it finds to the backlog as ideas. The built-in packs are `code`, `security` and `deprecations`. See
 [Review your project](task-packs.md).
 
 ## Parked
