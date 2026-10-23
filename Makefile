@@ -6,6 +6,8 @@
 
 .PHONY: verify reinstall docs docs-serve
 
+PREFIX ?= $(HOME)/.local
+
 verify:
 	npm ci --no-audit --no-fund
 	npm test
@@ -19,9 +21,9 @@ reinstall:
 	npm ci --no-audit --no-fund
 	rm -f delivery-service-*.tgz
 	npm pack --silent
-	npm install -g --prefix $(HOME)/.local --no-audit --no-fund ./delivery-service-*.tgz
+	npm install -g --prefix $(PREFIX) --no-audit --no-fund ./delivery-service-*.tgz
 	rm -f delivery-service-*.tgz
-	test -f $(HOME)/.local/lib/node_modules/delivery-service/dist/stack-pr-closer.js
+	test -f $(PREFIX)/lib/node_modules/delivery-service/dist/stack-pr-closer.js
 
 # The documentation site, built as the Docs workflow builds it: the tools come
 # from requirements-docs.txt and a warning fails the build.
