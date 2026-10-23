@@ -346,7 +346,7 @@ function taskReport(snapshot: RecordSnapshot, runId: string): ReportDocument {
     return document(snapshot, { live: false, run: null, surfaces: [], incomplete });
   }
   const finished = record.caseFile.outcome !== undefined;
-  // Only a run of several at once holds the lock, so only a task one of those took can be known to be going.
+  // Any run holds the lock, but only a task a run of several at once claimed can be tied to it, so a one-at-a-time task's liveness stays unknown.
   const taken = runs.some((run) => run.outcome === undefined && claimedBy(run).some((claim) => claim.surfaceId === runId));
   const surface = withRun(snapshot, record, queuePositionOf(list, record.caseFile.header.taskDef) ?? null, record.caseFile.outcome?.kind ?? "unfinished");
   return document(snapshot, { live: finished ? false : taken ? live : null, run: null, surfaces: [surface], incomplete: [] });

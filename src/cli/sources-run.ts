@@ -71,6 +71,9 @@ function turnFor(state: ItemState | undefined): Continues["turn"] | undefined {
 
 export async function runSources(options: RunFlags, { repoPath, config }: { repoPath: string; config: DeliveryConfig }, ctx: CommandContext, { only }: { only?: string } = {}): Promise<ExitCode> {
   const max = maxItems(options);
+  // Refused here, before anything is fetched, settled or chosen, so an unknown name touches nothing.
+  const workflow = options.workflow;
+  if (workflow !== undefined) await workflowFrom(workflow, config, repoPath);
   const project = await resolveProject(options, { env: ctx.env, repoPath, config });
   await checkCustomModules(project.gateRef, project.closerRef, repoPath);
   if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
@@ -139,7 +142,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   // Merged per source: this run only saw `chosen.read`, so holds in sources it never reached are kept, not wiped (spec §5.10, §10).
   await recordHeld(heldPath(path), chosen.held, chosen.read);
   for (const item of chosen.items) {
-    const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch }, ctx);
+    const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch, workflow }, ctx);
     if (claim !== undefined) claims.push(claim);
   }
   // Readied before any task starts, so every task builds on the owner's latest commits (spec §5.7). Also readied when
@@ -258,7 +261,7 @@ async function claimFor(
   item: WorkItem,
   state: ItemState | undefined,
   records: RunRecord[],
-  { repoPath, config, project, now, taken, branch }: { repoPath: string; config: DeliveryConfig; project: ProjectSettings; now: Date; taken: Set<string>; branch: string },
+  { repoPath, config, project, now, taken, branch, workflow: runWorkflow }: { repoPath: string; config: DeliveryConfig; project: ProjectSettings; now: Date; taken: Set<string>; branch: string; workflow?: string },
   ctx: CommandContext,
 ): Promise<(QueueClaim & { key: string }) | undefined> {
   // Only an undefined workflow is the item's own problem (left out with a note); any other refusal stops the command.
@@ -271,7 +274,8 @@ async function claimFor(
     const failed = await clearParked(item.issue.number, { repoPath, env: ctx.env });
     if (failed !== undefined) ctx.report.note(mirrorFailed(item.issue.number, "take the parked label off", failed));
   }
-  const workflow = await workflowFrom(item.workflow, config, repoPath);
+  // An item that names its own workflow keeps it; the --workflow given is for the items that name none.
+  const workflow = await workflowFrom(item.workflow ?? runWorkflow, config, repoPath);
   // A wrong custom step-gate path stops the command before a run is spent, as `--workflow` does.
   await checkCustomModules(project.gateRef, project.closerRef, repoPath, workflow);
   const turn = turnFor(state);

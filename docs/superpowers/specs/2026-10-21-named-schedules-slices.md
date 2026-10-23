@@ -1,6 +1,7 @@
 # Named Schedules and a Scheduler Backend Port — Slice Scope
 
 > Based on spec: docs/superpowers/specs/2026-10-21-named-schedules-design.md
+> **Status:** ✅ Complete — 2026-10-23 — all 6 slices delivered
 > Next step: invoke writing-plans with this document
 
 Assumptions (flagged, resolved conservatively because the run is unattended):
@@ -13,6 +14,9 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 ---
 
 ## Slice 1: A Second Run on the Same Repository Is Refused, or Quietly Skipped
+
+**Status:** ✅ Complete — 2026-10-22 — `eba040b`
+**Tests:** ✅ Recorded — 2026-10-22 — `525adcc` — cli (vitest) — 1 UAT (covering 2 AC) + 4 AC, 0 skipped
 
 **Delivers:** Starting `delivery run` while another run is already going on the same repository is refused, even for one-at-a-time runs, and `run --if-idle` turns that refusal into a quiet, successful skip.
 
@@ -50,6 +54,9 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 2: Run Several Named Schedules on One Project
 
+**Status:** ✅ Complete — 2026-10-22 — `9965127`
+
+**Tests:** ✅ Recorded — 2026-10-22 — `aeb5e47` — cli (vitest) — 1 UAT + 5 AC groups (9 checks), 0 skipped
 **Delivers:** A project can have more than one schedule, each with its own name and interval, and `status` shows them all, while an already-installed default schedule keeps working untouched.
 
 **Operational note:** Named schedules get their own scheduler entries and their own per-schedule log view, which `status` prints for each. Existing default timers are not modified until the user next enables. The scheduler is reached through a backend seam with a contract test suite, so a future platform needs one adapter and no change to the command; tests never need a real scheduler. Every scheduled invocation passes the idle option from Slice 1.
@@ -91,6 +98,8 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 3: Give a Schedule Its Own Run Settings
 
+**Status:** ✅ Complete — 2026-10-23 — `2ee9776`
+**Tests:** ✅ Recorded — 2026-10-23 — `210260b` — cli (vitest) — 1 UAT + 5 AC groups (13 checks), 0 skipped
 **Delivers:** Each schedule can carry its own config file, workflow, item cap and concurrency, so different schedules do different kinds of work.
 
 ### Prerequisites
@@ -129,6 +138,8 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 4: Switch Off One Schedule, or All of Them
 
+**Status:** ✅ Complete — 2026-10-23 — `195f0f9`
+**Tests:** ✅ Recorded — 2026-10-23 — `2b2706b` — cli (vitest) — 1 UAT + 6 AC checks, 0 skipped
 **Delivers:** Schedules can be removed individually by name or all at once, without disturbing the others.
 
 ### Prerequisites
@@ -163,6 +174,8 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 5: Similarly Named Projects Never See or Overwrite Each Other's Schedules
 
+**Status:** ✅ Complete — 2026-10-23 — `a4be3e6`
+**Tests:** ✅ Recorded — 2026-10-23 — `55135b5` — cli (vitest) — 1 UAT + 4 AC checks, 0 skipped
 **Delivers:** Schedules are attributed to exactly the project they were made for, so projects with similar paths or names that could clash stay separate.
 
 **Operational note:** Which schedules belong to a project is decided by what each installed schedule records about its project directory, not by name prefixes, and needs no extra registry file. Installed schedules created before this change count as the default schedule.
@@ -197,6 +210,8 @@ Assumptions (flagged, resolved conservatively because the run is unattended):
 
 ## Slice 6: Machines Without a Scheduler Get a Crontab Line per Schedule, and the Docs Say How
 
+**Status:** ✅ Complete — 2026-10-23 — `8e3692e`
+**Tests:** ✅ Recorded — 2026-10-23 — `722fcb2` — cli (vitest) — 1 UAT + 5 AC checks, 0 skipped
 **Delivers:** On a machine where no scheduler backend is available, `schedule enable` explains why and prints a ready-to-paste crontab line for each schedule, and the user documentation covers named schedules end to end.
 
 **Operational note:** The documentation set (scheduling guide and CLI reference) gains a worked two-schedule example, the idle option and the exclusion behaviour, and a release note is recorded.

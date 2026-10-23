@@ -10,7 +10,7 @@ import { completes, PACKAGE, RUN_TIMEOUT, scriptFile, TASK, writeRunRecord } fro
 import { allRuns, readRun } from "./runs.js";
 import { runsRoot } from "../run-location.js";
 import { findQueueRun, queuePositionOf } from "../task-list.js";
-import { environmentGaveUp, listExitCode, listStandings, liveRunFound, nextQueueTask, queueTasks, runPickedUp, runShape, taskEnded, EVERY_TASK_DONE, listStopped, runQueue, type ClaimSource, type QueueClaim } from "./queue.js";
+import { environmentGaveUp, listExitCode, listStandings, nextQueueTask, queueTasks, runPickedUp, runShape, taskEnded, EVERY_TASK_DONE, listStopped, runQueue, type ClaimSource, type QueueClaim } from "./queue.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { EXIT } from "./failures.js";
 import { plainReporter } from "./report.js";
@@ -188,21 +188,6 @@ describe("what a list of several at once says", () => {
   it("ends by naming each task that was not delivered, and that the rest carried on", () => {
     expect(taskEnded({ task: 3, of: 10 }, "escalated")).toBe("Task 3 of 10 needs your decision; the rest of the list carried on without it.");
     expect(taskEnded({ task: 5, of: 10 }, "aborted")).toBe("Task 5 of 10 stopped before it finished; the rest of the list carried on without it.");
-  });
-});
-
-describe("why a second run cannot start on top of a live one", () => {
-  it("names the live run, when it started and its shape, and how to look at it", () => {
-    expect(liveRunFound({ runId: "run-20260930T090000Z", repoPath: "/repo", concurrency: 2, tasks: 4, runBudgetMax: { gateMaintenance: 2 } })).toBe(
-      "Another run is already going here (started `2026-09-30 09:00 UTC`, 4 tasks, up to 2 at once: `run-20260930T090000Z`). " +
-        "Run `delivery status` to see how it is getting on, or wait for it to finish before starting another.",
-    );
-  });
-
-  it("still says a run is going when its record cannot be found", () => {
-    expect(liveRunFound(undefined)).toBe(
-      "Another run is already going here. Run `delivery status` to see how it is getting on, or wait for it to finish before starting another.",
-    );
   });
 });
 

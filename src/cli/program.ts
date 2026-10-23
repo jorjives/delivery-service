@@ -8,7 +8,7 @@ import { answerCommand, rejectCommand as rejectItemCommand, signOffCommand as si
 import { approveCommand, backlogCommand, declineCommand, type ChooseOptions } from "./backlog-commands.js";
 import { dropAfterCommand } from "./after-command.js";
 import { scheduleDisableCommand, scheduleEnableCommand, scheduleStatusCommand, type ScheduleOptions } from "./schedule-command.js";
-import { DEFAULT_INTERVAL } from "./schedule.js";
+import { DEFAULT_INTERVAL } from "./schedule/model.js";
 import { initCommand, type InitOptions } from "./init.js";
 import { useColour } from "./output.js";
 import { PREVIEW_ROLES, previewCommand, taskNumber, type PreviewOptions } from "./preview-command.js";
@@ -110,7 +110,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .description("work down the list of tasks in your config file, or work through your backlog with `--sources`, or start a single run, or pick up a run that didn't finish: the agent works on the task, your check decides whether it is good, and the result is delivered the way your config file asks (by default, committed to a new branch)")
     .option("--task <text>", "what you want done, in plain English")
     .option("--task-file <path>", "read what you want done from a file")
-    .option("--workflow <name>", "do the task in the steps of this workflow, as named under `workflows` in your config file")
+    .option("--workflow <name>", "do the task in the steps of this workflow, as named under `workflows` in your config file; with --sources, the workflow for items that do not name one")
     .option("--gate-command <command>", "the command that checks the agent's work: it passes when the command exits 0")
     .option("--closer <type>", "what happens to accepted work: commit-to-branch, merge-back or open-pr")
     .option("--concurrency <n>", "how many tasks from your list may run at once (default 1: one after another)")
@@ -119,6 +119,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .option("--config <path>", "use this config file instead of looking for a delivery.config.json")
     .option("--repo <path>", "the git repository to work on (default: the current folder)")
     .option("--fresh", "start a new run even though one didn't finish, leaving that one to pick up later")
+    .option("--if-idle", "if another run is already going in this repository, say so in one line and end successfully instead of refusing; for runs nobody is watching, such as from a timer, cron or CI")
     .action(async (options: RunOptions, command: Command) => {
       // A throw here rejects parseAsync with the original error, rendered once below.
       exitCode = await runCommand(options, ctxFor(command));
@@ -208,8 +209,13 @@ export async function runCli(io: CliIo): Promise<number> {
 
   schedule
     .command("enable")
-    .description("turn scheduling on for this project, or change how often it runs")
+    .description("turn a schedule on for this project, or replace it: the options given are its whole definition")
     .option("--every <interval>", `how often to run: minutes that divide an hour (5m, 15m, 30m), hours that divide a day (1h, 6h, 12h), or 1d (default: ${DEFAULT_INTERVAL})`)
+    .option("--name <name>", "a name for this schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens (default: the project's one unnamed schedule)")
+    .option("--config <path>", "the config file each scheduled run uses (default: the project's own)")
+    .option("--workflow <name>", "the workflow for items that do not name one")
+    .option("--max <n>", "how many items each scheduled run takes (default 1)")
+    .option("--concurrency <n>", "how many items each scheduled run works at once (default 1)")
     .option("--repo <path>", "the git repository to schedule (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleEnableCommand(options, ctxFor(command));
@@ -218,6 +224,7 @@ export async function runCli(io: CliIo): Promise<number> {
   schedule
     .command("status")
     .description("say whether this project runs on a schedule, and when it last ran and will next run")
+    .option("--name <name>", "show only this schedule (default: every schedule the project has)")
     .option("--repo <path>", "the git repository to read (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleStatusCommand(options, ctxFor(command));
@@ -225,7 +232,9 @@ export async function runCli(io: CliIo): Promise<number> {
 
   schedule
     .command("disable")
-    .description("turn scheduling off for this project; you can still run it by hand, and a run already going finishes")
+    .description("turn a schedule off for this project; you can still run it by hand, and a run already going finishes")
+    .option("--name <name>", "turn off only this schedule (default: the project's unnamed schedule)")
+    .option("--all", "turn off every schedule this project has")
     .option("--repo <path>", "the git repository to stop scheduling (default: the current folder)")
     .action(async (options: ScheduleOptions, command: Command) => {
       exitCode = await scheduleDisableCommand(options, ctxFor(command));

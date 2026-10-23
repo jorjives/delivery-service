@@ -31,7 +31,7 @@ import { takeRepoLock } from "../repo-lock.js";
 import { heldPath, recordHeld } from "../held-sequences.js";
 import { ledgerPath } from "../item-ledger.js";
 import { SAVED_DATA, SAVED_TEXT } from "./saved-report.js";
-import { notifyFailed, SCHEMA_AND_REPORT } from "./report-command.js";
+import { notifyFailed, readReport, SCHEMA_AND_REPORT } from "./report-command.js";
 import { stackedDelivery } from "../delivery-fixtures.js";
 import { deliveryLedgerPath } from "../delivery-ledger.js";
 import { levelRefOf } from "../delivery-stack.js";
@@ -648,4 +648,18 @@ describe("delivery report --schema", () => {
     expect(withWrite.stdout).toBe("");
     expect(withWrite.stderr).toContain(SCHEMA_AND_REPORT);
   });
+});
+
+it("tells a run's own closing report that no run is going, even while the lock is held", async () => {
+  const repo = initTempRepo("report-closing-live-", { "package.json": PACKAGE });
+  const header = { runId: ID.run, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } };
+  await writeSupervisedRun(repo, header); // no outcome recorded
+  const release = await takeRepoLock(repo);
+  try {
+    const subject = { kind: "run", runId: ID.run } as const;
+    expect((await readReport(repo, subject, [], { env: process.env })).doc.live).toBe(true);
+    expect((await readReport(repo, subject, [], { env: process.env, live: false })).doc.live).toBe(false);
+  } finally {
+    await release?.();
+  }
 });

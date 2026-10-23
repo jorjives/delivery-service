@@ -1,131 +1,144 @@
-import { execFile as execFileCb } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
-import {
-  cronLine,
-  DEFAULT_INTERVAL,
-  parseInterval,
-  parseShow,
-  serviceUnit,
-  systemctlOf,
-  timerUnit,
-  unitDir,
-  unitName,
-  type ScheduleTarget,
-} from "./schedule.js";
+import { platformOf, selectBackend, type InstalledSchedule } from "./schedule/backend.js";
+import { cronLine } from "./schedule/cron.js";
+import { BARE_ARG, DEFAULT_INTERVAL, describeSchedule, parseInterval, parseName, parseScheduleArgs, settingsArgs, type Schedule, type ScheduleArgs, type ScheduleFlags } from "./schedule/model.js";
 
-const execFile = promisify(execFileCb);
-
-export interface ScheduleOptions {
+export interface ScheduleOptions extends ScheduleFlags {
   repo?: string;
   every?: string;
+  name?: string;
+  all?: boolean;
 }
 
-export type SystemctlResult = { ok: true; stdout: string } | { ok: false; reason: string };
-
-export const NO_SYSTEMCTL = "systemctl isn't installed";
 export const unsupported = (reason: string, line: string): string =>
-  `This machine can't run delivery on a schedule: it needs systemd's user timers, and ${reason}.\n` +
-  `Add this line to your own scheduler (crontab -e) instead. Unlike the timer, cron skips a run missed while the machine is off:\n${line}`;
-export const scheduledOn = (description: string): string =>
-  `Scheduling is on: ${description}. A run missed while this machine is off happens as soon as it is back.`;
-export const journalHint = (name: string): string => `Each scheduled run's output: journalctl --user -u ${name}.service`;
+  `This machine can't run delivery on a schedule: ${reason}.\n` +
+  `Add this line to your own crontab (crontab -e) instead. Cron skips a run missed while the machine is off:\n${line}`;
+export const scheduledOn = (description: string, catchesUp: boolean): string =>
+  `Scheduling is on: ${description}. ` +
+  (catchesUp
+    ? "A run missed while this machine is off happens as soon as it is back."
+    : "A run missed while this machine is off is skipped.");
+export const journalHint = (command: string): string => `Each scheduled run's output: ${command}`;
+export const runSettings = (args: ScheduleArgs): string => {
+  const tokens = settingsArgs(args);
+  if (tokens.length === 0) return "Run settings: none, so the project's own config file and defaults apply.";
+  return `Run settings: ${tokens.map((token) => (BARE_ARG.test(token) ? token : JSON.stringify(token))).join(" ")}.`;
+};
 
 export const scheduledOff = (repoPath: string): string =>
   `Scheduling is off for ${repoPath}. Turn it on with: delivery schedule enable --every <interval>`;
-export const alreadyOff = (repoPath: string): string => `Scheduling is already off for ${repoPath}.`;
-export const turnedOff = (repoPath: string): string =>
-  `Scheduling is off for ${repoPath}. You can still run it by hand at any time: delivery run --sources`;
+export const alreadyOff = (name: string, repoPath: string): string =>
+  `Scheduling is already off for the ${name} schedule in ${repoPath}.`;
+export const turnedOff = (name: string, repoPath: string): string =>
+  `Scheduling is off for the ${name} schedule in ${repoPath}.`;
+export const allAlreadyOff = (repoPath: string): string => `Scheduling is already off for ${repoPath}.`;
+export const NAME_AND_ALL = "Use either `--name` or `--all`, not both: `--name` turns off one schedule, and `--all` turns off every schedule this project has.";
+export const BY_HAND = "You can still run it by hand at any time: delivery run --sources";
 export const lastRun = (when: string): string => `Last run: ${when}`;
 export const nextRun = (when: string): string => `Next run: ${when}`;
-
-/** `systemctl --user <args>`: its output, or why it could not answer. Never throws. */
-export async function systemctl(env: NodeJS.ProcessEnv, args: string[]): Promise<SystemctlResult> {
-  try {
-    const { stdout } = await execFile(systemctlOf(env), ["--user", ...args], { env });
-    return { ok: true, stdout };
-  } catch (err) {
-    const { code, stderr, message } = err as { code?: unknown; stderr?: string; message: string };
-    if (code === "ENOENT") return { ok: false, reason: NO_SYSTEMCTL };
-    return { ok: false, reason: `systemctl --user said: ${(stderr ?? "").trim() || message}` };
-  }
-}
-
-/** A systemctl call that must work once the probe has: a failure here is not the operator's setup. */
-async function must(env: NodeJS.ProcessEnv, args: string[]): Promise<string> {
-  const result = await systemctl(env, args);
-  if (!result.ok) throw new Error(`systemctl --user ${args.join(" ")} failed: ${result.reason}`);
-  return result.stdout;
-}
+export const scheduleHeading = ({ name, every, enabled }: InstalledSchedule): string =>
+  `Scheduling is ${enabled ? "on" : "off"} for the ${name} schedule, every ${every}.`;
+export const noSuchSchedule = (name: string, repoPath: string): string =>
+  `There is no schedule called ${name} for ${repoPath}. Turn it on with: delivery schedule enable --name ${name} --every <interval>`;
+export const heldElsewhere = (name: string, repoPath: string, heldBy: string): string =>
+  `Can't turn on the ${name} schedule for ${repoPath}: the scheduler already keeps a schedule in its place for ${heldBy === "" ? "another project" : `another project, ${heldBy}`}. Nothing was changed. Give this schedule a different name with --name.`;
 
 /** This build's own entry point: `dist/cli/main.js` beside this file once built. */
 const MAIN = fileURLToPath(new URL("./main.js", import.meta.url));
 
-/** The project's repository, its units' name, and the path its timer would be installed at. */
-async function scheduled(options: ScheduleOptions, ctx: CommandContext) {
-  const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
-  const name = unitName(repoPath);
-  const dir = unitDir(ctx.env);
-  return { repoPath, name, dir, timerPath: join(dir, `${name}.timer`) };
-}
+/** The repository the command is about: `--repo`, or the one around the working directory. */
+const repositoryOf = (options: ScheduleOptions, ctx: CommandContext): Promise<string> =>
+  findRepository(resolve(ctx.cwd, options.repo ?? "."));
 
 /** `delivery schedule enable`: install and start this project's timer, or refuse with the cron line to use instead. */
 export async function scheduleEnableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
+  const name = parseName(options.name);
   const every = parseInterval(options.every ?? DEFAULT_INTERVAL);
-  const { repoPath, name, dir } = await scheduled(options, ctx);
-  const target: ScheduleTarget = { repoPath, node: process.execPath, main: MAIN, path: ctx.env.PATH ?? "", every };
-  const probe = await systemctl(ctx.env, ["show-environment"]);
-  if (!probe.ok) throw new Refusal(unsupported(probe.reason, cronLine(target)), EXIT.configuration);
+  const args = parseScheduleArgs(options, resolve(ctx.cwd, options.repo ?? "."));
+  const repoPath = await repositoryOf(options, ctx);
+  const schedule: Schedule = {
+    repoPath,
+    name,
+    every,
+    launcher: { node: process.execPath, main: MAIN, path: ctx.env.PATH ?? "" },
+    args,
+  };
+  const backend = selectBackend(platformOf(ctx.env));
+  const probe = await backend.probe(ctx.env);
+  if (!probe.ok) throw new Refusal(unsupported(probe.reason, cronLine(schedule)), EXIT.configuration);
 
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${name}.service`), serviceUnit(target));
-  await writeFile(join(dir, `${name}.timer`), timerUnit(target));
-  await must(ctx.env, ["daemon-reload"]);
-  await must(ctx.env, ["enable", `${name}.timer`]);
-  await must(ctx.env, ["restart", `${name}.timer`]); // so a changed interval takes effect on a timer already running
-  ctx.writeLine(scheduledOn(`delivery run --sources every ${every.text} in ${repoPath}`));
-  ctx.writeLine(journalHint(name));
+  const outcome = await backend.install(schedule, ctx.env);
+  if (!outcome.installed) throw new Refusal(heldElsewhere(name, repoPath, outcome.heldBy), EXIT.configuration);
+  ctx.writeLine(scheduledOn(describeSchedule(schedule), probe.catchesUp));
+  ctx.writeLine(runSettings(schedule.args));
+  ctx.writeLine(journalHint(backend.logCommand(repoPath, name)));
   return EXIT.ok;
 }
 
-/** `delivery schedule status`: whether this project runs on its own, and when it last and next ran, as systemd says. */
+/**
+ * `delivery schedule status`: each schedule this project has, with its interval, whether it is on, and when it last and
+ * next ran, as systemd says; or only the one `--name` names.
+ */
 export async function scheduleStatusCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
-  const { repoPath, name, timerPath } = await scheduled(options, ctx);
-  if (!existsSync(timerPath)) {
+  const repoPath = await repositoryOf(options, ctx);
+  const wanted = options.name === undefined ? undefined : parseName(options.name);
+  const installed = await selectBackend(platformOf(ctx.env)).list(repoPath, ctx.env);
+  const shown = wanted === undefined ? installed : installed.filter((schedule) => schedule.name === wanted);
+  if (wanted !== undefined && shown.length === 0) {
+    ctx.writeLine(noSuchSchedule(wanted, repoPath));
+    return EXIT.ok;
+  }
+  if (shown.length === 0) {
     ctx.writeLine(scheduledOff(repoPath));
     return EXIT.ok;
   }
-  const show = parseShow(
-    await must(ctx.env, ["show", `${name}.timer`, "-p", "UnitFileState", "-p", "Description", "-p", "LastTriggerUSec", "-p", "NextElapseUSecRealtime"]),
-  );
-  if (show.UnitFileState !== "enabled") {
-    ctx.writeLine(scheduledOff(repoPath));
-    return EXIT.ok;
-  }
-  ctx.writeLine(scheduledOn(show.Description ?? ""));
-  ctx.writeLine(lastRun(show.LastTriggerUSec || "not yet"));
-  ctx.writeLine(nextRun(show.NextElapseUSecRealtime || "none"));
-  ctx.writeLine(journalHint(name));
+  shown.forEach((schedule, index) => {
+    if (index > 0) ctx.writeLine("");
+    ctx.writeLine(scheduleHeading(schedule));
+    ctx.writeLine(runSettings(schedule.args));
+    ctx.writeLine(lastRun(schedule.lastRun || "not yet"));
+    ctx.writeLine(nextRun(schedule.nextRun || "none"));
+    ctx.writeLine(journalHint(schedule.logCommand));
+  });
   return EXIT.ok;
 }
 
-/** `delivery schedule disable`: stop and remove this project's timer. A run already going finishes; running by hand is untouched. */
+/**
+ * `delivery schedule disable`: stop and remove this project's default timer, or only the one `--name` names, or every one
+ * with `--all`. A run already going finishes; running by hand is untouched.
+ */
 export async function scheduleDisableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
-  const { repoPath, name, dir, timerPath } = await scheduled(options, ctx);
-  if (!existsSync(timerPath)) {
-    ctx.writeLine(alreadyOff(repoPath));
+  if (options.all && options.name !== undefined) throw new Refusal(NAME_AND_ALL, EXIT.configuration);
+  if (options.all) return disableAllSchedules(options, ctx);
+  const name = parseName(options.name);
+  const repoPath = await repositoryOf(options, ctx);
+  const removed = await selectBackend(platformOf(ctx.env)).remove(repoPath, name, ctx.env);
+  if (removed) {
+    ctx.writeLine(turnedOff(name, repoPath));
+    ctx.writeLine(BY_HAND);
+  } else {
+    ctx.writeLine(alreadyOff(name, repoPath));
+  }
+  return EXIT.ok;
+}
+
+/** `delivery schedule disable --all`: remove every schedule this project has, default first, then by name. */
+async function disableAllSchedules(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
+  const repoPath = await repositoryOf(options, ctx);
+  const backend = selectBackend(platformOf(ctx.env));
+  const installed = await backend.list(repoPath, ctx.env);
+  if (installed.length === 0) {
+    ctx.writeLine(allAlreadyOff(repoPath));
     return EXIT.ok;
   }
-  await must(ctx.env, ["disable", "--now", `${name}.timer`]);
-  await rm(timerPath);
-  await rm(join(dir, `${name}.service`), { force: true });
-  await must(ctx.env, ["daemon-reload"]);
-  ctx.writeLine(turnedOff(repoPath));
+  for (const schedule of installed) {
+    await backend.remove(repoPath, schedule.name, ctx.env);
+    ctx.writeLine(turnedOff(schedule.name, repoPath));
+  }
+  ctx.writeLine(BY_HAND);
   return EXIT.ok;
 }

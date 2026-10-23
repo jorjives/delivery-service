@@ -102,7 +102,7 @@ export async function watchCommand(
         for (const line of ctx.json ? emptyStream(snapshot) : [NO_RUNS_YET, "", "Next: delivery run"]) ctx.writeLine(line);
         return EXIT.ok;
       }
-      // A run of several tasks takes the lock before it records anything: held with nothing recorded, it is starting,
+      // A run takes the lock before it records anything: held with nothing recorded, it is starting,
       // so there is nothing to say yet and the next look that finds something written opens the watch.
       if (!nothingYet) {
         const recent = state === undefined && runId === undefined && list.length === 0 ? mostRecentSubject(snapshot) : undefined;

@@ -47,10 +47,11 @@ as slots free up. The run keeps the number of tasks at once that it started with
 setting says now. Ctrl-C stops a run of several tasks at once straight away with exit code 5, and
 says how to pick it up.
 
-While such a run is going, a second `delivery run` or `delivery resume` in the same repository is
-refused straight away with exit code 2. The refusal names the running run and suggests
-`delivery status` to see how it is getting on. If the command is killed or the machine goes down,
-the next `delivery run` takes over by itself; there is nothing to unlock by hand.
+While a run is going in a repository, any other `delivery run`, `delivery resume`, `delivery sign-off`
+or `delivery review` there is refused straight away with exit code 2, whether that run works one task
+at a time or several at once. The refusal names the running run when it is one of several at once,
+and suggests `delivery status` to see how it is getting on. If the command is killed or the machine
+goes down, the next `delivery run` takes over by itself; there is nothing to unlock by hand.
 
 ## Change the task of an unfinished run
 

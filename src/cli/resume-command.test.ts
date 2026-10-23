@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initTempRepo } from "../temp-repo.js";
+import { repoLocked } from "../repo-lock.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import {
   branchIn,
@@ -10,6 +11,7 @@ import {
   delivery,
   interruptedRun,
   PACKAGE,
+  RUN_TIMEOUT,
   scriptFile,
   TASK,
   writesHello,
@@ -36,6 +38,22 @@ describe("delivery resume", () => {
       expect(branchIn(stdout)).toBe(`surface/${runId}`);
       expect(exitCode).toBe(EXIT.ok);
     },
+  );
+
+  it(
+    "holds the repository's lock while it carries the run on, and lets it go at the end",
+    async () => {
+      const repo = initTempRepo("resume-lock-", { "package.json": PACKAGE });
+      const state = mkdtempSync(join(tmpdir(), "resume-lock-state-"));
+      await interruptedRun(repo, state, { task: TASK, steps: 3, worker: writesHello });
+
+      const resuming = delivery(["resume"], { cwd: repo, env: { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile({ ...completes, delayMs: 1000 }) } });
+      await vi.waitFor(async () => expect(await repoLocked(repo)).toBe(true), { timeout: 30_000, interval: 50 });
+
+      expect((await resuming).exitCode).toBe(EXIT.ok);
+      expect(await repoLocked(repo)).toBe(false);
+    },
+    RUN_TIMEOUT * 2,
   );
 
   it(

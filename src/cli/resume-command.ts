@@ -3,7 +3,7 @@ import type { CommandContext } from "./context.js";
 import { resumeRun } from "./drive.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
-import { refuseIfRunGoing } from "./queue.js";
+import { holdingRepo } from "./run-exclusion.js";
 import type { RunRecord } from "../run-records.js";
 import { alreadyFinished, chooseRun, readRun, unfinishedRuns } from "./runs.js";
 import { closingReport, projectNotify } from "./report-command.js";
@@ -33,14 +33,14 @@ export async function resumeCommand(runId: string | undefined, options: ResumeOp
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
 
-  // The run to pick up may be one a live run of several at once is driving right now.
-  await refuseIfRunGoing(repoPath);
-
-  const record = runId === undefined ? await discover(repoPath, options, ctx) : await readRun(repoPath, runId);
-  if (record.caseFile.outcome) throw new Refusal(alreadyFinished(record.runId), EXIT.configuration);
-  // Read before the agent runs: what the session leaves behind is not to be trusted to name a command.
-  const notify = await projectNotify(startDir, repoPath, ctx);
-  const exitCode = await resumeRun(record, ctx);
-  await closingReport(repoPath, { kind: "task", runId: record.runId }, await listTasks(startDir, repoPath, ctx), ctx, notify);
-  return exitCode;
+  // The run to pick up may be one another run is driving right now, so this holds the repository while it carries the run on.
+  return holdingRepo(repoPath, {}, ctx, async () => {
+    const record = runId === undefined ? await discover(repoPath, options, ctx) : await readRun(repoPath, runId);
+    if (record.caseFile.outcome) throw new Refusal(alreadyFinished(record.runId), EXIT.configuration);
+    // Read before the agent runs: what the session leaves behind is not to be trusted to name a command.
+    const notify = await projectNotify(startDir, repoPath, ctx);
+    const exitCode = await resumeRun(record, ctx);
+    await closingReport(repoPath, { kind: "task", runId: record.runId }, await listTasks(startDir, repoPath, ctx), ctx, notify);
+    return exitCode;
+  });
 }

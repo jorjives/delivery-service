@@ -107,8 +107,13 @@ export function namedSubject(repoPath: string, runId: string): ReportSubject {
  * Read the report on `named`, or with none on the project's task list, falling back to the most recent run where the
  * project has no list. The one reading behind what `delivery report` prints, as text or as data, and what is saved.
  */
-export async function readReport(repoPath: string, named: ReportSubject | undefined, list: TaskDef[], { env }: { env: NodeJS.ProcessEnv }): Promise<Report> {
-  const snapshot = await loadSnapshot(repoPath, named ?? { kind: "list" }, { live: await repoLocked(repoPath), list });
+export async function readReport(
+  repoPath: string,
+  named: ReportSubject | undefined,
+  list: TaskDef[],
+  { env, live }: { env: NodeJS.ProcessEnv; live?: boolean },
+): Promise<Report> {
+  const snapshot = await loadSnapshot(repoPath, named ?? { kind: "list" }, { live: live ?? (await repoLocked(repoPath)), list });
   const recent = named === undefined && list.length === 0 ? mostRecentSubject(snapshot) : undefined;
   const doc = { ...deriveReport(recent ? { ...snapshot, subject: recent } : snapshot), ...(await ledgerParts(repoPath, env)) };
   return {
@@ -177,7 +182,8 @@ export async function reportCommand(runId: string | undefined, options: ReportOp
 export async function closingReport(repoPath: string, subject: ReportSubject, list: TaskDef[], ctx: CommandContext, notify?: string): Promise<void> {
   let report: Report;
   try {
-    report = await readReport(repoPath, subject, list, { env: ctx.env });
+    // The run reporting on itself has ended, whoever holds the lock.
+    report = await readReport(repoPath, subject, list, { env: ctx.env, live: false });
   } catch (err) {
     ctx.report.note(notSaved(err));
     return;

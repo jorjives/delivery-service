@@ -28,7 +28,7 @@ Full message: `This isn't a git repository yet. The harness needs one to track c
 
 ### Use either `--task` or `--task-file`, not both
 
-**Why.** You gave the task twice, and the harness will not guess which you meant. The same applies to `--sources` with a task: "Use either `--sources` or a task (`--task`, `--task-file`, `--workflow`), not both".
+**Why.** You gave the task twice, and the harness will not guess which you meant. The same applies to `--sources` with a task: "Use either `--sources` or a task (`--task`, `--task-file`), not both: I can't tell which you mean."
 
 **Fix.** Keep one of them.
 
@@ -42,11 +42,11 @@ Full message: `There's a run that didn't finish (started `<time>`, task: `<task>
 
 ### Another run is already going here
 
-Full message: `Another run is already going here (started `<time>`, <shape>: `<run-id>`). Run `delivery status` to see how it is getting on, or wait for it to finish before starting another.`
+Full message: `Another run is already going here (started `<time>`, <shape>: `<run-id>`). Run `delivery status` to see how it is getting on, or wait for it to finish before starting another.` The bracketed `(started ..., <shape>: <run-id>)` part appears only when the run going is one of several tasks at once.
 
-**Why.** A run of a task list or a work source is still under way in this repository, and only one may drive it at a time.
+**Why.** Another `delivery run`, `resume`, `sign-off` or `review` is under way in this repository, one at a time or several at once, and only one may drive it.
 
-**Fix.** Run `delivery status` to watch it. Start the next command when it has finished.
+**Fix.** Run `delivery status` to watch it. Start the next command when it has finished. A run started by a timer, cron or CI can pass `--if-idle` to `delivery run` instead, which skips quietly while another run is going.
 
 ### `--max` says how many items `--sources` takes
 
@@ -230,11 +230,27 @@ Full message: `I couldn't find that run's record (<path>). Start a new run with 
 
 **Fix.** Use `5m`, `15m`, `30m`, `1h`, `6h`, `12h` or `1d`. See [Run on a schedule](run-on-a-schedule.md).
 
+### "`<name>`" isn't a name I can give a schedule
+
+Full message: `"<name>" isn't a name I can give a schedule. Use 1 to 32 lowercase letters, digits or hyphens, such as nightly, or leave --name out for the default schedule.`
+
+**Why.** `--name` takes 1 to 32 lowercase letters, digits or hyphens. `default` is the name of the schedule you get without `--name`, so it can't name another.
+
+**Fix.** Pick a name such as `nightly` or `hourly`, or leave `--name` out. See [Run on a schedule](run-on-a-schedule.md).
+
+### `--workflow` (or `--config`) is empty
+
+Full message: `` `--workflow` is empty. Give it a value, or leave it out to use the project's own setting. `` (the same for `--config`).
+
+**Why.** `delivery schedule enable` was given `--workflow` or `--config` with nothing after it. An empty setting would not name a workflow or a config file, so the schedule is not changed.
+
+**Fix.** Give the setting a value, or leave the flag out. See [Give a schedule its own settings](run-on-a-schedule.md#give-a-schedule-its-own-settings).
+
 ### This machine can't run delivery on a schedule
 
-**Why.** `delivery schedule enable` uses systemd's user timers, and this machine has none; the reason follows.
+**Why.** `delivery schedule enable` installs a timer, and this machine cannot run one. Either the platform has no scheduler backend yet (the message says `<platform> has no scheduler backend yet`), or it is Linux and systemd's user timers are not available; the reason follows.
 
-**Fix.** Add the `cron` line the message prints to your own crontab with `crontab -e`.
+**Fix.** Add the `cron` line the message prints to your own crontab with `crontab -e`, once per schedule. See [Use cron where there is no scheduler](run-on-a-schedule.md#use-cron-where-there-is-no-scheduler).
 
 ### `delivery init` asks you a few questions, so it needs a terminal
 

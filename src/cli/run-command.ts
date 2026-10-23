@@ -5,7 +5,8 @@ import { agentSession } from "./agent-session.js";
 import { loadConfig, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
-import { queueTasks, refuseIfRunGoing, runQueue } from "./queue.js";
+import { queueTasks, runQueue } from "./queue.js";
+import { holdingRepo } from "./run-exclusion.js";
 import { chooseRun, unfinishedRuns, unfinishedRunFound } from "./runs.js";
 import {
   checkCustomModules,
@@ -42,12 +43,15 @@ export async function runCommand(options: RunOptions, ctx: CommandContext): Prom
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
 
-  // Whatever this run would be, it would drive git in the checkout a live run of several at once is using.
-  await refuseIfRunGoing(repoPath);
+  // Whatever this run would be, it would drive git in the checkout another run is using, so it holds the repository while it runs.
+  return holdingRepo(repoPath, { ifIdle: options.ifIdle === true }, ctx, () => runIn(options, { startDir, repoPath }, ctx));
+}
 
+/** The body of `delivery run`, once the repository is found and held. */
+async function runIn(options: RunOptions, { startDir, repoPath }: { startDir: string; repoPath: string }, ctx: CommandContext): Promise<ExitCode> {
   if (options.max !== undefined && !options.sources) throw new Refusal(MAX_NEEDS_SOURCES, EXIT.configuration, "max");
   if (options.sources) {
-    if (options.task !== undefined || options.taskFile !== undefined || options.workflow !== undefined) {
+    if (options.task !== undefined || options.taskFile !== undefined) {
       throw new Refusal(SOURCES_AND_TASK, EXIT.configuration);
     }
     const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });

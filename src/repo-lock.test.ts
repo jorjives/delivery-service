@@ -31,7 +31,7 @@ describe("the lock a run of several tasks at once holds on its repository", () =
     const path = repo("repo-lock-stale-");
     // What a run killed outright leaves behind: the lock, no longer touched by anyone.
     mkdirSync(join(path, ".delivery"), { recursive: true });
-    mkdirSync(supervisorLockPath(path));
+    mkdirSync(supervisorLockPath(path), { recursive: true });
     const aMinuteAgo = new Date(Date.now() - 60_000);
     utimesSync(supervisorLockPath(path), aMinuteAgo, aMinuteAgo);
 

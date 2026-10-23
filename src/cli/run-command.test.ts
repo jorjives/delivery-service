@@ -19,7 +19,8 @@ import { allRuns, readRun } from "./runs.js";
 import { BOTH_TASKS, unknownWorkflow, WORKFLOW_NEEDS_TASK } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
 import { FENCE_ABSENT } from "./drive.js";
-import { EVERY_TASK_DONE, liveRunFound, taskEnded, runPickedUp, STOPPED_PART_WAY } from "./queue.js";
+import { EVERY_TASK_DONE, taskEnded, runPickedUp, STOPPED_PART_WAY } from "./queue.js";
+import { liveRunFound, SKIPPED_IDLE } from "./run-exclusion.js";
 import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import { supervisedPlace, supervisorLockPath } from "../run-location.js";
 import type { RunEventRecord, SurfaceStepRecord } from "./report.js";
@@ -1182,6 +1183,56 @@ describe("delivery run with several tasks at once", () => {
     }
   });
 
+  it.each([
+    ["a list worked one at a time", ["run"], { tasks: [PAGE, SWAP] }],
+    ["a single task", ["run", "--task", TASK], {}],
+  ])("refuses a second run while %s is going here, and the first carries on", async (_, args, config) => {
+    const repo = listRepo("run-command-one-live-", config);
+    const first = delivery(args, { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile({ ...completes, delayMs: 1000 }) } });
+    await vi.waitFor(async () => expect(await repoLocked(repo)).toBe(true), { timeout: 30_000, interval: 50 });
+
+    const second = await delivery(["run"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+
+    expect(second.exitCode).toBe(EXIT.configuration);
+    expect(second.stderr.trimEnd()).toBe(liveRunFound(undefined));
+    expect(second.stdout).toBe("");
+    expect((await first).exitCode).toBe(EXIT.ok);
+    expect(await repoLocked(repo)).toBe(false);
+  }, RUN_TIMEOUT * 2);
+
+  it("with --if-idle, skips quietly in one line while another run is going, running no notify and writing no report", async () => {
+    const repo = listRepo("run-command-if-idle-busy-", { tasks: [PAGE], notify: "touch notified" });
+    const release = await takeRepoLock(repo);
+    try {
+      const { exitCode, stdout, stderr } = await delivery(["run", "--if-idle"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toBe(`${SKIPPED_IDLE}\n`);
+      expect(stderr).toBe("");
+      expect(existsSync(runsRoot(repo))).toBe(false);
+      expect(existsSync(join(repo, "notified"))).toBe(false);
+      expect(existsSync(join(repo, SAVED_TEXT))).toBe(false);
+      expect(existsSync(join(repo, SAVED_DATA))).toBe(false);
+    } finally {
+      await release?.();
+    }
+  });
+
+  it("with --if-idle and no run going, runs exactly as without it", async () => {
+    const repo = listRepo("run-command-if-idle-free-", { tasks: [PAGE] });
+    const { exitCode, stdout } = await delivery(["run", "--if-idle"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).not.toContain(SKIPPED_IDLE);
+    expect(stdout).toContain(EVERY_TASK_DONE);
+    expect(await repoLocked(repo)).toBe(false);
+  }, RUN_TIMEOUT);
+
+  it("lets the lock go when it refuses for another reason after taking it", async () => {
+    const repo = listRepo("run-command-lock-refused-", { tasks: [PAGE] });
+    const { exitCode } = await delivery(["run", "--max", "2"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(await repoLocked(repo)).toBe(false);
+  });
+
   it(
     "holds the repository's lock for as long as it runs, and lets it go at the end",
     async () => {
@@ -1201,7 +1252,7 @@ describe("delivery run with several tasks at once", () => {
       const repo = listRepo("run-command-lock-stale-", { tasks: [PAGE], concurrency: 2 });
       await writeSupervisedRun(repo, { runId: RUN, repoPath: repo, concurrency: 2, tasks: 1, runBudgetMax: { gateMaintenance: 2 } });
       // A run killed outright leaves its lock behind, no longer kept fresh by anyone.
-      mkdirSync(supervisorLockPath(repo));
+      mkdirSync(supervisorLockPath(repo), { recursive: true });
       const aMinuteAgo = new Date(Date.now() - 60_000);
       utimesSync(supervisorLockPath(repo), aMinuteAgo, aMinuteAgo);
 

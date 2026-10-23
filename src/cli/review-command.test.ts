@@ -1,14 +1,16 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { git } from "../../tests/helpers.js";
 import { createGhStandIn } from "../gh-stand-in.js";
 import type { MockScript } from "../mock-script.js";
+import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { delivery, PACKAGE, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
+import { liveRunFound } from "./run-exclusion.js";
 import { reviewed } from "./review-command.js";
 
 const IDEA_FILE = ".delivery/backlog/20261019T120000Z-total-below-zero.md";
@@ -56,6 +58,31 @@ describe("delivery review", () => {
     expect(issue).toMatchObject({ title: "The total can go below zero", labels: [] });
     expect(issue?.body).toContain("workflow: code:fix");
   }, RUN_TIMEOUT);
+
+  it("refuses to start while another run is going here, before the scan agent is asked", async () => {
+    const repo = project();
+    const release = await takeRepoLock(repo);
+    try {
+      const { exitCode, stderr } = await delivery(["review", "code"], { cwd: repo, env: await env(scan({ write: { path: IDEA_FILE, content: idea("return price - discount;") } })) });
+      expect(exitCode).toBe(EXIT.configuration);
+      expect(stderr.trimEnd()).toBe(liveRunFound(undefined));
+    } finally {
+      await release?.();
+    }
+  });
+
+  it(
+    "holds the repository's lock while its scan agent works, and lets it go at the end",
+    async () => {
+      const repo = project();
+      const running = delivery(["review", "code"], { cwd: repo, env: await env({ ...scan({ write: { path: IDEA_FILE, content: idea("return price - discount;") } }), delayMs: 1000 }) });
+      await vi.waitFor(async () => expect(await repoLocked(repo)).toBe(true), { timeout: 30_000, interval: 50 });
+
+      expect((await running).exitCode).toBe(EXIT.ok);
+      expect(await repoLocked(repo)).toBe(false);
+    },
+    RUN_TIMEOUT * 2,
+  );
 
   it("shows what the scan agent would be told with --preview, with no config file", async () => {
     const { exitCode, stdout } = await delivery(["review", "security", "--preview"], { cwd: project() });
