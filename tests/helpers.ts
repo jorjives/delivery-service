@@ -115,6 +115,25 @@ export async function caseDir(surfaceId: string, taskDef: TaskDef): Promise<stri
   return dir;
 }
 
+/** The names and long options a `--help` text lists, read from its own sections. */
+const helpCache = new Map<string, { commands: string[]; options: string[] }>();
+export function helpOf(args: string[]): { commands: string[]; options: string[] } {
+  const cached = helpCache.get(args.join(" "));
+  if (cached) return cached;
+  const text = runDelivery([...args, "--help"]).stdout;
+  const section = (heading: string): string[] => {
+    const start = text.indexOf(`\n${heading}:\n`);
+    if (start === -1) return [];
+    const rest = text.slice(start + heading.length + 3).split(/\n(?=\S)/)[0] ?? "";
+    return rest.split("\n");
+  };
+  const commands = section("Commands").flatMap((line) => /^ {2}([a-z][a-z-]*)/.exec(line)?.[1] ?? []).filter((name) => name !== "help");
+  const options = section("Options").flatMap((line) => /^ {2}(?:-\w, )?(--[a-z-]+)/.exec(line)?.[1] ?? []).filter((flag) => flag !== "--help");
+  const result = { commands, options };
+  helpCache.set(args.join(" "), result);
+  return result;
+}
+
 /** The compiled `delivery` command, as `npm run build` leaves it. */
 export const DELIVERY_BIN = join(REPO_ROOT, "dist", "cli", "main.js");
 
