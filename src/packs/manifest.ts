@@ -181,13 +181,15 @@ function packWorkflows(manifest: PackManifest, texts: ReadonlyMap<string, string
           return { workflow: `${manifest.name}:${act}`, summary: target?.kind === "act" ? target.summary : undefined };
         }),
       );
-      instructions[name] = { authored, harness: ideaFormat(targets) };
+      const told = { authored, harness: ideaFormat(targets) };
+      instructions[name] = told;
       // A scan lands nothing but ideas, so the project's own after steps (a deploy) are not run for it.
-      workflows[name] = { steps: [{ name: local, prompt: promptOf(instructions[name]), guards: { add: ["backlog-only"] } }], after: [] };
+      workflows[name] = { steps: [{ name: local, prompt: promptOf(told), guards: { add: ["backlog-only"] } }], after: [] };
     } else {
-      instructions[name] = { authored, harness: null };
+      const told = { authored, harness: null };
+      instructions[name] = told;
       workflows[name] = {
-        steps: [{ name: local, prompt: promptOf(instructions[name]), ...(workflow.guards === undefined ? {} : { guards: { add: workflow.guards.add } }) }],
+        steps: [{ name: local, prompt: promptOf(told), ...(workflow.guards === undefined ? {} : { guards: { add: workflow.guards.add } }) }],
         ...(workflow.hold === undefined ? {} : { hold: workflow.hold.atOrAbove }),
       };
     }

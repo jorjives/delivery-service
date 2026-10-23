@@ -96,7 +96,7 @@ function workflowLimits(workflow: Inspection["workflows"][number]): string[] {
     ...added.map((guard) => `Also refused if it ${GUARD_REFUSES[guard]}.`),
     ...off.map((guard) => `Not refused if it ${GUARD_REFUSES[guard]}.`),
   ];
-  const sentences = [...(guardLines.length === 0 ? ["No extra guards."] : guardLines)];
+  const sentences = guardLines.length === 0 ? ["No extra guards."] : guardLines;
   if (workflow.kind === "find") {
     sentences.push("Its ideas wait for you to approve them before any act workflow runs.");
   } else if (workflow.hold === null) {
