@@ -130,6 +130,7 @@ Slices are ordered so each leaves the existing review packs working unchanged (s
 
 ## Slice 4: Move off deprecated code with the built-in `deprecations` pack
 
+**Status:** ✅ Complete — 2026-10-23 — `f1e7214`
 **Tests:** ✅ Recorded — 2026-10-23 — `46bc0e0` — cli (vitest) — 1 UAT (covers AC 1-3, 5) + 4 AC groups, 2 skipped (proved elsewhere)
 **Delivers:** Dana can run a built-in pack that is not a review: `deprecations` finds places that still use code her team has marked as replaced and moves each to the replacement, with risky moves held for sign-off and a test-editing cheat refused.
 
