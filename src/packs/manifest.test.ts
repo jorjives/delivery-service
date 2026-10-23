@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { UnknownPack } from "../errors.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, readPack, isBuiltInPack, loadPack, resolvePack } from "./manifest.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, promptOf, readPack, isBuiltInPack, loadPack, resolvePack } from "./manifest.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
 
@@ -77,6 +77,18 @@ describe("the built-in packs", () => {
     expect(isBuiltInPack(join(BUILT_IN_PACKS, "code-review"))).toBe(true);
     expect(isBuiltInPack(join(BUILT_IN_PACKS, "..", "packs-mine", "code-review"))).toBe(false);
     expect(isBuiltInPack(BUILT_IN_PACKS)).toBe(false);
+  });
+
+  it("keeps each workflow's instructions as the author's words and the harness's, and pins exactly their join", async () => {
+    for (const pack of await builtInPacks()) {
+      for (const [name, workflow] of Object.entries(pack.workflows)) {
+        expect(workflow.steps[0]?.prompt).toBe(promptOf(pack.instructions[name]!));
+      }
+    }
+    const deprecations = (await builtInPacks()).find((p) => p.manifest.name === "deprecations")!;
+    expect(deprecations.instructions["deprecations:scan"]?.authored).toBe(readFileSync(join(deprecations.dir, "scan.md"), "utf-8").trim());
+    expect(deprecations.instructions["deprecations:scan"]?.harness).toMatch(/^## What to hand back\n/);
+    expect(deprecations.instructions["deprecations:tests"]).toEqual({ authored: readFileSync(join(deprecations.dir, "tests.md"), "utf-8").trim(), harness: null });
   });
 });
 
@@ -201,6 +213,13 @@ describe("a delivery.pack/3 manifest", () => {
     const before = (await loadPack(dir)).hash;
     writeFileSync(join(dir, "tests.md"), "# Different\n");
     expect((await loadPack(dir)).hash).not.toBe(before);
+  });
+
+  it("keeps the author's words as the agent is given them: without the blank lines around them", async () => {
+    const dir = v3Dir(v3, { "scan.md": "\n\n# Scan\n\n", "code.md": "# Code\n", "tests.md": "  \n# Tests\n" });
+    const result = await readPack(dir);
+    expect(result.ok && result.pack.instructions["mine:tests"]?.authored).toBe("# Tests");
+    expect(result.ok && result.pack.instructions["mine:scan"]?.authored).toBe("# Scan");
   });
 });
 

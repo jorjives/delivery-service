@@ -71,7 +71,21 @@ export function ideaFormat(targets: readonly [IdeaTarget, ...IdeaTarget[]]): str
   ].join("\n");
 }
 
-/** A loaded pack: where it is, the format it is written in, what it says, a hash of everything it holds, the find it runs, and its workflows. */
+/**
+ * What a workflow's agent is told: the author's own words, trimmed, and the harness's part after them. A find's harness
+ * part is the format of the ideas it hands back; an act has none.
+ */
+export interface Instructions {
+  authored: string;
+  harness: string | null;
+}
+
+/** The prompt a workflow's agent is given: the author's words alone, or those words and the harness's part after them. */
+export function promptOf(instructions: Instructions): string {
+  return instructions.harness === null ? instructions.authored : `${instructions.authored}\n\n${instructions.harness}`;
+}
+
+/** A loaded pack: where it is, the format it is written in, what it says, a hash of everything it holds, the find it runs, its workflows, and each workflow's instructions. */
 export interface Pack {
   dir: string;
   schema: PackSchemaVersion;
@@ -79,6 +93,7 @@ export interface Pack {
   hash: string;
   find: string;
   workflows: Record<string, WorkflowConfig>;
+  instructions: Readonly<Record<string, Instructions>>;
 }
 
 /** One thing wrong with a pack, as an author fixes it: the file (absolute), the field in it, and one plain sentence starting with that field. */
@@ -147,15 +162,16 @@ function nonEmpty<T>(items: T[]): [T, ...T[]] {
 }
 
 /**
- * The workflows a pack runs, each named `<pack>:<local>`, in manifest order, and the find among them. A
- * find is the workflow that scans for ideas; an act is the workflow that fixes one.
+ * The workflows a pack runs, each named `<pack>:<local>`, in manifest order, the find among them, and each workflow's
+ * instructions. A find is the workflow that scans for ideas; an act is the workflow that fixes one.
  */
-function packWorkflows(manifest: PackManifest, texts: ReadonlyMap<string, string>): { find: string; workflows: Record<string, WorkflowConfig> } {
+function packWorkflows(manifest: PackManifest, texts: ReadonlyMap<string, string>): { find: string; workflows: Record<string, WorkflowConfig>; instructions: Record<string, Instructions> } {
   const workflows: Record<string, WorkflowConfig> = {};
+  const instructions: Record<string, Instructions> = {};
   let find = "";
   for (const [local, workflow] of Object.entries(manifest.workflows)) {
     const name = `${manifest.name}:${local}`;
-    const text = promptText(texts, workflow.prompt);
+    const authored = promptText(texts, workflow.prompt).trim();
     if (workflow.kind === "find") {
       // The rules refuse any pack without exactly one find, so the first find named is the only one.
       if (find === "") find = name;
@@ -165,16 +181,18 @@ function packWorkflows(manifest: PackManifest, texts: ReadonlyMap<string, string
           return { workflow: `${manifest.name}:${act}`, summary: target?.kind === "act" ? target.summary : undefined };
         }),
       );
+      instructions[name] = { authored, harness: ideaFormat(targets) };
       // A scan lands nothing but ideas, so the project's own after steps (a deploy) are not run for it.
-      workflows[name] = { steps: [{ name: local, prompt: `${text.trim()}\n\n${ideaFormat(targets)}`, guards: { add: ["backlog-only"] } }], after: [] };
+      workflows[name] = { steps: [{ name: local, prompt: promptOf(instructions[name]), guards: { add: ["backlog-only"] } }], after: [] };
     } else {
+      instructions[name] = { authored, harness: null };
       workflows[name] = {
-        steps: [{ name: local, prompt: text.trim(), ...(workflow.guards === undefined ? {} : { guards: { add: workflow.guards.add } }) }],
+        steps: [{ name: local, prompt: promptOf(instructions[name]), ...(workflow.guards === undefined ? {} : { guards: { add: workflow.guards.add } }) }],
         ...(workflow.hold === undefined ? {} : { hold: workflow.hold.atOrAbove }),
       };
     }
   }
-  return { find, workflows };
+  return { find, workflows, instructions };
 }
 
 /** The hash that names a pack's content: its raw manifest, then the text of each prompt, in the order given. */
@@ -229,12 +247,12 @@ export async function readPack(dir: string): Promise<{ ok: true; pack: Pack } | 
   }
   if (problems.length > 0) return { ok: false, schema, problems };
 
-  const { find, workflows } = packWorkflows(manifest, texts);
+  const { find, workflows, instructions } = packWorkflows(manifest, texts);
   // A /2 pack hashes its prompts in the order it wrote them, scan then fix; a /3 pack in the sorted order of its workflow names.
   const inHashOrder = Object.entries(manifest.workflows);
   if (schema === PACK_SCHEMA) inHashOrder.sort(([a], [b]) => (a < b ? -1 : 1));
   const hash = packHash(raw, inHashOrder.map(([, workflow]) => promptText(texts, workflow.prompt)));
-  return { ok: true, pack: { dir, schema, manifest, hash, find, workflows } };
+  return { ok: true, pack: { dir, schema, manifest, hash, find, workflows, instructions } };
 }
 
 /** Read and check the pack in `dir`. Refuses, naming the file and the field, the first thing the format does not allow. */
