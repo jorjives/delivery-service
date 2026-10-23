@@ -1,6 +1,7 @@
 import { GUARD_REFUSES } from "../guards.js";
 import type { Inspection } from "../packs/inspection.js";
 import { atOrAbove } from "../item-check.js";
+import { showHidden } from "../packs/hidden-characters.js";
 import { SEVERITIES } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
 
@@ -9,12 +10,18 @@ export const INSPECT_WIDTH = 60;
 /** The line that opens and closes each instruction, so a reader can see where the pack's words begin and end. */
 export const INSPECT_RULE = "-".repeat(INSPECT_WIDTH);
 
-/** Greedy word wrap on single spaces. A word too long for the width sits alone on its line, unbroken. */
+/** Pack-authored words on one line: every hidden character, a line break included, written out as visible text. */
+const oneLine = (text: string): string => showHidden(text, { newline: false, tab: false });
+
+/** Pack-authored instructions: hidden characters written out as visible text, line breaks and tabs left as they are. */
+const instructionText = (text: string): string => showHidden(text, { newline: true, tab: true });
+
+/** Greedy word wrap on single spaces, after pack-authored text is made visible. A word too long for the width sits alone on its line, unbroken. */
 function wrap(text: string, indent: string, hanging: string = indent): string[] {
   const lines: string[] = [];
   let line = indent;
   let started = false;
-  for (const word of text.split(" ")) {
+  for (const word of oneLine(text).split(" ")) {
     if (!started) {
       line += word;
       started = true;
@@ -125,7 +132,9 @@ function checksBlock(): string[] {
 /** Each step's instructions, shown unaltered: the pack's words, then the harness's words when the harness adds any. */
 function instructionBlocks(inspection: Inspection): string[][] {
   return inspection.workflows.flatMap((workflow) =>
-    workflow.steps.map(({ instructions: { authored, harness } }) => {
+    workflow.steps.map(({ instructions }) => {
+      const authored = instructionText(instructions.authored);
+      const harness = instructions.harness;
       const block = [
         ...wrap(`Instructions for ${workflow.local}: the pack's own words, ${plural(authored.split("\n").length, "line")}`, ""),
         INSPECT_RULE,

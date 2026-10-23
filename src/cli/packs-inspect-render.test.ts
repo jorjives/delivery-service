@@ -136,3 +136,33 @@ it("carries no colour, no box drawing and none of the words safe, clean or verif
     expect(ours).not.toMatch(/\b(safe|clean|verified)\b/i);
   }
 });
+
+const ESC = String.fromCharCode(27);
+const [ZWSP, LS, RLO] = [0x200b, 0x2028, 0x202e].map((code) => String.fromCodePoint(code));
+/** Control, escape, zero-width, line-separator and direction characters other than newline and tab. */
+const RAW = new RegExp(`[\\x00-\\x08\\x0b-\\x1f\\x7f-\\x9f${ZWSP}-${String.fromCodePoint(0x200f)}${LS}-${RLO}\\u2060-\\u2069\\ufeff]`);
+
+it("shows control, escape and direction characters in an instruction as visible text, never raw", () => {
+  const authored = `fine\n${ESC}[2Aoverwrite${ZWSP}hidden${RLO}rtl\rback${LS}split\ttab`;
+  const text = renderInspection(model({ authored })).join("\n");
+  expect(text).toContain("\\x1b[2Aoverwrite\\u200bhidden\\u202ertl\\rback\\u2028split\ttab");
+  expect(text).not.toMatch(RAW);
+});
+
+it("takes an instruction's line count from the text as shown", () => {
+  const lines = renderInspection(model({ authored: `one\rtwo${LS}three` }));
+  expect(lines).toContain("Instructions for act: the pack's own words, 1 line");
+});
+
+it("keeps pack metadata and the source path on the lines it writes, with control characters shown", () => {
+  const inspection = model();
+  inspection.pack.title = `Title${ESC}[31m\nforged`;
+  inspection.pack.summary = `Summary\rforged${RLO}`;
+  inspection.pack.source = { kind: "folder", path: `/p/${ESC}]0;x\x07\nforged` };
+  const act = inspection.workflows[1];
+  if (act) act.summary = `Act\nforged${ESC}`;
+  const lines = renderInspection(inspection);
+  expect(lines.some((l) => l.startsWith("forged"))).toBe(false);
+  expect(lines.join("\n")).toContain("Pack: Title\\x1b[31m\\nforged");
+  expect(lines.join("")).not.toMatch(RAW);
+});
