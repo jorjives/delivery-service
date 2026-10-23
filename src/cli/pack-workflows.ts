@@ -20,7 +20,7 @@ export async function projectPacks(config: DeliveryConfig, configDir: string): P
 export function withWorkflowsOf(config: DeliveryConfig, packs: readonly Pack[]): DeliveryConfig {
   const builtInNames = new Set(packs.filter((pack) => isBuiltInPack(pack.dir)).map((pack) => pack.manifest.name));
   for (const pack of packs) {
-    if (!isBuiltInPack(pack.dir) && builtInNames.has(pack.manifest.name)) throw new Refusal(builtInPackClash(pack.manifest.name, join(pack.dir, "pack.json")), EXIT.configuration, "packs");
+    if (builtInNames.has(pack.manifest.name) && !isBuiltInPack(pack.dir)) throw new Refusal(builtInPackClash(pack.manifest.name, join(pack.dir, "pack.json")), EXIT.configuration, "packs");
   }
   const workflows = { ...(config.workflows ?? {}) };
   const own = new Set(Object.keys(workflows));
