@@ -70,4 +70,21 @@ describe("pack workflows", () => {
   it("refuses a project workflow named like a built-in's, naming the built-in", async () => {
     await expect(withPackWorkflows({ workflows: { "code:fix": { steps: [{ name: "a", prompt: "a" }] } } }, "/")).rejects.toThrow(builtInWorkflowClash("code:fix", "code"));
   });
+
+  it("refuses a listed delivery.pack/2 pack named deprecations, naming its manifest", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pack-workflows-"));
+    writePack(join(root, "mine"), "deprecations");
+    await expect(withPackWorkflows({ packs: ["mine"] }, root)).rejects.toThrow(builtInPackClash("deprecations", join(root, "mine", "pack.json")));
+  });
+
+  it("refuses a project workflow named like one of deprecations'", async () => {
+    await expect(withPackWorkflows({ workflows: { "deprecations:code": { steps: [{ name: "a", prompt: "a" }] } } }, "/")).rejects.toThrow(builtInWorkflowClash("deprecations:code", "deprecations"));
+  });
+
+  it("loads a project whose own names only resemble the built-in's", async () => {
+    const root = mkdtempSync(join(tmpdir(), "pack-workflows-"));
+    writePack(join(root, "mine"), "deprecations-old");
+    const config = await withPackWorkflows({ packs: ["mine"], workflows: { deprecations: { steps: [{ name: "a", prompt: "a" }] } } }, root);
+    expect(Object.keys(config.workflows ?? {})).toEqual(expect.arrayContaining(["deprecations", "deprecations-old:scan", "deprecations:scan"]));
+  });
 });
