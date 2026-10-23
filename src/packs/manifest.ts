@@ -16,6 +16,9 @@ export interface IdeaTarget {
   summary?: string;
 }
 
+/** The most ideas one find is asked to write. A merged count at or above it may mean the find was cut short. */
+export const IDEA_CAP = 40;
+
 /** The harness's half of every scan step: what an idea is and how its check is written. A pack only says what to look for. */
 export function ideaFormat(targets: readonly [IdeaTarget, ...IdeaTarget[]]): string {
   return [
@@ -64,7 +67,7 @@ export function ideaFormat(targets: readonly [IdeaTarget, ...IdeaTarget[]]): str
     "  no longer match in. Use it only for a problem that could come back in other places.",
     "- `dependency-absent`: `package` and `version` exactly as `package-lock.json` installs them.",
     "",
-    "Prefer fewer, certain problems to many guesses, and write no more than 40.",
+    `Prefer fewer, certain problems to many guesses, and write no more than ${IDEA_CAP}.`,
   ].join("\n");
 }
 

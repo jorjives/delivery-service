@@ -5,7 +5,7 @@ import { heldFollowUps } from "../follow-ups.js";
 import { projectPath } from "../item-check.js";
 import { ledgerPath } from "../item-ledger.js";
 import { resolveBaseRef } from "../provision.js";
-import { resolvePack, type Pack } from "../packs/manifest.js";
+import { IDEA_CAP, resolvePack, type Pack } from "../packs/manifest.js";
 import { runIdFor } from "../run-location.js";
 import type { RunRecord } from "../run-records.js";
 import { taskIntent } from "../task-list.js";
@@ -58,6 +58,55 @@ export function reviewTask(pack: Pack, part: string | undefined): TaskDef {
   return { intent: `${pack.manifest.title} of ${where}`, body: `Review ${where} and add one idea to the backlog for each problem you find, as the step says. Change nothing else.` };
 }
 
+/** The line a `delivery.pack/3` find ends on when it may have been cut short by the cap. */
+export const MAY_BE_MORE = "There may be more: run it again once these have landed.";
+/** A pack's title as a sentence's subject: without the full stop it may end with. */
+const titleWords = (pack: Pack): string => pack.manifest.title.replace(/\.$/, "");
+const countOf = (n: number): string => (n === 1 ? "1 idea" : `${n} ideas`);
+const capFor = (n: number): string[] => (n >= IDEA_CAP ? [MAY_BE_MORE] : []);
+/** The tracker's name as an owner reads it. */
+const named = (source: string): string => (source === "github" ? "GitHub" : source);
+
+export const nothingFound = (pack: Pack): string => `${titleWords(pack)} found nothing to add. That is the agent's reading of your project, not a guarantee.`;
+export const packStarting = (pack: Pack, part: string | undefined): string[] => [
+  `Starting: ${titleWords(pack)}. This reads ${part === undefined ? "your project" : `only ${part} in your project`} and adds to your backlog; it changes nothing else.`,
+  pack.manifest.summary,
+];
+export const packAdded = (pack: Pack, n: number): string[] =>
+  n === 0
+    ? [nothingFound(pack)]
+    : [`The pack added ${countOf(n)} to your backlog.`, "Read them with: delivery backlog", "Choose which to act on with: delivery approve <ids>, or delivery approve --all", ...capFor(n)];
+export const packRaised = (pack: Pack, n: number, source: string): string[] =>
+  n === 0
+    ? [nothingFound(pack)]
+    : [`The pack raised ${countOf(n)} in ${named(source)}, without the label you deliver by.`, "On GitHub, adding the label is the approval: the next delivery run --sources acts on each one you label.", ...capFor(n)];
+export const packTask = (pack: Pack, part: string | undefined): TaskDef => {
+  const where = part === undefined ? "this project" : `only ${part} in this project`;
+  return {
+    intent: part === undefined ? `${titleWords(pack)} in this project` : `${titleWords(pack)}, only ${part} in this project`,
+    body: `Look through ${where} as the step says, and add one idea to the backlog for each thing it asks you to find. Change nothing else.`,
+  };
+};
+
+/** Every line a find prints, and its run's task: the owner's words for the pack's schema. */
+export interface FindWords {
+  starting(part: string | undefined): string[];
+  task(part: string | undefined): TaskDef;
+  added(n: number): string[];
+  raised(n: number, source: string): string[];
+}
+
+/** A `delivery.pack/2` pack keeps the review's words exactly; a `delivery.pack/3` pack speaks in its own title and summary. */
+export function findWords(pack: Pack): FindWords {
+  if (pack.schema === "delivery.pack/2") return { starting: () => [], task: (part) => reviewTask(pack, part), added: reviewed, raised };
+  return {
+    starting: (part) => packStarting(pack, part),
+    task: (part) => packTask(pack, part),
+    added: (n) => packAdded(pack, n),
+    raised: (n, source) => packRaised(pack, n, source),
+  };
+}
+
 /**
  * `delivery review <pack>`: the pack's scan workflow, run once as an ordinary run (spec 5.13). Its ideas land on the
  * branch you are on, by merge-back; on a project whose backlog is a tracker they are raised there instead, unlabelled.
@@ -71,7 +120,8 @@ export async function reviewCommand(packName: string, repoArg: string | undefine
   const findSteps = config.workflows?.[workflowName]?.steps;
   if (findSteps === undefined) throw new Refusal(packNotListed(pack), EXIT.configuration);
   const part = options.path === undefined ? undefined : await partToReview(ctx.cwd, options.path);
-  const taskDef = reviewTask(pack, part);
+  const words = findWords(pack);
+  const taskDef = words.task(part);
   if (options.preview === true) return previewCommand({ repo: repoPath, role: "worker", step: findSteps[0]?.name, workflow: workflowName, task: taskIntent(taskDef) }, ctx);
 
   // Scanning drives the checkout as any run does, so the review holds the repository while its agent works.
@@ -86,19 +136,20 @@ export async function reviewCommand(packName: string, repoArg: string | undefine
     const runId = runIdFor(taskIntent(taskDef), new Date());
     const key = `review:${pack.manifest.name}`;
     const item = tracker === undefined ? undefined : { key, source: sourceName(tracker), id: pack.manifest.name, raise: true as const };
+    for (const line of words.starting(part)) ctx.writeLine(line);
     const exitCode = await startRun({ repoPath, ...project, taskDef, workflow, runId, fenceRecord, ...(item === undefined ? {} : { item }) }, session, ctx);
     const record = await readRun(repoPath, runId);
     if (record.caseFile.outcome?.kind === "closed") {
       if (tracker === undefined) {
         const added = await addedIdeas(repoPath, record);
-        for (const line of reviewed(added)) ctx.writeLine(line);
+        for (const line of words.added(added)) ctx.writeLine(line);
       } else {
         // Raised through the after phase, so a raise that fails is retried by the next `delivery run --sources` (spec 5.7).
         const base = record.caseFile.header.baseBranch ?? (await resolveBaseRef(repoPath)).localBranch;
         const commit = await git(repoPath, ["rev-parse", `refs/heads/${base}`]);
         const after = afterLanding({ repoPath, config, project, itemLedger: ledgerPath(repoPath, ctx.env), branch: base, base, records: () => allRuns(repoPath) }, ctx);
         await after.landed({ landed: [{ t: "landed", branch: base, runId, key, intent: taskIntent(taskDef), commit, at: new Date().toISOString() }], commit });
-        for (const line of raised((await heldFollowUps(record.dir)).length, sourceName(tracker))) ctx.writeLine(line);
+        for (const line of words.raised((await heldFollowUps(record.dir)).length, sourceName(tracker))) ctx.writeLine(line);
       }
     }
     await closingReport(repoPath, { kind: "task", runId }, queueTasks(config), ctx, config.notify);
