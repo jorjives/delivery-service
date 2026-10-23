@@ -42,6 +42,11 @@ describe("the docs site", () => {
     const listed = new Set(Object.values(llmsPlugin?.llmstxt.sections ?? {}).flat());
     expect(pages.filter((page) => !listed.has(page))).toEqual([]);
   });
+
+  it("groups the pack pages under Packs", () => {
+    const nav = JSON.stringify(config.nav);
+    expect(nav).toMatch(/"Packs":\[[^\]]*"packs\.md"[^\]]*"task-packs\.md"[^\]]*"move-off-deprecated-code\.md"/);
+  });
 });
 
 // Flows are drawn, not just described: Mermaid blocks in the Markdown, rendered

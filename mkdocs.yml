@@ -92,6 +92,7 @@ plugins:
           - read-a-report.md
           - packs.md
           - task-packs.md
+          - move-off-deprecated-code.md
         Extend:
           - configuring-a-role.md
           - writing-a-gate.md
@@ -144,6 +145,7 @@ nav:
       - Packs:
           - What packs are: packs.md
           - Review your project: task-packs.md
+          - Move off deprecated code: move-off-deprecated-code.md
   - Extend:
       - Configure a role: configuring-a-role.md
       - Write a gate: writing-a-gate.md

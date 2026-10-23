@@ -8,7 +8,7 @@ Three packs come with the harness, and every project can use them without settin
 
 - **`code`**: Looks for code that gives wrong results, code nothing uses, missing handling of things going wrong, the same job done different ways, and shortcuts the code admits to. Start it with `delivery review code`.
 - **`security`**: Looks for passwords and keys written in the code, outside input reaching commands or queries, missing checks on who may do what, unsafe default settings, and library versions known to be unsafe. Start it with `delivery review security`.
-- **`deprecations`**: Finds places that still use code your team has marked as replaced, and moves them. Start it with `delivery review deprecations`.
+- **`deprecations`**: Finds places that still use code your team has marked as replaced, and moves them. Start it with `delivery review deprecations`; the [how-to](move-off-deprecated-code.md) walks through it.
 
 `delivery packs` prints the same packs:
 
@@ -68,4 +68,5 @@ The pack in my-deprecations/pack.json is named "deprecations", the name of a pac
 ## Next steps
 
 - [Review your project](task-packs.md): ask for a review, choose what to fix and sign off serious fixes.
+- [Move off deprecated code](move-off-deprecated-code.md): mark code as replaced, find what still uses it and move it.
 - [Write a pack](writing-a-pack.md): make a pack of your own and prove it with `delivery packs check`.
