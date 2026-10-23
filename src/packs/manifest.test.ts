@@ -5,7 +5,8 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { UnknownPack } from "../errors.js";
 import { openSchema, publishedKeys } from "../report/json-schema.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, loadPack, PACK_SCHEMA, PackManifest, packSchema, resolvePack } from "./manifest.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, loadPack, packSchema, resolvePack } from "./manifest.js";
+import { PackManifestV2 } from "./pack-format.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
 
@@ -15,6 +16,28 @@ function packDir(manifest: object): string {
   writeFileSync(join(dir, "pack.json"), JSON.stringify(manifest));
   writeFileSync(join(dir, "scan.md"), "# Scan\n");
   writeFileSync(join(dir, "fix.md"), "# Fix\n");
+  return dir;
+}
+
+/** A delivery.pack/3 manifest: a find `scan` offering two acts, `code` (held at high) and `tests`. */
+const v3 = {
+  schema: "delivery.pack/3",
+  name: "mine",
+  version: "1.0.0",
+  title: "Mine",
+  summary: "Mine.",
+  workflows: {
+    scan: { kind: "find", prompt: "scan.md", ideasFor: ["code", "tests"] },
+    code: { kind: "act", summary: "Code that calls it.", prompt: "code.md", guards: { add: ["tests-unchanged"] }, hold: { atOrAbove: "high" } },
+    tests: { kind: "act", summary: "A test that calls it.", prompt: "tests.md" },
+  },
+};
+
+/** A folder holding `manifest` as its pack.json, with the prompt files `files` beside it. */
+function v3Dir(manifest: object, files: Record<string, string> = { "scan.md": "# Scan\n", "code.md": "# Code\n", "tests.md": "# Tests\n" }): string {
+  const dir = mkdtempSync(join(tmpdir(), "pack-"));
+  writeFileSync(join(dir, "pack.json"), JSON.stringify(manifest));
+  for (const [name, text] of Object.entries(files)) writeFileSync(join(dir, name), text);
   return dir;
 }
 
@@ -63,6 +86,18 @@ describe("a delivery.pack/2 manifest", () => {
     expect(await inspectPack(dir)).toMatchObject({ ok: false, problems: [{ field: "schema", message: expect.stringContaining("delivery.pack/2") }] });
   });
 
+  it.each(["delivery.pack/1", "delivery.pack/9"])("refuses %s, naming both versions it reads", async (schema) => {
+    expect(await inspectPack(packDir({ ...minimal, schema }))).toEqual({
+      ok: false,
+      problems: [{ file: expect.any(String), field: "schema", message: `"schema" is "${schema}", but this harness reads delivery.pack/2 and delivery.pack/3 (see docs/writing-a-pack.md)` }],
+    });
+  });
+
+  it("reports a /2 pack as /2, its find as <name>:scan", async () => {
+    const code = await resolvePack("code", "/");
+    expect([code.schema, code.find]).toEqual(["delivery.pack/2", "code:scan"]);
+  });
+
   it("refuses a key the format does not name", async () => {
     const dir = packDir({ ...minimal, tools: ["Bash"] });
     expect(await inspectPack(dir)).toMatchObject({ ok: false, problems: [{ message: expect.stringContaining(DATA_ONLY) }] });
@@ -93,6 +128,60 @@ describe("a delivery.pack/2 manifest", () => {
   it("is refused when there is no pack in the folder, naming where it looked", async () => {
     const dir = mkdtempSync(join(tmpdir(), "no-pack-"));
     await expect(resolvePack(dir, "/")).rejects.toMatchObject({ filePath: join(dir, "pack.json"), detail: "is missing" });
+  });
+});
+
+describe("a delivery.pack/3 manifest", () => {
+  it("becomes one workflow per entry, each named <pack>:<workflow>, in manifest order", async () => {
+    const pack = await loadPack(v3Dir(v3));
+    expect(pack.schema).toBe("delivery.pack/3");
+    expect(pack.find).toBe("mine:scan");
+    expect(Object.keys(pack.workflows)).toEqual(["mine:scan", "mine:code", "mine:tests"]);
+    expect(pack.workflows["mine:code"]).toEqual({ steps: [{ name: "code", prompt: "# Code", guards: { add: ["tests-unchanged"] } }], hold: "high" });
+    expect(pack.workflows["mine:tests"]).toEqual({ steps: [{ name: "tests", prompt: "# Tests" }] });
+    expect(pack.workflows["mine:scan"]).toMatchObject({ steps: [{ name: "scan", guards: { add: ["backlog-only"] } }], after: [] });
+  });
+
+  it("tells its find which act workflows an idea may name, with each one's summary", async () => {
+    const prompt = (await loadPack(v3Dir(v3))).workflows["mine:scan"]?.steps[0]?.prompt ?? "";
+    expect(prompt.startsWith("# Scan\n\n## What to hand back")).toBe(true);
+    expect(prompt).toContain("workflow: mine:code");
+    expect(prompt).toContain("- `mine:code`: Code that calls it.\n- `mine:tests`: A test that calls it.");
+  });
+
+  it("names its find after the workflow, whatever it is called", async () => {
+    const manifest = { ...v3, workflows: { survey: { kind: "find", prompt: "scan.md", ideasFor: ["code"] }, code: v3.workflows.code } };
+    const pack = await loadPack(v3Dir(manifest));
+    expect(pack.find).toBe("mine:survey");
+    expect(pack.workflows["mine:survey"]).toMatchObject({ steps: [{ name: "survey" }] });
+  });
+
+  it("yields the same workflows from a /2 manifest and the /3 manifest it means", async () => {
+    const files = { "scan.md": "# Scan\n", "fix.md": "# Fix\n" };
+    const v2Folder = v3Dir({ ...minimal, fix: { prompt: "fix.md", guards: { add: ["backlog-only"] } }, hold: "high" }, files);
+    const v3Folder = v3Dir(
+      {
+        ...v3,
+        workflows: {
+          scan: { kind: "find", prompt: "scan.md", ideasFor: ["fix"] },
+          fix: { kind: "act", prompt: "fix.md", guards: { add: ["tests-unchanged", "backlog-only"] }, hold: { atOrAbove: "high" } },
+        },
+      },
+      files,
+    );
+    expect((await loadPack(v3Folder)).workflows).toEqual((await loadPack(v2Folder)).workflows);
+  });
+
+  it("names a missing prompt file once, though two workflows share it", async () => {
+    const dir = v3Dir({ ...v3, workflows: { scan: v3.workflows.scan, code: { kind: "act", prompt: "act.md" }, tests: { kind: "act", prompt: "act.md" } } }, { "scan.md": "# Scan\n" });
+    expect(await inspectPack(dir)).toEqual({ ok: false, problems: [{ file: join(dir, "act.md"), field: null, message: "is missing" }] });
+  });
+
+  it("changes its identity when any workflow's instructions change", async () => {
+    const dir = v3Dir(v3);
+    const before = (await loadPack(dir)).hash;
+    writeFileSync(join(dir, "tests.md"), "# Different\n");
+    expect((await loadPack(dir)).hash).not.toBe(before);
   });
 });
 
@@ -178,8 +267,7 @@ describe("the pack format's JSON Schema", () => {
   });
 
   it("names itself by the format's version", () => {
-    expect(packSchema().title).toBe(PACK_SCHEMA);
-    expect(PACK_SCHEMA).toBe("delivery.pack/2");
+    expect(packSchema().title).toBe("delivery.pack/2");
   });
 
   it("lets a manifest name the schema it is written against, for an editor", async () => {
@@ -192,7 +280,7 @@ describe("the pack format's JSON Schema", () => {
 /** The stability promise: a pack valid under delivery.pack/2 stays valid. A line may be added, never removed or changed. */
 describe("the pack format's stability promise", () => {
   const promised = readFileSync(new URL("./pack-published-keys.txt", import.meta.url), "utf-8").trimEnd().split("\n");
-  const current = publishedKeys(openSchema(PackManifest), PACK_SCHEMA);
+  const current = publishedKeys(openSchema(PackManifestV2), "delivery.pack/2");
 
   it("keeps every key and name ever published, each the kind of value it was", () => {
     expect(promised.filter((line) => !current.includes(line))).toEqual([]);
