@@ -238,6 +238,14 @@ Full message: `"<name>" isn't a name I can give a schedule. Use 1 to 32 lowercas
 
 **Fix.** Pick a name such as `nightly` or `hourly`, or leave `--name` out. See [Run on a schedule](run-on-a-schedule.md).
 
+### `--workflow` (or `--config`) is empty
+
+Full message: `` `--workflow` is empty. Give it a value, or leave it out to use the project's own setting. `` (the same for `--config`).
+
+**Why.** `delivery schedule enable` was given `--workflow` or `--config` with nothing after it. An empty setting would not name a workflow or a config file, so the schedule is not changed.
+
+**Fix.** Give the setting a value, or leave the flag out. See [Give a schedule its own settings](run-on-a-schedule.md#give-a-schedule-its-own-settings).
+
 ### This machine can't run delivery on a schedule
 
 **Why.** `delivery schedule enable` uses systemd's user timers, and this machine has none; the reason follows.

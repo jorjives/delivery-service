@@ -1,15 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { initTempRepo } from "../temp-repo.js";
 import { createSystemctlStandIn } from "../systemctl-stand-in.js";
 import { delivery, PACKAGE } from "./command-fixtures.js";
+import { NO_SUCH_CONFIG } from "./config.js";
 import { EXIT } from "./failures.js";
 import { findRepository } from "./project.js";
-import { badInterval, badName } from "./schedule/model.js";
-import { NO_SYSTEMCTL, TEST_SYSTEMCTL, unitName } from "./schedule/systemd.js";
-import { alreadyOff, journalHint, lastRun, nextRun, noSuchSchedule, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
+import { badInterval, badName, emptySetting } from "./schedule/model.js";
+import { execTokens, NO_SYSTEMCTL, parseShow, TEST_SYSTEMCTL, unitName } from "./schedule/systemd.js";
+import { alreadyOff, journalHint, lastRun, nextRun, noSuchSchedule, runSettings, scheduledOff, scheduledOn, turnedOff } from "./schedule-command.js";
+import { NOT_A_CONCURRENCY, NOT_A_MAX } from "./settings.js";
 
 async function project() {
   const repo = await findRepository(initTempRepo("schedule-", { "package.json": PACKAGE }));
@@ -167,11 +169,13 @@ describe("delivery schedule status", () => {
     expect(stdout).toBe(
       [
         "Scheduling is on for the hourly schedule, every 1h.",
+        runSettings({}),
         lastRun("Thu 2026-10-22 10:00:00 BST"),
         nextRun("Thu 2026-10-22 11:00:00 BST"),
         journalHint(`journalctl --user -u ${name}.hourly.service`),
         "",
         "Scheduling is on for the nightly schedule, every 1d.",
+        runSettings({}),
         lastRun("not yet"),
         nextRun("Fri 2026-10-23 00:00:00 BST"),
         journalHint(`journalctl --user -u ${name}.nightly.service`),
@@ -191,6 +195,7 @@ describe("delivery schedule status", () => {
     expect(stdout).toBe(
       [
         "Scheduling is on for the nightly schedule, every 1d.",
+        runSettings({}),
         lastRun("not yet"),
         nextRun("Fri 2026-10-23 00:00:00 BST"),
         journalHint(`journalctl --user -u ${name}.nightly.service`),
@@ -236,6 +241,7 @@ describe("delivery schedule status", () => {
     expect(stdout).toBe(
       [
         "Scheduling is on for the default schedule, every 1d.",
+        runSettings({}),
         lastRun("Sun 2026-10-18 12:00:00 BST"),
         nextRun("Mon 2026-10-19 00:00:00 BST"),
         journalHint(`journalctl --user -u ${name}.service`),
@@ -311,4 +317,122 @@ describe("delivery schedule disable", () => {
     expect(stdout).toContain(alreadyOff(repo));
     expect(standIn.calls()).toEqual([]);
   });
+});
+
+describe("delivery schedule enable with run settings", () => {
+  it("runs the schedule with its settings, resolved config path and all, and says so", async () => {
+    const { repo, units, name, env } = await project();
+    writeFileSync(join(repo, "nightly.json"), "{}");
+    const { exitCode, stdout } = await delivery(
+      ["schedule", "enable", "--name", "nightly", "--every", "1d", "--workflow", "deep", "--max", "3", "--concurrency", "2", "--config", "nightly.json"],
+      { cwd: repo, env },
+    );
+    expect(exitCode).toBe(EXIT.ok);
+    const service = readFileSync(join(units, `${name}.nightly.service`), "utf-8");
+    expect(execTokens(parseShow(service).ExecStart ?? "").slice(2)).toEqual([
+      "run",
+      "--sources",
+      "--config",
+      join(repo, "nightly.json"),
+      "--workflow",
+      "deep",
+      "--max",
+      "3",
+      "--concurrency",
+      "2",
+      "--if-idle",
+    ]);
+    expect(stdout).toContain(runSettings({ config: join(repo, "nightly.json"), workflow: "deep", max: 3, concurrency: 2 }));
+  });
+
+  it("resolves a relative --config against --repo, as delivery run does", async () => {
+    const { repo, units, name, env } = await project();
+    writeFileSync(join(repo, "nightly.json"), "{}");
+    const { exitCode } = await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d", "--repo", basename(repo), "--config", "nightly.json"], {
+      cwd: dirname(repo),
+      env,
+    });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(execTokens(parseShow(readFileSync(join(units, `${name}.nightly.service`), "utf-8")).ExecStart ?? "")).toContain(join(repo, "nightly.json"));
+  });
+
+  it("clears settings left out when a name is enabled again", async () => {
+    const { repo, units, name, env } = await project();
+    writeFileSync(join(repo, "nightly.json"), "{}");
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d", "--workflow", "deep", "--max", "3", "--config", "nightly.json"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d", "--workflow", "deep"], { cwd: repo, env });
+    const service = readFileSync(join(units, `${name}.nightly.service`), "utf-8");
+    expect(execTokens(parseShow(service).ExecStart ?? "").slice(2)).toEqual(["run", "--sources", "--workflow", "deep", "--if-idle"]);
+    expect((await delivery(["schedule", "status", "--name", "nightly"], { cwd: repo, env })).stdout).toContain(runSettings({ workflow: "deep" }));
+  });
+
+  it.each([
+    [["--config", "missing.json"], NO_SUCH_CONFIG("missing.json")],
+    [["--config", ""], emptySetting("--config")],
+    [["--workflow", ""], emptySetting("--workflow")],
+    [["--max=0"], NOT_A_MAX("0")],
+    [["--concurrency", "1.5"], NOT_A_CONCURRENCY("--concurrency", "1.5")],
+  ])("refuses %j, changing nothing", async (flags, message) => {
+    const { repo, units, name, standIn, env } = await project();
+    expect((await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d"], { cwd: repo, env })).exitCode).toBe(EXIT.ok);
+    const serviceBefore = readFileSync(join(units, `${name}.nightly.service`), "utf-8");
+    const timerBefore = readFileSync(join(units, `${name}.nightly.timer`), "utf-8");
+    const callsBefore = standIn.calls().length;
+    const { exitCode, stderr } = await delivery(["schedule", "enable", "--name", "nightly", "--every", "1h", ...flags], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(message);
+    expect(readFileSync(join(units, `${name}.nightly.service`), "utf-8")).toBe(serviceBefore);
+    expect(readFileSync(join(units, `${name}.nightly.timer`), "utf-8")).toBe(timerBefore);
+    expect(standIn.calls().length).toBe(callsBefore);
+  });
+
+  it.each([["--task", "x"], ["--task-file", "t.md"], ["--fresh"]])("does not take %s", async (...flags) => {
+    const { repo, units, standIn, env } = await project();
+    const { exitCode, stderr } = await delivery(["schedule", "enable", ...flags], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(`unknown option '${flags[0]}'`);
+    expect(existsSync(units)).toBe(false);
+    expect(standIn.calls()).toEqual([]);
+  });
+
+  it("prints a cron line with the schedule's settings where there is no scheduler", async () => {
+    const { repo, standIn, env } = await project();
+    standIn.noBus();
+    const { exitCode, stderr } = await delivery(["schedule", "enable", "--name", "nightly", "--workflow", "deep", "--max", "3"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toMatch(/main\.js' run --sources --workflow deep --max 3 --if-idle$/m);
+  });
+});
+
+describe("delivery schedule status with run settings", () => {
+  it("shows each schedule's own settings after its heading", async () => {
+    const { repo, name, standIn, env } = await project();
+    await delivery(["schedule", "enable", "--name", "nightly", "--every", "1d", "--workflow", "deep", "--max", "3"], { cwd: repo, env });
+    await delivery(["schedule", "enable", "--name", "hourly", "--every", "1h"], { cwd: repo, env });
+    standIn.showingFor(`${name}.hourly.timer`, { UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "Thu 2026-10-22 11:00:00 BST" });
+    standIn.showingFor(`${name}.nightly.timer`, { UnitFileState: "enabled", LastTriggerUSec: "", NextElapseUSecRealtime: "Fri 2026-10-23 00:00:00 BST" });
+    const { exitCode, stdout } = await delivery(["schedule", "status"], { cwd: repo, env });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).toBe(
+      [
+        "Scheduling is on for the hourly schedule, every 1h.",
+        runSettings({}),
+        lastRun("not yet"),
+        nextRun("Thu 2026-10-22 11:00:00 BST"),
+        journalHint(`journalctl --user -u ${name}.hourly.service`),
+        "",
+        "Scheduling is on for the nightly schedule, every 1d.",
+        runSettings({ workflow: "deep", max: 3 }),
+        lastRun("not yet"),
+        nextRun("Fri 2026-10-23 00:00:00 BST"),
+        journalHint(`journalctl --user -u ${name}.nightly.service`),
+        "",
+      ].join("\n"),
+    );
+  });
+});
+
+it("says settings plainly, quoting any that need it", () => {
+  expect(runSettings({})).toBe("Run settings: none, so the project's own config file and defaults apply.");
+  expect(runSettings({ config: "/a b/n.json", workflow: "deep", max: 3 })).toBe('Run settings: --config "/a b/n.json" --workflow deep --max 3.');
 });

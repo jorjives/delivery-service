@@ -31,7 +31,22 @@ delivery schedule enable --name nightly --every 1d
 
 A name is 1 to 32 lowercase letters, digits or hyphens, such as `nightly`. Anything else, including `default`, is refused with "isn't a name I can give a schedule". Each named schedule has its own timer, `delivery-<key>.<name>.timer`, so enabling a name again changes only that schedule. The schedule you get without `--name` is `default`: it keeps its existing timer, `delivery-<key>.timer`, and keeps working untouched until you enable it again.
 
-Each scheduled run is `delivery run --sources --if-idle`, so a run that would overlap another run in the repository is skipped quietly.
+Each scheduled run is `delivery run --sources` with the schedule's settings, then `--if-idle`, so a run that would overlap another run in the repository is skipped quietly.
+
+## Give a schedule its own settings
+
+A schedule can run with settings of its own, so one project can run a quick pass and a thorough pass that behave differently:
+
+```bash
+delivery schedule enable --name nightly --every 1d --workflow deep --max 3 --config nightly.json
+```
+
+- `--config <path>` is the config file each scheduled run uses. Without it, the project's own config applies. A relative path is resolved against the repository, as `delivery run --config` resolves it, and is stored in full. The file must exist when you enable the schedule.
+- `--workflow <name>` is the workflow for items that do not name one.
+- `--max <n>` is how many items each scheduled run takes (default 1).
+- `--concurrency <n>` is how many items each scheduled run works at once (default 1).
+
+A schedule's settings are its whole definition. Enabling a schedule again replaces them, so a setting you leave out is dropped, not kept: run `enable` with every setting the schedule should keep. A setting left empty, such as `--workflow ""`, is refused, and so is a value `--max` or `--concurrency` cannot take. `--task`, `--task-file` and `--fresh` are not accepted by `schedule enable`.
 
 ## Check or turn it off
 
@@ -44,11 +59,13 @@ delivery schedule disable   # turn the default schedule off; `delivery run --sou
 
 ```text
 Scheduling is on for the hourly schedule, every 1h.
+Run settings: none, so the project's own config file and defaults apply.
 Last run: Thu 2026-10-22 10:00:00 BST
 Next run: Thu 2026-10-22 11:00:00 BST
 Each scheduled run's output: journalctl --user -u delivery-<key>.hourly.service
 
 Scheduling is on for the nightly schedule, every 1d.
+Run settings: --workflow deep --max 3.
 Last run: not yet
 Next run: Fri 2026-10-23 00:00:00 BST
 Each scheduled run's output: journalctl --user -u delivery-<key>.nightly.service

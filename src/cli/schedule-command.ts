@@ -5,9 +5,9 @@ import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
 import { selectBackend, type InstalledSchedule } from "./schedule/backend.js";
 import { cronLine } from "./schedule/cron.js";
-import { DEFAULT_INTERVAL, DEFAULT_NAME, describeSchedule, parseInterval, parseName, type Schedule } from "./schedule/model.js";
+import { BARE_ARG, DEFAULT_INTERVAL, DEFAULT_NAME, describeSchedule, parseInterval, parseName, parseScheduleArgs, settingsArgs, type Schedule, type ScheduleArgs, type ScheduleFlags } from "./schedule/model.js";
 
-export interface ScheduleOptions {
+export interface ScheduleOptions extends ScheduleFlags {
   repo?: string;
   every?: string;
   name?: string;
@@ -22,6 +22,11 @@ export const scheduledOn = (description: string, catchesUp: boolean): string =>
     ? "A run missed while this machine is off happens as soon as it is back."
     : "A run missed while this machine is off is skipped.");
 export const journalHint = (command: string): string => `Each scheduled run's output: ${command}`;
+export const runSettings = (args: ScheduleArgs): string => {
+  const tokens = settingsArgs(args);
+  if (tokens.length === 0) return "Run settings: none, so the project's own config file and defaults apply.";
+  return `Run settings: ${tokens.map((token) => (BARE_ARG.test(token) ? token : JSON.stringify(token))).join(" ")}.`;
+};
 
 export const scheduledOff = (repoPath: string): string =>
   `Scheduling is off for ${repoPath}. Turn it on with: delivery schedule enable --every <interval>`;
@@ -46,13 +51,14 @@ const repositoryOf = (options: ScheduleOptions, ctx: CommandContext): Promise<st
 export async function scheduleEnableCommand(options: ScheduleOptions, ctx: CommandContext): Promise<ExitCode> {
   const name = parseName(options.name);
   const every = parseInterval(options.every ?? DEFAULT_INTERVAL);
+  const args = parseScheduleArgs(options, resolve(ctx.cwd, options.repo ?? "."));
   const repoPath = await repositoryOf(options, ctx);
   const schedule: Schedule = {
     repoPath,
     name,
     every,
     launcher: { node: process.execPath, main: MAIN, path: ctx.env.PATH ?? "" },
-    args: {},
+    args,
   };
   const backend = selectBackend();
   const probe = await backend.probe(ctx.env);
@@ -60,6 +66,7 @@ export async function scheduleEnableCommand(options: ScheduleOptions, ctx: Comma
 
   await backend.install(schedule, ctx.env);
   ctx.writeLine(scheduledOn(describeSchedule(schedule), probe.catchesUp));
+  ctx.writeLine(runSettings(schedule.args));
   ctx.writeLine(journalHint(backend.logCommand(repoPath, name)));
   return EXIT.ok;
 }
@@ -84,6 +91,7 @@ export async function scheduleStatusCommand(options: ScheduleOptions, ctx: Comma
   shown.forEach((schedule, index) => {
     if (index > 0) ctx.writeLine("");
     ctx.writeLine(scheduleHeading(schedule));
+    ctx.writeLine(runSettings(schedule.args));
     ctx.writeLine(lastRun(schedule.lastRun || "not yet"));
     ctx.writeLine(nextRun(schedule.nextRun || "none"));
     ctx.writeLine(journalHint(schedule.logCommand));
