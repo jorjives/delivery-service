@@ -172,7 +172,7 @@ function isCode(err: unknown, code: string): boolean {
 }
 
 /** The prompt file names a manifest names, in manifest order, each once. */
-function promptsOf(manifest: PackManifest): string[] {
+export function promptsOf(manifest: PackManifest): string[] {
   return [...new Set(Object.values(manifest.workflows).map(({ prompt }) => prompt))];
 }
 
