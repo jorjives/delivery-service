@@ -12,12 +12,14 @@ import { loadConfigAndPackStates } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import type { Ask } from "./init.js";
+import { findClash } from "./pack-clash.js";
 import { withWorkflowsOf } from "./pack-workflows.js";
 import { projectBaseline } from "./project-baseline.js";
 import { findRepository } from "./project.js";
 import { renderInspection } from "./packs-inspect-render.js";
 import {
   addedDifferently,
+  clashRefusal,
   addedLines,
   addQuestion,
   alreadyAdded,
@@ -59,9 +61,10 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
       origin: { kind: "installed", package: fetched.name, version: fetched.version, request: parsed.request, integrity: fetched.integrity },
     };
     const fingerprint = fingerprintOf(pack);
+    // A record entry from this same package is the add's own answer; one from another package is a clash, judged below.
     const entry = (await readLock(repoPath)).packs[name];
-    if (entry !== undefined) {
-      if (entry.fingerprint === fingerprint && entry.package === fetched.name) {
+    if (entry !== undefined && entry.package === fetched.name) {
+      if (entry.fingerprint === fingerprint) {
         ctx.writeLine(alreadyAdded(name, fetched.version));
         return EXIT.ok;
       }
@@ -74,7 +77,13 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
     // It is checked over the project's own settings, since the config already carries every current pack's workflows.
     const { settings, packs, installed } = await loadConfigAndPackStates({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
     refuseUnusable(repoPath, installed.filter((added) => !(added.state === "unrecorded" && added.name === name)));
-    withWorkflowsOf(settings, [...packs, pack]);
+    // A clash already in the project is not this pack's fault: it is refused with its own sentence.
+    withWorkflowsOf(settings, packs);
+    const clash = findClash(settings, [...packs, pack]);
+    if (clash !== undefined) {
+      for (const line of clashRefusal(clash, repoPath)) ctx.writeLine(line);
+      return EXIT.configuration;
+    }
 
     for (const line of foundLines(fetched, parsed)) ctx.writeLine(line);
     ctx.writeLine("");

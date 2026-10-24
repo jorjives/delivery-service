@@ -212,6 +212,8 @@ If a pack you list in `delivery.config.json` has the name of a built-in, the har
 The pack in my-deprecations/pack.json is named "deprecations", the name of a pack that comes with the harness: change its "name" so each pack is named once.
 ```
 
+A pack added from npm with a built-in's name is refused when you add it, and nothing is written.
+
 ## Next steps
 
 - [Review your project](task-packs.md): ask for a review, choose what to fix and sign off serious fixes.

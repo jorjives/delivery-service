@@ -18,8 +18,8 @@ import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { packsAddCommand } from "./packs-add-command.js";
-import { addedLines, alreadyAdded, NOTHING_ADDED, nobodyToAsk } from "./packs-add-render.js";
-import { packNameClash } from "./pack-clash.js";
+import { addedDifferently, addedLines, alreadyAdded, NOTHING_ADDED, nobodyToAsk } from "./packs-add-render.js";
+import { packWorkflowClash } from "./pack-clash.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import { addedDocsDrift, tree } from "./installed-fixtures.js";
@@ -44,6 +44,17 @@ function linesOutsideRules(lines: readonly string[]): string[] {
 
 /** The text with every run of white space made one space: where a line wraps does not matter. */
 const flat = (text: string): string => text.replace(/\s+/g, " ");
+
+/** The contents of a delivery.pack/3 manifest named `name`, with a find and an act workflow. */
+const v3Pack = (name: string): string =>
+  JSON.stringify({
+    schema: "delivery.pack/3",
+    name,
+    version: "1.0.0",
+    title: "Mine",
+    summary: "Mine.",
+    workflows: { scan: { kind: "find", prompt: "scan.md", ideasFor: ["code"] }, code: { kind: "act", prompt: "code.md" } },
+  });
 
 /** The temporary folders an add makes, by name. */
 const tempFolders = (): string[] => readdirSync(tmpdir()).filter((name) => name.startsWith("delivery-pack-")).sort();
@@ -241,15 +252,108 @@ describe("delivery packs add", () => {
     expect(source.fetched).toEqual([]);
   });
 
-  it("refuses a pack that would break the project, writing nothing", async () => {
+  it("refuses a pack named like a built-in, naming both and asking the authors to rename it", async () => {
     const other = fakePackSource();
     other.publish(NAME, "1.2.0", packPackage({ name: "code" }));
     const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    const { ask, asked } = scriptedAsk({ confirm: true });
+    expect(await packsAddCommand(NAME, ctx, ask, other)).toBe(EXIT.configuration);
+    expect(lines).toEqual([
+      'Not added: two packs are named "code".',
+      '  1. "code", a pack that comes with the harness',
+      "  2. the pack you are adding, from @acme/delivery-pack-docs",
+      "     1.2.0",
+      "Each pack name must be used once.",
+      "  A pack that comes with the harness cannot be removed, so",
+      "  ask the authors of the new pack to rename it.",
+      "Nothing was changed.",
+    ]);
+    expect(asked).toEqual([]);
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses a second package holding a pack of the same name, naming both and the remove that keeps the new one", async () => {
+    await addedDocsDrift(repo);
+    const other = fakePackSource();
+    other.publish("@other/docs", "2.0.0", packPackage({ packageName: "@other/docs", version: "2.0.0" }));
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsAddCommand("@other/docs", ctx, scriptedAsk({ confirm: true }).ask, other)).toBe(EXIT.configuration);
+    expect(lines).toContain('Not added: two packs are named "docs-drift".');
+    expect(flat(lines.join("\n"))).toContain("1. the pack added from @acme/delivery-pack-docs 1.2.0");
+    expect(flat(lines.join("\n"))).toContain("2. the pack you are adding, from @other/docs 2.0.0");
+    expect(lines.slice(-3)).toEqual(["  To keep the new pack, remove the first:", "    delivery packs remove docs-drift", "Nothing was changed."]);
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses a pack named like a listed folder pack, naming the folder's manifest", async () => {
+    mkdirSync(join(repo, "local"));
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packs: ["local"] }));
+    writeFileSync(join(repo, "local", "pack.json"), v3Pack("docs-drift"));
+    writeFileSync(join(repo, "local", "scan.md"), SCAN_TEXT);
+    writeFileSync(join(repo, "local", "code.md"), "# Code\n");
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(lines).toContain('Not added: two packs are named "docs-drift".');
+    expect(flat(lines.join("\n"))).toContain("1. the pack in local/pack.json");
+    expect(flat(lines.join("\n"))).toContain("take the first out of packs in your configuration.");
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses a pack whose workflow the project's own workflows define", async () => {
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ workflows: { "docs-drift:scan": { steps: [{ name: "a", prompt: "a" }] } } }));
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(lines[0]).toBe('Not added: two things define the workflow "docs-drift:scan".');
+    expect(lines).toContain("  1. a workflow in your configuration");
+    expect(lines).toContain("  To keep the new pack, rename your own workflow.");
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses a project that already clashes with its own sentence, not this pack's", async () => {
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packs: ["a", "b"] }));
+    for (const dir of ["a", "b"]) {
+      mkdirSync(join(repo, dir));
+      writeFileSync(join(repo, dir, "pack.json"), v3Pack("mine"));
+      writeFileSync(join(repo, dir, "scan.md"), SCAN_TEXT);
+      writeFileSync(join(repo, dir, "code.md"), "# Code\n");
+    }
+    const before = tree(repo);
     const { ctx } = context(repo);
-    await expect(packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, other)).rejects.toThrow(
-      packNameClash("code", { kind: "built-in", pack: "code" }, { kind: "installed", pack: "code", package: "@acme/delivery-pack-docs", version: "1.2.0" }),
+    await expect(packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, source)).rejects.toThrow(
+      packWorkflowClash("mine:scan", { kind: "folder", pack: "mine", manifestFile: join(repo, "a", "pack.json") }, { kind: "folder", pack: "mine", manifestFile: join(repo, "b", "pack.json") }),
     );
     expect(tree(repo)).toEqual(before);
+  });
+
+  it("still refuses the same package at other contents as already added, not as a clash", async () => {
+    await addedDocsDrift(repo);
+    const entry = (await readLock(repo)).packs["docs-drift"];
+    if (entry === undefined) throw new Error("the fixture pack must be recorded");
+    const other = fakePackSource();
+    other.publish(NAME, "1.3.0", packPackage({ version: "1.3.0", extra: { "scan.md": `${SCAN_TEXT}\nAlso check the tests.\n` } }));
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, other)).toBe(EXIT.configuration);
+    expect(lines).toEqual(addedDifferently("docs-drift", entry));
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("keeps a clash screen within 60 columns, with no colour and no reassuring words", async () => {
+    const other = fakePackSource();
+    other.publish(NAME, "1.2.0", packPackage({ name: "code" }));
+    const { ctx, lines } = context(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, other)).toBe(EXIT.configuration);
+    for (const line of lines) {
+      expect(line.length).toBeLessThanOrEqual(60);
+      expect(line).not.toContain("\u001b");
+    }
+    const text = lines.join("\n");
+    expect(text).not.toMatch(REASSURING);
+    expect(text).not.toMatch(FORBIDDEN);
   });
 
   it.each(["not-found", "no-version", "unreachable"] as const)("changes nothing when npm says %s", async (reason) => {

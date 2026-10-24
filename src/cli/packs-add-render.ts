@@ -1,9 +1,11 @@
 import { relative } from "node:path";
+import { showName } from "../packs/hidden-characters.js";
 import type { LockEntry } from "../packs/install/lock.js";
 import type { PackageSpec } from "../packs/install/pack-spec.js";
 import type { FetchedPackage } from "../packs/install/pack-source.js";
 import type { ArchiveProblem, PackageRead } from "../packs/install/package-archive.js";
 import type { PackProblem } from "../packs/manifest.js";
+import { type Clash, type ClashSide, sidePhrase } from "./pack-clash.js";
 import type { ConfirmQuestion } from "./init.js";
 import { problemLines, wrap } from "./packs-inspect-render.js";
 
@@ -94,4 +96,38 @@ export function packRefusal(packageName: string, version: string, packPath: stri
     ...problemLines(problems, inPackage),
     ...wrap("Nothing was changed.", "  "),
   ];
+}
+
+/**
+ * The screen when the pack being added clashes with one already in the project: both sides named, and the one thing the
+ * owner does to keep the new pack. Nothing is changed. The second side is always the pack being added.
+ */
+export function clashRefusal(clash: Clash, repoPath: string): string[] {
+  const { first, second } = clash;
+  if (second.kind !== "installed") throw new Error("the pack being added must be the second side of a clash");
+  const side = first.kind === "folder" ? { ...first, manifestFile: relative(repoPath, first.manifestFile) } : first;
+  const subject = clash.kind === "pack-name" ? `two packs are named "${showName(clash.name)}".` : `two things define the workflow "${showName(clash.workflow)}".`;
+  const once = clash.kind === "pack-name" ? "Each pack name must be used once." : "Each workflow name must be used once.";
+  return [
+    ...wrap(`Not added: ${subject}`, ""),
+    ...wrap(`1. ${sidePhrase(side)}`, "  ", "     "),
+    ...wrap(`2. the pack you are adding, from ${showName(second.package)} ${showName(second.version)}`, "  ", "     "),
+    ...wrap(once, ""),
+    ...remedyLines(first),
+    ...wrap("Nothing was changed.", ""),
+  ];
+}
+
+/** How the owner keeps the new pack, by the side that was defined first. */
+function remedyLines(first: ClashSide): string[] {
+  switch (first.kind) {
+    case "installed":
+      return ["  To keep the new pack, remove the first:", `    delivery packs remove ${showName(first.pack)}`];
+    case "folder":
+      return wrap("To keep the new pack, take the first out of packs in your configuration.", "  ");
+    case "built-in":
+      return wrap("A pack that comes with the harness cannot be removed, so ask the authors of the new pack to rename it.", "  ");
+    case "own":
+      return ["  To keep the new pack, rename your own workflow."];
+  }
 }
