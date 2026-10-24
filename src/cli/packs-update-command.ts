@@ -46,50 +46,53 @@ import { withWorkflowsOf } from "./pack-workflows.js";
  * replaces the kept folder and the record entry only on a yes. Nothing from the package runs, and a refusal changes nothing.
  */
 export async function packsUpdateCommand(name: string, request: string | undefined, ctx: CommandContext, ask: Ask, source: PackSource): Promise<ExitCode> {
+  const out = (lines: readonly string[]): void => {
+    for (const line of lines) ctx.writeLine(line);
+  };
   const added = await addedPackNamed(name, ctx);
   if (added === undefined) return EXIT.configuration;
   const { repoPath, entry } = added;
 
   if (request !== undefined && !PACKAGE_REQUEST.test(request)) {
-    for (const line of badRequestLines(request)) ctx.writeLine(line);
+    out(badRequestLines(request));
     return EXIT.configuration;
   }
 
   const installed = await checkInstalledPack(repoPath, name, entry);
   if (installed.state === "missing" || installed.state === "invalid") {
-    for (const line of notUpdatableLines(name, installed.state)) ctx.writeLine(line);
+    out(notUpdatableLines(name, installed.state));
     return EXIT.configuration;
   }
 
   const spec: PackageSpec = { name: entry.package, request: request ?? entry.request, typed: request !== undefined };
   // The first line of the lookup says what is asked for, so it is shown before npm answers; the rest says what npm found.
-  for (const line of lookupLines(entry.package, spec.request, "", entry.version).slice(0, 1)) ctx.writeLine(line);
+  out(lookupLines(entry.package, spec.request, "", entry.version).slice(0, 1));
   const fetched = await fetchFor(source, spec, "update");
 
   if (fetched.integrity === entry.integrity) {
-    for (const line of upToDateLines(name, entry.version, spec.request)) ctx.writeLine(line);
-    for (const line of stateHintLines(name, installed.state)) ctx.writeLine(line);
+    out(upToDateLines(name, entry.version, spec.request));
+    out(stateHintLines(name, installed.state));
     return EXIT.ok;
   }
   if (fetched.version === entry.version) {
-    for (const line of changedAtSourceLines("Not updated:", entry, fetched.integrity)) ctx.writeLine(line);
+    out(changedAtSourceLines("Not updated:", entry, fetched.integrity));
     return EXIT.configuration;
   }
 
   const read = await readPackage(fetched.tarball);
   if (!read.ok) {
-    for (const line of archiveRefusal("update", fetched.name, fetched.version, read.problem)) ctx.writeLine(line);
+    out(archiveRefusal("update", fetched.name, fetched.version, read.problem));
     return EXIT.configuration;
   }
 
   return withStagedPack(read.packFiles, async (stagedDir, folder) => {
     if (!folder.ok) {
-      for (const line of packRefusal("update", fetched.name, fetched.version, read.packPath, folder.problems, stagedDir)) ctx.writeLine(line);
+      out(packRefusal("update", fetched.name, fetched.version, read.packPath, folder.problems, stagedDir));
       return EXIT.configuration;
     }
     const newName = folder.pack.manifest.name;
     if (newName !== name) {
-      for (const line of renamedLines(name, fetched.name, fetched.version, newName)) ctx.writeLine(line);
+      out(renamedLines(name, fetched.name, fetched.version, newName));
       return EXIT.configuration;
     }
 
@@ -100,8 +103,8 @@ export async function packsUpdateCommand(name: string, request: string | undefin
     };
     const fingerprint = fingerprintOf(newPack);
     if (fingerprint === entry.fingerprint) {
-      for (const line of sameContentLines(name, entry.version, fetched.version)) ctx.writeLine(line);
-      for (const line of stateHintLines(name, installed.state)) ctx.writeLine(line);
+      out(sameContentLines(name, entry.version, fetched.version));
+      out(stateHintLines(name, installed.state));
       return EXIT.ok;
     }
 
@@ -113,7 +116,7 @@ export async function packsUpdateCommand(name: string, request: string | undefin
     withWorkflowsOf(settings, others);
     const clash = findClash(settings, [...others, newPack]);
     if (clash !== undefined) {
-      for (const line of clashRefusal("update", clash, repoPath)) ctx.writeLine(line);
+      out(clashRefusal("update", clash, repoPath));
       return EXIT.configuration;
     }
 
@@ -126,20 +129,20 @@ export async function packsUpdateCommand(name: string, request: string | undefin
     const after = inspectionOf(newPack, baseline, folder.files);
     const diffs = await diffPackFiles(keptDir, fingerprintedFiles(kept.pack), stagedDir, fingerprintedFiles(newPack));
 
-    for (const line of lookupLines(entry.package, spec.request, fetched.version, entry.version).slice(1)) ctx.writeLine(line);
+    out(lookupLines(entry.package, spec.request, fetched.version, entry.version).slice(1));
     ctx.writeLine("");
-    for (const line of headlineLines(name, { version: entry.version, hash: before.pack.hash }, { version: fetched.version, hash: after.pack.hash })) ctx.writeLine(line);
-    if (installed.state === "changed") for (const line of keptDiffersLines()) ctx.writeLine(line);
+    out(headlineLines(name, { version: entry.version, hash: before.pack.hash }, { version: fetched.version, hash: after.pack.hash }));
+    if (installed.state === "changed") out(keptDiffersLines());
     ctx.writeLine("");
-    for (const line of summaryLines(comparePacks(before, after), after)) ctx.writeLine(line);
+    out(summaryLines(comparePacks(before, after), after));
     ctx.writeLine("");
-    for (const line of filesLines(diffs)) ctx.writeLine(line);
+    out(filesLines(diffs));
     ctx.writeLine("");
-    for (const line of changedLinesBlock(diffs)) ctx.writeLine(line);
+    out(changedLinesBlock(diffs));
 
     if (ctx.stdin.isTTY !== true) {
       ctx.writeLine("");
-      for (const line of nobodyToAsk("update")) ctx.writeLine(line);
+      out(nobodyToAsk("update"));
       return EXIT.configuration;
     }
     if (!(await ask.confirm(updateQuestion(name, entry.version, fetched.version)))) {
@@ -156,7 +159,7 @@ export async function packsUpdateCommand(name: string, request: string | undefin
       approved: fingerprint,
       files: await fileDigests(stagedDir, fingerprintedFiles(newPack)),
     });
-    for (const line of updatedLines(name, fetched.version)) ctx.writeLine(line);
+    out(updatedLines(name, fetched.version));
     return EXIT.ok;
   });
 }
