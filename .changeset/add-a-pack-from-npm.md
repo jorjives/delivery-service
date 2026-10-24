@@ -12,7 +12,7 @@ Every use of an added pack first checks its kept files against the record, with 
 
 `delivery packs restore <name>` fetches the recorded version again and puts the pack back when it matches what was approved.
 
-`delivery packs update <name> [request]` is the only way an added pack moves to another version: it shows what changes first (in short, then file by file and line by line, with hidden characters shown), writes nothing until you say yes, and says so plainly when npm has nothing newer or the newer version has the same content. Commit the record and the folder together.
+`delivery packs update <name> [request]` is the only way an added pack moves to another version: it shows what changes first (in short, then file by file and line by line, with hidden characters shown), writes nothing until you say yes, and says so plainly when npm has nothing newer or the newer version has the same content. Commit the record and the folder together. `delivery packs update` follows the same rule, bound to the new version's fingerprint; the refusal names your own command, and a version published since you read the change is refused because its fingerprint differs. The recorded request is never changed unless you give one.
 
 `delivery packs approve <name>` approves an added pack whose record says it was not approved, after showing its full account; a pack whose files differ from the record must be restored or updated instead.
 

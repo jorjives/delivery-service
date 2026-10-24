@@ -1,16 +1,28 @@
 import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InstalledPackRefused, PackSourceUnavailable } from "../errors.js";
+import { comparePacks } from "../packs/install/compare.js";
+import { fingerprintedFiles } from "../packs/install/digests.js";
+import { diffPackFiles } from "../packs/install/file-diff.js";
 import { readInstalledPacks } from "../packs/install/installed.js";
 import { fakePackSource, type FakePackSource } from "../packs/install/fake-source.js";
 import { CODE_TEXT, packPackage } from "../packs/install/install-fixtures.js";
-import { readLock } from "../packs/install/lock.js";
+import { PACK_HASH_LABEL, readLock } from "../packs/install/lock.js";
+import { readPackage } from "../packs/install/package-archive.js";
 import { sriOf } from "../packs/install/pack-source.js";
+import { installedPackDir } from "../packs/install/store.js";
+import { withStagedPack } from "../packs/install/staged.js";
+import { inspectionOf } from "../packs/inspection.js";
+import { readPackFolder } from "../packs/pack-folder.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, withPrivateTmpdir } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
+import { PackDecision } from "./pack-decision.js";
+import { fingerprintDiffers, nobodyToAsk } from "./packs-add-render.js";
+import { projectBaseline } from "./project-baseline.js";
 import { addedDocsDrift, tree } from "./installed-fixtures.js";
 import { notAddedLines } from "./installed-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
@@ -27,6 +39,43 @@ const flat = (text: string): string => text.replace(/\s+/g, " ");
 /** The temporary folders an update left in `dir`, by name. */
 const tempFolders = (dir: string): string[] => readdirSync(dir).filter((name) => name.startsWith("delivery-pack-")).sort();
 
+/** The bare hash of a package's pack: the fingerprint the account prints, and the one `--approve` takes. */
+async function hashOf(tarball: Uint8Array): Promise<string> {
+  const read = await readPackage(tarball);
+  if (!read.ok) throw new Error("the fixture package must read");
+  return withStagedPack(read.packFiles, async (_stagedDir, folder) => {
+    if (!folder.ok) throw new Error("the fixture package must hold a pack");
+    return folder.pack.hash;
+  });
+}
+
+/**
+ * The two inspections and the file diffs an update of docs-drift to `next` judges, built as the command builds them:
+ * the kept copy against the staged new version, under the same project baseline.
+ */
+async function judged(repo: string, next: Uint8Array) {
+  const entry = (await readLock(repo)).packs["docs-drift"];
+  if (entry === undefined) throw new Error("docs-drift must be added");
+  const read = await readPackage(next);
+  if (!read.ok) throw new Error("the fixture package must read");
+  return withStagedPack(read.packFiles, async (stagedDir, folder) => {
+    if (!folder.ok) throw new Error("the fixture package must hold a pack");
+    const baseline = await projectBaseline(repo, {}, stagedDir);
+    const keptDir = installedPackDir(repo, "docs-drift");
+    const kept = await readPackFolder(keptDir);
+    if (!kept.ok) throw new Error("the kept pack must read");
+    const newPack = {
+      ...folder.pack,
+      dir: keptDir,
+      origin: { kind: "installed" as const, package: entry.package, version: "1.3.0", request: entry.request, integrity: sriOf(next) },
+    };
+    const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files);
+    const after = inspectionOf(newPack, baseline, folder.files);
+    const diffs = await diffPackFiles(keptDir, fingerprintedFiles(kept.pack), stagedDir, fingerprintedFiles(newPack));
+    return { before, after, diffs };
+  });
+}
+
 const SCAN = { kind: "find", prompt: "scan.md", ideasFor: ["code"] };
 const V1_WORKFLOWS = { scan: SCAN, code: { kind: "act", prompt: "code.md", hold: { atOrAbove: "high" } } };
 const V2_WORKFLOWS = {
@@ -40,6 +89,8 @@ describe("delivery packs update", () => {
   let source: FakePackSource;
   let V1: Uint8Array;
   let V2: Uint8Array;
+  let oldHash: string;
+  let newHash: string;
   const dirPath = (): string => join(repo, ".delivery", "packs", "docs-drift");
   const lockPath = (): string => join(repo, ".delivery", "packs.lock.json");
 
@@ -51,6 +102,8 @@ describe("delivery packs update", () => {
       manifest: { workflows: V2_WORKFLOWS },
       extra: { "audit.md": "Audit.\nTwice.\n", "code.md": CODE_TEXT + "\nAlso this." },
     });
+    oldHash = await hashOf(V1);
+    newHash = await hashOf(V2);
     source = await addedDocsDrift(repo, V1);
     source.publish(NAME, "1.3.0", V2);
   });
@@ -259,4 +312,122 @@ describe("delivery packs update", () => {
     expect(tree(repo)).toEqual(before);
   });
 
+  it("refuses with nobody to ask, naming the update command as typed", async () => {
+    source.publish(NAME, "1.3.0", V2, { tags: ["^1.0.0"] });
+    const before = tree(repo);
+    const { ctx, lines } = context(repo, { interactive: false });
+    expect(await packsUpdateCommand("docs-drift", "^1.0.0", ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(lines.slice(-9)).toEqual(nobodyToAsk("update", "delivery packs update docs-drift ^1.0.0", newHash));
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("names the update command with no request when none was typed, and quotes a range a shell would read", async () => {
+    const plain = context(repo, { interactive: false });
+    expect(await packsUpdateCommand("docs-drift", undefined, plain.ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    expect(plain.lines.slice(-9)).toEqual(nobodyToAsk("update", "delivery packs update docs-drift", newHash));
+
+    source.publish(NAME, "1.3.0", V2, { tags: [">=1.0.0"] });
+    const ranged = context(repo, { interactive: false });
+    expect(await packsUpdateCommand("docs-drift", ">=1.0.0", ranged.ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    expect(ranged.lines.slice(-9)).toEqual(nobodyToAsk("update", "delivery packs update docs-drift '>=1.0.0'", newHash));
+  });
+
+  it("leaves the recorded request alone when the printed command is followed", async () => {
+    const refused = context(repo, { interactive: false });
+    expect(await packsUpdateCommand("docs-drift", undefined, refused.ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    const at = refused.lines.findIndex((line) => line.startsWith("    delivery packs update"));
+    const printed = refused.lines
+      .slice(at, at + 3)
+      .join("\n")
+      .replace(/\\\n/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const match = /^delivery packs update (\S+)(?: (\S+))? --approve ([0-9a-f]{64})$/.exec(printed);
+    if (match === null) throw new Error(`the refusal printed no runnable command: ${printed}`);
+    const [, typed, request, approve] = match;
+    if (typed === undefined || approve === undefined) throw new Error("the printed command must name the pack and the fingerprint");
+    expect(approve).toBe(newHash);
+    expect(await packsUpdateCommand(typed, request, context(repo, { interactive: false }).ctx, scriptedAsk().ask, source, { approve })).toBe(EXIT.ok);
+    expect(await readLock(repo)).toMatchObject({ packs: { "docs-drift": { version: "1.3.0", request: "latest" } } });
+
+    source.publish(NAME, "1.4.0", packPackage({ version: "1.4.0", manifest: { workflows: V2_WORKFLOWS }, extra: { "audit.md": "Audit.\nThrice.\n" } }));
+    const update = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, update.ctx, scriptedAsk({ confirm: false }).ask, source)).toBe(EXIT.ok);
+    expect(update.lines.join("\n")).not.toContain("is up to date");
+    expect(flat(update.lines.join("\n"))).toContain("1.4.0");
+  });
+
+  it("updates with the new version's fingerprint, asking nothing", async () => {
+    const { ctx, lines } = context(repo, { interactive: false });
+    const { ask, asked } = scriptedAsk();
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, ask, source, { approve: newHash })).toBe(EXIT.ok);
+    expect(lines.slice(-updatedLines("docs-drift", "1.3.0").length)).toEqual(updatedLines("docs-drift", "1.3.0"));
+    expect(asked).toEqual([]);
+    const entry = (await readLock(repo)).packs["docs-drift"];
+    expect(entry).toMatchObject({ version: "1.3.0" });
+    expect(entry?.approved).toBe(PACK_HASH_LABEL + newHash);
+  });
+
+  it("refuses the old version's fingerprint as different, the record unchanged", async () => {
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk().ask, source, { approve: oldHash })).toBe(EXIT.configuration);
+    expect(lines.slice(-fingerprintDiffers("update").length)).toEqual(fingerprintDiffers("update"));
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses a fingerprint read before a newer version appeared, the record unchanged", async () => {
+    source.publish(NAME, "1.3.0", V2, { tags: ["^1.0.0"] });
+    const first = context(repo, { interactive: false });
+    expect(await packsUpdateCommand("docs-drift", "^1.0.0", first.ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+
+    source.publish(NAME, "1.4.0", packPackage({ version: "1.4.0", manifest: { workflows: V2_WORKFLOWS }, extra: { "audit.md": "Audit.\nThrice.\n" } }), {
+      tags: ["^1.0.0"],
+    });
+    const before = tree(repo);
+    const second = context(repo);
+    expect(await packsUpdateCommand("docs-drift", "^1.0.0", second.ctx, scriptedAsk().ask, source, { approve: newHash })).toBe(EXIT.configuration);
+    expect(second.lines.slice(-fingerprintDiffers("update").length)).toEqual(fingerprintDiffers("update"));
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("gives the change as an update document under --json", async () => {
+    const { before, after, diffs } = await judged(repo, V2);
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    expect(lines).toHaveLength(1);
+    const doc = PackDecision.parse(JSON.parse(lines[0] ?? ""));
+    expect(doc).toMatchObject({
+      command: "update",
+      outcome: "needs-approval",
+      pack: "docs-drift",
+      package: { version: "1.3.0" },
+      previous: { version: "1.2.0", fingerprint: oldHash },
+      fingerprint: newHash,
+    });
+    expect(doc.account?.pack.source.path).toBe(".delivery/packs/docs-drift"); // relative to the repository
+    expect(lines[0]).not.toContain(repo);
+    expect(lines[0]).not.toContain(tmpdir());
+    expect(doc.changes).toEqual(comparePacks(before, after));
+    expect(doc.files).toEqual(diffs); // every file diffPackFiles gives, unchanged ones too, as filesLines lists them
+    expect(doc.files?.find(({ path }) => path === "audit.md")?.status).toBe("added");
+  });
+
+  it("says unchanged under --json when npm has nothing newer", async () => {
+    const repo2 = initTempRepo("update-pack-", { "package.json": PACKAGE });
+    const same = await addedDocsDrift(repo2, V1);
+    const { ctx, lines } = context(repo2, { json: true });
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk().ask, same)).toBe(EXIT.ok);
+    expect(lines).toHaveLength(1);
+    expect(PackDecision.parse(JSON.parse(lines[0] ?? ""))).toMatchObject({ outcome: "unchanged", changes: null });
+  });
+
+  it("gives a refused document under --json for a name that is not added", async () => {
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsUpdateCommand("nope", undefined, ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    expect(lines).toHaveLength(1);
+    const doc = PackDecision.parse(JSON.parse(lines[0] ?? ""));
+    expect(doc.outcome).toBe("refused");
+    expect(doc.message).toContain("is not an added pack");
+  });
 });
