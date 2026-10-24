@@ -36,6 +36,8 @@ export interface PackPackageOptions {
   extra?: Record<string, string>;
   /** package.json fields to set over the defaults. An `undefined` value drops the field. */
   packageJson?: Record<string, unknown>;
+  /** pack.json fields to set over the default manifest, such as `workflows`. */
+  manifest?: Record<string, unknown>;
 }
 
 /** A valid `delivery.pack/3` manifest: a find that offers an idea to the act `code`. */
@@ -56,7 +58,7 @@ export function packPackage(options: PackPackageOptions = {}): Uint8Array {
   const field = options.field ?? ".";
   const folder = field === "." ? "" : `${field}/`;
   const files: Record<string, string> = {
-    [`${folder}pack.json`]: JSON.stringify(manifest(options.name ?? "docs-drift")),
+    [`${folder}pack.json`]: JSON.stringify({ ...manifest(options.name ?? "docs-drift"), ...options.manifest }),
     [`${folder}scan.md`]: SCAN_TEXT,
     [`${folder}code.md`]: CODE_TEXT,
     ...options.extra,

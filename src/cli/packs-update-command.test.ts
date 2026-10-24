@@ -1,0 +1,240 @@
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { beforeEach, describe, expect, it } from "vitest";
+import { InstalledPackRefused, PackSourceUnavailable } from "../errors.js";
+import { readInstalledPacks } from "../packs/install/installed.js";
+import { fakePackSource, type FakePackSource } from "../packs/install/fake-source.js";
+import { CODE_TEXT, packPackage } from "../packs/install/install-fixtures.js";
+import { readLock } from "../packs/install/lock.js";
+import { sriOf } from "../packs/install/pack-source.js";
+import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
+import { initTempRepo } from "../temp-repo.js";
+import { delivery, PACKAGE } from "./command-fixtures.js";
+import { EXIT } from "./failures.js";
+import { addedDocsDrift, tree } from "./installed-fixtures.js";
+import { notAddedLines } from "./installed-render.js";
+import { context, scriptedAsk } from "./init-fixtures.js";
+import { packsAddCommand } from "./packs-add-command.js";
+import { packsUpdateCommand } from "./packs-update-command.js";
+import { keptDiffersLines, renamedLines, updatedLines } from "./packs-update-render.js";
+
+const NAME = "@acme/delivery-pack-docs";
+
+/** The text with every run of white space made one space: where a line wraps does not matter. */
+const flat = (text: string): string => text.replace(/\s+/g, " ");
+
+/** The temporary folders an update left in `dir`, by name. */
+const tempFolders = (dir: string): string[] => readdirSync(dir).filter((name) => name.startsWith("delivery-pack-")).sort();
+
+const SCAN = { kind: "find", prompt: "scan.md", ideasFor: ["code"] };
+const V1_WORKFLOWS = { scan: SCAN, code: { kind: "act", prompt: "code.md", hold: { atOrAbove: "high" } } };
+const V2_WORKFLOWS = {
+  scan: { ...SCAN, ideasFor: ["code", "audit"] },
+  code: { kind: "act", summary: "Code that calls the replaced code.", prompt: "code.md" },
+  audit: { kind: "act", summary: "Audit of the calls.", prompt: "audit.md" },
+};
+
+describe("delivery packs update", () => {
+  let repo: string;
+  let source: FakePackSource;
+  let V1: Uint8Array;
+  let V2: Uint8Array;
+  const dirPath = (): string => join(repo, ".delivery", "packs", "docs-drift");
+  const lockPath = (): string => join(repo, ".delivery", "packs.lock.json");
+
+  beforeEach(async () => {
+    repo = initTempRepo("update-pack-", { "package.json": PACKAGE });
+    V1 = packPackage({ manifest: { workflows: V1_WORKFLOWS } });
+    V2 = packPackage({
+      version: "1.3.0",
+      manifest: { workflows: V2_WORKFLOWS },
+      extra: { "audit.md": "Audit.\nTwice.\n", "code.md": CODE_TEXT + "\nAlso this." },
+    });
+    source = await addedDocsDrift(repo, V1);
+    source.publish(NAME, "1.3.0", V2);
+  });
+
+  it("leads the report with the removed sign-off, then files, then lines, and changes nothing on no", async () => {
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: false }).ask, source)).toBe(EXIT.ok);
+    const text = lines.join("\n");
+    expect(lines[0]).toBe(`Checking ${NAME} on npm.`);
+    expect(text).toContain('Found 1.3.0 for "latest" (you have 1.2.0).');
+    expect(text.indexOf('Sign-off: "code" no longer waits for your sign-off.')).toBeLessThan(text.indexOf("Instruction files"));
+    expect(text.indexOf("Instruction files")).toBeLessThan(text.indexOf("Changed lines"));
+    expect(text).toContain("Workflows added: audit");
+    expect(text).toContain("  audit.md: new, 2 lines");
+    expect(text).toContain("  + Also this.");
+    expect(flat(text)).toContain("This summary does not cover what the instructions say.");
+    expect(lines.at(-1)).toBe("Nothing was changed.");
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("on yes, keeps the new files and records 1.3.0 approved at its fingerprint, and the list shows it", async () => {
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    expect(lines.slice(-updatedLines("docs-drift", "1.3.0").length)).toEqual(updatedLines("docs-drift", "1.3.0"));
+    const entry = (await readLock(repo)).packs["docs-drift"];
+    expect(entry).toMatchObject({ version: "1.3.0", integrity: sriOf(V2), request: "latest" });
+    expect(entry?.approved).toBe(entry?.fingerprint);
+    expect(await readInstalledPacks(repo)).toMatchObject([{ state: "ok", pack: { workflows: { "docs-drift:audit": expect.anything() } } }]);
+    const listed = await delivery(["packs"], { cwd: repo });
+    expect(listed.stdout).toContain("From npm: @acme/delivery-pack-docs 1.3.0. As approved.");
+  });
+
+  it("shows the report and refuses, changing nothing, when nothing can ask", async () => {
+    const before = tree(repo);
+    const { ctx, lines } = context(repo, { interactive: false });
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain("Not updated: nothing here can ask you.");
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("says the pack is up to date and writes nothing when npm has nothing newer", async () => {
+    const repo2 = initTempRepo("update-pack-", { "package.json": PACKAGE });
+    const same = await addedDocsDrift(repo2, V1);
+    const before = tree(repo2);
+    const { ctx, lines } = context(repo2);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, same)).toBe(EXIT.ok);
+    expect(lines).toContain("docs-drift is up to date at 1.2.0.");
+    expect(tree(repo2)).toEqual(before);
+  });
+
+  it("says a newer version with the same content changes nothing, naming both versions", async () => {
+    source.publish(NAME, "1.3.0", packPackage({ manifest: { workflows: V1_WORKFLOWS }, version: "1.3.0", extra: { "README.md": "x\n" } }));
+    const lockBefore = readFileSync(lockPath());
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    expect(flat(lines.join("\n"))).toContain("docs-drift 1.3.0 has the same content as the 1.2.0 you have.");
+    expect(readFileSync(lockPath())).toEqual(lockBefore);
+  });
+
+  it("takes the version the owner names and records that request", async () => {
+    const { ctx } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", "1.3.0", ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    expect(source.fetched.at(-1)).toEqual({ name: NAME, request: "1.3.0", typed: true });
+    expect((await readLock(repo)).packs["docs-drift"]?.request).toBe("1.3.0");
+  });
+
+  it("refuses a request that is not a version, range or tag, before asking npm", async () => {
+    const asked = source.fetched.length;
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", "x y", ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain('Not updated: x y is not a version, range or tag.');
+    expect(source.fetched.length).toBe(asked);
+  });
+
+  it("refuses an update that adds a workflow another pack defines, naming both, with the record unchanged", async () => {
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ workflows: { "docs-drift:audit": { steps: [{ name: "a", prompt: "a" }] } } }));
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain('Not updated: two things define the workflow "docs-drift:audit".');
+    expect(lines).toContain("  To keep the new pack, rename your own workflow.");
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses a new version that cannot be read, with the record unchanged", async () => {
+    source.publish(NAME, "1.3.0", packPackage({ version: "1.3.0", extra: { "install.sh": "rm -rf /" } }));
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain("Not updated:");
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses a new version whose pack has another name", async () => {
+    source.publish(NAME, "1.3.0", packPackage({ name: "docs-sweep", version: "1.3.0" }));
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain(flat(renamedLines("docs-drift", NAME, "1.3.0", "docs-sweep").join("\n")));
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses when npm now serves other contents for the recorded version", async () => {
+    const other = fakePackSource();
+    other.publish(NAME, "1.2.0", packPackage({ extra: { "README.md": "new\n" } }));
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, other)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain("Not updated: npm now serves different contents");
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("compares a changed kept copy against what is on disk and accepts the new version", async () => {
+    const code = join(dirPath(), "code.md");
+    writeFileSync(code, readFileSync(code, "utf-8").replace("Read", "Reed"));
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    expect(lines).toEqual(expect.arrayContaining(keptDiffersLines()));
+    expect(lines).toContain("  - Reed the file named in the idea.");
+    expect(await readInstalledPacks(repo)).toMatchObject([{ state: "ok", entry: { version: "1.3.0" } }]);
+  });
+
+  it.each(["missing", "invalid"])("refuses to update a %s kept copy and names restore", async (state) => {
+    if (state === "missing") rmSync(dirPath(), { recursive: true, force: true });
+    else writeFileSync(join(dirPath(), "stray.md"), "left behind\n");
+    const fetched = source.fetched.length;
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain("Put them back first: delivery packs restore docs-drift");
+    expect(source.fetched.length).toBe(fetched);
+  });
+
+  it("names the added packs when the name is not one", async () => {
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("nope", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain(flat(notAddedLines("nope", ["docs-drift"]).join("\n")));
+  });
+
+  it("lets an unreachable npm refuse as an update, changing nothing", async () => {
+    source.unreachable();
+    const before = tree(repo);
+    const { ctx } = context(repo);
+    const failure = packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source);
+    await expect(failure).rejects.toBeInstanceOf(PackSourceUnavailable);
+    await expect(failure).rejects.toMatchObject({ attempt: "update" });
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses while another added pack is unusable, naming it", async () => {
+    const other = fakePackSource();
+    other.publish("@acme/delivery-pack-sweep", "1.0.0", packPackage({ name: "docs-sweep", packageName: "@acme/delivery-pack-sweep", version: "1.0.0" }));
+    expect(await packsAddCommand("@acme/delivery-pack-sweep", context(repo).ctx, scriptedAsk({ confirm: true }).ask, other)).toBe(EXIT.ok);
+    rmSync(join(repo, ".delivery", "packs", "docs-sweep", "scan.md"));
+    const { ctx } = context(repo);
+    await expect(packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).rejects.toBeInstanceOf(InstalledPackRefused);
+  });
+
+  it("keeps its own lines within 60 columns, with no colour and no reassuring words", async () => {
+    const { ctx, lines } = context(repo);
+    await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: false }).ask, source);
+    const block = lines.indexOf("Changed lines");
+    const own = [...lines.slice(0, block), lines.at(-1) ?? ""];
+    for (const line of own) {
+      expect(line.length).toBeLessThanOrEqual(60);
+      expect(line).not.toContain("\u001b");
+    }
+    const text = own.join("\n");
+    expect(text).not.toMatch(REASSURING);
+    expect(text).not.toMatch(FORBIDDEN);
+  });
+
+  it("leaves no temporary folder behind", async () => {
+    // Its own temporary folder, so another test file running at once cannot add or remove a folder this one counts.
+    const scratch = mkdtempSync(join(tmpdir(), "update-scratch-"));
+    const previous = process.env.TMPDIR;
+    process.env.TMPDIR = scratch;
+    try {
+      await packsUpdateCommand("docs-drift", undefined, context(repo).ctx, scriptedAsk({ confirm: false }).ask, source);
+      await packsUpdateCommand("docs-drift", undefined, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source);
+      expect(tempFolders(scratch)).toEqual([]);
+    } finally {
+      process.env.TMPDIR = previous;
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  });
+});
