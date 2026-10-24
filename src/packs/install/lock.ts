@@ -133,6 +133,16 @@ export async function setLockEntry(repoPath: string, name: string, entry: LockEn
   await atomicWrite(packsLockPath(repoPath), serialiseLock(lock));
 }
 
+/**
+ * Remove one pack's entry from the record: read it, drop the entry, and write it whole, atomically. No lock is taken
+ * here, so the caller must hold one (see `withRecordLock`).
+ */
+export async function deleteLockEntry(repoPath: string, name: string): Promise<void> {
+  const lock = await readLock(repoPath);
+  delete lock.packs[name];
+  await atomicWrite(packsLockPath(repoPath), serialiseLock(lock));
+}
+
 /** Set one pack's entry in the record, under the record lock, so two adds at once both land. */
 export const putLockEntry = (repoPath: string, name: string, entry: LockEntry): Promise<void> =>
   withRecordLock(repoPath, () => setLockEntry(repoPath, name, entry));

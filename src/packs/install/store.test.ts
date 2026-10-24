@@ -5,9 +5,9 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { cleanGitEnv } from "../../git-env.js";
 import { initTempRepo } from "../../temp-repo.js";
-import { packsLockPath, readLock, type LockEntry } from "./lock.js";
+import { packsLockPath, readLock, serialiseLock, type LockEntry } from "./lock.js";
 import type { PackageFile } from "./package-archive.js";
-import { installedPackDir, installedPacksDir, installPack, restorePackFolder } from "./store.js";
+import { installedPackDir, installedPacksDir, installPack, restorePackFolder, uninstallPack } from "./store.js";
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
 
@@ -122,5 +122,25 @@ describe("installPack", () => {
     await restorePackFolder(repo, "moves", LINE_FILES);
     expect(readFileSync(join(installedPackDir(repo, "moves"), "scan.md"))).toEqual(Buffer.from(encode(CRLF_SCAN)));
     expect(readFileSync(packsLockPath(repo), "utf-8")).toBe("known\n");
+  });
+});
+
+describe("uninstallPack", () => {
+  it("deletes the pack's folder and its record entry, keeping every other entry byte for byte", async () => {
+    const repo = initTempRepo("store-", { "README.md": "x\n" });
+    await installPack(repo, "moves", FILES, ENTRY);
+    await installPack(repo, "other", FILES, { ...ENTRY, package: "@acme/other" });
+    await uninstallPack(repo, "moves");
+    expect(existsSync(installedPackDir(repo, "moves"))).toBe(false);
+    expect(Object.keys((await readLock(repo)).packs)).toEqual(["other"]);
+    expect(readFileSync(packsLockPath(repo), "utf-8")).toBe(serialiseLock({ schema: "delivery.packs-lock/1", packs: { other: { ...ENTRY, package: "@acme/other" } } }));
+  });
+
+  it("completes a remove whose folder is already gone", async () => {
+    const repo = initTempRepo("store-", { "README.md": "x\n" });
+    await installPack(repo, "moves", FILES, ENTRY);
+    rmSync(installedPackDir(repo, "moves"), { recursive: true });
+    await uninstallPack(repo, "moves");
+    expect((await readLock(repo)).packs).toEqual({});
   });
 });

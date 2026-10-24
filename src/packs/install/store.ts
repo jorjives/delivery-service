@@ -3,7 +3,7 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isEnoent } from "../../journal.js";
 import { prepareDeliveryDir } from "../../run-location.js";
-import { setLockEntry, withRecordLock, type LockEntry } from "./lock.js";
+import { deleteLockEntry, setLockEntry, withRecordLock, type LockEntry } from "./lock.js";
 import type { PackageFile } from "./package-archive.js";
 
 /** What git is told about a kept pack's files: none is line-ending converted, so the bytes stay as the package had them. */
@@ -61,5 +61,16 @@ export async function installPack(repoPath: string, name: string, files: readonl
   await withRecordLock(repoPath, async () => {
     await placeFolder(repoPath, name, files);
     await setLockEntry(repoPath, name, entry);
+  });
+}
+
+/**
+ * Take an added pack out of the project: its folder first, then its record entry, so a crash leaves a record entry
+ * naming a missing folder, which a second remove completes. Both happen under one hold of the record lock.
+ */
+export async function uninstallPack(repoPath: string, name: string): Promise<void> {
+  await withRecordLock(repoPath, async () => {
+    await rm(installedPackDir(repoPath, name), { recursive: true, force: true });
+    await deleteLockEntry(repoPath, name);
   });
 }
