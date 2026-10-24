@@ -45,10 +45,13 @@ export function takeTurn<T>(cwd: string, work: () => Promise<T>): Promise<T> {
  * `timeout`, in milliseconds, ends the call and rejects when it runs longer;
  * `raw` returns standard output exactly as git wrote it, for file contents;
  * `input` is written to standard input, then closed, for a call such as `hash-object --stdin`.
+ * `okExitCodes` names exit codes that are answers rather than failures (`diff --no-index`
+ * exits 1 when the files differ); when git exits with one of them, the call resolves with its
+ * stdout. Any other exit still rejects.
  *
  * ponytail: no retry on an index.lock left by a person running git in the checkout at the same moment; add a bounded retry here if that is seen in practice (design §4).
  */
-export async function git(cwd: string, args: string[], options: { env?: NodeJS.ProcessEnv; maxBuffer?: number; timeout?: number; raw?: boolean; input?: string } = {}): Promise<string> {
+export async function git(cwd: string, args: string[], options: { env?: NodeJS.ProcessEnv; maxBuffer?: number; timeout?: number; raw?: boolean; input?: string; okExitCodes?: readonly number[] } = {}): Promise<string> {
   const { stdout } = await takeTurn(cwd, () => {
     const call = execFile("git", args, {
       cwd,
@@ -57,7 +60,10 @@ export async function git(cwd: string, args: string[], options: { env?: NodeJS.P
       ...(options.timeout === undefined ? {} : { timeout: options.timeout }),
     });
     if (options.input !== undefined) call.child.stdin?.end(options.input);
-    return call;
+    return call.catch((err: { code?: unknown; stdout: string }) => {
+      if (typeof err.code === "number" && options.okExitCodes?.includes(err.code)) return { stdout: err.stdout };
+      throw err;
+    });
   });
   return options.raw === true ? stdout : stdout.trim();
 }
