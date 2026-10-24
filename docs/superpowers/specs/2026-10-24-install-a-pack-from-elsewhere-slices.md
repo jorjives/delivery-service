@@ -8,6 +8,8 @@
 
 ## Slice 1: Add a pack from npm and run it
 
+**Tests:** ✅ Recorded — 2026-10-24 — `5131f37` — cli — 5 UAT + 11 AC, 0 skipped
+
 **Delivers:** A project owner can add a pack published on npm, read exactly what it will do, accept it, and run it, with nothing from the package ever executed.
 
 **Operational note:** Adding needs the `npm` tool on the machine; running does not. The two files that record and hold the pack must be committed rather than ignored by the project's own ignore rule. Every behaviour must be testable offline through a replaceable fake of the package source.
