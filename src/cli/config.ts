@@ -540,12 +540,15 @@ export async function loadConfig(lookup: ConfigLookup): Promise<DeliveryConfig> 
   return (await loadConfigAndPacks(lookup)).config;
 }
 
-/** The settings a run starts from, as `loadConfig` gives them, and the packs the project can use, built-in and listed. */
-export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config: DeliveryConfig; packs: Pack[] }> {
+/**
+ * The settings a run starts from, as `loadConfig` gives them, and the packs the project can use, built-in and listed. `settings`
+ * is the file's own content, without any pack's workflows, for a caller that changes the set of packs and checks it again.
+ */
+export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config: DeliveryConfig; settings: DeliveryConfig; packs: Pack[] }> {
   const file = findConfig(lookup);
   const settings = file === undefined ? {} : await readConfig(file);
   const packs = await projectPacks(settings, file === undefined ? lookup.repoPath : dirname(file), lookup.repoPath);
-  return { config: withWorkflowsOf(settings, packs), packs };
+  return { config: withWorkflowsOf(settings, packs), settings, packs };
 }
 
 /** The source a project's ideas are raised to instead of committed: its first tracker, if it has one. */
