@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -58,6 +58,20 @@ const v3Pack = (name: string): string =>
 
 /** The temporary folders an add makes, by name. */
 const tempFolders = (): string[] => readdirSync(tmpdir()).filter((name) => name.startsWith("delivery-pack-")).sort();
+
+/** Runs `body` with `TMPDIR` pointing at a private empty folder, so folders made by other test files cannot show in `tempFolders`. */
+const withPrivateTmpdir = async (body: () => Promise<void>): Promise<void> => {
+  const saved = process.env.TMPDIR;
+  const own = mkdtempSync(join(tmpdir(), "packs-add-tmp-"));
+  process.env.TMPDIR = own;
+  try {
+    await body();
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = saved;
+    rmSync(own, { recursive: true, force: true });
+  }
+};
 
 describe("delivery packs add", () => {
   let repo: string;
@@ -394,13 +408,15 @@ describe("delivery packs add", () => {
   });
 
   it("leaves no temporary folder behind", async () => {
-    const before = tempFolders();
-    await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: false }).ask, source);
-    await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source);
-    const other = fakePackSource();
-    other.publish(NAME, "1.2.0", packPackage({ field: "pack", extra: { "pack/install.sh": "rm -rf /" } }));
-    await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, other);
-    expect(tempFolders()).toEqual(before);
+    await withPrivateTmpdir(async () => {
+      const before = tempFolders();
+      await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: false }).ask, source);
+      await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source);
+      const other = fakePackSource();
+      other.publish(NAME, "1.2.0", packPackage({ field: "pack", extra: { "pack/install.sh": "rm -rf /" } }));
+      await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, other);
+      expect(tempFolders()).toEqual(before);
+    });
   });
 
   it("adds a pack again over its own unrecorded folder", async () => {
