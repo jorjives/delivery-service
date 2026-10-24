@@ -33,7 +33,7 @@ const FIXTURE_FILES: readonly string[] = [FIXTURES.review, FIXTURES.fixes, FIXTU
 /** Top-level documentation names, in any case, with no extension or one of the usual document extensions. */
 const DOCUMENTATION = /^(readme|licen[cs]e|changelog)(\.(md|markdown|txt|rst|adoc))?$/i;
 /** Housekeeping files, allowed at any level the walk reaches. */
-const HOUSEKEEPING = new Set([".gitignore", ".gitattributes", ".DS_Store", "Thumbs.db"]);
+export const HOUSEKEEPING = new Set([".gitignore", ".gitattributes", ".DS_Store", "Thumbs.db"]);
 
 /** One entry the walk reached: its path relative to the folder, what it is, and its size when it is a file. */
 interface Entry {

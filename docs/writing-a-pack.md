@@ -308,6 +308,8 @@ See [`packs`](configuration-reference.md#packs). Then start it by name:
 delivery review mymoves
 ```
 
+Before you share it, run `delivery packs inspect ./my-pack` to see it as an owner will, and to be told about any file in the folder a pack should not hold.
+
 `delivery review <name>` starts a pack's find, whatever it is called. This runs a real review of your project with a real agent, so Claude Code must be signed in. It adds ideas to your backlog. To have them changed with `delivery approve` and `delivery run --sources`, the acts the ideas name run as the pack's `<name>:<act>` workflows. See [Review your project](task-packs.md).
 
 ## From your own test suite
