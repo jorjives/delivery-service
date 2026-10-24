@@ -105,7 +105,7 @@ async function packWith(env: NodeJS.ProcessEnv, spec: PackageSpec, scratch: stri
 
   const tarball = await readFile(join(scratch, entry.filename));
   if (tarball.length > ARCHIVE_CAPS.compressed) {
-    throw new PackSourceUnavailable(spec.name, spec.request, "failed", "the package is larger than 10 MiB");
+    throw new PackSourceUnavailable(spec.name, spec.request, "failed", `the package is larger than ${ARCHIVE_CAPS.compressed / 2 ** 20} MiB`);
   }
   return checkedIntegrity({ name: entry.name, version: entry.version, integrity: entry.integrity, tarball });
 }
