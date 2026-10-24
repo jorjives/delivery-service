@@ -56,7 +56,8 @@ export function fakePackSource(): FakePackSource {
       fetched.push(spec);
       if (down) throw new PackSourceUnavailable(spec.name, spec.request, "unreachable", "");
       const version = resolve(spec.name, spec.request);
-      const published = packages.get(spec.name)!.versions.get(version)!;
+      const published = packages.get(spec.name)?.versions.get(version);
+      if (published === undefined) throw new PackSourceUnavailable(spec.name, spec.request, "unreachable", "");
       const bytes = published.corrupted ? new Uint8Array([...published.tarball, 0]) : published.tarball;
       const result: FetchedPackage = { name: spec.name, version, integrity: published.integrity, tarball: bytes };
       return checkedIntegrity(result);

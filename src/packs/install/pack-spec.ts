@@ -20,7 +20,7 @@ function splitRequest(text: string): { name: string; request?: string } {
 /** Which kind of address the text looks like, or undefined when it is a plain npm name. Web and path come first so `./pack` is a path, not `owner/repo`. */
 function refusalOf(text: string): PackSpecRefused["looksLike"] | undefined {
   if (text.startsWith("http:") || text.startsWith("https:")) return "web";
-  if (/^[.\/~]/.test(text) || text.startsWith("file:") || text.endsWith(".tgz") || text.endsWith(".tar.gz")) return "path";
+  if (/^[./~]/.test(text) || text.startsWith("file:") || text.endsWith(".tgz") || text.endsWith(".tar.gz")) return "path";
   if (/^(git\+|git:|github:|gitlab:|bitbucket:|gist:)/.test(text) || text.endsWith(".git") || OWNER_REPO.test(text)) return "git";
   if (!NAME_AND_REQUEST.test(text) || splitRequest(text).name.length > MAX_NAME_LENGTH) return "name";
   return undefined;

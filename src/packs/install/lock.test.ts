@@ -82,7 +82,8 @@ it("refuses a record from a newer delivery-service with the upgrade sentence", a
 });
 
 it("labels a pack's fingerprint with its rule version", async () => {
-  const code = (await builtInPacks())[0]!;
+  const code = (await builtInPacks())[0];
+  if (code === undefined) throw new Error("no built-in packs");
   expect(fingerprintOf(code)).toBe(`delivery.pack-hash/1:${code.hash}`);
 });
 

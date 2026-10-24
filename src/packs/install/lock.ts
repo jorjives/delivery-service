@@ -67,7 +67,9 @@ function parseLock(filePath: string, text: string): PacksLock {
   }
   const result = PacksLock.safeParse(raw);
   if (!result.success) {
-    const { field, detail } = describeIssue(result.error.issues[0]!);
+    const issue = result.error.issues[0];
+    if (issue === undefined) throw new PackLockInvalid(filePath, null, "is not a valid packs lock");
+    const { field, detail } = describeIssue(issue);
     throw new PackLockInvalid(filePath, field, detail);
   }
   return result.data;
