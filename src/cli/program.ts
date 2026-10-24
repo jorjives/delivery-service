@@ -23,6 +23,7 @@ import { intervalSeconds, watchCommand } from "./watch-command.js";
 import { packsCommand, type PacksOptions } from "./packs-command.js";
 import type { PacksInspectOptions } from "./packs-inspect-command.js";
 import type { ReviewCommandOptions } from "./review-command.js";
+import { npmSource } from "../packs/install/npm-source.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
 export interface CliIo {
@@ -356,6 +357,16 @@ export async function runCli(io: CliIo): Promise<number> {
       const { packsCheckCommand } = await import("./packs-check-command.js");
       const ctx = ctxFor(command);
       exitCode = await packsCheckCommand(path, options, ctx, inquirerAsk(ctx.colour));
+    });
+
+  packs
+    .command("add")
+    .description("add a pack someone has published on npm: you see exactly what it will do, and nothing is added until you say yes")
+    .argument("<package>", "the npm package, such as @acme/delivery-pack-docs, optionally with @ and a version")
+    .action(async (pkg: string, _options: unknown, command: Command) => {
+      const { packsAddCommand } = await import("./packs-add-command.js");
+      const ctx = ctxFor(command);
+      exitCode = await packsAddCommand(pkg, ctx, inquirerAsk(ctx.colour), npmSource(ctx.env));
     });
 
   packs
