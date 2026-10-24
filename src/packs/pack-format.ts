@@ -11,7 +11,7 @@ export type PackSchemaVersion = (typeof PACK_SCHEMAS_READ)[number];
 /** The version of the pack format this build writes. Additive-only within the major. */
 export const PACK_SCHEMA = "delivery.pack/3";
 
-const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lower-case letters, digits and dashes");
+export const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lower-case letters, digits and dashes");
 const Sentence = z
   .string()
   .trim()
