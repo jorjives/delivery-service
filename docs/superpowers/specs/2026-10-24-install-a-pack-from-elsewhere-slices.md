@@ -8,6 +8,7 @@
 
 ## Slice 1: Add a pack from npm and run it
 
+**Status:** ✅ Complete — 2026-10-24 — `cd2acc6`
 **Tests:** ✅ Recorded — 2026-10-24 — `5131f37` — cli — 5 UAT + 11 AC, 0 skipped
 
 **Delivers:** A project owner can add a pack published on npm, read exactly what it will do, accept it, and run it, with nothing from the package ever executed.
