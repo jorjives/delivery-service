@@ -23,6 +23,7 @@ import { holdingRepo } from "./run-exclusion.js";
 import { allRuns, readRun } from "./runs.js";
 import { checkCustomModules, resolveProject, workflowFrom } from "./settings.js";
 import { closingReport } from "./report-command.js";
+import { shellQuoted } from "../report/text.js";
 
 export interface ReviewCommandOptions {
   path?: string;
@@ -34,7 +35,7 @@ export const reviewed = (n: number): string[] =>
   n === 0 ? [NOTHING_FOUND] : [`The review added ${n === 1 ? "1 idea" : `${n} ideas`} to your backlog.`, "Read them with: delivery backlog", "Choose what to fix with: delivery approve <ids>, or delivery approve --all"];
 export const raised = (n: number, source: string): string[] =>
   n === 0 ? [NOTHING_FOUND] : [`The review raised ${n === 1 ? "1 idea" : `${n} ideas`} in ${source}, without the label you deliver by.`, "On GitHub, adding the label is the approval: the next delivery run --sources fixes each one you label."];
-export const packNotListed = (pack: Pack): string => `The pack "${pack.manifest.name}" in ${pack.dir} is not one your project uses yet. List its folder under "packs" in delivery.config.json, then start it with: delivery review ${pack.manifest.name}`;
+export const packNotListed = (pack: Pack): string => [`The pack "${pack.manifest.name}" in ${pack.dir} is not one your project uses yet. See exactly what it will do first with: delivery packs inspect ${shellQuoted(pack.dir)}`, `To use it, list its folder under "packs" in delivery.config.json, then start it with: delivery review ${pack.manifest.name}`].join("\n");
 const outsideProject = (raw: string): string => `"${raw}" is not inside your project. Name a folder or file in it, relative to where you are, for example: delivery review code --path src`;
 
 /**

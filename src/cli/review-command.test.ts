@@ -112,8 +112,20 @@ describe("delivery review", () => {
     const repo = initTempRepo("unlisted-", { "package.json": PACKAGE, ...MOVES_FILES });
     const { exitCode, stderr } = await delivery(["review", "./moves-pack"], { cwd: repo });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stderr.trimEnd()).toBe(`The pack "moves" in ${join(repo, "moves-pack")} is not one your project uses yet. List its folder under "packs" in delivery.config.json, then start it with: delivery review moves`);
+    const dir = join(repo, "moves-pack");
+    expect(stderr.trimEnd()).toBe([
+      `The pack "moves" in ${dir} is not one your project uses yet. See exactly what it will do first with: delivery packs inspect ${dir}`,
+      'To use it, list its folder under "packs" in delivery.config.json, then start it with: delivery review moves',
+    ].join("\n"));
     expect(stderr).not.toMatch(/the review/i);
+  });
+
+  it("quotes a folder path with a space in the inspect command it suggests, so it can be pasted", async () => {
+    const files = Object.fromEntries(Object.entries(MOVES_FILES).map(([name, text]) => [name.replace(/^moves-pack\//, "my moves/"), text]));
+    const repo = initTempRepo("unlisted-space-", { "package.json": PACKAGE, ...files });
+    const { exitCode, stderr } = await delivery(["review", "./my moves"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(`delivery packs inspect '${join(repo, "my moves")}'\n`);
   });
 
   it("refuses a name no pack has, naming the built-in ones, in a project that lists none", async () => {
