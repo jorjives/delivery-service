@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { UnknownPack } from "../errors.js";
 import { PackManifest } from "./pack-format.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, IS_A_FOLDER, NOT_UTF8, packNamed, promptOf, readPack, isBuiltInPack, loadPack, resolvePack, isPackPath } from "./manifest.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, IS_A_FOLDER, NOT_UTF8, packNamed, promptOf, readPack, isBuiltInPack, loadPack, resolvePack, isPackPath, newerFormat } from "./manifest.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
 
@@ -112,12 +112,21 @@ describe("a delivery.pack/2 manifest", () => {
     expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ field: "schema", message: expect.stringContaining("delivery.pack/2") }] });
   });
 
-  it.each(["delivery.pack/1", "delivery.pack/9"])("refuses %s, naming both versions it reads", async (schema) => {
+  it.each(["delivery.pack/1", "delivery.pack/x", 3])("refuses %s, naming both versions it reads", async (schema) => {
     expect(await readPack(packDir({ ...minimal, schema }))).toEqual({
       ok: false,
       schema: null,
       prompts: null,
-      problems: [{ file: expect.any(String), field: "schema", message: `"schema" is "${schema}", but this harness reads delivery.pack/2 and delivery.pack/3 (see docs/writing-a-pack.md)` }],
+      problems: [{ file: expect.any(String), field: "schema", message: `"schema" is ${JSON.stringify(schema)}, but this harness reads delivery.pack/2 and delivery.pack/3 (see docs/writing-a-pack.md)` }],
+    });
+  });
+
+  it.each(["delivery.pack/4", "delivery.pack/10"])("refuses %s as newer than this harness, and says to upgrade", async (schema) => {
+    expect(await readPack(packDir({ ...minimal, schema }))).toEqual({
+      ok: false,
+      schema: null,
+      prompts: null,
+      problems: [{ file: expect.any(String), field: "schema", message: newerFormat(schema) }],
     });
   });
 

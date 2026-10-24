@@ -234,6 +234,10 @@ function packHash(raw: string, texts: string[]): string {
   return hash.digest("hex");
 }
 
+/** The sentence for a manifest declaring a format newer than any this harness reads: the pack is not wrong, the harness is old. */
+export const newerFormat = (declared: string): string =>
+  `"schema" is "${declared}", a newer pack format than this harness reads (${PACK_SCHEMAS_READ.join(" and ")}): upgrade delivery-service to read this pack`;
+
 /**
  * Read and check the pack in `dir`, naming every problem with it by file and field rather than stopping at the first.
  * A failure says which version the manifest was read as, so the words it is named in can follow that version; it is
@@ -255,7 +259,12 @@ export async function readPack(
   // A manifest in a format this build does not read is refused with its own sentence and never read further: its keys mean something else.
   const declared = typeof json === "object" && json !== null ? (json as { schema?: unknown }).schema : undefined;
   if (declared !== undefined && !(PACK_SCHEMAS_READ as readonly unknown[]).includes(declared)) {
-    return { ok: false, schema: null, prompts: null, problems: [{ file: manifestFile, field: "schema", message: `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)` }] };
+    const highestRead = Math.max(...PACK_SCHEMAS_READ.map((s) => Number(s.slice("delivery.pack/".length))));
+    const version = typeof declared === "string" ? /^delivery\.pack\/(\d+)$/.exec(declared)?.[1] : undefined;
+    const message = version !== undefined && Number(version) > highestRead
+      ? newerFormat(declared as string)
+      : `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)`;
+    return { ok: false, schema: null, prompts: null, problems: [{ file: manifestFile, field: "schema", message }] };
   }
   let manifest: PackManifest;
   let upgraded: Pack["upgraded"] = {};
