@@ -20,6 +20,7 @@ import {
   InvalidPack,
   UnknownPack,
   DamagedReview,
+  PackSpecRefused,
 } from "../errors.js";
 import { EXIT, Refusal, renderFailure, UNEXPECTED_FOOTER } from "./failures.js";
 
@@ -58,6 +59,10 @@ describe("renderFailure", () => {
     [new MissingBaseline("/r/.delivery/runs/x"), EXIT.unexpected, "This is a bug"],
     [new IllegalStateTransition("/r/.delivery/runs/x", "TRIAGE", "triage"), EXIT.unexpected, "This is a bug"],
     [new ParseError("unexpected token"), EXIT.unexpected, "This is a bug"],
+    [new PackSpecRefused("github:a/b", "git"), EXIT.configuration, "looks like a git address"],
+    [new PackSpecRefused("https://a.test/x.tgz", "web"), EXIT.configuration, "looks like a web address"],
+    [new PackSpecRefused("./pack", "path"), EXIT.configuration, "folder or file on this machine"],
+    [new PackSpecRefused("a b", "name"), EXIT.configuration, "is not an npm package name"],
   ])("renders %o in plain language with its mapped exit code", (err, exitCode, mentions) => {
     const rendered = renderFailure(err);
     expect(rendered.exitCode).toBe(exitCode);

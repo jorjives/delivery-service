@@ -19,6 +19,7 @@ import {
   InvalidPack,
   UnknownPack,
   DamagedReview,
+  PackSpecRefused,
 } from "../errors.js";
 import { messageOf } from "../gate-support.js";
 
@@ -86,6 +87,7 @@ const KNOWN_ERRORS = [
   InvalidPack,
   UnknownPack,
   DamagedReview,
+  PackSpecRefused,
 ] as const;
 type KnownError = InstanceType<(typeof KNOWN_ERRORS)[number]>;
 
@@ -100,6 +102,20 @@ function bug(detail: string, runFolder?: string): RenderedFailure {
     message: `Something went wrong inside the harness: ${detail}\nThis is a bug: please file an issue${attach}.`,
     exitCode: EXIT.unexpected,
   };
+}
+
+/** Why an owner's package name is refused, in words an owner can act on. */
+function packSpecRefusedMessage(err: PackSpecRefused): string {
+  switch (err.looksLike) {
+    case "git":
+      return `Not added: only npm packages can be added now. ${err.spec} looks like a git address.`;
+    case "web":
+      return `Not added: only npm packages can be added now. ${err.spec} looks like a web address.`;
+    case "path":
+      return `Not added: only npm packages can be added now. ${err.spec} looks like a folder or file on this machine.`;
+    case "name":
+      return `Not added: ${err.spec} is not an npm package name. A name looks like docs-pack or @acme/docs-pack, and may end in @ and a version.`;
+  }
 }
 
 /**
@@ -179,6 +195,8 @@ function renderKnown(err: KnownError): RenderedFailure {
           "Run the review again to make a new one, for example: delivery review code",
         exitCode: EXIT.unexpected,
       };
+    case "PACK_SPEC_REFUSED":
+      return { message: packSpecRefusedMessage(err), exitCode: EXIT.configuration };
     case "IMMUTABILITY_VIOLATION":
     case "MISSING_BASELINE":
     case "ILLEGAL_STATE_TRANSITION":

@@ -222,3 +222,15 @@ export class DamagedReview extends Error {
     this.name = "DamagedReview";
   }
 }
+
+/** A package name an owner gave that is not a plain npm name: a git, web or local address, or not a name at all. */
+export class PackSpecRefused extends Error {
+  readonly code = "PACK_SPEC_REFUSED" as const;
+  constructor(
+    readonly spec: string,
+    readonly looksLike: "git" | "web" | "path" | "name",
+  ) {
+    super(`Not a plain npm package name: ${spec} (${looksLike})`);
+    this.name = "PackSpecRefused";
+  }
+}
