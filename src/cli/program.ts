@@ -392,6 +392,17 @@ export async function runCli(io: CliIo): Promise<number> {
     });
 
   packs
+    .command("remove")
+    .description(
+      "take an added pack out of the project: names the workflows that will stop existing, then deletes its kept files and its record entry",
+    )
+    .argument("<name>", "the added pack to remove, by its name from `delivery packs`, such as docs-drift")
+    .action(async (name: string, _options: unknown, command: Command) => {
+      const { packsRemoveCommand } = await import("./packs-remove-command.js");
+      exitCode = await packsRemoveCommand(name, ctxFor(command));
+    });
+
+  packs
     .command("inspect")
     .description(
       "show what a pack will do before you use it: what each workflow is for, how far it goes before it asks you, and every instruction it gives the agent, with nothing run or changed",
