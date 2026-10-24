@@ -1,0 +1,143 @@
+delivery.pack-inspection/1.defaultGuards: array
+delivery.pack-inspection/1.defaultGuards[] = "backlog"
+delivery.pack-inspection/1.defaultGuards[] = "backlog-only"
+delivery.pack-inspection/1.defaultGuards[] = "check-untouched"
+delivery.pack-inspection/1.defaultGuards[] = "ignored"
+delivery.pack-inspection/1.defaultGuards[] = "no-skips"
+delivery.pack-inspection/1.defaultGuards[] = "tests-unchanged"
+delivery.pack-inspection/1.defaultGuards[] = "tests-untouched"
+delivery.pack-inspection/1.defaultGuards[]: string
+delivery.pack-inspection/1.files: array
+delivery.pack-inspection/1.files[].path: string
+delivery.pack-inspection/1.files[].role = "documentation"
+delivery.pack-inspection/1.files[].role = "fixture"
+delivery.pack-inspection/1.files[].role = "housekeeping"
+delivery.pack-inspection/1.files[].role = "manifest"
+delivery.pack-inspection/1.files[].role = "prompt"
+delivery.pack-inspection/1.files[].role: string
+delivery.pack-inspection/1.files[]: object
+delivery.pack-inspection/1.findings: array
+delivery.pack-inspection/1.findings[].code = "hold-only-critical"
+delivery.pack-inspection/1.findings[].code = "lands-without-sign-off"
+delivery.pack-inspection/1.findings[].code = "older-format-guards"
+delivery.pack-inspection/1.findings[].code = "widens"
+delivery.pack-inspection/1.findings[].code: string
+delivery.pack-inspection/1.findings[].detail: null|string
+delivery.pack-inspection/1.findings[].relation = "note"
+delivery.pack-inspection/1.findings[].relation = "wider"
+delivery.pack-inspection/1.findings[].relation: string
+delivery.pack-inspection/1.findings[].workflow: string
+delivery.pack-inspection/1.findings[]: object
+delivery.pack-inspection/1.hiddenCharacters: array
+delivery.pack-inspection/1.hiddenCharacters[].codePoint: string
+delivery.pack-inspection/1.hiddenCharacters[].column: integer
+delivery.pack-inspection/1.hiddenCharacters[].file: null|string
+delivery.pack-inspection/1.hiddenCharacters[].line: integer|null
+delivery.pack-inspection/1.hiddenCharacters[].place = "file-name"
+delivery.pack-inspection/1.hiddenCharacters[].place = "harness"
+delivery.pack-inspection/1.hiddenCharacters[].place = "instructions"
+delivery.pack-inspection/1.hiddenCharacters[].place = "project-path"
+delivery.pack-inspection/1.hiddenCharacters[].place = "source-path"
+delivery.pack-inspection/1.hiddenCharacters[].place = "summary"
+delivery.pack-inspection/1.hiddenCharacters[].place = "title"
+delivery.pack-inspection/1.hiddenCharacters[].place = "workflow-summary"
+delivery.pack-inspection/1.hiddenCharacters[].place: string
+delivery.pack-inspection/1.hiddenCharacters[].shown: string
+delivery.pack-inspection/1.hiddenCharacters[].workflow: null|string
+delivery.pack-inspection/1.hiddenCharacters[]: object
+delivery.pack-inspection/1.ok = false
+delivery.pack-inspection/1.ok = true
+delivery.pack-inspection/1.ok: boolean
+delivery.pack-inspection/1.pack.format = "delivery.pack/2"
+delivery.pack-inspection/1.pack.format = "delivery.pack/3"
+delivery.pack-inspection/1.pack.format: string
+delivery.pack-inspection/1.pack.hash: string
+delivery.pack-inspection/1.pack.name: string
+delivery.pack-inspection/1.pack.source.kind = "built-in"
+delivery.pack-inspection/1.pack.source.kind = "folder"
+delivery.pack-inspection/1.pack.source.kind: string
+delivery.pack-inspection/1.pack.source.path: string
+delivery.pack-inspection/1.pack.source: object
+delivery.pack-inspection/1.pack.summary: string
+delivery.pack-inspection/1.pack.title: string
+delivery.pack-inspection/1.pack.version: string
+delivery.pack-inspection/1.pack.workflows: array
+delivery.pack-inspection/1.pack.workflows[]: string
+delivery.pack-inspection/1.pack: object
+delivery.pack-inspection/1.problems: array
+delivery.pack-inspection/1.problems[].field: null|string
+delivery.pack-inspection/1.problems[].file: null|string
+delivery.pack-inspection/1.problems[].message: string
+delivery.pack-inspection/1.problems[]: object
+delivery.pack-inspection/1.project.closer.source = "project"
+delivery.pack-inspection/1.project.closer.source: string
+delivery.pack-inspection/1.project.closer.summary: string
+delivery.pack-inspection/1.project.closer.type: string
+delivery.pack-inspection/1.project.closer: null|object
+delivery.pack-inspection/1.project.config = "code"
+delivery.pack-inspection/1.project.config = "none"
+delivery.pack-inspection/1.project.config = "read"
+delivery.pack-inspection/1.project.config = "unreadable"
+delivery.pack-inspection/1.project.config: string
+delivery.pack-inspection/1.project.found: boolean
+delivery.pack-inspection/1.project.gate.source = "project"
+delivery.pack-inspection/1.project.gate.source: string
+delivery.pack-inspection/1.project.gate.summary: string
+delivery.pack-inspection/1.project.gate.type: string
+delivery.pack-inspection/1.project.gate: null|object
+delivery.pack-inspection/1.project.path: null|string
+delivery.pack-inspection/1.project: object
+delivery.pack-inspection/1.schema = "delivery.pack-inspection/1"
+delivery.pack-inspection/1.schema: string
+delivery.pack-inspection/1.widens: boolean
+delivery.pack-inspection/1.workflows: array
+delivery.pack-inspection/1.workflows[].hold = "critical"
+delivery.pack-inspection/1.workflows[].hold = "high"
+delivery.pack-inspection/1.workflows[].hold = "low"
+delivery.pack-inspection/1.workflows[].hold = "medium"
+delivery.pack-inspection/1.workflows[].hold: null|string
+delivery.pack-inspection/1.workflows[].kind = "act"
+delivery.pack-inspection/1.workflows[].kind = "find"
+delivery.pack-inspection/1.workflows[].kind: string
+delivery.pack-inspection/1.workflows[].local: string
+delivery.pack-inspection/1.workflows[].name: string
+delivery.pack-inspection/1.workflows[].offers: array|null
+delivery.pack-inspection/1.workflows[].offers[]: string
+delivery.pack-inspection/1.workflows[].steps: array
+delivery.pack-inspection/1.workflows[].steps[].guards.added: array
+delivery.pack-inspection/1.workflows[].steps[].guards.added[] = "backlog"
+delivery.pack-inspection/1.workflows[].steps[].guards.added[] = "backlog-only"
+delivery.pack-inspection/1.workflows[].steps[].guards.added[] = "check-untouched"
+delivery.pack-inspection/1.workflows[].steps[].guards.added[] = "ignored"
+delivery.pack-inspection/1.workflows[].steps[].guards.added[] = "no-skips"
+delivery.pack-inspection/1.workflows[].steps[].guards.added[] = "tests-unchanged"
+delivery.pack-inspection/1.workflows[].steps[].guards.added[] = "tests-untouched"
+delivery.pack-inspection/1.workflows[].steps[].guards.added[]: string
+delivery.pack-inspection/1.workflows[].steps[].guards.off: array
+delivery.pack-inspection/1.workflows[].steps[].guards.off[] = "backlog"
+delivery.pack-inspection/1.workflows[].steps[].guards.off[] = "backlog-only"
+delivery.pack-inspection/1.workflows[].steps[].guards.off[] = "check-untouched"
+delivery.pack-inspection/1.workflows[].steps[].guards.off[] = "ignored"
+delivery.pack-inspection/1.workflows[].steps[].guards.off[] = "no-skips"
+delivery.pack-inspection/1.workflows[].steps[].guards.off[] = "tests-unchanged"
+delivery.pack-inspection/1.workflows[].steps[].guards.off[] = "tests-untouched"
+delivery.pack-inspection/1.workflows[].steps[].guards.off[]: string
+delivery.pack-inspection/1.workflows[].steps[].guards: object
+delivery.pack-inspection/1.workflows[].steps[].instructions.authored: string
+delivery.pack-inspection/1.workflows[].steps[].instructions.harness: null|string
+delivery.pack-inspection/1.workflows[].steps[].instructions: object
+delivery.pack-inspection/1.workflows[].steps[].name: string
+delivery.pack-inspection/1.workflows[].steps[]: object
+delivery.pack-inspection/1.workflows[].summary: null|string
+delivery.pack-inspection/1.workflows[].upgraded: array
+delivery.pack-inspection/1.workflows[].upgraded[] = "backlog"
+delivery.pack-inspection/1.workflows[].upgraded[] = "backlog-only"
+delivery.pack-inspection/1.workflows[].upgraded[] = "check-untouched"
+delivery.pack-inspection/1.workflows[].upgraded[] = "ignored"
+delivery.pack-inspection/1.workflows[].upgraded[] = "no-skips"
+delivery.pack-inspection/1.workflows[].upgraded[] = "tests-unchanged"
+delivery.pack-inspection/1.workflows[].upgraded[] = "tests-untouched"
+delivery.pack-inspection/1.workflows[].upgraded[]: string
+delivery.pack-inspection/1.workflows[].widens: array
+delivery.pack-inspection/1.workflows[].widens[]: string
+delivery.pack-inspection/1.workflows[]: object

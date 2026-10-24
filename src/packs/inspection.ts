@@ -6,6 +6,7 @@ import { wideningsOf } from "./widening.js";
 import { PACK_SCHEMAS_READ, type PackWorkflow } from "./pack-format.js";
 import { FILE_ROLES, type PackFolderFile } from "./pack-folder.js";
 import { Finding, findingsOf, HiddenCharacter, hiddenCharactersOf } from "./inspection-findings.js";
+import { openSchema, type JsonSchema } from "../report/json-schema.js";
 
 export const INSPECTION_SCHEMA = "delivery.pack-inspection/1";
 
@@ -123,4 +124,21 @@ export function inspectionOf(pack: Pack, project: ProjectBaseline, files: readon
     files: files.map(({ path, role }) => ({ path, role })),
   };
   return withFindings(base);
+}
+
+/** A file or field the inspection could not read, as the owner is told it: a pack problem, with its file named. */
+export const InspectionProblem = z.object({ file: z.string().nullable(), field: z.string().nullable(), message: z.string() });
+export type InspectionProblem = z.infer<typeof InspectionProblem>;
+
+/** The document of a pack that cannot be inspected: no account, only why. */
+export const InspectionRefusal = z.object({ schema: z.literal(INSPECTION_SCHEMA), ok: z.literal(false), problems: z.array(InspectionProblem) });
+export type InspectionRefusal = z.infer<typeof InspectionRefusal>;
+
+export function inspectionRefusal(problems: readonly InspectionProblem[]): InspectionRefusal {
+  return { schema: INSPECTION_SCHEMA, ok: false, problems: [...problems] };
+}
+
+/** The published schema of the inspection document: either an account or a refusal, under the version it names itself by. */
+export function inspectionSchema(): JsonSchema {
+  return { ...openSchema(z.union([Inspection, InspectionRefusal])), title: INSPECTION_SCHEMA };
 }
