@@ -93,6 +93,10 @@ describe("an added pack, loaded by every command that uses packs", () => {
     });
     expect(preview.exitCode).toBe(EXIT.ok);
     expect(preview.stdout).toContain(SCAN_TEXT.slice(0, SCAN_TEXT.indexOf("\n")));
+    const listed = await delivery(["packs"], { cwd: clone, env: { DELIVERY_NPM: join(tmpdir(), "no-npm", "npm") } });
+    expect(listed.exitCode).toBe(EXIT.ok);
+    const row = listed.stdout.split("\n").find((line) => line.includes("docs-drift"));
+    expect(row).toContain("As approved.");
   });
 
   it("runs the recorded version when a newer one is published", async () => {

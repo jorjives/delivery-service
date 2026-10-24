@@ -4,7 +4,7 @@ import type { UnusableInstalledPack } from "../packs/install/installed.js";
 import type { LockEntry } from "../packs/install/lock.js";
 import { builtInPacks } from "../packs/manifest.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
-import { notAddedLines, refusedLines } from "./installed-render.js";
+import { notAddedLines, refusedLines, stateNote } from "./installed-render.js";
 
 const REPO = "/work/project";
 
@@ -71,5 +71,15 @@ describe("notAddedLines", () => {
 
   it("lists the added packs in name order", () => {
     expect(flat(notAddedLines("x", ["moves", "docs"]))).toBe("x is not an added pack. Added: docs, moves.");
+  });
+});
+
+describe("stateNote", () => {
+  it.each([0, 1, 2, 3])("gives sample %i one command, and no reassuring word", async (index) => {
+    const sample = (await samples())[index];
+    if (sample === undefined) throw new Error("no sample");
+    const note = stateNote(sample);
+    expect(note.split("delivery packs ").length - 1).toBe(1);
+    expect(note).not.toMatch(REASSURING);
   });
 });

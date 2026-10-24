@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -164,9 +164,36 @@ describe("delivery packs", () => {
     expect(exitCode).toBe(EXIT.ok);
     const width = Math.max(...(await builtInPacks()).map(({ manifest }) => manifest.name.length));
     const lines = stdout.trimEnd().split("\n");
-    expect(lines).toContain(`  ${"moves".padEnd(width)}  Moves calls off retired code. From npm: @acme/moves 1.2.0. Start it with: delivery review moves`);
+    expect(lines).toContain(`  ${"moves".padEnd(width)}  Moves calls off retired code. From npm: @acme/moves 1.2.0. As approved. Start it with: delivery review moves`);
     expect(lines.at(-2)).toBe(ADD_HINT);
     expect(lines.at(-1)).toBe(INSPECT_HINT);
+  });
+
+  it("lists a changed added pack with its state and the command that fixes it, and exits 0", async () => {
+    const repo = initTempRepo("packs-changed-", { "a.js": "x\n" });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    writeFileSync(join(repo, ".delivery", "packs", "moves", "scan.md"), "# Scan, changed\n");
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const width = Math.max(...(await builtInPacks()).map(({ manifest }) => manifest.name.length));
+    expect(stdout.trimEnd().split("\n")).toContain(`  ${"moves".padEnd(width)}  From npm: @acme/moves 1.2.0. Changed since approved. Will not run. To fix: delivery packs restore moves`);
+  });
+
+  it("lists an unrecorded folder with the line that says so, and exits 0", async () => {
+    const repo = initTempRepo("packs-unrecorded-", { "a.js": "x\n" });
+    mkdirSync(join(repo, ".delivery", "packs", "stray"), { recursive: true });
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const width = Math.max(...(await builtInPacks()).map(({ manifest }) => manifest.name.length));
+    expect(stdout.trimEnd().split("\n")).toContain(`  ${"stray".padEnd(width)}  Not in the record. Will not run. Add it again, or remove .delivery/packs/stray`);
+  });
+
+  it("keeps --json strict: a changed added pack refuses with the configuration exit", async () => {
+    const repo = initTempRepo("packs-changed-json-", { "a.js": "x\n" });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    writeFileSync(join(repo, ".delivery", "packs", "moves", "scan.md"), "# Scan, changed\n");
+    const { exitCode } = await delivery(["packs", "--json"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
   });
 
   it("lists the built-in packs outside any repository", async () => {

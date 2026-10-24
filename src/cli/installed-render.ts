@@ -1,6 +1,6 @@
 import { relative } from "node:path";
 import { showName } from "../packs/hidden-characters.js";
-import type { UnusableInstalledPack } from "../packs/install/installed.js";
+import type { InstalledPack, UnusableInstalledPack } from "../packs/install/installed.js";
 import { problemLines, wrap } from "./packs-inspect-render.js";
 
 const NOTHING_SENT = "Nothing was sent to an agent.";
@@ -13,6 +13,25 @@ const changedLines = (name: string, changed: readonly string[]): string[] =>
   changed.length === 0
     ? wrap("Its files do not match the fingerprint in the record.", "  ")
     : changed.flatMap((path) => wrap(`Changed: .delivery/packs/${name}/${showName(path)}`, "  ", "    "));
+
+/** The note that ends one row of `delivery packs`: the state, and the one command that fixes it, or that starts an approved pack. One line. Pure: no I/O. */
+export function stateNote(pack: InstalledPack): string {
+  const name = showName(pack.name);
+  switch (pack.state) {
+    case "ok":
+      return `As approved. Start it with: delivery review ${name}`;
+    case "missing":
+      return `Its files are missing. Will not run. To fix: delivery packs restore ${name}`;
+    case "invalid":
+      return `Does not read as a pack. Will not run. To fix: delivery packs restore ${name}`;
+    case "changed":
+      return `Changed since approved. Will not run. To fix: delivery packs restore ${name}`;
+    case "unapproved":
+      return `Not approved. Will not run. To decide: delivery packs approve ${name}`;
+    case "unrecorded":
+      return `Not in the record. Will not run. Add it again, or remove .delivery/packs/${name}`;
+  }
+}
 
 /**
  * What an owner reads for one added pack that is not as the record approved it: its state, the file or version that is
