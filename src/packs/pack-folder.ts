@@ -1,4 +1,5 @@
-import { lstat, readdir, type Stats } from "node:fs/promises";
+import type { Stats } from "node:fs";
+import { lstat, readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { isEnoent } from "../journal.js";
 import { FIXTURES } from "./pack-fixtures.js";
