@@ -100,7 +100,8 @@ describe("AC: a pack not listed in the project is refused without mentioning a r
     const result = await as(dir, ["review", "./moves-pack"]);
     expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('The pack "moves"');
-    expect(result.stderr).toContain('List its folder under "packs" in delivery.config.json');
+    expect(result.stderr).toContain('list its folder under "packs" in delivery.config.json');
+    expect(result.stderr).toContain("delivery packs inspect");
     expect(result.stderr).not.toMatch(/the review/i);
   });
 });
