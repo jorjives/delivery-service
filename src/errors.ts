@@ -1,3 +1,5 @@
+import type { UnusableInstalledPack } from "./packs/install/installed.js";
+
 export class FileNotFound extends Error {
   readonly code = "FILE_NOT_FOUND" as const;
   constructor(readonly surfaceDir: string, readonly filePath: string) {
@@ -273,5 +275,17 @@ export class PackLockInvalid extends Error {
   ) {
     super(`Invalid record of added packs ${filePath}: ${field === null ? "" : `${field} `}${detail}`);
     this.name = "PackLockInvalid";
+  }
+}
+
+/** Added packs that are not as the record approved them: refused together, so the owner sees every one at once. */
+export class InstalledPackRefused extends Error {
+  readonly code = "INSTALLED_PACK_REFUSED" as const;
+  constructor(
+    readonly repoPath: string,
+    readonly refused: readonly UnusableInstalledPack[],
+  ) {
+    super(`Added packs not as approved in ${repoPath}: ${refused.map(({ name }) => name).join(", ")}`);
+    this.name = "InstalledPackRefused";
   }
 }

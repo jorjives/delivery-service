@@ -23,8 +23,10 @@ import {
   PackSourceUnavailable,
   PackIntegrityMismatch,
   PackLockInvalid,
+  InstalledPackRefused,
 } from "../errors.js";
 import { messageOf } from "../gate-support.js";
+import { refusedLines } from "./installed-render.js";
 
 /**
  * How the command ends, as a number a script can act on without reading text:
@@ -94,6 +96,7 @@ const KNOWN_ERRORS = [
   PackSourceUnavailable,
   PackIntegrityMismatch,
   PackLockInvalid,
+  InstalledPackRefused,
 ] as const;
 type KnownError = InstanceType<(typeof KNOWN_ERRORS)[number]>;
 
@@ -229,6 +232,11 @@ function renderKnown(err: KnownError): RenderedFailure {
     case "PACK_LOCK_INVALID":
       return {
         message: `I can't read the record of added packs, ${err.filePath}: ${err.field === null ? "" : `${err.field} `}${err.detail}.`,
+        exitCode: EXIT.configuration,
+      };
+    case "INSTALLED_PACK_REFUSED":
+      return {
+        message: err.refused.map((pack) => refusedLines(err.repoPath, pack).join("\n")).join("\n\n"),
         exitCode: EXIT.configuration,
       };
     case "IMMUTABILITY_VIOLATION":

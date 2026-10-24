@@ -24,8 +24,12 @@ import {
   PackSourceUnavailable,
   PackIntegrityMismatch,
   PackLockInvalid,
+  InstalledPackRefused,
 } from "../errors.js";
+import type { LockEntry } from "../packs/install/lock.js";
+import { builtInPacks } from "../packs/manifest.js";
 import { EXIT, Refusal, renderFailure, UNEXPECTED_FOOTER } from "./failures.js";
+import { refusedLines } from "./installed-render.js";
 
 /** Harness vocabulary a person using the command should never have to learn. */
 const JARGON = /worktree|envelope|surface|terminus|[A-Z]{2,}_[A-Z_]+/;
@@ -121,6 +125,29 @@ describe("renderFailure", () => {
       message: 'I can\'t use the pack in /p/pack.json: "name" is missing.',
       exitCode: EXIT.configuration,
     });
+  });
+
+  it("refuses every unusable added pack at once, each with its state and its command, and exits as a set-up problem", async () => {
+    const repo = "/r";
+    const entry: LockEntry = {
+      source: "npm",
+      package: "@acme/delivery-pack-docs",
+      request: "latest",
+      version: "1.2.0",
+      integrity: `sha512-${"A".repeat(86)}==`,
+      fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`,
+      approved: `delivery.pack-hash/1:${"a".repeat(64)}`,
+      files: {},
+    };
+    const pack = (await builtInPacks())[0];
+    if (pack === undefined) throw new Error("the harness ships at least one pack");
+    const missing = { name: "docs-drift", state: "missing" as const, entry };
+    const unapproved = { name: "other", state: "unapproved" as const, entry: { ...entry, approved: `delivery.pack-hash/1:${"b".repeat(64)}` }, pack };
+    const rendered = renderFailure(new InstalledPackRefused(repo, [missing, unapproved]));
+    expect(rendered.exitCode).toBe(EXIT.configuration);
+    expect(rendered.message).toContain(refusedLines(repo, missing)[0]);
+    expect(rendered.message).toContain(refusedLines(repo, unapproved)[0]);
+    expect(rendered.message).not.toMatch(JARGON);
   });
 
   it("names a damaged review and offers a fresh one, with no stack trace", () => {
