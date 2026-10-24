@@ -141,6 +141,8 @@ An act workflow changes the project to fix one idea. Holds:
 | `"workflows.code.summary" is missing: the find workflow "scan" needs it to choose between "code" and "tests"` | Add a one-sentence `summary` to the act. |
 | `"workflows.scan.summary" is only for act workflows` | Remove the key from the find. |
 | `"settings" is reserved for pack settings, which this harness does not read yet` | Remove `settings`. |
+| `code.md: is not valid UTF-8 text, so what is shown could differ from what the agent is given.` | Save the file as UTF-8 text. |
+| `tests.md: is a folder, not a file.` | Name a file, not a folder. |
 
 ## Check it as you type
 

@@ -139,15 +139,41 @@ export function isBuiltInPack(dir: string): boolean {
   return dirname(resolve(dir)) === resolve(BUILT_IN_PACKS);
 }
 
-/** The text of a file in the pack, or the problem of its absence. */
+/** What a pack's text must be: valid UTF-8. A byte-order mark is kept as part of the text, so the fingerprint does not move. */
+const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
+/** Why a pack file is not valid UTF-8 text: the shown text would differ from the text the agent is given. */
+export const NOT_UTF8 = "is not valid UTF-8 text, so what is shown could differ from what the agent is given";
+
+/** Why a name the pack gives for a file is a folder. */
+export const IS_A_FOLDER = "is a folder, not a file";
+
+/** The text of a file in the pack, or the problem of its absence, of its being a folder, or of its not being UTF-8 text. */
 async function packFile(dir: string, name: string): Promise<string | PackProblem> {
   const file = join(dir, name);
+  let bytes: Buffer;
   try {
-    return await readFile(file, "utf-8");
+    bytes = await readFile(file);
   } catch (err) {
     if (isEnoent(err)) return { file, field: null, message: "is missing" };
+    if (isCode(err, "EISDIR")) return { file, field: null, message: IS_A_FOLDER };
     throw err;
   }
+  try {
+    return utf8.decode(bytes);
+  } catch {
+    return { file, field: null, message: NOT_UTF8 };
+  }
+}
+
+/** Whether `err` is a system error with `code`. */
+function isCode(err: unknown, code: string): boolean {
+  return err instanceof Error && "code" in err && err.code === code;
+}
+
+/** The prompt file names a manifest names, in manifest order, each once. */
+function promptsOf(manifest: PackManifest): string[] {
+  return [...new Set(Object.values(manifest.workflows).map(({ prompt }) => prompt))];
 }
 
 /** The text of a workflow's prompt, which the loader has read before any workflow is built from it. */
@@ -174,7 +200,8 @@ function packWorkflows(manifest: PackManifest, texts: ReadonlyMap<string, string
   let find = "";
   for (const [local, workflow] of Object.entries(manifest.workflows)) {
     const name = `${manifest.name}:${local}`;
-    const authored = promptText(texts, workflow.prompt).trim();
+    // Trimmed of its blank lines, but a byte-order mark is part of the text, so it is kept even though trim() would drop it.
+    const authored = promptText(texts, workflow.prompt).replace(/^[^\S\uFEFF]+/, "").trimEnd();
     if (workflow.kind === "find") {
       // The rules refuse any pack without exactly one find, so the first find named is the only one.
       if (find === "") find = name;
@@ -210,41 +237,44 @@ function packHash(raw: string, texts: string[]): string {
 /**
  * Read and check the pack in `dir`, naming every problem with it by file and field rather than stopping at the first.
  * A failure says which version the manifest was read as, so the words it is named in can follow that version; it is
- * null when the manifest could not be read as any version at all.
+ * null when the manifest could not be read as any version at all. It names the prompt files the manifest names, in
+ * manifest order, whenever the manifest parsed, and is null before that.
  */
-export async function readPack(dir: string): Promise<{ ok: true; pack: Pack } | { ok: false; schema: PackSchemaVersion | null; problems: PackProblem[] }> {
+export async function readPack(
+  dir: string,
+): Promise<{ ok: true; pack: Pack } | { ok: false; schema: PackSchemaVersion | null; prompts: readonly string[] | null; problems: PackProblem[] }> {
   const manifestFile = join(dir, "pack.json");
   const raw = await packFile(dir, "pack.json");
-  if (typeof raw !== "string") return { ok: false, schema: null, problems: [raw] };
+  if (typeof raw !== "string") return { ok: false, schema: null, prompts: null, problems: [raw] };
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    return { ok: false, schema: null, problems: [{ file: manifestFile, field: null, message: "is not valid JSON" }] };
+    return { ok: false, schema: null, prompts: null, problems: [{ file: manifestFile, field: null, message: "is not valid JSON" }] };
   }
   // A manifest in a format this build does not read is refused with its own sentence and never read further: its keys mean something else.
   const declared = typeof json === "object" && json !== null ? (json as { schema?: unknown }).schema : undefined;
   if (declared !== undefined && !(PACK_SCHEMAS_READ as readonly unknown[]).includes(declared)) {
-    return { ok: false, schema: null, problems: [{ file: manifestFile, field: "schema", message: `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)` }] };
+    return { ok: false, schema: null, prompts: null, problems: [{ file: manifestFile, field: "schema", message: `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)` }] };
   }
   let manifest: PackManifest;
   let upgraded: Pack["upgraded"] = {};
   const schema: PackSchemaVersion = declared === "delivery.pack/2" ? "delivery.pack/2" : PACK_SCHEMA;
   if (schema === "delivery.pack/2") {
     const v2 = PackManifestV2.safeParse(json);
-    if (!v2.success) return { ok: false, schema, problems: packProblems(manifestFile, v2.error, json) };
+    if (!v2.success) return { ok: false, schema, prompts: null, problems: packProblems(manifestFile, v2.error, json) };
     manifest = upgradeV2(v2.data);
     upgraded = { fix: upgradeGuards(v2.data) };
   } else {
     const v3 = PackManifest.safeParse(json);
-    if (!v3.success) return { ok: false, schema, problems: packProblems(manifestFile, v3.error, json, formatSentence) };
+    if (!v3.success) return { ok: false, schema, prompts: null, problems: packProblems(manifestFile, v3.error, json, formatSentence) };
     const rules = ruleProblems(manifestFile, v3.data);
-    if (rules.length > 0) return { ok: false, schema, problems: rules };
+    if (rules.length > 0) return { ok: false, schema, prompts: promptsOf(v3.data), problems: rules };
     manifest = v3.data;
   }
 
   // Each prompt file is read once, however many workflows name it, and every missing one is named.
-  const prompts = [...new Set(Object.values(manifest.workflows).map(({ prompt }) => prompt))];
+  const prompts = promptsOf(manifest);
   const read = await Promise.all(prompts.map(async (prompt) => [prompt, await packFile(dir, prompt)] as const));
   const texts = new Map<string, string>();
   const problems: PackProblem[] = [];
@@ -252,7 +282,7 @@ export async function readPack(dir: string): Promise<{ ok: true; pack: Pack } | 
     if (typeof text === "string") texts.set(prompt, text);
     else problems.push(text);
   }
-  if (problems.length > 0) return { ok: false, schema, problems };
+  if (problems.length > 0) return { ok: false, schema, prompts, problems };
 
   const { find, workflows, instructions } = packWorkflows(manifest, texts);
   // A /2 pack hashes its prompts in the order it wrote them, scan then fix; a /3 pack in the sorted order of its workflow names.

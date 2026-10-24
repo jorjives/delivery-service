@@ -1,9 +1,10 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { UnknownPack } from "../errors.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, packNamed, promptOf, readPack, isBuiltInPack, loadPack, resolvePack, isPackPath } from "./manifest.js";
+import { PackManifest } from "./pack-format.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, IS_A_FOLDER, NOT_UTF8, packNamed, promptOf, readPack, isBuiltInPack, loadPack, resolvePack, isPackPath } from "./manifest.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
 
@@ -115,6 +116,7 @@ describe("a delivery.pack/2 manifest", () => {
     expect(await readPack(packDir({ ...minimal, schema }))).toEqual({
       ok: false,
       schema: null,
+      prompts: null,
       problems: [{ file: expect.any(String), field: "schema", message: `"schema" is "${schema}", but this harness reads delivery.pack/2 and delivery.pack/3 (see docs/writing-a-pack.md)` }],
     });
   });
@@ -208,7 +210,7 @@ describe("a delivery.pack/3 manifest", () => {
 
   it("names a missing prompt file once, though two workflows share it", async () => {
     const dir = v3Dir({ ...v3, workflows: { scan: v3.workflows.scan, code: { kind: "act", summary: "Code.", prompt: "act.md" }, tests: { kind: "act", summary: "Test.", prompt: "act.md" } } }, { "scan.md": "# Scan\n" });
-    expect(await readPack(dir)).toEqual({ ok: false, schema: "delivery.pack/3", problems: [{ file: join(dir, "act.md"), field: null, message: "is missing" }] });
+    expect(await readPack(dir)).toEqual({ ok: false, schema: "delivery.pack/3", prompts: ["scan.md", "act.md"], problems: [{ file: join(dir, "act.md"), field: null, message: "is missing" }] });
   });
 
   it("changes its identity when any workflow's instructions change", async () => {
@@ -249,7 +251,7 @@ describe("a pack from a folder", () => {
   it("names a missing instructions file by its own path", async () => {
     const dir = editedPack(() => undefined);
     rmSync(join(dir, "scan.md"));
-    expect(await readPack(dir)).toEqual({ ok: false, schema: "delivery.pack/2", problems: [{ file: join(dir, "scan.md"), field: null, message: "is missing" }] });
+    expect(await readPack(dir)).toEqual({ ok: false, schema: "delivery.pack/2", prompts: ["scan.md", "fix.md"], problems: [{ file: join(dir, "scan.md"), field: null, message: "is missing" }] });
   });
 
   it("refuses instructions outside the folder", async () => {
@@ -288,6 +290,37 @@ describe("inspecting a pack", () => {
     expect(result.problems).toHaveLength(3);
   });
 
+  it("refuses a prompt that is not valid UTF-8, naming the file", async () => {
+    const dir = v3Dir(v3);
+    writeFileSync(join(dir, "code.md"), Buffer.from([0x23, 0x20, 0xff, 0x0a]));
+    expect(await readPack(dir)).toEqual({
+      ok: false,
+      schema: "delivery.pack/3",
+      prompts: ["scan.md", "code.md", "tests.md"],
+      problems: [{ file: join(dir, "code.md"), field: null, message: NOT_UTF8 }],
+    });
+  });
+
+  it("refuses a prompt name that is a folder instead of throwing", async () => {
+    const dir = v3Dir(v3);
+    rmSync(join(dir, "tests.md"));
+    mkdirSync(join(dir, "tests.md"));
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ file: join(dir, "tests.md"), message: IS_A_FOLDER }] });
+  });
+
+  it("keeps a byte-order mark as the text it was, so the fingerprint does not move", async () => {
+    const dir = v3Dir(v3, { "scan.md": "\uFEFF# Scan\n", "code.md": "# Code\n", "tests.md": "# Tests\n" });
+    const read = await readPack(dir);
+    expect(read.ok && read.pack.instructions["mine:scan"]?.authored.startsWith("\uFEFF")).toBe(true);
+  });
+
+  it("names the prompts it read the manifest as naming when the rules refuse it, and null when it could not parse", async () => {
+    expect(await readPack(v3Dir({ ...v3, extra: 1 }))).toMatchObject({ prompts: null });
+    // a rules failure: a find whose ideasFor names an act that does not exist
+    const withBadIdeasFor = { ...v3, workflows: { ...v3.workflows, scan: { ...v3.workflows.scan, ideasFor: ["nope"] } } };
+    expect(await readPack(v3Dir(withBadIdeasFor))).toMatchObject({ ok: false, prompts: ["scan.md", "code.md", "tests.md"] });
+  });
+
   it("gives the loaded pack when there is nothing wrong", async () => {
     const result = await readPack(join(BUILT_IN_PACKS, "code-review"));
     expect(result.ok && result.pack.manifest.name).toBe("code");
@@ -324,9 +357,13 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
   /** The folder a manifest is written to, and the exact problems it is refused with, each as its field and sentence. */
   async function refusedWith(manifest: object, problems: Array<[string | null, string]>): Promise<void> {
     const dir = v3Dir(manifest);
+    // The prompt names are those the manifest gives once it parses as the format; a manifest that does not parse names none.
+    const parsed = PackManifest.safeParse(manifest);
+    const prompts = parsed.success ? [...new Set(Object.values(parsed.data.workflows).map(({ prompt }) => prompt))] : null;
     expect(await readPack(dir)).toEqual({
       ok: false,
       schema: "delivery.pack/3",
+      prompts,
       problems: problems.map(([field, message]) => ({ file: join(dir, "pack.json"), field, message })),
     });
   }
