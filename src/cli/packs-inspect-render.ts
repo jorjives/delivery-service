@@ -44,7 +44,7 @@ export function wrap(text: string, indent: string, hanging: string = indent): st
 }
 
 /** Names joined as a plain list: "a", "a or b", "a, b or c". */
-function orList(names: readonly string[]): string {
+export function orList(names: readonly string[]): string {
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
 }
@@ -218,6 +218,12 @@ function noteSentence({ code, workflow, detail }: Finding): string {
   if (code === "hold-only-critical") return `${name} asks for your sign-off only for ${detail} ideas; anything rated lower lands without it.`;
   // An older-format guard always carries its guard name; the guard names are the keys of GUARD_REFUSES.
   return `${name} is refused if it ${GUARD_REFUSES[detail as GuardName]}, though the pack's file does not say so. The older format adds this guard.`;
+}
+
+/** The Item 2 sentence for one finding: a note's sentence, or for a widening, that it widens what the agent may do beyond the project's defaults. */
+export function findingSentence(finding: Finding): string {
+  if (finding.relation === "note") return noteSentence(finding);
+  return `"${localOf(finding.workflow)}" widens what the agent may do beyond your project's defaults: ${finding.detail ?? ""}.`;
 }
 
 /** What a reader would not assume, as one sentence each: first anything that widens what the agent may do, then the acts whose limits are looser or unstated. */
