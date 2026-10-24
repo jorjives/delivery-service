@@ -27,7 +27,10 @@ import { projectBaseline } from "./project-baseline.js";
  */
 export async function packsApproveCommand(name: string, ctx: CommandContext, ask: Ask): Promise<ExitCode> {
   const added = await addedPackNamed(name, ctx);
-  if (added === undefined) return EXIT.configuration;
+  if (!added.found) {
+    for (const line of added.lines) ctx.writeLine(line);
+    return EXIT.configuration;
+  }
   const { repoPath, entry } = added;
 
   const installed = await checkInstalledPack(repoPath, name, entry);

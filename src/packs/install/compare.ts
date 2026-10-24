@@ -1,16 +1,21 @@
-import { SEVERITIES, type GuardName, type Severity } from "../../schema.js";
-import type { Finding } from "../inspection-findings.js";
+import { z } from "zod";
+import { GuardName, SEVERITIES, Severity } from "../../schema.js";
+import { Finding } from "../inspection-findings.js";
 import type { Inspection, InspectedWorkflow } from "../inspection.js";
 
-export type Direction = "narrower" | "wider" | "neutral";
+export const Direction = z.enum(["narrower", "wider", "neutral"]);
+export type Direction = z.infer<typeof Direction>;
 
-export type Change =
-  | { kind: "hold"; workflow: string; from: Severity | null; to: Severity | null; direction: Direction }
-  | { kind: "guard-added" | "guard-removed"; workflow: string; guard: GuardName; direction: Direction }
-  | { kind: "workflow-added" | "workflow-removed"; workflow: string; workflowKind: "find" | "act"; direction: Direction }
-  | { kind: "kind-changed"; workflow: string; from: "find" | "act"; to: "find" | "act"; direction: Direction }
-  | { kind: "widens-added" | "widens-removed"; workflow: string; dimension: string; direction: Direction }
-  | { kind: "finding-gained" | "finding-lost"; finding: Finding; direction: Direction };
+/** One change between two versions of a pack. The update document publishes these, so the schema is the one definition. */
+export const Change = z.union([
+  z.object({ kind: z.literal("hold"), workflow: z.string(), from: Severity.nullable(), to: Severity.nullable(), direction: Direction }),
+  z.object({ kind: z.enum(["guard-added", "guard-removed"]), workflow: z.string(), guard: GuardName, direction: Direction }),
+  z.object({ kind: z.enum(["workflow-added", "workflow-removed"]), workflow: z.string(), workflowKind: z.enum(["find", "act"]), direction: Direction }),
+  z.object({ kind: z.literal("kind-changed"), workflow: z.string(), from: z.enum(["find", "act"]), to: z.enum(["find", "act"]), direction: Direction }),
+  z.object({ kind: z.enum(["widens-added", "widens-removed"]), workflow: z.string(), dimension: z.string(), direction: Direction }),
+  z.object({ kind: z.enum(["finding-gained", "finding-lost"]), finding: Finding, direction: Direction }),
+]);
+export type Change = z.infer<typeof Change>;
 
 /** The direction of each kind of change, decided once here. A less severe hold lets more ideas wait, so it narrows. */
 const DIRECTION = {

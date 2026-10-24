@@ -29,7 +29,10 @@ function workflowUses(config: DeliveryConfig, pack: string): WorkflowUse[] {
  */
 export async function packsRemoveCommand(name: string, ctx: CommandContext): Promise<ExitCode> {
   const added = await addedPackNamed(name, ctx);
-  if (added === undefined) return EXIT.configuration;
+  if (!added.found) {
+    for (const line of added.lines) ctx.writeLine(line);
+    return EXIT.configuration;
+  }
   const { repoPath, entry } = added;
 
   const installed = await checkInstalledPack(repoPath, name, entry);

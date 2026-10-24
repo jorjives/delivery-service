@@ -18,7 +18,10 @@ import { changedAtSourceLines, restoredLines, unapprovedLines, unreadableLines }
  */
 export async function packsRestoreCommand(name: string, ctx: CommandContext, source: PackSource): Promise<ExitCode> {
   const added = await addedPackNamed(name, ctx);
-  if (added === undefined) return EXIT.configuration;
+  if (!added.found) {
+    for (const line of added.lines) ctx.writeLine(line);
+    return EXIT.configuration;
+  }
   const { repoPath, entry } = added;
 
   const refuse = (problems: readonly string[]): ExitCode => {

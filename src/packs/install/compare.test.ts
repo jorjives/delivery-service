@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import type { GuardName, Severity } from "../../schema.js";
 import { INSPECTION_SCHEMA, type Inspection, type InspectedWorkflow, NO_PROJECT, withFindings } from "../inspection.js";
-import { comparePacks } from "./compare.js";
+import { Change, comparePacks } from "./compare.js";
 
 const PACK = "docs-drift";
 
@@ -30,6 +30,28 @@ function inspection(workflows: InspectedWorkflow[]): Inspection {
 }
 
 const holdsOf = (before: Inspection, after: Inspection) => comparePacks(before, after).filter((change) => change.kind === "hold");
+
+/** Every pair of inspections the tests in this file compare, so that each comparison can be checked against the published schema. */
+const COMPARED: [Inspection, Inspection][] = [
+  [inspection([act("fix", { hold: "high" })]), inspection([act("fix", { hold: null }), act("audit")])],
+  [inspection([act("fix", { hold: null })]), inspection([act("fix", { hold: "high" })])],
+  [inspection([act("fix", { hold: "high" })]), inspection([act("fix", { hold: "medium" })])],
+  [inspection([act("fix", { hold: "medium" })]), inspection([act("fix", { hold: "critical" })])],
+  [inspection([act("fix", { steps: [step(["no-skips"])] })]), inspection([act("fix", { steps: [step()] })])],
+  [inspection([act("fix")]), inspection([act("fix"), act("audit")])],
+  [inspection([act("fix"), find("scan")]), inspection([act("fix")])],
+  [inspection([find("scan", { hold: "high" })]), inspection([act("scan")])],
+  [inspection([act("fix")]), inspection([act("fix", { widens: ["follow-on steps of its own"] })])],
+  [inspection([act("fix", { hold: "high" })]), inspection([act("fix", { hold: null })])],
+  [inspection([act("fix", { steps: [step(["no-skips"])] }), find("scan")]), inspection([act("fix", { steps: [step(["no-skips"])] }), find("scan")])],
+  [inspection([act("fix", { steps: [step(["no-skips"])] })]), inspection([act("fix", { steps: [step(["backlog"])] })])],
+];
+
+it("gives only changes the published Change schema accepts", () => {
+  for (const [before, after] of COMPARED) {
+    for (const change of [...comparePacks(before, after), ...comparePacks(after, before)]) expect(Change.safeParse(change).success).toBe(true);
+  }
+});
 
 it("reports a removed hold as wider, first", () => {
   const changes = comparePacks(inspection([act("fix", { hold: "high" })]), inspection([act("fix", { hold: null }), act("audit")]));

@@ -50,7 +50,10 @@ export async function packsUpdateCommand(name: string, request: string | undefin
     for (const line of lines) ctx.writeLine(line);
   };
   const added = await addedPackNamed(name, ctx);
-  if (added === undefined) return EXIT.configuration;
+  if (!added.found) {
+    for (const line of added.lines) ctx.writeLine(line);
+    return EXIT.configuration;
+  }
   const { repoPath, entry } = added;
 
   if (request !== undefined && !PACKAGE_REQUEST.test(request)) {
