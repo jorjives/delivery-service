@@ -12,7 +12,7 @@ import { fakePackSource, type FakePackSource } from "../packs/install/fake-sourc
 import { packPackage, SCAN_TEXT } from "../packs/install/install-fixtures.js";
 import type { PackSource } from "../packs/install/pack-source.js";
 import { sriOf } from "../packs/install/pack-source.js";
-import { loadPack } from "../packs/manifest.js";
+import { loadPack, newerFormat } from "../packs/manifest.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, withPrivateTmpdir } from "./command-fixtures.js";
@@ -435,4 +435,26 @@ describe("delivery packs add", () => {
     expect(asked).toEqual([]);
     expect(tree(repo)).toEqual(before);
   });
+
+  it("refuses a package whose pack is in a newer format with the upgrade sentence, writing nothing", async () => {
+    source.publish(NAME, "2.0.0", packPackage({ version: "2.0.0", manifest: { schema: "delivery.pack/4" } }));
+    const { ctx, lines } = context(repo);
+    const before = tree(repo);
+    expect(await packsAddCommand(`${NAME}@2.0.0`, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain(newerFormat("delivery.pack/4"));
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses to add while the record is from a newer delivery-service, leaving it byte for byte", async () => {
+    const lockPath = join(repo, ".delivery", "packs.lock.json");
+    mkdirSync(join(repo, ".delivery"), { recursive: true });
+    writeFileSync(lockPath, JSON.stringify({ schema: "delivery.packs-lock/2", packs: {} }));
+    const lockBytesBefore = readFileSync(lockPath);
+    const { ctx } = context(repo);
+    await expect(packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, source)).rejects.toMatchObject({
+      detail: expect.stringContaining("upgrade delivery-service"),
+    });
+    expect(readFileSync(lockPath)).toEqual(lockBytesBefore);
+  });
+
 });

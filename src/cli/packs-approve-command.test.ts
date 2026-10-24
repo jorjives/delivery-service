@@ -7,10 +7,11 @@ import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { addedDocsDrift } from "./installed-fixtures.js";
+import { addedDocsDrift, tree } from "./installed-fixtures.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import { packsApproveCommand } from "./packs-approve-command.js";
+import { newerFormatLines } from "./packs-approve-render.js";
 
 /** The text with every run of white space made one space: where a line wraps does not matter. */
 const flat = (text: string): string => text.replace(/\s+/g, " ");
@@ -173,4 +174,16 @@ describe("delivery packs approve", () => {
     expect(text).not.toMatch(REASSURING);
     expect(text).not.toMatch(FORBIDDEN);
   });
+
+  it("refuses to approve a kept pack in a newer format, naming the upgrade, the record unchanged", async () => {
+    await addedDocsDrift(repo);
+    const manifestFile = join(dirPath(), "pack.json");
+    writeFileSync(manifestFile, readFileSync(manifestFile, "utf-8").replace("delivery.pack/3", "delivery.pack/4"));
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsApproveCommand("docs-drift", ctx, scriptedAsk({ confirm: true }).ask)).toBe(EXIT.configuration);
+    expect(lines).toEqual(newerFormatLines("docs-drift"));
+    expect(tree(repo)).toEqual(before);
+  });
+
 });

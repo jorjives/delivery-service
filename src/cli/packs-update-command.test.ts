@@ -16,7 +16,8 @@ import { notAddedLines } from "./installed-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import { packsAddCommand } from "./packs-add-command.js";
 import { packsUpdateCommand } from "./packs-update-command.js";
-import { keptDiffersLines, renamedLines, updatedLines } from "./packs-update-render.js";
+import { newerFormat } from "../packs/manifest.js";
+import { keptDiffersLines, notUpdatableLines, renamedLines, updatedLines } from "./packs-update-render.js";
 
 const NAME = "@acme/delivery-pack-docs";
 
@@ -235,4 +236,27 @@ describe("delivery packs update", () => {
     expect(result.exitCode).toBe(EXIT.configuration);
     expect(result.stdout).toContain("nope is not an added pack.");
   });
+
+  it("refuses a new version in a newer format with the upgrade sentence, the record byte for byte", async () => {
+    source.publish(NAME, "1.3.0", packPackage({ version: "1.3.0", manifest: { schema: "delivery.pack/4" } }));
+    const lockBefore = readFileSync(lockPath());
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain(newerFormat("delivery.pack/4"));
+    expect(readFileSync(lockPath())).toEqual(lockBefore);
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("refuses to update a kept pack in a newer format, saying to upgrade", async () => {
+    await addedDocsDrift(repo, V1);
+    const manifestFile = join(dirPath(), "pack.json");
+    writeFileSync(manifestFile, readFileSync(manifestFile, "utf-8").replace("delivery.pack/3", "delivery.pack/4"));
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.configuration);
+    expect(lines).toEqual(notUpdatableLines("docs-drift", "newer-format"));
+    expect(tree(repo)).toEqual(before);
+  });
+
 });

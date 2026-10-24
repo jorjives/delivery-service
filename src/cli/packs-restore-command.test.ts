@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { PackSourceUnavailable } from "../errors.js";
 import { readInstalledPacks } from "../packs/install/installed.js";
 import { packPackage } from "../packs/install/install-fixtures.js";
+import { sriOf } from "../packs/install/pack-source.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { PACKAGE } from "./command-fixtures.js";
@@ -140,4 +141,21 @@ describe("delivery packs restore", () => {
     expect(text).not.toMatch(REASSURING);
     expect(text).not.toMatch(FORBIDDEN);
   });
+
+  it("refuses to restore when npm serves the recorded version in a newer format, the record unchanged", async () => {
+    const source = await addedDocsDrift(repo);
+    const tarball = packPackage({ manifest: { schema: "delivery.pack/4" } });
+    source.publish(NAME, "1.2.0", tarball);
+    const lock = JSON.parse(readFileSync(lockPath(), "utf-8")) as { packs: Record<string, { integrity: string }> };
+    const entry = lock.packs["docs-drift"];
+    if (entry === undefined) throw new Error("the fixture pack is not in the record");
+    entry.integrity = sriOf(tarball);
+    writeFileSync(lockPath(), JSON.stringify(lock, null, 2));
+    const lockBefore = readFileSync(lockPath());
+    const { ctx, lines } = context(repo);
+    expect(await packsRestoreCommand("docs-drift", ctx, source)).toBe(EXIT.configuration);
+    expect(flat(lines.join("\n"))).toContain("upgrade delivery-service");
+    expect(readFileSync(lockPath())).toEqual(lockBefore);
+  });
+
 });

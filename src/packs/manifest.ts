@@ -242,6 +242,25 @@ function packHash(raw: string, texts: string[]): string {
 export const newerFormat = (declared: string): string =>
   `"schema" is "${declared}", a newer pack format than this harness reads (${PACK_SCHEMAS_READ.join(" and ")}): upgrade delivery-service to read this pack`;
 
+/** Whether `declared` is a pack format newer than any this harness reads: `delivery.pack/<n>` with `n` above the highest of `PACK_SCHEMAS_READ`. */
+export function isNewerPackFormat(declared: unknown): declared is string {
+  if (typeof declared !== "string") return false;
+  const version = /^delivery\.pack\/(\d+)$/.exec(declared)?.[1];
+  const highestRead = Math.max(...PACK_SCHEMAS_READ.map((s) => Number(s.slice("delivery.pack/".length))));
+  return version !== undefined && Number(version) > highestRead;
+}
+
+/** Whether the manifest in `dir` declares a newer pack format. A folder with no readable manifest, or one that is not JSON, declares none. */
+export async function declaresNewerFormat(dir: string): Promise<boolean> {
+  let json: unknown;
+  try {
+    json = JSON.parse(await readFile(join(dir, "pack.json"), "utf-8"));
+  } catch {
+    return false;
+  }
+  return isNewerPackFormat(typeof json === "object" && json !== null ? (json as { schema?: unknown }).schema : undefined);
+}
+
 /**
  * Read and check the pack in `dir`, naming every problem with it by file and field rather than stopping at the first.
  * A failure says which version the manifest was read as, so the words it is named in can follow that version; it is
@@ -263,10 +282,8 @@ export async function readPack(
   // A manifest in a format this build does not read is refused with its own sentence and never read further: its keys mean something else.
   const declared = typeof json === "object" && json !== null ? (json as { schema?: unknown }).schema : undefined;
   if (declared !== undefined && !(PACK_SCHEMAS_READ as readonly unknown[]).includes(declared)) {
-    const highestRead = Math.max(...PACK_SCHEMAS_READ.map((s) => Number(s.slice("delivery.pack/".length))));
-    const version = typeof declared === "string" ? /^delivery\.pack\/(\d+)$/.exec(declared)?.[1] : undefined;
-    const message = version !== undefined && Number(version) > highestRead
-      ? newerFormat(declared as string)
+    const message = isNewerPackFormat(declared)
+      ? newerFormat(declared)
       : `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)`;
     return { ok: false, schema: null, prompts: null, problems: [{ file: manifestFile, field: "schema", message }] };
   }

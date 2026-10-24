@@ -13,6 +13,7 @@ import {
   approveQuestion,
   missingLines,
   NOTHING_APPROVED,
+  newerFormatLines,
   nobodyToApproveLines,
   notApprovableLines,
   unapprovedLead,
@@ -40,6 +41,9 @@ export async function packsApproveCommand(name: string, ctx: CommandContext, ask
       return EXIT.ok;
     case "missing":
       for (const line of missingLines(name)) ctx.writeLine(line);
+      return EXIT.configuration;
+    case "newer-format":
+      for (const line of newerFormatLines(name)) ctx.writeLine(line);
       return EXIT.configuration;
     case "invalid":
     case "changed":

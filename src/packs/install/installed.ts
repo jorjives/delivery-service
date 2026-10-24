@@ -2,7 +2,7 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { InstalledPackRefused } from "../../errors.js";
 import { isEnoent } from "../../journal.js";
-import type { Pack, PackProblem } from "../manifest.js";
+import { declaresNewerFormat, type Pack, type PackProblem } from "../manifest.js";
 import { readPackFolder } from "../pack-folder.js";
 import { changedFiles, fileDigests, fingerprintedFiles } from "./digests.js";
 import { fingerprintOf, readLock, type LockEntry } from "./lock.js";
@@ -14,6 +14,7 @@ export type InstalledPack =
   | { name: string; state: "unapproved"; entry: LockEntry; pack: Pack }
   | { name: string; state: "missing"; entry: LockEntry }
   | { name: string; state: "invalid"; entry: LockEntry; problems: PackProblem[] }
+  | { name: string; state: "newer-format"; entry: LockEntry; problems: PackProblem[] }
   | { name: string; state: "changed"; entry: LockEntry; changed: string[] }
   | { name: string; state: "unrecorded" };
 
@@ -46,7 +47,10 @@ export async function checkInstalledPack(repoPath: string, name: string, entry: 
   const dir = installedPackDir(repoPath, name);
   if (!(await exists(dir))) return { name, state: "missing", entry };
   const read = await readPackFolder(dir);
-  if (!read.ok) return { name, state: "invalid", entry, problems: read.problems };
+  if (!read.ok) {
+    if (await declaresNewerFormat(dir)) return { name, state: "newer-format", entry, problems: read.problems };
+    return { name, state: "invalid", entry, problems: read.problems };
+  }
   const { pack } = read;
   const manifestName = pack.manifest.name;
   if (manifestName !== name) {

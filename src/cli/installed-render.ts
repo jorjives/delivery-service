@@ -24,6 +24,8 @@ export function stateNote(pack: InstalledPack): string {
       return `Its files are missing. Will not run. To fix: delivery packs restore ${name}`;
     case "invalid":
       return `Does not read as a pack. Will not run. To fix: delivery packs restore ${name}`;
+    case "newer-format":
+      return "Kept in a newer pack format. Will not run. To fix: upgrade delivery-service";
     case "changed":
       return `Changed since approved. Will not run. To fix: delivery packs restore ${name}`;
     case "unapproved":
@@ -54,6 +56,13 @@ export function refusedLines(repoPath: string, pack: UnusableInstalledPack): str
         ...wrap(NOTHING_SENT, "  "),
         ...wrap("To put back the approved pack:", ""),
         ...command(`delivery packs restore ${name}`),
+      ];
+    case "newer-format":
+      return [
+        ...wrap(`The pack ${name} is kept in a newer pack format than this delivery-service reads.`, ""),
+        ...problemLines(pack.problems, (file) => showName(relative(repoPath, file))),
+        ...wrap(NOTHING_SENT, "  "),
+        ...wrap("To use it, upgrade delivery-service.", ""),
       ];
     case "changed":
       return [

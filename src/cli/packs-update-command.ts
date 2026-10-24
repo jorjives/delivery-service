@@ -62,7 +62,7 @@ export async function packsUpdateCommand(name: string, request: string | undefin
   }
 
   const installed = await checkInstalledPack(repoPath, name, entry);
-  if (installed.state === "missing" || installed.state === "invalid") {
+  if (installed.state === "missing" || installed.state === "invalid" || installed.state === "newer-format") {
     out(notUpdatableLines(name, installed.state));
     return EXIT.configuration;
   }

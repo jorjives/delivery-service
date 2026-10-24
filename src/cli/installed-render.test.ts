@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { UnusableInstalledPack } from "../packs/install/installed.js";
 import type { LockEntry } from "../packs/install/lock.js";
-import { builtInPacks } from "../packs/manifest.js";
+import { builtInPacks, newerFormat } from "../packs/manifest.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { notAddedLines, refusedLines, stateNote } from "./installed-render.js";
 
@@ -61,6 +61,22 @@ describe("refusedLines", () => {
     const lines = refusedLines(REPO, { name: "bad\u001b[31m", state: "unrecorded" });
     for (const line of lines) expect(line).not.toContain("\u001b");
     expect(flat(lines)).toContain("<U+001B>");
+  });
+});
+
+describe("newer-format", () => {
+  it("tells the owner to upgrade delivery-service for a newer-format pack, not to restore it", () => {
+    const pack: UnusableInstalledPack = {
+      name: "moves",
+      state: "newer-format",
+      entry,
+      problems: [{ file: "/r/.delivery/packs/moves/pack.json", field: "schema", message: newerFormat("delivery.pack/4") }],
+    };
+    expect(stateNote(pack)).toBe("Kept in a newer pack format. Will not run. To fix: upgrade delivery-service");
+    const text = flat(refusedLines("/r", pack));
+    expect(text).toContain("upgrade delivery-service to read this pack");
+    expect(text).toContain("To use it, upgrade delivery-service.");
+    expect(text).not.toContain("restore");
   });
 });
 

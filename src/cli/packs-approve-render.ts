@@ -2,6 +2,9 @@ import { showName } from "../packs/hidden-characters.js";
 import type { ConfirmQuestion } from "./init.js";
 import { wrap } from "./packs-inspect-render.js";
 
+/** The last line of a refusal that changed nothing. */
+const NOTHING_CHANGED = "Nothing was changed.";
+
 /** The last line when the owner says no. */
 export const NOTHING_APPROVED = "Nothing was approved.";
 
@@ -16,6 +19,13 @@ export const alreadyApprovedLines = (name: string, version: string): string[] =>
 export const missingLines = (name: string): string[] => [
   ...wrap(`Cannot approve ${showName(name)}: its files are missing.`, ""),
   `  To fetch them again:  delivery packs restore ${showName(name)}`,
+];
+
+/** The pack is kept in a newer pack format than this delivery-service reads: only an upgrade of delivery-service reads it. */
+export const newerFormatLines = (name: string): string[] => [
+  ...wrap(`Cannot approve ${showName(name)}: it is kept in a newer pack format than this delivery-service reads.`, ""),
+  ...wrap("Upgrade delivery-service to read it.", "  "),
+  ...wrap(NOTHING_CHANGED, "  "),
 ];
 
 /** The pack's files differ from the record: approving local edits is not possible, so the owner restores or updates the pack. */

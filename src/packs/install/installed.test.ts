@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -8,7 +8,8 @@ import { initTempRepo } from "../../temp-repo.js";
 import { NOT_IN_A_PACK } from "../pack-folder.js";
 import { entryFor } from "./install-fixtures.js";
 import type { PackageFile } from "./package-archive.js";
-import { installedPacks, readInstalledPacks } from "./installed.js";
+import { checkInstalledPack, installedPacks, readInstalledPacks } from "./installed.js";
+import { newerFormat } from "../manifest.js";
 import { installPack, installedPackDir } from "./store.js";
 
 // Loading added packs reads local files only: while `forbid` is set, starting a process is an error.
@@ -136,6 +137,17 @@ describe("readInstalledPacks", () => {
         },
       ],
     });
+  });
+
+  it("names a kept pack whose manifest declares a newer format as newer-format, not invalid", async () => {
+    const repo = initTempRepo("installed-newer-", { "README.md": "x\n" });
+    const entry = await entryFor(FILES);
+    await installPack(repo, "moves", FILES, entry);
+    const manifestFile = join(installedPackDir(repo, "moves"), "pack.json");
+    await writeFile(manifestFile, (await readFile(manifestFile, "utf-8")).replace("delivery.pack/3", "delivery.pack/4"));
+    const state = await checkInstalledPack(repo, "moves", entry);
+    expect(state.state).toBe("newer-format");
+    expect(state).toMatchObject({ problems: [{ field: "schema", message: newerFormat("delivery.pack/4") }] });
   });
 
   it("is unrecorded for a kept folder with no record entry, and ignores staging", async () => {

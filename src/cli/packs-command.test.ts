@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -203,4 +203,15 @@ describe("delivery packs", () => {
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain("Start it with: delivery review code");
   });
+
+  it("lists a kept pack in a newer format with the upgrade note, and exits 0", async () => {
+    const repo = initTempRepo("packs-newer-", { "a.js": "x\n" });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    const manifestFile = join(repo, ".delivery", "packs", "moves", "pack.json");
+    writeFileSync(manifestFile, readFileSync(manifestFile, "utf-8").replace("delivery.pack/3", "delivery.pack/4"));
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.trimEnd().split("\n").some((line) => line.endsWith("Kept in a newer pack format. Will not run. To fix: upgrade delivery-service"))).toBe(true);
+  });
+
 });

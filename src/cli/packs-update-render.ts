@@ -51,8 +51,15 @@ export function stateHintLines(name: string, state: "ok" | "unapproved" | "chang
   return [...sentence(`The record says ${shown} has not been approved. To read it and decide:`), ...sentence(`delivery packs approve ${shown}`, "  ")];
 }
 
-export function notUpdatableLines(name: string, state: "missing" | "invalid"): string[] {
+export function notUpdatableLines(name: string, state: "missing" | "invalid" | "newer-format"): string[] {
   const shown = showName(name);
+  if (state === "newer-format") {
+    return [
+      ...sentence(`Not updated: the kept files of ${shown} are in a newer pack format than this delivery-service reads.`),
+      ...sentence("Upgrade delivery-service to read them.", "  "),
+      ...sentence(NOTHING_UPDATED, "  "),
+    ];
+  }
   const problem = state === "missing" ? "are missing" : "do not read as a pack";
   return [
     ...sentence(`Not updated: the kept files of ${shown} ${problem}.`),
