@@ -133,6 +133,8 @@
 
 ## Slice 4: Update a pack and see what changed first
 
+**Tests:** ✅ Recorded — 2026-10-24 — `b851164` — cli — 3 UAT + 6 AC, 0 skipped
+
 **Delivers:** An owner can move an added pack to a newer version only on purpose, after seeing what changed in plain terms and in the text itself.
 
 ### Prerequisites

@@ -1,4 +1,4 @@
-# Runs argv[3:] in a pseudo-terminal in cwd argv[1], sends argv[2] (keys) once the confirm prompt appears,
+# Runs argv[3:] in a pseudo-terminal in cwd argv[1], sends argv[2] (keys) once the confirm prompt (add, approve or update) appears,
 # echoes the terminal output to stdout and exits with the child's status.
 import os, pty, select, sys, time
 
@@ -20,7 +20,7 @@ while time.time() < deadline:
         if not chunk:
             break
         out += chunk
-        if not sent and (b"to this project?" in out or b"at this fingerprint?" in out):
+        if not sent and (b"to this project?" in out or b"at this fingerprint?" in out or (b"Move " in out and b"?" in out.rsplit(b"Move ", 1)[-1])):
             os.write(fd, keys.encode())
             sent = True
 _, status = os.waitpid(pid, 0)
