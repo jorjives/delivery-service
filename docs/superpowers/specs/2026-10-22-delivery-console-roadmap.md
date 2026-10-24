@@ -3,6 +3,7 @@
 > **Type:** new-project (a graphical front end for an existing tool)
 > **Created:** 2026-10-22
 > **Revised:** 2026-10-23
+> **Detail level:** brief for every item
 
 ## Context
 
@@ -31,7 +32,7 @@ Relationship to the pluggable architecture roadmap (`2026-10-22-pluggable-archit
 scheduling on macOS and Windows is that roadmap's Item 10, delivered as a scheduler plugin behind
 the scheduler backend port. This roadmap does not build it and no longer carries an item for it.
 Until it lands, the console says plainly, with the reason, that scheduling is unavailable on a
-machine whose operating system has no scheduler adapter (Items 3, 5, 8 and 9). That roadmap also
+machine whose operating system has no scheduler adapter (Items 5, 8 and 9). That roadmap also
 defers "dashboard and console plugins" until this one exists; so does this one (see Deferred).
 
 Status of what it builds on: the named-schedules design
@@ -113,8 +114,6 @@ running now.
 **Dependencies:**
 - A project owner can read where a project stands as versioned data (exists: `delivery report --json`)
 
-**Detail level:** brief
-
 **Notes:** Stubs on purpose: one project given by folder path, no registry, no actions, no
 history beyond the latest run, desktop shell absent. Proves the shell choice (priced here,
 including signing and notarisation; see the decisions table), the CLI-as-API principle and the
@@ -147,8 +146,6 @@ list, with the ones that need attention first.
 - A project owner can list the machine's delivery projects as data (a gap in the CLI to close
   here, so `delivery` gains a way to list and manage the set of known projects)
 
-**Detail level:** brief
-
 **Notes:** Mirrors the shape of the autoloop fleet console and the `systemd-viewer` grouped list.
 The registry decision is made here (see the table above). The dedicated CLI addition is part of
 this item, not a separate layer, because the first thing it enables is this screen.
@@ -179,8 +176,6 @@ its schedules, its workflows and their steps, its task list and its backlog.
   `2026-10-21-named-schedules-design.md`, delivered)
 - A person can read a project's schedules, configuration and backlog as data (CLI gaps closed
   here: `--json` for `schedule status`, `backlog` and a config summary)
-
-**Detail level:** brief
 
 **Notes:** Read only by design, so the rest of the roadmap adds actions to screens the person
 already trusts. Where a project uses packs, the packs it names are listed with their workflows;
@@ -213,8 +208,6 @@ plain words what happened and why it ended as it did.
 - A person can list all runs as data (exists: `delivery status --all`; `--json` coverage to be
   confirmed in the spec)
 
-**Detail level:** brief
-
 **Notes:** Cost and usage figures are shown only where the report records them, with the count
 of sessions covered, so a total is never presented as complete when it is not.
 
@@ -239,8 +232,6 @@ or gaps before they happen.
 - A person can browse a project's schedules
 - Several named schedules per project, with overlap skipped rather than failed (exists: the
   named-schedules design, including `run --if-idle`, delivered)
-
-**Detail level:** brief
 
 **Notes:** Ember has no calendar or timeline component; flag it for design (see "Ember gaps").
 A date-grid library supplies behaviour. This item also settles whether "next run" is read from
@@ -275,8 +266,6 @@ will be told, and can stop or resume one.
   every run, delivered)
 - Packs can describe workflows of any shape (exists: packs for any workflow, delivered)
 
-**Detail level:** brief
-
 **Notes:** Runs must outlive the window, so the spec must decide how a console-started run is
 detached on each operating system. The preview-before-trigger step is the point of the item
 for non-technical users: the person sees and can sanity-check what is about to be spent.
@@ -306,8 +295,6 @@ decision, and can resolve each without a terminal.
 - A person can start and follow a run
 - A person can approve, decline, sign off, reject, answer and unpark from the command line
   (exists)
-
-**Detail level:** brief
 
 **Notes:** This is where non-technical users spend most of their time once things are running,
 so the "does it need me?" answer is delivered here, not at the end: notification while the
@@ -340,8 +327,6 @@ something needs them without keeping the window open.
 **Dependencies:**
 - A person can decide what needs them
 - A person can start a run that outlives the window (Item 6)
-
-**Detail level:** brief
 
 **Notes:** Sequenced before setup so that the people who test Items 9 and 10 do so on the
 installed app, as a real user would. The desktop shell is built here on the decision and costing
@@ -388,8 +373,6 @@ work comes from, and when it runs.
   here: a non-interactive way to write and validate configuration, so the console and `init`
   share one writer)
 
-**Detail level:** brief
-
 **Notes:** Biggest behavioural risk in the roadmap: two writers of one config file. The CLI
 writer must be the only one. Editing the check and the closer is limited to the ready-made
 kinds; writing a custom gate or closer in code stays a command-line and documentation path
@@ -419,8 +402,6 @@ change without reading documentation.
 **Dependencies:**
 - A person can install the console like an app (Item 8)
 - A person can set up a project (Item 9)
-
-**Detail level:** brief
 
 **Notes:** This is the item that closes the roadmap's premise. If non-technical testers cannot
 get to a first delivered change, earlier items are revised rather than papered over with help
