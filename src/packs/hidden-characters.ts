@@ -9,6 +9,14 @@ export const hasHidden = (text: string): boolean => HIDDEN_ANY.test(text);
 const SHOWN: Record<string, string> = { "\n": "\\n", "\r": "\\r", "\t": "\\t" };
 
 /**
+ * A file name or path with every hidden character written as `<U+202E>`, so the name reads as the name the
+ * file has. Pack text uses `showHidden`, which writes `‮`; a name is shown in the form a reader types.
+ */
+export function showName(text: string): string {
+  return text.replace(HIDDEN_ALL, (char) => `<U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, "0")}>`);
+}
+
+/**
  * The text with every hidden character written out as visible text (`\x1b`, `‮`), so it can be read
  * and cannot drive the terminal. A newline, and a tab, stay as they are when `keep` says so.
  */

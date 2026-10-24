@@ -1,14 +1,20 @@
 import { expect, it } from "vitest";
-import { builtInPacks } from "../packs/manifest.js";
-import { inspectionOf, type Inspection } from "../packs/inspection.js";
+import { builtInPacks, DATA_ONLY } from "../packs/manifest.js";
+import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK } from "../packs/pack-folder.js";
+import { inspectionOf, NO_PROJECT, type Inspection } from "../packs/inspection.js";
 import type { Severity } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
-import { INSPECT_RULE, INSPECT_WIDTH, renderInspection } from "./packs-inspect-render.js";
+import { INSPECT_RULE, INSPECT_WIDTH, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
 
 const packs = await builtInPacks();
 const deprecations = packs.find((pack) => pack.manifest.name === "deprecations");
 if (!deprecations) throw new Error("the deprecations pack is not built in");
-const builtInInspections = packs.map((pack) => inspectionOf(pack));
+const builtInInspections = packs.map((pack) => inspectionOf(pack, NO_PROJECT, []));
+
+/** The text of some lines, joined and with every run of white space made one space: the wrap points are not compared. */
+const flat = (lines: readonly string[]): string => lines.join(" ").replace(/\s+/g, " ");
+/** The lines a sentence wraps to, given as the sentence: `flat` compares the joined text, so the wrap points are not restated. */
+const wrapped = (line: string): string[] => [line];
 
 const DEFAULT_SUMMARY = "Changes the code a little.";
 
@@ -46,6 +52,8 @@ function model(overrides: ModelOverrides = {}): Inspection {
     pack: { name: "test", version: "1.0.0", title: "Test pack", summary: "A pack for tests.", format: "delivery.pack/3", hash: "a".repeat(64), source: { kind: "built-in", path: "/packs/test" } },
     defaultGuards: ["tests-untouched"],
     workflows: [find, act],
+    project: NO_PROJECT,
+    files: [],
   } as Inspection;
 }
 
@@ -76,7 +84,7 @@ function withoutPackWords(lines: string[], inspection: Inspection): string {
 }
 
 it("puts the short account first, then limits, then the full instructions last", () => {
-  const lines = renderInspection(inspectionOf(deprecations));
+  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, []));
   const at = (text: string) => lines.indexOf(text);
   expect(lines.slice(0, 2)).toEqual(["Pack: Move off deprecated code", "deprecations, version 1.0.0, built in to delivery-service."]);
   expect(`${lines[3]}${lines[4]}`).toBe(`  ${deprecations.hash.slice(0, 32)}  ${deprecations.hash.slice(32)}`);
@@ -88,7 +96,7 @@ it("puts the short account first, then limits, then the full instructions last",
 });
 
 it("says how far each workflow goes in words", () => {
-  const text = renderInspection(inspectionOf(deprecations)).join("\n");
+  const text = renderInspection(inspectionOf(deprecations, NO_PROJECT, [])).join("\n");
   expect(text).toContain("  code:\n    Also refused if it edits an existing test.\n    Ideas rated high or critical wait for your sign-off\n    before they land.");
   expect(text).toContain("  tests:\n    No extra guards.\n    Lands without asking you again, once you have approved\n    the idea.");
   expect(text).toContain("    Also refused if it changes anything other than adding\n    ideas to the backlog.");
@@ -96,14 +104,14 @@ it("says how far each workflow goes in words", () => {
 });
 
 it("says the instructions run with everything the owner's setup can do, and the project's follow-on steps run after landing", () => {
-  const flat = renderInspection(inspectionOf(deprecations)).join(" ").replace(/\s+/g, " ");
+  const flat = renderInspection(inspectionOf(deprecations, NO_PROJECT, [])).join(" ").replace(/\s+/g, " ");
   expect(flat).toContain("This pack cannot give the agent extra powers, and nothing in it takes any away.");
   for (const sentence of OWN_SETUP) expect(flat).toContain(sentence);
   expect(flat).toContain("After a change from an act workflow lands, your project's own follow-on steps run.");
 });
 
 it("shows every instruction unaltered, the pack's words apart from the harness's", () => {
-  const lines = renderInspection(inspectionOf(deprecations));
+  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, []));
   for (const [name, { authored, harness }] of Object.entries(deprecations.instructions)) {
     const local = name.split(":")[1];
     const start = lines.findIndex((l) => l.startsWith(`Instructions for ${local}: the pack's own words`));
@@ -282,4 +290,53 @@ it("says a workflow widens what the agent may do, and lists it in Things to look
   const list = thingsToLookAt(lines).join(" ").replace(/\s+/g, " ");
   expect(list).toContain('1. "act" widens what the agent may do beyond your project\'s defaults: a guard turned off.');
   expect(list).not.toContain("Nothing unusual");
+});
+
+it("names the project's check and landing when a project is found", () => {
+  const text = renderInspection({ ...model(), project: { found: true, path: "/work/shop", config: "read",
+    gate: { source: "project", type: "command", summary: "runs `npm test`" }, closer: { source: "project", type: "open-pr", summary: "opens a pull request" } } }).join("\n");
+  expect(text).toContain("Your project, in /work/shop:\n  Check: runs `npm test`.\n  Landing: opens a pull request.");
+});
+
+it.each([
+  [NO_PROJECT, "No project was found here, so which check and landing would be used is not known."],
+  [{ ...NO_PROJECT, found: true, path: "/p", config: "code" as const }, "JavaScript file, which this command does not run"],
+  [{ ...NO_PROJECT, found: true, path: "/p", config: "unreadable" as const }, "could not be read"],
+])("says the check and landing are not known: %j", (project, words) => {
+  expect(flat(renderInspection({ ...model(), project }))).toContain(words);
+});
+
+it("lists documentation and housekeeping as not read, and never their content", () => {
+  const lines = renderInspection({ ...model(), files: [{ path: "README.md", role: "documentation" }, { path: ".git/", role: "housekeeping" }, { path: "look.md", role: "prompt" }] });
+  const at = lines.indexOf("Also in the folder");
+  expect(lines.slice(at, at + 4)).toEqual(["Also in the folder", "  Not read when the pack is used, and not shown here:", "  README.md", "  .git/"]);
+  expect(at).toBeLessThan(lines.indexOf(INSPECT_RULE));
+});
+
+it("shows a hidden character in a file name as visible text, and counts it", () => {
+  const lines = renderInspection({ ...model(), files: [{ path: `READ‮ME.md`, role: "documentation" }] });
+  expect(lines.join("\n")).not.toContain("‮");
+  expect(lines).toContain("  READ<U+202E>ME.md");
+  expect(flat(thingsToLookAt(lines))).toContain("the name of the file READ<U+202E>ME.md");
+});
+
+it("counts a hidden character in the project's path, and names it as the project's path", () => {
+  const lines = renderInspection({ ...model(), project: { ...NO_PROJECT, found: true, path: `/p/‮`, config: "read" } });
+  expect(flat(thingsToLookAt(lines))).toContain("in the project's path");
+});
+
+it("refuses with each problem by file, the advice for unnamed content, and the closing line, and shows no pack words", () => {
+  const lines = renderRefusal("/w/p", [{ file: "/w/p/install.sh", field: null, message: NOT_IN_A_PACK }, { file: "/w/p/pack.json", field: "tools", message: `"tools" ${DATA_ONLY}` }], "/w");
+  expect(flat(lines)).toBe(flat(["Not read: p", ...wrapped(`  p/install.sh ${NOT_IN_A_PACK}.`), ...wrapped(`  p/pack.json: "tools" ${DATA_ONLY}.`),
+    ...wrapped("  If you wrote this pack, remove what is named above. If someone else did, ask them why it is there."), `  ${SHOWN_NOTHING}`]));
+  expect(lines.at(-1)).toBe(`  ${SHOWN_NOTHING}`);
+});
+
+it("writes a hidden character in a refused path as visible text", () => {
+  expect(renderRefusal("/w/p", [{ file: "/w/p/a‮b.sh", field: null, message: NOT_IN_A_PACK }], "/w").join("\n")).toContain("p/a<U+202E>b.sh");
+});
+
+it("says a folder sentence is advised about only when a problem is one of them", () => {
+  expect(flat(renderRefusal("/w/p", [{ file: "/w/p/pack.json", field: "tools", message: `"tools" ${DATA_ONLY}` }], "/w"))).not.toContain("If you wrote this pack");
+  expect(flat(renderRefusal("/w/p", [{ file: "/w/p/x", field: null, message: FOLDER_NOT_IN_A_PACK }], "/w"))).toContain("If you wrote this pack, remove what is named above.");
 });

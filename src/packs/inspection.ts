@@ -4,8 +4,26 @@ import { activeGuards, guardChanges } from "../task-guards.js";
 import { isBuiltInPack, type Pack } from "./manifest.js";
 import { wideningsOf } from "./widening.js";
 import { PACK_SCHEMAS_READ, type PackWorkflow } from "./pack-format.js";
+import { FILE_ROLES, type PackFolderFile } from "./pack-folder.js";
 
 export const INSPECTION_SCHEMA = "delivery.pack-inspection/1";
+
+/** The check or the landing the project's own settings name, as the owner reads it. */
+export const Selection = z.object({ source: z.literal("project"), type: z.string(), summary: z.string() });
+export type Selection = z.infer<typeof Selection>;
+
+/** The project a pack is inspected in: the check and landing that will judge and land its work, read from data only. */
+export const ProjectBaseline = z.object({
+  found: z.boolean(),
+  /** The project's top folder, when one was found. */
+  path: z.string().nullable(),
+  /** How its settings were read: a JSON file, no file (the defaults), a JavaScript file this command does not run, or a file that could not be read. */
+  config: z.enum(["read", "none", "code", "unreadable"]),
+  gate: Selection.nullable(),
+  closer: Selection.nullable(),
+});
+export type ProjectBaseline = z.infer<typeof ProjectBaseline>;
+export const NO_PROJECT: ProjectBaseline = { found: false, path: null, config: "none", gate: null, closer: null };
 
 const InstructionsSchema = z.object({ authored: z.string(), harness: z.string().nullable() });
 
@@ -43,6 +61,8 @@ export const Inspection = z.object({
   }),
   defaultGuards: z.array(GuardName),
   workflows: z.array(InspectedWorkflow),
+  project: ProjectBaseline,
+  files: z.array(z.object({ path: z.string(), role: z.enum(FILE_ROLES) })),
 });
 export type Inspection = z.infer<typeof Inspection>;
 
@@ -62,8 +82,8 @@ function inspectedWorkflow(pack: Pack, local: string, workflow: PackWorkflow): z
   return workflow.summary === undefined ? base : { ...base, summary: workflow.summary };
 }
 
-/** The model of a loaded pack: its identity and fingerprint, the guards on by default, and every workflow as it will run. Pure: no I/O. */
-export function inspectionOf(pack: Pack): Inspection {
+/** The model of a loaded pack: its identity and fingerprint, the guards on by default, every workflow as it will run, the project it is read in, and the folder's files. Pure: no I/O. */
+export function inspectionOf(pack: Pack, project: ProjectBaseline, files: readonly PackFolderFile[]): Inspection {
   const { manifest } = pack;
   return {
     schema: INSPECTION_SCHEMA,
@@ -78,22 +98,7 @@ export function inspectionOf(pack: Pack): Inspection {
     },
     defaultGuards: [...activeGuards({}).on],
     workflows: Object.entries(manifest.workflows).map(([local, workflow]) => inspectedWorkflow(pack, local, workflow)),
+    project,
+    files: files.map(({ path, role }) => ({ path, role })),
   };
 }
-
-/** The check or the landing the project's own settings name, as the owner reads it. */
-export const Selection = z.object({ source: z.literal("project"), type: z.string(), summary: z.string() });
-export type Selection = z.infer<typeof Selection>;
-
-/** The project a pack is inspected in: the check and landing that will judge and land its work, read from data only. */
-export const ProjectBaseline = z.object({
-  found: z.boolean(),
-  /** The project's top folder, when one was found. */
-  path: z.string().nullable(),
-  /** How its settings were read: a JSON file, no file (the defaults), a JavaScript file this command does not run, or a file that could not be read. */
-  config: z.enum(["read", "none", "code", "unreadable"]),
-  gate: Selection.nullable(),
-  closer: Selection.nullable(),
-});
-export type ProjectBaseline = z.infer<typeof ProjectBaseline>;
-export const NO_PROJECT: ProjectBaseline = { found: false, path: null, config: "none", gate: null, closer: null };

@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { inspectionOf } from "../packs/inspection.js";
+import { inspectionOf, NO_PROJECT } from "../packs/inspection.js";
 import { BUILT_IN_PACKS, packNamed } from "../packs/manifest.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery } from "./command-fixtures.js";
@@ -61,7 +61,7 @@ describe("delivery packs inspect", () => {
     const { exitCode, stdout, stderr } = await delivery(["packs", "inspect", "deprecations"], { cwd });
     wiring.forbid = false;
     expect(exitCode).toBe(EXIT.ok);
-    expect(stdout).toBe(`${renderInspection(inspectionOf(await packNamed("deprecations"))).join("\n")}\n`);
+    expect(stdout).toBe(`${renderInspection(inspectionOf(await packNamed("deprecations"), NO_PROJECT, [])).join("\n")}\n`);
     expect(stderr).toBe("");
     expect(wiring.calls).toEqual([]);
     expect([snapshot(cwd), snapshot(BUILT_IN_PACKS)]).toEqual(before);

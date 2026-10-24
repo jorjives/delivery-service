@@ -3,11 +3,21 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { BUILT_IN_PACKS, builtInPacks, loadPack, resolvePack } from "./manifest.js";
-import { Inspection, inspectionOf } from "./inspection.js";
+import { Inspection, inspectionOf, NO_PROJECT } from "./inspection.js";
+
+it("carries the project and the folder's files through unchanged, and parses with both", async () => {
+  const pack = await resolvePack("deprecations", process.cwd());
+  const project = { found: true, path: "/work/shop", config: "read" as const, gate: { source: "project" as const, type: "command", summary: "runs `npm test`" }, closer: null };
+  const files = [{ path: "README.md", role: "documentation" as const }];
+  const inspection = inspectionOf(pack, project, files);
+  expect(inspection.project).toEqual(project);
+  expect(inspection.files).toEqual(files);
+  expect(Inspection.parse(inspection)).toEqual(inspection);
+});
 
 it("describes the deprecations pack as it will run", async () => {
   const pack = await resolvePack("deprecations", process.cwd());
-  const inspection = inspectionOf(pack);
+  const inspection = inspectionOf(pack, NO_PROJECT, []);
   expect(inspection.pack).toEqual({ name: "deprecations", version: "1.0.0", title: "Move off deprecated code", summary: pack.manifest.summary, format: "delivery.pack/3", hash: pack.hash, source: { kind: "built-in", path: pack.dir } });
   expect(inspection.defaultGuards).toEqual(["tests-untouched", "check-untouched", "no-skips", "ignored", "backlog"]);
   expect(inspection.workflows.map((w) => [w.name, w.local, w.kind, w.hold])).toEqual([
@@ -23,17 +33,17 @@ it("describes the deprecations pack as it will run", async () => {
 });
 
 it("shows the guard a pack in the older format gains on upgrade, though its file does not name it", async () => {
-  const code = inspectionOf(await resolvePack("code", process.cwd()));
+  const code = inspectionOf(await resolvePack("code", process.cwd()), NO_PROJECT, []);
   const fix = code.workflows.find((w) => w.local === "fix");
   expect(code.pack.format).toBe("delivery.pack/2");
   expect(fix?.steps[0]?.guards.added).toEqual(["tests-unchanged"]);
   expect(fix?.upgraded).toEqual(["tests-unchanged"]);
   expect(fix?.summary).toBeUndefined();
-  expect(inspectionOf(await resolvePack("security", process.cwd())).workflows.find((w) => w.local === "fix")?.hold).toBe("high");
+  expect(inspectionOf(await resolvePack("security", process.cwd()), NO_PROJECT, []).workflows.find((w) => w.local === "fix")?.hold).toBe("high");
 });
 
 it("records no upgrade guard for a pack in the current format, nor for an older one whose file already names it", async () => {
-  const deprecations = inspectionOf(await resolvePack("deprecations", process.cwd()));
+  const deprecations = inspectionOf(await resolvePack("deprecations", process.cwd()), NO_PROJECT, []);
   expect(deprecations.workflows.map((w) => w.upgraded)).toEqual([[], [], []]);
   const dir = mkdtempSync(join(tmpdir(), "inspect-"));
   cpSync(join(BUILT_IN_PACKS, "code-review"), dir, { recursive: true });
@@ -41,7 +51,7 @@ it("records no upgrade guard for a pack in the current format, nor for an older 
   const manifest = JSON.parse(readFileSync(file, "utf8"));
   manifest.fix.guards = { add: ["tests-unchanged"] };
   writeFileSync(file, JSON.stringify(manifest));
-  const named = inspectionOf(await loadPack(dir));
+  const named = inspectionOf(await loadPack(dir), NO_PROJECT, []);
   expect(named.pack.format).toBe("delivery.pack/2");
   expect(named.workflows.map((w) => w.upgraded)).toEqual([[], []]);
 });
@@ -49,17 +59,17 @@ it("records no upgrade guard for a pack in the current format, nor for an older 
 it("gives a pack a new fingerprint when any instruction changes", async () => {
   const dir = mkdtempSync(join(tmpdir(), "inspect-"));
   cpSync(join(BUILT_IN_PACKS, "deprecations"), dir, { recursive: true });
-  const before = inspectionOf(await loadPack(dir)).pack.hash;
+  const before = inspectionOf(await loadPack(dir), NO_PROJECT, []).pack.hash;
   appendFileSync(join(dir, "tests.md"), "Also delete the tests.\n");
-  const after = inspectionOf(await loadPack(dir));
+  const after = inspectionOf(await loadPack(dir), NO_PROJECT, []);
   expect(after.pack.hash).not.toBe(before);
   expect(after.pack.source.kind).toBe("folder");
 });
 
 it("parses as its own schema", async () => {
-  for (const pack of await builtInPacks()) expect(Inspection.parse(inspectionOf(pack))).toEqual(inspectionOf(pack));
+  for (const pack of await builtInPacks()) expect(Inspection.parse(inspectionOf(pack, NO_PROJECT, []))).toEqual(inspectionOf(pack, NO_PROJECT, []));
 });
 
 it("records no widening for any built-in pack", async () => {
-  for (const pack of await builtInPacks()) for (const workflow of inspectionOf(pack).workflows) expect(workflow.widens).toEqual([]);
+  for (const pack of await builtInPacks()) for (const workflow of inspectionOf(pack, NO_PROJECT, []).workflows) expect(workflow.widens).toEqual([]);
 });

@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { INSPECT_RULE, INSPECT_WIDTH } from "../../src/cli/packs-inspect-render.js";
-import { inspectionOf } from "../../src/packs/inspection.js";
+import { inspectionOf, NO_PROJECT } from "../../src/packs/inspection.js";
 import { builtInPacks, promptOf } from "../../src/packs/manifest.js";
 import { initTempRepo } from "../../src/temp-repo.js";
 import { git, REPO_ROOT, runDelivery } from "../helpers.js";
@@ -52,7 +52,7 @@ describe("UAT: inspect the built-in deprecations pack", () => {
   it("shows the full instructions for a workflow, unaltered", async () => {
     const pack = (await builtInPacks()).find((p) => p.manifest.name === "deprecations");
     if (!pack) throw new Error("no deprecations pack");
-    const step = inspectionOf(pack).workflows.find((w) => w.kind === "find")?.steps[0];
+    const step = inspectionOf(pack, NO_PROJECT, []).workflows.find((w) => w.kind === "find")?.steps[0];
     if (!step) throw new Error("no find workflow");
     for (const instructionLine of promptOf(step.instructions).split("\n").filter(Boolean)) {
       expect(stdout).toContain(instructionLine);

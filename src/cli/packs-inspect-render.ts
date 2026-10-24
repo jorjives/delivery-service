@@ -1,9 +1,15 @@
+import { relative } from "node:path";
 import { GUARD_REFUSES } from "../guards.js";
-import type { Inspection } from "../packs/inspection.js";
+import type { ProjectBaseline, Selection, Inspection } from "../packs/inspection.js";
 import { atOrAbove } from "../item-check.js";
-import { hiddenAt, showHidden, type HiddenAt } from "../packs/hidden-characters.js";
+import { hiddenAt, showHidden, showName, type HiddenAt } from "../packs/hidden-characters.js";
+import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK, UNUSED_INSTRUCTIONS } from "../packs/pack-folder.js";
+import type { PackProblem } from "../packs/manifest.js";
 import { SEVERITIES } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
+
+/** The last line of every refusal: nothing from the pack was used. */
+export const SHOWN_NOTHING = "Nothing from this pack was shown, run or sent to an agent.";
 
 /** The widest line the account writes, in columns. Pack-authored instructions are the one exception: they are shown as written. */
 export const INSPECT_WIDTH = 60;
@@ -125,8 +131,30 @@ function limitsBlock(inspection: Inspection): string[] {
   ];
 }
 
-function checksBlock(): string[] {
-  return ["Checks and landing", ...wrap("This pack chooses no checks and no way of landing. Every workflow uses your project's own.", "  ")];
+/** One of the project's two choices as the owner reads it, or that it is not known when the project names none. */
+const choiceLine = (label: string, choice: Selection | null): string[] =>
+  wrap(choice === null ? `${label}: not known; your project names none and none could be inferred.` : `${label}: ${choice.summary}.`, "  ");
+
+/** The check and landing the project's own settings name, or why they are not known. */
+function projectLines(project: ProjectBaseline): string[] {
+  if (!project.found) return wrap("No project was found here, so which check and landing would be used is not known.", "  ");
+  if (project.config === "code") {
+    return wrap("Your project's settings are in a JavaScript file, which this command does not run, so its check and landing are not known.", "  ");
+  }
+  if (project.config === "unreadable") return wrap("Your project's settings could not be read, so its check and landing are not known.", "  ");
+  return [
+    ...wrap(`Your project, in ${project.path ?? "."}:`, "  "),
+    ...choiceLine("Check", project.gate),
+    ...choiceLine("Landing", project.closer),
+  ];
+}
+
+function checksBlock({ project }: Inspection): string[] {
+  return [
+    "Checks and landing",
+    ...wrap("This pack chooses no checks and no way of landing. Every workflow uses your project's own.", "  "),
+    ...projectLines(project),
+  ];
 }
 
 /** A hidden character found in the pack's words, and which of them it was found in. */
@@ -142,12 +170,13 @@ const inOneLine = (where: string, text: string): Finding[] =>
 const inInstructions = (where: string, text: string): Finding[] =>
   hiddenAt(text, { newline: true, tab: true }).map((found) => ({ ...found, where, lined: true }));
 
-/** Every hidden character in the pack's own words, in the order a reader meets them. */
-function hiddenFindings({ pack, workflows }: Inspection): Finding[] {
+/** Every hidden character in the pack's own words and in the names of its files, in the order a reader meets them. */
+function hiddenFindings({ pack, workflows, project, files }: Inspection): Finding[] {
   return [
     ...inOneLine("the title", pack.title),
     ...inOneLine("the summary", pack.summary),
     ...inOneLine("the source path", pack.source.path),
+    ...(project.path === null ? [] : inOneLine("the project's path", project.path)),
     ...workflows.flatMap((workflow) => [
       ...inOneLine(`the summary of ${workflow.local}`, workflow.summary ?? ""),
       // Every step of a workflow runs the same instructions; each distinct text is counted once.
@@ -158,6 +187,7 @@ function hiddenFindings({ pack, workflows }: Inspection): Finding[] {
         inInstructions(`the words delivery-service adds to ${workflow.local}`, text),
       ),
     ]),
+    ...files.flatMap(({ path }) => inOneLine(`the name of the file ${showName(path)}`, path)),
   ];
 }
 
@@ -220,6 +250,17 @@ function lookAtBlock(inspection: Inspection): string[] {
   ];
 }
 
+/** The folder's documentation and housekeeping, named and never read. Fixtures and prompts are not named here: the account says what they are, not what they hold. */
+function alsoBlock({ files }: Inspection): string[] {
+  const listed = files.filter(({ role }) => role === "documentation" || role === "housekeeping");
+  if (listed.length === 0) return [];
+  return [
+    "Also in the folder",
+    ...wrap("Not read when the pack is used, and not shown here:", "  "),
+    ...listed.flatMap(({ path }) => wrap(showName(path), "  ")),
+  ];
+}
+
 /** Each step's instructions, shown unaltered: the pack's words, then the harness's words when the harness adds any. */
 function instructionBlocks(inspection: Inspection): string[][] {
   return inspection.workflows.flatMap((workflow) =>
@@ -246,10 +287,35 @@ export function renderInspection(inspection: Inspection): string[] {
     shortBlock(inspection),
     touchBlock(),
     limitsBlock(inspection),
-    checksBlock(),
+    checksBlock(inspection),
     widenBlock(inspection),
     lookAtBlock(inspection),
+    alsoBlock(inspection),
     ...instructionBlocks(inspection),
   ];
   return blocks.filter((block) => block.length > 0).flatMap((block, index) => (index === 0 ? block : ["", ...block]));
+}
+
+/** The folder sentences: a file in the folder that is not part of a pack, as the folder check words them. */
+const FOLDER_SENTENCES: readonly string[] = [NOT_IN_A_PACK, FOLDER_NOT_IN_A_PACK, UNUSED_INSTRUCTIONS];
+
+/** A path as the refusal names it: relative to the working directory, with a hidden character written out. */
+const shownPath = (file: string, cwd: string): string => showName(relative(cwd, file) || ".");
+
+/**
+ * The whole account of a pack that was not read: the folder, each problem by its file, the advice when a problem is
+ * content the pack should not hold, and the line that says nothing was used. Pure: no I/O.
+ */
+export function renderRefusal(dir: string, problems: readonly PackProblem[], cwd: string): string[] {
+  const lines = wrap(`Not read: ${shownPath(dir, cwd)}`, "");
+  for (const { file, field, message } of problems) {
+    const sentence = message.endsWith(".") ? message : `${message}.`;
+    const text = field === null ? `${shownPath(file, cwd)} ${sentence}` : `${shownPath(file, cwd)}: ${sentence}`;
+    lines.push(...wrap(text, "  ", "    "));
+  }
+  if (problems.some(({ message }) => FOLDER_SENTENCES.includes(message))) {
+    lines.push(...wrap("If you wrote this pack, remove what is named above. If someone else did, ask them why it is there.", "  "));
+  }
+  lines.push(`  ${SHOWN_NOTHING}`);
+  return lines;
 }
