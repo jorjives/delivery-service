@@ -1,4 +1,5 @@
 import type { LockEntry } from "../packs/install/lock.js";
+import { showName } from "../packs/hidden-characters.js";
 import { wrap } from "./packs-inspect-render.js";
 
 /** The widest a value printed on its own line is, in columns: a digest is too long to wrap by word, so it is cut to this. */
@@ -18,7 +19,7 @@ export function changedAtSourceLines(entry: LockEntry, now: string): string[] {
     "  Recorded:",
     ...valueLines(entry.integrity),
     "  Now:",
-    ...valueLines(now),
+    ...valueLines(showName(now)),
     ...wrap("A published version should never change. The folder is unchanged. Do not use this pack until you know why.", "  "),
   ];
 }

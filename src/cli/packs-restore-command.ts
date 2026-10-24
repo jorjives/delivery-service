@@ -1,5 +1,6 @@
 import { join, relative } from "node:path";
 import { PackIntegrityMismatch, PackSourceUnavailable } from "../errors.js";
+import { showName } from "../packs/hidden-characters.js";
 import { fingerprintOf } from "../packs/install/lock.js";
 import { readPackage } from "../packs/install/package-archive.js";
 import type { PackageSpec } from "../packs/install/pack-spec.js";
@@ -46,16 +47,16 @@ export async function packsRestoreCommand(name: string, ctx: CommandContext, sou
 
   const read = await readPackage(fetched.tarball);
   if (!read.ok) {
-    return refuse(wrap(`${read.problem.entry ?? "The package"} ${read.problem.message}.`, "  ", "    "));
+    return refuse(wrap(`${read.problem.entry == null ? "The package" : showName(read.problem.entry)} ${read.problem.message}.`, "  ", "    "));
   }
 
   return withStagedPack(read.packFiles, async (stagedDir, folder) => {
     // Each problem is named by its path inside the package, which is the pack folder's path plus the file's.
-    const inPackage = (file: string): string => (read.packPath === "." ? relative(stagedDir, file) : `${read.packPath}/${relative(stagedDir, file)}`);
+    const inPackage = (file: string): string => (read.packPath === "." ? showName(relative(stagedDir, file)) : showName(`${read.packPath}/${relative(stagedDir, file)}`));
     if (!folder.ok) return refuse(problemLines(folder.problems, inPackage));
     const manifestName = folder.pack.manifest.name;
     if (manifestName !== name) {
-      const problem = { file: join(stagedDir, "pack.json"), field: "name", message: `"name" is "${manifestName}", but the record keeps this pack as ${name}` };
+      const problem = { file: join(stagedDir, "pack.json"), field: "name", message: `"name" is "${showName(manifestName)}", but the record keeps this pack as ${showName(name)}` };
       return refuse(problemLines([problem], inPackage));
     }
     if (fingerprintOf(folder.pack) !== entry.fingerprint) return refuse([]);

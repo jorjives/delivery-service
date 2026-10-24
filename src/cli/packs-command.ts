@@ -51,7 +51,7 @@ function installedRow(pack: InstalledPack, width: number): string {
   const name = showName(pack.name).padEnd(width);
   if (pack.state === "unrecorded") return `  ${name}  ${stateNote(pack)}`;
   const summary = pack.state === "ok" ? `${sentenceOf(pack.pack.manifest.summary)} ` : "";
-  return `  ${name}  ${summary}From npm: ${pack.entry.package} ${pack.entry.version}. ${stateNote(pack)}`;
+  return `  ${name}  ${summary}From npm: ${showName(pack.entry.package)} ${showName(pack.entry.version)}. ${stateNote(pack)}`;
 }
 
 /** The lines `delivery packs` prints: each pack with its sentence and the command that starts it, each added pack with its state, the names aligned on the longest, and how to add and inspect a pack. */
