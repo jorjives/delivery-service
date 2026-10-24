@@ -139,8 +139,8 @@ export async function setLockEntry(repoPath: string, name: string, entry: LockEn
  */
 export async function deleteLockEntry(repoPath: string, name: string): Promise<void> {
   const lock = await readLock(repoPath);
-  delete lock.packs[name];
-  await atomicWrite(packsLockPath(repoPath), serialiseLock(lock));
+  const packs = Object.fromEntries(Object.entries(lock.packs).filter(([key]) => key !== name));
+  await atomicWrite(packsLockPath(repoPath), serialiseLock({ ...lock, packs }));
 }
 
 /** Set one pack's entry in the record, under the record lock, so two adds at once both land. */
