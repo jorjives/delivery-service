@@ -121,6 +121,7 @@ real risk of sharing. Inspection is the first control and comes before install.
 
 ### Item 3: Install a pack from elsewhere, pinned
 
+**Spec:** `docs/superpowers/specs/2026-10-24-install-a-pack-from-elsewhere-design.md`
 **Delivers:** A project owner can add a pack published by someone else and get the same
 pack on every machine and every run.
 
