@@ -16,3 +16,8 @@ export type { ScriptedSupervisorRun, ScriptedTask, ScriptedTaskResult } from "./
 export type { PackProblem } from "./packs/manifest.js";
 export { checkPack } from "./cli/pack-check.js";
 export type { PackCheck, PackCheckRun } from "./cli/pack-check.js";
+export { fakePackSource } from "./packs/install/fake-source.js";
+export type { FakePackSource } from "./packs/install/fake-source.js";
+export type { FetchedPackage, PackSource } from "./packs/install/pack-source.js";
+export { packageTarball, tarballOf } from "./packs/install/tarball.js";
+export type { TarEntry } from "./packs/install/tarball.js";

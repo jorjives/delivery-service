@@ -20,6 +20,8 @@ import {
   UnknownPack,
   DamagedReview,
   PackSpecRefused,
+  PackSourceUnavailable,
+  PackIntegrityMismatch,
 } from "../errors.js";
 import { messageOf } from "../gate-support.js";
 
@@ -88,6 +90,8 @@ const KNOWN_ERRORS = [
   UnknownPack,
   DamagedReview,
   PackSpecRefused,
+  PackSourceUnavailable,
+  PackIntegrityMismatch,
 ] as const;
 type KnownError = InstanceType<(typeof KNOWN_ERRORS)[number]>;
 
@@ -115,6 +119,22 @@ function packSpecRefusedMessage(err: PackSpecRefused): string {
       return `Not added: only npm packages can be added now. ${err.spec} looks like a folder or file on this machine.`;
     case "name":
       return `Not added: ${err.spec} is not an npm package name. A name looks like docs-pack or @acme/docs-pack, and may end in @ and a version.`;
+  }
+}
+
+/** Why npm could not give the package an owner named, in words an owner can act on. */
+function packSourceUnavailableMessage(err: PackSourceUnavailable): string {
+  switch (err.reason) {
+    case "no-npm":
+      return "Not added: this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.";
+    case "not-found":
+      return `Not added: npm has no package called ${err.packageName}. Check the name; scoped packages start with @.`;
+    case "no-version":
+      return `Not added: ${err.packageName} has no version ${err.request} on npm. Nothing was changed.`;
+    case "unreachable":
+      return "Not added: npm could not be reached. Nothing was changed. Runs of packs already added are not affected.";
+    case "failed":
+      return `Not added: npm could not fetch ${err.packageName} (${err.detail}). Nothing was changed.`;
   }
 }
 
@@ -197,6 +217,13 @@ function renderKnown(err: KnownError): RenderedFailure {
       };
     case "PACK_SPEC_REFUSED":
       return { message: packSpecRefusedMessage(err), exitCode: EXIT.configuration };
+    case "PACK_SOURCE_UNAVAILABLE":
+      return { message: packSourceUnavailableMessage(err), exitCode: EXIT.configuration };
+    case "PACK_INTEGRITY_MISMATCH":
+      return {
+        message: `Not added: the download of ${err.packageName} ${err.version} does not match what npm published for it. Nothing was changed. Try again; if it happens again, do not use this version.`,
+        exitCode: EXIT.configuration,
+      };
     case "IMMUTABILITY_VIOLATION":
     case "MISSING_BASELINE":
     case "ILLEGAL_STATE_TRANSITION":

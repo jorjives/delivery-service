@@ -21,6 +21,8 @@ import {
   UnknownPack,
   DamagedReview,
   PackSpecRefused,
+  PackSourceUnavailable,
+  PackIntegrityMismatch,
 } from "../errors.js";
 import { EXIT, Refusal, renderFailure, UNEXPECTED_FOOTER } from "./failures.js";
 
@@ -63,6 +65,12 @@ describe("renderFailure", () => {
     [new PackSpecRefused("https://a.test/x.tgz", "web"), EXIT.configuration, "looks like a web address"],
     [new PackSpecRefused("./pack", "path"), EXIT.configuration, "folder or file on this machine"],
     [new PackSpecRefused("a b", "name"), EXIT.configuration, "is not an npm package name"],
+    [new PackSourceUnavailable("docs-pack", "latest", "no-npm", ""), EXIT.configuration, "this needs npm to fetch the package, and npm was not found"],
+    [new PackSourceUnavailable("docs-pack", "latest", "not-found", ""), EXIT.configuration, "npm has no package called docs-pack"],
+    [new PackSourceUnavailable("docs-pack", "9.0.0", "no-version", ""), EXIT.configuration, "docs-pack has no version 9.0.0 on npm"],
+    [new PackSourceUnavailable("docs-pack", "latest", "unreachable", ""), EXIT.configuration, "npm could not be reached"],
+    [new PackSourceUnavailable("docs-pack", "latest", "failed", "EACCES"), EXIT.configuration, "npm could not fetch docs-pack (EACCES)"],
+    [new PackIntegrityMismatch("docs-pack", "1.0.0", "sha512-a", "sha512-b"), EXIT.configuration, "does not match what npm published"],
   ])("renders %o in plain language with its mapped exit code", (err, exitCode, mentions) => {
     const rendered = renderFailure(err);
     expect(rendered.exitCode).toBe(exitCode);

@@ -234,3 +234,31 @@ export class PackSpecRefused extends Error {
     this.name = "PackSpecRefused";
   }
 }
+
+/** npm could not give the package an owner named: no npm, no such package or version, npm unreachable, or npm failed for another reason. */
+export class PackSourceUnavailable extends Error {
+  readonly code = "PACK_SOURCE_UNAVAILABLE" as const;
+  constructor(
+    readonly packageName: string,
+    readonly request: string,
+    readonly reason: "no-npm" | "not-found" | "no-version" | "unreachable" | "failed",
+    readonly detail: string,
+  ) {
+    super(`npm could not give ${packageName} ${request} (${reason})`);
+    this.name = "PackSourceUnavailable";
+  }
+}
+
+/** The bytes npm sent for a package do not match the integrity npm published for them. */
+export class PackIntegrityMismatch extends Error {
+  readonly code = "PACK_INTEGRITY_MISMATCH" as const;
+  constructor(
+    readonly packageName: string,
+    readonly version: string,
+    readonly expected: string,
+    readonly actual: string,
+  ) {
+    super(`The download of ${packageName} ${version} does not match its published integrity`);
+    this.name = "PackIntegrityMismatch";
+  }
+}
