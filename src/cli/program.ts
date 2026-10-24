@@ -21,6 +21,7 @@ import { statusCommand, type StatusOptions } from "./status-command.js";
 import { validateCommand, type ValidateOptions } from "./validate-command.js";
 import { intervalSeconds, watchCommand } from "./watch-command.js";
 import { packsCommand, type PacksOptions } from "./packs-command.js";
+import type { PacksInspectOptions } from "./packs-inspect-command.js";
 import type { ReviewCommandOptions } from "./review-command.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
@@ -100,7 +101,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .version(version, "-V, --version", "print the harness version")
     .option("--no-color", "print without colour")
-    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate and packs, and one JSON event per line from status --watch")
+    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate, packs and packs inspect, and one JSON event per line from status --watch")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
     .configureOutput({ writeOut: (text) => out.stdout.write(text), writeErr: (text) => out.stderr.write(text) });
@@ -362,10 +363,13 @@ export async function runCli(io: CliIo): Promise<number> {
     .description(
       "show what a pack will do before you use it: what each workflow is for, how far it goes before it asks you, and every instruction it gives the agent, with nothing run or changed",
     )
-    .argument("<pack>", "the pack to inspect: a name from `delivery packs`, such as deprecations, or the path to a pack folder, listed in your project or not")
-    .action(async (name: string, _options: object, command: Command) => {
+    .argument("[pack]", "the pack to inspect: a name from `delivery packs`, such as deprecations, or the path to a pack folder, listed in your project or not")
+    .option("--schema", "print the published JSON Schema of the document --json prints, instead of an account")
+    .action(async (name: string | undefined, options: PacksInspectOptions, command: Command) => {
       const { packsInspectCommand } = await import("./packs-inspect-command.js");
-      exitCode = await packsInspectCommand(name, ctxFor(command));
+      // `packs` takes its own --schema from anywhere after `packs`, so `packs inspect --schema` arrives there, not here.
+      const schema = options.schema === true || command.parent?.opts<{ schema?: boolean }>().schema === true;
+      exitCode = await packsInspectCommand(name, { ...options, schema }, ctxFor(command));
     });
 
   try {

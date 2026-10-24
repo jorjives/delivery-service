@@ -3,12 +3,15 @@ import { mkdirSync, mkdtempSync, readdirSync, rmSync, statSync, symlinkSync, wri
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { inspectionOf } from "../packs/inspection.js";
+import { z } from "zod";
+import { inspectionOf, inspectionSchema } from "../packs/inspection.js";
 import { BUILT_IN_PACKS, packNamed } from "../packs/manifest.js";
+import { packSchema } from "../packs/pack-format.js";
 import { NO_FOLDER, NO_MANIFEST, NOT_IN_A_PACK, readPackFolder } from "../packs/pack-folder.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, MOVES_FILES, movesProject, PACKAGE, V2_FILES } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
+import { NAME_A_PACK } from "./packs-inspect-command.js";
 import { projectBaseline } from "./project-baseline.js";
 import { renderInspection, SHOWN_NOTHING } from "./packs-inspect-render.js";
 
@@ -232,5 +235,80 @@ describe("delivery packs inspect", () => {
     const repo = initTempRepo("v2-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ packs: ["old-pack"] }), ...V2_FILES("old-pack"), "old-pack/run.sh": "x\n" });
     expect((await delivery(["review", "old", "--preview"], { cwd: repo })).exitCode).toBe(EXIT.ok);
     expect((await delivery(["packs", "inspect", "./old-pack"], { cwd: repo })).exitCode).toBe(EXIT.configuration);
+  });
+});
+
+describe("delivery packs inspect --json", () => {
+  it("prints the same model the text is rendered from, with the fingerprint and raw instructions, and exit 0", async () => {
+    const cwd = initTempRepo("inspect-json-", { "a.js": "x\n" });
+    const json = await quietly(["packs", "inspect", "deprecations", "--json"], cwd);
+    const text = await quietly(["packs", "inspect", "deprecations"], cwd);
+    const pack = await packNamed("deprecations");
+    const read = await readPackFolder(pack.dir);
+    if (!read.ok) throw new Error("deprecations is not read by the folder check");
+    const model = inspectionOf(pack, await projectBaseline(cwd, process.env, pack.dir), read.files);
+    expect(json.exitCode).toBe(EXIT.ok);
+    expect(JSON.parse(json.stdout)).toEqual(JSON.parse(JSON.stringify(model)));
+    expect(text.stdout).toBe(`${renderInspection(model).join("\n")}\n`);
+    const doc = JSON.parse(json.stdout);
+    expect(doc.pack.hash).toBe(pack.hash);
+    expect(doc.workflows.find((w: { local: string }) => w.local === "tests").steps[0].instructions.authored).toBe(pack.instructions["deprecations:tests"]?.authored);
+    expect(z.fromJSONSchema(inspectionSchema()).safeParse(doc).error).toBeUndefined();
+  });
+
+  it("keeps a hidden character raw in the document and lists it, while the text shows it escaped", async () => {
+    const dir = packFolderOutsideAnyRepo({ "code.md": `# Look\nab${String.fromCodePoint(0x202e)}cd\n` });
+    const cwd = mkdtempSync(join(tmpdir(), "nowhere-"));
+    const doc = JSON.parse((await delivery(["packs", "inspect", dir, "--json"], { cwd })).stdout);
+    const code = doc.workflows.find((w: { local: string }) => w.local === "code");
+    expect(code.steps[0].instructions.authored).toContain(`ab${String.fromCodePoint(0x202e)}cd`);
+    expect(doc.hiddenCharacters).toContainEqual(expect.objectContaining({ codePoint: "U+202E", place: "instructions", workflow: code.name }));
+    expect((await delivery(["packs", "inspect", dir], { cwd })).stdout).not.toContain(String.fromCodePoint(0x202e));
+  });
+
+  it.each([
+    ["a folder holding a script", () => packFolderOutsideAnyRepo({ "install.sh": "rm -rf ~\n" }), "install.sh"],
+    ["a newer format", newerFormatPack, "pack.json"],
+  ])("refuses %s as a document saying it was refused, each problem listed, exit 2, no pack words", async (_l, build, file) => {
+    const dir = build();
+    const { exitCode, stdout } = await delivery(["packs", "inspect", dir, "--json"], { cwd: dirname(dir) });
+    expect(exitCode).toBe(EXIT.configuration);
+    const doc = JSON.parse(stdout);
+    expect(doc).toMatchObject({ schema: "delivery.pack-inspection/1", ok: false });
+    expect(doc.problems.map((p: { file: string }) => basename(p.file))).toContain(file);
+    expect(stdout).not.toContain(NOT_A_PACK);
+    expect(z.fromJSONSchema(inspectionSchema()).safeParse(doc).error).toBeUndefined();
+  });
+
+  it.each([
+    [["nope"], 'There is no pack called "nope"'],
+    [[], NAME_A_PACK],
+  ])("refuses %j as a document on stdout, exit 2", async (pack, words) => {
+    const { exitCode, stdout, stderr } = await delivery(["packs", "inspect", ...pack, "--json"], { cwd: mkdtempSync(join(tmpdir(), "inspect-")) });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toBe("");
+    expect(JSON.parse(stdout)).toMatchObject({ ok: false, problems: [{ file: null, message: expect.stringContaining(words) }] });
+  });
+
+  it("prints the published schema with --schema, reading no pack, while packs --schema still prints the pack.json schema", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "inspect-"));
+    const { exitCode, stdout } = await delivery(["packs", "inspect", "--schema"], { cwd });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(JSON.parse(stdout)).toEqual(inspectionSchema());
+    expect(JSON.parse((await delivery(["packs", "--schema"], { cwd })).stdout)).toEqual(packSchema());
+  });
+
+  it("refuses no pack and no --schema plainly", async () => {
+    const { exitCode, stderr } = await delivery(["packs", "inspect"], { cwd: mkdtempSync(join(tmpdir(), "inspect-")) });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(NAME_A_PACK);
+  });
+
+  it.each([[[]], [["--json"]]])("gives identical output on two runs over the same folder (%j)", async (extra) => {
+    const dir = packFolderOutsideAnyRepo({ "README.md": "x\n" });
+    const cwd = mkdtempSync(join(tmpdir(), "nowhere-"));
+    const first = await delivery(["packs", "inspect", dir, ...extra], { cwd });
+    const second = await delivery(["packs", "inspect", dir, ...extra], { cwd });
+    expect(second).toEqual(first);
   });
 });
