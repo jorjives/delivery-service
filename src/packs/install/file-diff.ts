@@ -1,8 +1,15 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { z } from "zod";
 import { git } from "../../git-exec.js";
 
-export type DiffLine = { kind: "removed" | "added" | "context"; text: string } | { kind: "gap" } | { kind: "no-line-break" };
+/** One line of a file's change: removed, added or kept, a gap between two hunks, or a note that the file has no line break. */
+export const DiffLine = z.union([
+  z.object({ kind: z.enum(["removed", "added", "context"]), text: z.string() }),
+  z.object({ kind: z.literal("gap") }),
+  z.object({ kind: z.literal("no-line-break") }),
+]);
+export type DiffLine = z.infer<typeof DiffLine>;
 
 export interface FileDiff {
   path: string;

@@ -95,7 +95,7 @@ export async function readLock(repoPath: string): Promise<PacksLock> {
 }
 
 /** Every object's keys sorted, so the same entries always give the same bytes. */
-function sortKeys(value: unknown): unknown {
+export function sortKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sortKeys);
   if (value !== null && typeof value === "object") {
     const record = value as Record<string, unknown>;
