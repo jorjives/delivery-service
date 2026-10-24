@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { WorkflowConfig } from "../cli/config.js";
-import { wideningsOf } from "./widening.js";
+import { CHECKS_AND_LANDING_DIMENSIONS, wideningsOf } from "./widening.js";
 
 const step = { name: "do", prompt: "Do it." };
 
@@ -32,4 +32,8 @@ it("names follow-on steps of its own as a widening", () => {
 it("names each dimension once, however many steps widen it", () => {
   const off = { ...step, guards: { off: ["no-skips" as const] } };
   expect(wideningsOf({ steps: [off, off] })).toEqual(["a guard turned off"]);
+});
+
+it("names the two dimensions a check or a landing can widen", () => {
+  expect(CHECKS_AND_LANDING_DIMENSIONS).toEqual(["its own gate", "follow-on steps of its own"]);
 });
