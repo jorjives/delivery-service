@@ -18,6 +18,8 @@ import {
 } from "./pack-folder.js";
 
 const movesManifest = JSON.parse(MOVES_FILES["moves-pack/pack.json"] ?? "");
+/** The size in bytes of a file of the moves pack, as the folder holds it. */
+const movesBytes = (name: string): number => Buffer.byteLength(MOVES_FILES[`moves-pack/${name}`] ?? "");
 
 /** A fresh pack folder holding `files`, whose names are relative to the folder itself (the `moves-pack/` prefix is dropped). */
 function packFolder(files: Record<string, string> = MOVES_FILES): string {
@@ -72,11 +74,11 @@ describe("readPackFolder", () => {
       ok: true,
       pack: expect.objectContaining({ dir }),
       files: [
-        { path: ".git/", role: "housekeeping" },
-        { path: "code.md", role: "prompt" },
-        { path: "look.md", role: "prompt" },
-        { path: "pack.json", role: "manifest" },
-        { path: "tests.md", role: "prompt" },
+        { path: ".git/", role: "housekeeping", bytes: null },
+        { path: "code.md", role: "prompt", bytes: movesBytes("code.md") },
+        { path: "look.md", role: "prompt", bytes: movesBytes("look.md") },
+        { path: "pack.json", role: "manifest", bytes: movesBytes("pack.json") },
+        { path: "tests.md", role: "prompt", bytes: movesBytes("tests.md") },
       ],
     });
   });
@@ -139,11 +141,11 @@ describe("readPackFolder", () => {
     mkdirSync(join(dir, ".git", "objects"), { recursive: true });
     const read = await readPackFolder(dir);
     expect(read.ok && read.files).toEqual([
-      { path: ".DS_Store", role: "housekeeping" }, { path: ".git/", role: "housekeeping" }, { path: ".gitattributes", role: "housekeeping" },
-      { path: ".gitignore", role: "housekeeping" }, { path: "CHANGELOG", role: "documentation" }, { path: "README.md", role: "documentation" },
-      { path: "code.md", role: "prompt" }, { path: "fixtures/.DS_Store", role: "housekeeping" }, { path: "fixtures/expect.json", role: "fixture" },
-      { path: "fixtures/project/a.js", role: "fixture" }, { path: "licence.txt", role: "documentation" }, { path: "look.md", role: "prompt" },
-      { path: "pack.json", role: "manifest" }, { path: "tests.md", role: "prompt" },
+      { path: ".DS_Store", role: "housekeeping", bytes: 0 }, { path: ".git/", role: "housekeeping", bytes: null }, { path: ".gitattributes", role: "housekeeping", bytes: 0 },
+      { path: ".gitignore", role: "housekeeping", bytes: 0 }, { path: "CHANGELOG", role: "documentation", bytes: 1 }, { path: "README.md", role: "documentation", bytes: 1 },
+      { path: "code.md", role: "prompt", bytes: movesBytes("code.md") }, { path: "fixtures/.DS_Store", role: "housekeeping", bytes: 0 }, { path: "fixtures/expect.json", role: "fixture", bytes: 2 },
+      { path: "fixtures/project/a.js", role: "fixture", bytes: 1 }, { path: "licence.txt", role: "documentation", bytes: 1 }, { path: "look.md", role: "prompt", bytes: movesBytes("look.md") },
+      { path: "pack.json", role: "manifest", bytes: movesBytes("pack.json") }, { path: "tests.md", role: "prompt", bytes: movesBytes("tests.md") },
     ]);
   });
 

@@ -54,7 +54,7 @@ it("lists each hidden character with its place, workflow, line and column, raw t
 it("places a hidden character in the title and in a file name without a line", () => {
   const b = base();
   b.pack.title = `T${ESC}`;
-  b.files = [{ path: `x${ZWSP}.md`, role: "documentation" }];
+  b.files = [{ path: `x${ZWSP}.md`, role: "documentation", bytes: 0 }];
   expect(withFindings(b).hiddenCharacters).toEqual([
     { codePoint: "U+001B", shown: "\\x1b", place: "title", workflow: null, file: null, line: null, column: 2 },
     { codePoint: "U+200B", shown: "\\u200b", place: "file-name", workflow: null, file: `x${ZWSP}.md`, line: null, column: 2 },

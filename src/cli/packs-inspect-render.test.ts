@@ -311,14 +311,14 @@ it.each([
 });
 
 it("lists documentation and housekeeping as not read, and never their content", () => {
-  const lines = renderInspection(withFindings({ ...model(), files: [{ path: "README.md", role: "documentation" }, { path: ".git/", role: "housekeeping" }, { path: "look.md", role: "prompt" }] }));
+  const lines = renderInspection(withFindings({ ...model(), files: [{ path: "README.md", role: "documentation", bytes: 12 }, { path: ".git/", role: "housekeeping", bytes: null }, { path: "look.md", role: "prompt", bytes: 40 }] }));
   const at = lines.indexOf("Also in the folder");
   expect(lines.slice(at, at + 4)).toEqual(["Also in the folder", "  Not read when the pack is used, and not shown here:", "  README.md", "  .git/"]);
   expect(at).toBeLessThan(lines.indexOf(INSPECT_RULE));
 });
 
 it("shows a hidden character in a file name as visible text, and counts it", () => {
-  const lines = renderInspection(withFindings({ ...model(), files: [{ path: `READ‮ME.md`, role: "documentation" }] }));
+  const lines = renderInspection(withFindings({ ...model(), files: [{ path: `READ‮ME.md`, role: "documentation", bytes: 0 }] }));
   expect(lines.join("\n")).not.toContain("‮");
   expect(lines).toContain("  READ<U+202E>ME.md");
   expect(flat(thingsToLookAt(lines))).toContain("the name of the file READ<U+202E>ME.md");

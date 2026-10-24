@@ -68,7 +68,7 @@ export const Inspection = z.object({
   defaultGuards: z.array(GuardName),
   workflows: z.array(InspectedWorkflow),
   project: ProjectBaseline,
-  files: z.array(z.object({ path: z.string(), role: z.enum(FILE_ROLES) })),
+  files: z.array(z.object({ path: z.string(), role: z.enum(FILE_ROLES), bytes: z.number().int().nonnegative().nullable() })),
   /** Whether any workflow widens what the agent may do: true exactly when a finding is a wider one. */
   widens: z.boolean(),
   findings: z.array(Finding),
@@ -121,7 +121,7 @@ export function inspectionOf(pack: Pack, project: ProjectBaseline, files: readon
     defaultGuards: [...activeGuards({}).on],
     workflows,
     project,
-    files: files.map(({ path, role }) => ({ path, role })),
+    files: files.map(({ path, role, bytes }) => ({ path, role, bytes })),
   };
   return withFindings(base);
 }

@@ -8,6 +8,7 @@ delivery.pack-inspection/1.defaultGuards[] = "tests-unchanged"
 delivery.pack-inspection/1.defaultGuards[] = "tests-untouched"
 delivery.pack-inspection/1.defaultGuards[]: string
 delivery.pack-inspection/1.files: array
+delivery.pack-inspection/1.files[].bytes: integer|null
 delivery.pack-inspection/1.files[].path: string
 delivery.pack-inspection/1.files[].role = "documentation"
 delivery.pack-inspection/1.files[].role = "fixture"

@@ -8,7 +8,7 @@ import { Inspection, inspectionOf, narrowedTo, NO_PROJECT } from "./inspection.j
 it("carries the project and the folder's files through unchanged, and parses with both", async () => {
   const pack = await resolvePack("deprecations", process.cwd());
   const project = { found: true, path: "/work/shop", config: "read" as const, gate: { source: "project" as const, type: "command", summary: "runs `npm test`" }, closer: null };
-  const files = [{ path: "README.md", role: "documentation" as const }];
+  const files = [{ path: "README.md", role: "documentation" as const, bytes: 12 }];
   const inspection = inspectionOf(pack, project, files);
   expect(inspection.project).toEqual(project);
   expect(inspection.files).toEqual(files);
