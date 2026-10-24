@@ -21,14 +21,17 @@ async function packsFor(ctx: CommandContext): Promise<Pack[]> {
   return (await loadConfigAndPacks({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env })).packs;
 }
 
-/** The lines `delivery packs` prints: each pack with its sentence and the command that starts it, the names aligned on the longest. */
+/** The last line of the plain listing: how to see what a pack will do before using it. */
+export const INSPECT_HINT = "See exactly what a pack will do: delivery packs inspect <name>";
+
+/** The lines `delivery packs` prints: each pack with its sentence and the command that starts it, the names aligned on the longest, and how to inspect a pack. */
 export function packLines(packs: readonly Pack[]): string[] {
   const width = Math.max(0, ...packs.map(({ manifest }) => manifest.name.length));
   const lines = packs.map(({ manifest }) => {
     const sentence = /[.!?]$/.test(manifest.summary) ? manifest.summary : `${manifest.summary}.`;
     return `  ${manifest.name.padEnd(width)}  ${sentence} Start it with: delivery review ${manifest.name}`;
   });
-  return ["Packs you can use:", ...lines, "", "To use a pack folder of your own, list it under packs in delivery.config.json."];
+  return ["Packs you can use:", ...lines, "", "To use a pack folder of your own, list it under packs in delivery.config.json.", INSPECT_HINT];
 }
 
 /** `delivery packs`: every pack you can use, the built-in ones and any the project lists, each with its sentence and the command that starts it; as data with `--json`; or the pack format's schema with `--schema`. */

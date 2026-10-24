@@ -7,6 +7,7 @@ import { packSchema } from "../packs/pack-format.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
+import { INSPECT_HINT } from "./packs-command.js";
 import { packWorkflowClash } from "./pack-workflows.js";
 
 /** The contents of a delivery.pack/3 manifest named `name`, with a find `scan` offering an act `code`. */
@@ -36,8 +37,16 @@ describe("delivery packs", () => {
       `  deprecations  ${deprecations?.manifest.summary} Start it with: delivery review deprecations`,
       `  security      ${security?.manifest.summary} Start it with: delivery review security`,
     ]);
-    expect(lines.at(-1)).toBe("To use a pack folder of your own, list it under packs in delivery.config.json.");
+    expect(lines.at(-2)).toBe("To use a pack folder of your own, list it under packs in delivery.config.json.");
+    expect(lines.at(-1)).toBe("See exactly what a pack will do: delivery packs inspect <name>");
     expect(stdout).not.toMatch(/reviews? (are|is) available/i);
+  });
+
+  it("ends with how to see what a pack will do outside any repository too, and keeps it out of --json", async () => {
+    const outside = await delivery(["packs"], { cwd: mkdtempSync(join(tmpdir(), "no-repo-hint-")) });
+    expect(outside.stdout.trimEnd().split("\n").at(-1)).toBe(INSPECT_HINT);
+    const json = await delivery(["packs", "--json"], { cwd: initTempRepo("packs-hint-json-", { "a.js": "x\n" }) });
+    expect(json.stdout).not.toContain("packs inspect");
   });
 
   it("prints the pack format's JSON Schema with --schema, wherever it is asked", async () => {
