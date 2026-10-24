@@ -67,6 +67,8 @@ installed, and skips that check where it is not.
 
 A scheduler adapter for `delivery schedule` implements `SchedulerBackend` from `src/cli/schedule/backend.ts`, and its test file adds one `backendContract(...)` call from `src/cli/schedule/backend.contract.ts`, which runs the shared suite of behaviour every adapter must have. `src/cli/schedule/systemd.test.ts` is the example. The contract file is excluded from the build, so it never ships in `dist`.
 
+`delivery packs add` fetches through `PackSource` in `src/packs/install/pack-source.ts`. A source adapter's test file calls `packSourceContract(...)` once from `src/packs/install/pack-source.contract.ts`, which runs the shared suite every source must pass; that contract file is excluded from the build like `backend.contract.ts`. Tests that need a source use `fakePackSource()` from `src/testing.ts`. `src/packs/install/npm-source.test.ts` runs the real `npm` against `startLocalRegistry()` from `tests/local-registry.ts`, with `npm_config_registry` pointing at that throwaway server and a scratch `npm_config_cache`, so nothing reaches the internet. `DELIVERY_NPM` names the `npm` the command runs, which is how a test makes npm missing.
+
 The built-in packs `delivery review` starts are data-only folders under `packs/`, shipped in
 the package: a `pack.json` manifest, one instruction file per workflow and the `fixtures/` that
 `delivery packs check` runs. `code` and `security` are `delivery.pack/2` reviews; `deprecations`
