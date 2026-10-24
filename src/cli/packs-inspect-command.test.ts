@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
-import { inspectionOf, inspectionSchema } from "../packs/inspection.js";
+import { type Inspection, inspectionOf, inspectionSchema, narrowedTo } from "../packs/inspection.js";
 import { BUILT_IN_PACKS, packNamed } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
 import { NO_FOLDER, NO_MANIFEST, NOT_IN_A_PACK, readPackFolder } from "../packs/pack-folder.js";
@@ -310,5 +310,39 @@ describe("delivery packs inspect --json", () => {
     const first = await delivery(["packs", "inspect", dir, ...extra], { cwd });
     const second = await delivery(["packs", "inspect", dir, ...extra], { cwd });
     expect(second).toEqual(first);
+  });
+});
+
+describe("delivery packs inspect --workflow", () => {
+  it("shows only the tests workflow of deprecations with the identity and standing notices, exit 0", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "nowhere-"));
+    const { exitCode, stdout } = await quietly(["packs", "inspect", "deprecations", "--workflow", "tests"], cwd);
+    expect(exitCode).toBe(EXIT.ok);
+    const pack = await packNamed("deprecations");
+    const read = await readPackFolder(pack.dir);
+    if (!read.ok) throw new Error("deprecations is not read by the folder check");
+    const full = inspectionOf(pack, await projectBaseline(cwd, process.env, pack.dir), read.files);
+    expect(stdout).toBe(`${renderInspection(narrowedTo(full, "tests") as Inspection).join("\n")}\n`);
+    for (const heading of ["Pack: Move off deprecated code", "What it may touch", "Checks and landing", "Does it widen what the agent may do?", "Things to look at", "Instructions for tests"]) expect(stdout).toContain(heading);
+    expect(stdout).not.toContain("Instructions for code");
+  });
+
+  it("gives the narrowed document under --json, valid against the schema", async () => {
+    const doc = JSON.parse((await delivery(["packs", "inspect", "deprecations", "--workflow", "tests", "--json"], { cwd: mkdtempSync(join(tmpdir(), "nowhere-")) })).stdout);
+    expect(doc.workflows.map((w: { local: string }) => w.local)).toEqual(["tests"]);
+    expect(doc.pack.workflows).toHaveLength(3);
+    expect(z.fromJSONSchema(inspectionSchema()).safeParse(doc).error).toBeUndefined();
+  });
+
+  it("refuses an unknown workflow, listing the pack's workflows, with no account, in both forms", async () => {
+    const cwd = mkdtempSync(join(tmpdir(), "nowhere-"));
+    const message = 'There is no workflow called "nope" in the deprecations pack. Its workflows are: scan, code, tests.';
+    const text = await delivery(["packs", "inspect", "deprecations", "--workflow", "nope"], { cwd });
+    expect(text.exitCode).toBe(EXIT.configuration);
+    expect(text.stdout).toBe("");
+    expect(text.stderr).toContain(message);
+    const json = await delivery(["packs", "inspect", "deprecations", "--workflow", "nope", "--json"], { cwd });
+    expect(json.exitCode).toBe(EXIT.configuration);
+    expect(JSON.parse(json.stdout)).toEqual({ schema: "delivery.pack-inspection/1", ok: false, problems: [{ file: null, field: "workflow", message }] });
   });
 });

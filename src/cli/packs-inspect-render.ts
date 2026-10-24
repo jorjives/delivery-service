@@ -84,9 +84,12 @@ function shortBlock({ pack, workflows }: Inspection): string[] {
     "In short",
     ...wrap(pack.summary, "  "),
     ...wrap(
-      `It has ${workflows.length} workflows. A find reads your project and adds ideas to your backlog; an act changes the project for one idea.`,
+      `It has ${plural(pack.workflows.length, "workflow")}. A find reads your project and adds ideas to your backlog; an act changes the project for one idea.`,
       "  ",
     ),
+    ...(workflows.length < pack.workflows.length
+      ? wrap(`Only ${orList(workflows.map(({ local }) => `"${local}"`))} is shown here; inspect the whole pack to see the others.`, "  ")
+      : []),
     ...rows,
     ...offers,
   ];
@@ -190,11 +193,13 @@ const wideningSentences = ({ workflows, findings }: Inspection): string[] =>
 
 function widenBlock(inspection: Inspection): string[] {
   const widening = wideningSentences(inspection);
+  // The pack-wide flag still holds when the view is narrowed, so it can say another workflow widens, though none shown does.
+  const nothing = inspection.widens
+    ? "Nothing in the workflow shown widens what the agent may do, but another workflow in this pack does: inspect the whole pack."
+    : "Nothing in this pack widens what the agent may do beyond your project's defaults.";
   return [
     "Does it widen what the agent may do?",
-    ...(widening.length === 0
-      ? wrap("Nothing in this pack widens what the agent may do beyond your project's defaults.", "  ")
-      : widening.flatMap((sentence) => wrap(sentence, "  "))),
+    ...(widening.length === 0 ? wrap(nothing, "  ") : widening.flatMap((sentence) => wrap(sentence, "  "))),
     ...wrap("Compared: guards, sign-off, checks, landing, follow-on steps and agent options.", "  "),
     ...wrap("The instructions themselves are not analysed, so read them.", "  "),
   ];
@@ -220,9 +225,14 @@ function lookAtBlock(inspection: Inspection): string[] {
   const flagged = flaggedSentences(inspection);
   const { hiddenCharacters } = inspection;
   if (flagged.length === 0 && hiddenCharacters.length === 0) {
+    // A narrowed view has dropped the other workflows' findings, so it cannot say the pack as a whole is unremarkable.
+    const nothing =
+      inspection.workflows.length < inspection.pack.workflows.length
+        ? "Nothing unusual was found in what this command checks for the workflow shown. Inspect the whole pack for the others."
+        : "Nothing unusual was found in what this command checks.";
     return [
       "Things to look at",
-      ...wrap("Nothing unusual was found in what this command checks.", "  "),
+      ...wrap(nothing, "  "),
       ...wrap("That is not a guarantee about the instructions.", "  "),
     ];
   }

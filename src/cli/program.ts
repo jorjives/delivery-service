@@ -365,6 +365,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .argument("[pack]", "the pack to inspect: a name from `delivery packs`, such as deprecations, or the path to a pack folder, listed in your project or not")
     .option("--schema", "print the published JSON Schema of the document --json prints, instead of an account")
+    .option("--workflow <name>", "show only this workflow, its limits and its instructions, by its name in the pack such as tests")
     .action(async (name: string | undefined, options: PacksInspectOptions, command: Command) => {
       const { packsInspectCommand } = await import("./packs-inspect-command.js");
       // `packs` takes its own --schema from anywhere after `packs`, so `packs inspect --schema` arrives there, not here.

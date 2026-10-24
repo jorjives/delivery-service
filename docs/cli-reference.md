@@ -74,6 +74,7 @@ Every run holds the repository while it runs, so a second run started while one 
 | `packs` | `--schema` | Prints the JSON Schema of a pack folder's `pack.json` |
 | `packs check` | `--yes` | Skips the question about trusting the pack's code before its fixtures run; needed when there is no terminal |
 | `packs inspect` | `--schema` | Prints the JSON Schema of the document `--json` prints, `delivery.pack-inspection/1` |
+| `packs inspect` | `--workflow <name>` | Shows only this workflow, its limits and its instructions, with the pack's name, fingerprint and standing notes |
 | `schedule enable` | `--every <interval>` | Sets how often it runs: minutes that divide an hour (such as `5m`, `15m` or `30m`), hours that divide a day (such as `1h`, `6h` or `12h`), or `1d` (the default) |
 | `schedule enable` | `--name <name>` | Names the schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens. Without it, sets up the project's default schedule. Refused when another project already holds that schedule's timer. For a worked example, see [two schedules on one project](run-on-a-schedule.md#worked-example-two-schedules-on-one-project) |
 | `schedule enable` | `--config <path>` | The config file each scheduled run uses (default: the project's own) |

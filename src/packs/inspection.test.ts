@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { BUILT_IN_PACKS, builtInPacks, loadPack, resolvePack } from "./manifest.js";
-import { Inspection, inspectionOf, NO_PROJECT } from "./inspection.js";
+import { Inspection, inspectionOf, narrowedTo, NO_PROJECT } from "./inspection.js";
 
 it("carries the project and the folder's files through unchanged, and parses with both", async () => {
   const pack = await resolvePack("deprecations", process.cwd());
@@ -65,6 +65,17 @@ it("gives a pack a new fingerprint when any instruction changes", async () => {
   const after = inspectionOf(await loadPack(dir), NO_PROJECT, []);
   expect(after.pack.hash).not.toBe(before);
   expect(after.pack.source.kind).toBe("folder");
+});
+
+it("narrows to one workflow by its local or qualified name, keeping the pack, the project and pack-wide findings", async () => {
+  const full = inspectionOf(await resolvePack("deprecations", process.cwd()), NO_PROJECT, []);
+  const tests = narrowedTo(full, "tests");
+  expect(tests?.workflows).toEqual([full.workflows[2]]);
+  expect(narrowedTo(full, "deprecations:tests")).toEqual(tests);
+  expect(tests?.pack).toEqual(full.pack);
+  expect(tests?.findings).toEqual(full.findings.filter((f) => f.workflow === "deprecations:tests"));
+  expect(narrowedTo(full, "code")?.findings).toEqual([]);
+  expect(narrowedTo(full, "nope")).toBeNull();
 });
 
 it("parses as its own schema", async () => {

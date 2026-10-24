@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import { inspectionOf, inspectionRefusal, inspectionSchema } from "../packs/inspection.js";
+import { type Inspection, inspectionOf, inspectionRefusal, inspectionSchema, narrowedTo } from "../packs/inspection.js";
 import { isPackPath, packNamed } from "../packs/manifest.js";
 import { readPackFolder } from "../packs/pack-folder.js";
 import type { CommandContext } from "./context.js";
@@ -9,6 +9,17 @@ import { projectBaseline } from "./project-baseline.js";
 
 /** Named when `delivery packs inspect` is run with neither a pack nor `--schema`. */
 export const NAME_A_PACK = "Name the pack to inspect: a name from `delivery packs`, such as deprecations, or the path to a pack folder.";
+
+/** Named when `--workflow` names a workflow the pack does not have: the names it does have, in manifest order. */
+export const unknownWorkflow = (name: string, pack: string, locals: readonly string[]): string =>
+  `There is no workflow called "${name}" in the ${pack} pack. Its workflows are: ${locals.join(", ")}.`;
+
+/** The inspection narrowed to the named workflow; a name the pack does not have is refused, with the names it does have. */
+function shownWorkflow(whole: Inspection, name: string): Inspection {
+  const narrowed = narrowedTo(whole, name);
+  if (narrowed === null) throw new Refusal(unknownWorkflow(name, whole.pack.name, whole.workflows.map(({ local }) => local)), EXIT.configuration, "workflow");
+  return narrowed;
+}
 
 export interface PacksInspectOptions {
   /** Print the JSON Schema of the document `--json` prints, instead of an account. */
@@ -39,7 +50,8 @@ export async function packsInspectCommand(arg: string | undefined, options: Pack
       }
       return EXIT.configuration;
     }
-    const inspection = inspectionOf(read.pack, await projectBaseline(ctx.cwd, ctx.env, dir), read.files);
+    const whole = inspectionOf(read.pack, await projectBaseline(ctx.cwd, ctx.env, dir), read.files);
+    const inspection = options.workflow === undefined ? whole : shownWorkflow(whole, options.workflow);
     if (ctx.json) {
       ctx.writeLine(JSON.stringify(inspection, null, 2));
     } else {

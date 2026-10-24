@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { builtInPacks, DATA_ONLY } from "../packs/manifest.js";
 import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK } from "../packs/pack-folder.js";
-import { inspectionOf, NO_PROJECT, type Inspection, type InspectionBase, withFindings } from "../packs/inspection.js";
+import { inspectionOf, narrowedTo, NO_PROJECT, type Inspection, type InspectionBase, withFindings } from "../packs/inspection.js";
 import type { Severity } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
 import { INSPECT_RULE, INSPECT_WIDTH, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
@@ -343,4 +343,26 @@ it("writes a hidden character in a refused path as visible text", () => {
 it("says a folder sentence is advised about only when a problem is one of them", () => {
   expect(flat(renderRefusal("/w/p", [{ file: "/w/p/pack.json", field: "tools", message: `"tools" ${DATA_ONLY}` }], "/w"))).not.toContain("If you wrote this pack");
   expect(flat(renderRefusal("/w/p", [{ file: "/w/p/x", field: null, message: FOLDER_NOT_IN_A_PACK }], "/w"))).toContain("If you wrote this pack, remove what is named above.");
+});
+
+it("says how many workflows the pack has and that only one is shown, and drops the others' instructions and limits", () => {
+  const full = model({ hold: null });
+  const lines = renderInspection(narrowedTo(full, "act") as Inspection);
+  const text = flat(lines);
+  expect(text).toContain("It has 2 workflows.");
+  expect(text).toContain('Only "act" is shown here; inspect the whole pack to see the others.');
+  expect(text).not.toContain("Instructions for find");
+  expect(text).toContain("Instructions for act");
+  expect(text).toContain('"act" lands without asking for your sign-off');
+});
+
+it("does not say nothing widens when the workflow shown does not but another does", () => {
+  const base = model({ hold: "high" });
+  const find = base.workflows[0];
+  if (find) find.widens = ["a guard turned off"];
+  const text = flat(renderInspection(narrowedTo(withFindings(base), "act") as Inspection));
+  expect(text).not.toContain("Nothing in this pack widens");
+  expect(text).toContain("Nothing in the workflow shown widens what the agent may do, but another workflow in this pack does: inspect the whole pack.");
+  expect(text).not.toContain("Nothing unusual was found in what this command checks. ");
+  expect(text).toContain("Nothing unusual was found in what this command checks for the workflow shown. Inspect the whole pack for the others.");
 });

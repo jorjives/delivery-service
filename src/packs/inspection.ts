@@ -126,6 +126,14 @@ export function inspectionOf(pack: Pack, project: ProjectBaseline, files: readon
   return withFindings(base);
 }
 
+/** The inspection narrowed to one workflow, named by its local or qualified name; null when the pack has no such workflow. The pack, the project and the pack-wide flags are kept whole. Pure: a filter over the finished model. */
+export function narrowedTo(inspection: Inspection, name: string): Inspection | null {
+  const workflow = inspection.workflows.find((shown) => shown.local === name || shown.name === name);
+  if (workflow === undefined) return null;
+  const ofWorkflow = (item: { workflow: string | null }): boolean => item.workflow === null || item.workflow === workflow.name;
+  return { ...inspection, workflows: [workflow], findings: inspection.findings.filter(ofWorkflow), hiddenCharacters: inspection.hiddenCharacters.filter(ofWorkflow) };
+}
+
 /** A file or field the inspection could not read, as the owner is told it: a pack problem, with its file named. */
 export const InspectionProblem = z.object({ file: z.string().nullable(), field: z.string().nullable(), message: z.string() });
 export type InspectionProblem = z.infer<typeof InspectionProblem>;
