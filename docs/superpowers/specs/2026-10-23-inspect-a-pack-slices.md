@@ -128,6 +128,7 @@
 
 ## Slice 4: Look at one workflow, or hand the account to a script
 
+**Status:** ✅ Complete — 2026-10-24 — `31c6d9a`
 **Tests:** ✅ Recorded — 2026-10-24 — `72fdb72` — cli — 4 UAT + 8 AC, 0 skipped
 
 **Delivers:** An on-call engineer can read one workflow's instructions and limits in full, and a pack author or script can read the same account as a stable document.
