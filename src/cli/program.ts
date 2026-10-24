@@ -362,7 +362,7 @@ export async function runCli(io: CliIo): Promise<number> {
     .description(
       "show what a pack will do before you use it: what each workflow is for, how far it goes before it asks you, and every instruction it gives the agent, with nothing run or changed",
     )
-    .argument("<pack>", "the name of a pack that comes with the harness, such as deprecations")
+    .argument("<pack>", "the pack to inspect: a name from `delivery packs`, such as deprecations, or the path to a pack folder, listed in your project or not")
     .action(async (name: string, _options: object, command: Command) => {
       const { packsInspectCommand } = await import("./packs-inspect-command.js");
       exitCode = await packsInspectCommand(name, ctxFor(command));

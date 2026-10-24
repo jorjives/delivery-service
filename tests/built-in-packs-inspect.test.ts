@@ -8,6 +8,7 @@ import { delivery, PACKAGE } from "../src/cli/command-fixtures.js";
 import { INSPECT_RULE, INSPECT_WIDTH } from "../src/cli/packs-inspect-render.js";
 import { inspectionOf, NO_PROJECT } from "../src/packs/inspection.js";
 import { builtInPacks, promptOf } from "../src/packs/manifest.js";
+import { readPackFolder } from "../src/packs/pack-folder.js";
 import { activeGuards } from "../src/task-guards.js";
 import { initTempRepo } from "../src/temp-repo.js";
 import { runDelivery } from "./helpers.js";
@@ -52,6 +53,15 @@ describe.each(packs.map((p) => [p.manifest.name, p] as const))("the built-in pac
     const { exitCode, stdout } = await delivery(["review", name, "--preview"], { cwd: project });
     expect(exitCode).toBe(0);
     expect(stdout).toContain(promptOf(find.steps[0].instructions));
+  });
+
+  it("is read by the folder check, and is shown by its path exactly as by its name", async () => {
+    expect((await readPackFolder(pack.dir)).ok).toBe(true);
+    const cwd = initTempRepo("inspect-path-", { "package.json": PACKAGE, "a.js": "x\n" });
+    const byName = await delivery(["packs", "inspect", name], { cwd });
+    const byPath = await delivery(["packs", "inspect", pack.dir], { cwd });
+    expect(byPath.exitCode).toBe(0);
+    expect(byPath.stdout).toBe(byName.stdout);
   });
 
   it("reads at 60 columns from the command line, the short account first and the instructions last", () => {

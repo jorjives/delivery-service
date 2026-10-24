@@ -52,6 +52,21 @@ export const MOVES_FILES: Record<string, string> = {
   "moves-pack/tests.md": "# Move tests\n",
 };
 
+/** Test support: a `delivery.pack/2` pack in folder `folder`, named after it without its `-pack` ending, with a scan and a fix prompt beside it. */
+export const V2_FILES = (folder: string): Record<string, string> => ({
+  [`${folder}/pack.json`]: JSON.stringify({
+    schema: "delivery.pack/2",
+    name: folder.replace(/-pack$/, ""),
+    version: "1.0.0",
+    title: "Old",
+    summary: "Old.",
+    scan: { prompt: "scan.md" },
+    fix: { prompt: "fix.md" },
+  }),
+  [`${folder}/scan.md`]: "# Scan\n",
+  [`${folder}/fix.md`]: "# Fix\n",
+});
+
 /** Test support: a project that lists the `/3` moves pack, with `files` overriding or adding any of its files. */
 export const movesProject = (files: Record<string, string> = {}): string =>
   initTempRepo("moves-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ packs: ["moves-pack"] }), ...MOVES_FILES, ...files });
