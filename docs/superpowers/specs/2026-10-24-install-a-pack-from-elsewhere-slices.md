@@ -96,6 +96,7 @@
 
 ## Slice 3: Clashes reported plainly, and taking a pack out
 
+**Status:** ✅ Complete — 2026-10-24 — `ee016f5`
 **Tests:** ✅ Recorded — 2026-10-24 — `148745c` — cli — 4 UAT + 7 AC, 0 skipped
 **Delivers:** An owner who adds a pack whose name or workflow names clash with something already in the project is told plainly what clashes and how to resolve it, and can remove an added pack.
 
