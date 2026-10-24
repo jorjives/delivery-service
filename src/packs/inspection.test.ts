@@ -59,3 +59,7 @@ it("gives a pack a new fingerprint when any instruction changes", async () => {
 it("parses as its own schema", async () => {
   for (const pack of await builtInPacks()) expect(Inspection.parse(inspectionOf(pack))).toEqual(inspectionOf(pack));
 });
+
+it("records no widening for any built-in pack", async () => {
+  for (const pack of await builtInPacks()) for (const workflow of inspectionOf(pack).workflows) expect(workflow.widens).toEqual([]);
+});

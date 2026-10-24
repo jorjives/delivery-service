@@ -2,6 +2,7 @@ import { z } from "zod";
 import { GuardName, Severity } from "../schema.js";
 import { activeGuards, guardChanges } from "../task-guards.js";
 import { isBuiltInPack, type Pack } from "./manifest.js";
+import { wideningsOf } from "./widening.js";
 import { PACK_SCHEMAS_READ, type PackWorkflow } from "./pack-format.js";
 
 export const INSPECTION_SCHEMA = "delivery.pack-inspection/1";
@@ -23,6 +24,8 @@ const InspectedWorkflow = z.object({
   steps: z.array(InspectedStep),
   /** Guards the workflow gains on upgrade from an older format that its file does not state. */
   upgraded: z.array(GuardName),
+  /** What the workflow does that the project's own would not: ways it widens what the agent may do. Empty when it widens nothing. */
+  widens: z.array(z.string()),
   hold: Severity.nullable(),
 });
 
@@ -54,7 +57,7 @@ function inspectedWorkflow(pack: Pack, local: string, workflow: PackWorkflow): z
     instructions,
     guards: guardChanges({}, step.guards) ?? { added: [], off: [] },
   }));
-  const base = { name, local, kind: workflow.kind, steps, upgraded: [...(pack.upgraded[local] ?? [])], hold: config.hold ?? null };
+  const base = { name, local, kind: workflow.kind, steps, upgraded: [...(pack.upgraded[local] ?? [])], widens: wideningsOf(config), hold: config.hold ?? null };
   if (workflow.kind === "find") return { ...base, offers: [...new Set(workflow.ideasFor)].map((act) => `${pack.manifest.name}:${act}`) };
   return workflow.summary === undefined ? base : { ...base, summary: workflow.summary };
 }

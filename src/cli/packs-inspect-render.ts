@@ -161,18 +161,26 @@ function hiddenFindings({ pack, workflows }: Inspection): Finding[] {
   ];
 }
 
-function widenBlock(): string[] {
+/** One sentence per workflow that widens what the agent may do, naming how. */
+const wideningSentences = ({ workflows }: Inspection): string[] =>
+  workflows.filter(({ widens }) => widens.length > 0).map(({ local, widens }) => `"${local}" widens what the agent may do beyond your project's defaults: ${orList(widens)}.`);
+
+function widenBlock(inspection: Inspection): string[] {
+  const widening = wideningSentences(inspection);
   return [
     "Does it widen what the agent may do?",
-    ...wrap("Nothing in this pack widens what the agent may do beyond your project's defaults.", "  "),
+    ...(widening.length === 0
+      ? wrap("Nothing in this pack widens what the agent may do beyond your project's defaults.", "  ")
+      : widening.flatMap((sentence) => wrap(sentence, "  "))),
     ...wrap("Compared: guards, sign-off, checks, landing, follow-on steps and agent options.", "  "),
     ...wrap("The instructions themselves are not analysed, so read them.", "  "),
   ];
 }
 
-/** The acts of a pack whose limits differ from what a reader would assume, as one sentence each. */
-function flaggedSentences({ workflows }: Inspection): string[] {
-  return workflows.flatMap((workflow) => {
+/** What a reader would not assume, as one sentence each: first anything that widens what the agent may do, then the acts whose limits are looser or unstated. */
+function flaggedSentences(inspection: Inspection): string[] {
+  const { workflows } = inspection;
+  return [...wideningSentences(inspection), ...workflows.flatMap((workflow) => {
     if (workflow.kind !== "act") return [];
     const name = `"${workflow.local}"`;
     const sentences: string[] = [];
@@ -182,7 +190,7 @@ function flaggedSentences({ workflows }: Inspection): string[] {
       sentences.push(`${name} is refused if it ${GUARD_REFUSES[guard]}, though the pack's file does not say so. The older format adds this guard.`);
     }
     return sentences;
-  });
+  })];
 }
 
 /** What is worth a second look: the flagged limits, then the hidden characters and where each is. Says so when there is nothing. */
@@ -239,7 +247,7 @@ export function renderInspection(inspection: Inspection): string[] {
     touchBlock(),
     limitsBlock(inspection),
     checksBlock(),
-    widenBlock(),
+    widenBlock(inspection),
     lookAtBlock(inspection),
     ...instructionBlocks(inspection),
   ];

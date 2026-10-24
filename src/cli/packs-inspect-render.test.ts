@@ -28,6 +28,7 @@ function model(overrides: ModelOverrides = {}): Inspection {
     ...(summary === undefined ? {} : { summary }),
     steps: [{ name: "do", instructions: { authored: overrides.authored ?? "Do the thing.\nThen stop.", harness: null }, guards: { added: [], off: [] } }],
     upgraded: [],
+    widens: [],
     hold: "hold" in overrides ? (overrides.hold ?? null) : "high",
   };
   const find = {
@@ -37,6 +38,7 @@ function model(overrides: ModelOverrides = {}): Inspection {
     offers: ["test:act"],
     steps: [{ name: "scan", instructions: { authored: "Look around.", harness: "Write each idea as one line." }, guards: { added: ["backlog-only" as const], off: [] } }],
     upgraded: [],
+    widens: [],
     hold: null,
   };
   return {
@@ -265,4 +267,19 @@ it("states every time that nothing in the pack widens what the agent may do, wha
     expect(flat).toContain("The instructions themselves are not analysed, so read them.");
     expect(lines.indexOf("Does it widen what the agent may do?")).toBeLessThan(lines.indexOf("Things to look at"));
   }
+});
+
+it("says a workflow widens what the agent may do, and lists it in Things to look at, instead of saying nothing widens", () => {
+  const inspection = model({ hold: "high" });
+  const act = inspection.workflows[1];
+  if (act) act.widens = ["a guard turned off"];
+  const lines = renderInspection(inspection);
+  const flat = lines.join(" ").replace(/\s+/g, " ");
+  expect(flat).not.toContain("Nothing in this pack widens");
+  expect(flat).toContain('"act" widens what the agent may do beyond your project\'s defaults: a guard turned off.');
+  expect(flat).toContain("Compared: guards, sign-off, checks, landing, follow-on steps and agent options.");
+  expect(flat).toContain("The instructions themselves are not analysed, so read them.");
+  const list = thingsToLookAt(lines).join(" ").replace(/\s+/g, " ");
+  expect(list).toContain('1. "act" widens what the agent may do beyond your project\'s defaults: a guard turned off.');
+  expect(list).not.toContain("Nothing unusual");
 });
