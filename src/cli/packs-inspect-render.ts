@@ -161,16 +161,53 @@ function hiddenFindings({ pack, workflows }: Inspection): Finding[] {
   ];
 }
 
-/** The count of hidden characters and where each is. Empty when there are none, so the list appears only when there is something to look at. */
+function widenBlock(): string[] {
+  return [
+    "Does it widen what the agent may do?",
+    ...wrap("Nothing in this pack widens what the agent may do beyond your project's defaults.", "  "),
+    ...wrap("Compared: guards, sign-off, checks, landing, follow-on steps and agent options.", "  "),
+    ...wrap("The instructions themselves are not analysed, so read them.", "  "),
+  ];
+}
+
+/** The acts of a pack whose limits differ from what a reader would assume, as one sentence each. */
+function flaggedSentences({ workflows }: Inspection): string[] {
+  return workflows.flatMap((workflow) => {
+    if (workflow.kind !== "act") return [];
+    const name = `"${workflow.local}"`;
+    const sentences: string[] = [];
+    if (workflow.hold === null) sentences.push(`${name} lands without asking for your sign-off once you have approved the idea.`);
+    else if (workflow.hold === SEVERITIES[0]) sentences.push(`${name} asks for your sign-off only for ${workflow.hold} ideas; anything rated lower lands without it.`);
+    for (const guard of workflow.upgraded) {
+      sentences.push(`${name} is refused if it ${GUARD_REFUSES[guard]}, though the pack's file does not say so. The older format adds this guard.`);
+    }
+    return sentences;
+  });
+}
+
+/** What is worth a second look: the flagged limits, then the hidden characters and where each is. Says so when there is nothing. */
 function lookAtBlock(inspection: Inspection): string[] {
+  const flagged = flaggedSentences(inspection);
   const findings = hiddenFindings(inspection);
-  if (findings.length === 0) return [];
+  if (flagged.length === 0 && findings.length === 0) {
+    return [
+      "Things to look at",
+      ...wrap("Nothing unusual was found in what this command checks.", "  "),
+      ...wrap("That is not a guarantee about the instructions.", "  "),
+    ];
+  }
+  const hidden =
+    findings.length === 0
+      ? []
+      : wrap(`${plural(findings.length, "hidden character")} in the pack's words. Each is shown as visible text where it sits.`, "  ");
+  const numbered = (sentence: string, index: number): string[] => wrap(`${index + 1}. ${sentence}`, "  ", "     ");
   return [
     "Things to look at",
-    ...wrap(`${plural(findings.length, "hidden character")} in the pack's words. Each is shown as visible text where it sits.`, "  "),
+    ...flagged.flatMap(numbered),
+    ...hidden,
     ...findings.flatMap((found, index) => {
       const place = found.lined ? `line ${found.line}, column ${found.column}` : `column ${found.column}`;
-      return wrap(`${index + 1}. ${found.shown} in ${found.where}, ${place}.`, "  ", "     ");
+      return numbered(`${found.shown} in ${found.where}, ${place}.`, flagged.length + index);
     }),
   ];
 }
@@ -202,6 +239,7 @@ export function renderInspection(inspection: Inspection): string[] {
     touchBlock(),
     limitsBlock(inspection),
     checksBlock(),
+    widenBlock(),
     lookAtBlock(inspection),
     ...instructionBlocks(inspection),
   ];

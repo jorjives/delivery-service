@@ -27,7 +27,8 @@ function model(overrides: ModelOverrides = {}): Inspection {
     kind: "act" as const,
     ...(summary === undefined ? {} : { summary }),
     steps: [{ name: "do", instructions: { authored: overrides.authored ?? "Do the thing.\nThen stop.", harness: null }, guards: { added: [], off: [] } }],
-    hold: overrides.hold ?? null,
+    upgraded: [],
+    hold: "hold" in overrides ? (overrides.hold ?? null) : "high",
   };
   const find = {
     name: "test:find",
@@ -35,6 +36,7 @@ function model(overrides: ModelOverrides = {}): Inspection {
     kind: "find" as const,
     offers: ["test:act"],
     steps: [{ name: "scan", instructions: { authored: "Look around.", harness: "Write each idea as one line." }, guards: { added: ["backlog-only" as const], off: [] } }],
+    upgraded: [],
     hold: null,
   };
   return {
@@ -210,10 +212,57 @@ it("lists hidden characters in the title, summaries, the source path and the har
   expect(text).toContain("\\x1b in the words delivery-service adds to find, line 1, column 2");
 });
 
-it("has no Things to look at list when the pack's words hold no hidden character", () => {
-  for (const inspection of builtInInspections) expect(renderInspection(inspection)).not.toContain("Things to look at");
+it("keeps a tab and a line break in an instruction out of the count", () => {
+  expect(thingsToLookAt(renderInspection(model({ authored: "a\tb\nc", hold: "high" })))).toEqual(NOTHING_UNUSUAL);
 });
 
-it("keeps a tab and a line break in an instruction out of the count", () => {
-  expect(renderInspection(model({ authored: "a\tb\nc" }))).not.toContain("Things to look at");
+const NOTHING_UNUSUAL = [
+  "  Nothing unusual was found in what this command checks.",
+  "  That is not a guarantee about the instructions.",
+];
+
+it("always has a Things to look at list, and says nothing unusual was found when nothing was, without calling the pack safe", () => {
+  const lines = renderInspection(model({ hold: "high" }));
+  expect(thingsToLookAt(lines)).toEqual(NOTHING_UNUSUAL);
+  expect(lines.indexOf("Things to look at")).toBeLessThan(lines.indexOf(INSPECT_RULE));
+  for (const inspection of builtInInspections) expect(renderInspection(inspection)).toContain("Things to look at");
+});
+
+it("flags a workflow that lands without sign-off, naming it", () => {
+  const list = thingsToLookAt(renderInspection(model({ hold: null }))).join(" ").replace(/\s+/g, " ");
+  expect(list).toContain('1. "act" lands without asking for your sign-off once you have approved the idea.');
+  expect(list).not.toContain("Nothing unusual");
+});
+
+it("flags a sign-off that stops only critical ideas, but not one that stops high ideas too", () => {
+  const critical = thingsToLookAt(renderInspection(model({ hold: "critical" }))).join(" ").replace(/\s+/g, " ");
+  expect(critical).toContain('1. "act" asks for your sign-off only for critical ideas; anything rated lower lands without it.');
+  expect(thingsToLookAt(renderInspection(model({ hold: "high" })))).toEqual(NOTHING_UNUSUAL);
+});
+
+it("flags a guard an older-format pack gains on upgrade that its file does not state", () => {
+  const inspection = model({ hold: "high" });
+  const act = inspection.workflows[1];
+  if (act) act.upgraded = ["tests-unchanged"];
+  const list = thingsToLookAt(renderInspection(inspection)).join(" ").replace(/\s+/g, " ");
+  expect(list).toContain('1. "act" is refused if it');
+  expect(list).toContain("the pack's file does not say so");
+});
+
+it("numbers the flagged items and the hidden characters in one sequence", () => {
+  const list = thingsToLookAt(renderInspection(model({ hold: null, authored: `a${ZWSP}` }))).join(" ").replace(/\s+/g, " ");
+  expect(list).toContain('1. "act" lands without');
+  expect(list).toContain("2. \\u200b in the pack's own instructions for act");
+});
+
+it("states every time that nothing in the pack widens what the agent may do, what was compared, and that the instructions are not analysed", () => {
+  for (const inspection of [model(), ...builtInInspections]) {
+    const lines = renderInspection(inspection);
+    const flat = lines.join(" ").replace(/\s+/g, " ");
+    expect(lines).toContain("Does it widen what the agent may do?");
+    expect(flat).toContain("Nothing in this pack widens what the agent may do beyond your project's defaults.");
+    expect(flat).toContain("Compared: guards, sign-off, checks, landing, follow-on steps and agent options.");
+    expect(flat).toContain("The instructions themselves are not analysed, so read them.");
+    expect(lines.indexOf("Does it widen what the agent may do?")).toBeLessThan(lines.indexOf("Things to look at"));
+  }
 });
