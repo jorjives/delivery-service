@@ -90,7 +90,7 @@ export const upgradeGuards = (v2: PackManifestV2): GuardName[] => (v2.fix.guards
 
 /** The same pack as `delivery.pack/3` means it: `scan` becomes a find offering `fix`, and `fix` an act. Pure and total. */
 export function upgradeV2(v2: PackManifestV2): PackManifest {
-  const fixAdd = [...new Set<GuardName>(["tests-unchanged", ...(v2.fix.guards?.add ?? [])])];
+  const fixAdd = [...upgradeGuards(v2), ...(v2.fix.guards?.add ?? [])];
   const workflows: Record<string, PackWorkflow> = {
     scan: { kind: "find", prompt: v2.scan.prompt, ideasFor: ["fix"] },
     fix: {
