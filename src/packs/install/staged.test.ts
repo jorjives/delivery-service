@@ -6,7 +6,7 @@ import { readPackage } from "./package-archive.js";
 import { withStagedPack } from "./staged.js";
 
 /** The temporary pack folders the staging step makes in the system's temporary folder. */
-const tempFolders = (): string[] => readdirSync(tmpdir()).filter((name) => name.startsWith("delivery-pack-")).sort();
+const tempFolders = (): string[] => readdirSync(tmpdir()).filter((name) => name.startsWith("delivery-pack-staged-")).sort();
 
 /** The files of a valid pack, as an npm package carries them. */
 async function packFiles() {

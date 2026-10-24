@@ -7,7 +7,7 @@ import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { addedDocsDrift, tree } from "./installed-fixtures.js";
+import { addedDocsDrift } from "./installed-fixtures.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import { packsApproveCommand } from "./packs-approve-command.js";

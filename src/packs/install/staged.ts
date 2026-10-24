@@ -10,7 +10,7 @@ import { writePackFiles } from "./store.js";
  * removed on every path, including when `work` throws. Nothing from the pack runs.
  */
 export async function withStagedPack<T>(files: readonly PackageFile[], work: (stagedDir: string, folder: PackFolderRead) => Promise<T>): Promise<T> {
-  const temp = await mkdtemp(join(tmpdir(), "delivery-pack-"));
+  const temp = await mkdtemp(join(tmpdir(), "delivery-pack-staged-"));
   try {
     const stagedDir = join(temp, "pack");
     await writePackFiles(stagedDir, files);
