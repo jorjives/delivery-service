@@ -39,6 +39,8 @@ export function over(what: string, bytes: number): string {
 }
 
 const PREFIX = "package/";
+const GZIP_MAGIC = Buffer.from([0x1f, 0x8b]);
+const ZSTD_MAGIC = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
 /** Files that would change what the project's git keeps or how it reads the kept files, so they are never kept. */
 const IGNORED_BY_GIT = [".gitignore", ".gitattributes"];
 
@@ -48,19 +50,35 @@ interface Read {
   body: Buffer;
 }
 
-/** Parses the raw tar in memory, collecting each entry's type, path and bytes, or null when it is not a tar. */
-async function parseTar(raw: Buffer): Promise<Read[] | null> {
+/** Parses the raw tar in memory, collecting each entry's type, path and bytes, or null when it is not a tar or passes a cap. The reader never decompresses: the one gunzip above is the only expansion, and is the one that is capped. */
+async function parseTar(raw: Buffer): Promise<Read[] | "too-many" | "too-big" | null> {
+  let capped: "too-many" | "too-big" | null = null;
   const entries: Read[] = [];
+  let held = 0;
+  const stop = (why: "too-many" | "too-big"): void => {
+    capped = why;
+    parser.abort(new Error(why));
+  };
   const parser = new Parser({
     strict: true,
+    gzip: false,
+    brotli: false,
+    zstd: false,
     onReadEntry(entry: ReadEntry) {
       const chunks: Buffer[] = [];
-      entry.on("data", (chunk: Buffer) => chunks.push(chunk));
-      entry.on("end", () => entries.push({ type: entry.type ?? "", path: entry.path, body: Buffer.concat(chunks) }));
+      entry.on("data", (chunk: Buffer) => {
+        held += chunk.length;
+        if (held > ARCHIVE_CAPS.expanded) return stop("too-big");
+        chunks.push(chunk);
+      });
+      entry.on("end", () => {
+        entries.push({ type: entry.type ?? "", path: entry.path, body: Buffer.concat(chunks) });
+        if (entries.length > ARCHIVE_CAPS.entries) stop("too-many");
+      });
     },
   });
   return new Promise((resolve) => {
-    parser.on("error", () => resolve(null));
+    parser.on("error", () => resolve(capped));
     parser.on("end", () => resolve(entries));
     parser.end(raw);
   });
@@ -94,7 +112,11 @@ export async function readPackage(tarball: Uint8Array): Promise<PackageRead> {
     if (err instanceof RangeError) return fail(null, over("a package once expanded", ARCHIVE_CAPS.expanded));
     return fail(null, NOT_AN_ARCHIVE);
   }
+  // A tar never starts with a compression header; one that does would be expanded again by the reader, past the cap.
+  if (raw.subarray(0, 2).equals(GZIP_MAGIC) || raw.subarray(0, 4).equals(ZSTD_MAGIC)) return fail(null, NOT_AN_ARCHIVE);
   const parsed = await parseTar(raw);
+  if (parsed === "too-many") return fail(null, TOO_MANY);
+  if (parsed === "too-big") return fail(null, over("a package once expanded", ARCHIVE_CAPS.expanded));
   if (parsed === null) return fail(null, NOT_AN_ARCHIVE);
 
   interface Accepted {

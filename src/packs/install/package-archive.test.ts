@@ -1,3 +1,4 @@
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { ARCHIVE_CAPS, BAD_PACK_FIELD, BAD_PATH, FILE_AND_FOLDER, GIT_FOLDER, NO_PACK_FIELD, NOT_AN_ARCHIVE, NOT_PLAIN_ENTRY, SAME_NAME, TOO_MANY, noPackThere, over, readPackage } from "./package-archive.js";
 import { packageTarball, tarballOf, type TarEntry } from "./tarball.js";
@@ -118,4 +119,15 @@ describe("readPackage", () => {
   });
 
   it("refuses bytes that are not a gzip tarball", async () => expect(await readPackage(new TextEncoder().encode("not a tarball"))).toEqual({ ok: false, problem: { entry: null, message: NOT_AN_ARCHIVE } }));
+
+  it("refuses a tar that is itself compressed again, rather than letting the tar reader expand it", async () => {
+    const inner = tarballOf([{ path: "package/package.json", body: JSON.stringify(packageJson) }]);
+    expect(await readPackage(gzipSync(inner))).toEqual({ ok: false, problem: { entry: null, message: NOT_AN_ARCHIVE } });
+  });
+
+  it("stops reading as soon as the entries pass the cap, before their bodies are all held", async () => {
+    const entries: TarEntry[] = [{ path: "package/package.json", body: JSON.stringify(packageJson) }];
+    for (let i = 0; i <= ARCHIVE_CAPS.entries; i++) entries.push({ path: `package/pack/f${i}.md`, body: "x" });
+    expect(await readPackage(tarballOf(entries))).toEqual({ ok: false, problem: { entry: null, message: TOO_MANY } });
+  });
 });
