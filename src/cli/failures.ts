@@ -22,6 +22,7 @@ import {
   PackSpecRefused,
   PackSourceUnavailable,
   PackIntegrityMismatch,
+  PackLockInvalid,
 } from "../errors.js";
 import { messageOf } from "../gate-support.js";
 
@@ -92,6 +93,7 @@ const KNOWN_ERRORS = [
   PackSpecRefused,
   PackSourceUnavailable,
   PackIntegrityMismatch,
+  PackLockInvalid,
 ] as const;
 type KnownError = InstanceType<(typeof KNOWN_ERRORS)[number]>;
 
@@ -222,6 +224,11 @@ function renderKnown(err: KnownError): RenderedFailure {
     case "PACK_INTEGRITY_MISMATCH":
       return {
         message: `Not added: the download of ${err.packageName} ${err.version} does not match what npm published for it. Nothing was changed. Try again; if it happens again, do not use this version.`,
+        exitCode: EXIT.configuration,
+      };
+    case "PACK_LOCK_INVALID":
+      return {
+        message: `I can't read the record of added packs, ${err.filePath}: ${err.field === null ? "" : `${err.field} `}${err.detail}.`,
         exitCode: EXIT.configuration,
       };
     case "IMMUTABILITY_VIOLATION":

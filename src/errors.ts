@@ -262,3 +262,16 @@ export class PackIntegrityMismatch extends Error {
     this.name = "PackIntegrityMismatch";
   }
 }
+
+/** The committed record of added packs cannot be read: the file, the field in it that is wrong (null when the whole file is), and what is wrong. */
+export class PackLockInvalid extends Error {
+  readonly code = "PACK_LOCK_INVALID" as const;
+  constructor(
+    readonly filePath: string,
+    readonly field: string | null,
+    readonly detail: string,
+  ) {
+    super(`Invalid record of added packs ${filePath}: ${field === null ? "" : `${field} `}${detail}`);
+    this.name = "PackLockInvalid";
+  }
+}

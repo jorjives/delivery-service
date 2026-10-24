@@ -23,6 +23,7 @@ import {
   PackSpecRefused,
   PackSourceUnavailable,
   PackIntegrityMismatch,
+  PackLockInvalid,
 } from "../errors.js";
 import { EXIT, Refusal, renderFailure, UNEXPECTED_FOOTER } from "./failures.js";
 
@@ -71,6 +72,7 @@ describe("renderFailure", () => {
     [new PackSourceUnavailable("docs-pack", "latest", "unreachable", ""), EXIT.configuration, "npm could not be reached"],
     [new PackSourceUnavailable("docs-pack", "latest", "failed", "EACCES"), EXIT.configuration, "npm could not fetch docs-pack (EACCES)"],
     [new PackIntegrityMismatch("docs-pack", "1.0.0", "sha512-a", "sha512-b"), EXIT.configuration, "does not match what npm published"],
+    [new PackLockInvalid("/r/.delivery/packs.lock.json", "packs.x.version", "is missing"), EXIT.configuration, "record of added packs"],
   ])("renders %o in plain language with its mapped exit code", (err, exitCode, mentions) => {
     const rendered = renderFailure(err);
     expect(rendered.exitCode).toBe(exitCode);

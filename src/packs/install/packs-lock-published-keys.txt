@@ -1,0 +1,12 @@
+delivery.packs-lock/1.packs.*.approved: string
+delivery.packs-lock/1.packs.*.fingerprint: string
+delivery.packs-lock/1.packs.*.integrity: string
+delivery.packs-lock/1.packs.*.package: string
+delivery.packs-lock/1.packs.*.request: string
+delivery.packs-lock/1.packs.*.source = "npm"
+delivery.packs-lock/1.packs.*.source: string
+delivery.packs-lock/1.packs.*.version: string
+delivery.packs-lock/1.packs.*: object
+delivery.packs-lock/1.packs: object
+delivery.packs-lock/1.schema = "delivery.packs-lock/1"
+delivery.packs-lock/1.schema: string
