@@ -65,7 +65,9 @@ describe.each(packs.map((p) => [p.manifest.name, p] as const))("the built-in pac
   });
 
   it("reads at 60 columns from the command line, the short account first and the instructions last", () => {
-    const { status, stdout } = runDelivery(["packs", "inspect", name]);
+    // A short temp project: the project path is its own line and cannot wrap, so a long checkout path must not decide the result.
+    const cwd = initTempRepo("inspect-width-", { "package.json": PACKAGE, "a.js": "x\n" });
+    const { status, stdout } = runDelivery(["packs", "inspect", name], { cwd });
     expect(status).toBe(0);
     const lines = stdout.trimEnd().split("\n");
     expect(lines[0]).toBe(`Pack: ${pack.manifest.title}`);
