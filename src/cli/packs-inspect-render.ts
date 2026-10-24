@@ -177,7 +177,7 @@ function flaggedSentences({ workflows }: Inspection): string[] {
     const name = `"${workflow.local}"`;
     const sentences: string[] = [];
     if (workflow.hold === null) sentences.push(`${name} lands without asking for your sign-off once you have approved the idea.`);
-    else if (workflow.hold === SEVERITIES[0]) sentences.push(`${name} asks for your sign-off only for ${workflow.hold} ideas; anything rated lower lands without it.`);
+    else if (workflow.hold === "critical") sentences.push(`${name} asks for your sign-off only for ${workflow.hold} ideas; anything rated lower lands without it.`);
     for (const guard of workflow.upgraded) {
       sentences.push(`${name} is refused if it ${GUARD_REFUSES[guard]}, though the pack's file does not say so. The older format adds this guard.`);
     }
