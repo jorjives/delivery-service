@@ -135,7 +135,8 @@ export async function readPackFolder(dir: string): Promise<PackFolderRead> {
   const folderProblems = judged.flatMap((found) => (found.problem === undefined ? [] : [found.problem]));
   const problems = [...folderProblems, ...(read.ok ? [] : read.problems)];
   if (read.ok && problems.length === 0) {
-    const files = judged.flatMap((found) => (found.file === undefined ? [] : [found.file])).sort((a, b) => (a.path < b.path ? -1 : 1));
+    // `entries` is sorted by path, so the files come out in order.
+    const files = judged.flatMap((found) => (found.file === undefined ? [] : [found.file]));
     return { ok: true, pack: read.pack, files };
   }
   return { ok: false, problems };
