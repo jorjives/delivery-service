@@ -1,6 +1,7 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { basename, join } from "node:path";
 import { BACKLOG_DIR, parseItem } from "./backlog.js";
+import { repoRootOf } from "./repo-root.js";
 
 /** The shortest text treated as a secret: anything shorter is too common to mask without masking ordinary words. */
 const SHORTEST = 8;
@@ -100,14 +101,6 @@ export function knownSecrets(repoRoot: string): string[] {
   });
   cache.set(root, { stamp, literals });
   return literals;
-}
-
-/** The repository `startDir` is in: the nearest folder up with a `.git` entry (a folder, or a file in a linked working copy). */
-function repoRootOf(startDir: string): string | undefined {
-  for (let dir = startDir; ; dir = dirname(dir)) {
-    if (existsSync(join(dir, ".git"))) return dir;
-    if (dirname(dir) === dir) return undefined;
-  }
 }
 
 /** A function masking every secret the repository's reviews hold, read as each text is masked. Outside a repository it changes nothing. */
