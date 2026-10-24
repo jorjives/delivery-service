@@ -166,7 +166,7 @@ describe("delivery packs remove", () => {
     const all = [...refused.lines, ...removed.lines];
     for (const line of all) {
       expect(line.length).toBeLessThanOrEqual(60);
-      expect(line).not.toMatch(/\u001b/);
+      expect(line).not.toContain("\u001b");
       expect(line).not.toMatch(REASSURING);
       expect(line).not.toMatch(FORBIDDEN);
     }
