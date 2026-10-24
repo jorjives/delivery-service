@@ -26,6 +26,7 @@ const entry = (name: string): LockEntry => ({
   integrity: "sha512-abc",
   fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`,
   approved: `delivery.pack-hash/1:${"a".repeat(64)}`,
+  files: { "pack.json": "a".repeat(64) },
 });
 
 it("is empty when no pack has been added", async () => expect(await readLock(repo())).toEqual({ schema: "delivery.packs-lock/1", packs: {} }));
@@ -95,6 +96,18 @@ it("labels a pack's fingerprint with its rule version", async () => {
   const code = (await builtInPacks())[0];
   if (code === undefined) throw new Error("no built-in packs");
   expect(fingerprintOf(code)).toBe(`delivery.pack-hash/1:${code.hash}`);
+});
+
+it("refuses an entry whose file digest is not 64 hex characters, naming the field", async () => {
+  const dir = repo();
+  mkdirSync(join(dir, ".delivery"));
+  writeFileSync(
+    packsLockPath(dir),
+    JSON.stringify({ schema: "delivery.packs-lock/1", packs: { x: { ...entry("x"), files: { "pack.json": "abc" } } } }),
+  );
+  const failure = await readLock(dir).catch((err: unknown) => err);
+  expect(failure).toBeInstanceOf(PackLockInvalid);
+  expect((failure as PackLockInvalid).field).toMatch(/^packs\.x\.files/);
 });
 
 it("serialises two writers instead of losing one", async () => {

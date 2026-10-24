@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { type Inspection, inspectionOf, inspectionSchema, narrowedTo } from "../packs/inspection.js";
+import { entryFor } from "../packs/install/install-fixtures.js";
 import { installPack } from "../packs/install/store.js";
 import { BUILT_IN_PACKS, packNamed } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
@@ -350,7 +351,7 @@ describe("delivery packs inspect --workflow", () => {
   it("inspects an added pack by name, naming its npm package", async () => {
     const repo = initTempRepo("inspect-added-", { "package.json": PACKAGE });
     const files = Object.entries(MOVES_FILES).map(([path, text]) => ({ path: path.replace(/^moves-pack\//, ""), bytes: new TextEncoder().encode(text) }));
-    await installPack(repo, "moves", files, { source: "npm", package: "@acme/moves", request: "^1.2.0", version: "1.2.0", integrity: "sha512-abc", fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`, approved: `delivery.pack-hash/1:${"a".repeat(64)}` });
+    await installPack(repo, "moves", files, await entryFor(files, { package: "@acme/moves", request: "^1.2.0" }));
     const { exitCode, stdout } = await delivery(["packs", "inspect", "moves"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain("from npm: @acme/moves 1.2.0.");

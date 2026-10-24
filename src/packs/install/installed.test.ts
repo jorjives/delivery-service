@@ -62,6 +62,7 @@ const ENTRY: LockEntry = {
   integrity: "sha512-abc",
   fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`,
   approved: `delivery.pack-hash/1:${"a".repeat(64)}`,
+  files: { "pack.json": "a".repeat(64) },
 };
 
 describe("installedPacks", () => {

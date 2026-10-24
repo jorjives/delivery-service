@@ -1,3 +1,11 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { readPack } from "../manifest.js";
+import { fileDigests, fingerprintedFiles } from "./digests.js";
+import { fingerprintOf, type LockEntry } from "./lock.js";
+import type { PackageFile } from "./package-archive.js";
+import { writePackFiles } from "./store.js";
 import { packageTarball } from "./tarball.js";
 
 /** The find's instructions, as the fixture pack writes them: plain ASCII, so the account shows them exactly. */
@@ -60,4 +68,32 @@ export function packPackage(options: PackPackageOptions = {}): Uint8Array {
     ...options.packageJson,
   };
   return packageTarball(files, packageJson);
+}
+
+/**
+ * A lock entry for a pack holding `files`: the true fingerprint and file digests, approved as installed, from npm at
+ * `1.2.0`. `fields` override any of it. The pack is read from a temporary folder, which is removed before this returns.
+ */
+export async function entryFor(files: readonly PackageFile[], fields: Partial<LockEntry> = {}): Promise<LockEntry> {
+  const temp = await mkdtemp(join(tmpdir(), "entry-for-"));
+  try {
+    const dir = join(temp, "pack");
+    await writePackFiles(dir, files);
+    const read = await readPack(dir);
+    if (!read.ok) throw new Error("the fixture pack must read");
+    const fingerprint = fingerprintOf(read.pack);
+    return {
+      source: "npm",
+      package: "@acme/delivery-pack-docs",
+      request: "latest",
+      version: "1.2.0",
+      integrity: "sha512-" + "A".repeat(86) + "==",
+      fingerprint,
+      approved: fingerprint,
+      files: await fileDigests(dir, fingerprintedFiles(read.pack)),
+      ...fields,
+    };
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
 }

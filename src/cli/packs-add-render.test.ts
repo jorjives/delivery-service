@@ -107,7 +107,7 @@ describe("the question and the closing lines", () => {
 
 describe("refusals", () => {
   it("says a name is already taken by a pack with other contents, from which package", () => {
-    const lines = addedDifferently("docs-drift", { source: "npm", package: LONG, request: "latest", version: "2.0.0", integrity: "sha512-AAAA", fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`, approved: `delivery.pack-hash/1:${"a".repeat(64)}` });
+    const lines = addedDifferently("docs-drift", { source: "npm", package: LONG, request: "latest", version: "2.0.0", integrity: "sha512-AAAA", fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`, approved: `delivery.pack-hash/1:${"a".repeat(64)}`, files: { "pack.json": "a".repeat(64) } });
     expect(flat(lines)).toBe(`Not added: a pack named docs-drift is already added, from ${LONG} 2.0.0, with other contents. Nothing was changed.`);
     expect(widest(lines)).toBeLessThanOrEqual(60);
   });
@@ -136,7 +136,7 @@ describe("refusals", () => {
     for (const lines of [
       archiveRefusal(LONG, "1.2.0", { entry: `pack/${"y".repeat(40)}`, message: NOT_PLAIN_ENTRY }),
       packRefusal(LONG, "1.2.0", "pack", problems, stagedDir),
-      addedDifferently("docs-drift", { source: "npm", package: LONG, request: "latest", version: "1.2.0", integrity: "sha512-AAAA", fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`, approved: `delivery.pack-hash/1:${"a".repeat(64)}` }),
+      addedDifferently("docs-drift", { source: "npm", package: LONG, request: "latest", version: "1.2.0", integrity: "sha512-AAAA", fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`, approved: `delivery.pack-hash/1:${"a".repeat(64)}`, files: { "pack.json": "a".repeat(64) } }),
       foundLines(fetched("1.2.0"), { name: LONG, request: "latest", typed: false }),
     ]) {
       expect(widest(lines)).toBeLessThanOrEqual(60);

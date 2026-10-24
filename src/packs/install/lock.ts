@@ -15,7 +15,7 @@ export const PACKS_LOCK_FILE = "packs.lock.json";
 /** A pack's fingerprint as the record names it: the rule version, then the hash of everything the pack holds. */
 const Fingerprint = z.string().regex(/^delivery\.pack-hash\/1:[0-9a-f]{64}$/);
 
-/** One added pack: the npm package and exact version it came from, the integrity npm published, and the fingerprint installed and approved. */
+/** One added pack: the npm package and exact version it came from, the integrity npm published, the fingerprint installed and approved, and the digest of each file the fingerprint covers. */
 export const LockEntry = z.strictObject({
   source: z.literal("npm"),
   package: z.string().min(1),
@@ -24,6 +24,7 @@ export const LockEntry = z.strictObject({
   integrity: z.string().regex(/^sha512-/),
   fingerprint: Fingerprint,
   approved: Fingerprint,
+  files: z.record(z.string().min(1), z.string().regex(/^[0-9a-f]{64}$/)),
 });
 export type LockEntry = z.infer<typeof LockEntry>;
 

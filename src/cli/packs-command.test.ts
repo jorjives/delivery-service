@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { LockEntry } from "../packs/install/lock.js";
+import { entryFor } from "../packs/install/install-fixtures.js";
 import type { PackageFile } from "../packs/install/package-archive.js";
 import { installPack } from "../packs/install/store.js";
 import { builtInPacks } from "../packs/manifest.js";
@@ -22,16 +23,6 @@ const movesFiles = (): PackageFile[] => [
   { path: "code.md", bytes: encode("# Code\n") },
 ];
 
-const MOVES_ENTRY: LockEntry = {
-  source: "npm",
-  package: "@acme/moves",
-  request: "^1.2.0",
-  version: "1.2.0",
-  integrity: "sha512-abc",
-  fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`,
-  approved: `delivery.pack-hash/1:${"a".repeat(64)}`,
-};
-
 /** The contents of a delivery.pack/3 manifest named `name`, with a find `scan` offering an act `code`. */
 const v3Pack = (name: string, summary = "Moves calls off retired code."): string =>
   JSON.stringify({
@@ -42,6 +33,9 @@ const v3Pack = (name: string, summary = "Moves calls off retired code."): string
     summary,
     workflows: { scan: { kind: "find", prompt: "scan.md", ideasFor: ["code"] }, code: { kind: "act", prompt: "code.md" } },
   });
+
+/** The entry the add of the moves pack records. */
+const MOVES_ENTRY: LockEntry = await entryFor(movesFiles(), { package: "@acme/moves", request: "^1.2.0" });
 
 /** The contents of a delivery.pack/2 manifest named `name`. */
 const v2Pack = (name: string): string =>

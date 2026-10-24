@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileDigests, fingerprintedFiles } from "../packs/install/digests.js";
 import { fingerprintOf, readLock } from "../packs/install/lock.js";
 import { readPackage } from "../packs/install/package-archive.js";
 import { parsePackageSpec } from "../packs/install/pack-spec.js";
@@ -107,6 +108,7 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
       integrity: fetched.integrity,
       fingerprint,
       approved: fingerprint,
+      files: await fileDigests(stagedDir, fingerprintedFiles(pack)),
     });
     for (const line of addedLines(name, fetched.version)) ctx.writeLine(line);
     return EXIT.ok;

@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { PackSourceUnavailable, PackSpecRefused } from "../errors.js";
 import { git } from "../git-exec.js";
 import { fingerprintOf, readLock } from "../packs/install/lock.js";
+import { fileDigests } from "../packs/install/digests.js";
+import { installedPackDir } from "../packs/install/store.js";
 import { readPackage, NO_PACK_FIELD, noPackThere } from "../packs/install/package-archive.js";
 import { fakePackSource, type FakePackSource } from "../packs/install/fake-source.js";
 import { packPackage, SCAN_TEXT } from "../packs/install/install-fixtures.js";
@@ -156,7 +158,15 @@ describe("delivery packs add", () => {
       integrity: sriOf(tarball),
       fingerprint: fingerprintOf(kept),
       approved: fingerprintOf(kept),
+      files: await fileDigests(join(repo, ".delivery", "packs", "docs-drift"), ["code.md", "pack.json", "scan.md"]),
     });
+  });
+
+  it("records the digest of the manifest and each instruction file it adds", async () => {
+    expect(await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    expect((await readLock(repo)).packs["docs-drift"]?.files).toEqual(
+      await fileDigests(installedPackDir(repo, "docs-drift"), ["code.md", "pack.json", "scan.md"]),
+    );
   });
 
   it("keeps both committed paths unignored when the project still has the old .delivery rule", async () => {

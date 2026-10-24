@@ -22,6 +22,7 @@ const ENTRY: LockEntry = {
   integrity: "sha512-abc",
   fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`,
   approved: `delivery.pack-hash/1:${"a".repeat(64)}`,
+  files: { "pack.json": "a".repeat(64) },
 };
 
 /** Whether git would ignore `path` in `repo`: `check-ignore -q` exits 0 when it does and 1 when it does not. */

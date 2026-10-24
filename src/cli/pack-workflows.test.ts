@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { LockEntry } from "../packs/install/lock.js";
+import { entryFor } from "../packs/install/install-fixtures.js";
 import type { PackageFile } from "../packs/install/package-archive.js";
 import { installPack } from "../packs/install/store.js";
 import { builtInPackClash, builtInWorkflowClash, packWorkflowClash, withPackWorkflows } from "./pack-workflows.js";
@@ -54,15 +55,7 @@ const MOVES: PackageFile[] = [
   { path: "code.md", bytes: encode("# Code\n") },
 ];
 
-const MOVES_ENTRY: LockEntry = {
-  source: "npm",
-  package: "@acme/moves",
-  request: "^3.0.0",
-  version: "3.0.0",
-  integrity: "sha512-abc",
-  fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`,
-  approved: `delivery.pack-hash/1:${"a".repeat(64)}`,
-};
+const MOVES_ENTRY: LockEntry = await entryFor(MOVES, { package: "@acme/moves", request: "^3.0.0", version: "3.0.0" });
 
 describe("pack workflows", () => {
   it("adds every built-in pack's workflows to the config's own", async () => {
