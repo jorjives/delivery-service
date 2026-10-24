@@ -102,7 +102,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .version(version, "-V, --version", "print the harness version")
     .option("--no-color", "print without colour")
-    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate, packs and packs inspect, and one JSON event per line from status --watch")
+    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate, packs, packs inspect and packs add, and one JSON event per line from status --watch")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
     .configureOutput({ writeOut: (text) => out.stdout.write(text), writeErr: (text) => out.stderr.write(text) });
@@ -363,10 +363,11 @@ export async function runCli(io: CliIo): Promise<number> {
     .command("add")
     .description("add a pack someone has published on npm: you see exactly what it will do, and nothing is added until you say yes")
     .argument("<package>", "the npm package, such as @acme/delivery-pack-docs, optionally with @ and a version")
-    .action(async (pkg: string, _options: unknown, command: Command) => {
+    .option("--approve <fingerprint>", "add without being asked, only if the pack has this fingerprint, as its account shows it")
+    .action(async (pkg: string, options: { approve?: string }, command: Command) => {
       const { packsAddCommand } = await import("./packs-add-command.js");
       const ctx = ctxFor(command);
-      exitCode = await packsAddCommand(pkg, ctx, inquirerAsk(ctx.colour), npmSource(ctx.env));
+      exitCode = await packsAddCommand(pkg, ctx, inquirerAsk(ctx.colour), npmSource(ctx.env), { approve: options.approve });
     });
 
   packs

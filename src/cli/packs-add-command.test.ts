@@ -4,21 +4,25 @@ import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InstalledPackRefused, PackSourceUnavailable, PackSpecRefused } from "../errors.js";
 import { git } from "../git-exec.js";
-import { fingerprintOf, readLock } from "../packs/install/lock.js";
+import { fingerprintOf, PACK_HASH_LABEL, readLock, sortKeys } from "../packs/install/lock.js";
 import { fileDigests } from "../packs/install/digests.js";
 import { installedPackDir } from "../packs/install/store.js";
 import { readPackage, NO_PACK_FIELD, noPackThere } from "../packs/install/package-archive.js";
+import { withStagedPack } from "../packs/install/staged.js";
 import { fakePackSource, type FakePackSource } from "../packs/install/fake-source.js";
 import { packPackage, SCAN_TEXT } from "../packs/install/install-fixtures.js";
 import type { PackSource } from "../packs/install/pack-source.js";
 import { sriOf } from "../packs/install/pack-source.js";
+import { Inspection } from "../packs/inspection.js";
 import { loadPack, newerFormat } from "../packs/manifest.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, withPrivateTmpdir } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
+import { PackDecision } from "./pack-decision.js";
 import { packsAddCommand } from "./packs-add-command.js";
-import { addedDifferently, addedLines, alreadyAdded, NOTHING_ADDED, nobodyToAsk } from "./packs-add-render.js";
+import { packsUpdateCommand } from "./packs-update-command.js";
+import { addedDifferently, addedLines, alreadyAdded, fingerprintDiffers, NOTHING_ADDED, nobodyToAsk } from "./packs-add-render.js";
 import { packWorkflowClash } from "./pack-clash.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
@@ -59,16 +63,31 @@ const v3Pack = (name: string): string =>
 /** The temporary folders an add makes, by name. */
 const tempFolders = (): string[] => readdirSync(tmpdir()).filter((name) => name.startsWith("delivery-pack-")).sort();
 
+/** The bare hash of a package's pack: the fingerprint the account prints, and the one `--approve` takes. */
+async function hashOf(tarball: Uint8Array): Promise<string> {
+  const read = await readPackage(tarball);
+  if (!read.ok) throw new Error("the fixture package must read");
+  return withStagedPack(read.packFiles, async (_stagedDir, folder) => {
+    if (!folder.ok) throw new Error("the fixture package must hold a pack");
+    return folder.pack.hash;
+  });
+}
+
+/** Trimmed lines joined by one space: where a line breaks does not matter in a JSON message. */
+const flatLines = (lines: readonly string[]): string => lines.map((line) => line.trim()).join(" ");
+
 describe("delivery packs add", () => {
   let repo: string;
   let source: FakePackSource;
   let tarball: Uint8Array;
+  let hash: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     repo = initTempRepo("add-pack-", { "package.json": PACKAGE });
     source = fakePackSource();
     tarball = packPackage();
     source.publish(NAME, "1.2.0", tarball);
+    hash = await hashOf(tarball);
   });
 
   it("shows the exact version, that nothing is run, and the whole account before asking", async () => {
@@ -126,7 +145,7 @@ describe("delivery packs add", () => {
     const exit = await packsAddCommand(NAME, ctx, ask, source);
     expect(exit).toBe(EXIT.configuration);
     // The account prints the fingerprint in two halves, one to a line: the command gives it back whole.
-    const halves = lines.filter((line) => /^  [0-9a-f]{32}$/.test(line)).map((line) => line.trim());
+    const halves = lines.filter((line) => /^ {2}[0-9a-f]{32}$/.test(line)).map((line) => line.trim());
     expect(halves).toHaveLength(2);
     const hash = halves.join("");
     expect(lines.slice(-nobodyToAsk("add", `delivery packs add ${NAME}`, hash).length)).toEqual(nobodyToAsk("add", `delivery packs add ${NAME}`, hash));
@@ -461,4 +480,158 @@ describe("delivery packs add", () => {
     expect(readFileSync(lockPath)).toEqual(lockBytesBefore);
   });
 
+  it("refuses with nobody to ask, naming the add command as typed, with the fingerprint", async () => {
+    const { ctx, lines } = context(repo, { interactive: false });
+    const before = tree(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    expect(lines.slice(-9)).toEqual(nobodyToAsk("add", `delivery packs add ${NAME}`, hash));
+    expect(lines.join("\n")).toContain("In short"); // the account was shown first
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("adds with the fingerprint the refusal named, asking nothing", async () => {
+    const { ctx, lines } = context(repo, { interactive: false });
+    const { ask, asked } = scriptedAsk();
+    expect(await packsAddCommand(NAME, ctx, ask, source, { approve: hash })).toBe(EXIT.ok);
+    expect(lines.slice(-addedLines("docs-drift", "1.2.0").length)).toEqual(addedLines("docs-drift", "1.2.0"));
+    expect(asked).toEqual([]);
+    const kept = await loadPack(join(repo, ".delivery", "packs", "docs-drift"));
+    expect((await readLock(repo)).packs["docs-drift"]?.approved).toBe(fingerprintOf(kept));
+  });
+
+  it("records the same request by the printed command as by an interactive add", async () => {
+    const repoB = initTempRepo("add-pack-", { "package.json": PACKAGE });
+
+    // Repository A: an interactive add of the bare name, answered yes.
+    expect(await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+
+    // Repository B: nobody to ask, so the refusal prints the command; that command is then run as printed.
+    const refused = context(repoB, { interactive: false });
+    expect(await packsAddCommand(NAME, refused.ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    const printed = refused.lines.slice(-6, -3).join("\n").replace(/\\\n/g, "").replace(/\s+/g, " ").trim();
+    const match = /^delivery packs add (\S+) --approve ([0-9a-f]{64})$/.exec(printed);
+    if (match === null) throw new Error(`the refusal printed no runnable command: ${printed}`);
+    const [, typed, approve] = match;
+    if (typed === undefined || approve === undefined) throw new Error("the printed command must name the spec and the fingerprint");
+    expect(await packsAddCommand(typed, context(repoB, { interactive: false }).ctx, scriptedAsk().ask, source, { approve })).toBe(EXIT.ok);
+
+    expect((await readLock(repo)).packs["docs-drift"]?.request).toBe("latest");
+    expect((await readLock(repoB)).packs["docs-drift"]?.request).toBe("latest");
+
+    // A newer version published later is a change to B's update, not "up to date", because B asked for latest.
+    source.publish(NAME, "1.3.0", packPackage({ version: "1.3.0", extra: { "scan.md": `${SCAN_TEXT}\nAlso check the tests.\n` } }));
+    const update = context(repoB);
+    expect(await packsUpdateCommand("docs-drift", undefined, update.ctx, scriptedAsk({ confirm: false }).ask, source)).toBe(EXIT.ok);
+    expect(update.lines.join("\n")).not.toContain("is up to date");
+    expect(flat(update.lines.join("\n"))).toContain("1.3.0");
+  });
+
+  it("refuses the fingerprint read before a newer version was published", async () => {
+    const first = context(repo, { interactive: false });
+    expect(await packsAddCommand(NAME, first.ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    expect(first.lines.slice(0, 2)).toEqual([`Found ${NAME} on npm.`, "  Version: 1.2.0"]);
+
+    // A newer version under latest, with other contents: its fingerprint is not the one read.
+    source.publish(NAME, "1.2.1", packPackage({ version: "1.2.1", extra: { "scan.md": `${SCAN_TEXT}\nAlso check the tests.\n` } }));
+    const before = tree(repo);
+    const second = context(repo);
+    expect(await packsAddCommand(NAME, second.ctx, scriptedAsk().ask, source, { approve: hash })).toBe(EXIT.configuration);
+    expect(second.lines.slice(-fingerprintDiffers("add").length)).toEqual(fingerprintDiffers("add"));
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("adds with the record's labelled fingerprint too", async () => {
+    const { ctx } = context(repo, { interactive: false });
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, source, { approve: PACK_HASH_LABEL + hash })).toBe(EXIT.ok);
+  });
+
+  it("refuses a different fingerprint, writing nothing", async () => {
+    const { ctx, lines } = context(repo);
+    const before = tree(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, source, { approve: "f".repeat(64) })).toBe(EXIT.configuration);
+    expect(lines.slice(-fingerprintDiffers("add").length)).toEqual(fingerprintDiffers("add"));
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("decides by the fingerprint given at a terminal, asking nothing", async () => {
+    const { ctx, lines } = context(repo);
+    const { ask, asked } = scriptedAsk({ confirm: false });
+    expect(await packsAddCommand(NAME, ctx, ask, source, { approve: hash })).toBe(EXIT.ok);
+    expect(lines.slice(-addedLines("docs-drift", "1.2.0").length)).toEqual(addedLines("docs-drift", "1.2.0"));
+    expect(asked).toEqual([]);
+  });
+
+  it("lets a clash refuse before a correct fingerprint is looked at", async () => {
+    const other = fakePackSource();
+    const packed = packPackage({ name: "code" });
+    other.publish(NAME, "1.2.0", packed);
+    const before = tree(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, other, { approve: await hashOf(packed) })).toBe(EXIT.configuration);
+    expect(lines).toEqual([
+      'Not added: two packs are named "code".',
+      '  1. "code", a pack that comes with the harness',
+      "  2. the pack you are adding, from @acme/delivery-pack-docs",
+      "     1.2.0",
+      "Each pack name must be used once.",
+      "  A pack that comes with the harness cannot be removed, so",
+      "  ask the authors of the new pack to rename it.",
+      "Nothing was changed.",
+    ]);
+    expect(tree(repo)).toEqual(before);
+  });
+
+  it("gives the account as a needs-approval document under --json, with no plain line", async () => {
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    expect(lines).toHaveLength(1);
+    const doc = PackDecision.parse(JSON.parse(lines[0] ?? ""));
+    expect(doc).toMatchObject({ command: "add", outcome: "needs-approval", pack: "docs-drift", package: { name: NAME, version: "1.2.0" }, fingerprint: hash });
+    expect(Inspection.safeParse(doc.account).success).toBe(true);
+    expect(doc.account?.pack).toMatchObject({ name: "docs-drift", hash, source: { kind: "installed", path: ".delivery/packs/docs-drift", package: { name: NAME, version: "1.2.0" } } });
+    expect(doc.account?.project.path).toBe("."); // relative to the repository, never the machine's path
+    expect(lines[0]).not.toContain(repo);
+    expect(lines[0]).not.toContain(tmpdir());
+    expect(lines[0]).toBe(JSON.stringify(sortKeys(JSON.parse(lines[0] ?? "")), null, 2)); // keys sorted at every level, one write
+    expect(doc.message).toBe(flatLines(nobodyToAsk("add", `delivery packs add ${NAME}`, hash)));
+  });
+
+  it("gives under --json the files outside the pack and what the package declares, as the plain add lists them", async () => {
+    const other = fakePackSource();
+    other.publish(NAME, "1.2.0", packPackage({ field: "pack", extra: { "README.md": "x" }, packageJson: { scripts: { postinstall: "node index.js" } } }));
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, other)).toBe(EXIT.configuration);
+    const doc = PackDecision.parse(JSON.parse(lines[0] ?? ""));
+    // The package's own package.json sits outside the pack folder too, so the plain add lists it as not kept.
+    expect(doc.notInPack).toEqual({ ignored: [{ path: "README.md", bytes: 1 }, { path: "package.json", bytes: expect.any(Number) }], declares: ["scripts"] });
+  });
+
+  it("adds under --json with the fingerprint, saying added", async () => {
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, source, { approve: hash })).toBe(EXIT.ok);
+    expect(lines).toHaveLength(1);
+    const doc = PackDecision.parse(JSON.parse(lines[0] ?? ""));
+    expect(doc.outcome).toBe("added");
+    expect(doc.message).toBe(flatLines(addedLines("docs-drift", "1.2.0")));
+  });
+
+  it("says unchanged under --json for a pack already added at the same content", async () => {
+    expect(await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, source)).toBe(EXIT.ok);
+    expect(PackDecision.parse(JSON.parse(lines[0] ?? "")).outcome).toBe("unchanged");
+  });
+
+  it("gives a refused document under --json when npm is missing", async () => {
+    const missing: PackSource = { fetch: () => Promise.reject(new PackSourceUnavailable(NAME, "latest", "no-npm", "")) };
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, missing)).toBe(EXIT.configuration);
+    expect(lines).toHaveLength(1);
+    expect(PackDecision.parse(JSON.parse(lines[0] ?? ""))).toMatchObject({ outcome: "refused", package: null });
+  });
+
+  it("is a subcommand that takes --approve", async () => {
+    const help = await delivery(["packs", "add", "--help"], { cwd: repo });
+    expect(help.stdout).toContain("--approve <fingerprint>");
+  });
 });

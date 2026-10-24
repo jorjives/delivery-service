@@ -29,7 +29,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery drop-after [batch]` | Gives up after-landing steps that are waiting, such as a deploy you cannot fix | [Set up a project](project-configuration.md) |
 | `delivery packs check <path>` | Checks a pack folder of your own, then runs its fixtures against a scripted agent | [Write a pack](writing-a-pack.md) |
 | `delivery packs inspect <pack>` | Shows what a pack will do before you use it, for a built-in pack or any pack folder: what each workflow is for, how far it goes before it asks you, and every instruction it gives the agent; `--json` gives the same account as a versioned document for scripts | [Packs](packs.md#inspect-a-pack-before-you-use-it) |
-| `delivery packs add <package>` | Adds a pack someone has published on npm: shows the exact version and everything the pack will tell the agent, runs nothing from the package, and adds nothing until you say yes | [Packs](packs.md) |
+| `delivery packs add <package>` | Adds a pack someone has published on npm: shows the exact version and everything the pack will tell the agent, runs nothing from the package, and adds nothing until you say yes; without a terminal, it shows the account and is refused unless `--approve` gives the pack's fingerprint | [Packs](packs.md) |
 | `delivery packs restore <name>` | Fetches an added pack again at the version in its record, checks it matches what was approved, and puts its files back; changes nothing if npm now serves different contents for that version | [Packs](packs.md) |
 | `delivery packs update <name> [request]` | Takes a newer version of an added pack: shows the versions and fingerprints, what changed in short (sign-off, guards, workflows, checks and landing, widening), which instruction files changed and the changed lines, and changes nothing until you say yes | [Packs](packs.md) |
 | `delivery packs approve <name>` | Approves an added pack whose record says it was not approved, after showing its full account; a pack whose files differ from the record cannot be approved where it stands | [Packs](packs.md) |
@@ -80,6 +80,7 @@ Every run holds the repository while it runs, so a second run started while one 
 | `packs check` | `--yes` | Skips the question about trusting the pack's code before its fixtures run; needed when there is no terminal |
 | `packs inspect` | `--schema` | Prints the JSON Schema of the document `--json` prints, `delivery.pack-inspection/1` |
 | `packs inspect` | `--workflow <name>` | Shows only this workflow, its limits and its instructions, with the pack's name, fingerprint and standing notes |
+| `packs add` | `--approve <fingerprint>` | Adds without asking, only if the pack has this fingerprint, as its account shows it; any other fingerprint is refused |
 | `schedule enable` | `--every <interval>` | Sets how often it runs: minutes that divide an hour (such as `5m`, `15m` or `30m`), hours that divide a day (such as `1h`, `6h` or `12h`), or `1d` (the default) |
 | `schedule enable` | `--name <name>` | Names the schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens. Without it, sets up the project's default schedule. Refused when another project already holds that schedule's timer. For a worked example, see [two schedules on one project](run-on-a-schedule.md#worked-example-two-schedules-on-one-project) |
 | `schedule enable` | `--config <path>` | The config file each scheduled run uses (default: the project's own) |
@@ -149,7 +150,7 @@ When several tasks run at once, each object also carries a `scope`, and every ke
   on the run starting and finishing.
 
 `--json` is a global option. It changes the output of `run`, `resume`, `status`, `report`,
-`validate`, `packs`, `packs check` and `packs inspect`; other commands ignore it. Without it the output is
+`validate`, `packs`, `packs check`, `packs inspect` and `packs add`; other commands ignore it. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
 The step lines are the running command's own account of itself and carry no version. To build
 on what a run did, use the versioned data in [Reports as data](reporting.md).
