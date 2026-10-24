@@ -233,8 +233,15 @@ describe("delivery packs update", () => {
       await packsUpdateCommand("docs-drift", undefined, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source);
       expect(tempFolders(scratch)).toEqual([]);
     } finally {
-      process.env.TMPDIR = previous;
+      if (previous === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = previous;
       rmSync(scratch, { recursive: true, force: true });
     }
+  });
+
+  it("is a subcommand of delivery packs, refusing an unknown name with the added packs named", async () => {
+    const result = await delivery(["packs", "update", "nope"], { cwd: repo });
+    expect(result.exitCode).toBe(EXIT.configuration);
+    expect(result.stdout).toContain("nope is not an added pack.");
   });
 });

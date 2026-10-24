@@ -10,6 +10,8 @@ Every use of an added pack first checks its kept files against the record, with 
 
 `delivery packs restore <name>` fetches the recorded version again and puts the pack back when it matches what was approved.
 
+`delivery packs update <name> [request]` is the only way an added pack moves to another version: it shows what changes first (in short, then file by file and line by line, with hidden characters shown), writes nothing until you say yes, and says so plainly when npm has nothing newer or the newer version has the same content. Commit the record and the folder together.
+
 `delivery packs approve <name>` approves an added pack whose record says it was not approved, after showing its full account; a pack whose files differ from the record must be restored or updated instead.
 
 Adding a pack whose name, or whose workflow's name, is already used is refused before anything is written. The refusal names both sides and the one thing to do to keep the new pack, usually `delivery packs remove <name>`. A clash that appears later, when packs load, is named the same way wherever packs load.

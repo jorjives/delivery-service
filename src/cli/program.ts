@@ -382,6 +382,22 @@ export async function runCli(io: CliIo): Promise<number> {
     });
 
   packs
+    .command("update")
+    .description(
+      "take a newer version of an added pack: shows what changes, in short and line by line, and changes nothing until you say yes",
+    )
+    .argument("<name>", "the added pack to update, by its name from `delivery packs`, such as docs-drift")
+    .argument(
+      "[request]",
+      "the version, range or tag to move to, such as 1.3.0; without it, what the pack was added with, usually latest",
+    )
+    .action(async (name: string, request: string | undefined, _options: unknown, command: Command) => {
+      const { packsUpdateCommand } = await import("./packs-update-command.js");
+      const ctx = ctxFor(command);
+      exitCode = await packsUpdateCommand(name, request, ctx, inquirerAsk(ctx.colour), npmSource(ctx.env));
+    });
+
+  packs
     .command("approve")
     .description("approve an added pack whose record says it was not approved, after reading its full account")
     .argument("<name>", "the added pack to approve, by its name from `delivery packs`, such as docs-drift")
