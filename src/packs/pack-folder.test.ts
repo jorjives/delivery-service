@@ -17,7 +17,7 @@ import {
   readPackFolder,
 } from "./pack-folder.js";
 
-const movesManifest = JSON.parse(MOVES_FILES["moves-pack/pack.json"]!);
+const movesManifest = JSON.parse(MOVES_FILES["moves-pack/pack.json"] ?? "");
 
 /** A fresh pack folder holding `files`, whose names are relative to the folder itself (the `moves-pack/` prefix is dropped). */
 function packFolder(files: Record<string, string> = MOVES_FILES): string {
