@@ -85,6 +85,9 @@ export type PackManifest = z.infer<typeof PackManifest>;
  */
 export const packSchema = (): JsonSchema => ({ ...z.toJSONSchema(PackManifest, { io: "input" }), title: PACK_SCHEMA });
 
+/** The guards the upgrade adds to a `/2` pack's fix that its file does not state: `tests-unchanged`, unless the file names it too. */
+export const upgradeGuards = (v2: PackManifestV2): GuardName[] => (v2.fix.guards?.add.includes("tests-unchanged") ? [] : ["tests-unchanged"]);
+
 /** The same pack as `delivery.pack/3` means it: `scan` becomes a find offering `fix`, and `fix` an act. Pure and total. */
 export function upgradeV2(v2: PackManifestV2): PackManifest {
   const fixAdd = [...new Set<GuardName>(["tests-unchanged", ...(v2.fix.guards?.add ?? [])])];
