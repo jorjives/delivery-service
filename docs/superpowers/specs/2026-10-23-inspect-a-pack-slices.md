@@ -50,6 +50,8 @@
 
 ## Slice 2: Be told what is unusual, and whether anything widens what the agent may do
 
+**Status:** ✅ Complete — 2026-10-24 — `404f783`
+
 **Delivers:** A project owner is told every time whether a pack widens what the agent may do beyond the project's defaults, and is pointed at the few things worth a second look, including hidden characters in instructions.
 
 ### Prerequisites
@@ -58,13 +60,13 @@
 
 ### Acceptance Criteria
 
-- [ ] Every account states whether anything in the pack widens what the agent may do beyond the project's defaults, names the dimensions compared, and says the instructions themselves are not analysed and must be read
-- [ ] A "Things to look at" list is always present and is limited to: a workflow that lands without sign-off, a sign-off that stops only critical ideas, hidden characters in an instruction, and a pack in the older format whose effective guards differ from what its file says
-- [ ] Anything that would genuinely widen the agent's powers appears in the same list, so a future pack field that does so cannot pass unremarked
-- [ ] Added guards, a sign-off step or skipped follow-on steps are reported as plain facts, not as flags
-- [ ] When nothing is found the output says nothing unusual was found in what is checked and that this is not a guarantee about the instructions
-- [ ] Control, bidirectional, zero-width and escape characters are shown visibly, counted, and never printed raw; each occurrence is listed with where it is
-- [ ] The account never calls a pack safe, clean, verified or trusted
+- [x] Every account states whether anything in the pack widens what the agent may do beyond the project's defaults, names the dimensions compared, and says the instructions themselves are not analysed and must be read
+- [x] A "Things to look at" list is always present and is limited to: a workflow that lands without sign-off, a sign-off that stops only critical ideas, hidden characters in an instruction, and a pack in the older format whose effective guards differ from what its file says
+- [x] Anything that would genuinely widen the agent's powers appears in the same list, so a future pack field that does so cannot pass unremarked
+- [x] Added guards, a sign-off step or skipped follow-on steps are reported as plain facts, not as flags
+- [x] When nothing is found the output says nothing unusual was found in what is checked and that this is not a guarantee about the instructions
+- [x] Control, bidirectional, zero-width and escape characters are shown visibly, counted, and never printed raw; each occurrence is listed with where it is
+- [x] The account never calls a pack safe, clean, verified or trusted
 
 ### UAT
 
