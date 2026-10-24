@@ -1,11 +1,11 @@
 import { checkInstalledPack } from "../packs/install/installed.js";
-import { fingerprintOf, putLockEntry, readLock } from "../packs/install/lock.js";
+import { fingerprintOf, putLockEntry } from "../packs/install/lock.js";
 import { installedPackDir } from "../packs/install/store.js";
 import { inspectionOf } from "../packs/inspection.js";
 import { readPackFolder } from "../packs/pack-folder.js";
+import { addedPackNamed } from "./added-pack-lookup.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
-import { notAddedLines } from "./installed-render.js";
 import type { Ask } from "./init.js";
 import {
   alreadyApprovedLines,
@@ -19,7 +19,6 @@ import {
 } from "./packs-approve-render.js";
 import { renderInspection } from "./packs-inspect-render.js";
 import { projectBaseline } from "./project-baseline.js";
-import { findRepository } from "./project.js";
 
 /**
  * `delivery packs approve <name>`: approve an added pack whose record says it was not approved, after its full account is
@@ -27,13 +26,9 @@ import { findRepository } from "./project.js";
  * Nothing is approved without a terminal to ask, and nothing from the pack runs.
  */
 export async function packsApproveCommand(name: string, ctx: CommandContext, ask: Ask): Promise<ExitCode> {
-  const repoPath = await findRepository(ctx.cwd);
-  const lock = await readLock(repoPath);
-  const entry = lock.packs[name];
-  if (entry === undefined) {
-    for (const line of notAddedLines(name, Object.keys(lock.packs))) ctx.writeLine(line);
-    return EXIT.configuration;
-  }
+  const added = await addedPackNamed(name, ctx);
+  if (added === undefined) return EXIT.configuration;
+  const { repoPath, entry } = added;
 
   const installed = await checkInstalledPack(repoPath, name, entry);
   switch (installed.state) {

@@ -1,17 +1,16 @@
 import { join, relative } from "node:path";
 import { PackIntegrityMismatch, PackSourceUnavailable } from "../errors.js";
-import { fingerprintOf, readLock } from "../packs/install/lock.js";
+import { fingerprintOf } from "../packs/install/lock.js";
 import { readPackage } from "../packs/install/package-archive.js";
 import type { PackageSpec } from "../packs/install/pack-spec.js";
 import type { FetchedPackage, PackSource } from "../packs/install/pack-source.js";
 import { restorePackFolder } from "../packs/install/store.js";
 import { withStagedPack } from "../packs/install/staged.js";
+import { addedPackNamed } from "./added-pack-lookup.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
-import { notAddedLines } from "./installed-render.js";
 import { problemLines, wrap } from "./packs-inspect-render.js";
 import { changedAtSourceLines, restoredLines, unapprovedLines, unreadableLines } from "./packs-restore-render.js";
-import { findRepository } from "./project.js";
 
 /** The package as npm gives it again. A refusal from npm is the same refusal, marked as one for a restore, so it reads as one. */
 async function fetchAgain(source: PackSource, spec: PackageSpec): Promise<FetchedPackage> {
@@ -29,13 +28,9 @@ async function fetchAgain(source: PackSource, spec: PackageSpec): Promise<Fetche
  * package still matches the record. Nothing is written unless it does, and nothing from the package runs. The record is left as it stands.
  */
 export async function packsRestoreCommand(name: string, ctx: CommandContext, source: PackSource): Promise<ExitCode> {
-  const repoPath = await findRepository(ctx.cwd);
-  const lock = await readLock(repoPath);
-  const entry = lock.packs[name];
-  if (entry === undefined) {
-    for (const line of notAddedLines(name, Object.keys(lock.packs))) ctx.writeLine(line);
-    return EXIT.configuration;
-  }
+  const added = await addedPackNamed(name, ctx);
+  if (added === undefined) return EXIT.configuration;
+  const { repoPath, entry } = added;
 
   const refuse = (problems: readonly string[]): ExitCode => {
     for (const line of unreadableLines(entry, problems)) ctx.writeLine(line);
