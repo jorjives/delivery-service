@@ -16,7 +16,7 @@ function gatePhrase(gateRef: GateRef): string {
 }
 
 /** The check a run would use, by name when the file chose a ready-made one and nothing on the command line replaced it. */
-export function gateLine({ gateRef, gatePreset }: ProjectSettings): string {
+export function gateLine({ gateRef, gatePreset }: Pick<ProjectSettings, "gateRef" | "gatePreset">): string {
   return gatePreset !== undefined && gateRef.type === "command" ? presetPhrase(gatePreset, gateRef.command) : gatePhrase(gateRef);
 }
 
