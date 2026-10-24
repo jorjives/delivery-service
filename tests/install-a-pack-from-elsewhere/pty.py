@@ -20,7 +20,7 @@ while time.time() < deadline:
         if not chunk:
             break
         out += chunk
-        if not sent and b"to this project?" in out:
+        if not sent and (b"to this project?" in out or b"at this fingerprint?" in out):
             os.write(fd, keys.encode())
             sent = True
 _, status = os.waitpid(pid, 0)

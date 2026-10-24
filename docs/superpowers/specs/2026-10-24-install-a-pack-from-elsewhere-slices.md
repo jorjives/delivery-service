@@ -55,6 +55,8 @@
 
 ## Slice 2: The same pack on every machine and every run
 
+**Tests:** ✅ Recorded — 2026-10-24 — `8a31ee5` — cli — 3 UAT + 12 AC, 0 skipped
+
 **Delivers:** An owner or colleague who runs an added pack always gets the version that was accepted, with no network, and is stopped plainly if the pack no longer matches.
 
 ### Prerequisites
