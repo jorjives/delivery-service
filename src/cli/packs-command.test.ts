@@ -12,7 +12,7 @@ import { initTempRepo } from "../temp-repo.js";
 import { delivery } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { ADD_HINT, INSPECT_HINT } from "./packs-command.js";
-import { packWorkflowClash } from "./pack-workflows.js";
+import { packWorkflowClash } from "./pack-clash.js";
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
 
@@ -154,7 +154,9 @@ describe("delivery packs", () => {
     });
     const { exitCode, stderr } = await delivery(["packs"], { cwd: repo });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stderr).toContain(packWorkflowClash("mine:scan"));
+    expect(stderr).toContain(
+      packWorkflowClash("mine:scan", { kind: "folder", pack: "mine", manifestFile: join(repo, "a", "pack.json") }, { kind: "folder", pack: "mine", manifestFile: join(repo, "b", "pack.json") }),
+    );
   });
 
   it("lists an added pack with its source and version, and says how to add one", async () => {

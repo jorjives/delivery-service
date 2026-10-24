@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { packLines } from "../src/cli/packs-command.js";
 import { renderInspection, renderRefusal } from "../src/cli/packs-inspect-render.js";
-import { builtInPackClash } from "../src/cli/pack-workflows.js";
+import { builtInPackClash } from "../src/cli/pack-clash.js";
 import { MAY_BE_MORE } from "../src/cli/review-command.js";
 import { inspectionOf, NO_PROJECT } from "../src/packs/inspection.js";
 import { builtInPacks, IDEA_CAP } from "../src/packs/manifest.js";

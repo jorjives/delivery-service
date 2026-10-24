@@ -19,7 +19,7 @@ import { delivery, PACKAGE } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { packsAddCommand } from "./packs-add-command.js";
 import { addedLines, alreadyAdded, NOTHING_ADDED, nobodyToAsk } from "./packs-add-render.js";
-import { builtInPackClash } from "./pack-workflows.js";
+import { packNameClash } from "./pack-clash.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import { addedDocsDrift, tree } from "./installed-fixtures.js";
@@ -247,7 +247,7 @@ describe("delivery packs add", () => {
     const before = tree(repo);
     const { ctx } = context(repo);
     await expect(packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, other)).rejects.toThrow(
-      builtInPackClash("code", join(repo, ".delivery", "packs", "code", "pack.json")),
+      packNameClash("code", { kind: "built-in", pack: "code" }, { kind: "installed", pack: "code", package: "@acme/delivery-pack-docs", version: "1.2.0" }),
     );
     expect(tree(repo)).toEqual(before);
   });

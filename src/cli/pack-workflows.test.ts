@@ -6,7 +6,8 @@ import type { LockEntry } from "../packs/install/lock.js";
 import { entryFor } from "../packs/install/install-fixtures.js";
 import type { PackageFile } from "../packs/install/package-archive.js";
 import { installPack } from "../packs/install/store.js";
-import { builtInPackClash, builtInWorkflowClash, packWorkflowClash, withPackWorkflows } from "./pack-workflows.js";
+import { builtInPackClash, builtInWorkflowClash } from "./pack-clash.js";
+import { withPackWorkflows } from "./pack-workflows.js";
 
 /** A pack folder named `name`, with a minimal delivery.pack/2 manifest and its two instruction files. */
 function writePack(dir: string, name: string): void {
@@ -57,6 +58,11 @@ const MOVES: PackageFile[] = [
 
 const MOVES_ENTRY: LockEntry = await entryFor(MOVES, { package: "@acme/moves", request: "^3.0.0", version: "3.0.0" });
 
+/** The files of `MOVES` renamed `code`: an added pack named like the built-in `code`, as a later release could be. */
+const CODE: PackageFile[] = MOVES.map((file) =>
+  file.path === "pack.json" ? { path: file.path, bytes: encode(new TextDecoder().decode(file.bytes).replace('"name":"moves"', '"name":"code"')) } : file,
+);
+
 describe("pack workflows", () => {
   it("adds every built-in pack's workflows to the config's own", async () => {
     const config = await withPackWorkflows({ workflows: { mine: { steps: [{ name: "a", prompt: "a" }] } } }, "/", undefined);
@@ -81,11 +87,40 @@ describe("pack workflows", () => {
     expect(Object.keys((await withPackWorkflows({}, repo, repo)).workflows ?? {})).toEqual(expect.arrayContaining(["moves:scan", "moves:code"]));
   });
 
-  it("refuses two listed packs that define the same workflow, by the existing sentence", async () => {
+  it("names both pack folders when two listed packs define the same workflow", async () => {
     const root = mkdtempSync(join(tmpdir(), "pack-workflows-"));
     writePack(join(root, "a"), "mine"); // /2: mine:scan, mine:fix
     writeV3Pack(join(root, "b"), "mine"); // /3: mine:scan, mine:code
-    await expect(withPackWorkflows({ packs: ["a", "b"] }, root, undefined)).rejects.toThrow(packWorkflowClash("mine:scan"));
+    await expect(withPackWorkflows({ packs: ["a", "b"] }, root, undefined)).rejects.toThrow(
+      `Two things define the workflow "mine:scan": the pack in ${join(root, "a", "pack.json")}, and the pack in ${join(root, "b", "pack.json")}. To keep the second, take the first out of packs in your configuration.`,
+    );
+  });
+
+  it("refuses a listed folder named like an added pack, naming both and how to keep the added one", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "pack-workflows-added-"));
+    await installPack(repo, "moves", MOVES, MOVES_ENTRY);
+    writeV3Pack(join(repo, "local"), "moves");
+    await expect(withPackWorkflows({ packs: ["local"] }, repo, repo)).rejects.toThrow(
+      `Two packs are named "moves": the pack in ${join(repo, "local", "pack.json")}, and the pack added from @acme/moves 3.0.0. To keep the second, take the first out of packs in your configuration.`,
+    );
+  });
+
+  it("refuses an added pack that a later built-in shares a name with, saying to remove the added one", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "pack-workflows-added-"));
+    await installPack(repo, "code", CODE, await entryFor(CODE, { package: "@acme/code", request: "^3.0.0", version: "3.0.0" }));
+    await expect(withPackWorkflows({}, repo, repo)).rejects.toThrow(
+      `Two packs are named "code": "code", a pack that comes with the harness, and the pack added from @acme/code 3.0.0. A pack that comes with the harness cannot be removed, so remove the added one: delivery packs remove code`,
+    );
+  });
+
+  it("refuses a project workflow named like an added pack's, naming both", async () => {
+    const repo = mkdtempSync(join(tmpdir(), "pack-workflows-added-"));
+    await installPack(repo, "moves", MOVES, MOVES_ENTRY);
+    const own = { workflows: { "moves:scan": { steps: [{ name: "a", prompt: "a" }] } } };
+    await expect(withPackWorkflows(own, repo, repo)).rejects.toMatchObject({
+      message: `Two things define the workflow "moves:scan": a workflow in your configuration, and the pack added from @acme/moves 3.0.0. Rename your own workflow so each name is used once.`,
+      field: "workflows",
+    });
   });
 
   it("refuses a listed pack named like a built-in, naming its manifest and what to change", async () => {
