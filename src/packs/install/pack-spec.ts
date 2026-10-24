@@ -7,7 +7,14 @@ export interface PackageSpec {
   typed: boolean;
 }
 
-const NAME_AND_REQUEST = /^(@[A-Za-z0-9][A-Za-z0-9._~-]*\/)?[A-Za-z0-9][A-Za-z0-9._~-]*(@[0-9A-Za-z.^~<>=|*+_-]+)?$/;
+const NAME = "(@[A-Za-z0-9][A-Za-z0-9._~-]*\\/)?[A-Za-z0-9][A-Za-z0-9._~-]*";
+const REQUEST = "[0-9A-Za-z.^~<>=|*+_-]+";
+const NAME_AND_REQUEST = new RegExp(`^${NAME}(@${REQUEST})?$`);
+
+/** A plain npm package name, with an optional scope and nothing else. */
+export const PACKAGE_NAME = new RegExp(`^${NAME}$`);
+/** A version or tag request, as an owner could type it after the `@`. */
+export const PACKAGE_REQUEST = new RegExp(`^${REQUEST}$`);
 const OWNER_REPO = /^[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9._-]+$/;
 const MAX_NAME_LENGTH = 214;
 

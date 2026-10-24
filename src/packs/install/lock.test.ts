@@ -124,3 +124,30 @@ describe("the record's stability promise", () => {
     expect(current.filter((l) => !promised.includes(l))).toEqual([]));
   it("leaves no key optional", () => expect(current.filter((l) => l.endsWith("(optional)"))).toEqual([]));
 });
+
+describe("a record entry the package fetch would trust", () => {
+  const withField = (field: string, value: string): string => {
+    const dir = repo();
+    mkdirSync(join(dir, ".delivery"));
+    writeFileSync(packsLockPath(dir), JSON.stringify({ schema: PACKS_LOCK_SCHEMA, packs: { docs: { ...entry("docs"), [field]: value } } }));
+    return dir;
+  };
+
+  it.each([
+    ["package", "--registry=https://evil.example"],
+    ["package", "docs\u001b[2J"],
+    ["package", "github:acme/docs"],
+    ["version", "1.0.0‮"],
+    ["version", "latest"],
+    ["version", "^1.0.0"],
+    ["request", "1.0.0\u001b[2J"],
+    ["integrity", "sha512-abc\u001b[2J"],
+  ])("refuses a %s of %j, naming the field", async (field, value) => {
+    await expect(readLock(withField(field, value))).rejects.toMatchObject({ field: `packs.docs.${field}` });
+  });
+
+  it.each([
+    ["package", "@acme/docs"],
+    ["version", "1.2.3-beta.1+build.5"],
+  ])("accepts a plain %s of %j", async (field, value) => expect((await readLock(withField(field, value))).packs.docs).toBeDefined());
+});

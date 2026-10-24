@@ -7,6 +7,7 @@ import { atomicWrite, isEnoent } from "../../journal.js";
 import { openSchema, type JsonSchema } from "../../report/json-schema.js";
 import type { Pack } from "../manifest.js";
 import { Slug } from "../pack-format.js";
+import { PACKAGE_NAME, PACKAGE_REQUEST } from "./pack-spec.js";
 
 export const PACKS_LOCK_SCHEMA = "delivery.packs-lock/1";
 export const PACK_HASH_LABEL = "delivery.pack-hash/1:";
@@ -15,13 +16,16 @@ export const PACKS_LOCK_FILE = "packs.lock.json";
 /** A pack's fingerprint as the record names it: the rule version, then the hash of everything the pack holds. */
 const Fingerprint = z.string().regex(/^delivery\.pack-hash\/1:[0-9a-f]{64}$/);
 
+/** An exact version, never a tag or a range: the record names the one version that was accepted. */
+const EXACT_VERSION = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+
 /** One added pack: the npm package and exact version it came from, the integrity npm published, the fingerprint installed and approved, and the digest of each file the fingerprint covers. */
 export const LockEntry = z.strictObject({
   source: z.literal("npm"),
-  package: z.string().min(1),
-  request: z.string().min(1),
-  version: z.string().min(1),
-  integrity: z.string().regex(/^sha512-/),
+  package: z.string().max(214).regex(PACKAGE_NAME),
+  request: z.string().regex(PACKAGE_REQUEST),
+  version: z.string().regex(EXACT_VERSION),
+  integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+=*$/),
   fingerprint: Fingerprint,
   approved: Fingerprint,
   files: z.record(z.string().min(1), z.string().regex(/^[0-9a-f]{64}$/)),
