@@ -169,6 +169,8 @@
 
 ## Slice 5: Find out inspection exists, and how to read it
 
+**Tests:** ✅ Recorded — 2026-10-24 — `7640ac9` — cli — 4 UAT + 6 AC, 0 skipped
+
 **Delivers:** A project owner meeting a pack for the first time is pointed to inspection where they will be looking, and the documentation explains how to read the account and what it does not promise.
 
 ### Prerequisites
