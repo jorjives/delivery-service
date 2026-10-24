@@ -48,7 +48,8 @@ type Issue = z.ZodError["issues"][number];
 /** The field an issue is about, and one plain phrase of what is wrong with it. */
 function describeIssue(issue: Issue): { field: string | null; detail: string } {
   const path = issue.path.map(String);
-  if (issue.code === "unrecognized_keys") return { field: [...path, issue.keys[0]].join("."), detail: "is not a key this format names" };
+  // A key comes from the file, so it is quoted with its control characters escaped before it reaches a terminal.
+  if (issue.code === "unrecognized_keys") return { field: [...path, JSON.stringify(issue.keys[0] ?? "")].join("."), detail: "is not a key this format names" };
   const field = path.length === 0 ? null : path.join(".");
   return { field, detail: issue.code === "invalid_type" && issue.message.includes("received undefined") ? "is missing" : "is not valid" };
 }

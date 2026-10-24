@@ -72,6 +72,16 @@ it("refuses a record that is not JSON, has an unknown key, or a fingerprint with
   expect((failure as PackLockInvalid).field).toBe("packs.x.fingerprint");
 });
 
+it("shows an unknown key with its control characters escaped, so a hostile record cannot drive the terminal", async () => {
+  const hostile = repo();
+  mkdirSync(join(hostile, ".delivery"));
+  writeFileSync(packsLockPath(hostile), JSON.stringify({ schema: "delivery.packs-lock/1", packs: {}, "\u001b[2Jx": 1 }));
+  const failure = (await readLock(hostile).catch((err: unknown) => err)) as PackLockInvalid;
+  expect(failure).toBeInstanceOf(PackLockInvalid);
+  // eslint-disable-next-line no-control-regex
+  expect(failure.message).not.toMatch(/[\u0000-\u001f\u007f-\u009f]/);
+});
+
 it("refuses a record from a newer delivery-service with the upgrade sentence", async () => {
   const dir = repo();
   mkdirSync(join(dir, ".delivery"));
