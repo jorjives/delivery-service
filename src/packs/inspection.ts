@@ -101,7 +101,6 @@ function inspectedWorkflow(pack: Pack, local: string, workflow: PackWorkflow): z
   return workflow.summary === undefined ? base : { ...base, summary: workflow.summary };
 }
 
-/** The model of a loaded pack: its identity and fingerprint, the guards on by default, every workflow as it will run, the project it is read in, the folder's files, and the findings. Pure: no I/O. */
 /** Where the account says a pack came from: its folder, and for an added pack the npm package it was fetched from. */
 function sourceOf(pack: Pack): Inspection["pack"]["source"] {
   const { origin } = pack;
@@ -111,6 +110,7 @@ function sourceOf(pack: Pack): Inspection["pack"]["source"] {
   return { kind: isBuiltInPack(pack.dir) ? "built-in" : "folder", path: pack.dir, package: null };
 }
 
+/** The model of a loaded pack: its identity and fingerprint, the guards on by default, every workflow as it will run, the project it is read in, the folder's files, and the findings. Pure: no I/O. */
 export function inspectionOf(pack: Pack, project: ProjectBaseline, files: readonly PackFolderFile[]): Inspection {
   const { manifest } = pack;
   const workflows = Object.entries(manifest.workflows).map(([local, workflow]) => inspectedWorkflow(pack, local, workflow));
