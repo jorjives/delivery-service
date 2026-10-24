@@ -58,10 +58,14 @@ export function supervisorLockPath(repoPath: string, env: NodeJS.ProcessEnv = pr
   return join(stateHome(env), "delivery-service", "locks", `${repoKey(repoPath)}.lock`);
 }
 
-/** Ignore everything the harness keeps in `.delivery/` (run records, locks, saved reports, this file) except the backlog, which is the project's own. */
-export const DELIVERY_IGNORE = "*\n!backlog/\n!backlog/**\n";
+/**
+ * Ignore everything the harness keeps in `.delivery/` (run records, locks, saved reports, this file, pack staging) except the
+ * backlog, the added packs (`packs/`) and their record (`packs.lock.json`), which are the project's own and must be committed
+ * so every machine runs the same packs.
+ */
+export const DELIVERY_IGNORE = "*\n!backlog/\n!backlog/**\n!packs/\n!packs/**\npacks/.staging/\n!packs.lock.json\n";
 
-/** Make `.delivery/`, and make it ignore everything in it but `backlog/`, so nothing the harness keeps there shows in `git status`. The repository's own `.gitignore` is never touched. */
+/** Make `.delivery/`, and make it ignore everything in it but the project's own files (the backlog, the added packs and their record), so nothing the harness keeps there shows in `git status`. The repository's own `.gitignore` is never touched. */
 export async function prepareDeliveryDir(repoPath: string): Promise<void> {
   await mkdir(join(repoPath, ".delivery"), { recursive: true });
   await writeFile(join(repoPath, ".delivery", ".gitignore"), DELIVERY_IGNORE);

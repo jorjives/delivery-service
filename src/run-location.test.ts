@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -119,6 +119,14 @@ describe("the .delivery folder", () => {
     writeFileSync(join(repo, ".delivery", "backlog", "20261016T090000Z-x.md"), "---\nstatus: open\n---\nx\n");
 
     expect(git(repo, ["status", "--porcelain", "--untracked-files=all"])).toBe("?? .delivery/backlog/20261016T090000Z-x.md");
+  });
+
+  it("ignores run state and working files but keeps the backlog, the added packs and their record", async () => {
+    const repo = initTempRepo("ignore-packs-", { "a.js": "x\n" });
+    await prepareDeliveryDir(repo);
+    const ignored = (path: string): boolean => spawnSync("git", ["check-ignore", "-q", path], { cwd: repo, env: cleanGitEnv(process.env) }).status === 0;
+    for (const kept of [".delivery/backlog/a.md", ".delivery/packs.lock.json", ".delivery/packs/docs-drift/pack.json", ".delivery/packs/docs-drift/fixtures/project/a.js"]) expect(ignored(kept), kept).toBe(false);
+    for (const dropped of [".delivery/runs/x/case.json", ".delivery/packs/.staging/abc/pack.json", ".delivery/packs.lock.json.lock", ".delivery/last-report.txt"]) expect(ignored(dropped), dropped).toBe(true);
   });
 });
 
