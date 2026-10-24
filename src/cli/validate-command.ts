@@ -93,13 +93,13 @@ export async function readProject(
   repoPath: string,
   env: NodeJS.ProcessEnv,
 ): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
-  const config = await withPackWorkflows(await readConfig(file), dirname(file));
+  const config = await withPackWorkflows(await readConfig(file), dirname(file), repoPath);
   return { config, project: await settleProject(config, repoPath, env) };
 }
 
 /** The project a run would have with no config file: the defaults, and the built-in packs' workflows. */
 export async function defaultProject(repoPath: string, env: NodeJS.ProcessEnv): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
-  const config = await withPackWorkflows({}, repoPath);
+  const config = await withPackWorkflows({}, repoPath, repoPath);
   return { config, project: await settleProject(config, repoPath, env) };
 }
 

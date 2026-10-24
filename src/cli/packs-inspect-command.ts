@@ -1,10 +1,11 @@
 import { resolve } from "node:path";
 import { type Inspection, inspectionOf, inspectionRefusal, inspectionSchema, narrowedTo } from "../packs/inspection.js";
-import { isPackPath, packNamed } from "../packs/manifest.js";
+import { builtInPacks, isPackPath, type Pack, packNamed } from "../packs/manifest.js";
 import { readPackFolder } from "../packs/pack-folder.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode, Refusal, renderFailure } from "./failures.js";
 import { renderInspection, renderRefusal } from "./packs-inspect-render.js";
+import { projectPacksFor } from "./packs-command.js";
 import { projectBaseline } from "./project-baseline.js";
 
 /** Named when `delivery packs inspect` is run with neither a pack nor `--schema`. */
@@ -19,6 +20,16 @@ function shownWorkflow(whole: Inspection, name: string): Inspection {
   const narrowed = narrowedTo(whole, name);
   if (narrowed === null) throw new Refusal(unknownWorkflow(name, whole.pack.name, whole.workflows.map(({ local }) => local)), EXIT.configuration, "workflow");
   return narrowed;
+}
+
+/**
+ * The pack a name refers to. A built-in name is found among the built-in packs, which need no project, so inspecting one
+ * starts no process; a built-in name cannot be shadowed by a project's pack. Any other name is looked for among the project's packs.
+ */
+async function namedPack(name: string, ctx: CommandContext): Promise<Pack> {
+  const builtIns = await builtInPacks();
+  if (builtIns.some(({ manifest }) => manifest.name === name)) return packNamed(name, builtIns);
+  return packNamed(name, await projectPacksFor(ctx));
 }
 
 export interface PacksInspectOptions {
@@ -40,7 +51,8 @@ export async function packsInspectCommand(arg: string | undefined, options: Pack
   }
   try {
     if (arg === undefined) throw new Refusal(NAME_A_PACK, EXIT.configuration);
-    const dir = isPackPath(arg) ? resolve(ctx.cwd, arg) : (await packNamed(arg)).dir;
+    const named = isPackPath(arg) ? undefined : await namedPack(arg, ctx);
+    const dir = named === undefined ? resolve(ctx.cwd, arg) : named.dir;
     const read = await readPackFolder(dir);
     if (!read.ok) {
       if (ctx.json) {
@@ -50,7 +62,8 @@ export async function packsInspectCommand(arg: string | undefined, options: Pack
       }
       return EXIT.configuration;
     }
-    const whole = inspectionOf(read.pack, await projectBaseline(ctx.cwd, ctx.env, dir), read.files);
+    const pack = named === undefined ? read.pack : { ...read.pack, origin: named.origin };
+    const whole = inspectionOf(pack, await projectBaseline(ctx.cwd, ctx.env, dir), read.files);
     const inspection = options.workflow === undefined ? whole : shownWorkflow(whole, options.workflow);
     if (ctx.json) {
       ctx.writeLine(JSON.stringify(inspection, null, 2));

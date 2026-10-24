@@ -544,7 +544,7 @@ export async function loadConfig(lookup: ConfigLookup): Promise<DeliveryConfig> 
 export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config: DeliveryConfig; packs: Pack[] }> {
   const file = findConfig(lookup);
   const settings = file === undefined ? {} : await readConfig(file);
-  const packs = await projectPacks(settings, file === undefined ? lookup.repoPath : dirname(file));
+  const packs = await projectPacks(settings, file === undefined ? lookup.repoPath : dirname(file), lookup.repoPath);
   return { config: withWorkflowsOf(settings, packs), packs };
 }
 

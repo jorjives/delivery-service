@@ -31,7 +31,7 @@ const packs = await builtInPacks();
 
 describe.each(packs.map((p) => [p.manifest.name, p] as const))("the built-in pack %s", (name, pack) => {
   it("is shown as a run uses it: each workflow's instructions, guards and hold", async () => {
-    const run = (await withPackWorkflows({}, process.cwd())).workflows ?? {};
+    const run = (await withPackWorkflows({}, process.cwd(), undefined)).workflows ?? {};
     const inspection = inspectionOf(pack, NO_PROJECT, []);
     expect(inspection.workflows.map((w) => w.name).sort()).toEqual(Object.keys(pack.workflows).sort());
     for (const workflow of inspection.workflows) {

@@ -2,13 +2,35 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { LockEntry } from "../packs/install/lock.js";
+import type { PackageFile } from "../packs/install/package-archive.js";
+import { installPack } from "../packs/install/store.js";
 import { builtInPacks } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { INSPECT_HINT } from "./packs-command.js";
+import { ADD_HINT, INSPECT_HINT } from "./packs-command.js";
 import { packWorkflowClash } from "./pack-workflows.js";
+
+const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+
+/** The files of a delivery.pack/3 pack named `moves`, as `delivery packs add` would keep them. */
+const movesFiles = (): PackageFile[] => [
+  { path: "pack.json", bytes: encode(v3Pack("moves")) },
+  { path: "scan.md", bytes: encode("# Scan\n") },
+  { path: "code.md", bytes: encode("# Code\n") },
+];
+
+const MOVES_ENTRY: LockEntry = {
+  source: "npm",
+  package: "@acme/moves",
+  request: "^1.2.0",
+  version: "1.2.0",
+  integrity: "sha512-abc",
+  fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`,
+  approved: `delivery.pack-hash/1:${"a".repeat(64)}`,
+};
 
 /** The contents of a delivery.pack/3 manifest named `name`, with a find `scan` offering an act `code`. */
 const v3Pack = (name: string, summary = "Moves calls off retired code."): string =>
@@ -37,7 +59,7 @@ describe("delivery packs", () => {
       `  deprecations  ${deprecations?.manifest.summary} Start it with: delivery review deprecations`,
       `  security      ${security?.manifest.summary} Start it with: delivery review security`,
     ]);
-    expect(lines.at(-2)).toBe("To use a pack folder of your own, list it under packs in delivery.config.json.");
+    expect(lines.at(-3)).toBe("To use a pack folder of your own, list it under packs in delivery.config.json.");
     expect(lines.at(-1)).toBe("See exactly what a pack will do: delivery packs inspect <name>");
     expect(stdout).not.toMatch(/reviews? (are|is) available/i);
   });
@@ -139,6 +161,18 @@ describe("delivery packs", () => {
     const { exitCode, stderr } = await delivery(["packs"], { cwd: repo });
     expect(exitCode).toBe(EXIT.configuration);
     expect(stderr).toContain(packWorkflowClash("mine:scan"));
+  });
+
+  it("lists an added pack with its source and version, and says how to add one", async () => {
+    const repo = initTempRepo("packs-added-", { "a.js": "x\n" });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const width = Math.max(...(await builtInPacks()).map(({ manifest }) => manifest.name.length));
+    const lines = stdout.trimEnd().split("\n");
+    expect(lines).toContain(`  ${"moves".padEnd(width)}  Moves calls off retired code. From npm: @acme/moves 1.2.0. Start it with: delivery review moves`);
+    expect(lines.at(-2)).toBe(ADD_HINT);
+    expect(lines.at(-1)).toBe(INSPECT_HINT);
   });
 
   it("lists the built-in packs outside any repository", async () => {

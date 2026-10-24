@@ -19,6 +19,7 @@ Packs you can use:
   security      Looks for passwords and keys written in the code, outside input reaching commands or queries, missing checks on who may do what, unsafe default settings, and library versions known to be unsafe. Start it with: delivery review security
 
 To use a pack folder of your own, list it under packs in delivery.config.json.
+To add a pack someone has published on npm: delivery packs add <package>
 See exactly what a pack will do: delivery packs inspect <name>
 ```
 

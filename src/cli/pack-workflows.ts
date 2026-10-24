@@ -1,4 +1,5 @@
 import { join, resolve } from "node:path";
+import { installedPacks } from "../packs/install/installed.js";
 import { builtInPacks, isBuiltInPack, loadPack, type Pack } from "../packs/manifest.js";
 import type { DeliveryConfig } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
@@ -11,9 +12,16 @@ export const builtInPackClash = (name: string, manifestFile: string): string =>
 export const builtInWorkflowClash = (workflow: string, builtIn: string): string =>
   `The workflow "${workflow}" in your configuration has the name of a workflow in "${builtIn}", a pack that comes with the harness: rename your workflow so each name is used once.`;
 
-/** Every pack the config can use, in order: the built-in ones, then each pack folder it lists, relative to `configDir`. */
-export async function projectPacks(config: DeliveryConfig, configDir: string): Promise<Pack[]> {
-  return [...(await builtInPacks()), ...(await Promise.all((config.packs ?? []).map((dir) => loadPack(resolve(configDir, dir)))))];
+/**
+ * Every pack the config can use, in order: the built-in ones, then each pack folder it lists, relative to `configDir`, then
+ * the packs added to the repository at `repoPath`, if there is one. Reads local files only.
+ */
+export async function projectPacks(config: DeliveryConfig, configDir: string, repoPath: string | undefined): Promise<Pack[]> {
+  return [
+    ...(await builtInPacks()),
+    ...(await Promise.all((config.packs ?? []).map((dir) => loadPack(resolve(configDir, dir))))),
+    ...(repoPath === undefined ? [] : await installedPacks(repoPath)),
+  ];
 }
 
 /** The config with the workflows of every pack in `packs` beside its own: one place every lookup reads. */
@@ -36,7 +44,7 @@ export function withWorkflowsOf(config: DeliveryConfig, packs: readonly Pack[]):
   return { ...config, workflows };
 }
 
-/** The config with every built-in pack's workflows, and every pack it lists, beside its own: one place every lookup reads. */
-export async function withPackWorkflows(config: DeliveryConfig, configDir: string): Promise<DeliveryConfig> {
-  return withWorkflowsOf(config, await projectPacks(config, configDir));
+/** The config with every built-in pack's workflows, every pack it lists, and every pack added to the repository, beside its own: one place every lookup reads. */
+export async function withPackWorkflows(config: DeliveryConfig, configDir: string, repoPath: string | undefined): Promise<DeliveryConfig> {
+  return withWorkflowsOf(config, await projectPacks(config, configDir, repoPath));
 }
