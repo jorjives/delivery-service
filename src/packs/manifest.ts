@@ -277,13 +277,18 @@ export async function builtInPacks(): Promise<Pack[]> {
   return Promise.all(folders.map((folder) => loadPack(join(BUILT_IN_PACKS, folder))));
 }
 
+/** Whether `nameOrPath` names a folder rather than a built-in pack: a path has a separator in it, or starts with a dot. */
+export function isPackPath(nameOrPath: string): boolean {
+  return nameOrPath.includes("/") || nameOrPath.includes("\\") || nameOrPath.startsWith(".");
+}
+
 /**
  * The pack `delivery review` was given: a path (anything with a slash, or
  * starting with a dot) is a folder, resolved from `cwd`; anything else is the
  * name of a pack among `packs`, the built-in ones by default.
  */
 export async function resolvePack(nameOrPath: string, cwd: string, packs?: readonly Pack[]): Promise<Pack> {
-  if (nameOrPath.includes("/") || nameOrPath.includes("\\") || nameOrPath.startsWith(".")) return loadPack(resolve(cwd, nameOrPath));
+  if (isPackPath(nameOrPath)) return loadPack(resolve(cwd, nameOrPath));
   return packNamed(nameOrPath, packs);
 }
 

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { UnknownPack } from "../errors.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, packNamed, promptOf, readPack, isBuiltInPack, loadPack, resolvePack } from "./manifest.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, packNamed, promptOf, readPack, isBuiltInPack, loadPack, resolvePack, isPackPath } from "./manifest.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
 
@@ -473,5 +473,11 @@ describe("packNamed", () => {
   it("refuses a name no built-in pack has, listing the ones there are", async () => {
     await expect(packNamed("nope")).rejects.toBeInstanceOf(UnknownPack);
     await expect(packNamed("nope")).rejects.toMatchObject({ available: ["code", "deprecations", "security"] });
+  });
+});
+
+describe("isPackPath", () => {
+  it.each([["./x", true], ["../x", true], ["a/b", true], ["a\\b", true], [".", true], ["deprecations", false]])("isPackPath(%s) is %s", (arg, path) => {
+    expect(isPackPath(arg)).toBe(path);
   });
 });
