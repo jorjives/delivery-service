@@ -3,11 +3,12 @@ import { fingerprintOf, readLock } from "../packs/install/lock.js";
 import { readPackage } from "../packs/install/package-archive.js";
 import { parsePackageSpec } from "../packs/install/pack-spec.js";
 import type { PackSource } from "../packs/install/pack-source.js";
+import { refuseUnusable } from "../packs/install/installed.js";
 import { installedPackDir, installPack } from "../packs/install/store.js";
 import { withStagedPack } from "../packs/install/staged.js";
 import { inspectionOf } from "../packs/inspection.js";
 import type { Pack } from "../packs/manifest.js";
-import { loadConfigAndPacks } from "./config.js";
+import { loadConfigAndPackStates } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import type { Ask } from "./init.js";
@@ -69,8 +70,10 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
     }
 
     // The would-be set of packs must still make one project: a clash refuses here, before anything is shown or written.
+    // The added packs are judged here, not refused on load, so an unrecorded folder of this same name is the one this add replaces.
     // It is checked over the project's own settings, since the config already carries every current pack's workflows.
-    const { settings, packs } = await loadConfigAndPacks({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
+    const { settings, packs, installed } = await loadConfigAndPackStates({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
+    refuseUnusable(repoPath, installed.filter((added) => !(added.state === "unrecorded" && added.name === name)));
     withWorkflowsOf(settings, [...packs, pack]);
 
     for (const line of foundLines(fetched, parsed)) ctx.writeLine(line);

@@ -1,5 +1,5 @@
 import { join, resolve } from "node:path";
-import { installedPacks } from "../packs/install/installed.js";
+import { type InstalledPack, readInstalledPacks, refuseUnusable } from "../packs/install/installed.js";
 import { builtInPacks, isBuiltInPack, loadPack, type Pack } from "../packs/manifest.js";
 import type { DeliveryConfig } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
@@ -14,14 +14,24 @@ export const builtInWorkflowClash = (workflow: string, builtIn: string): string 
 
 /**
  * Every pack the config can use, in order: the built-in ones, then each pack folder it lists, relative to `configDir`, then
- * the packs added to the repository at `repoPath`, if there is one. Reads local files only.
+ * the added packs at `repoPath` that are `ok`, with every added pack's state beside them. Reads local files only, and refuses nothing.
+ */
+export async function projectPackStates(config: DeliveryConfig, configDir: string, repoPath: string | undefined): Promise<{ packs: Pack[]; installed: InstalledPack[] }> {
+  const builtIn = await builtInPacks();
+  const listed = await Promise.all((config.packs ?? []).map((dir) => loadPack(resolve(configDir, dir))));
+  const installed = repoPath === undefined ? [] : await readInstalledPacks(repoPath);
+  const added = installed.flatMap((pack) => (pack.state === "ok" ? [pack.pack] : []));
+  return { packs: [...builtIn, ...listed, ...added], installed };
+}
+
+/**
+ * Every pack the config can use, as `projectPackStates` gives them, refusing when any added pack at `repoPath` is not as the
+ * record approved it: every such pack is named at once, before anything is sent to an agent.
  */
 export async function projectPacks(config: DeliveryConfig, configDir: string, repoPath: string | undefined): Promise<Pack[]> {
-  return [
-    ...(await builtInPacks()),
-    ...(await Promise.all((config.packs ?? []).map((dir) => loadPack(resolve(configDir, dir))))),
-    ...(repoPath === undefined ? [] : await installedPacks(repoPath)),
-  ];
+  const { packs, installed } = await projectPackStates(config, configDir, repoPath);
+  if (repoPath !== undefined) refuseUnusable(repoPath, installed);
+  return packs;
 }
 
 /** The config with the workflows of every pack in `packs` beside its own: one place every lookup reads. */

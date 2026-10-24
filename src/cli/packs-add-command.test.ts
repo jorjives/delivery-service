@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { PackSourceUnavailable, PackSpecRefused } from "../errors.js";
+import { InstalledPackRefused, PackSourceUnavailable, PackSpecRefused } from "../errors.js";
 import { git } from "../git-exec.js";
 import { fingerprintOf, readLock } from "../packs/install/lock.js";
 import { fileDigests } from "../packs/install/digests.js";
@@ -22,6 +22,7 @@ import { addedLines, alreadyAdded, NOTHING_ADDED, nobodyToAsk } from "./packs-ad
 import { builtInPackClash } from "./pack-workflows.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
+import { addedDocsDrift } from "./installed-fixtures.js";
 
 const NAME = "@acme/delivery-pack-docs";
 
@@ -307,5 +308,37 @@ describe("delivery packs add", () => {
     other.publish(NAME, "1.2.0", packPackage({ field: "pack", extra: { "pack/install.sh": "rm -rf /" } }));
     await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, other);
     expect(tempFolders()).toEqual(before);
+  });
+
+  it("adds a pack again over its own unrecorded folder", async () => {
+    expect(await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    const lockPath = join(repo, ".delivery", "packs.lock.json");
+    const lock = JSON.parse(readFileSync(lockPath, "utf-8")) as { packs: Record<string, unknown> };
+    delete lock.packs["docs-drift"];
+    writeFileSync(lockPath, JSON.stringify(lock, null, 2));
+
+    const { ctx } = context(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    expect((await readLock(repo)).packs["docs-drift"]).toBeDefined();
+    expect((await delivery(["review", "docs-drift", "--preview"], { cwd: repo })).exitCode).toBe(EXIT.ok);
+  });
+
+  it("refuses to add while another added pack is unusable, naming it and changing nothing", async () => {
+    await addedDocsDrift(repo);
+    const scan = join(repo, ".delivery", "packs", "docs-drift", "scan.md");
+    writeFileSync(scan, readFileSync(scan, "utf-8").replace("Read", "Reed"));
+    const other = fakePackSource();
+    other.publish("@acme/delivery-pack-other", "1.0.0", packPackage({ name: "other", packageName: "@acme/delivery-pack-other" }));
+    const before = tree(repo);
+    const { ctx } = context(repo);
+    const { ask, asked } = scriptedAsk({ confirm: true });
+    const error: unknown = await packsAddCommand("@acme/delivery-pack-other", ctx, ask, other).then(
+      () => undefined,
+      (caught: unknown) => caught,
+    );
+    expect(error).toBeInstanceOf(InstalledPackRefused);
+    expect((error as InstalledPackRefused).refused.map((pack) => pack.name)).toEqual(["docs-drift"]);
+    expect(asked).toEqual([]);
+    expect(tree(repo)).toEqual(before);
   });
 });

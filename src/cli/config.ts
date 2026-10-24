@@ -9,7 +9,8 @@ import { AgentOptions, CloserRef, GuardName, GuardSwitches, Severity, TaskDef, W
 import { FenceSetting } from "../fence.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
-import { projectPacks, withWorkflowsOf } from "./pack-workflows.js";
+import { projectPackStates, projectPacks, withWorkflowsOf } from "./pack-workflows.js";
+import type { InstalledPack } from "../packs/install/installed.js";
 import type { Pack } from "../packs/manifest.js";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 
@@ -540,15 +541,29 @@ export async function loadConfig(lookup: ConfigLookup): Promise<DeliveryConfig> 
   return (await loadConfigAndPacks(lookup)).config;
 }
 
+/** The config file's settings, and the folder its listed packs are relative to: the file's own folder, or the repository's when there is none. */
+async function settingsAt(lookup: ConfigLookup): Promise<{ settings: DeliveryConfig; configDir: string }> {
+  const file = findConfig(lookup);
+  return { settings: file === undefined ? {} : await readConfig(file), configDir: file === undefined ? lookup.repoPath : dirname(file) };
+}
+
 /**
  * The settings a run starts from, as `loadConfig` gives them, and the packs the project can use, built-in and listed. `settings`
  * is the file's own content, without any pack's workflows, for a caller that changes the set of packs and checks it again.
  */
 export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config: DeliveryConfig; settings: DeliveryConfig; packs: Pack[] }> {
-  const file = findConfig(lookup);
-  const settings = file === undefined ? {} : await readConfig(file);
-  const packs = await projectPacks(settings, file === undefined ? lookup.repoPath : dirname(file), lookup.repoPath);
+  const { settings, configDir } = await settingsAt(lookup);
+  const packs = await projectPacks(settings, configDir, lookup.repoPath);
   return { config: withWorkflowsOf(settings, packs), settings, packs };
+}
+
+/**
+ * The settings a run starts from and every pack's state, without refusing any of them: for a caller that must judge an added
+ * pack's state itself, such as the add that replaces one, and checks what it decides with `refuseUnusable` or a clash check.
+ */
+export async function loadConfigAndPackStates(lookup: ConfigLookup): Promise<{ settings: DeliveryConfig; packs: Pack[]; installed: InstalledPack[] }> {
+  const { settings, configDir } = await settingsAt(lookup);
+  return { settings, ...(await projectPackStates(settings, configDir, lookup.repoPath)) };
 }
 
 /** The source a project's ideas are raised to instead of committed: its first tracker, if it has one. */
