@@ -104,22 +104,34 @@ function sortKeys(value: unknown): unknown {
 export const serialiseLock = (lock: PacksLock): string => JSON.stringify(sortKeys(lock), null, 2) + "\n";
 
 /**
- * Set one pack's entry in the record. Under a lock on the record, so two adds at once both land:
- * the record is read, changed and written whole while no other add can write it.
+ * Run `work` while holding the lock on the record, so two writers at once cannot both land: each waits its turn.
+ * The lock is not re-entrant, so `work` must not take it again.
  */
-export async function putLockEntry(repoPath: string, name: string, entry: LockEntry): Promise<void> {
+export async function withRecordLock<T>(repoPath: string, work: () => Promise<T>): Promise<T> {
   const filePath = packsLockPath(repoPath);
   // The lock's folder sits beside the record, so the folder must exist before the lock is taken.
   await mkdir(dirname(filePath), { recursive: true });
   const release = await lockfile.lock(filePath, { realpath: false, retries: { retries: 20, minTimeout: 50 } });
   try {
-    const lock = await readLock(repoPath);
-    lock.packs[name] = entry;
-    await atomicWrite(filePath, serialiseLock(lock));
+    return await work();
   } finally {
     await release();
   }
 }
+
+/**
+ * Set one pack's entry in the record: read it, change it, and write it whole, atomically. No lock is taken here,
+ * so the caller must hold one (see `withRecordLock`).
+ */
+export async function setLockEntry(repoPath: string, name: string, entry: LockEntry): Promise<void> {
+  const lock = await readLock(repoPath);
+  lock.packs[name] = entry;
+  await atomicWrite(packsLockPath(repoPath), serialiseLock(lock));
+}
+
+/** Set one pack's entry in the record, under the record lock, so two adds at once both land. */
+export const putLockEntry = (repoPath: string, name: string, entry: LockEntry): Promise<void> =>
+  withRecordLock(repoPath, () => setLockEntry(repoPath, name, entry));
 
 /** The JSON Schema of the record of added packs, as it is published. */
 export const packsLockSchema = (): JsonSchema => ({ ...openSchema(PacksLock), title: PACKS_LOCK_SCHEMA });

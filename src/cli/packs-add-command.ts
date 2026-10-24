@@ -1,15 +1,12 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { fileDigests, fingerprintedFiles } from "../packs/install/digests.js";
 import { fingerprintOf, readLock } from "../packs/install/lock.js";
 import { readPackage } from "../packs/install/package-archive.js";
 import { parsePackageSpec } from "../packs/install/pack-spec.js";
 import type { PackSource } from "../packs/install/pack-source.js";
-import { installedPackDir, installPack, writePackFiles } from "../packs/install/store.js";
+import { installedPackDir, installPack } from "../packs/install/store.js";
+import { withStagedPack } from "../packs/install/staged.js";
 import { inspectionOf } from "../packs/inspection.js";
 import type { Pack } from "../packs/manifest.js";
-import { readPackFolder } from "../packs/pack-folder.js";
 import { loadConfigAndPacks } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
@@ -47,11 +44,7 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
     return EXIT.configuration;
   }
 
-  const temp = await mkdtemp(join(tmpdir(), "delivery-pack-"));
-  try {
-    const stagedDir = join(temp, "pack");
-    await writePackFiles(stagedDir, read.packFiles);
-    const folder = await readPackFolder(stagedDir);
+  return withStagedPack(read.packFiles, async (stagedDir, folder) => {
     if (!folder.ok) {
       for (const line of packRefusal(fetched.name, fetched.version, read.packPath, folder.problems, stagedDir)) ctx.writeLine(line);
       return EXIT.configuration;
@@ -112,7 +105,5 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
     });
     for (const line of addedLines(name, fetched.version)) ctx.writeLine(line);
     return EXIT.ok;
-  } finally {
-    await rm(temp, { recursive: true, force: true });
-  }
+  });
 }
