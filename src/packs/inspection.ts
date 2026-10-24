@@ -61,7 +61,7 @@ export const Inspection = z.object({
     summary: z.string(),
     format: z.enum(PACK_SCHEMAS_READ),
     hash: z.string(),
-    source: z.object({ kind: z.enum(["built-in", "folder"]), path: z.string() }),
+    source: z.object({ kind: z.enum(["built-in", "folder", "installed"]), path: z.string(), package: z.object({ name: z.string(), version: z.string(), integrity: z.string() }).nullable() }),
     /** Every qualified workflow name, in manifest order. */
     workflows: z.array(z.string()),
   }),
@@ -102,6 +102,15 @@ function inspectedWorkflow(pack: Pack, local: string, workflow: PackWorkflow): z
 }
 
 /** The model of a loaded pack: its identity and fingerprint, the guards on by default, every workflow as it will run, the project it is read in, the folder's files, and the findings. Pure: no I/O. */
+/** Where the account says a pack came from: its folder, and for an added pack the npm package it was fetched from. */
+function sourceOf(pack: Pack): Inspection["pack"]["source"] {
+  const { origin } = pack;
+  if (origin.kind === "installed") {
+    return { kind: "installed", path: pack.dir, package: { name: origin.package, version: origin.version, integrity: origin.integrity } };
+  }
+  return { kind: isBuiltInPack(pack.dir) ? "built-in" : "folder", path: pack.dir, package: null };
+}
+
 export function inspectionOf(pack: Pack, project: ProjectBaseline, files: readonly PackFolderFile[]): Inspection {
   const { manifest } = pack;
   const workflows = Object.entries(manifest.workflows).map(([local, workflow]) => inspectedWorkflow(pack, local, workflow));
@@ -115,7 +124,7 @@ export function inspectionOf(pack: Pack, project: ProjectBaseline, files: readon
       summary: manifest.summary,
       format: pack.schema,
       hash: pack.hash,
-      source: { kind: isBuiltInPack(pack.dir) ? "built-in" : "folder", path: pack.dir },
+      source: sourceOf(pack),
       workflows: workflows.map(({ name }) => name),
     },
     defaultGuards: [...activeGuards({}).on],

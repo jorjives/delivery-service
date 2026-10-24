@@ -59,7 +59,7 @@ function model(overrides: ModelOverrides = {}): Inspection {
   const base: InspectionBase = {
     schema: "delivery.pack-inspection/1",
     ok: true,
-    pack: { name: "test", version: "1.0.0", title: "Test pack", summary: "A pack for tests.", format: "delivery.pack/3", hash: "a".repeat(64), workflows: ["test:find", "test:act"], source: { kind: "built-in", path: "/packs/test" } },
+    pack: { name: "test", version: "1.0.0", title: "Test pack", summary: "A pack for tests.", format: "delivery.pack/3", hash: "a".repeat(64), workflows: ["test:find", "test:act"], source: { kind: "built-in", path: "/packs/test", package: null } },
     defaultGuards: ["tests-untouched"],
     workflows: [find, act],
     project: NO_PROJECT,
@@ -211,7 +211,7 @@ it("keeps pack metadata and the source path on the lines it writes, with control
   const inspection = model();
   inspection.pack.title = `Title${ESC}[31m\nforged`;
   inspection.pack.summary = `Summary\rforged${RLO}`;
-  inspection.pack.source = { kind: "folder", path: `/p/${ESC}]0;x\x07\nforged` };
+  inspection.pack.source = { kind: "folder", path: `/p/${ESC}]0;x\x07\nforged`, package: null };
   const act = inspection.workflows[1];
   if (act) act.summary = `Act\nforged${ESC}`;
   const lines = renderInspection(withFindings(inspection));
@@ -248,7 +248,7 @@ it("lists hidden characters in the title, summaries, the source path and the har
   const inspection = model();
   inspection.pack.title = `T${ESC}`;
   inspection.pack.summary = `S\n`;
-  inspection.pack.source = { kind: "folder", path: `/p${RLO}` };
+  inspection.pack.source = { kind: "folder", path: `/p${RLO}`, package: null };
   const act = inspection.workflows[1];
   if (act) act.summary = `A${ZWSP}`;
   const find = inspection.workflows[0];
@@ -402,4 +402,10 @@ it("does not say nothing widens when the workflow shown does not but another doe
   expect(text).toContain("Nothing in the workflow shown widens what the agent may do, but another workflow in this pack does: inspect the whole pack.");
   expect(text).not.toContain("Nothing unusual was found in what this command checks. ");
   expect(text).toContain("Nothing unusual was found in what this command checks for the workflow shown. Inspect the whole pack for the others.");
+});
+
+it("says an added pack is from npm, naming the package and its version", () => {
+  const inspection = model();
+  inspection.pack.source = { kind: "installed", path: "/r/.delivery/packs/test", package: { name: "@acme/delivery-pack-docs", version: "1.2.0", integrity: "sha512-x" } };
+  expect(renderInspection(inspection).slice(1, 3).join(" ")).toContain("test, version 1.0.0, from npm: @acme/delivery-pack-docs 1.2.0.");
 });

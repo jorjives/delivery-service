@@ -142,3 +142,8 @@ delivery.pack-inspection/1.workflows[].upgraded[]: string
 delivery.pack-inspection/1.workflows[].widens: array
 delivery.pack-inspection/1.workflows[].widens[]: string
 delivery.pack-inspection/1.workflows[]: object
+delivery.pack-inspection/1.pack.source.kind = "installed"
+delivery.pack-inspection/1.pack.source.package: null|object
+delivery.pack-inspection/1.pack.source.package.integrity: string
+delivery.pack-inspection/1.pack.source.package.name: string
+delivery.pack-inspection/1.pack.source.package.version: string

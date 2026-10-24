@@ -24,7 +24,7 @@ const oneLine = (text: string): string => showHidden(text, { newline: false, tab
 const instructionText = (text: string): string => showHidden(text, { newline: true, tab: true });
 
 /** Greedy word wrap on single spaces, after pack-authored text is made visible. A word too long for the width sits alone on its line, unbroken. */
-function wrap(text: string, indent: string, hanging: string = indent): string[] {
+export function wrap(text: string, indent: string, hanging: string = indent): string[] {
   const lines: string[] = [];
   let line = indent;
   let started = false;
@@ -56,11 +56,17 @@ const plural = (count: number, noun: string): string => `${count} ${count === 1 
 
 const unique = <T>(items: readonly T[]): T[] => [...new Set(items)];
 
+/** Where a pack came from, as the identity line says it: its folder, the npm package an added pack was fetched from, or delivery-service itself. */
+function originOf({ source }: Inspection["pack"]): string {
+  if (source.kind === "built-in") return "built in to delivery-service.";
+  if (source.package !== null) return `from npm: ${source.package.name} ${source.package.version}.`;
+  return `from the folder ${source.path}.`;
+}
+
 function identityBlock({ pack }: Inspection): string[] {
-  const source = pack.source.kind === "folder" ? `from the folder ${pack.source.path}.` : "built in to delivery-service.";
   return [
     ...wrap(`Pack: ${pack.title}`, ""),
-    ...wrap(`${pack.name}, version ${pack.version}, ${source}`, ""),
+    ...wrap(`${pack.name}, version ${pack.version}, ${originOf(pack)}`, ""),
     ...wrap("Fingerprint, which changes if any instruction changes:", ""),
     `  ${pack.hash.slice(0, 32)}`,
     `  ${pack.hash.slice(32)}`,
@@ -336,15 +342,22 @@ const shownPath = (file: string, cwd: string): string => showName(relative(cwd, 
  * content the pack should not hold, and the line that says nothing was used. Pure: no I/O.
  */
 export function renderRefusal(dir: string, problems: readonly PackProblem[], cwd: string): string[] {
-  const lines = wrap(`Not read: ${shownPath(dir, cwd)}`, "");
+  return [...wrap(`Not read: ${shownPath(dir, cwd)}`, ""), ...problemLines(problems, (file) => shownPath(file, cwd)), `  ${SHOWN_NOTHING}`];
+}
+
+/**
+ * Each problem by its file, shown as the caller names it, then the advice when a problem is content the pack should not
+ * hold. The caller adds whatever heads and closes the list. Pure: no I/O.
+ */
+export function problemLines(problems: readonly PackProblem[], shown: (file: string) => string): string[] {
+  const lines: string[] = [];
   for (const { file, field, message } of problems) {
     const sentence = message.endsWith(".") ? message : `${message}.`;
-    const text = field === null ? `${shownPath(file, cwd)} ${sentence}` : `${shownPath(file, cwd)}: ${sentence}`;
+    const text = field === null ? `${shown(file)} ${sentence}` : `${shown(file)}: ${sentence}`;
     lines.push(...wrap(text, "  ", "    "));
   }
   if (problems.some(({ message }) => FOLDER_SENTENCES.includes(message))) {
     lines.push(...wrap("If you wrote this pack, remove what is named above. If someone else did, ask them why it is there.", "  "));
   }
-  lines.push(`  ${SHOWN_NOTHING}`);
   return lines;
 }

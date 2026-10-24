@@ -18,7 +18,7 @@ it("carries the project and the folder's files through unchanged, and parses wit
 it("describes the deprecations pack as it will run", async () => {
   const pack = await resolvePack("deprecations", process.cwd());
   const inspection = inspectionOf(pack, NO_PROJECT, []);
-  expect(inspection.pack).toEqual({ name: "deprecations", version: "1.0.0", title: "Move off deprecated code", summary: pack.manifest.summary, format: "delivery.pack/3", hash: pack.hash, source: { kind: "built-in", path: pack.dir }, workflows: ["deprecations:scan", "deprecations:code", "deprecations:tests"] });
+  expect(inspection.pack).toEqual({ name: "deprecations", version: "1.0.0", title: "Move off deprecated code", summary: pack.manifest.summary, format: "delivery.pack/3", hash: pack.hash, source: { kind: "built-in", path: pack.dir, package: null }, workflows: ["deprecations:scan", "deprecations:code", "deprecations:tests"] });
   expect(inspection.defaultGuards).toEqual(["tests-untouched", "check-untouched", "no-skips", "ignored", "backlog"]);
   expect(inspection.workflows.map((w) => [w.name, w.local, w.kind, w.hold])).toEqual([
     ["deprecations:scan", "scan", "find", null], ["deprecations:code", "code", "act", "high"], ["deprecations:tests", "tests", "act", null],
@@ -84,4 +84,11 @@ it("parses as its own schema", async () => {
 
 it("records no widening for any built-in pack", async () => {
   for (const pack of await builtInPacks()) for (const workflow of inspectionOf(pack, NO_PROJECT, []).workflows) expect(workflow.widens).toEqual([]);
+});
+
+it("names an added pack's package, version and integrity as its source", async () => {
+  const code = await resolvePack("code", process.cwd());
+  const installed = { ...code, dir: "/r/.delivery/packs/code", origin: { kind: "installed" as const, package: "@acme/docs", version: "1.2.0", request: "latest", integrity: "sha512-x" } };
+  expect(inspectionOf(installed, NO_PROJECT, []).pack.source).toEqual({ kind: "installed", path: "/r/.delivery/packs/code", package: { name: "@acme/docs", version: "1.2.0", integrity: "sha512-x" } });
+  expect(inspectionOf(code, NO_PROJECT, []).pack.source.package).toBeNull();
 });

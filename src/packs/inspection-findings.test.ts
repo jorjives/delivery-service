@@ -9,7 +9,7 @@ function base(o: { hold?: Severity | null; widens?: string[]; authored?: string 
   return {
     schema: "delivery.pack-inspection/1",
     ok: true,
-    pack: { name: "t", version: "1.0.0", title: "T", summary: "S", format: "delivery.pack/3", hash: "a".repeat(64), workflows: ["t:find", "t:act"], source: { kind: "built-in", path: "/packs/t" } },
+    pack: { name: "t", version: "1.0.0", title: "T", summary: "S", format: "delivery.pack/3", hash: "a".repeat(64), workflows: ["t:find", "t:act"], source: { kind: "built-in", path: "/packs/t", package: null } },
     defaultGuards: [],
     workflows: [
       { name: "t:find", local: "find", kind: "find", summary: null, offers: ["t:act"], steps: [{ name: "scan", instructions: { authored: "Look.", harness: null }, guards: { added: [], off: [] } }], upgraded: [], widens: [], hold: null },

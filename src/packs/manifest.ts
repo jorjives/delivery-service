@@ -86,9 +86,13 @@ export function promptOf(instructions: Instructions): string {
   return instructions.harness === null ? instructions.authored : `${instructions.authored}\n\n${instructions.harness}`;
 }
 
-/** A loaded pack: where it is, the format it is written in, what it says, a hash of everything it holds, the find it runs, its workflows, and each workflow's instructions. */
+/** Where a pack came from: a folder the project names, or an npm package the owner added, with the version and integrity it was fetched at. */
+export type PackOrigin = { kind: "folder" } | { kind: "installed"; package: string; version: string; request: string; integrity: string };
+
+/** A loaded pack: where it is, where it came from, the format it is written in, what it says, a hash of everything it holds, the find it runs, its workflows, and each workflow's instructions. */
 export interface Pack {
   dir: string;
+  origin: PackOrigin;
   schema: PackSchemaVersion;
   manifest: PackManifest;
   hash: string;
@@ -298,7 +302,7 @@ export async function readPack(
   const inHashOrder = Object.entries(manifest.workflows);
   if (schema === PACK_SCHEMA) inHashOrder.sort(([a], [b]) => (a < b ? -1 : 1));
   const hash = packHash(raw, inHashOrder.map(([, workflow]) => promptText(texts, workflow.prompt)));
-  return { ok: true, pack: { dir, schema, manifest, hash, find, workflows, instructions, upgraded } };
+  return { ok: true, pack: { dir, origin: { kind: "folder" }, schema, manifest, hash, find, workflows, instructions, upgraded } };
 }
 
 /** Read and check the pack in `dir`. Refuses, naming the file and the field, the first thing the format does not allow. */
