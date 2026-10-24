@@ -4,10 +4,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
+import type { GuardName } from "../schema.js";
 import { InvalidPack, UnknownPack } from "../errors.js";
 import { isEnoent } from "../journal.js";
 import type { WorkflowConfig } from "../cli/config.js";
-import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, upgradeV2, type PackSchemaVersion } from "./pack-format.js";
+import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, upgradeGuards, upgradeV2, type PackSchemaVersion } from "./pack-format.js";
 import { formatSentence, ruleProblems } from "./pack-rules.js";
 
 /** One act workflow a find's ideas may name, and what it is for, in the words the scanner is shown. */
@@ -71,7 +72,21 @@ export function ideaFormat(targets: readonly [IdeaTarget, ...IdeaTarget[]]): str
   ].join("\n");
 }
 
-/** A loaded pack: where it is, the format it is written in, what it says, a hash of everything it holds, the find it runs, and its workflows. */
+/**
+ * What a workflow's agent is told: the author's own words, trimmed, and the harness's part after them. A find's harness
+ * part is the format of the ideas it hands back; an act has none.
+ */
+export interface Instructions {
+  authored: string;
+  harness: string | null;
+}
+
+/** The prompt a workflow's agent is given: the author's words alone, or those words and the harness's part after them. */
+export function promptOf(instructions: Instructions): string {
+  return instructions.harness === null ? instructions.authored : `${instructions.authored}\n\n${instructions.harness}`;
+}
+
+/** A loaded pack: where it is, the format it is written in, what it says, a hash of everything it holds, the find it runs, its workflows, and each workflow's instructions. */
 export interface Pack {
   dir: string;
   schema: PackSchemaVersion;
@@ -79,6 +94,9 @@ export interface Pack {
   hash: string;
   find: string;
   workflows: Record<string, WorkflowConfig>;
+  instructions: Readonly<Record<string, Instructions>>;
+  /** Guards a workflow gains when an older-format pack is upgraded that its file does not state, by the workflow's local name. */
+  upgraded: Readonly<Record<string, readonly GuardName[]>>;
 }
 
 /** One thing wrong with a pack, as an author fixes it: the file (absolute), the field in it, and one plain sentence starting with that field. */
@@ -121,15 +139,41 @@ export function isBuiltInPack(dir: string): boolean {
   return dirname(resolve(dir)) === resolve(BUILT_IN_PACKS);
 }
 
-/** The text of a file in the pack, or the problem of its absence. */
+/** What a pack's text must be: valid UTF-8. A byte-order mark is kept as part of the text, so the fingerprint does not move. */
+const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
+/** Why a pack file is not valid UTF-8 text: the shown text would differ from the text the agent is given. */
+export const NOT_UTF8 = "is not valid UTF-8 text, so what is shown could differ from what the agent is given";
+
+/** Why a name the pack gives for a file is a folder. */
+export const IS_A_FOLDER = "is a folder, not a file";
+
+/** The text of a file in the pack, or the problem of its absence, of its being a folder, or of its not being UTF-8 text. */
 async function packFile(dir: string, name: string): Promise<string | PackProblem> {
   const file = join(dir, name);
+  let bytes: Buffer;
   try {
-    return await readFile(file, "utf-8");
+    bytes = await readFile(file);
   } catch (err) {
     if (isEnoent(err)) return { file, field: null, message: "is missing" };
+    if (isCode(err, "EISDIR")) return { file, field: null, message: IS_A_FOLDER };
     throw err;
   }
+  try {
+    return utf8.decode(bytes);
+  } catch {
+    return { file, field: null, message: NOT_UTF8 };
+  }
+}
+
+/** Whether `err` is a system error with `code`. */
+function isCode(err: unknown, code: string): boolean {
+  return err instanceof Error && "code" in err && err.code === code;
+}
+
+/** The prompt file names a manifest names, in manifest order, each once. */
+export function promptsOf(manifest: PackManifest): string[] {
+  return [...new Set(Object.values(manifest.workflows).map(({ prompt }) => prompt))];
 }
 
 /** The text of a workflow's prompt, which the loader has read before any workflow is built from it. */
@@ -147,15 +191,17 @@ function nonEmpty<T>(items: T[]): [T, ...T[]] {
 }
 
 /**
- * The workflows a pack runs, each named `<pack>:<local>`, in manifest order, and the find among them. A
- * find is the workflow that scans for ideas; an act is the workflow that fixes one.
+ * The workflows a pack runs, each named `<pack>:<local>`, in manifest order, the find among them, and each workflow's
+ * instructions. A find is the workflow that scans for ideas; an act is the workflow that fixes one.
  */
-function packWorkflows(manifest: PackManifest, texts: ReadonlyMap<string, string>): { find: string; workflows: Record<string, WorkflowConfig> } {
+function packWorkflows(manifest: PackManifest, texts: ReadonlyMap<string, string>): { find: string; workflows: Record<string, WorkflowConfig>; instructions: Record<string, Instructions> } {
   const workflows: Record<string, WorkflowConfig> = {};
+  const instructions: Record<string, Instructions> = {};
   let find = "";
   for (const [local, workflow] of Object.entries(manifest.workflows)) {
     const name = `${manifest.name}:${local}`;
-    const text = promptText(texts, workflow.prompt);
+    // Trimmed of its blank lines, but a byte-order mark is part of the text, so it is kept even though trim() would drop it.
+    const authored = promptText(texts, workflow.prompt).replace(/^[^\S\uFEFF]+/, "").trimEnd();
     if (workflow.kind === "find") {
       // The rules refuse any pack without exactly one find, so the first find named is the only one.
       if (find === "") find = name;
@@ -165,16 +211,20 @@ function packWorkflows(manifest: PackManifest, texts: ReadonlyMap<string, string
           return { workflow: `${manifest.name}:${act}`, summary: target?.kind === "act" ? target.summary : undefined };
         }),
       );
+      const told = { authored, harness: ideaFormat(targets) };
+      instructions[name] = told;
       // A scan lands nothing but ideas, so the project's own after steps (a deploy) are not run for it.
-      workflows[name] = { steps: [{ name: local, prompt: `${text.trim()}\n\n${ideaFormat(targets)}`, guards: { add: ["backlog-only"] } }], after: [] };
+      workflows[name] = { steps: [{ name: local, prompt: promptOf(told), guards: { add: ["backlog-only"] } }], after: [] };
     } else {
+      const told = { authored, harness: null };
+      instructions[name] = told;
       workflows[name] = {
-        steps: [{ name: local, prompt: text.trim(), ...(workflow.guards === undefined ? {} : { guards: { add: workflow.guards.add } }) }],
+        steps: [{ name: local, prompt: promptOf(told), ...(workflow.guards === undefined ? {} : { guards: { add: workflow.guards.add } }) }],
         ...(workflow.hold === undefined ? {} : { hold: workflow.hold.atOrAbove }),
       };
     }
   }
-  return { find, workflows };
+  return { find, workflows, instructions };
 }
 
 /** The hash that names a pack's content: its raw manifest, then the text of each prompt, in the order given. */
@@ -184,42 +234,56 @@ function packHash(raw: string, texts: string[]): string {
   return hash.digest("hex");
 }
 
+/** The sentence for a manifest declaring a format newer than any this harness reads: the pack is not wrong, the harness is old. */
+export const newerFormat = (declared: string): string =>
+  `"schema" is "${declared}", a newer pack format than this harness reads (${PACK_SCHEMAS_READ.join(" and ")}): upgrade delivery-service to read this pack`;
+
 /**
  * Read and check the pack in `dir`, naming every problem with it by file and field rather than stopping at the first.
  * A failure says which version the manifest was read as, so the words it is named in can follow that version; it is
- * null when the manifest could not be read as any version at all.
+ * null when the manifest could not be read as any version at all. It names the prompt files the manifest names, in
+ * manifest order, whenever the manifest parsed, and is null before that.
  */
-export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack } | { ok: false; schema: PackSchemaVersion | null; problems: PackProblem[] }> {
+export async function readPack(
+  dir: string,
+): Promise<{ ok: true; pack: Pack } | { ok: false; schema: PackSchemaVersion | null; prompts: readonly string[] | null; problems: PackProblem[] }> {
   const manifestFile = join(dir, "pack.json");
   const raw = await packFile(dir, "pack.json");
-  if (typeof raw !== "string") return { ok: false, schema: null, problems: [raw] };
+  if (typeof raw !== "string") return { ok: false, schema: null, prompts: null, problems: [raw] };
   let json: unknown;
   try {
     json = JSON.parse(raw);
   } catch {
-    return { ok: false, schema: null, problems: [{ file: manifestFile, field: null, message: "is not valid JSON" }] };
+    return { ok: false, schema: null, prompts: null, problems: [{ file: manifestFile, field: null, message: "is not valid JSON" }] };
   }
   // A manifest in a format this build does not read is refused with its own sentence and never read further: its keys mean something else.
   const declared = typeof json === "object" && json !== null ? (json as { schema?: unknown }).schema : undefined;
   if (declared !== undefined && !(PACK_SCHEMAS_READ as readonly unknown[]).includes(declared)) {
-    return { ok: false, schema: null, problems: [{ file: manifestFile, field: "schema", message: `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)` }] };
+    const highestRead = Math.max(...PACK_SCHEMAS_READ.map((s) => Number(s.slice("delivery.pack/".length))));
+    const version = typeof declared === "string" ? /^delivery\.pack\/(\d+)$/.exec(declared)?.[1] : undefined;
+    const message = version !== undefined && Number(version) > highestRead
+      ? newerFormat(declared as string)
+      : `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)`;
+    return { ok: false, schema: null, prompts: null, problems: [{ file: manifestFile, field: "schema", message }] };
   }
   let manifest: PackManifest;
+  let upgraded: Pack["upgraded"] = {};
   const schema: PackSchemaVersion = declared === "delivery.pack/2" ? "delivery.pack/2" : PACK_SCHEMA;
   if (schema === "delivery.pack/2") {
     const v2 = PackManifestV2.safeParse(json);
-    if (!v2.success) return { ok: false, schema, problems: packProblems(manifestFile, v2.error, json) };
+    if (!v2.success) return { ok: false, schema, prompts: null, problems: packProblems(manifestFile, v2.error, json) };
     manifest = upgradeV2(v2.data);
+    upgraded = { fix: upgradeGuards(v2.data) };
   } else {
     const v3 = PackManifest.safeParse(json);
-    if (!v3.success) return { ok: false, schema, problems: packProblems(manifestFile, v3.error, json, formatSentence) };
+    if (!v3.success) return { ok: false, schema, prompts: null, problems: packProblems(manifestFile, v3.error, json, formatSentence) };
     const rules = ruleProblems(manifestFile, v3.data);
-    if (rules.length > 0) return { ok: false, schema, problems: rules };
+    if (rules.length > 0) return { ok: false, schema, prompts: promptsOf(v3.data), problems: rules };
     manifest = v3.data;
   }
 
   // Each prompt file is read once, however many workflows name it, and every missing one is named.
-  const prompts = [...new Set(Object.values(manifest.workflows).map(({ prompt }) => prompt))];
+  const prompts = promptsOf(manifest);
   const read = await Promise.all(prompts.map(async (prompt) => [prompt, await packFile(dir, prompt)] as const));
   const texts = new Map<string, string>();
   const problems: PackProblem[] = [];
@@ -227,19 +291,19 @@ export async function inspectPack(dir: string): Promise<{ ok: true; pack: Pack }
     if (typeof text === "string") texts.set(prompt, text);
     else problems.push(text);
   }
-  if (problems.length > 0) return { ok: false, schema, problems };
+  if (problems.length > 0) return { ok: false, schema, prompts, problems };
 
-  const { find, workflows } = packWorkflows(manifest, texts);
+  const { find, workflows, instructions } = packWorkflows(manifest, texts);
   // A /2 pack hashes its prompts in the order it wrote them, scan then fix; a /3 pack in the sorted order of its workflow names.
   const inHashOrder = Object.entries(manifest.workflows);
   if (schema === PACK_SCHEMA) inHashOrder.sort(([a], [b]) => (a < b ? -1 : 1));
   const hash = packHash(raw, inHashOrder.map(([, workflow]) => promptText(texts, workflow.prompt)));
-  return { ok: true, pack: { dir, schema, manifest, hash, find, workflows } };
+  return { ok: true, pack: { dir, schema, manifest, hash, find, workflows, instructions, upgraded } };
 }
 
 /** Read and check the pack in `dir`. Refuses, naming the file and the field, the first thing the format does not allow. */
 export async function loadPack(dir: string): Promise<Pack> {
-  const inspected = await inspectPack(dir);
+  const inspected = await readPack(dir);
   if (inspected.ok) return inspected.pack;
   const [first] = inspected.problems;
   throw new InvalidPack(first?.file ?? join(dir, "pack.json"), first?.message ?? "is not a valid pack");
@@ -252,15 +316,25 @@ export async function builtInPacks(): Promise<Pack[]> {
   return Promise.all(folders.map((folder) => loadPack(join(BUILT_IN_PACKS, folder))));
 }
 
+/** Whether `nameOrPath` names a folder rather than a built-in pack: a path has a separator in it, or starts with a dot. */
+export function isPackPath(nameOrPath: string): boolean {
+  return nameOrPath.includes("/") || nameOrPath.includes("\\") || nameOrPath.startsWith(".");
+}
+
 /**
  * The pack `delivery review` was given: a path (anything with a slash, or
  * starting with a dot) is a folder, resolved from `cwd`; anything else is the
  * name of a pack among `packs`, the built-in ones by default.
  */
 export async function resolvePack(nameOrPath: string, cwd: string, packs?: readonly Pack[]): Promise<Pack> {
-  if (nameOrPath.includes("/") || nameOrPath.includes("\\") || nameOrPath.startsWith(".")) return loadPack(resolve(cwd, nameOrPath));
+  if (isPackPath(nameOrPath)) return loadPack(resolve(cwd, nameOrPath));
+  return packNamed(nameOrPath, packs);
+}
+
+/** The pack among `packs` (the built-in ones by default) whose name is `name`; refuses, listing the names there are, when none is. */
+export async function packNamed(name: string, packs?: readonly Pack[]): Promise<Pack> {
   packs ??= await builtInPacks();
-  const found = packs.find((pack) => pack.manifest.name === nameOrPath);
-  if (found === undefined) throw new UnknownPack(nameOrPath, packs.map((pack) => pack.manifest.name));
+  const found = packs.find((pack) => pack.manifest.name === name);
+  if (found === undefined) throw new UnknownPack(name, packs.map((pack) => pack.manifest.name));
   return found;
 }

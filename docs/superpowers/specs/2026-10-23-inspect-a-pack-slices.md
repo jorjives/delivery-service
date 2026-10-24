@@ -7,6 +7,8 @@
 
 ## Slice 1: Read a built-in pack in plain words
 
+**Status:** ✅ Complete — 2026-10-23 — `52b38bf`
+**Tests:** ✅ Recorded — 2026-10-23 — `a9972ec` — cli — 1 UAT + 9 AC, 0 skipped
 **Delivers:** A project owner can ask what a built-in pack will do and get an account in plain sentences, followed by every instruction the pack gives the agent, without running anything.
 
 **Operational note:** The command reads and writes nothing, calls no agent and runs no pack code, so it is safe on any pack. A check that every built-in pack can be read this way, and that what is shown matches what a run would use, belongs in the project's normal checks.
@@ -48,6 +50,8 @@
 
 ## Slice 2: Be told what is unusual, and whether anything widens what the agent may do
 
+**Status:** ✅ Complete — 2026-10-24 — `404f783`
+
 **Delivers:** A project owner is told every time whether a pack widens what the agent may do beyond the project's defaults, and is pointed at the few things worth a second look, including hidden characters in instructions.
 
 ### Prerequisites
@@ -56,13 +60,13 @@
 
 ### Acceptance Criteria
 
-- [ ] Every account states whether anything in the pack widens what the agent may do beyond the project's defaults, names the dimensions compared, and says the instructions themselves are not analysed and must be read
-- [ ] A "Things to look at" list is always present and is limited to: a workflow that lands without sign-off, a sign-off that stops only critical ideas, hidden characters in an instruction, and a pack in the older format whose effective guards differ from what its file says
-- [ ] Anything that would genuinely widen the agent's powers appears in the same list, so a future pack field that does so cannot pass unremarked
-- [ ] Added guards, a sign-off step or skipped follow-on steps are reported as plain facts, not as flags
-- [ ] When nothing is found the output says nothing unusual was found in what is checked and that this is not a guarantee about the instructions
-- [ ] Control, bidirectional, zero-width and escape characters are shown visibly, counted, and never printed raw; each occurrence is listed with where it is
-- [ ] The account never calls a pack safe, clean, verified or trusted
+- [x] Every account states whether anything in the pack widens what the agent may do beyond the project's defaults, names the dimensions compared, and says the instructions themselves are not analysed and must be read
+- [x] A "Things to look at" list is always present and is limited to: a workflow that lands without sign-off, a sign-off that stops only critical ideas, hidden characters in an instruction, and a pack in the older format whose effective guards differ from what its file says
+- [x] Anything that would genuinely widen the agent's powers appears in the same list, so a future pack field that does so cannot pass unremarked
+- [x] Added guards, a sign-off step or skipped follow-on steps are reported as plain facts, not as flags
+- [x] When nothing is found the output says nothing unusual was found in what is checked and that this is not a guarantee about the instructions
+- [x] Control, bidirectional, zero-width and escape characters are shown visibly, counted, and never printed raw; each occurrence is listed with where it is
+- [x] The account never calls a pack safe, clean, verified or trusted
 
 ### UAT
 
@@ -81,6 +85,10 @@
 ---
 
 ## Slice 3: Inspect any pack folder, and be refused plainly when it holds more than a pack should
+
+**Status:** ✅ Complete — 2026-10-24 — `137b359`
+
+**Tests:** ✅ Recorded — 2026-10-24 — `542a012` — cli — 2 UAT + 16 AC, 0 skipped
 
 **Delivers:** A project owner or pack author can inspect a folder that is not yet in any project, and is refused with a plain explanation naming the file when the folder holds something the pack format does not name.
 
@@ -119,6 +127,9 @@
 ---
 
 ## Slice 4: Look at one workflow, or hand the account to a script
+
+**Status:** ✅ Complete — 2026-10-24 — `31c6d9a`
+**Tests:** ✅ Recorded — 2026-10-24 — `72fdb72` — cli — 4 UAT + 8 AC, 0 skipped
 
 **Delivers:** An on-call engineer can read one workflow's instructions and limits in full, and a pack author or script can read the same account as a stable document.
 

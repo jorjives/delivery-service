@@ -1,13 +1,12 @@
 import { realpathSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
-import type { CloserRef, GateRef } from "../schema.js";
 import { DEFAULT_LABEL } from "../github-source.js";
 import { CloserModuleLoadFailure, GateModuleLoadFailure, InvalidCloserExport, InvalidGateExport } from "../errors.js";
 import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig, type SourceConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, renderFailure, type ExitCode } from "./failures.js";
-import { presetPhrase } from "./gate-presets.js";
 import { withPackWorkflows } from "./pack-workflows.js";
+import { gateLine, closerPhrase } from "./project-phrases.js";
 import { findRepository } from "./project.js";
 import { checkCustomModules, resolveProject, type ProjectSettings } from "./settings.js";
 
@@ -20,38 +19,6 @@ export interface ValidateOptions {
 export const NO_CONFIG = `No ${CONFIG_BASENAME}.json found. Run \`delivery init\` to create one, or see the getting-started guide (docs/getting-started.md).`;
 
 export const READY = "Ready to run.";
-
-/** What the check does, as a person reads it. Total over the gate types, so a new one does not compile until it can be described. */
-function gatePhrase(gateRef: GateRef): string {
-  switch (gateRef.type) {
-    case "command": {
-      const after = gateRef.setup === undefined ? "" : `, after \`${gateRef.setup}\``;
-      const then = gateRef.teardown === undefined ? "" : `, then \`${gateRef.teardown}\``;
-      return `runs \`${gateRef.command}\`${after}${then}`;
-    }
-    case "custom":
-      return `your own check, in \`${gateRef.modulePath}\``;
-  }
-}
-
-/** The check a run would use, by name when the file chose a ready-made one and nothing on the command line replaced it. */
-function gateLine({ gateRef, gatePreset }: ProjectSettings): string {
-  return gatePreset !== undefined && gateRef.type === "command" ? presetPhrase(gatePreset, gateRef.command) : gatePhrase(gateRef);
-}
-
-/** What happens to work that passes, as a person reads it. Total over the closer types, as `outcome.ts`'s `landing` is. */
-function closerPhrase(closerRef: CloserRef): string {
-  switch (closerRef.type) {
-    case "commit-to-branch":
-      return "commits to a new branch";
-    case "merge-back":
-      return "merges into your base branch";
-    case "open-pr":
-      return "opens a pull request";
-    case "custom":
-      return `your own closing action, in \`${closerRef.modulePath}\``;
-  }
-}
 
 /** Where one source finds work, as a person reads it; a fallback says it is read only when nothing else has any. */
 function sourcePhrase(source: SourceConfig): string {

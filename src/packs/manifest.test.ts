@@ -1,9 +1,10 @@
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { UnknownPack } from "../errors.js";
-import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, inspectPack, isBuiltInPack, loadPack, resolvePack } from "./manifest.js";
+import { PackManifest } from "./pack-format.js";
+import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, IS_A_FOLDER, NOT_UTF8, packNamed, promptOf, readPack, isBuiltInPack, loadPack, resolvePack, isPackPath, newerFormat } from "./manifest.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
 
@@ -78,6 +79,21 @@ describe("the built-in packs", () => {
     expect(isBuiltInPack(join(BUILT_IN_PACKS, "..", "packs-mine", "code-review"))).toBe(false);
     expect(isBuiltInPack(BUILT_IN_PACKS)).toBe(false);
   });
+
+  it("keeps each workflow's instructions as the author's words and the harness's, and pins exactly their join", async () => {
+    for (const pack of await builtInPacks()) {
+      for (const [name, workflow] of Object.entries(pack.workflows)) {
+        const instructions = pack.instructions[name];
+        if (!instructions) throw new Error(`no instructions for ${name}`);
+        expect(workflow.steps[0]?.prompt).toBe(promptOf(instructions));
+      }
+    }
+    const deprecations = (await builtInPacks()).find((p) => p.manifest.name === "deprecations");
+    if (!deprecations) throw new Error("the deprecations pack is not built in");
+    expect(deprecations.instructions["deprecations:scan"]?.authored).toBe(readFileSync(join(deprecations.dir, "scan.md"), "utf-8").trim());
+    expect(deprecations.instructions["deprecations:scan"]?.harness).toMatch(/^## What to hand back\n/);
+    expect(deprecations.instructions["deprecations:tests"]).toEqual({ authored: readFileSync(join(deprecations.dir, "tests.md"), "utf-8").trim(), harness: null });
+  });
 });
 
 describe("a delivery.pack/2 manifest", () => {
@@ -93,23 +109,33 @@ describe("a delivery.pack/2 manifest", () => {
 
   it("refuses a delivery.pack/1 manifest with a sentence saying what changed", async () => {
     const dir = packDir({ schema: "delivery.pack/1", name: "old", version: "1.0.0", title: "Old", summary: "Old." });
-    expect(await inspectPack(dir)).toMatchObject({ ok: false, problems: [{ field: "schema", message: expect.stringContaining("delivery.pack/2") }] });
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ field: "schema", message: expect.stringContaining("delivery.pack/2") }] });
   });
 
-  it.each(["delivery.pack/1", "delivery.pack/9"])("refuses %s, naming both versions it reads", async (schema) => {
-    expect(await inspectPack(packDir({ ...minimal, schema }))).toEqual({
+  it.each(["delivery.pack/1", "delivery.pack/x", 3])("refuses %s, naming both versions it reads", async (schema) => {
+    expect(await readPack(packDir({ ...minimal, schema }))).toEqual({
       ok: false,
       schema: null,
-      problems: [{ file: expect.any(String), field: "schema", message: `"schema" is "${schema}", but this harness reads delivery.pack/2 and delivery.pack/3 (see docs/writing-a-pack.md)` }],
+      prompts: null,
+      problems: [{ file: expect.any(String), field: "schema", message: `"schema" is ${JSON.stringify(schema)}, but this harness reads delivery.pack/2 and delivery.pack/3 (see docs/writing-a-pack.md)` }],
+    });
+  });
+
+  it.each(["delivery.pack/4", "delivery.pack/10"])("refuses %s as newer than this harness, and says to upgrade", async (schema) => {
+    expect(await readPack(packDir({ ...minimal, schema }))).toEqual({
+      ok: false,
+      schema: null,
+      prompts: null,
+      problems: [{ file: expect.any(String), field: "schema", message: newerFormat(schema) }],
     });
   });
 
   it("says which version it read a manifest as, even when the manifest has a mistake", async () => {
-    expect(await inspectPack(v3Dir({ ...v3, extra: 1 }))).toMatchObject({ ok: false, schema: "delivery.pack/3" });
-    expect(await inspectPack(packDir({ ...minimal, extra: 1 }))).toMatchObject({ ok: false, schema: "delivery.pack/2" });
+    expect(await readPack(v3Dir({ ...v3, extra: 1 }))).toMatchObject({ ok: false, schema: "delivery.pack/3" });
+    expect(await readPack(packDir({ ...minimal, extra: 1 }))).toMatchObject({ ok: false, schema: "delivery.pack/2" });
     const undeclared: Record<string, unknown> = { ...v3, extra: 1 };
     delete undeclared.schema;
-    expect(await inspectPack(v3Dir(undeclared))).toMatchObject({ ok: false, schema: "delivery.pack/3" });
+    expect(await readPack(v3Dir(undeclared))).toMatchObject({ ok: false, schema: "delivery.pack/3" });
   });
 
   it("reports a /2 pack as /2, its find as <name>:scan", async () => {
@@ -119,12 +145,12 @@ describe("a delivery.pack/2 manifest", () => {
 
   it("refuses a key the format does not name", async () => {
     const dir = packDir({ ...minimal, tools: ["Bash"] });
-    expect(await inspectPack(dir)).toMatchObject({ ok: false, problems: [{ message: expect.stringContaining(DATA_ONLY) }] });
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ message: expect.stringContaining(DATA_ONLY) }] });
   });
 
   it("cannot widen what the fix's agent may do: a tool list is not part of the format", async () => {
     const dir = editedPack((manifest) => (manifest.allowedTools = ["Read", "Bash"]));
-    expect(await inspectPack(dir)).toMatchObject({ ok: false, problems: [{ field: "allowedTools", message: expect.stringContaining(DATA_ONLY) }] });
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ field: "allowedTools", message: expect.stringContaining(DATA_ONLY) }] });
   });
 
   it("does not hold a fix workflow when the manifest says nothing about holding", async () => {
@@ -141,7 +167,7 @@ describe("a delivery.pack/2 manifest", () => {
 
   it("refuses a hold threshold that is not a severity word", async () => {
     const dir = editedPack((manifest) => (manifest.hold = "severe"));
-    expect(await inspectPack(dir)).toMatchObject({ ok: false, problems: [{ field: "hold", message: expect.stringContaining('"hold"') }] });
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ field: "hold", message: expect.stringContaining('"hold"') }] });
   });
 
   it("is refused when there is no pack in the folder, naming where it looked", async () => {
@@ -193,7 +219,7 @@ describe("a delivery.pack/3 manifest", () => {
 
   it("names a missing prompt file once, though two workflows share it", async () => {
     const dir = v3Dir({ ...v3, workflows: { scan: v3.workflows.scan, code: { kind: "act", summary: "Code.", prompt: "act.md" }, tests: { kind: "act", summary: "Test.", prompt: "act.md" } } }, { "scan.md": "# Scan\n" });
-    expect(await inspectPack(dir)).toEqual({ ok: false, schema: "delivery.pack/3", problems: [{ file: join(dir, "act.md"), field: null, message: "is missing" }] });
+    expect(await readPack(dir)).toEqual({ ok: false, schema: "delivery.pack/3", prompts: ["scan.md", "act.md"], problems: [{ file: join(dir, "act.md"), field: null, message: "is missing" }] });
   });
 
   it("changes its identity when any workflow's instructions change", async () => {
@@ -201,6 +227,13 @@ describe("a delivery.pack/3 manifest", () => {
     const before = (await loadPack(dir)).hash;
     writeFileSync(join(dir, "tests.md"), "# Different\n");
     expect((await loadPack(dir)).hash).not.toBe(before);
+  });
+
+  it("keeps the author's words as the agent is given them: without the blank lines around them", async () => {
+    const dir = v3Dir(v3, { "scan.md": "\n\n# Scan\n\n", "code.md": "# Code\n", "tests.md": "  \n# Tests\n" });
+    const result = await readPack(dir);
+    expect(result.ok && result.pack.instructions["mine:tests"]?.authored).toBe("# Tests");
+    expect(result.ok && result.pack.instructions["mine:scan"]?.authored).toBe("# Scan");
   });
 });
 
@@ -227,22 +260,22 @@ describe("a pack from a folder", () => {
   it("names a missing instructions file by its own path", async () => {
     const dir = editedPack(() => undefined);
     rmSync(join(dir, "scan.md"));
-    expect(await inspectPack(dir)).toEqual({ ok: false, schema: "delivery.pack/2", problems: [{ file: join(dir, "scan.md"), field: null, message: "is missing" }] });
+    expect(await readPack(dir)).toEqual({ ok: false, schema: "delivery.pack/2", prompts: ["scan.md", "fix.md"], problems: [{ file: join(dir, "scan.md"), field: null, message: "is missing" }] });
   });
 
   it("refuses instructions outside the folder", async () => {
     const dir = editedPack((manifest) => ((manifest.scan as { prompt: string }).prompt = "../scan.md"));
-    expect(await inspectPack(dir)).toMatchObject({ ok: false, problems: [{ field: "scan.prompt" }] });
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ field: "scan.prompt" }] });
   });
 
   it("refuses a version that is not one", async () => {
     const dir = editedPack((manifest) => (manifest.version = "one"));
-    expect(await inspectPack(dir)).toMatchObject({ ok: false, problems: [{ field: "version" }] });
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ field: "version" }] });
   });
 
   it("refuses a guard the format does not name", async () => {
     const dir = packDir({ ...minimal, fix: { prompt: "fix.md", guards: { add: ["no-such-guard"] } } });
-    expect(await inspectPack(dir)).toMatchObject({ ok: false, problems: [{ field: "fix.guards.add.0" }] });
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ field: "fix.guards.add.0" }] });
   });
 });
 
@@ -253,7 +286,7 @@ describe("inspecting a pack", () => {
       m.hold = "severe";
       delete m.title;
     });
-    const result = await inspectPack(dir);
+    const result = await readPack(dir);
     expect(result.ok).toBe(false);
     if (result.ok) return;
     const file = join(dir, "pack.json");
@@ -266,8 +299,39 @@ describe("inspecting a pack", () => {
     expect(result.problems).toHaveLength(3);
   });
 
+  it("refuses a prompt that is not valid UTF-8, naming the file", async () => {
+    const dir = v3Dir(v3);
+    writeFileSync(join(dir, "code.md"), Buffer.from([0x23, 0x20, 0xff, 0x0a]));
+    expect(await readPack(dir)).toEqual({
+      ok: false,
+      schema: "delivery.pack/3",
+      prompts: ["scan.md", "code.md", "tests.md"],
+      problems: [{ file: join(dir, "code.md"), field: null, message: NOT_UTF8 }],
+    });
+  });
+
+  it("refuses a prompt name that is a folder instead of throwing", async () => {
+    const dir = v3Dir(v3);
+    rmSync(join(dir, "tests.md"));
+    mkdirSync(join(dir, "tests.md"));
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ file: join(dir, "tests.md"), message: IS_A_FOLDER }] });
+  });
+
+  it("keeps a byte-order mark as the text it was, so the fingerprint does not move", async () => {
+    const dir = v3Dir(v3, { "scan.md": "\uFEFF# Scan\n", "code.md": "# Code\n", "tests.md": "# Tests\n" });
+    const read = await readPack(dir);
+    expect(read.ok && read.pack.instructions["mine:scan"]?.authored.startsWith("\uFEFF")).toBe(true);
+  });
+
+  it("names the prompts it read the manifest as naming when the rules refuse it, and null when it could not parse", async () => {
+    expect(await readPack(v3Dir({ ...v3, extra: 1 }))).toMatchObject({ prompts: null });
+    // a rules failure: a find whose ideasFor names an act that does not exist
+    const withBadIdeasFor = { ...v3, workflows: { ...v3.workflows, scan: { ...v3.workflows.scan, ideasFor: ["nope"] } } };
+    expect(await readPack(v3Dir(withBadIdeasFor))).toMatchObject({ ok: false, prompts: ["scan.md", "code.md", "tests.md"] });
+  });
+
   it("gives the loaded pack when there is nothing wrong", async () => {
-    const result = await inspectPack(join(BUILT_IN_PACKS, "code-review"));
+    const result = await readPack(join(BUILT_IN_PACKS, "code-review"));
     expect(result.ok && result.pack.manifest.name).toBe("code");
   });
 });
@@ -302,9 +366,13 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
   /** The folder a manifest is written to, and the exact problems it is refused with, each as its field and sentence. */
   async function refusedWith(manifest: object, problems: Array<[string | null, string]>): Promise<void> {
     const dir = v3Dir(manifest);
-    expect(await inspectPack(dir)).toEqual({
+    // The prompt names are those the manifest gives once it parses as the format; a manifest that does not parse names none.
+    const parsed = PackManifest.safeParse(manifest);
+    const prompts = parsed.success ? [...new Set(Object.values(parsed.data.workflows).map(({ prompt }) => prompt))] : null;
+    expect(await readPack(dir)).toEqual({
       ok: false,
       schema: "delivery.pack/3",
+      prompts,
       problems: problems.map(([field, message]) => ({ file: join(dir, "pack.json"), field, message })),
     });
   }
@@ -412,7 +480,7 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
 
   it.each(["gate", "agent", "tools", "allowedTools", "closer", "commands", "after", "steps"])("refuses %s on an act or a find as data-only", async (key) => {
     for (const workflow of ["code", "scan"]) {
-      const result = await inspectPack(v3Dir(withKey(v3, workflow, key, "x")));
+      const result = await readPack(v3Dir(withKey(v3, workflow, key, "x")));
       expect(result).toMatchObject({ ok: false, problems: [{ field: `workflows.${workflow}.${key}`, message: `"workflows.${workflow}.${key}" ${DATA_ONLY}` }] });
     }
   });
@@ -435,10 +503,27 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
 
   it("counts an act offered twice by one find as one target", async () => {
     const dir = v3Dir({ ...v3, workflows: { scan: { kind: "find", prompt: "scan.md", ideasFor: ["code", "code"] }, code: { kind: "act", prompt: "code.md" } } });
-    expect((await inspectPack(dir)).ok).toBe(true);
+    expect((await readPack(dir)).ok).toBe(true);
   });
 
   it("reports a /2 manifest's unknown settings key in /2 terms", async () => {
-    expect(await inspectPack(packDir({ ...minimal, settings: {} }))).toMatchObject({ ok: false, problems: [{ field: "settings", message: `"settings" ${DATA_ONLY}` }] });
+    expect(await readPack(packDir({ ...minimal, settings: {} }))).toMatchObject({ ok: false, problems: [{ field: "settings", message: `"settings" ${DATA_ONLY}` }] });
+  });
+});
+
+describe("packNamed", () => {
+  it("returns the built-in pack of that name", async () => {
+    expect((await packNamed("security")).manifest.name).toBe("security");
+  });
+
+  it("refuses a name no built-in pack has, listing the ones there are", async () => {
+    await expect(packNamed("nope")).rejects.toBeInstanceOf(UnknownPack);
+    await expect(packNamed("nope")).rejects.toMatchObject({ available: ["code", "deprecations", "security"] });
+  });
+});
+
+describe("isPackPath", () => {
+  it.each([["./x", true], ["../x", true], ["a/b", true], ["a\\b", true], [".", true], ["deprecations", false]])("isPackPath(%s) is %s", (arg, path) => {
+    expect(isPackPath(arg)).toBe(path);
   });
 });

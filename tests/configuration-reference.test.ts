@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ItemFrontMatter } from "../src/backlog.js";
+import { GUARD_REFUSES } from "../src/guards.js";
 import { AfterStep, Budgets, DeliveryConfig, SourceConfig, StepConfig, WorkflowConfig } from "../src/cli/config.js";
 import { PRESET_NAMES } from "../src/cli/gate-presets.js";
 import { CloserRef, FenceMode, GuardName, ItemCheck, SEVERITIES } from "../src/schema.js";
@@ -49,5 +50,15 @@ describe("the configuration reference", () => {
     ],
   ] as const)("names every %s under %s", (_what, heading, names) => {
     expect(unnamed(section(heading), names)).toEqual([]);
+  });
+
+  it("words every guard in its table as the harness words it to an owner", () => {
+    const rows = section("## Guards").split("\n").filter((line) => line.startsWith("| `"));
+    for (const name of GuardName.options) {
+      const row = rows.find((line) => line.startsWith(`| \`${name}\` |`));
+      const refuses = row?.split("|")[3]?.trim() ?? "";
+      const sentence = GUARD_REFUSES[name];
+      expect(refuses.startsWith(sentence.charAt(0).toUpperCase() + sentence.slice(1))).toBe(true);
+    }
   });
 });

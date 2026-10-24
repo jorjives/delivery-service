@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import { z } from "zod";
 import { GuardName, Severity } from "../schema.js";
 import type { JsonSchema } from "../report/json-schema.js";
+import { hasHidden } from "./hidden-characters.js";
 
 /** The versions of the pack format this build reads. `/2` is read, never written. */
 export const PACK_SCHEMAS_READ = ["delivery.pack/2", "delivery.pack/3"] as const;
@@ -11,7 +12,11 @@ export type PackSchemaVersion = (typeof PACK_SCHEMAS_READ)[number];
 export const PACK_SCHEMA = "delivery.pack/3";
 
 const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lower-case letters, digits and dashes");
-const Sentence = z.string().trim().min(1, "must not be empty");
+const Sentence = z
+  .string()
+  .trim()
+  .min(1, "must not be empty")
+  .refine((text) => !hasHidden(text), "must be one line of plain text, with no line break, tab or hidden character");
 const PackFile = z.string().refine((file) => file !== "" && basename(file) === file, "must be the name of a file in the pack folder");
 const Version = z.string().regex(/^\d+\.\d+\.\d+$/, "must be a version such as 1.0.0");
 
@@ -80,9 +85,12 @@ export type PackManifest = z.infer<typeof PackManifest>;
  */
 export const packSchema = (): JsonSchema => ({ ...z.toJSONSchema(PackManifest, { io: "input" }), title: PACK_SCHEMA });
 
+/** The guards the upgrade adds to a `/2` pack's fix that its file does not state: `tests-unchanged`, unless the file names it too. */
+export const upgradeGuards = (v2: PackManifestV2): GuardName[] => (v2.fix.guards?.add.includes("tests-unchanged") ? [] : ["tests-unchanged"]);
+
 /** The same pack as `delivery.pack/3` means it: `scan` becomes a find offering `fix`, and `fix` an act. Pure and total. */
 export function upgradeV2(v2: PackManifestV2): PackManifest {
-  const fixAdd = [...new Set<GuardName>(["tests-unchanged", ...(v2.fix.guards?.add ?? [])])];
+  const fixAdd = [...upgradeGuards(v2), ...(v2.fix.guards?.add ?? [])];
   const workflows: Record<string, PackWorkflow> = {
     scan: { kind: "find", prompt: v2.scan.prompt, ideasFor: ["fix"] },
     fix: {

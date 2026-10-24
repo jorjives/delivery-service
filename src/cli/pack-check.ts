@@ -6,7 +6,7 @@ import { allRuns } from "./runs.js";
 import { readBacklog, itemTask, type BacklogItem } from "../backlog.js";
 import { ledgerPath, readItemLedger } from "../item-ledger.js";
 import { taskIntent } from "../task-list.js";
-import { inspectPack, isBuiltInPack, type Pack, type PackProblem } from "../packs/manifest.js";
+import { readPack, isBuiltInPack, type Pack, type PackProblem } from "../packs/manifest.js";
 import { FIXTURES, readFixtures } from "../packs/pack-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { git } from "../git-exec.js";
@@ -105,7 +105,7 @@ export class NotTrusted extends Error {
  * questions unless told to.
  */
 export async function checkPack(dir: string, { env = process.env, confirm }: { env?: NodeJS.ProcessEnv; confirm?: () => Promise<boolean> } = {}): Promise<PackCheck> {
-  const [inspected, read] = await Promise.all([inspectPack(dir), readFixtures(dir)]);
+  const [inspected, read] = await Promise.all([readPack(dir), readFixtures(dir)]);
   const pack = inspected.ok ? { name: inspected.pack.manifest.name, version: inspected.pack.manifest.version, hash: inspected.pack.hash } : null;
   const problems = [...(inspected.ok ? [] : inspected.problems), ...(read.ok ? [] : read.problems)];
   if (!inspected.ok || !read.ok) return { ready: false, pack, problems, run: null, sentToAgent: false };
