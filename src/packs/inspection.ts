@@ -80,3 +80,20 @@ export function inspectionOf(pack: Pack): Inspection {
     workflows: Object.entries(manifest.workflows).map(([local, workflow]) => inspectedWorkflow(pack, local, workflow)),
   };
 }
+
+/** The check or the landing the project's own settings name, as the owner reads it. */
+export const Selection = z.object({ source: z.literal("project"), type: z.string(), summary: z.string() });
+export type Selection = z.infer<typeof Selection>;
+
+/** The project a pack is inspected in: the check and landing that will judge and land its work, read from data only. */
+export const ProjectBaseline = z.object({
+  found: z.boolean(),
+  /** The project's top folder, when one was found. */
+  path: z.string().nullable(),
+  /** How its settings were read: a JSON file, no file (the defaults), a JavaScript file this command does not run, or a file that could not be read. */
+  config: z.enum(["read", "none", "code", "unreadable"]),
+  gate: Selection.nullable(),
+  closer: Selection.nullable(),
+});
+export type ProjectBaseline = z.infer<typeof ProjectBaseline>;
+export const NO_PROJECT: ProjectBaseline = { found: false, path: null, config: "none", gate: null, closer: null };
