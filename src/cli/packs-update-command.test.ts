@@ -1,5 +1,4 @@
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InstalledPackRefused, PackSourceUnavailable } from "../errors.js";
@@ -10,7 +9,7 @@ import { readLock } from "../packs/install/lock.js";
 import { sriOf } from "../packs/install/pack-source.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery, PACKAGE } from "./command-fixtures.js";
+import { delivery, PACKAGE, withPrivateTmpdir } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { addedDocsDrift, tree } from "./installed-fixtures.js";
 import { notAddedLines } from "./installed-render.js";
@@ -224,19 +223,11 @@ describe("delivery packs update", () => {
   });
 
   it("leaves no temporary folder behind", async () => {
-    // Its own temporary folder, so another test file running at once cannot add or remove a folder this one counts.
-    const scratch = mkdtempSync(join(tmpdir(), "update-scratch-"));
-    const previous = process.env.TMPDIR;
-    process.env.TMPDIR = scratch;
-    try {
+    await withPrivateTmpdir(async (scratch) => {
       await packsUpdateCommand("docs-drift", undefined, context(repo).ctx, scriptedAsk({ confirm: false }).ask, source);
       await packsUpdateCommand("docs-drift", undefined, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source);
       expect(tempFolders(scratch)).toEqual([]);
-    } finally {
-      if (previous === undefined) delete process.env.TMPDIR;
-      else process.env.TMPDIR = previous;
-      rmSync(scratch, { recursive: true, force: true });
-    }
+    });
   });
 
   it("is a subcommand of delivery packs, refusing an unknown name with the added packs named", async () => {

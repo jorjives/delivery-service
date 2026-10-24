@@ -1,8 +1,9 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
+import { vi } from "vitest";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { ledgerPath } from "../item-ledger.js";
 import { create, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
@@ -29,6 +30,18 @@ import { initTempRepo } from "../temp-repo.js";
 export { runsRoot };
 
 /** Test support: the scratch project the command tests run against, and the task they give it. */
+/** Runs `body` with `TMPDIR` pointing at a private empty folder, so folders made by other test files running at once cannot show in a count of this one's. */
+export const withPrivateTmpdir = async (body: (dir: string) => Promise<void>): Promise<void> => {
+  const own = mkdtempSync(join(tmpdir(), "private-tmp-"));
+  vi.stubEnv("TMPDIR", own);
+  try {
+    await body(own);
+  } finally {
+    vi.unstubAllEnvs();
+    rmSync(own, { recursive: true, force: true });
+  }
+};
+
 export const PACKAGE = JSON.stringify({ name: "scratch", private: true, scripts: { test: "exit 0" } });
 export const TASK = "add a function that says hello to a name, with a test";
 export const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
