@@ -86,6 +86,8 @@
 
 ## Slice 3: Inspect any pack folder, and be refused plainly when it holds more than a pack should
 
+**Status:** ✅ Complete — 2026-10-24 — `137b359`
+
 **Tests:** ✅ Recorded — 2026-10-24 — `542a012` — cli — 2 UAT + 16 AC, 0 skipped
 
 **Delivers:** A project owner or pack author can inspect a folder that is not yet in any project, and is refused with a plain explanation naming the file when the folder holds something the pack format does not name.
