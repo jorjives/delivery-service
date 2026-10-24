@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 import { builtInPacks, DATA_ONLY } from "../packs/manifest.js";
 import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK } from "../packs/pack-folder.js";
-import { inspectionOf, NO_PROJECT, type Inspection } from "../packs/inspection.js";
+import { inspectionOf, NO_PROJECT, type Inspection, type InspectionBase, withFindings } from "../packs/inspection.js";
 import type { Severity } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
 import { INSPECT_RULE, INSPECT_WIDTH, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
@@ -31,30 +31,34 @@ function model(overrides: ModelOverrides = {}): Inspection {
     name: "test:act",
     local: "act",
     kind: "act" as const,
-    ...(summary === undefined ? {} : { summary }),
+    summary: summary ?? null,
+    offers: null,
     steps: [{ name: "do", instructions: { authored: overrides.authored ?? "Do the thing.\nThen stop.", harness: null }, guards: { added: [], off: [] } }],
     upgraded: [],
     widens: [],
-    hold: "hold" in overrides ? (overrides.hold ?? null) : "high",
+    hold: "hold" in overrides ? (overrides.hold ?? null) : ("high" as const),
   };
   const find = {
     name: "test:find",
     local: "find",
     kind: "find" as const,
+    summary: null,
     offers: ["test:act"],
     steps: [{ name: "scan", instructions: { authored: "Look around.", harness: "Write each idea as one line." }, guards: { added: ["backlog-only" as const], off: [] } }],
     upgraded: [],
     widens: [],
     hold: null,
   };
-  return {
+  const base: InspectionBase = {
     schema: "delivery.pack-inspection/1",
-    pack: { name: "test", version: "1.0.0", title: "Test pack", summary: "A pack for tests.", format: "delivery.pack/3", hash: "a".repeat(64), source: { kind: "built-in", path: "/packs/test" } },
+    ok: true,
+    pack: { name: "test", version: "1.0.0", title: "Test pack", summary: "A pack for tests.", format: "delivery.pack/3", hash: "a".repeat(64), workflows: ["test:find", "test:act"], source: { kind: "built-in", path: "/packs/test" } },
     defaultGuards: ["tests-untouched"],
     workflows: [find, act],
     project: NO_PROJECT,
     files: [],
-  } as Inspection;
+  };
+  return withFindings(base);
 }
 
 /** Every line outside the instructions: the lines between each pair of rules are the pack's words and the harness's, and are left out. */
@@ -78,7 +82,7 @@ function withoutPackWords(lines: string[], inspection: Inspection): string {
   const packWords: string[] = [];
   for (const workflow of inspection.workflows) for (const step of workflow.steps) packWords.push(step.instructions.authored);
   packWords.push(inspection.pack.title, inspection.pack.summary);
-  for (const workflow of inspection.workflows) if (workflow.summary !== undefined) packWords.push(workflow.summary);
+  for (const workflow of inspection.workflows) if (workflow.summary !== null) packWords.push(workflow.summary);
   for (const word of packWords) if (word !== "") text = text.split(word).join("");
   return text;
 }
@@ -173,7 +177,7 @@ it("keeps pack metadata and the source path on the lines it writes, with control
   inspection.pack.source = { kind: "folder", path: `/p/${ESC}]0;x\x07\nforged` };
   const act = inspection.workflows[1];
   if (act) act.summary = `Act\nforged${ESC}`;
-  const lines = renderInspection(inspection);
+  const lines = renderInspection(withFindings(inspection));
   expect(lines.some((l) => l.startsWith("forged"))).toBe(false);
   expect(lines.join("\n")).toContain("Pack: Title\\x1b[31m\\nforged");
   expect(lines.join("")).not.toMatch(RAW);
@@ -213,7 +217,7 @@ it("lists hidden characters in the title, summaries, the source path and the har
   const find = inspection.workflows[0];
   const scan = find?.steps[0];
   if (scan) scan.instructions.harness = `H${ESC}`;
-  const text = thingsToLookAt(renderInspection(inspection)).join(" ").replace(/\s+/g, " ");
+  const text = thingsToLookAt(renderInspection(withFindings(inspection))).join(" ").replace(/\s+/g, " ");
   expect(text).toContain("5 hidden characters");
   expect(text).toContain("\\x1b in the title, column 2");
   expect(text).toContain("\\n in the summary, column 2");
@@ -254,7 +258,7 @@ it("flags a guard an older-format pack gains on upgrade that its file does not s
   const inspection = model({ hold: "high" });
   const act = inspection.workflows[1];
   if (act) act.upgraded = ["tests-unchanged"];
-  const list = thingsToLookAt(renderInspection(inspection)).join(" ").replace(/\s+/g, " ");
+  const list = thingsToLookAt(renderInspection(withFindings(inspection))).join(" ").replace(/\s+/g, " ");
   expect(list).toContain('1. "act" is refused if it');
   expect(list).toContain("the pack's file does not say so");
 });
@@ -281,7 +285,7 @@ it("says a workflow widens what the agent may do, and lists it in Things to look
   const inspection = model({ hold: "high" });
   const act = inspection.workflows[1];
   if (act) act.widens = ["a guard turned off"];
-  const lines = renderInspection(inspection);
+  const lines = renderInspection(withFindings(inspection));
   const flat = lines.join(" ").replace(/\s+/g, " ");
   expect(flat).not.toContain("Nothing in this pack widens");
   expect(flat).toContain('"act" widens what the agent may do beyond your project\'s defaults: a guard turned off.');
@@ -293,8 +297,8 @@ it("says a workflow widens what the agent may do, and lists it in Things to look
 });
 
 it("names the project's check and landing when a project is found", () => {
-  const text = renderInspection({ ...model(), project: { found: true, path: "/work/shop", config: "read",
-    gate: { source: "project", type: "command", summary: "runs `npm test`" }, closer: { source: "project", type: "open-pr", summary: "opens a pull request" } } }).join("\n");
+  const text = renderInspection(withFindings({ ...model(), project: { found: true, path: "/work/shop", config: "read",
+    gate: { source: "project", type: "command", summary: "runs `npm test`" }, closer: { source: "project", type: "open-pr", summary: "opens a pull request" } } })).join("\n");
   expect(text).toContain("Your project, in /work/shop:\n  Check: runs `npm test`.\n  Landing: opens a pull request.");
 });
 
@@ -303,25 +307,25 @@ it.each([
   [{ ...NO_PROJECT, found: true, path: "/p", config: "code" as const }, "JavaScript file, which this command does not run"],
   [{ ...NO_PROJECT, found: true, path: "/p", config: "unreadable" as const }, "could not be read"],
 ])("says the check and landing are not known: %j", (project, words) => {
-  expect(flat(renderInspection({ ...model(), project }))).toContain(words);
+  expect(flat(renderInspection(withFindings({ ...model(), project })))).toContain(words);
 });
 
 it("lists documentation and housekeeping as not read, and never their content", () => {
-  const lines = renderInspection({ ...model(), files: [{ path: "README.md", role: "documentation" }, { path: ".git/", role: "housekeeping" }, { path: "look.md", role: "prompt" }] });
+  const lines = renderInspection(withFindings({ ...model(), files: [{ path: "README.md", role: "documentation" }, { path: ".git/", role: "housekeeping" }, { path: "look.md", role: "prompt" }] }));
   const at = lines.indexOf("Also in the folder");
   expect(lines.slice(at, at + 4)).toEqual(["Also in the folder", "  Not read when the pack is used, and not shown here:", "  README.md", "  .git/"]);
   expect(at).toBeLessThan(lines.indexOf(INSPECT_RULE));
 });
 
 it("shows a hidden character in a file name as visible text, and counts it", () => {
-  const lines = renderInspection({ ...model(), files: [{ path: `READ‮ME.md`, role: "documentation" }] });
+  const lines = renderInspection(withFindings({ ...model(), files: [{ path: `READ‮ME.md`, role: "documentation" }] }));
   expect(lines.join("\n")).not.toContain("‮");
   expect(lines).toContain("  READ<U+202E>ME.md");
   expect(flat(thingsToLookAt(lines))).toContain("the name of the file READ<U+202E>ME.md");
 });
 
 it("counts a hidden character in the project's path, and names it as the project's path", () => {
-  const lines = renderInspection({ ...model(), project: { ...NO_PROJECT, found: true, path: `/p/‮`, config: "read" } });
+  const lines = renderInspection(withFindings({ ...model(), project: { ...NO_PROJECT, found: true, path: `/p/‮`, config: "read" } }));
   expect(flat(thingsToLookAt(lines))).toContain("in the project's path");
 });
 

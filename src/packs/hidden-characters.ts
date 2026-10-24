@@ -33,6 +33,8 @@ export function showHidden(text: string, keep: { newline: boolean; tab: boolean 
 
 /** One hidden character found in a text: how it reads when shown, and where (1-based line and column, counted in characters). */
 export interface HiddenAt {
+  /** The character as the text holds it. */
+  char: string;
   shown: string;
   line: number;
   column: number;
@@ -52,7 +54,7 @@ export function hiddenAt(text: string, keep: { newline: boolean; tab: boolean })
       line += 1;
       column = 0;
     } else if (HIDDEN_ANY.test(char) && !(char === "\t" && keep.tab)) {
-      found.push({ shown: showHidden(char, { newline: false, tab: false }), line, column });
+      found.push({ char, shown: showHidden(char, { newline: false, tab: false }), line, column });
     }
   }
   return found;

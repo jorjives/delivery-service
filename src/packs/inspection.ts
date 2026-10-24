@@ -5,6 +5,7 @@ import { isBuiltInPack, type Pack } from "./manifest.js";
 import { wideningsOf } from "./widening.js";
 import { PACK_SCHEMAS_READ, type PackWorkflow } from "./pack-format.js";
 import { FILE_ROLES, type PackFolderFile } from "./pack-folder.js";
+import { Finding, findingsOf, HiddenCharacter, hiddenCharactersOf } from "./inspection-findings.js";
 
 export const INSPECTION_SCHEMA = "delivery.pack-inspection/1";
 
@@ -33,12 +34,12 @@ const InspectedStep = z.object({
   guards: z.object({ added: z.array(GuardName), off: z.array(GuardName) }),
 });
 
-const InspectedWorkflow = z.object({
+export const InspectedWorkflow = z.object({
   name: z.string(),
   local: z.string(),
   kind: z.enum(["find", "act"]),
-  summary: z.string().optional(),
-  offers: z.array(z.string()).optional(),
+  summary: z.string().nullable(),
+  offers: z.array(z.string()).nullable(),
   steps: z.array(InspectedStep),
   /** Guards the workflow gains on upgrade from an older format that its file does not state. */
   upgraded: z.array(GuardName),
@@ -46,10 +47,12 @@ const InspectedWorkflow = z.object({
   widens: z.array(z.string()),
   hold: Severity.nullable(),
 });
+export type InspectedWorkflow = z.infer<typeof InspectedWorkflow>;
 
 /** What a pack will do when run, as the loader reads it: the same pack the engine runs, shown rather than run. */
 export const Inspection = z.object({
   schema: z.literal(INSPECTION_SCHEMA),
+  ok: z.literal(true),
   pack: z.object({
     name: z.string(),
     version: z.string(),
@@ -58,13 +61,28 @@ export const Inspection = z.object({
     format: z.enum(PACK_SCHEMAS_READ),
     hash: z.string(),
     source: z.object({ kind: z.enum(["built-in", "folder"]), path: z.string() }),
+    /** Every qualified workflow name, in manifest order. */
+    workflows: z.array(z.string()),
   }),
   defaultGuards: z.array(GuardName),
   workflows: z.array(InspectedWorkflow),
   project: ProjectBaseline,
   files: z.array(z.object({ path: z.string(), role: z.enum(FILE_ROLES) })),
+  /** Whether any workflow widens what the agent may do: true exactly when a finding is a wider one. */
+  widens: z.boolean(),
+  findings: z.array(Finding),
+  hiddenCharacters: z.array(HiddenCharacter),
 });
 export type Inspection = z.infer<typeof Inspection>;
+
+/** An inspection before its findings are computed from it. */
+export type InspectionBase = Omit<Inspection, "widens" | "findings" | "hiddenCharacters">;
+
+/** The inspection with its findings, widening flag and hidden characters computed from the rest. Pure: no I/O. */
+export function withFindings(base: InspectionBase): Inspection {
+  const findings = findingsOf(base.workflows);
+  return { ...base, widens: findings.some((finding) => finding.relation === "wider"), findings, hiddenCharacters: hiddenCharactersOf(base) };
+}
 
 /** One workflow as it will run: its steps with their instructions and guard changes, and what a find offers or an act says it is for. */
 function inspectedWorkflow(pack: Pack, local: string, workflow: PackWorkflow): z.infer<typeof InspectedWorkflow> {
@@ -77,16 +95,18 @@ function inspectedWorkflow(pack: Pack, local: string, workflow: PackWorkflow): z
     instructions,
     guards: guardChanges({}, step.guards) ?? { added: [], off: [] },
   }));
-  const base = { name, local, kind: workflow.kind, steps, upgraded: [...(pack.upgraded[local] ?? [])], widens: wideningsOf(config), hold: config.hold ?? null };
+  const base = { name, local, kind: workflow.kind, summary: null, offers: null, steps, upgraded: [...(pack.upgraded[local] ?? [])], widens: wideningsOf(config), hold: config.hold ?? null };
   if (workflow.kind === "find") return { ...base, offers: [...new Set(workflow.ideasFor)].map((act) => `${pack.manifest.name}:${act}`) };
   return workflow.summary === undefined ? base : { ...base, summary: workflow.summary };
 }
 
-/** The model of a loaded pack: its identity and fingerprint, the guards on by default, every workflow as it will run, the project it is read in, and the folder's files. Pure: no I/O. */
+/** The model of a loaded pack: its identity and fingerprint, the guards on by default, every workflow as it will run, the project it is read in, the folder's files, and the findings. Pure: no I/O. */
 export function inspectionOf(pack: Pack, project: ProjectBaseline, files: readonly PackFolderFile[]): Inspection {
   const { manifest } = pack;
-  return {
+  const workflows = Object.entries(manifest.workflows).map(([local, workflow]) => inspectedWorkflow(pack, local, workflow));
+  const base: InspectionBase = {
     schema: INSPECTION_SCHEMA,
+    ok: true,
     pack: {
       name: manifest.name,
       version: manifest.version,
@@ -95,10 +115,12 @@ export function inspectionOf(pack: Pack, project: ProjectBaseline, files: readon
       format: pack.schema,
       hash: pack.hash,
       source: { kind: isBuiltInPack(pack.dir) ? "built-in" : "folder", path: pack.dir },
+      workflows: workflows.map(({ name }) => name),
     },
     defaultGuards: [...activeGuards({}).on],
-    workflows: Object.entries(manifest.workflows).map(([local, workflow]) => inspectedWorkflow(pack, local, workflow)),
+    workflows,
     project,
     files: files.map(({ path, role }) => ({ path, role })),
   };
+  return withFindings(base);
 }

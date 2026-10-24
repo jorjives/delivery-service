@@ -1,11 +1,12 @@
 import { relative } from "node:path";
 import { GUARD_REFUSES } from "../guards.js";
 import type { ProjectBaseline, Selection, Inspection } from "../packs/inspection.js";
+import type { Finding, HiddenCharacter } from "../packs/inspection-findings.js";
 import { atOrAbove } from "../item-check.js";
-import { hiddenAt, showHidden, showName, type HiddenAt } from "../packs/hidden-characters.js";
+import { showHidden, showName } from "../packs/hidden-characters.js";
 import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK, UNUSED_INSTRUCTIONS } from "../packs/pack-folder.js";
 import type { PackProblem } from "../packs/manifest.js";
-import { SEVERITIES } from "../schema.js";
+import { SEVERITIES, type GuardName } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
 
 /** The last line of every refusal: nothing from the pack was used. */
@@ -75,7 +76,7 @@ function shortBlock({ pack, workflows }: Inspection): string[] {
     return wrap(`${workflow.local} (${workflow.kind}): ${sentence}`, "  ", "    ");
   });
   const offers = workflows.flatMap((workflow) => {
-    if (workflow.kind !== "find" || workflow.offers === undefined || workflow.offers.length === 0) return [];
+    if (workflow.kind !== "find" || workflow.offers === null || workflow.offers.length === 0) return [];
     const names = workflow.offers.map((offer) => `"${localOf(offer)}"`);
     return wrap(`An idea from "${workflow.local}" may go to ${orList(names)}, and only after you approve it.`, "  ");
   });
@@ -157,43 +158,35 @@ function checksBlock({ project }: Inspection): string[] {
   ];
 }
 
-/** A hidden character found in the pack's words, and which of them it was found in. */
-interface Finding extends HiddenAt {
-  where: string;
-  /** Instructions have lines; a one-line field is placed by column alone. */
-  lined: boolean;
-}
-
-const inOneLine = (where: string, text: string): Finding[] =>
-  hiddenAt(text, { newline: false, tab: false }).map((found) => ({ ...found, where, lined: false }));
-
-const inInstructions = (where: string, text: string): Finding[] =>
-  hiddenAt(text, { newline: true, tab: true }).map((found) => ({ ...found, where, lined: true }));
-
-/** Every hidden character in the pack's own words and in the names of its files, in the order a reader meets them. */
-function hiddenFindings({ pack, workflows, project, files }: Inspection): Finding[] {
-  return [
-    ...inOneLine("the title", pack.title),
-    ...inOneLine("the summary", pack.summary),
-    ...inOneLine("the source path", pack.source.path),
-    ...(project.path === null ? [] : inOneLine("the project's path", project.path)),
-    ...workflows.flatMap((workflow) => [
-      ...inOneLine(`the summary of ${workflow.local}`, workflow.summary ?? ""),
-      // Every step of a workflow runs the same instructions; each distinct text is counted once.
-      ...unique(workflow.steps.map(({ instructions }) => instructions.authored)).flatMap((text) =>
-        inInstructions(`the pack's own instructions for ${workflow.local}`, text),
-      ),
-      ...unique(workflow.steps.map(({ instructions }) => instructions.harness ?? "")).flatMap((text) =>
-        inInstructions(`the words delivery-service adds to ${workflow.local}`, text),
-      ),
-    ]),
-    ...files.flatMap(({ path }) => inOneLine(`the name of the file ${showName(path)}`, path)),
-  ];
+/** Where a hidden character is, as the reader is told it: the place in the pack's words, or the file's name. */
+function placePhrase(hidden: HiddenCharacter): string {
+  const local = localOf(hidden.workflow ?? "");
+  switch (hidden.place) {
+    case "title":
+      return "the title";
+    case "summary":
+      return "the summary";
+    case "source-path":
+      return "the source path";
+    case "project-path":
+      return "the project's path";
+    case "workflow-summary":
+      return `the summary of ${local}`;
+    case "instructions":
+      return `the pack's own instructions for ${local}`;
+    case "harness":
+      return `the words delivery-service adds to ${local}`;
+    case "file-name":
+      return `the name of the file ${showName(hidden.file ?? "")}`;
+  }
 }
 
 /** One sentence per workflow that widens what the agent may do, naming how. */
-const wideningSentences = ({ workflows }: Inspection): string[] =>
-  workflows.filter(({ widens }) => widens.length > 0).map(({ local, widens }) => `"${local}" widens what the agent may do beyond your project's defaults: ${orList(widens)}.`);
+const wideningSentences = ({ workflows, findings }: Inspection): string[] =>
+  workflows.flatMap(({ name, local }) => {
+    const dimensions = findings.flatMap((finding) => (finding.code === "widens" && finding.workflow === name && finding.detail !== null ? [finding.detail] : []));
+    return dimensions.length === 0 ? [] : [`"${local}" widens what the agent may do beyond your project's defaults: ${orList(dimensions)}.`];
+  });
 
 function widenBlock(inspection: Inspection): string[] {
   const widening = wideningSentences(inspection);
@@ -207,27 +200,26 @@ function widenBlock(inspection: Inspection): string[] {
   ];
 }
 
+/** One sentence for a finding that is a note: a sign-off limit, or a guard an older format gains. */
+function noteSentence({ code, workflow, detail }: Finding): string {
+  const name = `"${localOf(workflow)}"`;
+  if (code === "lands-without-sign-off") return `${name} lands without asking for your sign-off once you have approved the idea.`;
+  if (code === "hold-only-critical") return `${name} asks for your sign-off only for ${detail} ideas; anything rated lower lands without it.`;
+  // An older-format guard always carries its guard name; the guard names are the keys of GUARD_REFUSES.
+  return `${name} is refused if it ${GUARD_REFUSES[detail as GuardName]}, though the pack's file does not say so. The older format adds this guard.`;
+}
+
 /** What a reader would not assume, as one sentence each: first anything that widens what the agent may do, then the acts whose limits are looser or unstated. */
 function flaggedSentences(inspection: Inspection): string[] {
-  const { workflows } = inspection;
-  return [...wideningSentences(inspection), ...workflows.flatMap((workflow) => {
-    if (workflow.kind !== "act") return [];
-    const name = `"${workflow.local}"`;
-    const sentences: string[] = [];
-    if (workflow.hold === null) sentences.push(`${name} lands without asking for your sign-off once you have approved the idea.`);
-    else if (workflow.hold === "critical") sentences.push(`${name} asks for your sign-off only for ${workflow.hold} ideas; anything rated lower lands without it.`);
-    for (const guard of workflow.upgraded) {
-      sentences.push(`${name} is refused if it ${GUARD_REFUSES[guard]}, though the pack's file does not say so. The older format adds this guard.`);
-    }
-    return sentences;
-  })];
+  const notes = inspection.findings.filter(({ relation }) => relation === "note");
+  return [...wideningSentences(inspection), ...notes.map(noteSentence)];
 }
 
 /** What is worth a second look: the flagged limits, then the hidden characters and where each is. Says so when there is nothing. */
 function lookAtBlock(inspection: Inspection): string[] {
   const flagged = flaggedSentences(inspection);
-  const findings = hiddenFindings(inspection);
-  if (flagged.length === 0 && findings.length === 0) {
+  const { hiddenCharacters } = inspection;
+  if (flagged.length === 0 && hiddenCharacters.length === 0) {
     return [
       "Things to look at",
       ...wrap("Nothing unusual was found in what this command checks.", "  "),
@@ -235,17 +227,17 @@ function lookAtBlock(inspection: Inspection): string[] {
     ];
   }
   const hidden =
-    findings.length === 0
+    hiddenCharacters.length === 0
       ? []
-      : wrap(`${plural(findings.length, "hidden character")} in the pack's words. Each is shown as visible text where it sits.`, "  ");
+      : wrap(`${plural(hiddenCharacters.length, "hidden character")} in the pack's words. Each is shown as visible text where it sits.`, "  ");
   const numbered = (sentence: string, index: number): string[] => wrap(`${index + 1}. ${sentence}`, "  ", "     ");
   return [
     "Things to look at",
     ...flagged.flatMap(numbered),
     ...hidden,
-    ...findings.flatMap((found, index) => {
-      const place = found.lined ? `line ${found.line}, column ${found.column}` : `column ${found.column}`;
-      return numbered(`${found.shown} in ${found.where}, ${place}.`, flagged.length + index);
+    ...hiddenCharacters.flatMap((character, index) => {
+      const place = character.line === null ? `column ${character.column}` : `line ${character.line}, column ${character.column}`;
+      return numbered(`${character.shown} in ${placePhrase(character)}, ${place}.`, flagged.length + index);
     }),
   ];
 }

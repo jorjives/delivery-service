@@ -18,7 +18,7 @@ it("carries the project and the folder's files through unchanged, and parses wit
 it("describes the deprecations pack as it will run", async () => {
   const pack = await resolvePack("deprecations", process.cwd());
   const inspection = inspectionOf(pack, NO_PROJECT, []);
-  expect(inspection.pack).toEqual({ name: "deprecations", version: "1.0.0", title: "Move off deprecated code", summary: pack.manifest.summary, format: "delivery.pack/3", hash: pack.hash, source: { kind: "built-in", path: pack.dir } });
+  expect(inspection.pack).toEqual({ name: "deprecations", version: "1.0.0", title: "Move off deprecated code", summary: pack.manifest.summary, format: "delivery.pack/3", hash: pack.hash, source: { kind: "built-in", path: pack.dir }, workflows: ["deprecations:scan", "deprecations:code", "deprecations:tests"] });
   expect(inspection.defaultGuards).toEqual(["tests-untouched", "check-untouched", "no-skips", "ignored", "backlog"]);
   expect(inspection.workflows.map((w) => [w.name, w.local, w.kind, w.hold])).toEqual([
     ["deprecations:scan", "scan", "find", null], ["deprecations:code", "code", "act", "high"], ["deprecations:tests", "tests", "act", null],
@@ -38,7 +38,8 @@ it("shows the guard a pack in the older format gains on upgrade, though its file
   expect(code.pack.format).toBe("delivery.pack/2");
   expect(fix?.steps[0]?.guards.added).toEqual(["tests-unchanged"]);
   expect(fix?.upgraded).toEqual(["tests-unchanged"]);
-  expect(fix?.summary).toBeUndefined();
+  expect(fix?.summary).toBeNull();
+  expect(fix?.offers).toBeNull();
   expect(inspectionOf(await resolvePack("security", process.cwd()), NO_PROJECT, []).workflows.find((w) => w.local === "fix")?.hold).toBe("high");
 });
 
