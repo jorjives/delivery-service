@@ -1,15 +1,22 @@
 import { expect, it } from "vitest";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { builtInPacks, DATA_ONLY } from "../packs/manifest.js";
-import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK } from "../packs/pack-folder.js";
+import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK, readPackFolder } from "../packs/pack-folder.js";
 import { inspectionOf, narrowedTo, NO_PROJECT, type Inspection, type InspectionBase, withFindings } from "../packs/inspection.js";
 import type { Severity } from "../schema.js";
+import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { OWN_SETUP } from "./own-setup.js";
-import { INSPECT_RULE, INSPECT_WIDTH, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
+import { FIXTURES_NOT_READ, INSPECT_RULE, INSPECT_WIDTH, QUESTIONS_TO_ASK, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
 
 const packs = await builtInPacks();
 const deprecations = packs.find((pack) => pack.manifest.name === "deprecations");
 if (!deprecations) throw new Error("the deprecations pack is not built in");
 const builtInInspections = packs.map((pack) => inspectionOf(pack, NO_PROJECT, []));
+
+const deprecationsFiles = await readPackFolder(deprecations.dir);
+if (!deprecationsFiles.ok) throw new Error("the deprecations pack is not read by the folder check");
+const deprecationsAccount = renderInspection(inspectionOf(deprecations, NO_PROJECT, deprecationsFiles.files));
 
 /** The text of some lines, joined and with every run of white space made one space: the wrap points are not compared. */
 const flat = (lines: readonly string[]): string => lines.join(" ").replace(/\s+/g, " ");
@@ -144,12 +151,42 @@ it("says a hold of critical as one severity, and an act with no summary in a fix
   expect(text).toContain("act (act): Changes the project for one idea.");
 });
 
-it("carries no colour, no box drawing and none of the words safe, clean or verified", () => {
-  for (const inspection of builtInInspections) {
-    const ours = withoutPackWords(renderInspection(inspection), inspection);
+it("asks the fixed questions after Things to look at and before the instructions, in a narrowed view too", () => {
+  for (const lines of [deprecationsAccount, renderInspection(narrowedTo(inspectionOf(deprecations, NO_PROJECT, deprecationsFiles.files), "tests") as Inspection)]) {
+    const at = lines.indexOf("Questions to ask before you use it");
+    expect(at).toBeGreaterThan(lines.indexOf("Things to look at"));
+    expect(at).toBeLessThan(lines.indexOf(INSPECT_RULE));
+    expect(flat(lines.slice(at + 1, at + 8))).toContain(QUESTIONS_TO_ASK.join(" "));
+  }
+});
+
+it("names every fixture with its size, as not read when the pack is used, and never its content", () => {
+  const at = deprecationsAccount.indexOf("Fixtures");
+  expect(at).toBeGreaterThan(deprecationsAccount.indexOf("Questions to ask before you use it"));
+  expect(flat(deprecationsAccount.slice(at, at + 4))).toContain(FIXTURES_NOT_READ);
+  for (const { path } of deprecationsFiles.files.filter((f) => f.role === "fixture")) {
+    expect(deprecationsAccount).toContain(`  ${path}, ${statSync(join(deprecations.dir, path)).size} bytes`);
+  }
+  expect(deprecationsAccount.join("\n")).not.toContain(readFileSync(join(deprecations.dir, "fixtures", "review.json"), "utf-8").slice(0, 40));
+});
+
+it("says 0 bytes and 1 byte, shows a hidden character in a fixture name, and has no Fixtures heading without fixtures", () => {
+  const lines = renderInspection(withFindings({ ...model(), files: [{ path: "fixtures/a.json", role: "fixture", bytes: 0 }, { path: `fixtures/b‮.json`, role: "fixture", bytes: 1 }] }));
+  expect(lines).toContain("  fixtures/a.json, 0 bytes");
+  expect(lines).toContain("  fixtures/b<U+202E>.json, 1 byte");
+  expect(renderInspection(model())).not.toContain("Fixtures");
+});
+
+it("keeps to the owner's vocabulary, with no colour or box drawing", async () => {
+  for (const pack of packs) {
+    const read = await readPackFolder(pack.dir);
+    if (!read.ok) throw new Error(`the ${pack.manifest.name} pack is not read by the folder check`);
+    const inspection = inspectionOf(pack, NO_PROJECT, read.files);
+    const ours = withoutPackWords(linesOutsideInstructions(renderInspection(inspection)), inspection);
     expect(ours.includes(String.fromCharCode(27))).toBe(false);
     expect(ours).not.toMatch(/[─-╿]/);
-    expect(ours).not.toMatch(/\b(safe|clean|verified)\b/i);
+    expect(ours).not.toMatch(REASSURING);
+    expect(ours).not.toMatch(FORBIDDEN);
   }
 });
 

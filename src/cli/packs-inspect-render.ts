@@ -252,7 +252,32 @@ function lookAtBlock(inspection: Inspection): string[] {
   ];
 }
 
-/** The folder's documentation and housekeeping, named and never read. Fixtures and prompts are not named here: the account says what they are, not what they hold. */
+/** The three questions a reader who is not technical can put to the account before using the pack. */
+export const QUESTIONS_TO_ASK: readonly string[] = [
+  "Do you know who wrote it?",
+  "Do the instructions below match the summary above?",
+  "Does anything in them ask for something your project does not need?",
+];
+
+function questionsBlock(): string[] {
+  return ["Questions to ask before you use it", ...QUESTIONS_TO_ASK.flatMap((question) => wrap(question, "  "))];
+}
+
+/** What a fixture is, and that the account does not read it: only its name and size are shown, never its content. */
+export const FIXTURES_NOT_READ = "Not read when the pack is used; only delivery packs check reads them, to prove the pack works. Not shown here:";
+
+/** The fixtures the pack holds, each named with its size, or no block at all when there are none. */
+function fixturesBlock({ files }: Inspection): string[] {
+  const fixtures = files.filter(({ role }) => role === "fixture");
+  if (fixtures.length === 0) return [];
+  return [
+    "Fixtures",
+    ...wrap(FIXTURES_NOT_READ, "  "),
+    ...fixtures.flatMap(({ path, bytes }) => wrap(`${showName(path)}, ${plural(bytes ?? 0, "byte")}`, "  ", "    ")),
+  ];
+}
+
+/** The folder's documentation and housekeeping, named and never read. Prompts are not named here: the account says what they are, not what they hold. */
 function alsoBlock({ files }: Inspection): string[] {
   const listed = files.filter(({ role }) => role === "documentation" || role === "housekeeping");
   if (listed.length === 0) return [];
@@ -292,6 +317,8 @@ export function renderInspection(inspection: Inspection): string[] {
     checksBlock(inspection),
     widenBlock(inspection),
     lookAtBlock(inspection),
+    questionsBlock(),
+    fixturesBlock(inspection),
     alsoBlock(inspection),
     ...instructionBlocks(inspection),
   ];
