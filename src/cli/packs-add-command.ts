@@ -43,13 +43,13 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
 
   const read = await readPackage(fetched.tarball);
   if (!read.ok) {
-    for (const line of archiveRefusal(fetched.name, fetched.version, read.problem)) ctx.writeLine(line);
+    for (const line of archiveRefusal("add", fetched.name, fetched.version, read.problem)) ctx.writeLine(line);
     return EXIT.configuration;
   }
 
   return withStagedPack(read.packFiles, async (stagedDir, folder) => {
     if (!folder.ok) {
-      for (const line of packRefusal(fetched.name, fetched.version, read.packPath, folder.problems, stagedDir)) ctx.writeLine(line);
+      for (const line of packRefusal("add", fetched.name, fetched.version, read.packPath, folder.problems, stagedDir)) ctx.writeLine(line);
       return EXIT.configuration;
     }
 
@@ -81,7 +81,7 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
     withWorkflowsOf(settings, packs);
     const clash = findClash(settings, [...packs, pack]);
     if (clash !== undefined) {
-      for (const line of clashRefusal(clash, repoPath)) ctx.writeLine(line);
+      for (const line of clashRefusal("add", clash, repoPath)) ctx.writeLine(line);
       return EXIT.configuration;
     }
 
@@ -97,7 +97,7 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
 
     if (ctx.stdin.isTTY !== true) {
       ctx.writeLine("");
-      for (const line of nobodyToAsk()) ctx.writeLine(line);
+      for (const line of nobodyToAsk("add")) ctx.writeLine(line);
       return EXIT.configuration;
     }
     if (!(await ask.confirm(addQuestion(name, fetched.version)))) {

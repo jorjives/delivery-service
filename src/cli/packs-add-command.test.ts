@@ -125,7 +125,7 @@ describe("delivery packs add", () => {
     const before = tree(repo);
     const exit = await packsAddCommand(NAME, ctx, ask, source);
     expect(exit).toBe(EXIT.configuration);
-    expect(lines.slice(-nobodyToAsk().length)).toEqual(nobodyToAsk());
+    expect(lines.slice(-nobodyToAsk("add").length)).toEqual(nobodyToAsk("add"));
     expect(asked).toEqual([]);
     expect(tree(repo)).toEqual(before);
   });

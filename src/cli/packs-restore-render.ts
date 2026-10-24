@@ -12,15 +12,21 @@ const valueLines = (value: string): string[] => {
   return lines;
 };
 
+/** The last sentence, by the lead: nothing is written on a restore, and nothing is changed on an update. */
+const CLOSING: Record<"Not restored:" | "Not updated:", string> = {
+  "Not restored:": "A published version should never change. The folder is unchanged. Do not use this pack until you know why.",
+  "Not updated:": "A published version should never change. Nothing was changed. Do not use this version until you know why.",
+};
+
 /** npm now gives different bytes for the version the record holds: nothing is written, and the owner is told not to use the pack. */
-export function changedAtSourceLines(entry: LockEntry, now: string): string[] {
+export function changedAtSourceLines(lead: "Not restored:" | "Not updated:", entry: LockEntry, now: string): string[] {
   return [
-    ...wrap(`Not restored: npm now serves different contents for ${entry.package} ${entry.version}.`, ""),
+    ...wrap(`${lead} npm now serves different contents for ${entry.package} ${entry.version}.`, ""),
     "  Recorded:",
     ...valueLines(entry.integrity),
     "  Now:",
     ...valueLines(showName(now)),
-    ...wrap("A published version should never change. The folder is unchanged. Do not use this pack until you know why.", "  "),
+    ...wrap(CLOSING[lead], "  "),
   ];
 }
 

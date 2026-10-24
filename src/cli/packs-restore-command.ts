@@ -29,7 +29,7 @@ export async function packsRestoreCommand(name: string, ctx: CommandContext, sou
   for (const line of wrap(`Fetching ${entry.package} ${entry.version} again.`, "")) ctx.writeLine(line);
   const fetched = await fetchFor(source, { name: entry.package, request: entry.version, typed: true }, "restore");
   if (fetched.integrity !== entry.integrity) {
-    for (const line of changedAtSourceLines(entry, fetched.integrity)) ctx.writeLine(line);
+    for (const line of changedAtSourceLines("Not restored:", entry, fetched.integrity)) ctx.writeLine(line);
     return EXIT.configuration;
   }
 

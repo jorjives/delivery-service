@@ -12,6 +12,18 @@ import { problemLines, wrap } from "./packs-inspect-render.js";
 /** The last line when an owner says no, or does not answer. */
 export const NOTHING_ADDED = "Nothing was added.";
 
+/** Whether a pack is being added to the project, or updated in it: the refusals say which. */
+export type PackAction = "add" | "update";
+
+/** The lead of a refusal, by the action that was refused. */
+const NOT_DONE: Record<PackAction, string> = { add: "Not added:", update: "Not updated:" };
+
+/** The second side of a clash: the pack being added, or the new version of the pack being updated. */
+const NEW_SIDE: Record<PackAction, string> = { add: "the pack you are adding", update: "the new version" };
+
+/** What the owner is asked to read, before answering, by the action that was refused. */
+const READ_BEFORE_ANSWER: Record<PackAction, string> = { add: "account", update: "change" };
+
 /** The package's name, version and what nothing will do before the owner answers: nothing is added, and nothing from the package runs. */
 export function foundLines(fetched: FetchedPackage, spec: PackageSpec): string[] {
   const found = spec.typed && spec.request !== fetched.version ? ` (found for ${spec.request})` : "";
@@ -59,10 +71,10 @@ export const addedLines = (name: string, version: string): string[] => [
 ];
 
 /** The refusal when nothing is there to ask the owner: the account has been shown, and nothing was written. */
-export function nobodyToAsk(): string[] {
+export function nobodyToAsk(action: PackAction): string[] {
   return [
-    ...wrap("Not added: nothing here can ask you.", ""),
-    ...wrap("Run the command in a terminal to read the account and answer.", "  "),
+    ...wrap(`${NOT_DONE[action]} nothing here can ask you.`, ""),
+    ...wrap(`Run the command in a terminal to read the ${READ_BEFORE_ANSWER[action]} and answer.`, "  "),
     ...wrap("Nothing was changed.", "  "),
   ];
 }
@@ -80,19 +92,19 @@ export function addedDifferently(name: string, entry: LockEntry): string[] {
 }
 
 /** The package itself is refused: the problem is named by its path inside the package, or is about the whole package. */
-export function archiveRefusal(packageName: string, version: string, problem: ArchiveProblem): string[] {
+export function archiveRefusal(action: PackAction, packageName: string, version: string, problem: ArchiveProblem): string[] {
   return [
-    ...wrap(`Not added: ${packageName} ${version}`, ""),
+    ...wrap(`${NOT_DONE[action]} ${packageName} ${version}`, ""),
     ...wrap(`${problem.entry ?? "The package"} ${problem.message}.`, "  ", "    "),
     ...wrap("Nothing was changed.", "  "),
   ];
 }
 
 /** The pack folder is refused: each problem is named by its path inside the package, which is the pack folder's path plus the file's. */
-export function packRefusal(packageName: string, version: string, packPath: string, problems: readonly PackProblem[], stagedDir: string): string[] {
+export function packRefusal(action: PackAction, packageName: string, version: string, packPath: string, problems: readonly PackProblem[], stagedDir: string): string[] {
   const inPackage = (file: string): string => (packPath === "." ? relative(stagedDir, file) : `${packPath}/${relative(stagedDir, file)}`);
   return [
-    ...wrap(`Not added: ${packageName} ${version} holds a pack that cannot be used.`, ""),
+    ...wrap(`${NOT_DONE[action]} ${packageName} ${version} holds a pack that cannot be used.`, ""),
     ...problemLines(problems, inPackage),
     ...wrap("Nothing was changed.", "  "),
   ];
@@ -102,16 +114,16 @@ export function packRefusal(packageName: string, version: string, packPath: stri
  * The screen when the pack being added clashes with one already in the project: both sides named, and the one thing the
  * owner does to keep the new pack. Nothing is changed. The second side is always the pack being added.
  */
-export function clashRefusal(clash: Clash, repoPath: string): string[] {
+export function clashRefusal(action: PackAction, clash: Clash, repoPath: string): string[] {
   const { first, second } = clash;
   if (second.kind !== "installed") throw new Error("the pack being added must be the second side of a clash");
   const side = first.kind === "folder" ? { ...first, manifestFile: relative(repoPath, first.manifestFile) } : first;
   const subject = clash.kind === "pack-name" ? `two packs are named "${showName(clash.name)}".` : `two things define the workflow "${showName(clash.workflow)}".`;
   const once = clash.kind === "pack-name" ? "Each pack name must be used once." : "Each workflow name must be used once.";
   return [
-    ...wrap(`Not added: ${subject}`, ""),
+    ...wrap(`${NOT_DONE[action]} ${subject}`, ""),
     ...wrap(`1. ${sidePhrase(side)}`, "  ", "     "),
-    ...wrap(`2. the pack you are adding, from ${showName(second.package)} ${showName(second.version)}`, "  ", "     "),
+    ...wrap(`2. ${NEW_SIDE[action]}, from ${showName(second.package)} ${showName(second.version)}`, "  ", "     "),
     ...wrap(once, ""),
     ...remedyLines(first),
     ...wrap("Nothing was changed.", ""),

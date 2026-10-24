@@ -4,13 +4,16 @@ import type { FetchedPackage } from "../packs/install/pack-source.js";
 import type { PackageRead } from "../packs/install/package-archive.js";
 import { NOT_AN_ARCHIVE, NOT_PLAIN_ENTRY } from "../packs/install/package-archive.js";
 import { NOT_IN_A_PACK } from "../packs/pack-folder.js";
-import { addedDifferently, addedLines, addQuestion, alreadyAdded, archiveRefusal, foundLines, nobodyToAsk, notInPackLines, packRefusal } from "./packs-add-render.js";
+import type { Clash } from "./pack-clash.js";
+import { addedDifferently, addedLines, addQuestion, alreadyAdded, archiveRefusal, clashRefusal, foundLines, nobodyToAsk, notInPackLines, packRefusal } from "./packs-add-render.js";
 
 /** The text of some lines with every run of white space made one space, so where a line wraps does not matter. */
 const flat = (lines: readonly string[]): string => lines.join(" ").replace(/\s+/g, " ");
 
 /** A package name of exactly 40 characters, scoped. */
 const LONG = `@acme/${"x".repeat(34)}`;
+
+const NAME = "@acme/delivery-pack-docs";
 
 const fetched = (version: string): FetchedPackage => ({ name: LONG, version, integrity: "sha512-AAAA", tarball: new Uint8Array() });
 
@@ -95,9 +98,18 @@ describe("the question and the closing lines", () => {
   });
 
   it("says nothing can ask, and that nothing was changed, within 60 columns", () => {
-    const lines = nobodyToAsk();
+    const lines = nobodyToAsk("add");
     expect(flat(lines)).toBe("Not added: nothing here can ask you. Run the command in a terminal to read the account and answer. Nothing was changed.");
     expect(widest(lines)).toBeLessThanOrEqual(60);
+  });
+
+  it.each([
+    ["archive", () => archiveRefusal("update", LONG, "1.3.0", { entry: "pack/link", message: NOT_PLAIN_ENTRY })],
+    ["pack", () => packRefusal("update", LONG, "1.3.0", "pack", [{ file: join("/scratch", "pack", "install.sh"), field: null, message: NOT_IN_A_PACK }], join("/scratch", "pack"))],
+    ["nobody", () => nobodyToAsk("update")],
+  ])("leads the %s refusal of an update with Not updated, within 60 columns", (_, lines) => {
+    expect(lines()[0]?.startsWith("Not updated:")).toBe(true);
+    expect(widest(lines())).toBeLessThanOrEqual(60);
   });
 
   it("says an already-added pack is there, and that there is nothing to do", () => {
@@ -113,18 +125,18 @@ describe("refusals", () => {
   });
 
   it("names the package and version, the problem in the package, and that nothing was changed", () => {
-    const lines = archiveRefusal("@acme/delivery-pack-docs", "1.2.0", { entry: "pack/link", message: NOT_PLAIN_ENTRY });
+    const lines = archiveRefusal("add", "@acme/delivery-pack-docs", "1.2.0", { entry: "pack/link", message: NOT_PLAIN_ENTRY });
     expect(lines[0]).toBe("Not added: @acme/delivery-pack-docs 1.2.0");
     expect(flat(lines)).toContain(`pack/link ${NOT_PLAIN_ENTRY}. Nothing was changed.`);
   });
 
   it("says the whole package is not an archive when no entry is named", () => {
-    expect(flat(archiveRefusal("@acme/delivery-pack-docs", "1.2.0", { entry: null, message: NOT_AN_ARCHIVE }))).toContain(`The package ${NOT_AN_ARCHIVE}.`);
+    expect(flat(archiveRefusal("add", "@acme/delivery-pack-docs", "1.2.0", { entry: null, message: NOT_AN_ARCHIVE }))).toContain(`The package ${NOT_AN_ARCHIVE}.`);
   });
 
   it("names a file of the pack as it sits in the package, with the advice", () => {
     const stagedDir = join("/scratch", "pack");
-    const lines = packRefusal(LONG, "1.2.0", "pack", [{ file: join(stagedDir, "install.sh"), field: null, message: NOT_IN_A_PACK }], stagedDir);
+    const lines = packRefusal("add", LONG, "1.2.0", "pack", [{ file: join(stagedDir, "install.sh"), field: null, message: NOT_IN_A_PACK }], stagedDir);
     expect(flat(lines)).toContain(`Not added: ${LONG} 1.2.0 holds a pack that cannot be used.`);
     expect(flat(lines)).toContain(`pack/install.sh ${NOT_IN_A_PACK}`);
     expect(lines.at(-1)).toBe("  Nothing was changed.");
@@ -134,12 +146,20 @@ describe("refusals", () => {
     const stagedDir = join("/scratch", "pack");
     const problems = [{ file: join(stagedDir, "install.sh"), field: null, message: NOT_IN_A_PACK }];
     for (const lines of [
-      archiveRefusal(LONG, "1.2.0", { entry: `pack/${"y".repeat(40)}`, message: NOT_PLAIN_ENTRY }),
-      packRefusal(LONG, "1.2.0", "pack", problems, stagedDir),
+      archiveRefusal("add", LONG, "1.2.0", { entry: `pack/${"y".repeat(40)}`, message: NOT_PLAIN_ENTRY }),
+      packRefusal("add", LONG, "1.2.0", "pack", problems, stagedDir),
       addedDifferently("docs-drift", { source: "npm", package: LONG, request: "latest", version: "1.2.0", integrity: "sha512-AAAA", fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`, approved: `delivery.pack-hash/1:${"a".repeat(64)}`, files: { "pack.json": "a".repeat(64) } }),
       foundLines(fetched("1.2.0"), { name: LONG, request: "latest", typed: false }),
     ]) {
       expect(widest(lines)).toBeLessThanOrEqual(60);
     }
+  });
+
+  it("names the new version as the second side of an update's clash", () => {
+    const clash: Clash = { kind: "workflow", workflow: "docs-drift:audit", first: { kind: "installed", pack: "other", package: "@x/other", version: "1.0.0" }, second: { kind: "installed", pack: "docs-drift", package: NAME, version: "1.3.0" } };
+    const text = flat(clashRefusal("update", clash, "/repo"));
+    expect(text).toContain("Not updated: two things define the workflow");
+    expect(text).toContain(`2. the new version, from ${NAME} 1.3.0`);
+    expect(text).toContain("delivery packs remove other");
   });
 });
