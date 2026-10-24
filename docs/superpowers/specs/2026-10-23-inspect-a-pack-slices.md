@@ -128,6 +128,8 @@
 
 ## Slice 4: Look at one workflow, or hand the account to a script
 
+**Tests:** ✅ Recorded — 2026-10-24 — `72fdb72` — cli — 4 UAT + 8 AC, 0 skipped
+
 **Delivers:** An on-call engineer can read one workflow's instructions and limits in full, and a pack author or script can read the same account as a stable document.
 
 **Operational note:** The machine-readable form carries a published version and a published list of keys, checked in the project's normal checks, so it can be relied on by later install and plugin work. The plain-text form carries no such promise.
