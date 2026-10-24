@@ -382,6 +382,16 @@ export async function runCli(io: CliIo): Promise<number> {
     });
 
   packs
+    .command("approve")
+    .description("approve an added pack whose record says it was not approved, after reading its full account")
+    .argument("<name>", "the added pack to approve, by its name from `delivery packs`, such as docs-drift")
+    .action(async (name: string, _options: unknown, command: Command) => {
+      const { packsApproveCommand } = await import("./packs-approve-command.js");
+      const ctx = ctxFor(command);
+      exitCode = await packsApproveCommand(name, ctx, inquirerAsk(ctx.colour));
+    });
+
+  packs
     .command("inspect")
     .description(
       "show what a pack will do before you use it: what each workflow is for, how far it goes before it asks you, and every instruction it gives the agent, with nothing run or changed",

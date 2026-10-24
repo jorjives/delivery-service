@@ -9,3 +9,5 @@ Every use of an added pack first checks its kept files against the record, with 
 `delivery packs` says whether each added pack is as approved, and names the command for one that is not.
 
 `delivery packs restore <name>` fetches the recorded version again and puts the pack back when it matches what was approved.
+
+`delivery packs approve <name>` approves an added pack whose record says it was not approved, after showing its full account; a pack whose files differ from the record must be restored or updated instead.
