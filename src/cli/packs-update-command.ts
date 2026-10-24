@@ -19,7 +19,7 @@ import type { Ask } from "./init.js";
 import { findClash } from "./pack-clash.js";
 import { fetchFor } from "./pack-fetch.js";
 import { projectBaseline } from "./project-baseline.js";
-import { archiveRefusal, clashRefusal, nobodyToAsk, packRefusal } from "./packs-add-render.js";
+import { archiveRefusal, clashRefusal, nobodyToAsk, packRefusal, shellWord } from "./packs-add-render.js";
 import { changedAtSourceLines } from "./packs-restore-render.js";
 import {
   badRequestLines,
@@ -145,7 +145,7 @@ export async function packsUpdateCommand(name: string, request: string | undefin
 
     if (ctx.stdin.isTTY !== true) {
       ctx.writeLine("");
-      out(nobodyToAsk("update"));
+      out(nobodyToAsk("update", `delivery packs update ${name}${request === undefined ? "" : ` ${shellWord(request)}`}`, newPack.hash));
       return EXIT.configuration;
     }
     if (!(await ask.confirm(updateQuestion(name, entry.version, fetched.version)))) {

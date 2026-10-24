@@ -15,14 +15,17 @@ export const NOTHING_ADDED = "Nothing was added.";
 /** Whether a pack is being added to the project, or updated in it: the refusals say which. */
 export type PackAction = "add" | "update";
 
+/** The actions a fingerprint is asked for: a pack added, updated, or approved as it stands. */
+export type ApprovalAction = PackAction | "approve";
+
 /** The lead of a refusal, by the action that was refused. */
-const NOT_DONE: Record<PackAction, string> = { add: "Not added:", update: "Not updated:" };
+const NOT_DONE: Record<ApprovalAction, string> = { add: "Not added:", update: "Not updated:", approve: "Not approved:" };
 
 /** The second side of a clash: the pack being added, or the new version of the pack being updated. */
 const NEW_SIDE: Record<PackAction, string> = { add: "the pack you are adding", update: "the new version" };
 
 /** What the owner is asked to read, before answering, by the action that was refused. */
-const READ_BEFORE_ANSWER: Record<PackAction, string> = { add: "account", update: "change" };
+const READ_BEFORE_ANSWER: Record<ApprovalAction, string> = { add: "account", update: "change", approve: "account" };
 
 /** The package's name, version and what nothing will do before the owner answers: nothing is added, and nothing from the package runs. */
 export function foundLines(fetched: FetchedPackage, spec: PackageSpec): string[] {
@@ -70,11 +73,33 @@ export const addedLines = (name: string, version: string): string[] => [
   `Read it again:      delivery packs inspect ${name}`,
 ];
 
-/** The refusal when nothing is there to ask the owner: the account has been shown, and nothing was written. */
-export function nobodyToAsk(action: PackAction): string[] {
+/** A word of the owner's own arguments as a shell reads it: as typed when a shell would leave it alone, else single-quoted. */
+export function shellWord(word: string): string {
+  return /^[A-Za-z0-9@/._^~:+-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * The refusal when nothing is there to ask the owner: the account has been shown, and nothing was written. The command is
+ * the one to run again with the fingerprint the owner read, and it is never wrapped: a wrap at a space would break the paste.
+ * The fingerprint's second half starts at column 0, so the backslash and the line break after the first half join as one word.
+ */
+export function nobodyToAsk(action: ApprovalAction, command: string, hash: string): string[] {
   return [
     ...wrap(`${NOT_DONE[action]} nothing here can ask you.`, ""),
-    ...wrap(`Run the command in a terminal to read the ${READ_BEFORE_ANSWER[action]} and answer.`, "  "),
+    ...wrap(`Read the ${READ_BEFORE_ANSWER[action]} above, then ${action} it with the fingerprint you read:`, "  "),
+    `    ${command} \\`,
+    `      --approve ${hash.slice(0, 32)}\\`,
+    hash.slice(32),
+    ...wrap("The command is refused if the pack has a different fingerprint.", "  "),
+    ...wrap("Nothing was changed.", "  "),
+  ];
+}
+
+/** The refusal when the fingerprint given is not the one shown: nothing is changed, and the owner reads the account again. */
+export function fingerprintDiffers(action: ApprovalAction): string[] {
+  return [
+    ...wrap(`${NOT_DONE[action]} the fingerprint given is not the one shown above.`, ""),
+    ...wrap(`Read the ${READ_BEFORE_ANSWER[action]} again before you give it.`, "  "),
     ...wrap("Nothing was changed.", "  "),
   ];
 }

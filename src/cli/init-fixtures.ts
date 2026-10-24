@@ -3,12 +3,12 @@ import type { CommandContext } from "./context.js";
 import type { Ask, ChoiceQuestion, ConfirmQuestion, PickQuestion, TextQuestion } from "./init.js";
 import { plainReporter } from "./report.js";
 
-/** Test support: a command context with somebody at the terminal, unless the test says there is nobody. */
-export function context(cwd: string, { interactive = true }: { interactive?: boolean } = {}) {
+/** Test support: a command context with somebody at the terminal, unless the test says there is nobody, and `--json` only when the test asks for it. */
+export function context(cwd: string, { interactive = true, json = false }: { interactive?: boolean; json?: boolean } = {}) {
   const lines: string[] = [];
   const writeLine = (line: string): void => void lines.push(line);
   const stdin = Object.assign(Readable.from([]), { isTTY: interactive || undefined });
-  const ctx: CommandContext = { cwd, env: {}, colour: false, json: false, stdin, writeLine, report: plainReporter(writeLine, false) };
+  const ctx: CommandContext = { cwd, env: {}, colour: false, json, stdin, writeLine, report: plainReporter(writeLine, false) };
   return { ctx, lines };
 }
 

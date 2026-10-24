@@ -29,6 +29,7 @@ import {
   nobodyToAsk,
   notInPackLines,
   packRefusal,
+  shellWord,
 } from "./packs-add-render.js";
 
 /**
@@ -97,7 +98,7 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
 
     if (ctx.stdin.isTTY !== true) {
       ctx.writeLine("");
-      for (const line of nobodyToAsk("add")) ctx.writeLine(line);
+      for (const line of nobodyToAsk("add", `delivery packs add ${shellWord(spec)}`, pack.hash)) ctx.writeLine(line);
       return EXIT.configuration;
     }
     if (!(await ask.confirm(addQuestion(name, fetched.version)))) {

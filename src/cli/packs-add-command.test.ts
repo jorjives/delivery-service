@@ -125,7 +125,11 @@ describe("delivery packs add", () => {
     const before = tree(repo);
     const exit = await packsAddCommand(NAME, ctx, ask, source);
     expect(exit).toBe(EXIT.configuration);
-    expect(lines.slice(-nobodyToAsk("add").length)).toEqual(nobodyToAsk("add"));
+    // The account prints the fingerprint in two halves, one to a line: the command gives it back whole.
+    const halves = lines.filter((line) => /^  [0-9a-f]{32}$/.test(line)).map((line) => line.trim());
+    expect(halves).toHaveLength(2);
+    const hash = halves.join("");
+    expect(lines.slice(-nobodyToAsk("add", `delivery packs add ${NAME}`, hash).length)).toEqual(nobodyToAsk("add", `delivery packs add ${NAME}`, hash));
     expect(asked).toEqual([]);
     expect(tree(repo)).toEqual(before);
   });

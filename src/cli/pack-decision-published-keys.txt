@@ -1,0 +1,253 @@
+delivery.pack-decision/1.account.defaultGuards: array
+delivery.pack-decision/1.account.defaultGuards[] = "backlog"
+delivery.pack-decision/1.account.defaultGuards[] = "backlog-only"
+delivery.pack-decision/1.account.defaultGuards[] = "check-untouched"
+delivery.pack-decision/1.account.defaultGuards[] = "ignored"
+delivery.pack-decision/1.account.defaultGuards[] = "no-skips"
+delivery.pack-decision/1.account.defaultGuards[] = "tests-unchanged"
+delivery.pack-decision/1.account.defaultGuards[] = "tests-untouched"
+delivery.pack-decision/1.account.defaultGuards[]: string
+delivery.pack-decision/1.account.files: array
+delivery.pack-decision/1.account.files[].bytes: integer|null
+delivery.pack-decision/1.account.files[].path: string
+delivery.pack-decision/1.account.files[].role = "documentation"
+delivery.pack-decision/1.account.files[].role = "fixture"
+delivery.pack-decision/1.account.files[].role = "housekeeping"
+delivery.pack-decision/1.account.files[].role = "manifest"
+delivery.pack-decision/1.account.files[].role = "prompt"
+delivery.pack-decision/1.account.files[].role: string
+delivery.pack-decision/1.account.files[]: object
+delivery.pack-decision/1.account.findings: array
+delivery.pack-decision/1.account.findings[].code = "hold-only-critical"
+delivery.pack-decision/1.account.findings[].code = "lands-without-sign-off"
+delivery.pack-decision/1.account.findings[].code = "older-format-guards"
+delivery.pack-decision/1.account.findings[].code = "widens"
+delivery.pack-decision/1.account.findings[].code: string
+delivery.pack-decision/1.account.findings[].detail: null|string
+delivery.pack-decision/1.account.findings[].relation = "note"
+delivery.pack-decision/1.account.findings[].relation = "wider"
+delivery.pack-decision/1.account.findings[].relation: string
+delivery.pack-decision/1.account.findings[].workflow: string
+delivery.pack-decision/1.account.findings[]: object
+delivery.pack-decision/1.account.hiddenCharacters: array
+delivery.pack-decision/1.account.hiddenCharacters[].codePoint: string
+delivery.pack-decision/1.account.hiddenCharacters[].column: integer
+delivery.pack-decision/1.account.hiddenCharacters[].file: null|string
+delivery.pack-decision/1.account.hiddenCharacters[].line: integer|null
+delivery.pack-decision/1.account.hiddenCharacters[].place = "file-name"
+delivery.pack-decision/1.account.hiddenCharacters[].place = "harness"
+delivery.pack-decision/1.account.hiddenCharacters[].place = "instructions"
+delivery.pack-decision/1.account.hiddenCharacters[].place = "project-path"
+delivery.pack-decision/1.account.hiddenCharacters[].place = "source-path"
+delivery.pack-decision/1.account.hiddenCharacters[].place = "summary"
+delivery.pack-decision/1.account.hiddenCharacters[].place = "title"
+delivery.pack-decision/1.account.hiddenCharacters[].place = "workflow-summary"
+delivery.pack-decision/1.account.hiddenCharacters[].place: string
+delivery.pack-decision/1.account.hiddenCharacters[].shown: string
+delivery.pack-decision/1.account.hiddenCharacters[].workflow: null|string
+delivery.pack-decision/1.account.hiddenCharacters[]: object
+delivery.pack-decision/1.account.ok = true
+delivery.pack-decision/1.account.ok: boolean
+delivery.pack-decision/1.account.pack.format = "delivery.pack/2"
+delivery.pack-decision/1.account.pack.format = "delivery.pack/3"
+delivery.pack-decision/1.account.pack.format: string
+delivery.pack-decision/1.account.pack.hash: string
+delivery.pack-decision/1.account.pack.name: string
+delivery.pack-decision/1.account.pack.source.kind = "built-in"
+delivery.pack-decision/1.account.pack.source.kind = "folder"
+delivery.pack-decision/1.account.pack.source.kind = "installed"
+delivery.pack-decision/1.account.pack.source.kind: string
+delivery.pack-decision/1.account.pack.source.package.integrity: string
+delivery.pack-decision/1.account.pack.source.package.name: string
+delivery.pack-decision/1.account.pack.source.package.version: string
+delivery.pack-decision/1.account.pack.source.package: null|object
+delivery.pack-decision/1.account.pack.source.path: string
+delivery.pack-decision/1.account.pack.source: object
+delivery.pack-decision/1.account.pack.summary: string
+delivery.pack-decision/1.account.pack.title: string
+delivery.pack-decision/1.account.pack.version: string
+delivery.pack-decision/1.account.pack.workflows: array
+delivery.pack-decision/1.account.pack.workflows[]: string
+delivery.pack-decision/1.account.pack: object
+delivery.pack-decision/1.account.project.closer.source = "project"
+delivery.pack-decision/1.account.project.closer.source: string
+delivery.pack-decision/1.account.project.closer.summary: string
+delivery.pack-decision/1.account.project.closer.type: string
+delivery.pack-decision/1.account.project.closer: null|object
+delivery.pack-decision/1.account.project.config = "code"
+delivery.pack-decision/1.account.project.config = "none"
+delivery.pack-decision/1.account.project.config = "read"
+delivery.pack-decision/1.account.project.config = "unreadable"
+delivery.pack-decision/1.account.project.config: string
+delivery.pack-decision/1.account.project.found: boolean
+delivery.pack-decision/1.account.project.gate.source = "project"
+delivery.pack-decision/1.account.project.gate.source: string
+delivery.pack-decision/1.account.project.gate.summary: string
+delivery.pack-decision/1.account.project.gate.type: string
+delivery.pack-decision/1.account.project.gate: null|object
+delivery.pack-decision/1.account.project.path: null|string
+delivery.pack-decision/1.account.project: object
+delivery.pack-decision/1.account.schema = "delivery.pack-inspection/1"
+delivery.pack-decision/1.account.schema: string
+delivery.pack-decision/1.account.widens: boolean
+delivery.pack-decision/1.account.workflows: array
+delivery.pack-decision/1.account.workflows[].hold = "critical"
+delivery.pack-decision/1.account.workflows[].hold = "high"
+delivery.pack-decision/1.account.workflows[].hold = "low"
+delivery.pack-decision/1.account.workflows[].hold = "medium"
+delivery.pack-decision/1.account.workflows[].hold: null|string
+delivery.pack-decision/1.account.workflows[].kind = "act"
+delivery.pack-decision/1.account.workflows[].kind = "find"
+delivery.pack-decision/1.account.workflows[].kind: string
+delivery.pack-decision/1.account.workflows[].local: string
+delivery.pack-decision/1.account.workflows[].name: string
+delivery.pack-decision/1.account.workflows[].offers: array|null
+delivery.pack-decision/1.account.workflows[].offers[]: string
+delivery.pack-decision/1.account.workflows[].steps: array
+delivery.pack-decision/1.account.workflows[].steps[].guards.added: array
+delivery.pack-decision/1.account.workflows[].steps[].guards.added[] = "backlog"
+delivery.pack-decision/1.account.workflows[].steps[].guards.added[] = "backlog-only"
+delivery.pack-decision/1.account.workflows[].steps[].guards.added[] = "check-untouched"
+delivery.pack-decision/1.account.workflows[].steps[].guards.added[] = "ignored"
+delivery.pack-decision/1.account.workflows[].steps[].guards.added[] = "no-skips"
+delivery.pack-decision/1.account.workflows[].steps[].guards.added[] = "tests-unchanged"
+delivery.pack-decision/1.account.workflows[].steps[].guards.added[] = "tests-untouched"
+delivery.pack-decision/1.account.workflows[].steps[].guards.added[]: string
+delivery.pack-decision/1.account.workflows[].steps[].guards.off: array
+delivery.pack-decision/1.account.workflows[].steps[].guards.off[] = "backlog"
+delivery.pack-decision/1.account.workflows[].steps[].guards.off[] = "backlog-only"
+delivery.pack-decision/1.account.workflows[].steps[].guards.off[] = "check-untouched"
+delivery.pack-decision/1.account.workflows[].steps[].guards.off[] = "ignored"
+delivery.pack-decision/1.account.workflows[].steps[].guards.off[] = "no-skips"
+delivery.pack-decision/1.account.workflows[].steps[].guards.off[] = "tests-unchanged"
+delivery.pack-decision/1.account.workflows[].steps[].guards.off[] = "tests-untouched"
+delivery.pack-decision/1.account.workflows[].steps[].guards.off[]: string
+delivery.pack-decision/1.account.workflows[].steps[].guards: object
+delivery.pack-decision/1.account.workflows[].steps[].instructions.authored: string
+delivery.pack-decision/1.account.workflows[].steps[].instructions.harness: null|string
+delivery.pack-decision/1.account.workflows[].steps[].instructions: object
+delivery.pack-decision/1.account.workflows[].steps[].name: string
+delivery.pack-decision/1.account.workflows[].steps[]: object
+delivery.pack-decision/1.account.workflows[].summary: null|string
+delivery.pack-decision/1.account.workflows[].upgraded: array
+delivery.pack-decision/1.account.workflows[].upgraded[] = "backlog"
+delivery.pack-decision/1.account.workflows[].upgraded[] = "backlog-only"
+delivery.pack-decision/1.account.workflows[].upgraded[] = "check-untouched"
+delivery.pack-decision/1.account.workflows[].upgraded[] = "ignored"
+delivery.pack-decision/1.account.workflows[].upgraded[] = "no-skips"
+delivery.pack-decision/1.account.workflows[].upgraded[] = "tests-unchanged"
+delivery.pack-decision/1.account.workflows[].upgraded[] = "tests-untouched"
+delivery.pack-decision/1.account.workflows[].upgraded[]: string
+delivery.pack-decision/1.account.workflows[].widens: array
+delivery.pack-decision/1.account.workflows[].widens[]: string
+delivery.pack-decision/1.account.workflows[]: object
+delivery.pack-decision/1.account: null|object
+delivery.pack-decision/1.changes: array|null
+delivery.pack-decision/1.changes[].dimension: string
+delivery.pack-decision/1.changes[].direction = "narrower"
+delivery.pack-decision/1.changes[].direction = "neutral"
+delivery.pack-decision/1.changes[].direction = "wider"
+delivery.pack-decision/1.changes[].direction: string
+delivery.pack-decision/1.changes[].finding.code = "hold-only-critical"
+delivery.pack-decision/1.changes[].finding.code = "lands-without-sign-off"
+delivery.pack-decision/1.changes[].finding.code = "older-format-guards"
+delivery.pack-decision/1.changes[].finding.code = "widens"
+delivery.pack-decision/1.changes[].finding.code: string
+delivery.pack-decision/1.changes[].finding.detail: null|string
+delivery.pack-decision/1.changes[].finding.relation = "note"
+delivery.pack-decision/1.changes[].finding.relation = "wider"
+delivery.pack-decision/1.changes[].finding.relation: string
+delivery.pack-decision/1.changes[].finding.workflow: string
+delivery.pack-decision/1.changes[].finding: object
+delivery.pack-decision/1.changes[].from = "act"
+delivery.pack-decision/1.changes[].from = "critical"
+delivery.pack-decision/1.changes[].from = "find"
+delivery.pack-decision/1.changes[].from = "high"
+delivery.pack-decision/1.changes[].from = "low"
+delivery.pack-decision/1.changes[].from = "medium"
+delivery.pack-decision/1.changes[].from: null|string
+delivery.pack-decision/1.changes[].from: string
+delivery.pack-decision/1.changes[].guard = "backlog"
+delivery.pack-decision/1.changes[].guard = "backlog-only"
+delivery.pack-decision/1.changes[].guard = "check-untouched"
+delivery.pack-decision/1.changes[].guard = "ignored"
+delivery.pack-decision/1.changes[].guard = "no-skips"
+delivery.pack-decision/1.changes[].guard = "tests-unchanged"
+delivery.pack-decision/1.changes[].guard = "tests-untouched"
+delivery.pack-decision/1.changes[].guard: string
+delivery.pack-decision/1.changes[].kind = "finding-gained"
+delivery.pack-decision/1.changes[].kind = "finding-lost"
+delivery.pack-decision/1.changes[].kind = "guard-added"
+delivery.pack-decision/1.changes[].kind = "guard-removed"
+delivery.pack-decision/1.changes[].kind = "hold"
+delivery.pack-decision/1.changes[].kind = "kind-changed"
+delivery.pack-decision/1.changes[].kind = "widens-added"
+delivery.pack-decision/1.changes[].kind = "widens-removed"
+delivery.pack-decision/1.changes[].kind = "workflow-added"
+delivery.pack-decision/1.changes[].kind = "workflow-removed"
+delivery.pack-decision/1.changes[].kind: string
+delivery.pack-decision/1.changes[].to = "act"
+delivery.pack-decision/1.changes[].to = "critical"
+delivery.pack-decision/1.changes[].to = "find"
+delivery.pack-decision/1.changes[].to = "high"
+delivery.pack-decision/1.changes[].to = "low"
+delivery.pack-decision/1.changes[].to = "medium"
+delivery.pack-decision/1.changes[].to: null|string
+delivery.pack-decision/1.changes[].to: string
+delivery.pack-decision/1.changes[].workflow: string
+delivery.pack-decision/1.changes[].workflowKind = "act"
+delivery.pack-decision/1.changes[].workflowKind = "find"
+delivery.pack-decision/1.changes[].workflowKind: string
+delivery.pack-decision/1.changes[]: object
+delivery.pack-decision/1.command = "add"
+delivery.pack-decision/1.command = "approve"
+delivery.pack-decision/1.command = "update"
+delivery.pack-decision/1.command: string
+delivery.pack-decision/1.files: array|null
+delivery.pack-decision/1.files[].added: integer
+delivery.pack-decision/1.files[].lines: array
+delivery.pack-decision/1.files[].lines[].kind = "added"
+delivery.pack-decision/1.files[].lines[].kind = "context"
+delivery.pack-decision/1.files[].lines[].kind = "gap"
+delivery.pack-decision/1.files[].lines[].kind = "no-line-break"
+delivery.pack-decision/1.files[].lines[].kind = "removed"
+delivery.pack-decision/1.files[].lines[].kind: string
+delivery.pack-decision/1.files[].lines[].text: string
+delivery.pack-decision/1.files[].lines[]: object
+delivery.pack-decision/1.files[].path: string
+delivery.pack-decision/1.files[].removed: integer
+delivery.pack-decision/1.files[].status = "added"
+delivery.pack-decision/1.files[].status = "changed"
+delivery.pack-decision/1.files[].status = "removed"
+delivery.pack-decision/1.files[].status = "unchanged"
+delivery.pack-decision/1.files[].status: string
+delivery.pack-decision/1.files[]: object
+delivery.pack-decision/1.fingerprint: null|string
+delivery.pack-decision/1.message: string
+delivery.pack-decision/1.notInPack.declares: array
+delivery.pack-decision/1.notInPack.declares[] = "bin"
+delivery.pack-decision/1.notInPack.declares[] = "dependencies"
+delivery.pack-decision/1.notInPack.declares[] = "scripts"
+delivery.pack-decision/1.notInPack.declares[]: string
+delivery.pack-decision/1.notInPack.ignored: array
+delivery.pack-decision/1.notInPack.ignored[].bytes: integer
+delivery.pack-decision/1.notInPack.ignored[].path: string
+delivery.pack-decision/1.notInPack.ignored[]: object
+delivery.pack-decision/1.notInPack: null|object
+delivery.pack-decision/1.outcome = "added"
+delivery.pack-decision/1.outcome = "approved"
+delivery.pack-decision/1.outcome = "fingerprint-differs"
+delivery.pack-decision/1.outcome = "needs-approval"
+delivery.pack-decision/1.outcome = "refused"
+delivery.pack-decision/1.outcome = "unchanged"
+delivery.pack-decision/1.outcome = "updated"
+delivery.pack-decision/1.outcome: string
+delivery.pack-decision/1.pack: null|string
+delivery.pack-decision/1.package.name: string
+delivery.pack-decision/1.package.version: string
+delivery.pack-decision/1.package: null|object
+delivery.pack-decision/1.previous.fingerprint: string
+delivery.pack-decision/1.previous.version: string
+delivery.pack-decision/1.previous: null|object
+delivery.pack-decision/1.schema = "delivery.pack-decision/1"
+delivery.pack-decision/1.schema: string

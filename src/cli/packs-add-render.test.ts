@@ -15,6 +15,8 @@ const LONG = `@acme/${"x".repeat(34)}`;
 
 const NAME = "@acme/delivery-pack-docs";
 
+const HASH = "0123456789abcdef".repeat(4);
+
 const fetched = (version: string): FetchedPackage => ({ name: LONG, version, integrity: "sha512-AAAA", tarball: new Uint8Array() });
 
 const read = (fields: Partial<Extract<PackageRead, { ok: true }>>): Extract<PackageRead, { ok: true }> => ({
@@ -97,16 +99,18 @@ describe("the question and the closing lines", () => {
     ]);
   });
 
-  it("says nothing can ask, and that nothing was changed, within 60 columns", () => {
-    const lines = nobodyToAsk("add");
-    expect(flat(lines)).toBe("Not added: nothing here can ask you. Run the command in a terminal to read the account and answer. Nothing was changed.");
+  it("says nothing can ask, gives the command to run with the fingerprint, and that nothing was changed, within 60 columns", () => {
+    const lines = nobodyToAsk("add", `delivery packs add ${NAME}`, HASH);
+    expect(lines[0]).toBe("Not added: nothing here can ask you.");
+    expect(flat(lines)).toContain(`delivery packs add ${NAME} \\ --approve ${HASH.slice(0, 32)}\\ ${HASH.slice(32)} `);
+    expect(flat(lines).endsWith("Nothing was changed.")).toBe(true);
     expect(widest(lines)).toBeLessThanOrEqual(60);
   });
 
   it.each([
     ["archive", () => archiveRefusal("update", LONG, "1.3.0", { entry: "pack/link", message: NOT_PLAIN_ENTRY })],
     ["pack", () => packRefusal("update", LONG, "1.3.0", "pack", [{ file: join("/scratch", "pack", "install.sh"), field: null, message: NOT_IN_A_PACK }], join("/scratch", "pack"))],
-    ["nobody", () => nobodyToAsk("update")],
+    ["nobody", () => nobodyToAsk("update", "delivery packs update docs", HASH)],
   ])("leads the %s refusal of an update with Not updated, within 60 columns", (_, lines) => {
     expect(lines()[0]?.startsWith("Not updated:")).toBe(true);
     expect(widest(lines())).toBeLessThanOrEqual(60);
