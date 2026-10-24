@@ -167,6 +167,22 @@ describe("renderFailure for a restore", () => {
     );
   });
 
+  it.each(["not-found", "no-version", "failed"] as const)("leads with Not updated when an update's npm says %s", (reason) => {
+    const { message } = renderFailure(new PackSourceUnavailable("@acme/x", "latest", reason, "boom", "update"));
+    expect(message.startsWith("Not updated:")).toBe(true);
+  });
+  it("says runs of added packs are not affected when an update cannot reach npm", () => {
+    expect(renderFailure(new PackSourceUnavailable("@acme/x", "latest", "unreachable", "", "update")).message)
+      .toBe("Not updated: npm could not be reached. Nothing was changed. Runs of packs already added are not affected.");
+  });
+  it("says runs do not need npm when an update finds no npm", () => {
+    expect(renderFailure(new PackSourceUnavailable("@acme/x", "latest", "no-npm", "", "update")).message)
+      .toBe("Not updated: this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.");
+  });
+  it("leads an update's integrity mismatch with Not updated", () => {
+    expect(renderFailure(new PackIntegrityMismatch("@acme/x", "1.3.0", "sha512-A", "sha512-B", "update")).message.startsWith("Not updated:")).toBe(true);
+  });
+
   it("keeps the add wording by default", () => {
     expect(renderFailure(new PackSourceUnavailable("x", "1.2.0", "no-npm", "")).message).toBe(
       "Not added: this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.",

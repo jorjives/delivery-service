@@ -252,8 +252,8 @@ export class PackSourceUnavailable extends Error {
   }
 }
 
-/** Which command asked npm for a pack: `add` for a new pack, `restore` for one already in the project. */
-export type PackAttempt = "add" | "restore";
+/** Which command asked npm for a pack: `add` for a new pack, `restore` for one already in the project, `update` for one whose recorded version is being moved. */
+export type PackAttempt = "add" | "restore" | "update";
 
 /** The bytes npm sent for a package do not match the integrity npm published for them. */
 export class PackIntegrityMismatch extends Error {

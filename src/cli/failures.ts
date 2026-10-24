@@ -128,8 +128,17 @@ function packSpecRefusedMessage(err: PackSpecRefused): string {
   }
 }
 
-/** The lead of a refusal to add or restore a pack: which of the two was attempted. */
-const leadOf = (attempt: PackAttempt): string => (attempt === "restore" ? "Not restored:" : "Not added:");
+/** The lead of a refusal to add, restore or update a pack: which of the three was attempted. */
+const leadOf = (attempt: PackAttempt): string => {
+  switch (attempt) {
+    case "add":
+      return "Not added:";
+    case "restore":
+      return "Not restored:";
+    case "update":
+      return "Not updated:";
+  }
+};
 
 /** Why npm could not give the package an owner named, in words an owner can act on. */
 function packSourceUnavailableMessage(err: PackSourceUnavailable): string {
@@ -139,7 +148,7 @@ function packSourceUnavailableMessage(err: PackSourceUnavailable): string {
     case "no-npm":
       return restoring
         ? "Not restored: this needs npm to fetch the package, and npm was not found."
-        : "Not added: this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.";
+        : `${lead} this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.`;
     case "not-found":
       return `${lead} npm has no package called ${err.packageName}. Check the name; scoped packages start with @.`;
     case "no-version":
@@ -147,7 +156,7 @@ function packSourceUnavailableMessage(err: PackSourceUnavailable): string {
     case "unreachable":
       return restoring
         ? "Not restored: npm could not be reached. Nothing was changed."
-        : "Not added: npm could not be reached. Nothing was changed. Runs of packs already added are not affected.";
+        : `${lead} npm could not be reached. Nothing was changed. Runs of packs already added are not affected.`;
     case "failed":
       return `${lead} npm could not fetch ${err.packageName} (${err.detail}). Nothing was changed.`;
   }

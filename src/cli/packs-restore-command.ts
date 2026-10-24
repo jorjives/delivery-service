@@ -1,28 +1,16 @@
 import { join, relative } from "node:path";
-import { PackIntegrityMismatch, PackSourceUnavailable } from "../errors.js";
 import { showName } from "../packs/hidden-characters.js";
 import { fingerprintOf } from "../packs/install/lock.js";
 import { readPackage } from "../packs/install/package-archive.js";
-import type { PackageSpec } from "../packs/install/pack-spec.js";
-import type { FetchedPackage, PackSource } from "../packs/install/pack-source.js";
+import type { PackSource } from "../packs/install/pack-source.js";
 import { restorePackFolder } from "../packs/install/store.js";
 import { withStagedPack } from "../packs/install/staged.js";
 import { addedPackNamed } from "./added-pack-lookup.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
+import { fetchFor } from "./pack-fetch.js";
 import { problemLines, wrap } from "./packs-inspect-render.js";
 import { changedAtSourceLines, restoredLines, unapprovedLines, unreadableLines } from "./packs-restore-render.js";
-
-/** The package as npm gives it again. A refusal from npm is the same refusal, marked as one for a restore, so it reads as one. */
-async function fetchAgain(source: PackSource, spec: PackageSpec): Promise<FetchedPackage> {
-  try {
-    return await source.fetch(spec);
-  } catch (err) {
-    if (err instanceof PackSourceUnavailable) throw new PackSourceUnavailable(err.packageName, err.request, err.reason, err.detail, "restore");
-    if (err instanceof PackIntegrityMismatch) throw new PackIntegrityMismatch(err.packageName, err.version, err.expected, err.actual, "restore");
-    throw err;
-  }
-}
 
 /**
  * `delivery packs restore <name>`: fetch an added pack again at the version its record holds, and put its files back when the
@@ -39,7 +27,7 @@ export async function packsRestoreCommand(name: string, ctx: CommandContext, sou
   };
 
   for (const line of wrap(`Fetching ${entry.package} ${entry.version} again.`, "")) ctx.writeLine(line);
-  const fetched = await fetchAgain(source, { name: entry.package, request: entry.version, typed: true });
+  const fetched = await fetchFor(source, { name: entry.package, request: entry.version, typed: true }, "restore");
   if (fetched.integrity !== entry.integrity) {
     for (const line of changedAtSourceLines(entry, fetched.integrity)) ctx.writeLine(line);
     return EXIT.configuration;
