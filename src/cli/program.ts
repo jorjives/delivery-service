@@ -370,6 +370,18 @@ export async function runCli(io: CliIo): Promise<number> {
     });
 
   packs
+    .command("restore")
+    .description(
+      "fetch an added pack again at the version in its record, check it matches what was approved, and put its files back",
+    )
+    .argument("<name>", "the added pack to restore, by its name from `delivery packs`, such as docs-drift")
+    .action(async (name: string, _options: unknown, command: Command) => {
+      const { packsRestoreCommand } = await import("./packs-restore-command.js");
+      const ctx = ctxFor(command);
+      exitCode = await packsRestoreCommand(name, ctx, npmSource(ctx.env));
+    });
+
+  packs
     .command("inspect")
     .description(
       "show what a pack will do before you use it: what each workflow is for, how far it goes before it asks you, and every instruction it gives the agent, with nothing run or changed",

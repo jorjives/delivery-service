@@ -159,3 +159,17 @@ describe("renderFailure", () => {
     });
   });
 });
+
+describe("renderFailure for a restore", () => {
+  it("leads with Not restored, and drops the add-only clause, when npm is missing", () => {
+    expect(renderFailure(new PackSourceUnavailable("x", "1.2.0", "no-npm", "", "restore")).message).toBe(
+      "Not restored: this needs npm to fetch the package, and npm was not found.",
+    );
+  });
+
+  it("keeps the add wording by default", () => {
+    expect(renderFailure(new PackSourceUnavailable("x", "1.2.0", "no-npm", "")).message).toBe(
+      "Not added: this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.",
+    );
+  });
+});

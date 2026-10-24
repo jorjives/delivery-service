@@ -7,3 +7,5 @@
 Every use of an added pack first checks its kept files against the record, with no network, and refuses before anything is sent to an agent a pack that is missing, holds something the pack format does not allow, has changed, was not approved, or has no record entry, naming the file and the one command that fixes it.
 
 `delivery packs` says whether each added pack is as approved, and names the command for one that is not.
+
+`delivery packs restore <name>` fetches the recorded version again and puts the pack back when it matches what was approved.

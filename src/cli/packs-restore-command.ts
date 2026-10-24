@@ -1,0 +1,75 @@
+import { join, relative } from "node:path";
+import { PackIntegrityMismatch, PackSourceUnavailable } from "../errors.js";
+import { fingerprintOf, readLock } from "../packs/install/lock.js";
+import { readPackage } from "../packs/install/package-archive.js";
+import type { PackageSpec } from "../packs/install/pack-spec.js";
+import type { FetchedPackage, PackSource } from "../packs/install/pack-source.js";
+import { restorePackFolder } from "../packs/install/store.js";
+import { withStagedPack } from "../packs/install/staged.js";
+import type { CommandContext } from "./context.js";
+import { EXIT, type ExitCode } from "./failures.js";
+import { notAddedLines } from "./installed-render.js";
+import { problemLines, wrap } from "./packs-inspect-render.js";
+import { changedAtSourceLines, restoredLines, unapprovedLines, unreadableLines } from "./packs-restore-render.js";
+import { findRepository } from "./project.js";
+
+/** The package as npm gives it again. A refusal from npm is the same refusal, marked as one for a restore, so it reads as one. */
+async function fetchAgain(source: PackSource, spec: PackageSpec): Promise<FetchedPackage> {
+  try {
+    return await source.fetch(spec);
+  } catch (err) {
+    if (err instanceof PackSourceUnavailable) throw new PackSourceUnavailable(err.packageName, err.request, err.reason, err.detail, "restore");
+    if (err instanceof PackIntegrityMismatch) throw new PackIntegrityMismatch(err.packageName, err.version, err.expected, err.actual, "restore");
+    throw err;
+  }
+}
+
+/**
+ * `delivery packs restore <name>`: fetch an added pack again at the version its record holds, and put its files back when the
+ * package still matches the record. Nothing is written unless it does, and nothing from the package runs. The record is left as it stands.
+ */
+export async function packsRestoreCommand(name: string, ctx: CommandContext, source: PackSource): Promise<ExitCode> {
+  const repoPath = await findRepository(ctx.cwd);
+  const lock = await readLock(repoPath);
+  const entry = lock.packs[name];
+  if (entry === undefined) {
+    for (const line of notAddedLines(name, Object.keys(lock.packs))) ctx.writeLine(line);
+    return EXIT.configuration;
+  }
+
+  const refuse = (problems: readonly string[]): ExitCode => {
+    for (const line of unreadableLines(entry, problems)) ctx.writeLine(line);
+    return EXIT.configuration;
+  };
+
+  for (const line of wrap(`Fetching ${entry.package} ${entry.version} again.`, "")) ctx.writeLine(line);
+  const fetched = await fetchAgain(source, { name: entry.package, request: entry.version, typed: true });
+  if (fetched.integrity !== entry.integrity) {
+    for (const line of changedAtSourceLines(entry, fetched.integrity)) ctx.writeLine(line);
+    return EXIT.configuration;
+  }
+
+  const read = await readPackage(fetched.tarball);
+  if (!read.ok) {
+    return refuse(wrap(`${read.problem.entry ?? "The package"} ${read.problem.message}.`, "  ", "    "));
+  }
+
+  return withStagedPack(read.packFiles, async (stagedDir, folder) => {
+    // Each problem is named by its path inside the package, which is the pack folder's path plus the file's.
+    const inPackage = (file: string): string => (read.packPath === "." ? relative(stagedDir, file) : `${read.packPath}/${relative(stagedDir, file)}`);
+    if (!folder.ok) return refuse(problemLines(folder.problems, inPackage));
+    const manifestName = folder.pack.manifest.name;
+    if (manifestName !== name) {
+      const problem = { file: join(stagedDir, "pack.json"), field: "name", message: `"name" is "${manifestName}", but the record keeps this pack as ${name}` };
+      return refuse(problemLines([problem], inPackage));
+    }
+    if (fingerprintOf(folder.pack) !== entry.fingerprint) return refuse([]);
+
+    await restorePackFolder(repoPath, name, read.packFiles);
+    for (const line of restoredLines(name)) ctx.writeLine(line);
+    if (entry.approved !== entry.fingerprint) {
+      for (const line of unapprovedLines(name)) ctx.writeLine(line);
+    }
+    return EXIT.ok;
+  });
+}

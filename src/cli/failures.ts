@@ -24,6 +24,7 @@ import {
   PackIntegrityMismatch,
   PackLockInvalid,
   InstalledPackRefused,
+  type PackAttempt,
 } from "../errors.js";
 import { messageOf } from "../gate-support.js";
 import { refusedLines } from "./installed-render.js";
@@ -127,19 +128,28 @@ function packSpecRefusedMessage(err: PackSpecRefused): string {
   }
 }
 
+/** The lead of a refusal to add or restore a pack: which of the two was attempted. */
+const leadOf = (attempt: PackAttempt): string => (attempt === "restore" ? "Not restored:" : "Not added:");
+
 /** Why npm could not give the package an owner named, in words an owner can act on. */
 function packSourceUnavailableMessage(err: PackSourceUnavailable): string {
+  const lead = leadOf(err.attempt);
+  const restoring = err.attempt === "restore";
   switch (err.reason) {
     case "no-npm":
-      return "Not added: this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.";
+      return restoring
+        ? "Not restored: this needs npm to fetch the package, and npm was not found."
+        : "Not added: this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.";
     case "not-found":
-      return `Not added: npm has no package called ${err.packageName}. Check the name; scoped packages start with @.`;
+      return `${lead} npm has no package called ${err.packageName}. Check the name; scoped packages start with @.`;
     case "no-version":
-      return `Not added: ${err.packageName} has no version ${err.request} on npm. Nothing was changed.`;
+      return `${lead} ${err.packageName} has no version ${err.request} on npm. Nothing was changed.`;
     case "unreachable":
-      return "Not added: npm could not be reached. Nothing was changed. Runs of packs already added are not affected.";
+      return restoring
+        ? "Not restored: npm could not be reached. Nothing was changed."
+        : "Not added: npm could not be reached. Nothing was changed. Runs of packs already added are not affected.";
     case "failed":
-      return `Not added: npm could not fetch ${err.packageName} (${err.detail}). Nothing was changed.`;
+      return `${lead} npm could not fetch ${err.packageName} (${err.detail}). Nothing was changed.`;
   }
 }
 
@@ -226,7 +236,7 @@ function renderKnown(err: KnownError): RenderedFailure {
       return { message: packSourceUnavailableMessage(err), exitCode: EXIT.configuration };
     case "PACK_INTEGRITY_MISMATCH":
       return {
-        message: `Not added: the download of ${err.packageName} ${err.version} does not match what npm published for it. Nothing was changed. Try again; if it happens again, do not use this version.`,
+        message: `${leadOf(err.attempt)} the download of ${err.packageName} ${err.version} does not match what npm published for it. Nothing was changed. Try again; if it happens again, do not use this version.`,
         exitCode: EXIT.configuration,
       };
     case "PACK_LOCK_INVALID":

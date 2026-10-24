@@ -245,11 +245,15 @@ export class PackSourceUnavailable extends Error {
     readonly request: string,
     readonly reason: "no-npm" | "not-found" | "no-version" | "unreachable" | "failed",
     readonly detail: string,
+    readonly attempt: PackAttempt = "add",
   ) {
     super(`npm could not give ${packageName} ${request} (${reason})`);
     this.name = "PackSourceUnavailable";
   }
 }
+
+/** Which command asked npm for a pack: `add` for a new pack, `restore` for one already in the project. */
+export type PackAttempt = "add" | "restore";
 
 /** The bytes npm sent for a package do not match the integrity npm published for them. */
 export class PackIntegrityMismatch extends Error {
@@ -259,6 +263,7 @@ export class PackIntegrityMismatch extends Error {
     readonly version: string,
     readonly expected: string,
     readonly actual: string,
+    readonly attempt: PackAttempt = "add",
   ) {
     super(`The download of ${packageName} ${version} does not match its published integrity`);
     this.name = "PackIntegrityMismatch";

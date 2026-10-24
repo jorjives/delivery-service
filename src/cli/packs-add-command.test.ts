@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -22,22 +22,11 @@ import { addedLines, alreadyAdded, NOTHING_ADDED, nobodyToAsk } from "./packs-ad
 import { builtInPackClash } from "./pack-workflows.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
-import { addedDocsDrift } from "./installed-fixtures.js";
+import { addedDocsDrift, tree } from "./installed-fixtures.js";
 
 const NAME = "@acme/delivery-pack-docs";
 
 type PackOptions = Parameters<typeof packPackage>[0];
-
-/** Every path under `repo` except `.git`, with a directory's marker or a file's bytes, so a test can prove nothing changed. */
-function tree(repo: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const rel of readdirSync(repo, { recursive: true }).map(String)) {
-    if (rel === ".git" || rel.startsWith(".git/")) continue;
-    const path = join(repo, rel);
-    out[rel] = statSync(path).isDirectory() ? "<folder>" : readFileSync(path).toString("base64");
-  }
-  return out;
-}
 
 /** The lines outside each pair of rules: the account's own words, not the pack's instructions shown between the rules. */
 function linesOutsideRules(lines: readonly string[]): string[] {
@@ -188,7 +177,7 @@ describe("delivery packs add", () => {
   it("then lists the pack with its source and version, and previews its find", async () => {
     await packsAddCommand(NAME, context(repo).ctx, scriptedAsk({ confirm: true }).ask, source);
     const listed = await delivery(["packs"], { cwd: repo });
-    expect(listed.stdout).toContain("From npm: @acme/delivery-pack-docs 1.2.0. Start it with: delivery review docs-drift");
+    expect(listed.stdout).toContain("From npm: @acme/delivery-pack-docs 1.2.0. As approved. Start it with: delivery review docs-drift");
     const preview = await delivery(["review", "docs-drift", "--preview"], { cwd: repo });
     expect(preview.exitCode).toBe(EXIT.ok);
     expect(preview.stdout).toContain(SCAN_TEXT.slice(0, SCAN_TEXT.indexOf("\n")));
