@@ -32,7 +32,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery packs add <package>` | Adds a pack someone has published on npm: shows the exact version and everything the pack will tell the agent, runs nothing from the package, and adds nothing until you say yes; without a terminal, it shows the account and is refused unless `--approve` gives the pack's fingerprint | [Packs](packs.md) |
 | `delivery packs restore <name>` | Fetches an added pack again at the version in its record, checks it matches what was approved, and puts its files back; changes nothing if npm now serves different contents for that version | [Packs](packs.md) |
 | `delivery packs update <name> [request]` | Takes a newer version of an added pack: shows the versions and fingerprints, what changed in short (sign-off, guards, workflows, checks and landing, widening), which instruction files changed and the changed lines, and changes nothing until you say yes; without a terminal it is refused, naming the command to run again, unless `--approve` gives the new version's fingerprint | [Packs](packs.md) |
-| `delivery packs approve <name>` | Approves an added pack whose record says it was not approved, after showing its full account; a pack whose files differ from the record cannot be approved where it stands | [Packs](packs.md) |
+| `delivery packs approve <name>` | Approves an added pack whose record says it was not approved, after showing its full account; a pack whose files differ from the record cannot be approved where it stands; without a terminal it shows the account and is refused unless `--approve` gives the pack's fingerprint | [Packs](packs.md) |
 | `delivery packs remove <name>` | Takes an added pack out: names the workflows that will stop existing, then deletes its kept files and its entry in the record; changes nothing while your configuration still names one of its workflows | [Packs](packs.md) |
 | `delivery schedule enable` | Turns on a timer that runs `delivery run --sources` with its own config file, workflow, item cap and concurrency, or changes how often it runs. On a platform that has no scheduler backend yet, refuses and prints the crontab line to use instead: see [Use cron where there is no scheduler](run-on-a-schedule.md#use-cron-where-there-is-no-scheduler) | [Run on a schedule](run-on-a-schedule.md) |
 | `delivery schedule status` | Says, for every schedule the project has, whether it is on, when it last ran and will next run, and shows each schedule's run settings | [Run on a schedule](run-on-a-schedule.md) |
@@ -82,6 +82,7 @@ Every run holds the repository while it runs, so a second run started while one 
 | `packs inspect` | `--workflow <name>` | Shows only this workflow, its limits and its instructions, with the pack's name, fingerprint and standing notes |
 | `packs add` | `--approve <fingerprint>` | Adds without asking, only if the pack has this fingerprint, as its account shows it; any other fingerprint is refused |
 | `packs update` | `--approve <fingerprint>` | Updates without asking, only if the new version has this fingerprint, as the change shows it under "Fingerprint after" |
+| `packs approve` | `--approve <fingerprint>` | Approves without asking, only if the pack has this fingerprint, as its account shows it; any other fingerprint is refused |
 | `schedule enable` | `--every <interval>` | Sets how often it runs: minutes that divide an hour (such as `5m`, `15m` or `30m`), hours that divide a day (such as `1h`, `6h` or `12h`), or `1d` (the default) |
 | `schedule enable` | `--name <name>` | Names the schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens. Without it, sets up the project's default schedule. Refused when another project already holds that schedule's timer. For a worked example, see [two schedules on one project](run-on-a-schedule.md#worked-example-two-schedules-on-one-project) |
 | `schedule enable` | `--config <path>` | The config file each scheduled run uses (default: the project's own) |
@@ -151,7 +152,7 @@ When several tasks run at once, each object also carries a `scope`, and every ke
   on the run starting and finishing.
 
 `--json` is a global option. It changes the output of `run`, `resume`, `status`, `report`,
-`validate`, `packs`, `packs check`, `packs inspect`, `packs add` and `packs update`; other commands ignore it. Without it the output is
+`validate`, `packs`, `packs check`, `packs inspect`, `packs add`, `packs update` and `packs approve`; other commands ignore it. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
 The step lines are the running command's own account of itself and carry no version. To build
 on what a run did, use the versioned data in [Reports as data](reporting.md).

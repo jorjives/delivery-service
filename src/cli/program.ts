@@ -102,7 +102,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .version(version, "-V, --version", "print the harness version")
     .option("--no-color", "print without colour")
-    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate, packs, packs inspect, packs add and packs update, and one JSON event per line from status --watch")
+    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate, packs, packs inspect, packs add, packs update and packs approve, and one JSON event per line from status --watch")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
     .configureOutput({ writeOut: (text) => out.stdout.write(text), writeErr: (text) => out.stderr.write(text) });
@@ -403,10 +403,11 @@ export async function runCli(io: CliIo): Promise<number> {
     .command("approve")
     .description("approve an added pack whose record says it was not approved, after reading its full account")
     .argument("<name>", "the added pack to approve, by its name from `delivery packs`, such as docs-drift")
-    .action(async (name: string, _options: unknown, command: Command) => {
+    .option("--approve <fingerprint>", "approve without being asked, only if the pack has this fingerprint, as its account shows it")
+    .action(async (name: string, options: { approve?: string }, command: Command) => {
       const { packsApproveCommand } = await import("./packs-approve-command.js");
       const ctx = ctxFor(command);
-      exitCode = await packsApproveCommand(name, ctx, inquirerAsk(ctx.colour));
+      exitCode = await packsApproveCommand(name, ctx, inquirerAsk(ctx.colour), { approve: options.approve });
     });
 
   packs

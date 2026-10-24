@@ -2,6 +2,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { readLock } from "../packs/install/lock.js";
+import { loadPack } from "../packs/manifest.js";
 import { SCAN_TEXT } from "../packs/install/install-fixtures.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
@@ -10,8 +11,10 @@ import { EXIT } from "./failures.js";
 import { addedDocsDrift, tree } from "./installed-fixtures.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
+import { PackDecision } from "./pack-decision.js";
 import { packsApproveCommand } from "./packs-approve-command.js";
-import { newerFormatLines } from "./packs-approve-render.js";
+import { newerFormatLines, notApprovableLines } from "./packs-approve-render.js";
+import { fingerprintDiffers, nobodyToAsk } from "./packs-add-render.js";
 
 /** The text with every run of white space made one space: where a line wraps does not matter. */
 const flat = (text: string): string => text.replace(/\s+/g, " ");
@@ -84,17 +87,70 @@ describe("delivery packs approve", () => {
     expect(await packsApproveCommand("docs-drift", ctx, scriptedAsk({ confirm: false }).ask)).toBe(EXIT.ok);
     expect(lines.at(-1)).toBe("Nothing was approved.");
     expect(readFileSync(lockPath())).toEqual(lockBefore);
+  });
 
-    const nobody = context(repo, { interactive: false });
+  it("shows the account and refuses with nobody to ask, naming the approve command", async () => {
+    await addedDocsDrift(repo);
+    unapprove();
+    const hash = (await loadPack(dirPath())).hash;
+    const lockBefore = readFileSync(lockPath());
+    const { ctx, lines } = context(repo, { interactive: false });
     const { ask, asked } = scriptedAsk({ confirm: true });
-    expect(await packsApproveCommand("docs-drift", nobody.ctx, ask)).toBe(EXIT.configuration);
+    expect(await packsApproveCommand("docs-drift", ctx, ask)).toBe(EXIT.configuration);
     expect(asked).toEqual([]);
-    expect(nobody.lines).toEqual([
-      "Not approved: nothing here can ask you.",
-      "  Run the command in a terminal to read the account and answer.",
-      "  Nothing was changed.",
-    ]);
+    expect(lines.join("\n")).toContain("In short"); // the account was shown first
+    expect(lines.slice(-9)).toEqual(nobodyToAsk("approve", "delivery packs approve docs-drift", hash));
     expect(readFileSync(lockPath())).toEqual(lockBefore);
+  });
+
+  it("approves with the fingerprint, asking nothing", async () => {
+    await addedDocsDrift(repo);
+    unapprove();
+    const hash = (await loadPack(dirPath())).hash;
+    const { ctx } = context(repo, { interactive: false });
+    const { ask, asked } = scriptedAsk({ confirm: true });
+    expect(await packsApproveCommand("docs-drift", ctx, ask, { approve: hash })).toBe(EXIT.ok);
+    expect(asked).toEqual([]);
+    const entry = (await readLock(repo)).packs["docs-drift"];
+    expect(entry?.approved).toBe(entry?.fingerprint);
+  });
+
+  it("refuses a different fingerprint, the record unchanged", async () => {
+    await addedDocsDrift(repo);
+    unapprove();
+    const lockBefore = readFileSync(lockPath());
+    const { ctx, lines } = context(repo, { interactive: false });
+    const { ask, asked } = scriptedAsk({ confirm: true });
+    expect(await packsApproveCommand("docs-drift", ctx, ask, { approve: "c".repeat(64) })).toBe(EXIT.configuration);
+    expect(asked).toEqual([]);
+    expect(lines.slice(-fingerprintDiffers("approve").length)).toEqual(fingerprintDiffers("approve"));
+    expect(readFileSync(lockPath())).toEqual(lockBefore);
+  });
+
+  it("gives an approve document under --json", async () => {
+    await addedDocsDrift(repo);
+    unapprove();
+    const hash = (await loadPack(dirPath())).hash;
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsApproveCommand("docs-drift", ctx, scriptedAsk().ask, { approve: hash })).toBe(EXIT.ok);
+    expect(lines).toHaveLength(1);
+    const doc = PackDecision.parse(JSON.parse(lines[0] ?? ""));
+    expect(doc).toMatchObject({ command: "approve", outcome: "approved", pack: "docs-drift", package: { name: "@acme/delivery-pack-docs", version: "1.2.0" }, fingerprint: hash });
+    expect(doc.account).not.toBeNull();
+  });
+
+  it("says unchanged under --json for an approved pack, and refused for a changed one", async () => {
+    await addedDocsDrift(repo);
+    const approved = context(repo, { json: true });
+    expect(await packsApproveCommand("docs-drift", approved.ctx, scriptedAsk().ask)).toBe(EXIT.ok);
+    expect(PackDecision.parse(JSON.parse(approved.lines[0] ?? "")).outcome).toBe("unchanged");
+
+    editScan();
+    const changed = context(repo, { json: true });
+    expect(await packsApproveCommand("docs-drift", changed.ctx, scriptedAsk().ask)).toBe(EXIT.configuration);
+    const doc = PackDecision.parse(JSON.parse(changed.lines[0] ?? ""));
+    expect(doc.outcome).toBe("refused");
+    expect(doc.message).toBe(notApprovableLines("docs-drift").map((line) => line.trim()).join(" "));
   });
 
   it("will not approve a pack whose files differ from the record, and says to restore or update it", async () => {

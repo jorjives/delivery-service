@@ -16,6 +16,8 @@ Every use of an added pack first checks its kept files against the record, with 
 
 `delivery packs approve <name>` approves an added pack whose record says it was not approved, after showing its full account; a pack whose files differ from the record must be restored or updated instead.
 
+`delivery packs approve` shows the account with nobody to ask too, and takes `--approve <fingerprint>` in the same way; `--json` gives its outcome as one `delivery.pack-decision/1` document.
+
 Adding a pack whose name, or whose workflow's name, is already used is refused before anything is written. The refusal names both sides and the one thing to do to keep the new pack, usually `delivery packs remove <name>`. A clash that appears later, when packs load, is named the same way wherever packs load.
 
 `delivery packs remove <name>` takes an added pack out: it names the workflows that will stop existing, then deletes its kept files and its entry in the record; it changes nothing while your configuration still names one of its workflows. Commit the deleted folder and the record together, so the pack is gone for everyone.

@@ -39,13 +39,6 @@ export const notApprovableLines = (name: string): string[] => [
 export const unapprovedLead = (name: string): string[] =>
   wrap(`The record says ${showName(name)} has not been approved. Read it before you answer.`, "");
 
-/** Nobody can answer, so nothing is read out and nothing is approved. */
-export const nobodyToApproveLines = (): string[] => [
-  "Not approved: nothing here can ask you.",
-  "  Run the command in a terminal to read the account and answer.",
-  "  Nothing was changed.",
-];
-
 /** What was approved, where the record is, and what to do with it. */
 export const approvedLines = (name: string, version: string): string[] => [
   `Approved ${showName(name)} ${showName(version)}.`,
