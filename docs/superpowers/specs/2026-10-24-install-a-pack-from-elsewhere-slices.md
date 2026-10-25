@@ -173,6 +173,8 @@
 
 ## Slice 5: Add and update from automation, with output scripts can read, and documentation
 
+**Tests:** ✅ Recorded — 2026-10-25 — `879dc28` — cli — 4 UAT + 6 AC, 0 skipped
+
 **Delivers:** A team can add and update packs from automated jobs without a person present, read the same facts as data, and learn the whole flow from the documentation.
 
 ### Prerequisites
