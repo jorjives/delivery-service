@@ -7,7 +7,8 @@ import type { ArchiveProblem, PackageRead } from "../packs/install/package-archi
 import type { PackProblem } from "../packs/manifest.js";
 import { type Clash, type ClashSide, sidePhrase } from "./pack-clash.js";
 import type { ConfirmQuestion } from "./init.js";
-import { problemLines, wrap } from "./packs-inspect-render.js";
+import { problemLines } from "./packs-inspect-render.js";
+import { wrap } from "./text-wrap.js";
 
 /** The last line when an owner says no, or does not answer. */
 export const NOTHING_ADDED = "Nothing was added.";

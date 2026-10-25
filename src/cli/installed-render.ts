@@ -1,7 +1,8 @@
 import { relative } from "node:path";
 import { showName } from "../packs/hidden-characters.js";
 import type { InstalledPack, UnusableInstalledPack } from "../packs/install/installed.js";
-import { problemLines, wrap } from "./packs-inspect-render.js";
+import { problemLines } from "./packs-inspect-render.js";
+import { wrap } from "./text-wrap.js";
 
 const NOTHING_SENT = "Nothing was sent to an agent.";
 

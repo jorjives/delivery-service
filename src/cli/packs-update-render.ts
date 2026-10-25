@@ -7,7 +7,8 @@ import type { Inspection } from "../packs/inspection.js";
 import { CHECKS_AND_LANDING_DIMENSIONS } from "../packs/widening.js";
 import { SEVERITIES, type Severity } from "../schema.js";
 import type { ConfirmQuestion } from "./init.js";
-import { findingSentence, INSPECT_WIDTH, orList, wrap } from "./packs-inspect-render.js";
+import { findingSentence, orList } from "./packs-inspect-render.js";
+import { INSPECT_WIDTH, wrap } from "./text-wrap.js";
 
 /** The last line of a refusal, or of an answer that changed nothing. */
 export const NOTHING_UPDATED = "Nothing was changed.";

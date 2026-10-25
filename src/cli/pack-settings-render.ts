@@ -17,7 +17,7 @@ import {
   PATHS_UNIQUE,
   TEXT_MAX,
 } from "../packs/setting-types.js";
-import { INSPECT_WIDTH, wrap } from "./packs-inspect-render.js";
+import { INSPECT_WIDTH, wrap } from "./text-wrap.js";
 
 export const DEFAULT_CONFIG_NAME = "delivery.config.json";
 

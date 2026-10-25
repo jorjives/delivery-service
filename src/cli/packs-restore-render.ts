@@ -1,6 +1,6 @@
 import type { LockEntry } from "../packs/install/lock.js";
 import { showName } from "../packs/hidden-characters.js";
-import { wrap } from "./packs-inspect-render.js";
+import { wrap } from "./text-wrap.js";
 
 /** The widest a value printed on its own line is, in columns: a digest is too long to wrap by word, so it is cut to this. */
 const VALUE_WIDTH = 56;

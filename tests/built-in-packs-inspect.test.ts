@@ -5,7 +5,8 @@
 import { describe, expect, it } from "vitest";
 import { withPackWorkflows } from "../src/cli/pack-workflows.js";
 import { delivery, PACKAGE } from "../src/cli/command-fixtures.js";
-import { INSPECT_RULE, INSPECT_WIDTH } from "../src/cli/packs-inspect-render.js";
+import { INSPECT_RULE } from "../src/cli/packs-inspect-render.js";
+import { INSPECT_WIDTH } from "../src/cli/text-wrap.js";
 import { inspectionOf, NO_PROJECT } from "../src/packs/inspection.js";
 import { builtInPacks, promptOf } from "../src/packs/manifest.js";
 import { readPackFolder } from "../src/packs/pack-folder.js";

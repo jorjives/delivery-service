@@ -1,6 +1,6 @@
 import { showName } from "../packs/hidden-characters.js";
 import type { ConfirmQuestion } from "./init.js";
-import { wrap } from "./packs-inspect-render.js";
+import { wrap } from "./text-wrap.js";
 
 /** The last line of a refusal that changed nothing. */
 const NOTHING_CHANGED = "Nothing was changed.";

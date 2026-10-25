@@ -7,7 +7,8 @@ import { inspectionOf, narrowedTo, NO_PROJECT, type Inspection, type InspectionB
 import type { Severity } from "../schema.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { OWN_SETUP } from "./own-setup.js";
-import { FIXTURES_NOT_READ, INSPECT_RULE, INSPECT_WIDTH, QUESTIONS_TO_ASK, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
+import { FIXTURES_NOT_READ, INSPECT_RULE, QUESTIONS_TO_ASK, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
+import { INSPECT_WIDTH } from "./text-wrap.js";
 
 const packs = await builtInPacks();
 const deprecations = packs.find((pack) => pack.manifest.name === "deprecations");

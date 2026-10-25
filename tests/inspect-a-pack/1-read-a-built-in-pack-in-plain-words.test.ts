@@ -9,7 +9,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { INSPECT_RULE, INSPECT_WIDTH } from "../../src/cli/packs-inspect-render.js";
+import { INSPECT_RULE } from "../../src/cli/packs-inspect-render.js";
+import { INSPECT_WIDTH } from "../../src/cli/text-wrap.js";
 import { inspectionOf, NO_PROJECT } from "../../src/packs/inspection.js";
 import { builtInPacks, promptOf } from "../../src/packs/manifest.js";
 import { initTempRepo } from "../../src/temp-repo.js";

@@ -8,40 +8,16 @@ import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK, UNUSED_INSTRUCTIONS } from "../pac
 import type { PackProblem } from "../packs/manifest.js";
 import { SEVERITIES, type GuardName } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
+import { INSPECT_WIDTH, wrap } from "./text-wrap.js";
 
 /** The last line of every refusal: nothing from the pack was used. */
 export const SHOWN_NOTHING = "Nothing from this pack was shown, run or sent to an agent.";
 
-/** The widest line the account writes, in columns. Pack-authored instructions are the one exception: they are shown as written. */
-export const INSPECT_WIDTH = 60;
 /** The line that opens and closes each instruction, so a reader can see where the pack's words begin and end. */
 export const INSPECT_RULE = "-".repeat(INSPECT_WIDTH);
 
-/** Pack-authored words on one line: every hidden character, a line break included, written out as visible text. */
-const oneLine = (text: string): string => showHidden(text, { newline: false, tab: false });
-
 /** Pack-authored instructions: hidden characters written out as visible text, line breaks and tabs left as they are. */
 const instructionText = (text: string): string => showHidden(text, { newline: true, tab: true });
-
-/** Greedy word wrap on single spaces, after pack-authored text is made visible. A word too long for the width sits alone on its line, unbroken. */
-export function wrap(text: string, indent: string, hanging: string = indent): string[] {
-  const lines: string[] = [];
-  let line = indent;
-  let started = false;
-  for (const word of oneLine(text).split(" ")) {
-    if (!started) {
-      line += word;
-      started = true;
-    } else if (line.length + 1 + word.length <= INSPECT_WIDTH) {
-      line += ` ${word}`;
-    } else {
-      lines.push(line);
-      line = hanging + word;
-    }
-  }
-  lines.push(line);
-  return lines;
-}
 
 /** Names joined as a plain list: "a", "a or b", "a, b or c". */
 export function orList(names: readonly string[]): string {

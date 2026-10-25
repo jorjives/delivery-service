@@ -1,6 +1,6 @@
 import { showName } from "../packs/hidden-characters.js";
 import type { LockEntry } from "../packs/install/lock.js";
-import { wrap } from "./packs-inspect-render.js";
+import { wrap } from "./text-wrap.js";
 
 /** A workflow the configuration names, and where in the configuration it does so: `tasks 2`, `task` or `sources 1`. */
 export interface WorkflowUse {

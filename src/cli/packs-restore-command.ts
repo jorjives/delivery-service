@@ -9,7 +9,8 @@ import { addedPackNamed } from "./added-pack-lookup.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import { fetchFor } from "./pack-fetch.js";
-import { problemLines, wrap } from "./packs-inspect-render.js";
+import { problemLines } from "./packs-inspect-render.js";
+import { wrap } from "./text-wrap.js";
 import { changedAtSourceLines, restoredLines, unapprovedLines, unreadableLines } from "./packs-restore-render.js";
 
 /**
