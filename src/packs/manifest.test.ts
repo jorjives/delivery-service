@@ -509,7 +509,7 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
   it("reads a pack that declares settings, and its hash differs from the same pack without them", async () => {
     const settings = { "docs-folder": { type: "path", summary: "The folder that holds your documentation.", default: "docs" } };
     const plain = await readPack(v3Dir(v3));
-    const declared = await readPack(v3Dir({ ...v3, settings }));
+    const declared = await readPack(v3Dir({ ...v3, settings }, { "scan.md": "# Scan\n{{settings.docs-folder}}\n", "code.md": "# Code\n", "tests.md": "# Tests\n" }));
     expect(plain.ok && declared.ok && declared.pack.hash !== plain.pack.hash).toBe(true);
   });
 
