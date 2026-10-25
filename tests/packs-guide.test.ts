@@ -173,7 +173,7 @@ function askedOn(lines: string[], ask: Ask): Ask {
 describe("the packs page on adding a pack from elsewhere", () => {
   const section = page.slice(page.indexOf("## Add a pack from elsewhere"), page.indexOf("## Names the built-ins keep"));
   const PINNING =
-    "Pinning keeps your review stable: every machine and every run uses the pack you read, until you choose to update it. It does not make a pack safe: read the account before you accept it, and read the change before you update.";
+    "Pinning keeps your review stable: every machine and every run uses the pack you read, until you choose to update it. Pinning does not review the pack for you: read the account before you accept it, and read the change before you update.";
 
   // Every line the commands print for the worked example, each run in process in a fresh repository with the fake pack source.
   const printed: string[][] = [];
@@ -254,9 +254,9 @@ describe("the packs page on adding a pack from elsewhere", () => {
     expect((await readLock(fresh)).packs["docs-drift"]).toEqual((await readLock(first)).packs["docs-drift"]);
   });
 
-  it("says pinning keeps review stable and does not make a pack safe", () => {
+  it("says pinning keeps review stable and does not review the pack", () => {
     expect(flatten(section)).toContain("Pinning keeps your review stable");
-    expect(flatten(section)).toContain("It does not make a pack safe");
+    expect(flatten(section)).toContain("Pinning does not review the pack for you");
   });
 
   it("names the keyword publishers use, so owners can search npm", () => expect(section).toContain("npm search keywords:delivery-pack"));

@@ -325,7 +325,7 @@ A different fingerprint is refused, and nothing is written. To read the packs in
 }
 ```
 
-**Pinned.** Pinning keeps your review stable: every machine and every run uses the pack you read, until you choose to update it. It does not make a pack safe: read the account before you accept it, and read the change before you update.
+**Pinned.** Pinning keeps your review stable: every machine and every run uses the pack you read, until you choose to update it. Pinning does not review the pack for you: read the account before you accept it, and read the change before you update.
 
 To keep the pack, commit both items: `.delivery/packs.lock.json`, which records the version and the fingerprint, and the folder `.delivery/packs/docs-drift`, which holds the pack's files.
 
