@@ -99,10 +99,12 @@ describe("the 'writing a pack' guide", () => {
     expect(flat).toContain("the right act workflow");
   });
 
-  it("says delivery.pack/2 packs still work and that settings are reserved", () => {
+  it("says delivery.pack/2 packs still work and how a prompt uses a setting", () => {
     expect(flat).toMatch(/delivery\.pack\/2 packs? (still|keep)/);
     expect(guide).toContain("`settings`");
     expect(guide).toContain("{{settings.");
+    expect(guide).toContain("packSettings");
+    expect(flat).not.toContain("is reserved for pack settings");
   });
 
   it("uses no em-dashes", () => {

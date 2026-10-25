@@ -3,6 +3,7 @@ import { z } from "zod";
 import { GuardName, Severity } from "../schema.js";
 import type { JsonSchema } from "../report/json-schema.js";
 import { hasHidden } from "./hidden-characters.js";
+import { PathValue, PathsValue, SeverityValue, TextValue } from "./setting-types.js";
 
 /** The versions of the pack format this build reads. `/2` is read, never written. */
 export const PACK_SCHEMAS_READ = ["delivery.pack/2", "delivery.pack/3"] as const;
@@ -61,6 +62,18 @@ export type FindWorkflow = z.infer<typeof FindWorkflow>;
 export type ActWorkflow = z.infer<typeof ActWorkflow>;
 export type PackWorkflow = z.infer<typeof PackWorkflow>;
 
+const declaration = <T extends string, D extends z.ZodType>(type: T, value: D) =>
+  z.strictObject({ type: z.literal(type), summary: Sentence, default: value.optional() });
+
+/** One setting a pack asks its owner for. No default means the owner must give a value. A default obeys its type's own rules. */
+export const SettingDeclaration = z.discriminatedUnion("type", [
+  declaration("text", TextValue),
+  declaration("path", PathValue),
+  declaration("paths", PathsValue),
+  declaration("severity", SeverityValue),
+]);
+export type SettingDeclaration = z.infer<typeof SettingDeclaration>;
+
 /**
  * A pack's manifest as `delivery.pack/3` writes it. Data only and strict: a key this format does not
  * name is refused, so a pack can never carry a tool list, code to run, or anything else that would
@@ -75,6 +88,8 @@ export const PackManifest = z.strictObject({
   title: Sentence,
   summary: Sentence,
   workflows: z.record(Slug, PackWorkflow),
+  /** What the pack asks the project owner for, each setting named by its key. A prompt uses one as `{{settings.<name>}}`. */
+  settings: z.record(Slug, SettingDeclaration).optional(),
 });
 export type PackManifest = z.infer<typeof PackManifest>;
 

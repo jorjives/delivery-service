@@ -28,6 +28,29 @@ delivery.pack/3.$schema: string (optional)
 delivery.pack/3.name: string
 delivery.pack/3.schema = "delivery.pack/3"
 delivery.pack/3.schema: string
+delivery.pack/3.settings.*: object
+delivery.pack/3.settings.*<path>.default: string (optional)
+delivery.pack/3.settings.*<path>.summary: string
+delivery.pack/3.settings.*<path>.type = "path"
+delivery.pack/3.settings.*<path>.type: string
+delivery.pack/3.settings.*<paths>.default: array (optional)
+delivery.pack/3.settings.*<paths>.default[]: string
+delivery.pack/3.settings.*<paths>.summary: string
+delivery.pack/3.settings.*<paths>.type = "paths"
+delivery.pack/3.settings.*<paths>.type: string
+delivery.pack/3.settings.*<severity>.default = "critical"
+delivery.pack/3.settings.*<severity>.default = "high"
+delivery.pack/3.settings.*<severity>.default = "low"
+delivery.pack/3.settings.*<severity>.default = "medium"
+delivery.pack/3.settings.*<severity>.default: string (optional)
+delivery.pack/3.settings.*<severity>.summary: string
+delivery.pack/3.settings.*<severity>.type = "severity"
+delivery.pack/3.settings.*<severity>.type: string
+delivery.pack/3.settings.*<text>.default: string (optional)
+delivery.pack/3.settings.*<text>.summary: string
+delivery.pack/3.settings.*<text>.type = "text"
+delivery.pack/3.settings.*<text>.type: string
+delivery.pack/3.settings: object (optional)
 delivery.pack/3.summary: string
 delivery.pack/3.title: string
 delivery.pack/3.version: string

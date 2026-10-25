@@ -437,10 +437,10 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
       '"workflows.code.summary" is missing: the find workflow "scan" needs it to choose between "code" and "tests"',
     ],
     [
-      "settings, which are reserved",
-      () => edited((m) => (m.settings = {})),
-      "settings",
-      '"settings" is reserved for pack settings, which this harness does not read yet',
+      "an unknown key inside a setting declaration",
+      () => edited((m) => (m.settings = { a: { type: "text", summary: "x", run: "y" } })),
+      "settings.a.run",
+      `"settings.a.run" ${DATA_ONLY}`,
     ],
     ["a top-level key that is a tool list", () => edited((m) => (m.tools = ["Bash"])), "tools", `"tools" ${DATA_ONLY}`],
     [
@@ -504,6 +504,13 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
   it("counts an act offered twice by one find as one target", async () => {
     const dir = v3Dir({ ...v3, workflows: { scan: { kind: "find", prompt: "scan.md", ideasFor: ["code", "code"] }, code: { kind: "act", prompt: "code.md" } } });
     expect((await readPack(dir)).ok).toBe(true);
+  });
+
+  it("reads a pack that declares settings, and its hash differs from the same pack without them", async () => {
+    const settings = { "docs-folder": { type: "path", summary: "The folder that holds your documentation.", default: "docs" } };
+    const plain = await readPack(v3Dir(v3));
+    const declared = await readPack(v3Dir({ ...v3, settings }));
+    expect(plain.ok && declared.ok && declared.pack.hash !== plain.pack.hash).toBe(true);
   });
 
   it("reports a /2 manifest's unknown settings key in /2 terms", async () => {

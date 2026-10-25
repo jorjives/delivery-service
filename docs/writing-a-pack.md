@@ -95,7 +95,7 @@ Every key a `delivery.pack/3` `pack.json` may hold is listed here, and any other
 | `title` | `string` | The pack's title, such as `My moves`. Required. |
 | `summary` | `string` | One sentence saying what the pack is for. Required. |
 | `workflows` | `object` | The workflows, each named by its key: exactly one find, and one or more acts, as described below. Required. |
-| `settings` | (reserved) | Reserved for pack settings. This release does not read them, so a pack that has one is refused. |
+| `settings` | `object` | Values the pack asks the project owner for, each named by its key in lower-case letters, digits and dashes. Optional. See [Settings](#settings) below. |
 
 ### A find workflow
 
@@ -119,13 +119,25 @@ An act workflow changes the project to fix one idea. Holds:
 | `guards` | `object` | `{ "add": ["tests-unchanged"] }`: [guards](glossary.md#guard) this act turns on. Each name must be one that `delivery packs --schema` lists. Holds only `add`. Optional. |
 | `hold` | `object` | `{ "atOrAbove": "high" }`: fixes of ideas rated this or more serious wait for the owner's sign-off. `atOrAbove` is `critical`, `high`, `medium` or `low`. Holds only `atOrAbove`. Optional. |
 
+### Settings
+
+A setting is a value the pack asks the project owner for. Each one is declared under `settings`, named by its key:
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `type` | `"text"`, `"path"`, `"paths"` or `"severity"` | Required. |
+| `summary` | `string` | One line saying what the setting is for. Required. |
+| `default` | by `type` | The value used when the owner gives none. Optional: with no default, the owner must give a value. |
+
+A prompt uses a setting as `{{settings.<name>}}`, and the owner gives values under `packSettings` in `delivery.config.json`.
+
 ### The rules a pack keeps
 
 - Exactly one workflow has `"kind": "find"`.
 - Every name in a find's `ideasFor` is an act workflow in the same pack.
 - Every act workflow is named in some find's `ideasFor`, so an idea can reach it.
 - An act that a find chooses between has a `summary`.
-- `{{settings.` is reserved in prompts, for pack settings this release does not read.
+- A prompt's `{{settings.<name>}}` is replaced by the owner's value, or the default, when the project loads the pack.
 - A pack cannot name a gate, an agent, tools, a closer, `after` steps or commands. A key that tries is refused with a sentence such as `"gate" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check`.
 
 ### The sentences you may see
@@ -140,7 +152,6 @@ An act workflow changes the project to fix one idea. Holds:
 | `"workflows.tests" is not listed in any find workflow's "ideasFor", so no idea could reach it` | Add it to a find's `ideasFor`, or remove it. |
 | `"workflows.code.summary" is missing: the find workflow "scan" needs it to choose between "code" and "tests"` | Add a one-sentence `summary` to the act. |
 | `"workflows.scan.summary" is only for act workflows` | Remove the key from the find. |
-| `"settings" is reserved for pack settings, which this harness does not read yet` | Remove `settings`. |
 | `code.md: is not valid UTF-8 text, so what is shown could differ from what the agent is given.` | Save the file as UTF-8 text. |
 | `tests.md: is a folder, not a file.` | Name a file, not a folder. |
 | `"schema" is "delivery.pack/4", a newer pack format than this harness reads (delivery.pack/2 and delivery.pack/3): upgrade delivery-service to read this pack` | Upgrade delivery-service. |

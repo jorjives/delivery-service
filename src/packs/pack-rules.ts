@@ -65,7 +65,6 @@ export function formatSentence(issue: Issue, raw: unknown): string | undefined {
   if (issue.code !== "unrecognized_keys") return undefined;
   const key = issue.keys[0];
   const field = `"${fieldOf(issue)}"`;
-  if (issue.path.length === 0 && key === "settings") return `${field} is reserved for pack settings, which this harness does not read yet`;
   if (issue.path.length !== 2 || issue.path[0] !== "workflows") return undefined;
   const kind = valueAt(raw, [...issue.path, "kind"]);
   if (kind === "find" && (key === "summary" || key === "guards" || key === "hold")) return `${field} is only for act workflows`;

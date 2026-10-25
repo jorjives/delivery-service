@@ -23,6 +23,31 @@ const EXAMPLE_V3 = {
   },
 };
 
+const WITH_SETTINGS = {
+  ...EXAMPLE_V3,
+  settings: {
+    "docs-folder": { type: "path", summary: "The folder that holds your documentation.", default: "docs" },
+    "old-module": { type: "text", summary: "The module the project is moving away from." },
+    areas: { type: "paths", summary: "Where to look.", default: ["src", "lib"] },
+    "hold-from": { type: "severity", summary: "Moves this serious or more wait.", default: "high" },
+  },
+};
+
+describe("a pack's settings", () => {
+  it("reads settings of each type, with and without a default", () => expect(PackManifest.safeParse(WITH_SETTINGS).success).toBe(true));
+  it.each([
+    ["a name that is not kebab-case", { Docs_Folder: { type: "path", summary: "x" } }],
+    ["a type it does not name", { a: { type: "choice", summary: "x" } }],
+    ["no summary", { a: { type: "text" } }],
+    ["a two-line summary", { a: { type: "text", summary: "two\nlines" } }],
+    ["a default that fails its type", { a: { type: "path", summary: "x", default: "/etc" } }],
+    ["a default with {{", { a: { type: "text", summary: "x", default: "a {{ b" } }],
+    ["a default with a line break", { a: { type: "text", summary: "x", default: "a\nb" } }],
+    ["an unknown key in a declaration", { a: { type: "text", summary: "x", command: "rm -rf /" } }],
+  ])("refuses %s", (_, settings) => expect(PackManifest.safeParse({ ...EXAMPLE_V3, settings }).success).toBe(false));
+  it("still refuses settings in a delivery.pack/2 manifest", () => expect(PackManifestV2.safeParse({ ...v2, settings: {} }).success).toBe(false));
+});
+
 describe("the pack format's constants", () => {
   it("names the version it writes and the versions it reads", () => {
     expect(PACK_SCHEMA).toBe("delivery.pack/3");
@@ -63,7 +88,7 @@ describe("the pack format's JSON Schema", () => {
     ["an unknown key on an act", (m: Manifest) => (at(m, "code").gate = "npm test")],
     ["a kind it does not name", (m: Manifest) => (at(m, "scan").kind = "scna")],
     ["a guard it does not name", (m: Manifest) => (at(m, "code").guards = { add: ["no-such-guard"] })],
-    ["a top-level key it does not name", (m: Manifest) => (m.settings = {})],
+    ["a top-level key it does not name", (m: Manifest) => (m.gate = "npm test")],
   ])("flags %s as an editor would", (_, edit) => {
     const m = structuredClone(EXAMPLE_V3) as Manifest;
     edit(m);
