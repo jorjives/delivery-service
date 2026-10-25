@@ -14,7 +14,7 @@ import { renderInspection } from "./packs-inspect-render.js";
 
 const [firstPack] = await builtInPacks();
 if (firstPack === undefined) throw new Error("the built-in packs are missing");
-const inspection: Inspection = inspectionOf(firstPack, NO_PROJECT, []);
+const inspection: Inspection = inspectionOf(firstPack, NO_PROJECT, [], null);
 
 /** A temporary repository folder, spelt as the machine spells it (a symbolic link is followed). */
 const repoDir = (): string => realpathSync(mkdtempSync(join(tmpdir(), "decision-")));
@@ -97,7 +97,7 @@ describe("the JSON document", () => {
 
   it("makes the account's paths relative to the repository, and leaves no machine path anywhere in the document", async () => {
     const repo = repoDir();
-    const base = inspectionOf(firstPack, NO_PROJECT, []);
+    const base = inspectionOf(firstPack, NO_PROJECT, [], null);
     const shown: Inspection = {
       ...base,
       pack: { ...base.pack, source: { ...base.pack.source, path: join(repo, ".delivery/packs/p") } },
@@ -122,7 +122,7 @@ describe("the JSON document", () => {
     const real = repoDir();
     const link = join(mkdtempSync(join(tmpdir(), "decision-link-")), "repo");
     symlinkSync(real, link);
-    const base = inspectionOf(firstPack, NO_PROJECT, []);
+    const base = inspectionOf(firstPack, NO_PROJECT, [], null);
     const shown: Inspection = {
       ...base,
       pack: { ...base.pack, source: { ...base.pack.source, path: join(link, ".delivery/packs/p") } },

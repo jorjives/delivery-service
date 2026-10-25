@@ -6,7 +6,7 @@ import { Change, comparePacks } from "./compare.js";
 const PACK = "docs-drift";
 
 function step(added: GuardName[] = []): InspectedWorkflow["steps"][number] {
-  return { name: "do", instructions: { authored: "Do it.", harness: null }, guards: { added, off: [] } };
+  return { name: "do", instructions: { authored: "Do it.", harness: null }, guards: { added, off: [] }, given: "Do it.", uses: [] };
 }
 
 function act(local: string, overrides: Partial<InspectedWorkflow> = {}): InspectedWorkflow {
@@ -23,6 +23,7 @@ function inspection(workflows: InspectedWorkflow[]): Inspection {
     ok: true,
     pack: { name: PACK, version: "1.0.0", title: "Docs drift", summary: "S", format: "delivery.pack/3", hash: "a".repeat(64), source: { kind: "built-in", path: "/packs/docs-drift", package: null }, workflows: workflows.map(({ name }) => name) },
     defaultGuards: [],
+    settings: [],
     workflows,
     project: NO_PROJECT,
     files: [],

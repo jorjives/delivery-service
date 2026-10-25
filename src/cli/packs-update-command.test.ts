@@ -69,8 +69,8 @@ async function judged(repo: string, next: Uint8Array) {
       dir: keptDir,
       origin: { kind: "installed" as const, package: entry.package, version: "1.3.0", request: entry.request, integrity: sriOf(next) },
     };
-    const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files);
-    const after = inspectionOf(newPack, baseline, folder.files);
+    const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files, null);
+    const after = inspectionOf(newPack, baseline, folder.files, null);
     const diffs = await diffPackFiles(keptDir, fingerprintedFiles(kept.pack), stagedDir, fingerprintedFiles(newPack));
     return { before, after, diffs };
   });

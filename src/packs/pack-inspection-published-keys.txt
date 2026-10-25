@@ -90,6 +90,25 @@ delivery.pack-inspection/1.project.path: null|string
 delivery.pack-inspection/1.project: object
 delivery.pack-inspection/1.schema = "delivery.pack-inspection/1"
 delivery.pack-inspection/1.schema: string
+delivery.pack-inspection/1.settings: array
+delivery.pack-inspection/1.settings[].default: null|string
+delivery.pack-inspection/1.settings[].name: string
+delivery.pack-inspection/1.settings[].required: boolean
+delivery.pack-inspection/1.settings[].source = "configuration"
+delivery.pack-inspection/1.settings[].source = "default"
+delivery.pack-inspection/1.settings[].source = "not-read"
+delivery.pack-inspection/1.settings[].source = "unset"
+delivery.pack-inspection/1.settings[].source: string
+delivery.pack-inspection/1.settings[].summary: string
+delivery.pack-inspection/1.settings[].type = "path"
+delivery.pack-inspection/1.settings[].type = "paths"
+delivery.pack-inspection/1.settings[].type = "severity"
+delivery.pack-inspection/1.settings[].type = "text"
+delivery.pack-inspection/1.settings[].type: string
+delivery.pack-inspection/1.settings[].usedBy: array
+delivery.pack-inspection/1.settings[].usedBy[]: string
+delivery.pack-inspection/1.settings[].value: null|string
+delivery.pack-inspection/1.settings[]: object
 delivery.pack-inspection/1.widens: boolean
 delivery.pack-inspection/1.workflows: array
 delivery.pack-inspection/1.workflows[].hold = "critical"
@@ -105,6 +124,7 @@ delivery.pack-inspection/1.workflows[].name: string
 delivery.pack-inspection/1.workflows[].offers: array|null
 delivery.pack-inspection/1.workflows[].offers[]: string
 delivery.pack-inspection/1.workflows[].steps: array
+delivery.pack-inspection/1.workflows[].steps[].given: null|string
 delivery.pack-inspection/1.workflows[].steps[].guards.added: array
 delivery.pack-inspection/1.workflows[].steps[].guards.added[] = "backlog"
 delivery.pack-inspection/1.workflows[].steps[].guards.added[] = "backlog-only"
@@ -128,6 +148,11 @@ delivery.pack-inspection/1.workflows[].steps[].instructions.authored: string
 delivery.pack-inspection/1.workflows[].steps[].instructions.harness: null|string
 delivery.pack-inspection/1.workflows[].steps[].instructions: object
 delivery.pack-inspection/1.workflows[].steps[].name: string
+delivery.pack-inspection/1.workflows[].steps[].uses: array
+delivery.pack-inspection/1.workflows[].steps[].uses[].placeholder: string
+delivery.pack-inspection/1.workflows[].steps[].uses[].setting: string
+delivery.pack-inspection/1.workflows[].steps[].uses[].value: null|string
+delivery.pack-inspection/1.workflows[].steps[].uses[]: object
 delivery.pack-inspection/1.workflows[].steps[]: object
 delivery.pack-inspection/1.workflows[].summary: null|string
 delivery.pack-inspection/1.workflows[].upgraded: array

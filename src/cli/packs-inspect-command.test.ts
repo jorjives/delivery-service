@@ -141,7 +141,7 @@ describe("delivery packs inspect", () => {
     const read = await readPackFolder(pack.dir);
     if (!read.ok) throw new Error("the built-in deprecations pack is not read by the folder check");
     const project = await projectBaseline(cwd, process.env, pack.dir);
-    expect(stdout).toBe(`${renderInspection(inspectionOf(pack, project, read.files)).join("\n")}\n`);
+    expect(stdout).toBe(`${renderInspection(inspectionOf(pack, project, read.files, null)).join("\n")}\n`);
     expect(stderr).toBe("");
     expect(wiring.calls).toEqual([]);
     expect([snapshot(cwd), snapshot(BUILT_IN_PACKS)]).toEqual(before);
@@ -248,7 +248,7 @@ describe("delivery packs inspect --json", () => {
     const pack = await packNamed("deprecations");
     const read = await readPackFolder(pack.dir);
     if (!read.ok) throw new Error("deprecations is not read by the folder check");
-    const model = inspectionOf(pack, await projectBaseline(cwd, process.env, pack.dir), read.files);
+    const model = inspectionOf(pack, await projectBaseline(cwd, process.env, pack.dir), read.files, null);
     expect(json.exitCode).toBe(EXIT.ok);
     expect(JSON.parse(json.stdout)).toEqual(JSON.parse(JSON.stringify(model)));
     expect(text.stdout).toBe(`${renderInspection(model).join("\n")}\n`);
@@ -323,7 +323,7 @@ describe("delivery packs inspect --workflow", () => {
     const pack = await packNamed("deprecations");
     const read = await readPackFolder(pack.dir);
     if (!read.ok) throw new Error("deprecations is not read by the folder check");
-    const full = inspectionOf(pack, await projectBaseline(cwd, process.env, pack.dir), read.files);
+    const full = inspectionOf(pack, await projectBaseline(cwd, process.env, pack.dir), read.files, null);
     expect(stdout).toBe(`${renderInspection(narrowedTo(full, "tests") as Inspection).join("\n")}\n`);
     for (const heading of ["Pack: Move off deprecated code", "What it may touch", "Checks and landing", "Does it widen what the agent may do?", "Things to look at", "Instructions for tests"]) expect(stdout).toContain(heading);
     expect(stdout).not.toContain("Instructions for code");

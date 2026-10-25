@@ -84,7 +84,7 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
 
       out.plain(foundLines(fetched, parsed));
       out.plain([""]);
-      out.account(inspectionOf(pack, await projectBaseline(ctx.cwd, ctx.env, stagedDir), folder.files));
+      out.account(inspectionOf(pack, await projectBaseline(ctx.cwd, ctx.env, stagedDir), folder.files, null));
       const outside = notInPackLines(read);
       if (outside.length > 0) out.plain(["", ...outside]);
 

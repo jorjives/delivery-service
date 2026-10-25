@@ -58,6 +58,7 @@ const inspection = (workflows: InspectedWorkflow[]): Inspection =>
       source: { kind: "installed", path: ".delivery/packs/docs-drift", package: null },
     },
     defaultGuards: [],
+    settings: [],
     workflows,
     project: NO_PROJECT,
     files: [],

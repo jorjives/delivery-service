@@ -53,7 +53,7 @@ describe("UAT: inspect the built-in deprecations pack", () => {
   it("shows the full instructions for a workflow, unaltered", async () => {
     const pack = (await builtInPacks()).find((p) => p.manifest.name === "deprecations");
     if (!pack) throw new Error("no deprecations pack");
-    const step = inspectionOf(pack, NO_PROJECT, []).workflows.find((w) => w.kind === "find")?.steps[0];
+    const step = inspectionOf(pack, NO_PROJECT, [], null).workflows.find((w) => w.kind === "find")?.steps[0];
     if (!step) throw new Error("no find workflow");
     for (const instructionLine of promptOf(step.instructions).split("\n").filter(Boolean)) {
       expect(stdout).toContain(instructionLine);

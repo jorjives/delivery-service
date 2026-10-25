@@ -89,6 +89,25 @@ delivery.pack-decision/1.account.project.path: null|string
 delivery.pack-decision/1.account.project: object
 delivery.pack-decision/1.account.schema = "delivery.pack-inspection/1"
 delivery.pack-decision/1.account.schema: string
+delivery.pack-decision/1.account.settings: array
+delivery.pack-decision/1.account.settings[].default: null|string
+delivery.pack-decision/1.account.settings[].name: string
+delivery.pack-decision/1.account.settings[].required: boolean
+delivery.pack-decision/1.account.settings[].source = "configuration"
+delivery.pack-decision/1.account.settings[].source = "default"
+delivery.pack-decision/1.account.settings[].source = "not-read"
+delivery.pack-decision/1.account.settings[].source = "unset"
+delivery.pack-decision/1.account.settings[].source: string
+delivery.pack-decision/1.account.settings[].summary: string
+delivery.pack-decision/1.account.settings[].type = "path"
+delivery.pack-decision/1.account.settings[].type = "paths"
+delivery.pack-decision/1.account.settings[].type = "severity"
+delivery.pack-decision/1.account.settings[].type = "text"
+delivery.pack-decision/1.account.settings[].type: string
+delivery.pack-decision/1.account.settings[].usedBy: array
+delivery.pack-decision/1.account.settings[].usedBy[]: string
+delivery.pack-decision/1.account.settings[].value: null|string
+delivery.pack-decision/1.account.settings[]: object
 delivery.pack-decision/1.account.widens: boolean
 delivery.pack-decision/1.account.workflows: array
 delivery.pack-decision/1.account.workflows[].hold = "critical"
@@ -104,6 +123,7 @@ delivery.pack-decision/1.account.workflows[].name: string
 delivery.pack-decision/1.account.workflows[].offers: array|null
 delivery.pack-decision/1.account.workflows[].offers[]: string
 delivery.pack-decision/1.account.workflows[].steps: array
+delivery.pack-decision/1.account.workflows[].steps[].given: null|string
 delivery.pack-decision/1.account.workflows[].steps[].guards.added: array
 delivery.pack-decision/1.account.workflows[].steps[].guards.added[] = "backlog"
 delivery.pack-decision/1.account.workflows[].steps[].guards.added[] = "backlog-only"
@@ -127,6 +147,11 @@ delivery.pack-decision/1.account.workflows[].steps[].instructions.authored: stri
 delivery.pack-decision/1.account.workflows[].steps[].instructions.harness: null|string
 delivery.pack-decision/1.account.workflows[].steps[].instructions: object
 delivery.pack-decision/1.account.workflows[].steps[].name: string
+delivery.pack-decision/1.account.workflows[].steps[].uses: array
+delivery.pack-decision/1.account.workflows[].steps[].uses[].placeholder: string
+delivery.pack-decision/1.account.workflows[].steps[].uses[].setting: string
+delivery.pack-decision/1.account.workflows[].steps[].uses[].value: null|string
+delivery.pack-decision/1.account.workflows[].steps[].uses[]: object
 delivery.pack-decision/1.account.workflows[].steps[]: object
 delivery.pack-decision/1.account.workflows[].summary: null|string
 delivery.pack-decision/1.account.workflows[].upgraded: array

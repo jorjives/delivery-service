@@ -13,11 +13,11 @@ import { INSPECT_WIDTH } from "./text-wrap.js";
 const packs = await builtInPacks();
 const deprecations = packs.find((pack) => pack.manifest.name === "deprecations");
 if (!deprecations) throw new Error("the deprecations pack is not built in");
-const builtInInspections = packs.map((pack) => inspectionOf(pack, NO_PROJECT, []));
+const builtInInspections = packs.map((pack) => inspectionOf(pack, NO_PROJECT, [], null));
 
 const deprecationsFiles = await readPackFolder(deprecations.dir);
 if (!deprecationsFiles.ok) throw new Error("the deprecations pack is not read by the folder check");
-const deprecationsAccount = renderInspection(inspectionOf(deprecations, NO_PROJECT, deprecationsFiles.files));
+const deprecationsAccount = renderInspection(inspectionOf(deprecations, NO_PROJECT, deprecationsFiles.files, null));
 
 /** The text of some lines, joined and with every run of white space made one space: the wrap points are not compared. */
 const flat = (lines: readonly string[]): string => lines.join(" ").replace(/\s+/g, " ");
@@ -41,7 +41,7 @@ function model(overrides: ModelOverrides = {}): Inspection {
     kind: "act" as const,
     summary: summary ?? null,
     offers: null,
-    steps: [{ name: "do", instructions: { authored: overrides.authored ?? "Do the thing.\nThen stop.", harness: null }, guards: { added: [], off: [] } }],
+    steps: [{ name: "do", instructions: { authored: overrides.authored ?? "Do the thing.\nThen stop.", harness: null }, guards: { added: [], off: [] }, given: overrides.authored ?? "Do the thing.\nThen stop.", uses: [] }],
     upgraded: [],
     widens: [],
     hold: "hold" in overrides ? (overrides.hold ?? null) : ("high" as const),
@@ -52,7 +52,7 @@ function model(overrides: ModelOverrides = {}): Inspection {
     kind: "find" as const,
     summary: null,
     offers: ["test:act"],
-    steps: [{ name: "scan", instructions: { authored: "Look around.", harness: "Write each idea as one line." }, guards: { added: ["backlog-only" as const], off: [] } }],
+    steps: [{ name: "scan", instructions: { authored: "Look around.", harness: "Write each idea as one line." }, guards: { added: ["backlog-only" as const], off: [] }, given: "Look around.\n\nWrite each idea as one line.", uses: [] }],
     upgraded: [],
     widens: [],
     hold: null,
@@ -62,6 +62,7 @@ function model(overrides: ModelOverrides = {}): Inspection {
     ok: true,
     pack: { name: "test", version: "1.0.0", title: "Test pack", summary: "A pack for tests.", format: "delivery.pack/3", hash: "a".repeat(64), workflows: ["test:find", "test:act"], source: { kind: "built-in", path: "/packs/test", package: null } },
     defaultGuards: ["tests-untouched"],
+    settings: [],
     workflows: [find, act],
     project: NO_PROJECT,
     files: [],
@@ -96,7 +97,7 @@ function withoutPackWords(lines: string[], inspection: Inspection): string {
 }
 
 it("puts the short account first, then limits, then the full instructions last", () => {
-  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, []));
+  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null));
   const at = (text: string) => lines.indexOf(text);
   expect(lines.slice(0, 2)).toEqual(["Pack: Move off deprecated code", "deprecations, version 1.0.0, built in to delivery-service."]);
   expect(`${lines[3]}${lines[4]}`).toBe(`  ${deprecations.hash.slice(0, 32)}  ${deprecations.hash.slice(32)}`);
@@ -108,7 +109,7 @@ it("puts the short account first, then limits, then the full instructions last",
 });
 
 it("says how far each workflow goes in words", () => {
-  const text = renderInspection(inspectionOf(deprecations, NO_PROJECT, [])).join("\n");
+  const text = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null)).join("\n");
   expect(text).toContain("  code:\n    Also refused if it edits an existing test.\n    Ideas rated high or critical wait for your sign-off\n    before they land.");
   expect(text).toContain("  tests:\n    No extra guards.\n    Lands without asking you again, once you have approved\n    the idea.");
   expect(text).toContain("    Also refused if it changes anything other than adding\n    ideas to the backlog.");
@@ -116,14 +117,14 @@ it("says how far each workflow goes in words", () => {
 });
 
 it("says the instructions run with everything the owner's setup can do, and the project's follow-on steps run after landing", () => {
-  const flat = renderInspection(inspectionOf(deprecations, NO_PROJECT, [])).join(" ").replace(/\s+/g, " ");
+  const flat = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null)).join(" ").replace(/\s+/g, " ");
   expect(flat).toContain("This pack cannot give the agent extra powers, and nothing in it takes any away.");
   for (const sentence of OWN_SETUP) expect(flat).toContain(sentence);
   expect(flat).toContain("After a change from an act workflow lands, your project's own follow-on steps run.");
 });
 
 it("shows every instruction unaltered, the pack's words apart from the harness's", () => {
-  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, []));
+  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null));
   for (const [name, { authored, harness }] of Object.entries(deprecations.instructions)) {
     const local = name.split(":")[1];
     const start = lines.findIndex((l) => l.startsWith(`Instructions for ${local}: the pack's own words`));
@@ -153,7 +154,7 @@ it("says a hold of critical as one severity, and an act with no summary in a fix
 });
 
 it("asks the fixed questions after Things to look at and before the instructions, in a narrowed view too", () => {
-  for (const lines of [deprecationsAccount, renderInspection(narrowedTo(inspectionOf(deprecations, NO_PROJECT, deprecationsFiles.files), "tests") as Inspection)]) {
+  for (const lines of [deprecationsAccount, renderInspection(narrowedTo(inspectionOf(deprecations, NO_PROJECT, deprecationsFiles.files, null), "tests") as Inspection)]) {
     const at = lines.indexOf("Questions to ask before you use it");
     expect(at).toBeGreaterThan(lines.indexOf("Things to look at"));
     expect(at).toBeLessThan(lines.indexOf(INSPECT_RULE));
@@ -182,7 +183,7 @@ it("keeps to the owner's vocabulary, with no colour or box drawing", async () =>
   for (const pack of packs) {
     const read = await readPackFolder(pack.dir);
     if (!read.ok) throw new Error(`the ${pack.manifest.name} pack is not read by the folder check`);
-    const inspection = inspectionOf(pack, NO_PROJECT, read.files);
+    const inspection = inspectionOf(pack, NO_PROJECT, read.files, null);
     const ours = withoutPackWords(linesOutsideInstructions(renderInspection(inspection)), inspection);
     expect(ours.includes(String.fromCharCode(27))).toBe(false);
     expect(ours).not.toMatch(/[─-╿]/);

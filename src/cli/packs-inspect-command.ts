@@ -63,7 +63,7 @@ export async function packsInspectCommand(arg: string | undefined, options: Pack
       return EXIT.configuration;
     }
     const pack = named === undefined ? read.pack : { ...read.pack, origin: named.origin };
-    const whole = inspectionOf(pack, await projectBaseline(ctx.cwd, ctx.env, dir), read.files);
+    const whole = inspectionOf(pack, await projectBaseline(ctx.cwd, ctx.env, dir), read.files, null);
     const inspection = options.workflow === undefined ? whole : shownWorkflow(whole, options.workflow);
     if (ctx.json) {
       ctx.writeLine(JSON.stringify(inspection, null, 2));

@@ -8,7 +8,7 @@ import { INSPECTION_SCHEMA, inspectionOf, inspectionRefusal, inspectionSchema, N
 const schema = inspectionSchema();
 const published = z.fromJSONSchema(schema);
 const overTheWire = (v: unknown): unknown => JSON.parse(JSON.stringify(v));
-const inspections = (await builtInPacks()).map((pack) => inspectionOf(pack, NO_PROJECT, []));
+const inspections = (await builtInPacks()).map((pack) => inspectionOf(pack, NO_PROJECT, [], null));
 
 it("names its version", () => expect(schema.title).toBe("delivery.pack-inspection/1"));
 
@@ -18,7 +18,7 @@ it("accepts the account of every built-in pack and a refusal", () => {
 });
 
 it("still accepts an account with a key a later release added", () => {
-  expect(published.safeParse({ ...(overTheWire(inspections[0]) as object), settings: [] }).success).toBe(true);
+  expect(published.safeParse({ ...(overTheWire(inspections[0]) as object), later: [] }).success).toBe(true);
 });
 
 it("refuses an account that lacks a published key, or holds another kind of value under one", () => {

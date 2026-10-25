@@ -58,7 +58,7 @@ export async function packsApproveCommand(name: string, ctx: CommandContext, ask
     if (!folder.ok) throw new Error(`the added pack ${name} changed while it was being read`);
     out.plain(unapprovedLead(name));
     out.plain([""]);
-    out.account(inspectionOf(installed.pack, await projectBaseline(ctx.cwd, ctx.env, dir), folder.files));
+    out.account(inspectionOf(installed.pack, await projectBaseline(ctx.cwd, ctx.env, dir), folder.files, null));
 
     const approval = await decideApproval(options.approve, installed.pack.hash, ctx, ask, approveQuestion(name));
     if (approval === "nobody") {

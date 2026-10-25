@@ -33,7 +33,7 @@ const index = readFileSync(join(REPO_ROOT, "docs/index.md"), "utf-8");
 const deprecations = builtIns.find((p) => p.manifest.name === "deprecations");
 const read = deprecations && (await readPackFolder(deprecations.dir));
 if (!deprecations || !read?.ok) throw new Error("the deprecations pack is not read by the folder check");
-const account = renderInspection(inspectionOf(deprecations, NO_PROJECT, read.files));
+const account = renderInspection(inspectionOf(deprecations, NO_PROJECT, read.files, null));
 const opening = account.slice(0, account.findIndex((l) => l.startsWith("Instructions for ")) - 1);
 const inspecting = page.slice(page.indexOf("## Inspect a pack before you use it"), page.indexOf("## Add a pack from elsewhere"));
 

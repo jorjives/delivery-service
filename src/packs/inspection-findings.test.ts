@@ -11,9 +11,10 @@ function base(o: { hold?: Severity | null; widens?: string[]; authored?: string 
     ok: true,
     pack: { name: "t", version: "1.0.0", title: "T", summary: "S", format: "delivery.pack/3", hash: "a".repeat(64), workflows: ["t:find", "t:act"], source: { kind: "built-in", path: "/packs/t", package: null } },
     defaultGuards: [],
+    settings: [],
     workflows: [
-      { name: "t:find", local: "find", kind: "find", summary: null, offers: ["t:act"], steps: [{ name: "scan", instructions: { authored: "Look.", harness: null }, guards: { added: [], off: [] } }], upgraded: [], widens: [], hold: null },
-      { name: "t:act", local: "act", kind: "act", summary: null, offers: null, steps: [{ name: "do", instructions: { authored: o.authored ?? "Do it.", harness: null }, guards: { added: [], off: [] } }], upgraded: [], widens: o.widens ?? [], hold: o.hold === undefined ? "high" : o.hold },
+      { name: "t:find", local: "find", kind: "find", summary: null, offers: ["t:act"], steps: [{ name: "scan", instructions: { authored: "Look.", harness: null }, guards: { added: [], off: [] }, given: "Look.", uses: [] }], upgraded: [], widens: [], hold: null },
+      { name: "t:act", local: "act", kind: "act", summary: null, offers: null, steps: [{ name: "do", instructions: { authored: o.authored ?? "Do it.", harness: null }, guards: { added: [], off: [] }, given: o.authored ?? "Do it.", uses: [] }], upgraded: [], widens: o.widens ?? [], hold: o.hold === undefined ? "high" : o.hold },
     ],
     project: NO_PROJECT,
     files: [],
@@ -21,7 +22,7 @@ function base(o: { hold?: Severity | null; widens?: string[]; authored?: string 
 }
 
 it("flags the deprecations pack's tests workflow as landing without sign-off, and nothing wider", async () => {
-  const inspection = inspectionOf(await resolvePack("deprecations", process.cwd()), NO_PROJECT, []);
+  const inspection = inspectionOf(await resolvePack("deprecations", process.cwd()), NO_PROJECT, [], null);
   expect(inspection.findings).toEqual([{ code: "lands-without-sign-off", relation: "note", workflow: "deprecations:tests", detail: null }]);
   expect(inspection.widens).toBe(false);
   expect(inspection.hiddenCharacters).toEqual([]);
@@ -30,7 +31,7 @@ it("flags the deprecations pack's tests workflow as landing without sign-off, an
 });
 
 it("flags the code pack's upgraded guard as older-format-guards", async () => {
-  const code = inspectionOf(await resolvePack("code", process.cwd()), NO_PROJECT, []);
+  const code = inspectionOf(await resolvePack("code", process.cwd()), NO_PROJECT, [], null);
   expect(code.findings).toContainEqual({ code: "older-format-guards", relation: "note", workflow: "code:fix", detail: "tests-unchanged" });
 });
 

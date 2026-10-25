@@ -9,3 +9,5 @@ A `delivery.pack/3` pack may declare `settings`, each `text`, `path`, `paths` or
 `delivery preview` prints a `Settings used:` line for a pack step, naming each value and whether it came from the pack's default or your configuration.
 
 An unset required setting, a `packSettings` entry for a pack not in use, an undeclared setting or a wrong value refuses `run`, `review` and `validate` with exit 2, every problem at once; a `/3` pack is refused for a setting with no summary, a placeholder naming no declared setting, a setting no prompt uses, or more than 32 settings.
+
+`delivery packs inspect --json` gains `settings` (each setting's name, type, summary, whether it is required, its default, the value in effect, its source and the workflows that use it) and, per step, `given` (the prompt as the agent would be given it) and `uses`.

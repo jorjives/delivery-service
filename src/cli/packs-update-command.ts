@@ -116,8 +116,8 @@ export async function packsUpdateCommand(
       const keptDir = installedPackDir(repoPath, name);
       const kept = await readPackFolder(keptDir);
       if (!kept.ok) throw new Error(`${name} was read as a pack a moment ago, and is not one now`);
-      const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files);
-      const after = inspectionOf(newPack, baseline, folder.files);
+      const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files, null);
+      const after = inspectionOf(newPack, baseline, folder.files, null);
       const diffs = await diffPackFiles(keptDir, fingerprintedFiles(kept.pack), stagedDir, fingerprintedFiles(newPack));
       const changes = comparePacks(before, after);
       out.facts({ previous: { version: entry.version, fingerprint: before.pack.hash }, fingerprint: after.pack.hash, changes, files: diffs });
