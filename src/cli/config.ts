@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
@@ -9,6 +9,7 @@ import { AgentOptions, CloserRef, GuardName, GuardSwitches, Severity, TaskDef, W
 import { FenceSetting } from "../fence.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
+import { DEFAULT_CONFIG_NAME } from "./pack-settings-render.js";
 import { projectPackStates, projectPacks, withWorkflowsOf } from "./pack-workflows.js";
 import type { InstalledPack } from "../packs/install/installed.js";
 import type { Pack } from "../packs/manifest.js";
@@ -545,10 +546,17 @@ export async function loadConfig(lookup: ConfigLookup): Promise<DeliveryConfig> 
   return (await loadConfigAndPacks(lookup)).config;
 }
 
-/** The config file's settings, and the folder its listed packs are relative to: the file's own folder, or the repository's when there is none. */
-async function settingsAt(lookup: ConfigLookup): Promise<{ settings: DeliveryConfig; configDir: string }> {
+/**
+ * The config file's settings, the folder its listed packs are relative to (the file's own folder, or the repository's when there
+ * is none), and the file's name for the owner's words.
+ */
+async function settingsAt(lookup: ConfigLookup): Promise<{ settings: DeliveryConfig; configDir: string; configName: string }> {
   const file = findConfig(lookup);
-  return { settings: file === undefined ? {} : await readConfig(file), configDir: file === undefined ? lookup.repoPath : dirname(file) };
+  return {
+    settings: file === undefined ? {} : await readConfig(file),
+    configDir: file === undefined ? lookup.repoPath : dirname(file),
+    configName: file === undefined ? DEFAULT_CONFIG_NAME : basename(file),
+  };
 }
 
 /**
@@ -556,8 +564,8 @@ async function settingsAt(lookup: ConfigLookup): Promise<{ settings: DeliveryCon
  * is the file's own content, without any pack's workflows, for a caller that changes the set of packs and checks it again.
  */
 export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config: DeliveryConfig; settings: DeliveryConfig; packs: Pack[] }> {
-  const { settings, configDir } = await settingsAt(lookup);
-  const packs = await projectPacks(settings, configDir, lookup.repoPath);
+  const { settings, configDir, configName } = await settingsAt(lookup);
+  const packs = await projectPacks(settings, configDir, lookup.repoPath, configName);
   return { config: withWorkflowsOf(settings, packs), settings, packs };
 }
 

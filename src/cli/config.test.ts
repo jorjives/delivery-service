@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { CONFIG_KEYS, checkConfig, configCandidates, configProblems, DeliveryConfig, findConfig, firstStepContinues, loadConfig, NO_SUCH_CONFIG, sameStep, stepLabel, structureTask, unknownCloser, unknownGate } from "./config.js";
+import { CONFIG_KEYS, checkConfig, configCandidates, configProblems, DeliveryConfig, findConfig, firstStepContinues, loadConfig, NO_SUCH_CONFIG, readConfig, sameStep, stepLabel, structureTask, unknownCloser, unknownGate } from "./config.js";
 import { harnessOwned } from "../schema.js";
 import { EXIT, Refusal } from "./failures.js";
 
@@ -632,8 +632,8 @@ describe("packSettings", () => {
 
   it("reads the same object from a .mjs module as from JSON (a code configuration)", async () => {
     const { repo } = tree();
-    write(repo, "delivery.config.mjs", `export default { packSettings: ${JSON.stringify(VALUES)} };\n`);
-    expect(await found(repo, repo)).toEqual({ packSettings: VALUES });
+    const file = write(repo, "delivery.config.mjs", `export default { packSettings: ${JSON.stringify(VALUES)} };\n`);
+    expect(await readConfig(file)).toEqual({ packSettings: VALUES });
   });
 });
 

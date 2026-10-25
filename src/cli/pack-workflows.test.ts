@@ -1,15 +1,16 @@
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { LockEntry } from "../packs/install/lock.js";
 import { entryFor } from "../packs/install/install-fixtures.js";
 import type { PackageFile } from "../packs/install/package-archive.js";
-import { installPack } from "../packs/install/store.js";
+import { installedPackDir, installPack } from "../packs/install/store.js";
 import { builtInPackClash, builtInWorkflowClash } from "./pack-clash.js";
 import { builtInPacks } from "../packs/manifest.js";
 import { ONE_LINE } from "../packs/setting-types.js";
-import { settingsRefusal, projectPackStates, withPackWorkflows } from "./pack-workflows.js";
+import { projectPackStates, projectPacks, withPackWorkflows } from "./pack-workflows.js";
+import { DEFAULT_CONFIG_NAME, settingsRefusal } from "./pack-settings-render.js";
 import { EXIT } from "./failures.js";
 
 /** A pack folder named `name`, with a minimal delivery.pack/2 manifest and its two instruction files. */
@@ -212,7 +213,7 @@ describe("pack workflows", () => {
 
     it("binds a built-in pack through the same door", async () => {
       // No built-in declares settings in this slice, so a value for one is refused as undeclared: the binding reaches built-ins.
-      await expect(withPackWorkflows({ packSettings: { code: { x: "y" } } }, "/", undefined)).rejects.toMatchObject({ exitCode: EXIT.configuration, field: "packSettings" });
+      await expect(withPackWorkflows({ packSettings: { code: { x: "y" } } }, "/", undefined)).rejects.toMatchObject({ exitCode: EXIT.configuration, field: "packSettings.code.x" });
     });
 
     it("refuses every problem at once, without printing the value", async () => {
@@ -221,7 +222,7 @@ describe("pack workflows", () => {
         settingsRefusal([
           { kind: "invalid", pack: "mine", setting: "old-module", rule: ONE_LINE, value: "a‮b" },
           { kind: "undeclared", pack: "mine", setting: "nope", declared: ["old-module"] },
-        ]),
+        ], DEFAULT_CONFIG_NAME),
       );
       await expect(refused).rejects.not.toThrow("a\u202eb");
     });
@@ -230,6 +231,54 @@ describe("pack workflows", () => {
       const { packs, settingProblems } = await projectPackStates({ packs: ["mine"], packSettings: { mine: { nope: "x" } } }, rootWithSettingsPack(), undefined);
       expect(packs.map((pack) => pack.manifest.name)).toContain("mine");
       expect(settingProblems).toHaveLength(1);
+    });
+
+    const rootWithRequiredSetting = () => {
+      const root = rootWithSettingsPack();
+      const manifestFile = join(root, "mine", "pack.json");
+      const manifest = JSON.parse(readFileSync(manifestFile, "utf8")) as { settings: Record<string, object> };
+      manifest.settings["old-module"] = { type: "text", summary: "The module to leave." };
+      writeFileSync(manifestFile, JSON.stringify(manifest));
+      return root;
+    };
+
+    it("refuses a packSettings entry for a pack the project does not use, naming the packs in use", async () => {
+      await expect(withPackWorkflows({ packSettings: { linter: { x: "y" } } }, "/", undefined)).rejects.toThrow("  linter: no pack called linter is used by this project.");
+    });
+
+    it("refuses an unset required setting with the spec's words and the field of the setting", async () => {
+      const refused = withPackWorkflows({ packs: ["mine"] }, rootWithRequiredSetting(), undefined);
+      await expect(refused).rejects.toMatchObject({ exitCode: EXIT.configuration, field: "packSettings.mine.old-module" });
+      await expect(refused).rejects.toThrow("Nothing can run yet: the pack mine needs a setting");
+    });
+
+    it("names the configuration file it was given in the lines to add", async () => {
+      await expect(projectPacks({ packs: ["mine"] }, rootWithRequiredSetting(), undefined, "delivery.config.js")).rejects.toThrow(
+        "Add this to delivery.config.js, replacing the dots:",
+      );
+    });
+
+    it("names the first fault as the field, ahead of an unset setting", async () => {
+      const refused = withPackWorkflows({ packs: ["mine"], packSettings: { linter: { x: "y" } } }, rootWithRequiredSetting(), undefined);
+      await expect(refused).rejects.toMatchObject({ field: "packSettings.linter" });
+    });
+
+    it("names a faulty setting as the field before an unset one of the same pack", async () => {
+      const refused = withPackWorkflows({ packs: ["mine"], packSettings: { mine: { nope: "x" } } }, rootWithRequiredSetting(), undefined);
+      await expect(refused).rejects.toMatchObject({ field: "packSettings.mine.nope" });
+    });
+
+    it("does not call an unusable added pack unused", async () => {
+      const repo = mkdtempSync(join(tmpdir(), "pack-workflows-changed-"));
+      await installPack(repo, "moves", MOVES, MOVES_ENTRY);
+      writeFileSync(join(installedPackDir(repo, "moves"), "code.md"), "# Changed\n");
+      const { settingProblems } = await projectPackStates({ packSettings: { moves: { "old-module": "legacy-http" } } }, repo, repo);
+      expect(settingProblems.filter((problem) => problem.kind === "unknown-pack")).toEqual([]);
+    });
+
+    it("lists an unused-pack entry without refusing", async () => {
+      const { settingProblems } = await projectPackStates({ packSettings: { linter: { x: "y" } } }, "/", undefined);
+      expect(settingProblems).toEqual([{ kind: "unknown-pack", pack: "linter", inUse: expect.arrayContaining(["code"]) }]);
     });
 
     it("leaves every built-in pack exactly as read when there are no settings", async () => {

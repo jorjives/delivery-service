@@ -1,5 +1,5 @@
 import { realpathSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { DEFAULT_LABEL } from "../github-source.js";
 import { CloserModuleLoadFailure, GateModuleLoadFailure, InvalidCloserExport, InvalidGateExport } from "../errors.js";
 import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig, type SourceConfig } from "./config.js";
@@ -95,7 +95,7 @@ export async function readProject(
   env: NodeJS.ProcessEnv,
 ): Promise<{ config: DeliveryConfig; project: ProjectSettings; packs: Pack[] }> {
   const settings = await readConfig(file);
-  const packs = await projectPacks(settings, dirname(file), repoPath);
+  const packs = await projectPacks(settings, dirname(file), repoPath, basename(file));
   const config = withWorkflowsOf(settings, packs);
   return { config, project: await settleProject(config, repoPath, env), packs };
 }

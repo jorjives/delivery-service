@@ -5,6 +5,7 @@ import { bindSettings, type SettingProblem } from "../packs/settings.js";
 import type { DeliveryConfig } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 import { clashField, clashSentence, findClash } from "./pack-clash.js";
+import { DEFAULT_CONFIG_NAME, settingsRefusal } from "./pack-settings-render.js";
 
 /**
  * Every pack the config can use, in order: the built-in ones, then each pack folder it lists, relative to `configDir`, then
@@ -28,36 +29,35 @@ export async function projectPackStates(
     settingProblems.push(...bound.problems);
     return pack;
   });
+  const inUse = packs.map((pack) => pack.manifest.name);
+  const known = new Set([...inUse, ...installed.map((pack) => pack.name)]);
+  for (const name of Object.keys(config.packSettings ?? {})) {
+    if (!known.has(name)) settingProblems.push({ kind: "unknown-pack", pack: name, inUse });
+  }
   return { packs, installed, settingProblems };
 }
 
-/** One problem as a line. Temporary: Task 4 replaces these words with the owner's renderer, and Task 5 deletes this function. */
-function problemLine(problem: SettingProblem): string {
-  switch (problem.kind) {
-    case "missing":
-      return `  ${problem.pack}.${problem.setting}: has no value, and the pack gives no default`;
-    case "undeclared":
-      return `  ${problem.pack}.${problem.setting}: is not a setting of this pack. Its settings are: ${problem.declared.join(", ")}.`;
-    case "invalid":
-      return `  ${problem.pack}.${problem.setting}: ${problem.rule}`;
-    case "unknown-pack":
-      return `  ${problem.pack}: no pack called ${problem.pack} is used by this project. Packs in use: ${problem.inUse.join(", ")}.`;
-  }
-}
-
-/** The refusal for settings that cannot be bound: every problem at once, never the value itself. */
-export function settingsRefusal(problems: readonly SettingProblem[]): string {
-  return ["packSettings has a problem:", ...problems.map(problemLine), "Nothing was run."].join("\n");
+/** The field a setting problem is about: its setting, or the pack's entry when the pack is not in use. */
+function settingField(problem: SettingProblem): string {
+  return problem.kind === "unknown-pack" ? `packSettings.${problem.pack}` : `packSettings.${problem.pack}.${problem.setting}`;
 }
 
 /**
  * Every pack the config can use, as `projectPackStates` gives them, refusing when any added pack at `repoPath` is not as the
- * record approved it: every such pack is named at once, before anything is sent to an agent.
+ * record approved it, or when a setting is wrong: every such problem is named at once, before anything is sent to an agent.
+ * The refusal's field is the first problem the refusal prints, so a fault comes before an unset setting.
  */
-export async function projectPacks(config: DeliveryConfig, configDir: string, repoPath: string | undefined): Promise<Pack[]> {
+export async function projectPacks(
+  config: DeliveryConfig,
+  configDir: string,
+  repoPath: string | undefined,
+  configName: string = DEFAULT_CONFIG_NAME,
+): Promise<Pack[]> {
   const { packs, installed, settingProblems } = await projectPackStates(config, configDir, repoPath);
   if (repoPath !== undefined) refuseUnusable(repoPath, installed);
-  if (settingProblems.length > 0) throw new Refusal(settingsRefusal(settingProblems), EXIT.configuration, "packSettings");
+  const printed = [...settingProblems.filter((problem) => problem.kind !== "missing"), ...settingProblems.filter((problem) => problem.kind === "missing")];
+  const [first] = printed;
+  if (first !== undefined) throw new Refusal(settingsRefusal(settingProblems, configName), EXIT.configuration, settingField(first));
   return packs;
 }
 
