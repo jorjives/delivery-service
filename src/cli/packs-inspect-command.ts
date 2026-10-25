@@ -4,9 +4,9 @@ import { builtInPacks, isPackPath, type Pack, packNamed } from "../packs/manifes
 import { readPackFolder } from "../packs/pack-folder.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode, Refusal, renderFailure } from "./failures.js";
+import { inspectedProject } from "./inspected-project.js";
 import { renderInspection, renderRefusal } from "./packs-inspect-render.js";
 import { projectPacksFor } from "./packs-command.js";
-import { projectBaseline } from "./project-baseline.js";
 
 /** Named when `delivery packs inspect` is run with neither a pack nor `--schema`. */
 export const NAME_A_PACK = "Name the pack to inspect: a name from `delivery packs`, such as deprecations, or the path to a pack folder.";
@@ -63,12 +63,13 @@ export async function packsInspectCommand(arg: string | undefined, options: Pack
       return EXIT.configuration;
     }
     const pack = named === undefined ? read.pack : { ...read.pack, origin: named.origin };
-    const whole = inspectionOf(pack, await projectBaseline(ctx.cwd, ctx.env, dir), read.files, null);
+    const { project, values, configName } = await inspectedProject(ctx.cwd, ctx.env, pack);
+    const whole = inspectionOf(pack, project, read.files, values);
     const inspection = options.workflow === undefined ? whole : shownWorkflow(whole, options.workflow);
     if (ctx.json) {
       ctx.writeLine(JSON.stringify(inspection, null, 2));
     } else {
-      for (const line of renderInspection(inspection)) ctx.writeLine(line);
+      for (const line of renderInspection(inspection, configName)) ctx.writeLine(line);
     }
     return EXIT.ok;
   } catch (err) {

@@ -10,9 +10,11 @@ import { installPack } from "../packs/install/store.js";
 import { BUILT_IN_PACKS, packNamed } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
 import { NO_FOLDER, NO_MANIFEST, NOT_IN_A_PACK, readPackFolder } from "../packs/pack-folder.js";
+import { ONE_LINE } from "../packs/setting-types.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery, MOVES_FILES, movesProject, PACKAGE, V2_FILES, writeNeedyPack } from "./command-fixtures.js";
+import { delivery, MOVES_FILES, movesProject, PACKAGE, V2_FILES, writeGuidePack, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
+import { settingsRefusal } from "./pack-settings-render.js";
 import { NAME_A_PACK } from "./packs-inspect-command.js";
 import { projectBaseline } from "./project-baseline.js";
 import { renderInspection, SHOWN_NOTHING } from "./packs-inspect-render.js";
@@ -363,5 +365,89 @@ describe("delivery packs inspect --workflow", () => {
     const { exitCode, stdout } = await delivery(["packs", "inspect", "moves"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain("from npm: @acme/moves 1.2.0.");
+  });
+});
+
+describe("delivery packs inspect with the owner's values", () => {
+  /** A project whose config is `config`, with the guide pack laid in it. */
+  const guideRepo = (config: Record<string, unknown>): string => {
+    const repo = initTempRepo("inspect-guide-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify(config) });
+    writeGuidePack(repo);
+    return repo;
+  };
+  const HIDDEN = String.fromCodePoint(0x202e);
+
+  it("shows the owner's value and the default, then not set and the lines to add once the value is removed", async () => {
+    const repo = guideRepo({ packs: ["guide-pack"], packSettings: { guide: { "docs-folder": "handbook" } } });
+    const given = await delivery(["packs", "inspect", "guide"], { cwd: repo });
+    expect(given.exitCode).toBe(EXIT.ok);
+    expect(given.stdout).toContain("Your value: handbook (your configuration)");
+    expect(given.stdout).toContain("Your value: plain English (default)");
+
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packs: ["guide-pack"] }));
+    const removed = await delivery(["packs", "inspect", "guide"], { cwd: repo });
+    expect(removed.exitCode).toBe(EXIT.ok);
+    expect(flat(removed.stdout)).toContain("Your value: not set. Required: this pack will not run until you give one.");
+    expect(removed.stdout).toContain('"packSettings": { "guide": { "docs-folder": "..." } }');
+  });
+
+  it("gives the same settings under --json", async () => {
+    const repo = guideRepo({ packs: ["guide-pack"], packSettings: { guide: { "docs-folder": "handbook" } } });
+    const { exitCode, stdout } = await delivery(["packs", "inspect", "guide", "--json"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(JSON.parse(stdout).settings).toEqual([
+      {
+        name: "docs-folder",
+        type: "path",
+        summary: "The folder that holds your documentation.",
+        required: true,
+        default: null,
+        value: "handbook",
+        source: "configuration",
+        usedBy: ["guide:look", "guide:fix"],
+      },
+      {
+        name: "tone",
+        type: "text",
+        summary: "How the pages should read.",
+        required: false,
+        default: "plain English",
+        value: "plain English",
+        source: "default",
+        usedBy: ["guide:fix"],
+      },
+    ]);
+  });
+
+  it("refuses a hidden character in an owner value in both forms, showing no account", async () => {
+    const value = `hand${HIDDEN}book`;
+    const repo = guideRepo({ packs: ["guide-pack"], packSettings: { guide: { "docs-folder": value } } });
+    const text = await delivery(["packs", "inspect", "guide"], { cwd: repo });
+    expect(text.exitCode).toBe(EXIT.configuration);
+    expect(text.stdout).toBe("");
+    expect(text.stderr).not.toContain(HIDDEN);
+
+    const message = settingsRefusal([{ kind: "invalid", pack: "guide", setting: "docs-folder", rule: ONE_LINE, value }], "delivery.config.json");
+    const json = await delivery(["packs", "inspect", "guide", "--json"], { cwd: repo });
+    expect(json.exitCode).toBe(EXIT.configuration);
+    expect(JSON.parse(json.stdout)).toEqual({
+      schema: "delivery.pack-inspection/1",
+      ok: false,
+      problems: [{ file: null, field: "packSettings.guide.docs-folder", message }],
+    });
+  });
+
+  it("says the pack is not used when inspecting a folder the project does not list", async () => {
+    const repo = guideRepo({});
+    const { exitCode, stdout } = await delivery(["packs", "inspect", "./guide-pack"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(flat(stdout)).toContain("Values shown are the pack's defaults. This project does not use the pack.");
+  });
+
+  it("keeps the fingerprint whatever the owner's values", async () => {
+    const hashOf = async (cwd: string): Promise<string> => JSON.parse((await delivery(["packs", "inspect", "guide", "--json"], { cwd })).stdout).pack.hash;
+    const plain = await hashOf(guideRepo({ packs: ["guide-pack"] }));
+    const valued = await hashOf(guideRepo({ packs: ["guide-pack"], packSettings: { guide: { "docs-folder": "handbook" } } }));
+    expect(valued).toBe(plain);
   });
 });

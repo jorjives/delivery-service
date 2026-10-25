@@ -177,6 +177,7 @@ project can use. See [Write a pack](writing-a-pack.md).
 Values for the settings a pack asks for, keyed by the pack's name and then the setting's name. It works the same for a
 built-in pack, a pack you list in `packs` and a pack you added. A setting you leave out takes the pack's default.
 Each value is put into what the agent is told; it is never run as a command. A run keeps the values it started with.
+`delivery packs inspect <pack>` shows each value that would apply and whether it came from the pack's default or your configuration; changing a value needs no new approval.
 A required setting with no value stops `delivery run`, `delivery review` and `delivery validate` for the whole project, scheduled runs included, before any agent is called, with a message that names the pack, the setting and the line to add; the `delivery packs` commands keep working. An entry for a pack the project does not use, a setting the pack does not declare, or a value of the wrong kind is refused too, with every problem listed at once.
 
 ```json
