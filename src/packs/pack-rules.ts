@@ -62,6 +62,9 @@ export function ruleProblems(file: string, manifest: PackManifest): PackProblem[
  * sentence of its own. Undefined means the generic data-only sentence serves.
  */
 export function formatSentence(issue: Issue, raw: unknown): string | undefined {
+  if (issue.path.length === 3 && issue.path[0] === "settings" && issue.path[2] === "summary" && valueAt(raw, issue.path) === undefined) {
+    return `"settings.${String(issue.path[1])}" has no summary. Say in one line what it is for`;
+  }
   if (issue.code !== "unrecognized_keys") return undefined;
   const key = issue.keys[0];
   const field = `"${fieldOf(issue)}"`;

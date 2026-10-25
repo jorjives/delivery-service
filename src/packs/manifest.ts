@@ -10,6 +10,7 @@ import { isEnoent } from "../journal.js";
 import type { WorkflowConfig } from "../cli/config.js";
 import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, upgradeGuards, upgradeV2, type PackSchemaVersion } from "./pack-format.js";
 import { formatSentence, ruleProblems } from "./pack-rules.js";
+import { settingRuleProblems } from "./setting-rules.js";
 import type { AppliedSetting } from "./settings.js";
 
 /** One act workflow a find's ideas may name, and what it is for, in the words the scanner is shown. */
@@ -292,6 +293,7 @@ export async function readPack(
   }
   let manifest: PackManifest;
   let upgraded: Pack["upgraded"] = {};
+  let rules: PackProblem[] = [];
   const schema: PackSchemaVersion = declared === "delivery.pack/2" ? "delivery.pack/2" : PACK_SCHEMA;
   if (schema === "delivery.pack/2") {
     const v2 = PackManifestV2.safeParse(json);
@@ -301,20 +303,23 @@ export async function readPack(
   } else {
     const v3 = PackManifest.safeParse(json);
     if (!v3.success) return { ok: false, schema, prompts: null, problems: packProblems(manifestFile, v3.error, json, formatSentence) };
-    const rules = ruleProblems(manifestFile, v3.data);
-    if (rules.length > 0) return { ok: false, schema, prompts: promptsOf(v3.data), problems: rules };
+    rules = ruleProblems(manifestFile, v3.data);
     manifest = v3.data;
   }
 
-  // Each prompt file is read once, however many workflows name it, and every missing one is named.
+  // Each prompt file is read once, however many workflows name it, and every missing one is named. The settings rules
+  // are checked against the prompts that were read, so they run only once every prompt is known.
   const prompts = promptsOf(manifest);
   const read = await Promise.all(prompts.map(async (prompt) => [prompt, await packFile(dir, prompt)] as const));
   const texts = new Map<string, string>();
-  const problems: PackProblem[] = [];
+  const missing: PackProblem[] = [];
   for (const [prompt, text] of read) {
     if (typeof text === "string") texts.set(prompt, text);
-    else problems.push(text);
+    else missing.push(text);
   }
+  // The settings rules are a /3 format; a /2 pack has no settings, and its `{{settings.` text is left as it was written.
+  const settings = schema === PACK_SCHEMA ? settingRuleProblems(manifestFile, dir, manifest, texts) : [];
+  const problems = [...rules, ...missing, ...settings];
   if (problems.length > 0) return { ok: false, schema, prompts, problems };
 
   const { find, workflows, instructions } = packWorkflows(manifest, texts);

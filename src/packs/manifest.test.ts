@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { UnknownPack } from "../errors.js";
 import { PackManifest } from "./pack-format.js";
+import { NOT_ABSOLUTE } from "./setting-types.js";
 import { BUILT_IN_PACKS, builtInPacks, DATA_ONLY, IS_A_FOLDER, NOT_UTF8, packNamed, promptOf, readPack, isBuiltInPack, loadPack, resolvePack, isPackPath, newerFormat } from "./manifest.js";
 
 const minimal = { schema: "delivery.pack/2", name: "mine", version: "1.0.0", title: "Mine", summary: "Mine.", scan: { prompt: "scan.md" }, fix: { prompt: "fix.md" } };
@@ -515,6 +516,61 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
 
   it("reports a /2 manifest's unknown settings key in /2 terms", async () => {
     expect(await readPack(packDir({ ...minimal, settings: {} }))).toMatchObject({ ok: false, problems: [{ field: "settings", message: `"settings" ${DATA_ONLY}` }] });
+  });
+
+  /** The prompt files of a manifest whose scan prompt uses `{{settings.docs-folder}}`, the one setting these tests declare. */
+  const usingDocsFolder = { "scan.md": "# Scan\n{{settings.docs-folder}}\n", "code.md": "# Code\n", "tests.md": "# Tests\n" };
+
+  it("says a setting with no summary has none, in words", async () => {
+    const dir = v3Dir({ ...v3, settings: { "docs-folder": { type: "path" } } }, usingDocsFolder);
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ field: "settings.docs-folder.summary", message: '"settings.docs-folder" has no summary. Say in one line what it is for' }] });
+  });
+
+  it("names a default that fails its own type by its field", async () => {
+    const dir = v3Dir({ ...v3, settings: { "docs-folder": { type: "path", summary: "S.", default: "/etc" } } }, usingDocsFolder);
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ field: "settings.docs-folder.default", message: `"settings.docs-folder.default" ${NOT_ABSOLUTE}` }] });
+  });
+
+  it("refuses a prompt naming an undeclared setting, and a setting nothing uses, by file and field", async () => {
+    const dir = v3Dir({ ...v3, settings: { notes: { type: "text", summary: "Notes." } } }, usingDocsFolder);
+    expect(await readPack(dir)).toMatchObject({
+      ok: false,
+      problems: [
+        { file: join(dir, "pack.json"), field: "settings.notes", message: '"settings.notes" is not used by any prompt: put {{settings.notes}} where the agent should be told it, or remove the setting' },
+        { file: join(dir, "scan.md"), field: null, message: "uses {{settings.docs-folder}}, but pack.json declares no setting of that name. Declared: notes" },
+      ],
+    });
+  });
+
+  it("refuses a /3 pack whose prompt uses {{settings. without declaring settings", async () => {
+    const dir = v3Dir(v3, usingDocsFolder);
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ file: join(dir, "scan.md"), field: null, message: "uses {{settings.docs-folder}}, but pack.json declares no settings" }] });
+  });
+
+  it("refuses a pack with 33 settings", async () => {
+    const names = Array.from({ length: 33 }, (_, i) => `setting-${i}`);
+    const settings = Object.fromEntries(names.map((name) => [name, { type: "text", summary: "A setting." }]));
+    const dir = v3Dir({ ...v3, settings }, { ...usingDocsFolder, "scan.md": names.map((name) => `{{settings.${name}}}`).join("\n") });
+    expect(await readPack(dir)).toMatchObject({ ok: false, problems: [{ file: join(dir, "pack.json"), field: "settings", message: '"settings" declares 33 settings, but a pack may declare at most 32' }] });
+  });
+
+  it("reports the workflow rules and the settings rules together", async () => {
+    const twoFinds = edited((m) => (m.workflows.look = { kind: "find", prompt: "scan.md", ideasFor: ["code"] }));
+    const dir = v3Dir(twoFinds, usingDocsFolder);
+    expect(await readPack(dir)).toMatchObject({
+      ok: false,
+      problems: [
+        { file: join(dir, "pack.json"), field: "workflows", message: '"workflows" must hold exactly one workflow with "kind": "find", but it holds 2 ("scan", "look")' },
+        { file: join(dir, "scan.md"), field: null, message: "uses {{settings.docs-folder}}, but pack.json declares no settings" },
+      ],
+    });
+  });
+
+  it("reads a /2 pack whose prompt holds {{settings. as before", async () => {
+    // the setting rules apply to /3 only (M14)
+    const dir = packDir(minimal);
+    writeFileSync(join(dir, "scan.md"), "{{settings.x}}\n");
+    expect((await readPack(dir)).ok).toBe(true);
   });
 });
 

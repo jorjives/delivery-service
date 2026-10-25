@@ -138,6 +138,10 @@ A prompt uses a setting as `{{settings.<name>}}`, and the owner gives values und
 - Every act workflow is named in some find's `ideasFor`, so an idea can reach it.
 - An act that a find chooses between has a `summary`.
 - A prompt's `{{settings.<name>}}` is replaced by the owner's value, or the default, when the project loads the pack.
+- Every `{{settings.<name>}}` names a declared setting.
+- Every declared setting is used by a prompt, so the owner is never asked for a value nothing reads.
+- A pack declares at most 32 settings.
+- Each setting has a `summary`.
 - A pack cannot name a gate, an agent, tools, a closer, `after` steps or commands. A key that tries is refused with a sentence such as `"gate" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check`.
 
 ### The sentences you may see
@@ -152,6 +156,8 @@ A prompt uses a setting as `{{settings.<name>}}`, and the owner gives values und
 | `"workflows.tests" is not listed in any find workflow's "ideasFor", so no idea could reach it` | Add it to a find's `ideasFor`, or remove it. |
 | `"workflows.code.summary" is missing: the find workflow "scan" needs it to choose between "code" and "tests"` | Add a one-sentence `summary` to the act. |
 | `"workflows.scan.summary" is only for act workflows` | Remove the key from the find. |
+| `"settings.docs-folder" has no summary. Say in one line what it is for` | Add a one-line `summary` to the setting. |
+| `docs.md uses {{settings.docs-foldr}}, but pack.json declares no setting of that name. Declared: docs-folder` | Correct the name in the prompt to a declared setting, or declare it under `settings`. |
 | `code.md: is not valid UTF-8 text, so what is shown could differ from what the agent is given.` | Save the file as UTF-8 text. |
 | `tests.md: is a folder, not a file.` | Name a file, not a folder. |
 | `"schema" is "delivery.pack/4", a newer pack format than this harness reads (delivery.pack/2 and delivery.pack/3): upgrade delivery-service to read this pack` | Upgrade delivery-service. |
