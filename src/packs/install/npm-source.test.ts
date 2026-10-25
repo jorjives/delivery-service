@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterAll, it, expect } from "vitest";
 import { startLocalRegistry, type LocalRegistry } from "../../../tests/local-registry.js";
 import { npmSource } from "./npm-source.js";
+import { withPrivateTmpdir } from "../../cli/command-fixtures.js";
 import { packSourceContract } from "./pack-source.contract.js";
 import { sriOf } from "./pack-source.js";
 import { packageTarball } from "./tarball.js";
@@ -89,12 +90,12 @@ it("runs no install script of the package: no file the script would create appea
   expect(existsSync(marker)).toBe(false);
 });
 
-it("leaves no scratch folder behind, after a fetch or a failure", async () => {
-  const registry = await openRegistry();
-  const env = npmEnv(registry.url);
-  registry.publish("tidy", "1.0.0", packageTarball({ "pack.json": "{}" }, { name: "tidy", version: "1.0.0", "delivery-pack": "." }));
-  const before = scratchFolders().length;
-  await npmSource(env).fetch({ name: "tidy", request: "1.0.0", typed: true });
-  await expect(npmSource(env).fetch({ name: "no-such-tidy", request: "latest", typed: false })).rejects.toThrow();
-  expect(scratchFolders().length).toBe(before);
-});
+it("leaves no scratch folder behind, after a fetch or a failure", () =>
+  withPrivateTmpdir(async () => {
+    const registry = await openRegistry();
+    const env = npmEnv(registry.url);
+    registry.publish("tidy", "1.0.0", packageTarball({ "pack.json": "{}" }, { name: "tidy", version: "1.0.0", "delivery-pack": "." }));
+    await npmSource(env).fetch({ name: "tidy", request: "1.0.0", typed: true });
+    await expect(npmSource(env).fetch({ name: "no-such-tidy", request: "latest", typed: false })).rejects.toThrow();
+    expect(scratchFolders()).toEqual([]);
+  }));
