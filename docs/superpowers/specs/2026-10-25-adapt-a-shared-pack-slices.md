@@ -51,6 +51,7 @@
 
 ## Slice 2: Be told in plain words when a setting is missing or wrong
 
+**Tests:** ✅ Recorded — 2026-10-25 — `c87e7cd` — cli — 1 UAT + 4 AC, 4 skipped
 **Delivers:** A project owner who forgets or mistypes a setting is refused before any agent runs, with the pack, the setting and the lines to add; a pack author who declares one badly is told the file and field.
 
 ### Prerequisites
