@@ -4,6 +4,8 @@ seeded_by: []
 
 # Delivery Service: Install a Pack from Elsewhere, Pinned: Design
 
+> **Status:** ✅ Complete — 2026-10-25 — all 5 slices delivered
+
 > **Roadmap:** `docs/superpowers/specs/2026-10-22-pluggable-architecture-roadmap.md` — Item 3
 > **Status:** Draft, awaiting slicing
 > **Created:** 2026-10-24

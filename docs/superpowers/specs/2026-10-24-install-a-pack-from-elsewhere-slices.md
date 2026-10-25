@@ -1,6 +1,7 @@
 # Install a Pack from Elsewhere, Pinned — Slice Scope
 
 > Based on spec: `docs/superpowers/specs/2026-10-24-install-a-pack-from-elsewhere-design.md`
+> **Status:** ✅ Complete — 2026-10-25 — all 5 slices delivered
 > Next step: invoke writing-plans with this document
 > Written unattended: the clarifying-question and user-review steps were skipped. The ordering follows the spec's journeys J1 to J7.
 
@@ -173,6 +174,7 @@
 
 ## Slice 5: Add and update from automation, with output scripts can read, and documentation
 
+**Status:** ✅ Complete — 2026-10-25 — `90fd2b0`
 **Tests:** ✅ Recorded — 2026-10-25 — `879dc28` — cli — 4 UAT + 6 AC, 0 skipped
 
 **Delivers:** A team can add and update packs from automated jobs without a person present, read the same facts as data, and learn the whole flow from the documentation.
