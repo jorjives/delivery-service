@@ -55,8 +55,7 @@ export async function projectPacks(
 ): Promise<Pack[]> {
   const { packs, installed, settingProblems } = await projectPackStates(config, configDir, repoPath);
   if (repoPath !== undefined) refuseUnusable(repoPath, installed);
-  const printed = [...settingProblems.filter((problem) => problem.kind !== "missing"), ...settingProblems.filter((problem) => problem.kind === "missing")];
-  const [first] = printed;
+  const first = settingProblems.find((problem) => problem.kind !== "missing") ?? settingProblems[0];
   if (first !== undefined) throw new Refusal(settingsRefusal(settingProblems, configName), EXIT.configuration, settingField(first));
   return packs;
 }

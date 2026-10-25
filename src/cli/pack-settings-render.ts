@@ -35,8 +35,7 @@ export function shownValue(value: unknown): string | null {
     if (hasHidden(value) || BRACES.test(value) || [...value].length > SHOWN_MAX) return null;
     return JSON.stringify(value);
   }
-  if (typeof value === "number" && Number.isFinite(value)) return JSON.stringify(value);
-  if (typeof value === "boolean") return JSON.stringify(value);
+  if ((typeof value === "number" && Number.isFinite(value)) || typeof value === "boolean") return JSON.stringify(value);
   return null;
 }
 
