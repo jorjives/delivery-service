@@ -71,5 +71,5 @@ it("keeps within 60 columns with a long summary and a long default", async () =>
 it("fills each used value in front of its placeholder, and says not set when there is none", () => {
   const uses = [{ placeholder: "{{settings.a}}", setting: "a", value: "docs" }];
   expect(annotated("Read {{settings.a}} and {{settings.a}}.", uses)).toBe("Read docs [{{settings.a}}] and docs [{{settings.a}}].");
-  expect(annotated("Read {{settings.a}} and {{settings.a}}.", [{ ...uses[0]!, value: null }])).toBe("Read [{{settings.a}}, not set] and [{{settings.a}}, not set].");
+  expect(annotated("Read {{settings.a}} and {{settings.a}}.", [{ placeholder: "{{settings.a}}", setting: "a", value: null }])).toBe("Read [{{settings.a}}, not set] and [{{settings.a}}, not set].");
 });
