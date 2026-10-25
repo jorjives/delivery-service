@@ -9,6 +9,10 @@ import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { OWN_SETUP } from "./own-setup.js";
 import { FIXTURES_NOT_READ, INSPECT_RULE, QUESTIONS_TO_ASK, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
 import { INSPECT_WIDTH } from "./text-wrap.js";
+import { settingsPackOf } from "../packs/settings-fixtures.js";
+
+const TWO = { "docs-folder": { type: "path", summary: "The folder." }, topic: { type: "text", summary: "The topic.", default: "the API" } };
+const TWO_FILES = { "look.md": "Read {{settings.docs-folder}}.", "fix.md": "Fix the page about {{settings.topic}}." };
 
 const packs = await builtInPacks();
 const deprecations = packs.find((pack) => pack.manifest.name === "deprecations");
@@ -410,4 +414,29 @@ it("says an added pack is from npm, naming the package and its version", () => {
   const inspection = model();
   inspection.pack.source = { kind: "installed", path: "/r/.delivery/packs/test", package: { name: "@acme/delivery-pack-docs", version: "1.2.0", integrity: "sha512-x" } };
   expect(renderInspection(inspection).slice(1, 3).join(" ")).toContain("test, version 1.0.0, from npm: @acme/delivery-pack-docs 1.2.0.");
+});
+
+it("puts Settings directly after In short", () => {
+  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null));
+  const short = lines.indexOf("In short");
+  const next = lines.findIndex((line, index) => index > short && line !== "" && lines[index - 1] === "");
+  expect(lines[next]).toBe("Settings");
+});
+
+it("shows a step's instructions with each value beside its placeholder", async () => {
+  const pack = await settingsPackOf(TWO, TWO_FILES);
+  const lines = renderInspection(inspectionOf(pack, NO_PROJECT, [], { "docs-folder": "handbook" }));
+  const at = lines.indexOf("Each value is shown before its placeholder, in [ ].");
+  expect(lines[at + 1]).toBe(INSPECT_RULE);
+  expect(lines[at + 2]).toBe("Read handbook [{{settings.docs-folder}}].");
+});
+
+it("gives the same facts in text as in the document", async () => {
+  const inspection = inspectionOf(await settingsPackOf(TWO, TWO_FILES), NO_PROJECT, [], { "docs-folder": "handbook" });
+  const text = renderInspection(inspection).join("\n");
+  for (const setting of inspection.settings) {
+    expect(text).toContain(setting.name);
+    expect(text).toContain(setting.type);
+    if (setting.value !== null) expect(text).toContain(setting.value);
+  }
 });

@@ -9,6 +9,8 @@ import type { PackProblem } from "../packs/manifest.js";
 import { SEVERITIES, type GuardName } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
 import { INSPECT_WIDTH, wrap } from "./text-wrap.js";
+import { DEFAULT_CONFIG_NAME } from "./pack-settings-render.js";
+import { annotated, settingsBlock } from "./packs-inspect-settings.js";
 
 /** The last line of every refusal: nothing from the pack was used. */
 export const SHOWN_NOTHING = "Nothing from this pack was shown, run or sent to an agent.";
@@ -279,11 +281,12 @@ function alsoBlock({ files }: Inspection): string[] {
 /** Each step's instructions, shown unaltered: the pack's words, then the harness's words when the harness adds any. */
 function instructionBlocks(inspection: Inspection): string[][] {
   return inspection.workflows.flatMap((workflow) =>
-    workflow.steps.map(({ instructions }) => {
-      const authored = instructionText(instructions.authored);
+    workflow.steps.map(({ instructions, uses }) => {
+      const authored = instructionText(annotated(instructions.authored, uses));
       const harness = instructions.harness;
       const block = [
         ...wrap(`Instructions for ${workflow.local}: the pack's own words, ${plural(authored.split("\n").length, "line")}`, ""),
+        ...(uses.length === 0 ? [] : wrap("Each value is shown before its placeholder, in [ ].", "")),
         INSPECT_RULE,
         ...authored.split("\n"),
         INSPECT_RULE,
@@ -295,11 +298,12 @@ function instructionBlocks(inspection: Inspection): string[][] {
   );
 }
 
-/** The account of a pack, as plain lines: the short account, then the limits, then every instruction unaltered. Pure: no I/O. */
-export function renderInspection(inspection: Inspection): string[] {
+/** The account of a pack, as plain lines: the short account, the settings, the limits, then every instruction unaltered. Pure: no I/O. */
+export function renderInspection(inspection: Inspection, configName: string = DEFAULT_CONFIG_NAME): string[] {
   const blocks = [
     identityBlock(inspection),
     shortBlock(inspection),
+    settingsBlock(inspection, configName),
     touchBlock(),
     limitsBlock(inspection),
     checksBlock(inspection),

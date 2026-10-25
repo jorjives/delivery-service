@@ -85,6 +85,9 @@ In short
   An idea from "scan" may go to "code" or "tests", and only
   after you approve it.
 
+Settings
+  This pack has no settings.
+
 What it may touch
   This pack cannot give the agent extra powers, and nothing
   in it takes any away. Its instructions run with everything
@@ -163,6 +166,8 @@ Fixtures
 Read the account from the top:
 
 **In short** says what the pack is for and lists its workflows. A find workflow only reads your project and adds ideas to your backlog. An act workflow changes the project for one idea, and runs only after you approve that idea.
+
+**Settings** lists each setting the pack asks you for: what it is for, its type and default, the value that would apply and where it came from, and what it changes. A setting changes what the agent is told and when it waits; it does not change your project's own check. A required setting you have not given shows "not set" and the lines to add to `delivery.config.json`. A pack with no settings says so.
 
 **What it may touch** says what the instructions can do beyond what your own setup allows. Here the pack gives the agent no extra powers and takes none away; your own Claude Code settings, checks and sign-off still apply.
 
