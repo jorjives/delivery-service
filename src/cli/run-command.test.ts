@@ -14,7 +14,7 @@ import { DEFAULT_ROLES } from "../agent-invoke.js";
 import { stepView } from "../workflow-step.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
-import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot, interruptedRun, writesHello, writeSupervisedRun, rateLimited } from "./command-fixtures.js";
+import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeNeedyPack, writeRunRecord, runsRoot, interruptedRun, writesHello, writeSupervisedRun, rateLimited } from "./command-fixtures.js";
 import { unknownCloser } from "./config.js";
 import { EXIT, UNEXPECTED_FOOTER } from "./failures.js";
 import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
@@ -465,6 +465,54 @@ describe("delivery run with a config file", () => {
   it("lists --concurrency in `delivery run --help`", async () => {
     const repo = initTempRepo("run-command-help-concurrency-", { "package.json": PACKAGE });
     expect((await delivery(["run", "--help"], { cwd: repo })).stdout).toContain("--concurrency <n>");
+  });
+});
+
+describe("delivery run with a required pack setting unset", () => {
+  /** A project with a check, the needy pack added, and the given config file. */
+  const needyRepo = (config: unknown): string => {
+    const repo = initTempRepo("run-command-needy-", { "package.json": PACKAGE });
+    writeNeedyPack(repo);
+    configIn(repo, config);
+    return repo;
+  };
+
+  it("refuses a workflow of a different pack before any agent call, naming the pack, setting and lines to add", async () => {
+    const repo = needyRepo({ packs: ["needy-pack"] });
+    const script = await scriptFile(completes);
+    const { exitCode, stderr } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: script } });
+    expect(exitCode).toBe(EXIT.configuration);
+    for (const line of ["Nothing can run yet: the pack needy needs a setting", "not only needy,", "  docs-folder: the folder that holds your documentation.", '  "packSettings": { "needy": { "docs-folder": "..." } }', "Nothing was run."]) expect(stderr).toContain(line);
+    expect(promptsSent(await readJournal(`${script}.journal.jsonl`))).toEqual([]);
+  });
+
+  it("refuses a scheduled run the same way", async () => {
+    // the arguments a schedule runs: runArgs(schedule) from src/cli/schedule/model.ts, i.e. run --sources --if-idle
+    const repo = needyRepo({ packs: ["needy-pack"] });
+    const script = await scriptFile(completes);
+    const { exitCode, stderr } = await delivery(["run", "--sources", "--if-idle"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: script } });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("Nothing can run yet: the pack needy needs a setting");
+    expect(promptsSent(await readJournal(`${script}.journal.jsonl`))).toEqual([]);
+  });
+
+  it(
+    "runs once the suggested line is given",
+    async () => {
+      const repo = needyRepo({ packs: ["needy-pack"], packSettings: { needy: { "docs-folder": "docs" } } });
+      const { exitCode, stdout } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      expect(exitCode).toBe(EXIT.ok);
+      expect(stdout).toContain(`Done: the change for "${TASK}"`);
+    },
+    RUN_TIMEOUT,
+  );
+
+  it("refuses a mistyped setting name, listing the settings the pack has", async () => {
+    const repo = needyRepo({ packs: ["needy-pack"], packSettings: { needy: { "docs-foler": "docs" } } });
+    const { exitCode, stderr } = await delivery(["run", "--task", TASK], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain('  needy: "docs-foler" is not a setting of this pack.');
+    expect(stderr).toContain("    Its settings are: docs-folder.");
   });
 });
 

@@ -63,3 +63,4 @@ Examples, in the delivery-service repo: `examples/project-configuration-example/
 - A gate that always passes (`true`, `echo ok`), or one so slow or flaky that correction rounds time out.
 - Using `delivery run` to test the config: it starts a real agent and spends money.
 - Editing the config mid-run and expecting the run to notice: a run keeps the `domain` and pack settings it started with.
+- Leaving a pack's required setting out of `packSettings`: every run, review and validate stops with exit 2 and prints the line to add.

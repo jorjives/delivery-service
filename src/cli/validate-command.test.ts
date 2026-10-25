@@ -7,7 +7,7 @@ import { DEFAULT_BUDGETS } from "../budgets.js";
 import { cleanGitEnv } from "../git-env.js";
 import type { CloserRef, GateRef } from "../schema.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
+import { delivery, PACKAGE, runsRoot, writeNeedyPack, writeRunRecord } from "./command-fixtures.js";
 import { BOTH_TASK_AND_TASKS, sameTask, type DeliveryConfig } from "./config.js";
 import { EXIT } from "./failures.js";
 import { NO_TEST_COMMAND, type GatePreset } from "./gate-presets.js";
@@ -399,5 +399,23 @@ describe("delivery validate --json", () => {
     const { json } = await bothForms(repoWith(COMPLETE), { DELIVERY_CONCURRENCY: "0" });
     expect(json.exitCode).toBe(EXIT.configuration);
     expect(json.result).toMatchObject({ ready: false, problems: [{ field: "concurrency" }] });
+  });
+});
+
+describe("delivery validate with a required pack setting unset", () => {
+  it("refuses the project in both forms, the plain one in the block and --json with one problem naming the setting", async () => {
+    const repo = repoWith({ ...COMPLETE, packs: ["needy-pack"] });
+    writeNeedyPack(repo);
+    const { json, plain } = await bothForms(repo);
+    expect(plain.exitCode).toBe(EXIT.configuration);
+    expect(plain.stderr).toContain("Nothing can run yet: the pack needy needs a setting");
+    expect(plain.stdout).not.toContain(READY);
+    expect(json.result).toEqual({
+      ready: false,
+      problems: [{ field: "packSettings.needy.docs-folder", message: expect.stringContaining("Nothing can run yet: the pack needy needs a setting") }],
+    });
+    const { problems } = json.result as { problems: { message: string }[] };
+    expect(plain.stderr).toBe(`${problems[0]?.message}\n`);
+    expect(json.exitCode).toBe(EXIT.configuration);
   });
 });

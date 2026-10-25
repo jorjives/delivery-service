@@ -141,9 +141,11 @@ export async function findProblems(options: ValidateOptions, ctx: CommandContext
     const { repoPath, file } = await locateConfig(options, ctx);
     const checked = await checkConfig(file);
     if (!checked.ok) return checked.problems;
-    // ponytail: past the shape, only the first failure (the check or closing action a run would use, or a module
-    // of the project's own) is listed; check the gate and closer modules separately if CI needs both at once.
-    await settleProject(checked.config, repoPath, ctx.env);
+    // ponytail: past the shape, only the first failure (a pack or setting a run would refuse, the check or closing
+    // action a run would use, or a module of the project's own) is listed; check the gate and closer modules
+    // separately if CI needs both at once.
+    const packs = await projectPacks(checked.config, dirname(file), repoPath, basename(file));
+    await settleProject(withWorkflowsOf(checked.config, packs), repoPath, ctx.env);
     return [];
   } catch (err) {
     const { message, exitCode } = renderFailure(err);
