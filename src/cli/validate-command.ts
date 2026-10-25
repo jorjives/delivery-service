@@ -5,7 +5,8 @@ import { CloserModuleLoadFailure, GateModuleLoadFailure, InvalidCloserExport, In
 import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig, type SourceConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, renderFailure, type ExitCode } from "./failures.js";
-import { withPackWorkflows } from "./pack-workflows.js";
+import type { Pack } from "../packs/manifest.js";
+import { projectPacks, withWorkflowsOf } from "./pack-workflows.js";
 import { gateLine, closerPhrase } from "./project-phrases.js";
 import { findRepository } from "./project.js";
 import { checkCustomModules, resolveProject, type ProjectSettings } from "./settings.js";
@@ -92,15 +93,18 @@ export async function readProject(
   file: string,
   repoPath: string,
   env: NodeJS.ProcessEnv,
-): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
-  const config = await withPackWorkflows(await readConfig(file), dirname(file), repoPath);
-  return { config, project: await settleProject(config, repoPath, env) };
+): Promise<{ config: DeliveryConfig; project: ProjectSettings; packs: Pack[] }> {
+  const settings = await readConfig(file);
+  const packs = await projectPacks(settings, dirname(file), repoPath);
+  const config = withWorkflowsOf(settings, packs);
+  return { config, project: await settleProject(config, repoPath, env), packs };
 }
 
 /** The project a run would have with no config file: the defaults, and the built-in packs' workflows. */
-export async function defaultProject(repoPath: string, env: NodeJS.ProcessEnv): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
-  const config = await withPackWorkflows({}, repoPath, repoPath);
-  return { config, project: await settleProject(config, repoPath, env) };
+export async function defaultProject(repoPath: string, env: NodeJS.ProcessEnv): Promise<{ config: DeliveryConfig; project: ProjectSettings; packs: Pack[] }> {
+  const packs = await projectPacks({}, repoPath, repoPath);
+  const config = withWorkflowsOf({}, packs);
+  return { config, project: await settleProject(config, repoPath, env), packs };
 }
 
 /** The check and closing action a run would use (no flags, this environment), with any module of the project's own loaded but never run. */

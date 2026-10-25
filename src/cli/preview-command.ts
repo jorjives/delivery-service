@@ -5,6 +5,7 @@ import { initialCaseFile } from "../case-file.js";
 import { assemblePrompt, type PromptEvidence } from "../prompt-assembly.js";
 import { unmatchedTaskPlaceholders } from "../placeholders.js";
 import type { AgentOptions, PinnedWorkflow, TaskDef } from "../schema.js";
+import type { AppliedSetting } from "../packs/settings.js";
 import { stepView } from "../workflow-step.js";
 import { andList, findConfig, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
@@ -88,6 +89,10 @@ const WHO: Record<PreviewRole, string> = {
 /** The line above the instructions: whose they are, and that they are added to Claude Code's own rather than replacing them. */
 export const previewIntro = (role: PreviewRole): string => `What ${WHO[role]} will be told (before any run starts), added to Claude Code's own instructions:`;
 
+/** The line naming each setting a previewed step uses, its value, and whether the value is the pack's default or the owner's. */
+export const settingsUsedLine = (applied: readonly AppliedSetting[]): string =>
+  `Settings used: ${applied.map((a) => `${a.name} = ${a.value} (${a.source === "default" ? "default" : "your configuration"})`).join(", ")}.`;
+
 /** The options passed to every session, as written in the file. `append` is left out: it is already in the instructions above. */
 export function agentOptionsLine(agent: AgentOptions | undefined): string {
   const named = Object.entries(agent ?? {})
@@ -146,7 +151,7 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
   const startDir = resolve(ctx.cwd, options.repo ?? ".");
   const repoPath = await findRepository(startDir);
   const file = findConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
-  const { config, project } = file === undefined ? await defaultProject(repoPath, ctx.env) : await readProject(file, repoPath, ctx.env);
+  const { config, project, packs } = file === undefined ? await defaultProject(repoPath, ctx.env) : await readProject(file, repoPath, ctx.env);
   const chosen = await chooseTask(config, repoPath, options.queueIndex, options.task);
   if (chosen === undefined) {
     ctx.writeLine(EVERY_TASK_DONE);
@@ -179,6 +184,8 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
   ctx.writeLine(RULE);
   ctx.writeLine(`${systemPrompt}\n\n${prompt}`);
   ctx.writeLine(RULE);
+  const used = packs.flatMap((pack) => pack.applied).filter((a) => stepped !== undefined && a.usedBy.includes(stepped.workflow.name));
+  if (used.length > 0) ctx.writeLine(settingsUsedLine(used));
   // `continue` is part of how the step's session is set up, so the preview says so, before the options line.
   for (const line of [...OWN_SETUP, ...(previewed?.continue === true ? [CONTINUES] : []), agentOptionsLine(view.header.agent)]) ctx.writeLine(line);
   return EXIT.ok;

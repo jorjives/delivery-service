@@ -197,7 +197,7 @@ Agent options: none.
 `delivery preview --queue-index 2` shows the second task instead. Like `delivery
 validate`, it needs no sign-in and changes nothing.
 
-For a workflow, `delivery preview --step build` shows what that step's agent will be told, with its own instruction and check, and the agent options it runs with (yours, with the step's laid over them). Add `--workflow <name>` when two workflows have a step of that name. Add `--task "..."` to preview a task you would type.
+For a workflow, `delivery preview --step build` shows what that step's agent will be told, with its own instruction and check, and the agent options it runs with (yours, with the step's laid over them). Add `--workflow <name>` when two workflows have a step of that name. Add `--task "..."` to preview a task you would type. For a step of a pack that has settings, the text shows the values in place, and a line beneath it, such as `Settings used: docs-folder = docs (default).`, names each value and whether it is the pack's default or from your configuration.
 
 ## 8. Run the list
 
