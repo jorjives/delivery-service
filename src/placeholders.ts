@@ -23,8 +23,7 @@ export function unmatchedTaskPlaceholders(prompt: string, taskDef: TaskDef): str
 /** Fills `{{settings.<name>}}` placeholders that have a value, in one pass, leaving any other placeholder as written. */
 export function renderSettings(text: string, values: Readonly<Record<string, string>>): string {
   return text.replace(SETTING_PLACEHOLDER, (placeholder, name: string) => {
-    const value = values[name];
-    return value !== undefined && Object.prototype.hasOwnProperty.call(values, name) ? value : placeholder;
+    return Object.hasOwn(values, name) ? (values[name] as string) : placeholder;
   });
 }
 

@@ -39,7 +39,7 @@ export function bindSettings(pack: Pack, values: Readonly<Record<string, unknown
   const rendered: Record<string, string> = {};
   const sources: Record<string, SettingSource> = {};
   for (const [name, declaration] of Object.entries(declarations)) {
-    const owned = Object.prototype.hasOwnProperty.call(given, name);
+    const owned = Object.hasOwn(given, name);
     const raw = owned ? given[name] : declaration.default;
     if (raw === undefined) {
       problems.push({ pack: packName, setting: name, kind: "missing", message: MISSING });
@@ -55,7 +55,7 @@ export function bindSettings(pack: Pack, values: Readonly<Record<string, unknown
   }
   const names = Object.keys(declarations);
   for (const name of Object.keys(given)) {
-    if (Object.prototype.hasOwnProperty.call(declarations, name)) continue;
+    if (Object.hasOwn(declarations, name)) continue;
     const message = names.length === 0 ? "is not a setting of this pack, which has no settings." : `is not a setting of this pack. Its settings are: ${names.join(", ")}.`;
     problems.push({ pack: packName, setting: name, kind: "undeclared", message });
   }
