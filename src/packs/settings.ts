@@ -15,6 +15,23 @@ export interface AppliedSetting {
   usedBy: readonly string[];
 }
 
+/** Where a setting's answer comes from; `unset` when neither the owner nor the pack gives one. */
+export type ResolvedSource = "default" | "configuration" | "unset";
+
+/** A declared setting with its one answer: what the agent would be told, where it came from and the workflows that use it. */
+export interface ResolvedSetting {
+  name: string;
+  type: SettingType;
+  summary: string;
+  /** The default as the agent would be told it, or null when the pack gives none. */
+  default: string | null;
+  /** The value as the agent would be told it; null when unset, or when the owner's value is faulty. */
+  value: string | null;
+  source: ResolvedSource;
+  /** Qualified names of the workflows whose authored prompt uses the setting, in manifest order. */
+  usedBy: readonly string[];
+}
+
 /** A required setting the owner has not given, with the summary the pack gives it. */
 export interface UnmetSetting {
   setting: string;
@@ -45,43 +62,67 @@ export function unmetSettings(pack: Pack, values: Readonly<Record<string, unknow
 }
 
 /**
- * Binds a pack to its owner's values. The value applied is the owner's, else the pack's default, else a problem. On
- * success the authored half of each prompt is rendered; the harness half, the fingerprint and the instructions are not.
- * Pure: a pack with no settings and no values is returned as it is.
+ * Resolves each declared setting to its one answer, and the problems the owner's values raise. Settings are in declaration
+ * order; problems are the declared settings' first, then the undeclared names. Binding, the run and inspection all read this.
  */
-export function bindSettings(pack: Pack, values: Readonly<Record<string, unknown>> | undefined): { ok: true; pack: Pack } | { ok: false; problems: SettingProblem[] } {
-  const declared = pack.manifest.settings;
+export function resolveSettings(pack: Pack, values: Readonly<Record<string, unknown>> | undefined): { settings: ResolvedSetting[]; problems: SettingProblem[] } {
+  const declarations = pack.manifest.settings ?? {};
   const given = values ?? {};
-  if (declared === undefined && Object.keys(given).length === 0) return { ok: true, pack };
-  const declarations = declared ?? {};
   const packName = pack.manifest.name;
-  const unmet = new Map(unmetSettings(pack, values).map((entry) => [entry.setting, entry]));
+  const settings: ResolvedSetting[] = [];
   const problems: SettingProblem[] = [];
-  const rendered: Record<string, string> = {};
-  const sources: Record<string, SettingSource> = {};
   for (const [name, declaration] of Object.entries(declarations)) {
-    const missing = unmet.get(name);
-    if (missing !== undefined) {
-      problems.push({ kind: "missing", pack: packName, setting: name, summary: missing.summary });
+    const usedBy = Object.entries(pack.instructions)
+      .filter(([, told]) => settingNamesIn(told.authored).includes(name))
+      .map(([workflow]) => workflow);
+    const described = {
+      name,
+      type: declaration.type,
+      summary: declaration.summary,
+      default: declaration.default === undefined ? null : renderSettingValue(declaration.default),
+      usedBy,
+    };
+    const raw = boundRaw(declaration, name, given);
+    if (raw === undefined) {
+      problems.push({ kind: "missing", pack: packName, setting: name, summary: declaration.summary });
+      settings.push({ ...described, value: null, source: "unset" });
       continue;
     }
-    const raw = boundRaw(declaration, name, given);
+    const source: ResolvedSource = Object.hasOwn(given, name) ? "configuration" : "default";
     const checked = settingValueSchema(declaration).safeParse(raw);
     if (!checked.success) {
       const issue = checked.error.issues[0];
       problems.push({ kind: "invalid", pack: packName, setting: name, rule: issue?.message ?? "has a value the pack cannot use", value: issue === undefined ? raw : valueAt(raw, issue.path) });
+      settings.push({ ...described, value: null, source });
       continue;
     }
-    rendered[name] = renderSettingValue(checked.data);
-    sources[name] = Object.hasOwn(given, name) ? "configuration" : "default";
+    settings.push({ ...described, value: renderSettingValue(checked.data), source });
   }
   const names = Object.keys(declarations);
   for (const name of Object.keys(given)) {
     if (Object.hasOwn(declarations, name)) continue;
     problems.push({ kind: "undeclared", pack: packName, setting: name, declared: names });
   }
+  return { settings, problems };
+}
+
+/**
+ * Binds a pack to its owner's values. The value applied is the owner's, else the pack's default, else a problem. On
+ * success the authored half of each prompt is rendered; the harness half, the fingerprint and the instructions are not.
+ * Pure: a pack with no settings and no values is returned as it is.
+ */
+export function bindSettings(pack: Pack, values: Readonly<Record<string, unknown>> | undefined): { ok: true; pack: Pack } | { ok: false; problems: SettingProblem[] } {
+  if (pack.manifest.settings === undefined && Object.keys(values ?? {}).length === 0) return { ok: true, pack };
+  const { settings, problems } = resolveSettings(pack, values);
   if (problems.length > 0) return { ok: false, problems };
 
+  const rendered: Record<string, string> = {};
+  const applied: AppliedSetting[] = [];
+  for (const setting of settings) {
+    if (setting.value === null || setting.source === "unset") continue;
+    rendered[setting.name] = setting.value;
+    applied.push({ name: setting.name, type: setting.type, value: setting.value, source: setting.source, usedBy: setting.usedBy });
+  }
   const workflows = { ...pack.workflows };
   for (const [name, told] of Object.entries(pack.instructions)) {
     const workflow = pack.workflows[name];
@@ -90,14 +131,5 @@ export function bindSettings(pack: Pack, values: Readonly<Record<string, unknown
     const bound: Instructions = { ...told, authored: renderSettings(told.authored, rendered) };
     workflows[name] = { ...workflow, steps: [{ ...step, prompt: promptOf(bound) }, ...more] };
   }
-  const applied = Object.entries(declarations).map(([name, declaration]) => ({
-    name,
-    type: declaration.type,
-    value: rendered[name] ?? "",
-    source: sources[name] ?? "default",
-    usedBy: Object.entries(pack.instructions)
-      .filter(([, told]) => settingNamesIn(told.authored).includes(name))
-      .map(([workflow]) => workflow),
-  }));
   return { ok: true, pack: { ...pack, workflows, applied } };
 }

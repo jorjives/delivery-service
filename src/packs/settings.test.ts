@@ -125,3 +125,41 @@ describe("bindSettings", () => {
     });
   });
 });
+
+describe("resolveSettings", () => {
+  it("gives each setting its value, default, source and users, in declaration order", async () => {
+    const pack = await settingsPackOf(SETTINGS, FILES);
+    expect(resolveSettings(pack, { topic: "the CLI" })).toEqual({
+      problems: [],
+      settings: [
+        { name: "docs-folder", type: "path", summary: "The folder.", default: "docs", value: "docs", source: "default", usedBy: ["docs:look", "docs:fix"] },
+        { name: "topic", type: "text", summary: "The topic.", default: "the API", value: "the CLI", source: "configuration", usedBy: ["docs:fix"] },
+      ],
+    });
+  });
+  it("says configuration when the owner gives the default's own value", async () => {
+    const r = resolveSettings(await settingsPackOf(SETTINGS, FILES), { "docs-folder": "docs" });
+    expect(r.settings[0]).toMatchObject({ value: "docs", source: "configuration" });
+  });
+  it("marks a required setting with no value unset, with a missing problem", async () => {
+    const pack = await settingsPackOf({ "old-module": { type: "text", summary: "Old." } }, { "look.md": "Look.", "fix.md": "Leave {{settings.old-module}}." });
+    expect(resolveSettings(pack, undefined)).toEqual({
+      settings: [{ name: "old-module", type: "text", summary: "Old.", default: null, value: null, source: "unset", usedBy: ["docs:fix"] }],
+      problems: [{ kind: "missing", pack: "docs", setting: "old-module", summary: "Old." }],
+    });
+  });
+  it("renders a paths default and value joined in order", async () => {
+    const pack = await settingsPackOf({ areas: { type: "paths", summary: "Where.", default: ["src", "lib"] } }, { "look.md": "Look.", "fix.md": "Fix {{settings.areas}}." });
+    expect(resolveSettings(pack, { areas: ["b", "a"] }).settings[0]).toMatchObject({ default: "src, lib", value: "b, a" });
+  });
+  it("gives a faulty owner value no value, with the same invalid problem bind gives", async () => {
+    const pack = await settingsPackOf(SETTINGS, FILES);
+    const bad = { topic: "two\nlines" };
+    const r = resolveSettings(pack, bad);
+    expect(r.settings[1]).toMatchObject({ value: null, source: "configuration" });
+    expect(bindSettings(pack, bad)).toEqual({ ok: false, problems: r.problems });
+  });
+  it("is empty for a pack with no settings", async () => {
+    for (const pack of await builtInPacks()) expect(resolveSettings(pack, undefined)).toEqual({ settings: [], problems: [] });
+  });
+});
