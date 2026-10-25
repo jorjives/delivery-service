@@ -8,6 +8,8 @@
 
 ## Slice 1: Give a pack a setting and see it in the agent's instructions
 
+**Tests:** ✅ Recorded — 2026-10-25 — `cb1dd23` — cli — 1 UAT + 2 AC, 3 skipped
+
 **Delivers:** A pack author can declare a setting with a default, a project owner can override it in their configuration, and both can see the value in the instructions the agent will be given.
 
 **Operational note:** The configuration file gains one new key and the pack format gains new published keys, so the format-stability checks and the changeset (a minor release) must be updated in this slice. Every built-in pack and fixture without settings must stay unchanged in hash, listing and run; a scripted run proves a value of shell metacharacters writes nothing outside the prompt.
