@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderSettings, renderTask, settingNamesIn, unmatchedTaskPlaceholders } from "./placeholders.js";
+import { malformedSettingPlaceholders, renderSettings, renderTask, settingNamesIn, unmatchedTaskPlaceholders } from "./placeholders.js";
 
 describe("renderSettings", () => {
   it("replaces every use of a setting, and two settings on one line", () => {
@@ -16,6 +16,15 @@ describe("renderSettings", () => {
 describe("settingNamesIn", () => {
   it("names each setting once, in first-use order", () => {
     expect(settingNamesIn("{{settings.b}} {{settings.a}} {{settings.b}} {{task.x}}")).toEqual(["b", "a"]);
+  });
+});
+describe("malformedSettingPlaceholders", () => {
+  it("names each {{settings. that is not a whole setting placeholder, as written, once", () => {
+    expect(malformedSettingPlaceholders("{{settings.Docs_Folder}} {{settings.docs-folder }} {{settings.}} {{settings.ok}} {{settings.Docs_Folder}}"))
+      .toEqual(["{{settings.Docs_Folder}}", "{{settings.docs-folder", "{{settings.}}"]);
+  });
+  it("finds nothing in text with only whole placeholders or none", () => {
+    expect(malformedSettingPlaceholders("Read {{settings.docs-folder}} and {{task.file}}.")).toEqual([]);
   });
 });
 describe("renderTask and unmatchedTaskPlaceholders", () => {

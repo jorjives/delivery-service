@@ -31,3 +31,13 @@ export function renderSettings(text: string, values: Readonly<Record<string, str
 export function settingNamesIn(text: string): string[] {
   return [...new Set([...text.matchAll(SETTING_PLACEHOLDER)].map(([, name]) => name as string))];
 }
+
+/** Every `{{settings.` occurrence, up to its closing braces when it has them, so a near miss is seen whole. */
+const SETTING_OCCURRENCE = /\{\{settings\.[^\s{}]*(?:\}\})?/g;
+const WHOLE_SETTING_PLACEHOLDER = /^\{\{settings\.[a-z0-9][a-z0-9-]*\}\}$/;
+
+/** The `{{settings.` occurrences in a text that are not a whole setting placeholder, as written, in first-use order and without repeats. */
+export function malformedSettingPlaceholders(text: string): string[] {
+  const malformed = [...text.matchAll(SETTING_OCCURRENCE)].map(([occurrence]) => occurrence).filter((occurrence) => !WHOLE_SETTING_PLACEHOLDER.test(occurrence));
+  return [...new Set(malformed)];
+}
