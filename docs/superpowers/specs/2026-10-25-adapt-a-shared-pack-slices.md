@@ -8,6 +8,8 @@
 
 ## Slice 1: Give a pack a setting and see it in the agent's instructions
 
+**Status:** ✅ Complete — 2026-10-25 — `e1e06a2`
+
 **Tests:** ✅ Recorded — 2026-10-25 — `cb1dd23` — cli — 1 UAT + 2 AC, 3 skipped
 
 **Delivers:** A pack author can declare a setting with a default, a project owner can override it in their configuration, and both can see the value in the instructions the agent will be given.
