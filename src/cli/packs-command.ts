@@ -1,4 +1,5 @@
 import { showName } from "../packs/hidden-characters.js";
+import { sortKeys } from "../packs/install/lock.js";
 import type { InstalledPack } from "../packs/install/installed.js";
 import type { Pack } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
@@ -6,6 +7,7 @@ import { loadConfigAndPackStates, loadConfigAndPacks } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode, Refusal } from "./failures.js";
 import { stateNote } from "./installed-render.js";
+import { packsListing } from "./packs-listing.js";
 import { projectPacks, withWorkflowsOf } from "./pack-workflows.js";
 import { findRepository } from "./project.js";
 
@@ -70,12 +72,11 @@ export async function packsCommand(options: PacksOptions, ctx: CommandContext): 
     ctx.writeLine(JSON.stringify(packSchema(), null, 2));
     return EXIT.ok;
   }
+  const { packs, installed } = await packStatesFor(ctx);
   if (ctx.json) {
-    const packs = await projectPacksFor(ctx);
-    ctx.writeLine(JSON.stringify({ packs: packs.map(({ manifest }) => ({ name: manifest.name, version: manifest.version, title: manifest.title, summary: manifest.summary })) }, null, 2));
+    ctx.writeLine(JSON.stringify(sortKeys(packsListing(packs, installed)), null, 2));
     return EXIT.ok;
   }
-  const { packs, installed } = await packStatesFor(ctx);
   for (const line of packLines(packs, installed)) ctx.report.note(line);
   return EXIT.ok;
 }

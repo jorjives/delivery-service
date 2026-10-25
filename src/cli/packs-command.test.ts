@@ -75,7 +75,17 @@ describe("delivery packs", () => {
     const { exitCode, stdout } = await delivery(["packs", "--json"], { cwd: initTempRepo("packs-json-", { "a.js": "x\n" }) });
     expect(exitCode).toBe(EXIT.ok);
     const packs = await builtInPacks();
-    expect(JSON.parse(stdout)).toEqual({ packs: packs.map(({ manifest }) => ({ name: manifest.name, version: manifest.version, title: manifest.title, summary: manifest.summary })) });
+    expect(JSON.parse(stdout)).toEqual({
+      schema: "delivery.packs/1",
+      packs: packs.map(({ manifest }) => ({
+        name: manifest.name,
+        version: manifest.version,
+        title: manifest.title,
+        summary: manifest.summary,
+        source: { kind: "built-in", package: null },
+        state: null,
+      })),
+    });
   });
 
   it("lists a pack the project lists beside the built-in ones, aligned, with its start command", async () => {
@@ -120,7 +130,14 @@ describe("delivery packs", () => {
     const { exitCode, stdout } = await delivery(["packs", "--json"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
     const packs = JSON.parse(stdout).packs;
-    expect(packs[packs.length - 1]).toEqual({ name: "mymoves", version: "1.0.0", title: "Moves", summary: "Moves calls off retired code." });
+    expect(packs[packs.length - 1]).toEqual({
+      name: "mymoves",
+      version: "1.0.0",
+      title: "Moves",
+      summary: "Moves calls off retired code.",
+      source: { kind: "folder", package: null },
+      state: null,
+    });
   });
 
   it("refuses a listed pack with a mistake, naming its file and field", async () => {
@@ -190,12 +207,45 @@ describe("delivery packs", () => {
     expect(stdout.trimEnd().split("\n")).toContain(`  ${"stray".padEnd(width)}  Not in the record. Will not run. Add it again, or remove .delivery/packs/stray`);
   });
 
-  it("keeps --json strict: a changed added pack refuses with the configuration exit", async () => {
+  it("lists a changed added pack with its state under --json, exiting 0 as the plain list does", async () => {
     const repo = initTempRepo("packs-changed-json-", { "a.js": "x\n" });
     await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
     writeFileSync(join(repo, ".delivery", "packs", "moves", "scan.md"), "# Scan, changed\n");
-    const { exitCode } = await delivery(["packs", "--json"], { cwd: repo });
-    expect(exitCode).toBe(EXIT.configuration);
+    const { exitCode, stdout } = await delivery(["packs", "--json"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(JSON.parse(stdout).packs.at(-1)).toEqual({
+      name: "moves",
+      version: null,
+      title: null,
+      summary: null,
+      source: { kind: "installed", package: { name: "@acme/moves", version: "1.2.0" } },
+      state: "changed",
+    });
+  });
+
+  it("gives under --json the same packs, sources, versions and states as the plain list", async () => {
+    const repo = initTempRepo("packs-same-", {
+      "delivery.config.json": JSON.stringify({ packs: ["my-pack"] }),
+      "my-pack/pack.json": v3Pack("mymoves"),
+      "my-pack/scan.md": "# Scan\n",
+      "my-pack/code.md": "# Code\n",
+    });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    const plain = (await delivery(["packs"], { cwd: repo })).stdout.trimEnd().split("\n");
+    const { exitCode, stdout } = await delivery(["packs", "--json"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const { packs } = JSON.parse(stdout);
+    expect(packs.map(({ name }: { name: string }) => name)).toEqual([...(await builtInPacks()).map(({ manifest }) => manifest.name), "mymoves", "moves"]);
+    for (const row of packs) {
+      const line = plain.find((candidate) => candidate.trimStart().split(/\s+/)[0] === row.name);
+      expect(line, `the plain list shows ${row.name}`).toBeDefined();
+      if (row.summary !== null) expect(line).toContain(row.summary);
+      if (row.source.package !== null) expect(line).toContain(`From npm: ${row.source.package.name} ${row.source.package.version}`);
+      if (row.state !== null) {
+        expect(row.state).toBe("ok");
+        expect(line).toContain("As approved.");
+      }
+    }
   });
 
   it("lists the built-in packs outside any repository", async () => {

@@ -1,0 +1,24 @@
+delivery.packs/1.packs: array
+delivery.packs/1.packs[].name: string
+delivery.packs/1.packs[].source.kind = "built-in"
+delivery.packs/1.packs[].source.kind = "folder"
+delivery.packs/1.packs[].source.kind = "installed"
+delivery.packs/1.packs[].source.kind: string
+delivery.packs/1.packs[].source.package.name: string
+delivery.packs/1.packs[].source.package.version: string
+delivery.packs/1.packs[].source.package: null|object
+delivery.packs/1.packs[].source: object
+delivery.packs/1.packs[].state = "changed"
+delivery.packs/1.packs[].state = "invalid"
+delivery.packs/1.packs[].state = "missing"
+delivery.packs/1.packs[].state = "newer-format"
+delivery.packs/1.packs[].state = "ok"
+delivery.packs/1.packs[].state = "unapproved"
+delivery.packs/1.packs[].state = "unrecorded"
+delivery.packs/1.packs[].state: null|string
+delivery.packs/1.packs[].summary: null|string
+delivery.packs/1.packs[].title: null|string
+delivery.packs/1.packs[].version: null|string
+delivery.packs/1.packs[]: object
+delivery.packs/1.schema = "delivery.packs/1"
+delivery.packs/1.schema: string

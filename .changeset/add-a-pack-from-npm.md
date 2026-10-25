@@ -23,3 +23,5 @@ Adding a pack whose name, or whose workflow's name, is already used is refused b
 `delivery packs remove <name>` takes an added pack out: it names the workflows that will stop existing, then deletes its kept files and its entry in the record; it changes nothing while your configuration still names one of its workflows. Commit the deleted folder and the record together, so the pack is gone for everyone.
 
 A pack kept in, or published in, a newer pack format than this delivery-service reads is refused with the sentence that says to upgrade delivery-service, and the record is left as it is.
+
+`delivery packs --json` is now the versioned `delivery.packs/1` document: every pack the plain list shows, with its source, version and, for an added pack, its state; like the plain list, it no longer refuses when an added pack cannot be used.

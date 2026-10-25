@@ -18,7 +18,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery status [run-id]` | Says what happened to a run; follows one with `--watch`; lists them with `--all` | [See what happened to a run](check-a-run.md) |
 | `delivery report [run-id]` | Says in plain words what happened to the task list and what to do next | [Read the report](read-a-report.md) |
 | `delivery review <pack> [repo]` | Starts a pack's find: an agent reads the project and adds ideas to the backlog | [Review your project](task-packs.md) |
-| `delivery packs` | Lists the packs you can use, and ends with how to see exactly what one will do | [Packs](packs.md) |
+| `delivery packs` | Lists the packs you can use, and ends with how to see exactly what one will do; `--json` gives the same list, with each added pack's source and state, as the versioned document `delivery.packs/1` | [Packs](packs.md) |
 | `delivery backlog [id]` | Lists the ideas, open, held and parked items; shows one in full | [Work through a backlog](work-a-backlog.md) |
 | `delivery approve [ids...]` | Chooses ideas to be fixed by the next `run --sources` | [Review your project](task-packs.md) |
 | `delivery decline [ids...]` | Sets ideas aside | [Review your project](task-packs.md) |
