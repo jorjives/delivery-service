@@ -16,7 +16,6 @@ import {
   PATHS_MIN,
   PATHS_UNIQUE,
   TEXT_MAX,
-  writtenAs,
 } from "../packs/setting-types.js";
 import { INSPECT_WIDTH, wrap } from "./packs-inspect-render.js";
 
