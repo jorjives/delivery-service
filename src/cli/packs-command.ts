@@ -3,7 +3,8 @@ import { sortKeys } from "../packs/install/lock.js";
 import type { InstalledPack } from "../packs/install/installed.js";
 import type { Pack } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
-import { loadConfigAndPackStates, loadConfigAndPacks } from "./config.js";
+import { refuseUnusable } from "../packs/install/installed.js";
+import { loadConfigAndPackStates } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode, Refusal } from "./failures.js";
 import { stateNote } from "./installed-render.js";
@@ -24,11 +25,14 @@ async function repositoryOf(ctx: CommandContext): Promise<string | undefined> {
   });
 }
 
-/** The packs the command in `ctx` can use: the built-in ones, and in a project, the ones it lists and the ones it added. Outside a repository there is no project, so only the built-in ones. Refuses an added pack that is not as approved. */
+/** The packs the command in `ctx` can use: the built-in ones, and in a project, the ones it lists and the ones it added. Outside a repository there is no project, so only the built-in ones. Refuses an added pack that is not as approved, or a clash; a setting problem never refuses, and a pack with one is returned unbound, so its owner can reach the command that says what to set. */
 export async function projectPacksFor(ctx: CommandContext): Promise<Pack[]> {
   const repoPath = await repositoryOf(ctx);
   if (repoPath === undefined) return projectPacks({}, ctx.cwd, undefined);
-  return (await loadConfigAndPacks({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env })).packs;
+  const { settings, packs, installed } = await loadConfigAndPackStates({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
+  refuseUnusable(repoPath, installed);
+  withWorkflowsOf(settings, packs);
+  return packs;
 }
 
 /** The packs the plain listing shows, and every added pack's state. Refuses no state, so the listing can say what stops a pack; a clash between packs still refuses. */

@@ -11,7 +11,7 @@ import { BUILT_IN_PACKS, packNamed } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
 import { NO_FOLDER, NO_MANIFEST, NOT_IN_A_PACK, readPackFolder } from "../packs/pack-folder.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery, MOVES_FILES, movesProject, PACKAGE, V2_FILES } from "./command-fixtures.js";
+import { delivery, MOVES_FILES, movesProject, PACKAGE, V2_FILES, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { NAME_A_PACK } from "./packs-inspect-command.js";
 import { projectBaseline } from "./project-baseline.js";
@@ -346,6 +346,14 @@ describe("delivery packs inspect --workflow", () => {
     const json = await delivery(["packs", "inspect", "deprecations", "--workflow", "nope", "--json"], { cwd });
     expect(json.exitCode).toBe(EXIT.configuration);
     expect(JSON.parse(json.stdout)).toEqual({ schema: "delivery.pack-inspection/1", ok: false, problems: [{ file: null, field: "workflow", message }] });
+  });
+
+  it("inspects a pack whose required setting has no value, and exits 0", async () => {
+    const repo = initTempRepo("inspect-needy-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ packs: ["needy-pack"] }) });
+    writeNeedyPack(repo);
+    const { exitCode, stdout } = await delivery(["packs", "inspect", "needy"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout).not.toContain("Nothing can run yet");
   });
 
   it("inspects an added pack by name, naming its npm package", async () => {

@@ -17,7 +17,7 @@ import { Inspection } from "../packs/inspection.js";
 import { loadPack, newerFormat } from "../packs/manifest.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery, PACKAGE, withPrivateTmpdir } from "./command-fixtures.js";
+import { delivery, PACKAGE, withPrivateTmpdir, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { PackDecision } from "./pack-decision.js";
 import { packsAddCommand } from "./packs-add-command.js";
@@ -206,6 +206,14 @@ describe("delivery packs add", () => {
     for (const path of [".delivery/packs.lock.json", ".delivery/packs/docs-drift/pack.json"]) {
       await expect(git(repo, ["check-ignore", "-q", path])).rejects.toThrow();
     }
+  });
+
+  it("still works when a pack the project uses has a required setting with no value", async () => {
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packs: ["needy-pack"] }));
+    writeNeedyPack(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    expect(lines.slice(-addedLines("docs-drift", "1.2.0").length)).toEqual(addedLines("docs-drift", "1.2.0"));
   });
 
   it("then lists the pack with its source and version, and previews its find", async () => {

@@ -2,11 +2,11 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { readLock } from "../packs/install/lock.js";
-import { packPackage, SCAN_TEXT } from "../packs/install/install-fixtures.js";
-import { installedPackDir } from "../packs/install/store.js";
+import { entryFor, packPackage, SCAN_TEXT } from "../packs/install/install-fixtures.js";
+import { installedPackDir, installPack } from "../packs/install/store.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery, PACKAGE } from "./command-fixtures.js";
+import { delivery, PACKAGE, writeNeedyPack } from "./command-fixtures.js";
 import { readConfig } from "./config.js";
 import { EXIT } from "./failures.js";
 import { addedDocsDrift, tree } from "./installed-fixtures.js";
@@ -14,6 +14,8 @@ import { context, scriptedAsk } from "./init-fixtures.js";
 import { packsAddCommand } from "./packs-add-command.js";
 import { packsRemoveCommand } from "./packs-remove-command.js";
 import { withPackWorkflows } from "./pack-workflows.js";
+
+const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 /** The text with every run of white space made one space: where a line wraps does not matter. */
 const flat = (text: string): string => text.replace(/\s+/g, " ");
@@ -57,6 +59,43 @@ describe("delivery packs remove", () => {
     ]);
     expect(existsSync(dirPath())).toBe(false);
     expect((await readLock(repo)).packs).toEqual({});
+  });
+
+  it("still works when a pack the project uses has a required setting with no value", async () => {
+    writeFileSync(configPath(), JSON.stringify({ packs: ["needy-pack"] }));
+    writeNeedyPack(repo);
+    await addedDocsDrift(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsRemoveCommand("docs-drift", ctx)).toBe(EXIT.ok);
+    expect(lines).toEqual([
+      "Removing docs-drift, added from @acme/delivery-pack-docs",
+      "1.2.0.",
+      "  These workflows will stop existing:",
+      "    docs-drift:scan",
+      "    docs-drift:code",
+      "Removed docs-drift.",
+      "  Deleted: .delivery/packs/docs-drift",
+      "  And its entry in .delivery/packs.lock.json",
+      "Commit both, so the pack is gone for everyone.",
+    ]);
+    expect(existsSync(dirPath())).toBe(false);
+    expect((await readLock(repo)).packs).toEqual({});
+  });
+
+  it("leaves a packSettings entry for the removed pack to be refused, not ignored", async () => {
+    // added pack "moves" plus packSettings: { moves: {} } in delivery.config.json (an empty entry, so the project is
+    // ready before the remove and the only problem after it is the pack no longer being used)
+    const files = [
+      { path: "pack.json", bytes: encode(v3Pack("moves")) },
+      { path: "scan.md", bytes: encode("# Scan\n") },
+      { path: "code.md", bytes: encode("# Code\n") },
+    ];
+    await installPack(repo, "moves", files, await entryFor(files, { package: "@acme/moves", request: "^1.2.0" }));
+    writeFileSync(configPath(), JSON.stringify({ packSettings: { moves: {} } }));
+    expect((await delivery(["packs", "remove", "moves"], { cwd: repo })).exitCode).toBe(EXIT.ok);
+    const validated = await delivery(["validate"], { cwd: repo });
+    expect(validated.exitCode).toBe(EXIT.configuration);
+    expect(validated.stdout + validated.stderr).toContain("moves: no pack called moves is used by this project.");
   });
 
   it("refuses, changing nothing, while a task in the configuration names one of its workflows", async () => {

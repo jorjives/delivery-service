@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -64,6 +64,32 @@ export const MOVES_FILES: Record<string, string> = {
   "moves-pack/code.md": "# Move code\n",
   "moves-pack/tests.md": "# Move tests\n",
 };
+
+/**
+ * Test support: a `/3` pack named `needy` in folder `needy-pack/` under `repo`, with a find `look` offering an act `fix`, and a
+ * required setting `docs-folder` with no default that both prompts use. A project lists it under `packs` as `needy-pack`.
+ */
+export function writeNeedyPack(repo: string): void {
+  const dir = join(repo, "needy-pack");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "pack.json"),
+    JSON.stringify({
+      schema: "delivery.pack/3",
+      name: "needy",
+      version: "1.0.0",
+      title: "Needy",
+      summary: "Needs a setting.",
+      settings: { "docs-folder": { type: "path", summary: "The folder that holds your documentation." } },
+      workflows: {
+        look: { kind: "find", prompt: "look.md", ideasFor: ["fix"] },
+        fix: { kind: "act", summary: "Documentation that is out of date.", prompt: "fix.md" },
+      },
+    }),
+  );
+  writeFileSync(join(dir, "look.md"), "# Look\n\nRead {{settings.docs-folder}}.\n");
+  writeFileSync(join(dir, "fix.md"), "# Fix\n\nFix {{settings.docs-folder}}.\n");
+}
 
 /** Test support: a `delivery.pack/2` pack in folder `folder`, named after it without its `-pack` ending, with a scan and a fix prompt beside it. */
 export const V2_FILES = (folder: string): Record<string, string> => ({

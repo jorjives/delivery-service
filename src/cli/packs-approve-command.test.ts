@@ -6,7 +6,7 @@ import { loadPack } from "../packs/manifest.js";
 import { SCAN_TEXT } from "../packs/install/install-fixtures.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery, PACKAGE } from "./command-fixtures.js";
+import { delivery, PACKAGE, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { addedDocsDrift, tree } from "./installed-fixtures.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
@@ -76,6 +76,18 @@ describe("delivery packs approve", () => {
       "Commit it, so everyone runs this same pack.",
     ]);
     expect((await delivery(["review", "docs-drift", "--preview"], { cwd: repo })).exitCode).toBe(EXIT.ok);
+  });
+
+  it("still works when a pack the project uses has a required setting with no value", async () => {
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packs: ["needy-pack"] }));
+    writeNeedyPack(repo);
+    await addedDocsDrift(repo);
+    unapprove();
+    const { ctx, lines } = context(repo);
+    expect(await packsApproveCommand("docs-drift", ctx, scriptedAsk({ confirm: true }).ask)).toBe(EXIT.ok);
+    expect(lines.slice(-3)).toEqual(["Approved docs-drift 1.2.0.", "  Recorded: .delivery/packs.lock.json", "Commit it, so everyone runs this same pack."]);
+    const entry = (await readLock(repo)).packs["docs-drift"];
+    expect(entry?.approved).toBe(entry?.fingerprint);
   });
 
   it("changes nothing on no, or with nobody to ask", async () => {

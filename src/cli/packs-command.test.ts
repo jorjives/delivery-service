@@ -9,7 +9,7 @@ import { installPack } from "../packs/install/store.js";
 import { builtInPacks } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery } from "./command-fixtures.js";
+import { delivery, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { ADD_HINT, INSPECT_HINT } from "./packs-command.js";
 import { packWorkflowClash } from "./pack-clash.js";
@@ -105,6 +105,27 @@ describe("delivery packs", () => {
       `  deprecations  ${deprecations?.manifest.summary} Start it with: delivery review deprecations`,
       `  security      ${security?.manifest.summary} Start it with: delivery review security`,
       "  mymoves       Moves calls off retired code. Start it with: delivery review mymoves",
+    ]);
+  });
+
+  it("still works when a pack the project uses has a required setting with no value", async () => {
+    const repo = initTempRepo("packs-needy-", {
+      "delivery.config.json": JSON.stringify({ packs: ["my-pack", "needy-pack"] }),
+      "my-pack/pack.json": v3Pack("mymoves"),
+      "my-pack/scan.md": "# Scan\n",
+      "my-pack/code.md": "# Code\n",
+    });
+    writeNeedyPack(repo);
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const [code, deprecations, security] = await builtInPacks();
+    const lines = stdout.trimEnd().split("\n");
+    expect(lines.slice(1, 6)).toEqual([
+      `  code          ${code?.manifest.summary} Start it with: delivery review code`,
+      `  deprecations  ${deprecations?.manifest.summary} Start it with: delivery review deprecations`,
+      `  security      ${security?.manifest.summary} Start it with: delivery review security`,
+      "  mymoves       Moves calls off retired code. Start it with: delivery review mymoves",
+      "  needy         Needs a setting. Start it with: delivery review needy",
     ]);
   });
 

@@ -18,7 +18,7 @@ import { inspectionOf } from "../packs/inspection.js";
 import { readPackFolder } from "../packs/pack-folder.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery, PACKAGE, withPrivateTmpdir } from "./command-fixtures.js";
+import { delivery, PACKAGE, withPrivateTmpdir, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { PackDecision } from "./pack-decision.js";
 import { fingerprintDiffers, nobodyToAsk } from "./packs-add-render.js";
@@ -132,6 +132,17 @@ describe("delivery packs update", () => {
     const entry = (await readLock(repo)).packs["docs-drift"];
     expect(entry).toMatchObject({ version: "1.3.0", integrity: sriOf(V2), request: "latest" });
     expect(entry?.approved).toBe(entry?.fingerprint);
+    expect(await readInstalledPacks(repo)).toMatchObject([{ state: "ok", pack: { workflows: { "docs-drift:audit": expect.anything() } } }]);
+    const listed = await delivery(["packs"], { cwd: repo });
+    expect(listed.stdout).toContain("From npm: @acme/delivery-pack-docs 1.3.0. As approved.");
+  });
+
+  it("still works when a pack the project uses has a required setting with no value", async () => {
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packs: ["needy-pack"] }));
+    writeNeedyPack(repo);
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    expect(lines.slice(-updatedLines("docs-drift", "1.3.0").length)).toEqual(updatedLines("docs-drift", "1.3.0"));
     expect(await readInstalledPacks(repo)).toMatchObject([{ state: "ok", pack: { workflows: { "docs-drift:audit": expect.anything() } } }]);
     const listed = await delivery(["packs"], { cwd: repo });
     expect(listed.stdout).toContain("From npm: @acme/delivery-pack-docs 1.3.0. As approved.");

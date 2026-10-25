@@ -7,7 +7,7 @@ import { packPackage } from "../packs/install/install-fixtures.js";
 import { sriOf } from "../packs/install/pack-source.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
-import { PACKAGE } from "./command-fixtures.js";
+import { PACKAGE, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { addedDocsDrift, tree } from "./installed-fixtures.js";
 import { context } from "./init-fixtures.js";
@@ -50,6 +50,17 @@ describe("delivery packs restore", () => {
   ])("%s, and the pack ends as approved", async (_, damage) => {
     const source = await addedDocsDrift(repo);
     damage();
+    const { ctx, lines } = context(repo);
+    expect(await packsRestoreCommand("docs-drift", ctx, source)).toBe(EXIT.ok);
+    expect(lines.at(-1)).toBe("It matches the record. Replaced .delivery/packs/docs-drift.");
+    expect(await readInstalledPacks(repo)).toMatchObject([{ state: "ok" }]);
+  });
+
+  it("still works when a pack the project uses has a required setting with no value", async () => {
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packs: ["needy-pack"] }));
+    writeNeedyPack(repo);
+    const source = await addedDocsDrift(repo);
+    editScan();
     const { ctx, lines } = context(repo);
     expect(await packsRestoreCommand("docs-drift", ctx, source)).toBe(EXIT.ok);
     expect(lines.at(-1)).toBe("It matches the record. Replaced .delivery/packs/docs-drift.");
