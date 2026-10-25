@@ -2,7 +2,8 @@ import { InvalidArgumentError } from "commander";
 import { resolve } from "node:path";
 import { DEFAULT_ROLES } from "../agent-invoke.js";
 import { initialCaseFile } from "../case-file.js";
-import { assemblePrompt, unmatchedPlaceholders, type PromptEvidence } from "../prompt-assembly.js";
+import { assemblePrompt, type PromptEvidence } from "../prompt-assembly.js";
+import { unmatchedTaskPlaceholders } from "../placeholders.js";
 import type { AgentOptions, PinnedWorkflow, TaskDef } from "../schema.js";
 import { stepView } from "../workflow-step.js";
 import { andList, findConfig, type DeliveryConfig } from "./config.js";
@@ -169,7 +170,7 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
   const { systemPrompt, prompt } = assemblePrompt(view, roleCfg, FIRST_DISPATCH);
   const previewed = stepped?.workflow.steps[stepped.index - 1];
 
-  for (const placeholder of unmatchedPlaceholders(previewed?.prompt ?? "", chosen.taskDef)) ctx.writeWarning?.(unmatchedWarning(placeholder, previewed?.name));
+  for (const placeholder of unmatchedTaskPlaceholders(previewed?.prompt ?? "", chosen.taskDef)) ctx.writeWarning?.(unmatchedWarning(placeholder, previewed?.name));
 
   ctx.writeLine(chosen.heading);
   if (stepped !== undefined && previewed !== undefined) ctx.writeLine(stepHeading(stepped.index, stepped.workflow.steps.length, stepped.workflow.name, previewed.name));
