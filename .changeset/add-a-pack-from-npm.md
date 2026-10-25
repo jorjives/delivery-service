@@ -25,3 +25,5 @@ Adding a pack whose name, or whose workflow's name, is already used is refused b
 A pack kept in, or published in, a newer pack format than this delivery-service reads is refused with the sentence that says to upgrade delivery-service, and the record is left as it is.
 
 `delivery packs --json` is now the versioned `delivery.packs/1` document: every pack the plain list shows, with its source, version and, for an added pack, its state; like the plain list, it no longer refuses when an added pack cannot be used.
+
+The packs page gains an "Add a pack from elsewhere" section, and every example in it is what the commands print.

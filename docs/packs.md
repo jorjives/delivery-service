@@ -202,6 +202,173 @@ Not read: their-pack
   Nothing from this pack was shown, run or sent to an agent.
 ```
 
+## Add a pack from elsewhere
+
+A pack can be published on npm, as any package is. You add one to your project with `delivery packs add`, and the pack is then kept in your repository, so every run uses the pack you read. Each example below is what the command prints.
+
+**Find a pack.** A publisher gives the package the npm keyword `delivery-pack`, and a `delivery-pack` field in its `package.json` that names the pack's folder. To search for packs, run:
+
+```bash
+npm search keywords:delivery-pack
+```
+
+delivery-service does not host packs. They come from npm.
+
+**Add it.** Run `delivery packs add @acme/delivery-pack-docs`. The command shows the package's version and the pack's account before it asks you anything, and nothing from the package runs. The start of the account looks like this:
+
+```text
+Found @acme/delivery-pack-docs on npm.
+  Version: 1.2.0
+Nothing is added until you say yes. Nothing from the package
+is run: its install scripts and its own dependencies are
+never used.
+
+Pack: Document drift
+docs-drift, version 1.0.0, from npm:
+@acme/delivery-pack-docs 1.2.0.
+Fingerprint, which changes if any instruction changes:
+  63f75c73c061615868151b075594454e
+  bef582312e3885c5a25245c734b7634f
+```
+
+The account goes on to name the pack's workflows, what the pack may touch and the instructions it gives the agent. The pack takes its name from its own `pack.json`, here `docs-drift`. When you answer the question with a yes, the command writes the pack and names the two items to commit:
+
+```text
+Add docs-drift 1.2.0 to this project?
+Added docs-drift 1.2.0.
+  Recorded: .delivery/packs.lock.json
+  Kept as:  .delivery/packs/docs-drift
+Commit both, so everyone gets this same pack.
+See its workflows:  delivery packs
+Read it again:      delivery packs inspect docs-drift
+```
+
+**From a job with no terminal.** A scheduled job, or any command with nobody at a terminal, has nobody to ask. Then `delivery packs add` shows the account, writes nothing and refuses. It prints the command to run again, with the fingerprint that the account shows:
+
+```text
+Not added: nothing here can ask you.
+  Read the account above, then add it with the fingerprint
+  you read:
+    delivery packs add @acme/delivery-pack-docs \
+      --approve 63f75c73c061615868151b075594454e\
+bef582312e3885c5a25245c734b7634f
+  The command is refused if the pack has a different
+  fingerprint.
+  Nothing was changed.
+```
+
+The command is printed so that a shell reads it as one line: each backslash at the end of a line joins the next line to it. Paste it as it is, with the fingerprint from the account you read. Run with that fingerprint, the same command adds the pack and ends like this:
+
+```text
+Added docs-drift 1.2.0.
+  Recorded: .delivery/packs.lock.json
+  Kept as:  .delivery/packs/docs-drift
+Commit both, so everyone gets this same pack.
+See its workflows:  delivery packs
+Read it again:      delivery packs inspect docs-drift
+```
+
+A different fingerprint is refused, and nothing is written. To read the packs in a script, use `delivery packs --json`. It prints one document, `delivery.packs/1`, that lists each pack in the project with its source, its version and its state:
+
+```json
+{
+  "packs": [
+    {
+      "name": "code",
+      "source": {
+        "kind": "built-in",
+        "package": null
+      },
+      "state": null,
+      "summary": "Looks for code that gives wrong results, code nothing uses, missing handling of things going wrong, the same job done different ways, and shortcuts the code admits to.",
+      "title": "Code review",
+      "version": "2.0.0"
+    },
+    {
+      "name": "deprecations",
+      "source": {
+        "kind": "built-in",
+        "package": null
+      },
+      "state": null,
+      "summary": "Finds places that still use code your team has marked as replaced, and moves them.",
+      "title": "Move off deprecated code",
+      "version": "1.0.0"
+    },
+    {
+      "name": "security",
+      "source": {
+        "kind": "built-in",
+        "package": null
+      },
+      "state": null,
+      "summary": "Looks for passwords and keys written in the code, outside input reaching commands or queries, missing checks on who may do what, unsafe default settings, and library versions known to be unsafe.",
+      "title": "Security review",
+      "version": "2.0.0"
+    },
+    {
+      "name": "docs-drift",
+      "source": {
+        "kind": "installed",
+        "package": {
+          "name": "@acme/delivery-pack-docs",
+          "version": "1.2.0"
+        }
+      },
+      "state": "ok",
+      "summary": "Finds calls to code the project has marked as replaced.",
+      "title": "Document drift",
+      "version": "1.0.0"
+    }
+  ],
+  "schema": "delivery.packs/1"
+}
+```
+
+**Pinned.** Pinning keeps your review stable: every machine and every run uses the pack you read, until you choose to update it. It does not make a pack safe: read the account before you accept it, and read the change before you update.
+
+To keep the pack, commit both items: `.delivery/packs.lock.json`, which records the version and the fingerprint, and the folder `.delivery/packs/docs-drift`, which holds the pack's files.
+
+**Update it.** Run `delivery packs update docs-drift` to take a newer version. It shows what changes first, and writes nothing until you say yes. Here is the start of the change from 1.2.0 to 1.3.0, which removes the sign-off from `code`. The example answers no, so nothing changes:
+
+```text
+docs-drift: 1.2.0 to 1.3.0
+Fingerprint before:
+  63f75c73c061615868151b075594454e
+  bef582312e3885c5a25245c734b7634f
+Fingerprint after:
+  8e850d5010645b5fb788f2cf391601cb
+  73293778bb50f3bd6f6f2a66f55c39b5
+
+What changed, in short
+  Sign-off: "code" no longer waits for your sign-off.
+  Guards: no change.
+  Workflows added: none
+  Workflows removed: none
+  Checks and landing: no change.
+  Widens what the agent may do: no.
+  New things to look at:
+    1. "code" lands without asking for your sign-off once
+       you have approved the idea.
+  Read the changed lines below. This summary does not cover
+    what the instructions say.
+```
+
+In automation, the same `--approve` takes the update, given the fingerprint under "Fingerprint after" in the change that the job was shown. A version published since then is refused, because its fingerprint differs. With nobody to ask, the update refuses and prints the command you ran, with `--approve` and that fingerprint. The recorded request does not change unless you give one.
+
+**When a pack is refused.** Every use of a pack first checks its kept files against the record, with no network. If a file has changed, the run is refused. The refusal names the file and the one command that fixes it:
+
+```text
+The pack docs-drift is not as you approved it.
+  Approved: 1.2.0, from @acme/delivery-pack-docs
+  Changed: .delivery/packs/docs-drift/scan.md
+  Nothing was sent to an agent.
+To go back to the approved pack:
+  delivery packs restore docs-drift
+```
+
+**Newer format.** A pack kept in a newer pack format than your delivery-service reads is refused, and the refusal ends with the words "upgrade delivery-service to read this pack".
+
 ## Names the built-ins keep
 
 Built-in packs load in every project, so their names are taken: `code`, `security` and `deprecations`, and the workflows inside them, `deprecations:scan`, `deprecations:code` and `deprecations:tests`. A pack of your own cannot use these names.
