@@ -1,18 +1,21 @@
 import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
-import { readLock } from "../packs/install/lock.js";
+import { readInstalledPacks } from "../packs/install/installed.js";
+import { fingerprintOf, readLock } from "../packs/install/lock.js";
 import { loadPack } from "../packs/manifest.js";
-import { SCAN_TEXT } from "../packs/install/install-fixtures.js";
+import { packPackage, SCAN_TEXT } from "../packs/install/install-fixtures.js";
+import { resolveSettings } from "../packs/settings.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, writeNeedyPack } from "./command-fixtures.js";
-import { EXIT } from "./failures.js";
+import { EXIT, Refusal } from "./failures.js";
 import { addedDocsDrift, tree } from "./installed-fixtures.js";
 import { INSPECT_RULE } from "./packs-inspect-render.js";
 import { context, scriptedAsk } from "./init-fixtures.js";
 import { PackDecision } from "./pack-decision.js";
 import { packsApproveCommand } from "./packs-approve-command.js";
+import { settingsRefusal } from "./pack-settings-render.js";
 import { newerFormatLines, notApprovableLines } from "./packs-approve-render.js";
 import { fingerprintDiffers, nobodyToAsk } from "./packs-add-render.js";
 
@@ -254,4 +257,56 @@ describe("delivery packs approve", () => {
     expect(tree(repo)).toEqual(before);
   });
 
+  describe("with the owner's setting values", () => {
+    /** A docs-drift pack with a required setting its code prompt uses, added to the repo, with the owner's `config` written beside it. */
+    const addedWithSetting = async (config: Record<string, unknown>): Promise<void> => {
+      const tarball = packPackage({
+        manifest: { settings: { "docs-folder": { type: "path", summary: "The folder that holds your documentation." } } },
+        extra: { "code.md": "# Code\n\nFix {{settings.docs-folder}}.\n" },
+      });
+      await addedDocsDrift(repo, tarball);
+      writeFileSync(join(repo, "delivery.config.json"), JSON.stringify(config));
+    };
+
+    it("shows the owner's value in the account it asks you to approve", async () => {
+      await addedWithSetting({ packSettings: { "docs-drift": { "docs-folder": "handbook" } } });
+      unapprove();
+      const { ctx, lines } = context(repo);
+      expect(await packsApproveCommand("docs-drift", ctx, scriptedAsk({ confirm: false }).ask)).toBe(EXIT.ok);
+      const text = flat(lines.join("\n"));
+      expect(text).toContain("Your value: handbook (your configuration)");
+      expect(text).not.toContain("This project does not use the pack.");
+    });
+
+    it("approves the same fingerprint whatever the owner's values, and a value change needs no new approval", async () => {
+      await addedWithSetting({ packSettings: { "docs-drift": { "docs-folder": "handbook" } } });
+      unapprove();
+      const pack = await loadPack(dirPath());
+      const hash = pack.hash;
+      const { ctx } = context(repo, { interactive: false });
+      expect(await packsApproveCommand("docs-drift", ctx, scriptedAsk().ask, { approve: hash })).toBe(EXIT.ok);
+      expect((await readLock(repo)).packs["docs-drift"]?.approved).toBe(fingerprintOf(pack));
+
+      writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packSettings: { "docs-drift": { "docs-folder": "guides" } } }));
+      expect((await readInstalledPacks(repo)).find((installed) => installed.name === "docs-drift")?.state).toBe("ok");
+      const inspected = await delivery(["packs", "inspect", "docs-drift", "--json"], { cwd: repo });
+      expect(inspected.exitCode).toBe(EXIT.ok);
+      expect((JSON.parse(inspected.stdout) as { pack: { hash: string } }).pack.hash).toBe(hash);
+    });
+
+    it("approves nothing when this pack's owner value is faulty", async () => {
+      await addedWithSetting({ packSettings: { "docs-drift": { "docs-folder": "/abs" } } });
+      unapprove();
+      const lockBefore = readFileSync(lockPath());
+      const pack = await loadPack(dirPath());
+      const hash = pack.hash;
+      const { ctx } = context(repo, { interactive: false });
+      const error: unknown = await packsApproveCommand("docs-drift", ctx, scriptedAsk().ask, { approve: hash }).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(Refusal);
+      const refusal = error as Refusal;
+      expect(refusal.message).toBe(settingsRefusal(resolveSettings(pack, { "docs-folder": "/abs" }).problems, "delivery.config.json"));
+      expect(refusal.exitCode).toBe(EXIT.configuration);
+      expect(readFileSync(lockPath())).toEqual(lockBefore);
+    });
+  });
 });

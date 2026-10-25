@@ -40,8 +40,8 @@ export interface DecisionOutput {
   repository(path: string): void;
   /** Lines a person reads as the command goes; under `--json` they are dropped, because the document holds the same facts. */
   plain(lines: readonly string[]): void;
-  /** The account of the pack: rendered as plain lines, or set as a fact with its paths made relative under `--json`. */
-  account(inspection: Inspection): void;
+  /** The account of the pack: rendered as plain lines, or set as a fact with its paths made relative under `--json`. `configName` names the config file the owner's values come from. */
+  account(inspection: Inspection, configName?: string): void;
   /** Facts for the document; nothing is written for them in plain mode. */
   facts(part: Partial<DecisionFacts>): void;
   /** The last thing the command says: its outcome and the lines a person reads. Returns the exit code. */
@@ -88,9 +88,9 @@ export async function withDecisionOutput(ctx: CommandContext, command: PackDecis
     plain(lines) {
       if (!ctx.json) for (const line of lines) ctx.writeLine(line);
     },
-    account(inspection) {
+    account(inspection, configName) {
       if (ctx.json) facts.account = relativeAccount(inspection, roots);
-      else for (const line of renderInspection(inspection)) ctx.writeLine(line);
+      else for (const line of renderInspection(inspection, configName)) ctx.writeLine(line);
     },
     facts(part) {
       Object.assign(facts, part);

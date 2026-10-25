@@ -7,6 +7,7 @@ import { addedPackNamed } from "./added-pack-lookup.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
 import type { Ask } from "./init.js";
+import { inspectedProject } from "./inspected-project.js";
 import { decideApproval } from "./pack-approval.js";
 import { withDecisionOutput } from "./pack-decision.js";
 import { fingerprintDiffers, nobodyToAsk } from "./packs-add-render.js";
@@ -20,7 +21,6 @@ import {
   notApprovableLines,
   unapprovedLead,
 } from "./packs-approve-render.js";
-import { projectBaseline } from "./project-baseline.js";
 
 /**
  * `delivery packs approve <name>`: approve an added pack whose record says it was not approved, after its full account is
@@ -58,7 +58,8 @@ export async function packsApproveCommand(name: string, ctx: CommandContext, ask
     if (!folder.ok) throw new Error(`the added pack ${name} changed while it was being read`);
     out.plain(unapprovedLead(name));
     out.plain([""]);
-    out.account(inspectionOf(installed.pack, await projectBaseline(ctx.cwd, ctx.env, dir), folder.files, null));
+    const { project, values, configName } = await inspectedProject(ctx.cwd, ctx.env, installed.pack);
+    out.account(inspectionOf(installed.pack, project, folder.files, values), configName);
 
     const approval = await decideApproval(options.approve, installed.pack.hash, ctx, ask, approveQuestion(name));
     if (approval === "nobody") {
