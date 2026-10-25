@@ -149,6 +149,7 @@ pack on every machine and every run.
 
 ### Item 4: Adapt a shared pack to my project
 
+**Spec:** `docs/superpowers/specs/2026-10-25-adapt-a-shared-pack-design.md`
 **Delivers:** A project owner can make a pack written for someone else's project work in
 theirs, without editing or forking the pack.
 
