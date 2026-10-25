@@ -87,6 +87,8 @@
 
 ## Slice 3: See a pack's settings and what they would do before trusting it
 
+**Status:** ✅ Complete — 2026-10-25 — `73f4378`
+
 **Tests:** ✅ Recorded — 2026-10-25 — `32cb00a` — cli (vitest) — 1 UAT + 7 AC, 3 skipped
 
 **Delivers:** A project owner or on-call engineer can read, in inspection, each setting a pack asks for, the value that would apply, where that value came from, and what it changes.
