@@ -7,7 +7,10 @@ import { entryFor } from "../packs/install/install-fixtures.js";
 import type { PackageFile } from "../packs/install/package-archive.js";
 import { installPack } from "../packs/install/store.js";
 import { builtInPackClash, builtInWorkflowClash } from "./pack-clash.js";
-import { withPackWorkflows } from "./pack-workflows.js";
+import { builtInPacks } from "../packs/manifest.js";
+import { ONE_LINE } from "../packs/setting-types.js";
+import { settingsRefusal, projectPackStates, withPackWorkflows } from "./pack-workflows.js";
+import { EXIT } from "./failures.js";
 
 /** A pack folder named `name`, with a minimal delivery.pack/2 manifest and its two instruction files. */
 function writePack(dir: string, name: string): void {
@@ -33,6 +36,25 @@ function writeV3Pack(dir: string, name: string, find = "scan"): void {
   );
   writeFileSync(join(dir, "scan.md"), "# Scan\n");
   writeFileSync(join(dir, "code.md"), "# Code\n");
+}
+
+/** A pack folder named `name`: a find `scan` offering an act `code` whose prompt names the setting `old-module` (a text setting, default "the old client"). */
+function writeSettingsPack(dir: string, name: string): void {
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "pack.json"),
+    JSON.stringify({
+      schema: "delivery.pack/3",
+      name,
+      version: "1.0.0",
+      title: "Mine",
+      summary: "Mine.",
+      settings: { "old-module": { type: "text", summary: "The module to leave.", default: "the old client" } },
+      workflows: { scan: { kind: "find", prompt: "scan.md", ideasFor: ["code"] }, code: { kind: "act", prompt: "code.md" } },
+    }),
+  );
+  writeFileSync(join(dir, "scan.md"), "# Scan\n");
+  writeFileSync(join(dir, "code.md"), "Move off {{settings.old-module}}.");
 }
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
@@ -154,5 +176,66 @@ describe("pack workflows", () => {
     writePack(join(root, "mine"), "deprecations-old");
     const config = await withPackWorkflows({ packs: ["mine"], workflows: { deprecations: { steps: [{ name: "a", prompt: "a" }] } } }, root, undefined);
     expect(Object.keys(config.workflows ?? {})).toEqual(expect.arrayContaining(["deprecations", "deprecations-old:scan", "deprecations:scan"]));
+  });
+
+  describe("with pack settings", () => {
+    const rootWithSettingsPack = () => {
+      const root = mkdtempSync(join(tmpdir(), "pack-workflows-settings-"));
+      writeSettingsPack(join(root, "mine"), "mine");
+      return root;
+    };
+    const promptOf = (config: Awaited<ReturnType<typeof withPackWorkflows>>) => config.workflows?.["mine:code"]?.steps[0]?.prompt;
+
+    it("renders the default into a listed pack's workflow", async () => {
+      expect(promptOf(await withPackWorkflows({ packs: ["mine"] }, rootWithSettingsPack(), undefined))).toBe("Move off the old client.");
+    });
+
+    it("renders the owner's value into a listed pack's workflow", async () => {
+      const config = await withPackWorkflows({ packs: ["mine"], packSettings: { mine: { "old-module": "legacy-http" } } }, rootWithSettingsPack(), undefined);
+      expect(promptOf(config)).toBe("Move off legacy-http.");
+    });
+
+    it("renders the owner's value into an added pack's workflow", async () => {
+      const repo = mkdtempSync(join(tmpdir(), "pack-workflows-added-"));
+      const files: PackageFile[] = MOVES.map((file) => {
+        if (file.path === "pack.json") {
+          const manifest = JSON.parse(new TextDecoder().decode(file.bytes)) as object;
+          const settings = { "old-module": { type: "text", summary: "The module to leave.", default: "the old client" } };
+          return { path: file.path, bytes: encode(JSON.stringify({ ...manifest, settings })) };
+        }
+        return file.path === "code.md" ? { path: file.path, bytes: encode("Move off {{settings.old-module}}.") } : file;
+      });
+      await installPack(repo, "moves", files, await entryFor(files, { package: "@acme/moves", request: "^3.0.0", version: "3.0.0" }));
+      const config = await withPackWorkflows({ packSettings: { moves: { "old-module": "legacy-http" } } }, repo, repo);
+      expect(config.workflows?.["moves:code"]?.steps[0]?.prompt).toBe("Move off legacy-http.");
+    });
+
+    it("binds a built-in pack through the same door", async () => {
+      // No built-in declares settings in this slice, so a value for one is refused as undeclared: the binding reaches built-ins.
+      await expect(withPackWorkflows({ packSettings: { code: { x: "y" } } }, "/", undefined)).rejects.toMatchObject({ exitCode: EXIT.configuration, field: "packSettings" });
+    });
+
+    it("refuses every problem at once, without printing the value", async () => {
+      const refused = withPackWorkflows({ packs: ["mine"], packSettings: { mine: { "old-module": "a\u202eb", nope: "x" } } }, rootWithSettingsPack(), undefined);
+      await expect(refused).rejects.toThrow(
+        settingsRefusal([
+          { pack: "mine", setting: "old-module", kind: "invalid", message: ONE_LINE },
+          { pack: "mine", setting: "nope", kind: "undeclared", message: "is not a setting of this pack. Its settings are: old-module." },
+        ]),
+      );
+      await expect(refused).rejects.not.toThrow("a\u202eb");
+    });
+
+    it("lists packs with a problem without refusing", async () => {
+      const { packs, settingProblems } = await projectPackStates({ packs: ["mine"], packSettings: { mine: { nope: "x" } } }, rootWithSettingsPack(), undefined);
+      expect(packs.map((pack) => pack.manifest.name)).toContain("mine");
+      expect(settingProblems).toHaveLength(1);
+    });
+
+    it("leaves every built-in pack exactly as read when there are no settings", async () => {
+      const { packs } = await projectPackStates({}, "/", undefined);
+      const read = await builtInPacks();
+      expect(packs.slice(0, read.length)).toEqual(read);
+    });
   });
 });

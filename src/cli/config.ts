@@ -19,7 +19,7 @@ export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
 /** The keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `sources`, `after`, `parkAfter` and `notify`";
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `packSettings`, `sources`, `after`, `parkAfter` and `notify`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -208,6 +208,8 @@ export const DeliveryConfig = z
     workflows: z.record(Written, WorkflowConfig).optional(),
     // Pack folders of the project's own, relative to this file; each adds the workflows it holds, named <pack>:<workflow> (spec 5.13).
     packs: z.array(Written).optional(),
+    // Values for the settings a pack asks for, keyed by pack name and then setting name. Typed per pack when the pack is bound.
+    packSettings: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
     // Where `delivery run --sources` finds work, in order; a fallback is read only when nothing else has any.
     sources: z.array(SourceConfig).min(1).optional(),
     // How many runs in a row an item may end undelivered before it is set aside (default 3).
@@ -294,6 +296,8 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     'or an object such as `{ "mode": "required", "devices": ["/dev/kvm"] }`.',
   packs:
     'It is a list of folders of packs of your own, relative to this file, such as `["packs/mine"]`: each adds the workflows it names, as `<pack>:<workflow>`, such as `mine:scan`.',
+  packSettings:
+    'It gives values for the settings a pack asks for, keyed by pack name, then setting name, such as `{ "docs": { "docs-folder": "handbook" } }`: see docs/configuration-reference.md.',
   workflows:
     'It names ways of doing a task in steps, each a list of `steps` run in order, for example ' +
     '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +

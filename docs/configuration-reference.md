@@ -172,6 +172,16 @@ project can use. See [Write a pack](writing-a-pack.md).
 "packs": ["./my-pack"]
 ```
 
+### `packSettings`
+
+Values for the settings a pack asks for, keyed by the pack's name and then the setting's name. It works the same for a
+built-in pack, a pack you list in `packs` and a pack you added. A setting you leave out takes the pack's default.
+Each value is put into what the agent is told; it is never run as a command. A run keeps the values it started with.
+
+```json
+"packSettings": { "docs": { "docs-folder": "handbook" } }
+```
+
 ### `sources`
 
 A list of places `delivery run --sources` finds work, read in order. Default:

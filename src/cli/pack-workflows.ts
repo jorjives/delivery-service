@@ -1,20 +1,39 @@
 import { resolve } from "node:path";
 import { type InstalledPack, readInstalledPacks, refuseUnusable } from "../packs/install/installed.js";
 import { builtInPacks, loadPack, type Pack } from "../packs/manifest.js";
+import { bindSettings, type SettingProblem } from "../packs/settings.js";
 import type { DeliveryConfig } from "./config.js";
 import { EXIT, Refusal } from "./failures.js";
 import { clashField, clashSentence, findClash } from "./pack-clash.js";
 
 /**
  * Every pack the config can use, in order: the built-in ones, then each pack folder it lists, relative to `configDir`, then
- * the added packs at `repoPath` that are `ok`, with every added pack's state beside them. Reads local files only, and refuses nothing.
+ * the added packs at `repoPath` that are `ok`, with every added pack's state beside them. Each pack is bound to the values
+ * `packSettings` gives it; a pack that cannot be bound is kept as read, and its problems are listed. Reads local files
+ * only, and refuses nothing.
  */
-export async function projectPackStates(config: DeliveryConfig, configDir: string, repoPath: string | undefined): Promise<{ packs: Pack[]; installed: InstalledPack[] }> {
+export async function projectPackStates(
+  config: DeliveryConfig,
+  configDir: string,
+  repoPath: string | undefined,
+): Promise<{ packs: Pack[]; installed: InstalledPack[]; settingProblems: SettingProblem[] }> {
   const builtIn = await builtInPacks();
   const listed = await Promise.all((config.packs ?? []).map((dir) => loadPack(resolve(configDir, dir))));
   const installed = repoPath === undefined ? [] : await readInstalledPacks(repoPath);
   const added = installed.flatMap((pack) => (pack.state === "ok" ? [pack.pack] : []));
-  return { packs: [...builtIn, ...listed, ...added], installed };
+  const settingProblems: SettingProblem[] = [];
+  const packs = [...builtIn, ...listed, ...added].map((pack) => {
+    const bound = bindSettings(pack, config.packSettings?.[pack.manifest.name]);
+    if (bound.ok) return bound.pack;
+    settingProblems.push(...bound.problems);
+    return pack;
+  });
+  return { packs, installed, settingProblems };
+}
+
+/** The refusal for settings that cannot be bound: every problem at once, never the value itself. */
+export function settingsRefusal(problems: readonly SettingProblem[]): string {
+  return ["packSettings has a problem:", ...problems.map(({ pack, setting, message }) => `  ${pack}.${setting}: ${message}`), "Nothing was run."].join("\n");
 }
 
 /**
@@ -22,8 +41,9 @@ export async function projectPackStates(config: DeliveryConfig, configDir: strin
  * record approved it: every such pack is named at once, before anything is sent to an agent.
  */
 export async function projectPacks(config: DeliveryConfig, configDir: string, repoPath: string | undefined): Promise<Pack[]> {
-  const { packs, installed } = await projectPackStates(config, configDir, repoPath);
+  const { packs, installed, settingProblems } = await projectPackStates(config, configDir, repoPath);
   if (repoPath !== undefined) refuseUnusable(repoPath, installed);
+  if (settingProblems.length > 0) throw new Refusal(settingsRefusal(settingProblems), EXIT.configuration, "packSettings");
   return packs;
 }
 

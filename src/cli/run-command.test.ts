@@ -1,14 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { git } from "../../tests/helpers.js";
 import { promptsSent, readJournal, type MockScript } from "../mock-script.js";
 import { SurfaceState, type RunEntry, type GateRef, RepairChanges } from "../schema.js";
 import { RECOVERED_REPAIR } from "../breaker.js";
 import { loadRunFile, setRunOutcome } from "../run-file.js";
 import { withoutAt } from "../without-at.js";
-import { readRef } from "../case-file.js";
+import { load, readRef } from "../case-file.js";
+import { assemblePrompt } from "../prompt-assembly.js";
+import { DEFAULT_ROLES } from "../agent-invoke.js";
+import { stepView } from "../workflow-step.js";
 import { initTempRepo } from "../temp-repo.js";
 import { NOT_SIGNED_IN, TEST_MOCK_SCRIPT } from "./agent-session.js";
 import { branchIn, completes, delivery, ESCALATION, PACKAGE, RUN_TIMEOUT, TASK, scriptFile, writeRunRecord, runsRoot, interruptedRun, writesHello, writeSupervisedRun, rateLimited } from "./command-fixtures.js";
@@ -1805,4 +1808,71 @@ describe("delivery run --workflow", () => {
     expect(exitCode).toBe(EXIT.configuration);
     expect(stderr).toContain(WORKFLOW_NEEDS_TASK);
   });
+});
+
+describe("delivery run with pack settings", () => {
+  const SHELL = "$(touch pwned-a); touch pwned-b `touch pwned-c` | touch pwned-d && touch pwned-e";
+
+  /** A repository using a pack `docs` from `docs-pack/`: a find `look` offering an act `fix`, with two settings, `note` given `value`. */
+  function settingsProject(value: string): string {
+    const repo = initTempRepo("run-command-pack-settings-", { "package.json": PACKAGE });
+    mkdirSync(join(repo, "docs-pack"));
+    writeFileSync(
+      join(repo, "docs-pack", "pack.json"),
+      JSON.stringify({
+        schema: "delivery.pack/3",
+        name: "docs",
+        version: "1.0.0",
+        title: "Docs",
+        summary: "Keeps documents true.",
+        settings: {
+          "docs-folder": { type: "path", summary: "The folder.", default: "docs" },
+          note: { type: "text", summary: "A note.", default: "none" },
+        },
+        workflows: { look: { kind: "find", prompt: "look.md", ideasFor: ["fix"] }, fix: { kind: "act", prompt: "fix.md" } },
+      }),
+    );
+    writeFileSync(join(repo, "docs-pack", "look.md"), "Look in {{settings.docs-folder}}.");
+    writeFileSync(join(repo, "docs-pack", "fix.md"), "Fix the page in {{settings.docs-folder}}.\nNote: {{settings.note}}");
+    configIn(repo, { packs: ["docs-pack"], packSettings: { docs: { note: value } } });
+    return repo;
+  }
+
+  it(
+    "pins the bound pack prompt into the run's record, and a resume reads the pin, not the configuration",
+    async () => {
+      const repo = settingsProject("first value");
+      const { stdout } = await delivery(["run", "--task", TASK, "--workflow", "docs:fix"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      const caseFile = join(repo, ".delivery", "runs", branchIn(stdout).replace("surface/", ""), "case.json");
+      configIn(repo, { packs: ["docs-pack"], packSettings: { docs: { note: "second value" } } });
+
+      const record = JSON.parse(readFileSync(caseFile, "utf-8")) as { header: { workflow: { steps: { prompt: string }[] } } };
+      expect(record.header.workflow.steps[0]?.prompt).toContain("Note: first value");
+      // What a resumed dispatch is told is assembled from the record alone.
+      const { prompt } = assemblePrompt(stepView(await load(dirname(caseFile))), DEFAULT_ROLES.worker, { brief: null, newFailures: [], setback: null });
+      expect(prompt).toContain("Note: first value");
+      expect(prompt).not.toContain("second value");
+    },
+    RUN_TIMEOUT,
+  );
+
+  it(
+    "sends a value of shell characters to the agent as text and runs nothing from it",
+    async () => {
+      const repo = settingsProject(SHELL);
+      const [first] = completes.expectations;
+      if (first === undefined) throw new Error("no scripted answer");
+      const script: MockScript = { expectations: [{ when: { promptContains: `Note: ${SHELL}` }, ...first }] };
+      const { exitCode, stdout } = await delivery(["run", "--task", TASK, "--workflow", "docs:fix"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(script) } });
+
+      // The scripted agent answers only when the prompt holds the value byte for byte.
+      expect(exitCode).toBe(EXIT.ok);
+      const branch = branchIn(stdout);
+      for (const marker of ["pwned-a", "pwned-b", "pwned-c", "pwned-d", "pwned-e"]) {
+        expect(existsSync(join(repo, marker))).toBe(false);
+        expect(git(repo, ["ls-tree", "-r", "--name-only", branch]).split("\n")).not.toContain(marker);
+      }
+    },
+    RUN_TIMEOUT,
+  );
 });

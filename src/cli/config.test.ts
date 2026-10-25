@@ -195,7 +195,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names an unknown top-level key, and what the file does take", () => {
     expect(problemFor({ closr: { type: "merge-back" } })).toBe(
-      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `sources`, `after`, `parkAfter` and `notify`.",
+      "I can't use delivery.config.json: there's no setting called `closr`. A config file takes only `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `packSettings`, `sources`, `after`, `parkAfter` and `notify`.",
     );
   });
 
@@ -280,7 +280,7 @@ describe("what it says about a file it can't use", () => {
 
   it("names a file that holds something other than one object of settings", () => {
     expect(problemFor(["add a page"])).toBe(
-      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `sources`, `after`, `parkAfter` and `notify`. " +
+      "I can't use delivery.config.json: it should hold one object of settings, using `task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `packSettings`, `sources`, `after`, `parkAfter` and `notify`. " +
         "A `.js` or `.mjs` file exports that object as its default.",
     );
   });
@@ -482,7 +482,7 @@ describe("reading a config file", () => {
     const file = write(repo, "delivery.config.json", JSON.stringify({ closr: 1 }));
     const refusal = await refusalOf(found(repo, repo));
     expect(refusal.message).toBe(
-      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`packs\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
+      `I can't use ${file}: there's no setting called \`closr\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`packs\`, \`packSettings\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
     );
     expect(refusal.exitCode).toBe(EXIT.configuration);
   });
@@ -582,7 +582,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor({ foo: 1, roles: {} })).toEqual([
       {
         field: "foo",
-        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`packs\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
+        message: `I can't use ${FILE}: there's no setting called \`foo\`. A config file takes only \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`packs\`, \`packSettings\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`.`,
       },
       {
         field: "roles",
@@ -596,7 +596,7 @@ describe("every problem with a config file's shape, at once", () => {
     expect(problemsFor("add a page")).toEqual([
       {
         field: null,
-        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`packs\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
+        message: `I can't use ${FILE}: it should hold one object of settings, using \`task\`, \`tasks\`, \`domain\`, \`agent\`, \`gate\`, \`closer\`, \`budgets\`, \`concurrency\`, \`fence\`, \`workflows\`, \`packs\`, \`packSettings\`, \`sources\`, \`after\`, \`parkAfter\` and \`notify\`. A \`.js\` or \`.mjs\` file exports that object as its default.`,
       },
     ]);
   });
@@ -616,6 +616,24 @@ describe("a task's guards", () => {
     expect(problemFor({ tasks: ["add a page", { intent: "tidy", guards: { off: ["tests"] } }] })).toBe(
       `I can't use ${FILE}: \`tasks.1.guards\` names a guard I don't know. The guards are \`tests-untouched\`, \`tests-unchanged\`, \`check-untouched\`, \`no-skips\`, \`ignored\`, \`backlog\` and \`backlog-only\`, and \`add\` and \`off\` each take a list of them.`,
     );
+  });
+});
+
+describe("packSettings", () => {
+  const VALUES = { docs: { "docs-folder": "handbook" } };
+
+  it("takes values keyed by pack name, then setting name", () => {
+    expect(DeliveryConfig.safeParse({ packSettings: VALUES }).success).toBe(true);
+  });
+
+  it("refuses a list, saying what it takes", () => {
+    expect(problemFor({ packSettings: ["x"] })).toContain("It gives values for the settings a pack asks for");
+  });
+
+  it("reads the same object from a .mjs module as from JSON (a code configuration)", async () => {
+    const { repo } = tree();
+    write(repo, "delivery.config.mjs", `export default { packSettings: ${JSON.stringify(VALUES)} };\n`);
+    expect(await found(repo, repo)).toEqual({ packSettings: VALUES });
   });
 });
 
@@ -704,7 +722,7 @@ describe("workflows", () => {
   });
 
   it("lists workflows among the settings a config file takes", () => {
-    expect(CONFIG_KEYS).toBe("`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `sources`, `after`, `parkAfter` and `notify`");
+    expect(CONFIG_KEYS).toBe("`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `packSettings`, `sources`, `after`, `parkAfter` and `notify`");
   });
 });
 
