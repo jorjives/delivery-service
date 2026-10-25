@@ -65,30 +65,73 @@ export const MOVES_FILES: Record<string, string> = {
   "moves-pack/tests.md": "# Move tests\n",
 };
 
-/**
- * Test support: a `/3` pack named `needy` in folder `needy-pack/` under `repo`, with a find `look` offering an act `fix`, and a
- * required setting `docs-folder` with no default that both prompts use. A project lists it under `packs` as `needy-pack`.
- */
-export function writeNeedyPack(repo: string): void {
-  const dir = join(repo, "needy-pack");
+/** What a `/3` find-and-act test pack is made of: its folder, name, words, settings, the act's summary and its two prompts. */
+interface FindAndActPack {
+  folder: string;
+  name: string;
+  title: string;
+  summary: string;
+  settings: Record<string, unknown>;
+  fixSummary: string;
+  prompts: { look: string; fix: string };
+}
+
+/** Private: writes a `/3` pack with a find `look` offering an act `fix`, under `repo`, as the test packs below are written. */
+function writeFindAndActPack(repo: string, pack: FindAndActPack): void {
+  const dir = join(repo, pack.folder);
   mkdirSync(dir, { recursive: true });
   writeFileSync(
     join(dir, "pack.json"),
     JSON.stringify({
       schema: "delivery.pack/3",
-      name: "needy",
+      name: pack.name,
       version: "1.0.0",
-      title: "Needy",
-      summary: "Needs a setting.",
-      settings: { "docs-folder": { type: "path", summary: "The folder that holds your documentation." } },
+      title: pack.title,
+      summary: pack.summary,
+      settings: pack.settings,
       workflows: {
         look: { kind: "find", prompt: "look.md", ideasFor: ["fix"] },
-        fix: { kind: "act", summary: "Documentation that is out of date.", prompt: "fix.md" },
+        fix: { kind: "act", summary: pack.fixSummary, prompt: "fix.md" },
       },
     }),
   );
-  writeFileSync(join(dir, "look.md"), "# Look\n\nRead {{settings.docs-folder}}.\n");
-  writeFileSync(join(dir, "fix.md"), "# Fix\n\nFix {{settings.docs-folder}}.\n");
+  writeFileSync(join(dir, "look.md"), pack.prompts.look);
+  writeFileSync(join(dir, "fix.md"), pack.prompts.fix);
+}
+
+/**
+ * Test support: a `/3` pack named `needy` in folder `needy-pack/` under `repo`, with a find `look` offering an act `fix`, and a
+ * required setting `docs-folder` with no default that both prompts use. A project lists it under `packs` as `needy-pack`.
+ */
+export function writeNeedyPack(repo: string): void {
+  writeFindAndActPack(repo, {
+    folder: "needy-pack",
+    name: "needy",
+    title: "Needy",
+    summary: "Needs a setting.",
+    settings: { "docs-folder": { type: "path", summary: "The folder that holds your documentation." } },
+    fixSummary: "Documentation that is out of date.",
+    prompts: { look: "# Look\n\nRead {{settings.docs-folder}}.\n", fix: "# Fix\n\nFix {{settings.docs-folder}}.\n" },
+  });
+}
+
+/**
+ * Test support: a `/3` pack named `guide` in folder `guide-pack/` under `repo`, with a find `look` offering an act `fix`. Its
+ * required setting `docs-folder` has no default, and `tone` defaults to `plain English`. A project lists it as `guide-pack`.
+ */
+export function writeGuidePack(repo: string): void {
+  writeFindAndActPack(repo, {
+    folder: "guide-pack",
+    name: "guide",
+    title: "Guide",
+    summary: "Keeps your documentation up to date.",
+    settings: {
+      "docs-folder": { type: "path", summary: "The folder that holds your documentation." },
+      tone: { type: "text", summary: "How the pages should read.", default: "plain English" },
+    },
+    fixSummary: "A page that is out of date.",
+    prompts: { look: "# Look\n\nRead {{settings.docs-folder}}.\n", fix: "# Fix\n\nFix {{settings.docs-folder}} in {{settings.tone}}.\n" },
+  });
 }
 
 /** Test support: a `delivery.pack/2` pack in folder `folder`, named after it without its `-pack` ending, with a scan and a fix prompt beside it. */
