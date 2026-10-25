@@ -219,8 +219,8 @@ describe("pack workflows", () => {
       const refused = withPackWorkflows({ packs: ["mine"], packSettings: { mine: { "old-module": "a\u202eb", nope: "x" } } }, rootWithSettingsPack(), undefined);
       await expect(refused).rejects.toThrow(
         settingsRefusal([
-          { pack: "mine", setting: "old-module", kind: "invalid", message: ONE_LINE },
-          { pack: "mine", setting: "nope", kind: "undeclared", message: "is not a setting of this pack. Its settings are: old-module." },
+          { kind: "invalid", pack: "mine", setting: "old-module", rule: ONE_LINE, value: "a‮b" },
+          { kind: "undeclared", pack: "mine", setting: "nope", declared: ["old-module"] },
         ]),
       );
       await expect(refused).rejects.not.toThrow("a\u202eb");

@@ -1,4 +1,5 @@
 import { renderSettings, settingNamesIn } from "../placeholders.js";
+import { valueAt } from "../schema-issues.js";
 import { promptOf, type Instructions, type Pack } from "./manifest.js";
 import { renderSettingValue, settingValueSchema, type SettingType } from "./setting-types.js";
 
@@ -14,15 +15,34 @@ export interface AppliedSetting {
   usedBy: readonly string[];
 }
 
-/** One thing wrong with a pack's settings or the owner's values for them. The value is never part of the message. */
-export interface SettingProblem {
-  pack: string;
+/** A required setting the owner has not given, with the summary the pack gives it. */
+export interface UnmetSetting {
   setting: string;
-  kind: "missing" | "undeclared" | "invalid";
-  message: string;
+  summary: string;
 }
 
-const MISSING = "has no value, and the pack gives no default";
+/** One thing wrong with a pack's settings or the owner's values for them, as data: the words are the renderer's. */
+export type SettingProblem =
+  | { kind: "missing"; pack: string; setting: string; summary: string }
+  | { kind: "undeclared"; pack: string; setting: string; declared: readonly string[] }
+  | { kind: "invalid"; pack: string; setting: string; rule: string; value: unknown }
+  | { kind: "unknown-pack"; pack: string; inUse: readonly string[] };
+
+/** The value a setting is bound to: the owner's when given, else the pack's default. Undefined when neither holds. */
+function boundRaw(declaration: { default?: unknown }, name: string, given: Readonly<Record<string, unknown>>): unknown {
+  return Object.hasOwn(given, name) ? given[name] : declaration.default;
+}
+
+/**
+ * The required settings a pack has no value for, the owner's or its own default: the one list every surface names them from.
+ * A value that is given but faulty is not unmet; it is a problem of its own.
+ */
+export function unmetSettings(pack: Pack, values: Readonly<Record<string, unknown>> | undefined): UnmetSetting[] {
+  const given = values ?? {};
+  return Object.entries(pack.manifest.settings ?? {})
+    .filter(([name, declaration]) => boundRaw(declaration, name, given) === undefined)
+    .map(([setting, declaration]) => ({ setting, summary: declaration.summary }));
+}
 
 /**
  * Binds a pack to its owner's values. The value applied is the owner's, else the pack's default, else a problem. On
@@ -35,29 +55,30 @@ export function bindSettings(pack: Pack, values: Readonly<Record<string, unknown
   if (declared === undefined && Object.keys(given).length === 0) return { ok: true, pack };
   const declarations = declared ?? {};
   const packName = pack.manifest.name;
+  const unmet = new Map(unmetSettings(pack, values).map((entry) => [entry.setting, entry]));
   const problems: SettingProblem[] = [];
   const rendered: Record<string, string> = {};
   const sources: Record<string, SettingSource> = {};
   for (const [name, declaration] of Object.entries(declarations)) {
-    const owned = Object.hasOwn(given, name);
-    const raw = owned ? given[name] : declaration.default;
-    if (raw === undefined) {
-      problems.push({ pack: packName, setting: name, kind: "missing", message: MISSING });
+    const missing = unmet.get(name);
+    if (missing !== undefined) {
+      problems.push({ kind: "missing", pack: packName, setting: name, summary: missing.summary });
       continue;
     }
+    const raw = boundRaw(declaration, name, given);
     const checked = settingValueSchema(declaration).safeParse(raw);
     if (!checked.success) {
-      problems.push({ pack: packName, setting: name, kind: "invalid", message: checked.error.issues[0]?.message ?? "has a value the pack cannot use" });
+      const issue = checked.error.issues[0];
+      problems.push({ kind: "invalid", pack: packName, setting: name, rule: issue?.message ?? "has a value the pack cannot use", value: issue === undefined ? raw : valueAt(raw, issue.path) });
       continue;
     }
     rendered[name] = renderSettingValue(checked.data);
-    sources[name] = owned ? "configuration" : "default";
+    sources[name] = Object.hasOwn(given, name) ? "configuration" : "default";
   }
   const names = Object.keys(declarations);
   for (const name of Object.keys(given)) {
     if (Object.hasOwn(declarations, name)) continue;
-    const message = names.length === 0 ? "is not a setting of this pack, which has no settings." : `is not a setting of this pack. Its settings are: ${names.join(", ")}.`;
-    problems.push({ pack: packName, setting: name, kind: "undeclared", message });
+    problems.push({ kind: "undeclared", pack: packName, setting: name, declared: names });
   }
   if (problems.length > 0) return { ok: false, problems };
 

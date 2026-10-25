@@ -31,9 +31,23 @@ export async function projectPackStates(
   return { packs, installed, settingProblems };
 }
 
+/** One problem as a line. Temporary: Task 4 replaces these words with the owner's renderer, and Task 5 deletes this function. */
+function problemLine(problem: SettingProblem): string {
+  switch (problem.kind) {
+    case "missing":
+      return `  ${problem.pack}.${problem.setting}: has no value, and the pack gives no default`;
+    case "undeclared":
+      return `  ${problem.pack}.${problem.setting}: is not a setting of this pack. Its settings are: ${problem.declared.join(", ")}.`;
+    case "invalid":
+      return `  ${problem.pack}.${problem.setting}: ${problem.rule}`;
+    case "unknown-pack":
+      return `  ${problem.pack}: no pack called ${problem.pack} is used by this project. Packs in use: ${problem.inUse.join(", ")}.`;
+  }
+}
+
 /** The refusal for settings that cannot be bound: every problem at once, never the value itself. */
 export function settingsRefusal(problems: readonly SettingProblem[]): string {
-  return ["packSettings has a problem:", ...problems.map(({ pack, setting, message }) => `  ${pack}.${setting}: ${message}`), "Nothing was run."].join("\n");
+  return ["packSettings has a problem:", ...problems.map(problemLine), "Nothing was run."].join("\n");
 }
 
 /**

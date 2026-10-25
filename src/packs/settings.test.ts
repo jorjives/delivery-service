@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { ideaFormat, builtInPacks, readPack, type Pack } from "./manifest.js";
-import { ONE_LINE, NO_BRACES } from "./setting-types.js";
-import { bindSettings } from "./settings.js";
+import { NO_BRACES, NOT_ABSOLUTE, ONE_LINE } from "./setting-types.js";
+import { bindSettings, unmetSettings } from "./settings.js";
 
 /** Reads a pack named `docs`: find `look` offering act `fix`, with the given settings and prompt texts. */
 async function packOf(settings: Record<string, unknown>, files: Record<string, string>, act: Record<string, unknown> = {}): Promise<Pack> {
@@ -30,6 +30,7 @@ const SETTINGS = {
   topic: { type: "text", summary: "The topic.", default: "the API" },
 };
 const FILES = { "look.md": "Read {{settings.docs-folder}}.", "fix.md": "Fix the page in {{settings.docs-folder}} about {{settings.topic}}." };
+const USES_ABC = { "look.md": "Look.", "fix.md": "Fix {{settings.a}}, {{settings.b}} and {{settings.c}}." };
 const prompt = (r: ReturnType<typeof bindSettings>, name: string) => r.ok && r.pack.workflows[name]?.steps[0]?.prompt;
 
 describe("bindSettings", () => {
@@ -81,28 +82,55 @@ describe("bindSettings", () => {
   });
 
   it.each([
-    [{ "docs-folder": "a{{b" }, "invalid", NO_BRACES],
-    [{ "docs-folder": "a}}b" }, "invalid", NO_BRACES],
-    [{ topic: "two\nlines" }, "invalid", ONE_LINE],
-    [{ topic: `x${String.fromCodePoint(0x202e)}` }, "invalid", ONE_LINE],
-    [{ "docs-foler": "x" }, "undeclared", "is not a setting of this pack. Its settings are: docs-folder, topic."],
-  ])("refuses %j as %s", async (values, kind, message) => {
+    [{ "docs-folder": "a{{b" }, "docs-folder", NO_BRACES, "a{{b"],
+    [{ "docs-folder": "a}}b" }, "docs-folder", NO_BRACES, "a}}b"],
+    [{ topic: "two\nlines" }, "topic", ONE_LINE, "two\nlines"],
+    [{ topic: `x${String.fromCodePoint(0x202e)}` }, "topic", ONE_LINE, `x${String.fromCodePoint(0x202e)}`],
+  ])("refuses %j as invalid, with its rule and the value at fault", async (values, setting, rule, value) => {
     expect(bindSettings(await packOf(SETTINGS, FILES), values)).toEqual({
       ok: false,
-      problems: [expect.objectContaining({ pack: "docs", kind, message })],
+      problems: [{ kind: "invalid", pack: "docs", setting, rule, value }],
     });
   });
 
-  it("names a required setting with no value", async () => {
+  it("refuses an undeclared name, with the declared names", async () => {
+    expect(bindSettings(await packOf(SETTINGS, FILES), { "docs-foler": "x" })).toEqual({
+      ok: false,
+      problems: [{ kind: "undeclared", pack: "docs", setting: "docs-foler", declared: ["docs-folder", "topic"] }],
+    });
+  });
+
+  it("names a required setting with no value, with its summary", async () => {
     const pack = await packOf({ "old-module": { type: "text", summary: "Old." } }, { "look.md": "Look.", "fix.md": "Leave {{settings.old-module}}." });
-    expect(bindSettings(pack, undefined)).toEqual({ ok: false, problems: [expect.objectContaining({ setting: "old-module", kind: "missing" })] });
+    expect(bindSettings(pack, undefined)).toEqual({ ok: false, problems: [{ kind: "missing", pack: "docs", setting: "old-module", summary: "Old." }] });
+  });
+
+  it("reports a missing setting with its summary, from the same list", async () => {
+    const pack = await packOf({ a: { type: "path", summary: "The A." }, b: { type: "text", summary: "The B.", default: "x" }, c: { type: "text", summary: "The C." } }, USES_ABC);
+    expect(bindSettings(pack, { c: "x" })).toEqual({ ok: false, problems: [{ kind: "missing", pack: "docs", setting: "a", summary: "The A." }] });
+  });
+
+  it("reports a faulty value with its rule and the value at fault", async () => {
+    const pack = await packOf({ folders: { type: "paths", summary: "The folders." } }, { "look.md": "Look.", "fix.md": "Fix {{settings.folders}}." });
+    expect(bindSettings(pack, { folders: ["docs", "/etc"] })).toMatchObject({ ok: false, problems: [{ kind: "invalid", setting: "folders", rule: NOT_ABSOLUTE, value: "/etc" }] });
+  });
+
+  it("lists the required settings with no owner value, in declaration order, with their summaries", async () => {
+    const pack = await packOf({ a: { type: "path", summary: "The A." }, b: { type: "text", summary: "The B.", default: "x" }, c: { type: "text", summary: "The C." } }, USES_ABC);
+    expect(unmetSettings(pack, { c: "given" })).toEqual([{ setting: "a", summary: "The A." }]);
+    expect(unmetSettings(pack, undefined)).toEqual([{ setting: "a", summary: "The A." }, { setting: "c", summary: "The C." }]);
+  });
+
+  it("does not count a given but faulty value as unmet", async () => {
+    const pack = await packOf({ a: { type: "path", summary: "The A." }, b: { type: "text", summary: "The B.", default: "x" }, c: { type: "text", summary: "The C." } }, USES_ABC);
+    expect(unmetSettings(pack, { a: "/etc", c: "x" })).toEqual([]);
   });
 
   it("names every problem at once, in declaration order then undeclared names", async () => {
     const settings = { ...SETTINGS, "old-module": { type: "text", summary: "Old." } };
     const pack = await packOf(settings, { ...FILES, "fix.md": `${FILES["fix.md"]} {{settings.old-module}}` });
     const r = bindSettings(pack, { "docs-folder": "/etc", zzz: "x" });
-    expect(r.ok === false && r.problems.map((p) => [p.setting, p.kind])).toEqual([
+    expect(r.ok === false && r.problems.map((p) => [p.kind === "unknown-pack" ? p.pack : p.setting, p.kind])).toEqual([
       ["docs-folder", "invalid"],
       ["old-module", "missing"],
       ["zzz", "undeclared"],
@@ -114,7 +142,7 @@ describe("bindSettings", () => {
     if (first === undefined) throw new Error("no built-in pack");
     expect(bindSettings(first, { x: "y" })).toEqual({
       ok: false,
-      problems: [expect.objectContaining({ kind: "undeclared", message: "is not a setting of this pack, which has no settings." })],
+      problems: [{ kind: "undeclared", pack: first.manifest.name, setting: "x", declared: [] }],
     });
   });
 });
