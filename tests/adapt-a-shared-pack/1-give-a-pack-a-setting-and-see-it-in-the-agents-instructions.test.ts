@@ -50,12 +50,12 @@ describe("UAT: change what a shared pack tells the agent by editing one line of 
 
 describe("AC: values are refused or inert when unsafe", () => {
   it.each([
-    ["{{x}}", "must not hold {{ or }}"],
-    ["a\nb", "must be one line of plain text"],
+    ["{{x}}", "The value holds {{ or }}."],
+    ["a\nb", "The value has a line break, tab or hidden character."],
   ])("refuses the value %j", (value, reason) => {
     const { status, stdout, stderr } = preview(project({ packSettings: { docs: { "docs-folder": value } } }));
     expect(status).not.toBe(0);
-    expect(stdout + stderr).toContain(reason);
+    expect((stdout + stderr).replace(/\s+/g, " ")).toContain(reason);
   });
 
   it("never runs shell characters in a value", () => {
