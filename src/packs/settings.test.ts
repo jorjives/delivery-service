@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ideaFormat, builtInPacks } from "./manifest.js";
 import { NO_BRACES, NOT_ABSOLUTE, ONE_LINE } from "./setting-types.js";
 import { settingsPackOf } from "./settings-fixtures.js";
-import { bindSettings, resolveSettings, unmetSettings } from "./settings.js";
+import { bindSettings, resolveSettings } from "./settings.js";
 
 const SETTINGS = {
   "docs-folder": { type: "path", summary: "The folder.", default: "docs" },
@@ -92,17 +92,6 @@ describe("bindSettings", () => {
   it("reports a faulty value with its rule and the value at fault", async () => {
     const pack = await settingsPackOf({ folders: { type: "paths", summary: "The folders." } }, { "look.md": "Look.", "fix.md": "Fix {{settings.folders}}." });
     expect(bindSettings(pack, { folders: ["docs", "/etc"] })).toMatchObject({ ok: false, problems: [{ kind: "invalid", setting: "folders", rule: NOT_ABSOLUTE, value: "/etc" }] });
-  });
-
-  it("lists the required settings with no owner value, in declaration order, with their summaries", async () => {
-    const pack = await settingsPackOf({ a: { type: "path", summary: "The A." }, b: { type: "text", summary: "The B.", default: "x" }, c: { type: "text", summary: "The C." } }, USES_ABC);
-    expect(unmetSettings(pack, { c: "given" })).toEqual([{ setting: "a", summary: "The A." }]);
-    expect(unmetSettings(pack, undefined)).toEqual([{ setting: "a", summary: "The A." }, { setting: "c", summary: "The C." }]);
-  });
-
-  it("does not count a given but faulty value as unmet", async () => {
-    const pack = await settingsPackOf({ a: { type: "path", summary: "The A." }, b: { type: "text", summary: "The B.", default: "x" }, c: { type: "text", summary: "The C." } }, USES_ABC);
-    expect(unmetSettings(pack, { a: "/etc", c: "x" })).toEqual([]);
   });
 
   it("names every problem at once, in declaration order then undeclared names", async () => {

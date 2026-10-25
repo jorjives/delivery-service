@@ -32,12 +32,6 @@ export interface ResolvedSetting {
   usedBy: readonly string[];
 }
 
-/** A required setting the owner has not given, with the summary the pack gives it. */
-export interface UnmetSetting {
-  setting: string;
-  summary: string;
-}
-
 /** One thing wrong with a pack's settings or the owner's values for them, as data: the words are the renderer's. */
 export type SettingProblem =
   | { kind: "missing"; pack: string; setting: string; summary: string }
@@ -48,17 +42,6 @@ export type SettingProblem =
 /** The value a setting is bound to: the owner's when given, else the pack's default. Undefined when neither holds. */
 function boundRaw(declaration: { default?: unknown }, name: string, given: Readonly<Record<string, unknown>>): unknown {
   return Object.hasOwn(given, name) ? given[name] : declaration.default;
-}
-
-/**
- * The required settings a pack has no value for, the owner's or its own default: the one list every surface names them from.
- * A value that is given but faulty is not unmet; it is a problem of its own.
- */
-export function unmetSettings(pack: Pack, values: Readonly<Record<string, unknown>> | undefined): UnmetSetting[] {
-  const given = values ?? {};
-  return Object.entries(pack.manifest.settings ?? {})
-    .filter(([name, declaration]) => boundRaw(declaration, name, given) === undefined)
-    .map(([setting, declaration]) => ({ setting, summary: declaration.summary }));
 }
 
 /**
