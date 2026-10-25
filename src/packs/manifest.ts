@@ -10,6 +10,7 @@ import { isEnoent } from "../journal.js";
 import type { WorkflowConfig } from "../cli/config.js";
 import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, upgradeGuards, upgradeV2, type PackSchemaVersion } from "./pack-format.js";
 import { formatSentence, ruleProblems } from "./pack-rules.js";
+import type { AppliedSetting } from "./settings.js";
 
 /** One act workflow a find's ideas may name, and what it is for, in the words the scanner is shown. */
 export interface IdeaTarget {
@@ -101,6 +102,8 @@ export interface Pack {
   instructions: Readonly<Record<string, Instructions>>;
   /** Guards a workflow gains when an older-format pack is upgraded that its file does not state, by the workflow's local name. */
   upgraded: Readonly<Record<string, readonly GuardName[]>>;
+  /** The settings the pack was bound to, in declaration order. Empty until the pack is bound to its owner's values. */
+  applied: readonly AppliedSetting[];
 }
 
 /** One thing wrong with a pack, as an author fixes it: the file (absolute), the field in it, and one plain sentence starting with that field. */
@@ -319,7 +322,7 @@ export async function readPack(
   const inHashOrder = Object.entries(manifest.workflows);
   if (schema === PACK_SCHEMA) inHashOrder.sort(([a], [b]) => (a < b ? -1 : 1));
   const hash = packHash(raw, inHashOrder.map(([, workflow]) => promptText(texts, workflow.prompt)));
-  return { ok: true, pack: { dir, origin: { kind: "folder" }, schema, manifest, hash, find, workflows, instructions, upgraded } };
+  return { ok: true, pack: { dir, origin: { kind: "folder" }, schema, manifest, hash, find, workflows, instructions, upgraded, applied: [] } };
 }
 
 /** Read and check the pack in `dir`. Refuses, naming the file and the field, the first thing the format does not allow. */
