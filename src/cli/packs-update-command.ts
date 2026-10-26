@@ -121,7 +121,8 @@ export async function packsUpdateCommand(
       // Both versions are judged with the owner's values, so a setting change and a default that moves a hold show as a run will see them.
       const given = settings.packSettings?.[name];
       const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files, acceptedValues(kept.pack, given));
-      const after = inspectionOf(newPack, baseline, folder.files, acceptedValues(newPack, given));
+      const accepted = acceptedValues(newPack, given);
+      const after = inspectionOf(newPack, baseline, folder.files, accepted);
       const diffs = await diffPackFiles(keptDir, fingerprintedFiles(kept.pack), stagedDir, fingerprintedFiles(newPack));
       const changes = comparePacks(before, after);
       // What the new version stops a run for: the problems the refusal would render, but for the unknown pack, which a run of this pack cannot have.
@@ -142,7 +143,7 @@ export async function packsUpdateCommand(
       if (installed.state === "changed") out.plain(keptDiffersLines());
       out.plain([""]);
       out.plain(summaryLines(changes, after));
-      const settingLines = settingsChangeLines(changes, after, Object.keys(acceptedValues(newPack, given)), problems, configName);
+      const settingLines = settingsChangeLines(changes, after, Object.keys(accepted), problems, configName);
       if (settingLines.length > 0) out.plain(["", ...settingLines]);
       out.plain([""]);
       out.plain(filesLines(diffs));
