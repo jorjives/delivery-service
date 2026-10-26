@@ -6,6 +6,8 @@ A `delivery.pack/3` pack may declare `settings`, each `text`, `path`, `paths` or
 
 An act may take its hold from a `severity` setting with `holdSetting`, so the owner can change when its changes wait for sign-off; `hold` and `holdSetting` on one act are refused. New published pack key `delivery.pack/3.workflows.*.holdSetting`.
 
+`delivery packs inspect --json` gains, per workflow, `holdSetting` (the setting its hold comes from, or null) and `holdKnown` (false when that setting is unset or its value was not read).
+
 `delivery.config.json` takes `packSettings`, keyed by pack name, for built-in, listed and added packs; values reach the pack's prompts when the project loads; a value with `{{`, `}}`, a line break or a hidden character is refused.
 
 `delivery preview` prints a `Settings used:` line for a pack step, naming each value and whether it came from the pack's default or your configuration.

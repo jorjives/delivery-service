@@ -39,6 +39,8 @@ const workflow = (overrides: Partial<InspectedWorkflow> & { local: string }): In
   upgraded: [],
   widens: [],
   hold: null,
+  holdSetting: null,
+  holdKnown: true,
   ...overrides,
 });
 

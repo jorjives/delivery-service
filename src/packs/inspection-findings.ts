@@ -44,8 +44,9 @@ export function findingsOf(workflows: readonly InspectedWorkflow[]): Finding[] {
   );
   const acts = workflows.flatMap((workflow) => {
     if (workflow.kind !== "act") return [];
-    const sign: Finding[] =
-      workflow.hold === null
+    const sign: Finding[] = !workflow.holdKnown
+      ? []
+      : workflow.hold === null
         ? [note("lands-without-sign-off", workflow.name, null)]
         : workflow.hold === "critical"
           ? [note("hold-only-critical", workflow.name, "critical")]

@@ -116,6 +116,8 @@ delivery.pack-inspection/1.workflows[].hold = "high"
 delivery.pack-inspection/1.workflows[].hold = "low"
 delivery.pack-inspection/1.workflows[].hold = "medium"
 delivery.pack-inspection/1.workflows[].hold: null|string
+delivery.pack-inspection/1.workflows[].holdKnown: boolean
+delivery.pack-inspection/1.workflows[].holdSetting: null|string
 delivery.pack-inspection/1.workflows[].kind = "act"
 delivery.pack-inspection/1.workflows[].kind = "find"
 delivery.pack-inspection/1.workflows[].kind: string

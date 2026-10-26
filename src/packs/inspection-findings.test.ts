@@ -5,7 +5,7 @@ import { inspectionOf, type InspectionBase, NO_PROJECT, withFindings } from "./i
 
 const RLO = "‮", ESC = "\x1b", ZWSP = "​";
 
-function base(o: { hold?: Severity | null; widens?: string[]; authored?: string } = {}): InspectionBase {
+function base(o: { hold?: Severity | null; holdKnown?: boolean; widens?: string[]; authored?: string } = {}): InspectionBase {
   return {
     schema: "delivery.pack-inspection/1",
     ok: true,
@@ -13,8 +13,8 @@ function base(o: { hold?: Severity | null; widens?: string[]; authored?: string 
     defaultGuards: [],
     settings: [],
     workflows: [
-      { name: "t:find", local: "find", kind: "find", summary: null, offers: ["t:act"], steps: [{ name: "scan", instructions: { authored: "Look.", harness: null }, guards: { added: [], off: [] }, given: "Look.", uses: [] }], upgraded: [], widens: [], hold: null },
-      { name: "t:act", local: "act", kind: "act", summary: null, offers: null, steps: [{ name: "do", instructions: { authored: o.authored ?? "Do it.", harness: null }, guards: { added: [], off: [] }, given: o.authored ?? "Do it.", uses: [] }], upgraded: [], widens: o.widens ?? [], hold: o.hold === undefined ? "high" : o.hold },
+      { name: "t:find", local: "find", kind: "find", summary: null, offers: ["t:act"], steps: [{ name: "scan", instructions: { authored: "Look.", harness: null }, guards: { added: [], off: [] }, given: "Look.", uses: [] }], upgraded: [], widens: [], hold: null, holdSetting: null, holdKnown: true },
+      { name: "t:act", local: "act", kind: "act", summary: null, offers: null, steps: [{ name: "do", instructions: { authored: o.authored ?? "Do it.", harness: null }, guards: { added: [], off: [] }, given: o.authored ?? "Do it.", uses: [] }], upgraded: [], widens: o.widens ?? [], hold: o.hold === undefined ? "high" : o.hold, holdSetting: null, holdKnown: o.holdKnown ?? true },
     ],
     project: NO_PROJECT,
     files: [],
@@ -39,6 +39,12 @@ it.each([
   ["critical", [{ code: "hold-only-critical", relation: "note", workflow: "t:act", detail: "critical" }]],
   ["high", []],
 ])("a hold of %s gives %j", (hold, expected) => expect(withFindings(base({ hold: hold as Severity })).findings).toEqual(expected));
+it("draws no sign-off note for an act whose hold cannot be known", () => {
+  expect(withFindings(base({ hold: null, holdKnown: false })).findings).toEqual([]);
+});
+it("draws no critical note for an act whose hold cannot be known", () => {
+  expect(withFindings(base({ hold: "critical", holdKnown: false })).findings).toEqual([]);
+});
 
 it("records a widening dimension as a wider finding and sets widens", () => {
   const inspection = withFindings(base({ widens: ["a guard turned off"] }));

@@ -69,7 +69,12 @@ export const InspectedWorkflow = z.object({
   upgraded: z.array(GuardName),
   /** What the workflow does that the project's own would not: ways it widens what the agent may do. Empty when it widens nothing. */
   widens: z.array(z.string()),
+  /** The hold in effect: the act's literal hold, or the severity its setting shows; null when there is none or it cannot be known. */
   hold: Severity.nullable(),
+  /** The severity setting the hold is taken from, or null when the hold is a literal one. */
+  holdSetting: z.string().nullable(),
+  /** False when the hold comes from a setting whose value is unset or was not read, so the hold cannot be known. */
+  holdKnown: z.boolean(),
 });
 export type InspectedWorkflow = z.infer<typeof InspectedWorkflow>;
 
@@ -147,7 +152,12 @@ function inspectedWorkflow(pack: Pack, local: string, workflow: PackWorkflow, se
     given,
     uses,
   }));
-  const base = { name, local, kind: workflow.kind, summary: null, offers: null, steps, upgraded: [...(pack.upgraded[local] ?? [])], widens: wideningsOf(config), hold: config.hold ?? null };
+  const holdSetting = workflow.kind === "act" ? (workflow.holdSetting ?? null) : null;
+  const holdShown = holdSetting === null ? undefined : settings.find((shown) => shown.name === holdSetting);
+  if (holdSetting !== null && holdShown === undefined) throw new Error(`the hold of ${name} names ${holdSetting}, which was not resolved`);
+  const hold = holdShown === undefined ? (config.hold ?? null) : holdShown.value === null ? null : Severity.parse(holdShown.value);
+  const holdKnown = holdShown === undefined || (holdShown.source !== "unset" && holdShown.source !== "not-read");
+  const base = { name, local, kind: workflow.kind, summary: null, offers: null, steps, upgraded: [...(pack.upgraded[local] ?? [])], widens: wideningsOf(config), hold, holdSetting, holdKnown };
   if (workflow.kind === "find") return { ...base, offers: [...new Set(workflow.ideasFor)].map((act) => `${pack.manifest.name}:${act}`) };
   return workflow.summary === undefined ? base : { ...base, summary: workflow.summary };
 }

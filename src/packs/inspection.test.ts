@@ -142,3 +142,31 @@ it("keeps every setting when narrowed to one workflow", async () => {
   const i = inspectionOf(await settingsPackOf(TWO, TWO_FILES), NO_PROJECT, [], {});
   expect(narrowedTo(i, "fix")?.settings).toEqual(i.settings);
 });
+
+const SETTINGS = {
+  "docs-folder": { type: "path", summary: "The folder.", default: "docs" },
+  topic: { type: "text", summary: "The topic.", default: "the API" },
+};
+const FILES = { "look.md": "Read {{settings.docs-folder}}.", "fix.md": "Fix the page in {{settings.docs-folder}} about {{settings.topic}}." };
+const HOLD = { "hold-from": { type: "severity", summary: "Changes this serious wait.", default: "high" } };
+
+it.each([
+  ["the owner's value", { "hold-from": "medium" }, NO_PROJECT, { hold: "medium", holdKnown: true }],
+  ["the default", {}, NO_PROJECT, { hold: "high", holdKnown: true }],
+  ["values not read", null, { found: true, path: ".", config: "code", gate: null, closer: null }, { hold: "high", holdKnown: false }],
+] as const)("shows a hold from a setting with %s", async (_, values, project, expected) => {
+  const pack = await settingsPackOf({ ...SETTINGS, ...HOLD }, FILES, { holdSetting: "hold-from" });
+  const fix = inspectionOf(pack, project, [], values).workflows.find((w) => w.local === "fix");
+  expect(fix).toMatchObject({ holdSetting: "hold-from", ...expected });
+});
+it("cannot know the hold of an unset required severity setting, and shows none", async () => {
+  const pack = await settingsPackOf({ ...SETTINGS, "hold-from": { type: "severity", summary: "Changes this serious wait." } }, FILES, { holdSetting: "hold-from" });
+  const i = inspectionOf(pack, NO_PROJECT, [], {});
+  expect(i.workflows.find((w) => w.local === "fix")).toMatchObject({ hold: null, holdKnown: false, holdSetting: "hold-from" });
+  expect(i.findings.filter((f) => f.workflow === "docs:fix")).toEqual([]);
+});
+it("keeps a literal hold known, and no hold known as none", async () => {
+  for (const pack of await builtInPacks()) {
+    for (const w of inspectionOf(pack, NO_PROJECT, [], null).workflows) expect(w).toMatchObject({ holdSetting: null, holdKnown: true });
+  }
+});

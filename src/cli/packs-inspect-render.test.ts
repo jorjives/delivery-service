@@ -33,6 +33,8 @@ const DEFAULT_SUMMARY = "Changes the code a little.";
 interface ModelOverrides {
   summary?: string | undefined;
   hold?: Severity | null;
+  holdSetting?: string | null;
+  holdKnown?: boolean;
   authored?: string;
 }
 
@@ -49,6 +51,8 @@ function model(overrides: ModelOverrides = {}): Inspection {
     upgraded: [],
     widens: [],
     hold: "hold" in overrides ? (overrides.hold ?? null) : ("high" as const),
+    holdSetting: overrides.holdSetting ?? null,
+    holdKnown: overrides.holdKnown ?? true,
   };
   const find = {
     name: "test:find",
@@ -60,6 +64,8 @@ function model(overrides: ModelOverrides = {}): Inspection {
     upgraded: [],
     widens: [],
     hold: null,
+    holdSetting: null,
+    holdKnown: true,
   };
   const base: InspectionBase = {
     schema: "delivery.pack-inspection/1",

@@ -10,11 +10,11 @@ function step(added: GuardName[] = []): InspectedWorkflow["steps"][number] {
 }
 
 function act(local: string, overrides: Partial<InspectedWorkflow> = {}): InspectedWorkflow {
-  return { name: `${PACK}:${local}`, local, kind: "act", summary: null, offers: null, steps: [step()], upgraded: [], widens: [], hold: "high", ...overrides };
+  return { name: `${PACK}:${local}`, local, kind: "act", summary: null, offers: null, steps: [step()], upgraded: [], widens: [], hold: "high", holdSetting: null, holdKnown: true, ...overrides };
 }
 
 function find(local: string, overrides: Partial<InspectedWorkflow> = {}): InspectedWorkflow {
-  return { name: `${PACK}:${local}`, local, kind: "find", summary: null, offers: [], steps: [step()], upgraded: [], widens: [], hold: null, ...overrides };
+  return { name: `${PACK}:${local}`, local, kind: "find", summary: null, offers: [], steps: [step()], upgraded: [], widens: [], hold: null, holdSetting: null, holdKnown: true, ...overrides };
 }
 
 function inspection(workflows: InspectedWorkflow[]): Inspection {
