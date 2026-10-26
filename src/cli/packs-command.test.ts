@@ -84,6 +84,7 @@ describe("delivery packs", () => {
         summary: manifest.summary,
         source: { kind: "built-in", package: null },
         state: null,
+        needs: [],
       })),
     });
   });
@@ -129,6 +130,30 @@ describe("delivery packs", () => {
     ]);
   });
 
+  it("marks a pack that needs a setting, naming it, and still exits 0", async () => {
+    const repo = initTempRepo("packs-needs-mark-", {
+      "delivery.config.json": JSON.stringify({ packs: ["needy-pack"] }),
+    });
+    writeNeedyPack(repo);
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const lines = stdout.trimEnd().split("\n");
+    const at = lines.findIndex((line) => line.trimStart().startsWith("needy "));
+    expect(lines[at + 1]?.trim()).toBe("needs setting: docs-folder");
+  });
+
+  it("lists needs in --json, empty once the value is given", async () => {
+    const repo = initTempRepo("packs-needs-json-", {
+      "delivery.config.json": JSON.stringify({ packs: ["needy-pack"] }),
+    });
+    writeNeedyPack(repo);
+    const unset = await delivery(["packs", "--json"], { cwd: repo });
+    expect(JSON.parse(unset.stdout).packs.find(({ name }: { name: string }) => name === "needy").needs).toEqual(["docs-folder"]);
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packs: ["needy-pack"], packSettings: { needy: { "docs-folder": "docs" } } }));
+    const given = await delivery(["packs", "--json"], { cwd: repo });
+    expect(JSON.parse(given.stdout).packs.find(({ name }: { name: string }) => name === "needy").needs).toEqual([]);
+  });
+
   it("ends a summary with a full stop before the start command when it has none", async () => {
     const repo = initTempRepo("packs-stop-", {
       "delivery.config.json": JSON.stringify({ packs: ["my-pack"] }),
@@ -158,6 +183,7 @@ describe("delivery packs", () => {
       summary: "Moves calls off retired code.",
       source: { kind: "folder", package: null },
       state: null,
+      needs: [],
     });
   });
 
@@ -241,6 +267,7 @@ describe("delivery packs", () => {
       summary: null,
       source: { kind: "installed", package: { name: "@acme/moves", version: "1.2.0" } },
       state: "changed",
+      needs: [],
     });
   });
 

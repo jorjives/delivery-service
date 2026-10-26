@@ -19,3 +19,5 @@ An unset required setting, a `packSettings` entry for a pack not in use, an unde
 `delivery packs inspect` shows a Settings section after the summary: each setting, the value in effect and its source, what it changes, and for an unset required setting the lines to add; the instructions show each value beside its placeholder. A faulty owner value for the inspected pack is refused, not shown.
 
 `delivery packs inspect` says, for an act whose hold is a setting, the severities that wait for sign-off and whether the value is yours or the default, or why it cannot be known.
+
+`delivery packs` marks a pack that needs a setting with a line under it, `needs setting: <name>`, and `delivery packs --json` gains `packs[].needs`, the required settings with no value. New published pack key `delivery.packs/1.packs[].needs`.

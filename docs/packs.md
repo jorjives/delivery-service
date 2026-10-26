@@ -280,6 +280,7 @@ A different fingerprint is refused, and nothing is written. To read the packs in
   "packs": [
     {
       "name": "code",
+      "needs": [],
       "source": {
         "kind": "built-in",
         "package": null
@@ -291,6 +292,7 @@ A different fingerprint is refused, and nothing is written. To read the packs in
     },
     {
       "name": "deprecations",
+      "needs": [],
       "source": {
         "kind": "built-in",
         "package": null
@@ -302,6 +304,7 @@ A different fingerprint is refused, and nothing is written. To read the packs in
     },
     {
       "name": "security",
+      "needs": [],
       "source": {
         "kind": "built-in",
         "package": null
@@ -313,6 +316,7 @@ A different fingerprint is refused, and nothing is written. To read the packs in
     },
     {
       "name": "docs-drift",
+      "needs": [],
       "source": {
         "kind": "installed",
         "package": {

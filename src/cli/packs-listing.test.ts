@@ -9,6 +9,8 @@ import { installPack } from "../packs/install/store.js";
 import { builtInPacks } from "../packs/manifest.js";
 import { publishedKeys } from "../report/json-schema.js";
 import { initTempRepo } from "../temp-repo.js";
+import { writeNeedyPack } from "./command-fixtures.js";
+import { loadConfigAndPackStates } from "./config.js";
 import { PACKS_LISTING_SCHEMA, packsListing, packsListingSchema } from "./packs-listing.js";
 
 const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
@@ -50,6 +52,7 @@ describe("the listing", () => {
       summary: manifest.summary,
       source: { kind: "built-in", package: null },
       state: null,
+      needs: [],
     }));
     expect(listing.packs).toEqual(expected);
     expect(listing.packs.slice(0, 3).map(({ name }) => name)).toEqual(["code", "deprecations", "security"]);
@@ -66,6 +69,7 @@ describe("the listing", () => {
       summary: "Moves calls off retired code.",
       source: { kind: "installed", package: { name: "@acme/moves", version: "1.2.0" } },
       state: "ok",
+      needs: [],
     });
   });
 
@@ -74,7 +78,7 @@ describe("the listing", () => {
     writeFileSync(join(repo, ".delivery", "packs", "moves", "scan.md"), "# Scan, changed\n");
     const listing = packsListing([], await readInstalledPacks(repo));
     expect(listing.packs).toEqual([
-      { name: "moves", version: null, title: null, summary: null, source: { kind: "installed", package: { name: "@acme/moves", version: "1.2.0" } }, state: "changed" },
+      { name: "moves", version: null, title: null, summary: null, source: { kind: "installed", package: { name: "@acme/moves", version: "1.2.0" } }, state: "changed", needs: [] },
     ]);
   });
 
@@ -91,7 +95,17 @@ describe("the listing", () => {
     const repo = initTempRepo("packs-listing-stray-", { "a.js": "x\n" });
     mkdirSync(join(repo, ".delivery", "packs", "stray"), { recursive: true });
     const listing = packsListing([], await readInstalledPacks(repo));
-    expect(listing.packs).toEqual([{ name: "stray", version: null, title: null, summary: null, source: { kind: "installed", package: null }, state: "unrecorded" }]);
+    expect(listing.packs).toEqual([{ name: "stray", version: null, title: null, summary: null, source: { kind: "installed", package: null }, state: "unrecorded", needs: [] }]);
+  });
+
+  it("names the required settings a pack has no value for, and none for a pack that needs none", async () => {
+    const repo = initTempRepo("packs-needs-", { "delivery.config.json": JSON.stringify({ packs: ["needy-pack"] }) });
+    writeNeedyPack(repo);
+    const { packs, installed } = await loadConfigAndPackStates({ startDir: repo, repoPath: repo, flag: undefined, env: {} });
+    const listing = packsListing(packs, installed, {});
+    expect(listing.packs.find(({ name }) => name === "needy")?.needs).toEqual(["docs-folder"]);
+    expect(listing.packs.find(({ name }) => name === "code")?.needs).toEqual([]);
+    expect(packsListing(packs, installed, { needy: { "docs-folder": "docs" } }).packs.find(({ name }) => name === "needy")?.needs).toEqual([]);
   });
 
   it("leaves no key optional", () => {

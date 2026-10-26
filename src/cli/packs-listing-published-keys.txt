@@ -1,5 +1,7 @@
 delivery.packs/1.packs: array
 delivery.packs/1.packs[].name: string
+delivery.packs/1.packs[].needs: array
+delivery.packs/1.packs[].needs[]: string
 delivery.packs/1.packs[].source.kind = "built-in"
 delivery.packs/1.packs[].source.kind = "folder"
 delivery.packs/1.packs[].source.kind = "installed"
