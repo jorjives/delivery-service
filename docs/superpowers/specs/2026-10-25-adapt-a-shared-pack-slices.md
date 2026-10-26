@@ -126,6 +126,7 @@
 
 ## Slice 4: Choose how far a pack goes before it asks you
 
+**Status:** ✅ Complete — 2026-10-26 — `5bfe384`
 **Tests:** ✅ Recorded — 2026-10-26 — `7afa24a` — cli (vitest) — 1 UAT + 1 AC, 4 skipped
 
 **Delivers:** A pack author can let the owner set the severity at which a change waits for sign-off, and the owner can raise or lower it.
