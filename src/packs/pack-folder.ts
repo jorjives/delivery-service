@@ -8,10 +8,11 @@ import { promptsOf, readPack, type Pack, type PackProblem } from "./manifest.js"
 export const FILE_ROLES = ["manifest", "prompt", "fixture", "documentation", "housekeeping"] as const;
 export type FileRole = (typeof FILE_ROLES)[number];
 
-/** One path in the folder, relative and "/"-separated; a folder not descended into ends in "/". */
+/** One path in the folder, relative and "/"-separated; a folder not descended into ends in "/". `bytes` is the file's size, and null for a folder, which is listed without being read. */
 export interface PackFolderFile {
   path: string;
   role: FileRole;
+  bytes: number | null;
 }
 
 export type PackFolderRead = { ok: true; pack: Pack; files: PackFolderFile[] } | { ok: false; problems: PackProblem[] };
@@ -32,12 +33,13 @@ const FIXTURE_FILES: readonly string[] = [FIXTURES.review, FIXTURES.fixes, FIXTU
 /** Top-level documentation names, in any case, with no extension or one of the usual document extensions. */
 const DOCUMENTATION = /^(readme|licen[cs]e|changelog)(\.(md|markdown|txt|rst|adoc))?$/i;
 /** Housekeeping files, allowed at any level the walk reaches. */
-const HOUSEKEEPING = new Set([".gitignore", ".gitattributes", ".DS_Store", "Thumbs.db"]);
+export const HOUSEKEEPING = new Set([".gitignore", ".gitattributes", ".DS_Store", "Thumbs.db"]);
 
-/** One entry the walk reached: its path relative to the folder, and what it is. */
+/** One entry the walk reached: its path relative to the folder, what it is, and its size when it is a file. */
 interface Entry {
   path: string;
   kind: "file" | "folder" | "link" | "special";
+  bytes: number | null;
 }
 
 /** Whether the walk descends into the folder at `path`: the fixtures folder, and the project inside it with everything under it. */
@@ -67,11 +69,12 @@ async function entriesOf(root: string): Promise<Entry[]> {
     const entries = await readdir(join(root, rel), { withFileTypes: true });
     for (const entry of entries) {
       const path = rel === "" ? entry.name : `${rel}/${entry.name}`;
-      if (entry.isSymbolicLink()) found.push({ path, kind: "link" });
+      if (entry.isSymbolicLink()) found.push({ path, kind: "link", bytes: null });
       else if (entry.isDirectory()) {
         if (walked(path)) pending.push(path);
-        else found.push({ path, kind: "folder" });
-      } else found.push({ path, kind: entry.isFile() ? "file" : "special" });
+        else found.push({ path, kind: "folder", bytes: null });
+      } else if (entry.isFile()) found.push({ path, kind: "file", bytes: (await lstat(join(root, path))).size });
+      else found.push({ path, kind: "special", bytes: null });
     }
   }
   return found.sort((a, b) => (a.path < b.path ? -1 : 1));
@@ -97,12 +100,12 @@ function judge(entry: Entry, root: string, prompts: readonly string[] | null): J
   const refuse = (message: string): Judged => ({ problem: { file, field: null, message } });
   if (entry.kind === "link" || entry.kind === "special") return { problem: unplainProblem(entry, root) };
   if (entry.kind === "folder") {
-    if (entry.path === ".git") return { file: { path: ".git/", role: "housekeeping" } };
+    if (entry.path === ".git") return { file: { path: ".git/", role: "housekeeping", bytes: null } };
     // The loader names a folder given as pack.json or as a prompt, so the check does not name it too.
     if (entry.path === "pack.json" || prompts?.includes(entry.path)) return {};
     return refuse(FOLDER_NOT_IN_A_PACK);
   }
-  const role = (kind: FileRole): Judged => ({ file: { path: entry.path, role: kind } });
+  const role = (kind: FileRole): Judged => ({ file: { path: entry.path, role: kind, bytes: entry.bytes } });
   if (top && entry.path === "pack.json") return role("manifest");
   if (top && prompts?.includes(entry.path)) return role("prompt");
   if (HOUSEKEEPING.has(name)) return role("housekeeping");

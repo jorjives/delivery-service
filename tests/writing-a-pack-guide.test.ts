@@ -39,7 +39,7 @@ describe("the 'writing a pack' guide", () => {
   });
 
   it("names every key of a delivery.pack/3 pack.json, the find's and the act's included", () => {
-    const keys = ["$schema", "schema", "name", "version", "title", "summary", "workflows", "kind", "prompt", "ideasFor", "guards", "add", "hold", "atOrAbove", "find", "act"];
+    const keys = ["$schema", "schema", "name", "version", "title", "summary", "workflows", "kind", "prompt", "ideasFor", "guards", "add", "hold", "holdSetting", "atOrAbove", "find", "act"];
     for (const key of keys) expect(guide).toContain(`\`${key}\``);
   });
 
@@ -99,10 +99,12 @@ describe("the 'writing a pack' guide", () => {
     expect(flat).toContain("the right act workflow");
   });
 
-  it("says delivery.pack/2 packs still work and that settings are reserved", () => {
+  it("says delivery.pack/2 packs still work and how a prompt uses a setting", () => {
     expect(flat).toMatch(/delivery\.pack\/2 packs? (still|keep)/);
     expect(guide).toContain("`settings`");
     expect(guide).toContain("{{settings.");
+    expect(guide).toContain("packSettings");
+    expect(flat).not.toContain("is reserved for pack settings");
   });
 
   it("uses no em-dashes", () => {

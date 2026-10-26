@@ -1,6 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 import { z } from "zod";
@@ -9,7 +9,9 @@ import { AgentOptions, CloserRef, GuardName, GuardSwitches, Severity, TaskDef, W
 import { FenceSetting } from "../fence.js";
 import { GateChoice, isPresetName, PRESET_DETAILS, PRESET_NAMES, type PresetName } from "./gate-presets.js";
 import { EXIT, Refusal } from "./failures.js";
-import { projectPacks, withWorkflowsOf } from "./pack-workflows.js";
+import { DEFAULT_CONFIG_NAME } from "./pack-settings-render.js";
+import { projectPackStates, projectPacks, withWorkflowsOf } from "./pack-workflows.js";
+import type { InstalledPack } from "../packs/install/installed.js";
 import type { Pack } from "../packs/manifest.js";
 import { eachIssue, fieldOf, valueAt, type Issue } from "../schema-issues.js";
 
@@ -18,7 +20,7 @@ export const CONFIG_BASENAME = "delivery.config";
 export const CONFIG_EXTENSIONS = [".json", ".js", ".mjs"] as const;
 
 /** The keys a config file takes, as the sentence a refusal ends with. */
-export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `sources`, `after`, `parkAfter` and `notify`";
+export const CONFIG_KEYS = "`task`, `tasks`, `domain`, `agent`, `gate`, `closer`, `budgets`, `concurrency`, `fence`, `workflows`, `packs`, `packSettings`, `sources`, `after`, `parkAfter` and `notify`";
 
 /** The closer types a person can name without a module path of their own, from the library's own list so the two can never disagree. */
 export const BUILT_IN_CLOSERS: string[] = CloserRef.options
@@ -207,6 +209,8 @@ export const DeliveryConfig = z
     workflows: z.record(Written, WorkflowConfig).optional(),
     // Pack folders of the project's own, relative to this file; each adds the workflows it holds, named <pack>:<workflow> (spec 5.13).
     packs: z.array(Written).optional(),
+    // Values for the settings a pack asks for, keyed by pack name and then setting name. Typed per pack when the pack is bound.
+    packSettings: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
     // Where `delivery run --sources` finds work, in order; a fallback is read only when nothing else has any.
     sources: z.array(SourceConfig).min(1).optional(),
     // How many runs in a row an item may end undelivered before it is set aside (default 3).
@@ -293,6 +297,8 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     'or an object such as `{ "mode": "required", "devices": ["/dev/kvm"] }`.',
   packs:
     'It is a list of folders of packs of your own, relative to this file, such as `["packs/mine"]`: each adds the workflows it names, as `<pack>:<workflow>`, such as `mine:scan`.',
+  packSettings:
+    'It gives values for the settings a pack asks for, keyed by pack name, then setting name, such as `{ "docs": { "docs-folder": "handbook" } }`: see docs/configuration-reference.md.',
   workflows:
     'It names ways of doing a task in steps, each a list of `steps` run in order, for example ' +
     '`{ "plan-then-build": { "steps": [{ "name": "plan", "prompt": "write PLAN.md" }, { "name": "build", "prompt": "carry out PLAN.md", "continue": true }] } }`: ' +
@@ -540,12 +546,36 @@ export async function loadConfig(lookup: ConfigLookup): Promise<DeliveryConfig> 
   return (await loadConfigAndPacks(lookup)).config;
 }
 
-/** The settings a run starts from, as `loadConfig` gives them, and the packs the project can use, built-in and listed. */
-export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config: DeliveryConfig; packs: Pack[] }> {
+/**
+ * The config file's settings, the folder its listed packs are relative to (the file's own folder, or the repository's when there
+ * is none), and the file's name for the owner's words.
+ */
+async function settingsAt(lookup: ConfigLookup): Promise<{ settings: DeliveryConfig; configDir: string; configName: string }> {
   const file = findConfig(lookup);
-  const settings = file === undefined ? {} : await readConfig(file);
-  const packs = await projectPacks(settings, file === undefined ? lookup.repoPath : dirname(file));
-  return { config: withWorkflowsOf(settings, packs), packs };
+  return {
+    settings: file === undefined ? {} : await readConfig(file),
+    configDir: file === undefined ? lookup.repoPath : dirname(file),
+    configName: file === undefined ? DEFAULT_CONFIG_NAME : basename(file),
+  };
+}
+
+/**
+ * The settings a run starts from, as `loadConfig` gives them, and the packs the project can use, built-in and listed. `settings`
+ * is the file's own content, without any pack's workflows, for a caller that changes the set of packs and checks it again.
+ */
+export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config: DeliveryConfig; settings: DeliveryConfig; packs: Pack[] }> {
+  const { settings, configDir, configName } = await settingsAt(lookup);
+  const packs = await projectPacks(settings, configDir, lookup.repoPath, configName);
+  return { config: withWorkflowsOf(settings, packs), settings, packs };
+}
+
+/**
+ * The settings a run starts from and every pack's state, without refusing any of them: for a caller that must judge an added
+ * pack's state itself, such as the add that replaces one, and checks what it decides with `refuseUnusable` or a clash check.
+ */
+export async function loadConfigAndPackStates(lookup: ConfigLookup): Promise<{ settings: DeliveryConfig; packs: Pack[]; installed: InstalledPack[] }> {
+  const { settings, configDir } = await settingsAt(lookup);
+  return { settings, ...(await projectPackStates(settings, configDir, lookup.repoPath)) };
 }
 
 /** The source a project's ideas are raised to instead of committed: its first tracker, if it has one. */

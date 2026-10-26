@@ -135,6 +135,7 @@ export function runFileOf(runId: string, history: RunEntry[], outcome?: RunOutco
 
 /** The words the owner is never shown: the harness's own names for things. */
 export const FORBIDDEN = /\b(surfaces?|budgets?|gates?|triage|authority|terminus|breaker|escalat\w*|workers?|router|slots?|populations?|degraded|verdicts?|repair sessions?)\b/i;
+export const REASSURING = /\b(safe|clean|verified|trusted)\b/i;
 
 /** A small project's list, and the ids its runs were given. */
 export const FORM = "Add a contact form";

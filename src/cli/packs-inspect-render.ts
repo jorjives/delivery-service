@@ -1,50 +1,28 @@
 import { relative } from "node:path";
 import { GUARD_REFUSES } from "../guards.js";
-import type { ProjectBaseline, Selection, Inspection } from "../packs/inspection.js";
+import type { ProjectBaseline, Selection, Inspection, InspectedSetting } from "../packs/inspection.js";
 import type { Finding, HiddenCharacter } from "../packs/inspection-findings.js";
 import { atOrAbove } from "../item-check.js";
 import { showHidden, showName } from "../packs/hidden-characters.js";
 import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK, UNUSED_INSTRUCTIONS } from "../packs/pack-folder.js";
 import type { PackProblem } from "../packs/manifest.js";
-import { SEVERITIES, type GuardName } from "../schema.js";
+import { Severity, SEVERITIES, type GuardName } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
+import { INSPECT_WIDTH, wrap } from "./text-wrap.js";
+import { DEFAULT_CONFIG_NAME } from "./pack-settings-render.js";
+import { annotated, settingsBlock } from "./packs-inspect-settings.js";
 
 /** The last line of every refusal: nothing from the pack was used. */
 export const SHOWN_NOTHING = "Nothing from this pack was shown, run or sent to an agent.";
 
-/** The widest line the account writes, in columns. Pack-authored instructions are the one exception: they are shown as written. */
-export const INSPECT_WIDTH = 60;
 /** The line that opens and closes each instruction, so a reader can see where the pack's words begin and end. */
 export const INSPECT_RULE = "-".repeat(INSPECT_WIDTH);
-
-/** Pack-authored words on one line: every hidden character, a line break included, written out as visible text. */
-const oneLine = (text: string): string => showHidden(text, { newline: false, tab: false });
 
 /** Pack-authored instructions: hidden characters written out as visible text, line breaks and tabs left as they are. */
 const instructionText = (text: string): string => showHidden(text, { newline: true, tab: true });
 
-/** Greedy word wrap on single spaces, after pack-authored text is made visible. A word too long for the width sits alone on its line, unbroken. */
-function wrap(text: string, indent: string, hanging: string = indent): string[] {
-  const lines: string[] = [];
-  let line = indent;
-  let started = false;
-  for (const word of oneLine(text).split(" ")) {
-    if (!started) {
-      line += word;
-      started = true;
-    } else if (line.length + 1 + word.length <= INSPECT_WIDTH) {
-      line += ` ${word}`;
-    } else {
-      lines.push(line);
-      line = hanging + word;
-    }
-  }
-  lines.push(line);
-  return lines;
-}
-
 /** Names joined as a plain list: "a", "a or b", "a, b or c". */
-function orList(names: readonly string[]): string {
+export function orList(names: readonly string[]): string {
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
 }
@@ -56,11 +34,17 @@ const plural = (count: number, noun: string): string => `${count} ${count === 1 
 
 const unique = <T>(items: readonly T[]): T[] => [...new Set(items)];
 
+/** Where a pack came from, as the identity line says it: its folder, the npm package an added pack was fetched from, or delivery-service itself. */
+function originOf({ source }: Inspection["pack"]): string {
+  if (source.kind === "built-in") return "built in to delivery-service.";
+  if (source.package !== null) return `from npm: ${source.package.name} ${source.package.version}.`;
+  return `from the folder ${source.path}.`;
+}
+
 function identityBlock({ pack }: Inspection): string[] {
-  const source = pack.source.kind === "folder" ? `from the folder ${pack.source.path}.` : "built in to delivery-service.";
   return [
     ...wrap(`Pack: ${pack.title}`, ""),
-    ...wrap(`${pack.name}, version ${pack.version}, ${source}`, ""),
+    ...wrap(`${pack.name}, version ${pack.version}, ${originOf(pack)}`, ""),
     ...wrap("Fingerprint, which changes if any instruction changes:", ""),
     `  ${pack.hash.slice(0, 32)}`,
     `  ${pack.hash.slice(32)}`,
@@ -105,8 +89,34 @@ function touchBlock(): string[] {
   ];
 }
 
+/** The first words of the sign-off limit for a hold that is a setting whose value cannot be known. */
+export const HOLD_NOT_KNOWN = "When it waits for your sign-off is not known:";
+
+/** The severities at or above a setting's hold, most serious first, as the setting's sentences name them. */
+const ratedFromSetting = (hold: Severity): string => orList(SEVERITIES.filter((severity) => atOrAbove(severity, hold)));
+
+/** The sign-off sentences for an act: its literal hold, or the hold its severity setting gives, or why that cannot be known. */
+function signOffSentences(workflow: Inspection["workflows"][number], settings: readonly InspectedSetting[]): string[] {
+  if (workflow.holdSetting === null) {
+    const hold = workflow.hold;
+    if (hold === null) return ["Lands without asking you again, once you have approved the idea."];
+    const rated = SEVERITIES.filter((severity) => atOrAbove(severity, hold)).reverse();
+    return [`Ideas rated ${orList(rated)} wait for your sign-off before they land.`];
+  }
+  const setting = settings.find(({ name }) => name === workflow.holdSetting);
+  if (setting === undefined) throw new Error(`the hold of ${workflow.name} names ${workflow.holdSetting}, which is not in the inspection`);
+  if (workflow.holdKnown && workflow.hold !== null) {
+    const whose = setting.source === "default" ? "default" : "your configuration";
+    return [`Ideas rated ${ratedFromSetting(workflow.hold)} wait for your sign-off before they land.`, `This is set by ${setting.name} (${whose}).`];
+  }
+  const named = `${HOLD_NOT_KNOWN} it is set by ${setting.name}`;
+  if (setting.source === "unset") return [`${named}, which is not set.`];
+  if (setting.default === null) return [`${named}, whose value was not read, and the pack gives no default.`];
+  return [`${named}, whose value was not read. With the pack's default, ideas rated ${ratedFromSetting(Severity.parse(setting.default))} would wait.`];
+}
+
 /** One workflow's limits: the guards it adds or turns off, and what happens to its ideas. */
-function workflowLimits(workflow: Inspection["workflows"][number]): string[] {
+function workflowLimits(workflow: Inspection["workflows"][number], settings: readonly InspectedSetting[]): string[] {
   const added = unique(workflow.steps.flatMap((step) => step.guards.added));
   const off = unique(workflow.steps.flatMap((step) => step.guards.off));
   const guardLines = [
@@ -116,12 +126,8 @@ function workflowLimits(workflow: Inspection["workflows"][number]): string[] {
   const sentences = guardLines.length === 0 ? ["No extra guards."] : guardLines;
   if (workflow.kind === "find") {
     sentences.push("Its ideas wait for you to approve them before any act workflow runs.");
-  } else if (workflow.hold === null) {
-    sentences.push("Lands without asking you again, once you have approved the idea.");
   } else {
-    const hold = workflow.hold;
-    const rated = SEVERITIES.filter((severity) => atOrAbove(severity, hold)).reverse();
-    sentences.push(`Ideas rated ${orList(rated)} wait for your sign-off before they land.`);
+    sentences.push(...signOffSentences(workflow, settings));
   }
   return [...wrap(`${workflow.local}:`, "  "), ...sentences.flatMap((sentence) => wrap(sentence, "    "))];
 }
@@ -131,7 +137,7 @@ function limitsBlock(inspection: Inspection): string[] {
     "How far each workflow goes before it asks you",
     ...wrap("Every workflow is refused if it:", "  "),
     ...inspection.defaultGuards.flatMap((guard) => wrap(`- ${GUARD_REFUSES[guard]}`, "  ", "    ")),
-    ...inspection.workflows.flatMap(workflowLimits),
+    ...inspection.workflows.flatMap((workflow) => workflowLimits(workflow, inspection.settings)),
   ];
 }
 
@@ -214,6 +220,12 @@ function noteSentence({ code, workflow, detail }: Finding): string {
   return `${name} is refused if it ${GUARD_REFUSES[detail as GuardName]}, though the pack's file does not say so. The older format adds this guard.`;
 }
 
+/** The Item 2 sentence for one finding: a note's sentence, or for a widening, that it widens what the agent may do beyond the project's defaults. */
+export function findingSentence(finding: Finding): string {
+  if (finding.relation === "note") return noteSentence(finding);
+  return `"${localOf(finding.workflow)}" widens what the agent may do beyond your project's defaults: ${finding.detail ?? ""}.`;
+}
+
 /** What a reader would not assume, as one sentence each: first anything that widens what the agent may do, then the acts whose limits are looser or unstated. */
 function flaggedSentences(inspection: Inspection): string[] {
   const notes = inspection.findings.filter(({ relation }) => relation === "note");
@@ -252,7 +264,32 @@ function lookAtBlock(inspection: Inspection): string[] {
   ];
 }
 
-/** The folder's documentation and housekeeping, named and never read. Fixtures and prompts are not named here: the account says what they are, not what they hold. */
+/** The three questions a reader who is not technical can put to the account before using the pack. */
+export const QUESTIONS_TO_ASK: readonly string[] = [
+  "Do you know who wrote it?",
+  "Do the instructions below match the summary above?",
+  "Does anything in them ask for something your project does not need?",
+];
+
+function questionsBlock(): string[] {
+  return ["Questions to ask before you use it", ...QUESTIONS_TO_ASK.flatMap((question) => wrap(question, "  "))];
+}
+
+/** What a fixture is, and that the account does not read it: only its name and size are shown, never its content. */
+export const FIXTURES_NOT_READ = "Not read when the pack is used; only delivery packs check reads them, to prove the pack works. Not shown here:";
+
+/** The fixtures the pack holds, each named with its size, or no block at all when there are none. */
+function fixturesBlock({ files }: Inspection): string[] {
+  const fixtures = files.filter(({ role }) => role === "fixture");
+  if (fixtures.length === 0) return [];
+  return [
+    "Fixtures",
+    ...wrap(FIXTURES_NOT_READ, "  "),
+    ...fixtures.flatMap(({ path, bytes }) => wrap(`${showName(path)}, ${plural(bytes ?? 0, "byte")}`, "  ", "    ")),
+  ];
+}
+
+/** The folder's documentation and housekeeping, named and never read. Prompts are not named here: the account says what they are, not what they hold. */
 function alsoBlock({ files }: Inspection): string[] {
   const listed = files.filter(({ role }) => role === "documentation" || role === "housekeeping");
   if (listed.length === 0) return [];
@@ -266,11 +303,12 @@ function alsoBlock({ files }: Inspection): string[] {
 /** Each step's instructions, shown unaltered: the pack's words, then the harness's words when the harness adds any. */
 function instructionBlocks(inspection: Inspection): string[][] {
   return inspection.workflows.flatMap((workflow) =>
-    workflow.steps.map(({ instructions }) => {
-      const authored = instructionText(instructions.authored);
+    workflow.steps.map(({ instructions, uses }) => {
+      const authored = instructionText(annotated(instructions.authored, uses));
       const harness = instructions.harness;
       const block = [
         ...wrap(`Instructions for ${workflow.local}: the pack's own words, ${plural(authored.split("\n").length, "line")}`, ""),
+        ...(uses.length === 0 ? [] : wrap("Each value is shown before its placeholder, in [ ].", "")),
         INSPECT_RULE,
         ...authored.split("\n"),
         INSPECT_RULE,
@@ -282,16 +320,19 @@ function instructionBlocks(inspection: Inspection): string[][] {
   );
 }
 
-/** The account of a pack, as plain lines: the short account, then the limits, then every instruction unaltered. Pure: no I/O. */
-export function renderInspection(inspection: Inspection): string[] {
+/** The account of a pack, as plain lines: the short account, the settings, the limits, then every instruction unaltered. Pure: no I/O. */
+export function renderInspection(inspection: Inspection, configName: string = DEFAULT_CONFIG_NAME): string[] {
   const blocks = [
     identityBlock(inspection),
     shortBlock(inspection),
+    settingsBlock(inspection, configName),
     touchBlock(),
     limitsBlock(inspection),
     checksBlock(inspection),
     widenBlock(inspection),
     lookAtBlock(inspection),
+    questionsBlock(),
+    fixturesBlock(inspection),
     alsoBlock(inspection),
     ...instructionBlocks(inspection),
   ];
@@ -309,15 +350,22 @@ const shownPath = (file: string, cwd: string): string => showName(relative(cwd, 
  * content the pack should not hold, and the line that says nothing was used. Pure: no I/O.
  */
 export function renderRefusal(dir: string, problems: readonly PackProblem[], cwd: string): string[] {
-  const lines = wrap(`Not read: ${shownPath(dir, cwd)}`, "");
+  return [...wrap(`Not read: ${shownPath(dir, cwd)}`, ""), ...problemLines(problems, (file) => shownPath(file, cwd)), `  ${SHOWN_NOTHING}`];
+}
+
+/**
+ * Each problem by its file, shown as the caller names it, then the advice when a problem is content the pack should not
+ * hold. The caller adds whatever heads and closes the list. Pure: no I/O.
+ */
+export function problemLines(problems: readonly PackProblem[], shown: (file: string) => string): string[] {
+  const lines: string[] = [];
   for (const { file, field, message } of problems) {
     const sentence = message.endsWith(".") ? message : `${message}.`;
-    const text = field === null ? `${shownPath(file, cwd)} ${sentence}` : `${shownPath(file, cwd)}: ${sentence}`;
+    const text = field === null ? `${shown(file)} ${sentence}` : `${shown(file)}: ${sentence}`;
     lines.push(...wrap(text, "  ", "    "));
   }
   if (problems.some(({ message }) => FOLDER_SENTENCES.includes(message))) {
     lines.push(...wrap("If you wrote this pack, remove what is named above. If someone else did, ask them why it is there.", "  "));
   }
-  lines.push(`  ${SHOWN_NOTHING}`);
   return lines;
 }

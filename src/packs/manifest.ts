@@ -10,6 +10,8 @@ import { isEnoent } from "../journal.js";
 import type { WorkflowConfig } from "../cli/config.js";
 import { PACK_SCHEMA, PACK_SCHEMAS_READ, PackManifest, PackManifestV2, upgradeGuards, upgradeV2, type PackSchemaVersion } from "./pack-format.js";
 import { formatSentence, ruleProblems } from "./pack-rules.js";
+import { settingRuleProblems } from "./setting-rules.js";
+import type { AppliedSetting } from "./settings.js";
 
 /** One act workflow a find's ideas may name, and what it is for, in the words the scanner is shown. */
 export interface IdeaTarget {
@@ -86,9 +88,13 @@ export function promptOf(instructions: Instructions): string {
   return instructions.harness === null ? instructions.authored : `${instructions.authored}\n\n${instructions.harness}`;
 }
 
-/** A loaded pack: where it is, the format it is written in, what it says, a hash of everything it holds, the find it runs, its workflows, and each workflow's instructions. */
+/** Where a pack came from: a folder the project names, or an npm package the owner added, with the version and integrity it was fetched at. */
+export type PackOrigin = { kind: "folder" } | { kind: "installed"; package: string; version: string; request: string; integrity: string };
+
+/** A loaded pack: where it is, where it came from, the format it is written in, what it says, a hash of everything it holds, the find it runs, its workflows, and each workflow's instructions. */
 export interface Pack {
   dir: string;
+  origin: PackOrigin;
   schema: PackSchemaVersion;
   manifest: PackManifest;
   hash: string;
@@ -97,6 +103,8 @@ export interface Pack {
   instructions: Readonly<Record<string, Instructions>>;
   /** Guards a workflow gains when an older-format pack is upgraded that its file does not state, by the workflow's local name. */
   upgraded: Readonly<Record<string, readonly GuardName[]>>;
+  /** The settings the pack was bound to, in declaration order. Empty until the pack is bound to its owner's values. */
+  applied: readonly AppliedSetting[];
 }
 
 /** One thing wrong with a pack, as an author fixes it: the file (absolute), the field in it, and one plain sentence starting with that field. */
@@ -238,6 +246,25 @@ function packHash(raw: string, texts: string[]): string {
 export const newerFormat = (declared: string): string =>
   `"schema" is "${declared}", a newer pack format than this harness reads (${PACK_SCHEMAS_READ.join(" and ")}): upgrade delivery-service to read this pack`;
 
+/** Whether `declared` is a pack format newer than any this harness reads: `delivery.pack/<n>` with `n` above the highest of `PACK_SCHEMAS_READ`. */
+export function isNewerPackFormat(declared: unknown): declared is string {
+  if (typeof declared !== "string") return false;
+  const version = /^delivery\.pack\/(\d+)$/.exec(declared)?.[1];
+  const highestRead = Math.max(...PACK_SCHEMAS_READ.map((s) => Number(s.slice("delivery.pack/".length))));
+  return version !== undefined && Number(version) > highestRead;
+}
+
+/** Whether the manifest in `dir` declares a newer pack format. A folder with no readable manifest, or one that is not JSON, declares none. */
+export async function declaresNewerFormat(dir: string): Promise<boolean> {
+  let json: unknown;
+  try {
+    json = JSON.parse(await readFile(join(dir, "pack.json"), "utf-8"));
+  } catch {
+    return false;
+  }
+  return isNewerPackFormat(typeof json === "object" && json !== null ? (json as { schema?: unknown }).schema : undefined);
+}
+
 /**
  * Read and check the pack in `dir`, naming every problem with it by file and field rather than stopping at the first.
  * A failure says which version the manifest was read as, so the words it is named in can follow that version; it is
@@ -259,15 +286,14 @@ export async function readPack(
   // A manifest in a format this build does not read is refused with its own sentence and never read further: its keys mean something else.
   const declared = typeof json === "object" && json !== null ? (json as { schema?: unknown }).schema : undefined;
   if (declared !== undefined && !(PACK_SCHEMAS_READ as readonly unknown[]).includes(declared)) {
-    const highestRead = Math.max(...PACK_SCHEMAS_READ.map((s) => Number(s.slice("delivery.pack/".length))));
-    const version = typeof declared === "string" ? /^delivery\.pack\/(\d+)$/.exec(declared)?.[1] : undefined;
-    const message = version !== undefined && Number(version) > highestRead
-      ? newerFormat(declared as string)
+    const message = isNewerPackFormat(declared)
+      ? newerFormat(declared)
       : `"schema" is ${JSON.stringify(declared)}, but this harness reads ${PACK_SCHEMAS_READ.join(" and ")} (see docs/writing-a-pack.md)`;
     return { ok: false, schema: null, prompts: null, problems: [{ file: manifestFile, field: "schema", message }] };
   }
   let manifest: PackManifest;
   let upgraded: Pack["upgraded"] = {};
+  let rules: PackProblem[] = [];
   const schema: PackSchemaVersion = declared === "delivery.pack/2" ? "delivery.pack/2" : PACK_SCHEMA;
   if (schema === "delivery.pack/2") {
     const v2 = PackManifestV2.safeParse(json);
@@ -277,20 +303,23 @@ export async function readPack(
   } else {
     const v3 = PackManifest.safeParse(json);
     if (!v3.success) return { ok: false, schema, prompts: null, problems: packProblems(manifestFile, v3.error, json, formatSentence) };
-    const rules = ruleProblems(manifestFile, v3.data);
-    if (rules.length > 0) return { ok: false, schema, prompts: promptsOf(v3.data), problems: rules };
+    rules = ruleProblems(manifestFile, v3.data);
     manifest = v3.data;
   }
 
-  // Each prompt file is read once, however many workflows name it, and every missing one is named.
+  // Each prompt file is read once, however many workflows name it, and every missing one is named. The settings rules
+  // are checked against the prompts that were read, so they run only once every prompt is known.
   const prompts = promptsOf(manifest);
   const read = await Promise.all(prompts.map(async (prompt) => [prompt, await packFile(dir, prompt)] as const));
   const texts = new Map<string, string>();
-  const problems: PackProblem[] = [];
+  const missing: PackProblem[] = [];
   for (const [prompt, text] of read) {
     if (typeof text === "string") texts.set(prompt, text);
-    else problems.push(text);
+    else missing.push(text);
   }
+  // The settings rules are a /3 format; a /2 pack has no settings, and its `{{settings.` text is left as it was written.
+  const settings = schema === PACK_SCHEMA ? settingRuleProblems(manifestFile, dir, manifest, texts) : [];
+  const problems = [...rules, ...missing, ...settings];
   if (problems.length > 0) return { ok: false, schema, prompts, problems };
 
   const { find, workflows, instructions } = packWorkflows(manifest, texts);
@@ -298,7 +327,7 @@ export async function readPack(
   const inHashOrder = Object.entries(manifest.workflows);
   if (schema === PACK_SCHEMA) inHashOrder.sort(([a], [b]) => (a < b ? -1 : 1));
   const hash = packHash(raw, inHashOrder.map(([, workflow]) => promptText(texts, workflow.prompt)));
-  return { ok: true, pack: { dir, schema, manifest, hash, find, workflows, instructions, upgraded } };
+  return { ok: true, pack: { dir, origin: { kind: "folder" }, schema, manifest, hash, find, workflows, instructions, upgraded, applied: [] } };
 }
 
 /** Read and check the pack in `dir`. Refuses, naming the file and the field, the first thing the format does not allow. */

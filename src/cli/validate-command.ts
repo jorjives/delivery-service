@@ -1,14 +1,16 @@
 import { realpathSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { DEFAULT_LABEL } from "../github-source.js";
 import { CloserModuleLoadFailure, GateModuleLoadFailure, InvalidCloserExport, InvalidGateExport } from "../errors.js";
 import { checkConfig, CONFIG_BASENAME, findConfig, readConfig, type ConfigProblem, type DeliveryConfig, type SourceConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, renderFailure, type ExitCode } from "./failures.js";
-import { withPackWorkflows } from "./pack-workflows.js";
+import type { Pack } from "../packs/manifest.js";
+import { projectPacks, withWorkflowsOf } from "./pack-workflows.js";
 import { gateLine, closerPhrase } from "./project-phrases.js";
 import { findRepository } from "./project.js";
-import { checkCustomModules, resolveProject, type ProjectSettings } from "./settings.js";
+import { entryWorkflow, queueTasks } from "./queue.js";
+import { checkCustomModules, resolveProject, unknownWorkflow, type ProjectSettings } from "./settings.js";
 
 /** What `delivery validate` was given on the command line: the two options it shares with `delivery run`. */
 export interface ValidateOptions {
@@ -92,19 +94,29 @@ export async function readProject(
   file: string,
   repoPath: string,
   env: NodeJS.ProcessEnv,
-): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
-  const config = await withPackWorkflows(await readConfig(file), dirname(file));
-  return { config, project: await settleProject(config, repoPath, env) };
+): Promise<{ config: DeliveryConfig; project: ProjectSettings; packs: Pack[] }> {
+  const settings = await readConfig(file);
+  const packs = await projectPacks(settings, dirname(file), repoPath, basename(file));
+  const config = withWorkflowsOf(settings, packs);
+  return { config, project: await settleProject(config, repoPath, env), packs };
 }
 
 /** The project a run would have with no config file: the defaults, and the built-in packs' workflows. */
-export async function defaultProject(repoPath: string, env: NodeJS.ProcessEnv): Promise<{ config: DeliveryConfig; project: ProjectSettings }> {
-  const config = await withPackWorkflows({}, repoPath);
-  return { config, project: await settleProject(config, repoPath, env) };
+export async function defaultProject(repoPath: string, env: NodeJS.ProcessEnv): Promise<{ config: DeliveryConfig; project: ProjectSettings; packs: Pack[] }> {
+  const packs = await projectPacks({}, repoPath, repoPath);
+  const config = withWorkflowsOf({}, packs);
+  return { config, project: await settleProject(config, repoPath, env), packs };
 }
 
 /** The check and closing action a run would use (no flags, this environment), with any module of the project's own loaded but never run. */
 async function settleProject(config: DeliveryConfig, repoPath: string, env: NodeJS.ProcessEnv): Promise<ProjectSettings> {
+  // A list entry that names a workflow the project does not have would be refused when it came up.
+  for (const task of queueTasks(config)) {
+    const name = entryWorkflow(task);
+    if (name !== undefined && config.workflows?.[name] === undefined) {
+      throw new Refusal(unknownWorkflow(name, Object.keys(config.workflows ?? {})), EXIT.configuration, "tasks");
+    }
+  }
   const project = await resolveProject({}, { env, repoPath, config });
   await checkCustomModules(project.gateRef, project.closerRef, repoPath);
   return project;
@@ -137,9 +149,12 @@ export async function findProblems(options: ValidateOptions, ctx: CommandContext
     const { repoPath, file } = await locateConfig(options, ctx);
     const checked = await checkConfig(file);
     if (!checked.ok) return checked.problems;
-    // ponytail: past the shape, only the first failure (the check or closing action a run would use, or a module
-    // of the project's own) is listed; check the gate and closer modules separately if CI needs both at once.
-    await settleProject(checked.config, repoPath, ctx.env);
+    // ponytail: past the shape, only the first failure (a pack or setting a run would refuse, the check or closing
+    // action a run would use, or a module of the project's own) is listed; check the gate and closer modules
+    // separately if CI needs both at once.
+    const packs = await projectPacks(checked.config, dirname(file), repoPath, basename(file));
+    const config = withWorkflowsOf(checked.config, packs);
+    await settleProject(config, repoPath, ctx.env);
     return [];
   } catch (err) {
     const { message, exitCode } = renderFailure(err);

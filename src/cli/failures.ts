@@ -19,8 +19,15 @@ import {
   InvalidPack,
   UnknownPack,
   DamagedReview,
+  PackSpecRefused,
+  PackSourceUnavailable,
+  PackIntegrityMismatch,
+  PackLockInvalid,
+  InstalledPackRefused,
+  type PackAttempt,
 } from "../errors.js";
 import { messageOf } from "../gate-support.js";
+import { refusedLines } from "./installed-render.js";
 
 /**
  * How the command ends, as a number a script can act on without reading text:
@@ -86,6 +93,11 @@ const KNOWN_ERRORS = [
   InvalidPack,
   UnknownPack,
   DamagedReview,
+  PackSpecRefused,
+  PackSourceUnavailable,
+  PackIntegrityMismatch,
+  PackLockInvalid,
+  InstalledPackRefused,
 ] as const;
 type KnownError = InstanceType<(typeof KNOWN_ERRORS)[number]>;
 
@@ -100,6 +112,54 @@ function bug(detail: string, runFolder?: string): RenderedFailure {
     message: `Something went wrong inside the harness: ${detail}\nThis is a bug: please file an issue${attach}.`,
     exitCode: EXIT.unexpected,
   };
+}
+
+/** Why an owner's package name is refused, in words an owner can act on. */
+function packSpecRefusedMessage(err: PackSpecRefused): string {
+  switch (err.looksLike) {
+    case "git":
+      return `Not added: only npm packages can be added now. ${err.spec} looks like a git address.`;
+    case "web":
+      return `Not added: only npm packages can be added now. ${err.spec} looks like a web address.`;
+    case "path":
+      return `Not added: only npm packages can be added now. ${err.spec} looks like a folder or file on this machine.`;
+    case "name":
+      return `Not added: ${err.spec} is not an npm package name. A name looks like docs-pack or @acme/docs-pack, and may end in @ and a version.`;
+  }
+}
+
+/** The lead of a refusal to add, restore or update a pack: which of the three was attempted. */
+const leadOf = (attempt: PackAttempt): string => {
+  switch (attempt) {
+    case "add":
+      return "Not added:";
+    case "restore":
+      return "Not restored:";
+    case "update":
+      return "Not updated:";
+  }
+};
+
+/** Why npm could not give the package an owner named, in words an owner can act on. */
+function packSourceUnavailableMessage(err: PackSourceUnavailable): string {
+  const lead = leadOf(err.attempt);
+  const restoring = err.attempt === "restore";
+  switch (err.reason) {
+    case "no-npm":
+      return restoring
+        ? "Not restored: this needs npm to fetch the package, and npm was not found."
+        : `${lead} this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.`;
+    case "not-found":
+      return `${lead} npm has no package called ${err.packageName}. Check the name; scoped packages start with @.`;
+    case "no-version":
+      return `${lead} ${err.packageName} has no version ${err.request} on npm. Nothing was changed.`;
+    case "unreachable":
+      return restoring
+        ? "Not restored: npm could not be reached. Nothing was changed."
+        : `${lead} npm could not be reached. Nothing was changed. Runs of packs already added are not affected.`;
+    case "failed":
+      return `${lead} npm could not fetch ${err.packageName} (${err.detail}). Nothing was changed.`;
+  }
 }
 
 /**
@@ -178,6 +238,25 @@ function renderKnown(err: KnownError): RenderedFailure {
           `The saved review in ${err.filePath} can't be read back, usually because the harness was stopped while writing it. ` +
           "Run the review again to make a new one, for example: delivery review code",
         exitCode: EXIT.unexpected,
+      };
+    case "PACK_SPEC_REFUSED":
+      return { message: packSpecRefusedMessage(err), exitCode: EXIT.configuration };
+    case "PACK_SOURCE_UNAVAILABLE":
+      return { message: packSourceUnavailableMessage(err), exitCode: EXIT.configuration };
+    case "PACK_INTEGRITY_MISMATCH":
+      return {
+        message: `${leadOf(err.attempt)} the download of ${err.packageName} ${err.version} does not match what npm published for it. Nothing was changed. Try again; if it happens again, do not use this version.`,
+        exitCode: EXIT.configuration,
+      };
+    case "PACK_LOCK_INVALID":
+      return {
+        message: `I can't read the record of added packs, ${err.filePath}: ${err.field === null ? "" : `${err.field} `}${err.detail}.`,
+        exitCode: EXIT.configuration,
+      };
+    case "INSTALLED_PACK_REFUSED":
+      return {
+        message: err.refused.map((pack) => refusedLines(err.repoPath, pack).join("\n")).join("\n\n"),
+        exitCode: EXIT.configuration,
       };
     case "IMMUTABILITY_VIOLATION":
     case "MISSING_BASELINE":

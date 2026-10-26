@@ -8,7 +8,7 @@ import { gateMaintenanceRoleConfig, workerRoleConfig } from "../role-config.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, runsRoot, writeRunRecord } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { agentOptionsLine, CONTINUES, noSuchStep, noSuchTask, previewIntro, RULE, SINGLE_TASK, stepHeading, stepInMany, TASK_NUMBER } from "./preview-command.js";
+import { agentOptionsLine, CONTINUES, noSuchStep, noSuchTask, previewIntro, RULE, SINGLE_TASK, settingsUsedLine, stepHeading, stepInMany, TASK_NUMBER } from "./preview-command.js";
 import { OWN_SETUP } from "./own-setup.js";
 import { EVERY_TASK_DONE } from "./queue.js";
 import { NO_TASK } from "./settings.js";
@@ -339,5 +339,58 @@ describe("delivery preview with an unmatched {{task.<field>}} placeholder", () =
     const repo = repoWith({ gate: PROJECT.gate, task: { intent: FIRST, sepc: "docs/x.md" }, workflows: TYPO });
     const { stderr } = await delivery(["preview", "--step", "plan"], { cwd: repo });
     expect(stderr).not.toMatch(/warn/i);
+  });
+});
+
+describe("delivery preview of a pack with settings", () => {
+  const PACK_FILES = {
+    "docs-pack/pack.json": JSON.stringify({
+      schema: "delivery.pack/3",
+      name: "docs",
+      version: "1.0.0",
+      title: "Docs",
+      summary: "Keeps documents true.",
+      settings: {
+        "docs-folder": { type: "path", summary: "The folder.", default: "docs" },
+        topic: { type: "text", summary: "The topic.", default: "the API" },
+      },
+      workflows: { look: { kind: "find", prompt: "look.md", ideasFor: ["fix"] }, fix: { kind: "act", prompt: "fix.md" } },
+    }),
+    "docs-pack/look.md": "Look at {{settings.topic}} in {{settings.docs-folder}}.",
+    "docs-pack/fix.md": "Fix the page in {{settings.docs-folder}}.",
+  };
+  const withPack = (extra: object = {}) => repoWith({ ...PROJECT, packs: ["docs-pack"], ...extra }, PACK_FILES);
+  const settingsLine = (stdout: string): string | undefined => {
+    const lines = stdout.split("\n");
+    return lines[lines.lastIndexOf(RULE) + 1];
+  };
+
+  it("prints the step text with the default and says it came from the default", async () => {
+    const { stdout } = await delivery(["preview", "--workflow", "docs:fix"], { cwd: withPack() });
+    expect(stdout).toContain("Fix the page in docs.");
+    expect(settingsLine(stdout)).toBe(settingsUsedLine([{ name: "docs-folder", type: "path", value: "docs", source: "default", usedBy: ["docs:fix"] }]));
+  });
+
+  it("prints the owner's value and says it came from the configuration", async () => {
+    const { stdout } = await delivery(["preview", "--workflow", "docs:fix"], { cwd: withPack({ packSettings: { docs: { "docs-folder": "handbook" } } }) });
+    expect(stdout).toContain("Fix the page in handbook.");
+    expect(stdout).toContain("Settings used: docs-folder = handbook (your configuration).");
+  });
+
+  it("names only the settings the previewed step uses", async () => {
+    const { stdout } = await delivery(["preview", "--workflow", "docs:fix"], { cwd: withPack() });
+    expect(stdout).not.toContain("topic");
+    const found = await delivery(["preview", "--workflow", "docs:look"], { cwd: withPack() });
+    expect(settingsLine(found.stdout)).toBe("Settings used: docs-folder = docs (default), topic = the API (default).");
+  });
+
+  it("prints no settings line for a step that uses none", async () => {
+    const workflows = { build: { steps: [{ name: "build", prompt: "Build it." }] } };
+    const { stdout } = await delivery(["preview", "--step", "build"], { cwd: repoWith({ ...PROJECT, workflows }) });
+    expect(stdout).not.toContain("Settings used:");
+  });
+
+  it("words the line as the spec does", () => {
+    expect(settingsUsedLine([{ name: "docs-folder", type: "path", value: "docs", source: "configuration", usedBy: [] }])).toBe("Settings used: docs-folder = docs (your configuration).");
   });
 });

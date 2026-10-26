@@ -21,6 +21,17 @@ describe("git", () => {
     await expect(git(repo, ["rev-parse", "--verify", "refs/heads/nope"])).rejects.toThrow();
   });
 
+  it("returns the patch when diff --no-index exits 1 and 1 is accepted", async () => {
+    writeFileSync(join(repo, "a.txt"), "one\n");
+    writeFileSync(join(repo, "b.txt"), "two\n");
+    const out = await git(repo, ["diff", "--no-index", "--no-color", "a.txt", "b.txt"], { raw: true, okExitCodes: [1] });
+    expect(out).toContain("-one\n+two\n");
+  });
+
+  it("still rejects an exit code that is not accepted", async () => {
+    await expect(git(repo, ["diff", "--no-index", "missing-a", "missing-b"], { okExitCodes: [2] })).rejects.toThrow();
+  });
+
   it("adds the environment it is given on top of the cleaned one", async () => {
     const index = join(mkdtempSync(join(tmpdir(), "git-exec-index-")), "index");
     await git(repo, ["read-tree", "HEAD"], { env: { GIT_INDEX_FILE: index } });

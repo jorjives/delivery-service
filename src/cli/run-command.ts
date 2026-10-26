@@ -5,7 +5,7 @@ import { agentSession } from "./agent-session.js";
 import { loadConfig, type DeliveryConfig } from "./config.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository, hasUncommittedChanges, UNCOMMITTED_NOTE } from "./project.js";
-import { queueTasks, runQueue } from "./queue.js";
+import { entryWorkflow, queueTasks, runQueue } from "./queue.js";
 import { holdingRepo } from "./run-exclusion.js";
 import { chooseRun, unfinishedRuns, unfinishedRunFound } from "./runs.js";
 import {
@@ -17,9 +17,10 @@ import {
   resolveProject,
   resolveSettings,
   SOURCES_AND_TASK,
-  WORKFLOW_NEEDS_TASK,
+  workflowFrom,
   type RunFlags,
 } from "./settings.js";
+import type { PinnedWorkflow, TaskDef } from "../schema.js";
 import { taskIntent } from "../task-list.js";
 import { closingReport } from "./report-command.js";
 import { runIdFor } from "../run-location.js";
@@ -62,7 +63,6 @@ async function runIn(options: RunOptions, { startDir, repoPath }: { startDir: st
   const config = await loadConfig({ startDir, repoPath, flag: options.config, env: ctx.env });
   const list = queueTasks(config);
   if (intent === undefined && config.tasks) {
-    if (options.workflow !== undefined) throw new Refusal(WORKFLOW_NEEDS_TASK, EXIT.configuration, "workflow");
     const exitCode = await startQueue(options, { repoPath, config }, ctx);
     await closingReport(repoPath, { kind: "list" }, list, ctx, config.notify);
     return exitCode;
@@ -101,7 +101,18 @@ async function startQueue(
   const project = await resolveProject(options, { env: ctx.env, repoPath, config });
   await checkCustomModules(project.gateRef, project.closerRef, repoPath);
   if (await hasUncommittedChanges(repoPath)) ctx.report.note(UNCOMMITTED_NOTE);
-  return runQueue(queueTasks(config), project, { repoPath }, ctx);
+  const tasks = queueTasks(config);
+  // Every workflow the list uses is resolved before anything starts, so a wrong name stops the command. An entry that names
+  // its own keeps it; the --workflow given is for the entries that name none.
+  const workflows = new Map<string, PinnedWorkflow>();
+  for (const name of new Set(tasks.map((task) => entryWorkflow(task) ?? options.workflow))) {
+    const workflow = await workflowFrom(name, config, repoPath);
+    if (workflow === undefined) continue;
+    await checkCustomModules(project.gateRef, project.closerRef, repoPath, workflow);
+    workflows.set(workflow.name, workflow);
+  }
+  const workflowOf = (task: TaskDef): PinnedWorkflow | undefined => workflows.get(entryWorkflow(task) ?? options.workflow ?? "");
+  return runQueue(tasks, project, { repoPath, workflowOf }, ctx);
 }
 
 /** Start one run: work out what it should do from the project's config file, the flags and the environment, check the agent can start, then drive it. */

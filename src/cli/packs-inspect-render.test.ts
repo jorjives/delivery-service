@@ -1,15 +1,27 @@
 import { expect, it } from "vitest";
+import { readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { builtInPacks, DATA_ONLY } from "../packs/manifest.js";
-import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK } from "../packs/pack-folder.js";
+import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK, readPackFolder } from "../packs/pack-folder.js";
 import { inspectionOf, narrowedTo, NO_PROJECT, type Inspection, type InspectionBase, withFindings } from "../packs/inspection.js";
 import type { Severity } from "../schema.js";
+import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { OWN_SETUP } from "./own-setup.js";
-import { INSPECT_RULE, INSPECT_WIDTH, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
+import { FIXTURES_NOT_READ, INSPECT_RULE, QUESTIONS_TO_ASK, renderInspection, renderRefusal, SHOWN_NOTHING } from "./packs-inspect-render.js";
+import { INSPECT_WIDTH } from "./text-wrap.js";
+import { settingsPackOf } from "../packs/settings-fixtures.js";
+
+const TWO = { "docs-folder": { type: "path", summary: "The folder." }, topic: { type: "text", summary: "The topic.", default: "the API" } };
+const TWO_FILES = { "look.md": "Read {{settings.docs-folder}}.", "fix.md": "Fix the page about {{settings.topic}}." };
 
 const packs = await builtInPacks();
 const deprecations = packs.find((pack) => pack.manifest.name === "deprecations");
 if (!deprecations) throw new Error("the deprecations pack is not built in");
-const builtInInspections = packs.map((pack) => inspectionOf(pack, NO_PROJECT, []));
+const builtInInspections = packs.map((pack) => inspectionOf(pack, NO_PROJECT, [], null));
+
+const deprecationsFiles = await readPackFolder(deprecations.dir);
+if (!deprecationsFiles.ok) throw new Error("the deprecations pack is not read by the folder check");
+const deprecationsAccount = renderInspection(inspectionOf(deprecations, NO_PROJECT, deprecationsFiles.files, null));
 
 /** The text of some lines, joined and with every run of white space made one space: the wrap points are not compared. */
 const flat = (lines: readonly string[]): string => lines.join(" ").replace(/\s+/g, " ");
@@ -21,6 +33,8 @@ const DEFAULT_SUMMARY = "Changes the code a little.";
 interface ModelOverrides {
   summary?: string | undefined;
   hold?: Severity | null;
+  holdSetting?: string | null;
+  holdKnown?: boolean;
   authored?: string;
 }
 
@@ -33,10 +47,12 @@ function model(overrides: ModelOverrides = {}): Inspection {
     kind: "act" as const,
     summary: summary ?? null,
     offers: null,
-    steps: [{ name: "do", instructions: { authored: overrides.authored ?? "Do the thing.\nThen stop.", harness: null }, guards: { added: [], off: [] } }],
+    steps: [{ name: "do", instructions: { authored: overrides.authored ?? "Do the thing.\nThen stop.", harness: null }, guards: { added: [], off: [] }, given: overrides.authored ?? "Do the thing.\nThen stop.", uses: [] }],
     upgraded: [],
     widens: [],
     hold: "hold" in overrides ? (overrides.hold ?? null) : ("high" as const),
+    holdSetting: overrides.holdSetting ?? null,
+    holdKnown: overrides.holdKnown ?? true,
   };
   const find = {
     name: "test:find",
@@ -44,16 +60,19 @@ function model(overrides: ModelOverrides = {}): Inspection {
     kind: "find" as const,
     summary: null,
     offers: ["test:act"],
-    steps: [{ name: "scan", instructions: { authored: "Look around.", harness: "Write each idea as one line." }, guards: { added: ["backlog-only" as const], off: [] } }],
+    steps: [{ name: "scan", instructions: { authored: "Look around.", harness: "Write each idea as one line." }, guards: { added: ["backlog-only" as const], off: [] }, given: "Look around.\n\nWrite each idea as one line.", uses: [] }],
     upgraded: [],
     widens: [],
     hold: null,
+    holdSetting: null,
+    holdKnown: true,
   };
   const base: InspectionBase = {
     schema: "delivery.pack-inspection/1",
     ok: true,
-    pack: { name: "test", version: "1.0.0", title: "Test pack", summary: "A pack for tests.", format: "delivery.pack/3", hash: "a".repeat(64), workflows: ["test:find", "test:act"], source: { kind: "built-in", path: "/packs/test" } },
+    pack: { name: "test", version: "1.0.0", title: "Test pack", summary: "A pack for tests.", format: "delivery.pack/3", hash: "a".repeat(64), workflows: ["test:find", "test:act"], source: { kind: "built-in", path: "/packs/test", package: null } },
     defaultGuards: ["tests-untouched"],
+    settings: [],
     workflows: [find, act],
     project: NO_PROJECT,
     files: [],
@@ -88,7 +107,7 @@ function withoutPackWords(lines: string[], inspection: Inspection): string {
 }
 
 it("puts the short account first, then limits, then the full instructions last", () => {
-  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, []));
+  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null));
   const at = (text: string) => lines.indexOf(text);
   expect(lines.slice(0, 2)).toEqual(["Pack: Move off deprecated code", "deprecations, version 1.0.0, built in to delivery-service."]);
   expect(`${lines[3]}${lines[4]}`).toBe(`  ${deprecations.hash.slice(0, 32)}  ${deprecations.hash.slice(32)}`);
@@ -100,7 +119,7 @@ it("puts the short account first, then limits, then the full instructions last",
 });
 
 it("says how far each workflow goes in words", () => {
-  const text = renderInspection(inspectionOf(deprecations, NO_PROJECT, [])).join("\n");
+  const text = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null)).join("\n");
   expect(text).toContain("  code:\n    Also refused if it edits an existing test.\n    Ideas rated high or critical wait for your sign-off\n    before they land.");
   expect(text).toContain("  tests:\n    No extra guards.\n    Lands without asking you again, once you have approved\n    the idea.");
   expect(text).toContain("    Also refused if it changes anything other than adding\n    ideas to the backlog.");
@@ -108,14 +127,14 @@ it("says how far each workflow goes in words", () => {
 });
 
 it("says the instructions run with everything the owner's setup can do, and the project's follow-on steps run after landing", () => {
-  const flat = renderInspection(inspectionOf(deprecations, NO_PROJECT, [])).join(" ").replace(/\s+/g, " ");
+  const flat = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null)).join(" ").replace(/\s+/g, " ");
   expect(flat).toContain("This pack cannot give the agent extra powers, and nothing in it takes any away.");
   for (const sentence of OWN_SETUP) expect(flat).toContain(sentence);
   expect(flat).toContain("After a change from an act workflow lands, your project's own follow-on steps run.");
 });
 
 it("shows every instruction unaltered, the pack's words apart from the harness's", () => {
-  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, []));
+  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null));
   for (const [name, { authored, harness }] of Object.entries(deprecations.instructions)) {
     const local = name.split(":")[1];
     const start = lines.findIndex((l) => l.startsWith(`Instructions for ${local}: the pack's own words`));
@@ -144,12 +163,42 @@ it("says a hold of critical as one severity, and an act with no summary in a fix
   expect(text).toContain("act (act): Changes the project for one idea.");
 });
 
-it("carries no colour, no box drawing and none of the words safe, clean or verified", () => {
-  for (const inspection of builtInInspections) {
-    const ours = withoutPackWords(renderInspection(inspection), inspection);
+it("asks the fixed questions after Things to look at and before the instructions, in a narrowed view too", () => {
+  for (const lines of [deprecationsAccount, renderInspection(narrowedTo(inspectionOf(deprecations, NO_PROJECT, deprecationsFiles.files, null), "tests") as Inspection)]) {
+    const at = lines.indexOf("Questions to ask before you use it");
+    expect(at).toBeGreaterThan(lines.indexOf("Things to look at"));
+    expect(at).toBeLessThan(lines.indexOf(INSPECT_RULE));
+    expect(flat(lines.slice(at + 1, at + 8))).toContain(QUESTIONS_TO_ASK.join(" "));
+  }
+});
+
+it("names every fixture with its size, as not read when the pack is used, and never its content", () => {
+  const at = deprecationsAccount.indexOf("Fixtures");
+  expect(at).toBeGreaterThan(deprecationsAccount.indexOf("Questions to ask before you use it"));
+  expect(flat(deprecationsAccount.slice(at, at + 4))).toContain(FIXTURES_NOT_READ);
+  for (const { path } of deprecationsFiles.files.filter((f) => f.role === "fixture")) {
+    expect(deprecationsAccount).toContain(`  ${path}, ${statSync(join(deprecations.dir, path)).size} bytes`);
+  }
+  expect(deprecationsAccount.join("\n")).not.toContain(readFileSync(join(deprecations.dir, "fixtures", "review.json"), "utf-8").slice(0, 40));
+});
+
+it("says 0 bytes and 1 byte, shows a hidden character in a fixture name, and has no Fixtures heading without fixtures", () => {
+  const lines = renderInspection(withFindings({ ...model(), files: [{ path: "fixtures/a.json", role: "fixture", bytes: 0 }, { path: `fixtures/b‮.json`, role: "fixture", bytes: 1 }] }));
+  expect(lines).toContain("  fixtures/a.json, 0 bytes");
+  expect(lines).toContain("  fixtures/b<U+202E>.json, 1 byte");
+  expect(renderInspection(model())).not.toContain("Fixtures");
+});
+
+it("keeps to the owner's vocabulary, with no colour or box drawing", async () => {
+  for (const pack of packs) {
+    const read = await readPackFolder(pack.dir);
+    if (!read.ok) throw new Error(`the ${pack.manifest.name} pack is not read by the folder check`);
+    const inspection = inspectionOf(pack, NO_PROJECT, read.files, null);
+    const ours = withoutPackWords(linesOutsideInstructions(renderInspection(inspection)), inspection);
     expect(ours.includes(String.fromCharCode(27))).toBe(false);
     expect(ours).not.toMatch(/[─-╿]/);
-    expect(ours).not.toMatch(/\b(safe|clean|verified)\b/i);
+    expect(ours).not.toMatch(REASSURING);
+    expect(ours).not.toMatch(FORBIDDEN);
   }
 });
 
@@ -174,7 +223,7 @@ it("keeps pack metadata and the source path on the lines it writes, with control
   const inspection = model();
   inspection.pack.title = `Title${ESC}[31m\nforged`;
   inspection.pack.summary = `Summary\rforged${RLO}`;
-  inspection.pack.source = { kind: "folder", path: `/p/${ESC}]0;x\x07\nforged` };
+  inspection.pack.source = { kind: "folder", path: `/p/${ESC}]0;x\x07\nforged`, package: null };
   const act = inspection.workflows[1];
   if (act) act.summary = `Act\nforged${ESC}`;
   const lines = renderInspection(withFindings(inspection));
@@ -211,7 +260,7 @@ it("lists hidden characters in the title, summaries, the source path and the har
   const inspection = model();
   inspection.pack.title = `T${ESC}`;
   inspection.pack.summary = `S\n`;
-  inspection.pack.source = { kind: "folder", path: `/p${RLO}` };
+  inspection.pack.source = { kind: "folder", path: `/p${RLO}`, package: null };
   const act = inspection.workflows[1];
   if (act) act.summary = `A${ZWSP}`;
   const find = inspection.workflows[0];
@@ -311,14 +360,14 @@ it.each([
 });
 
 it("lists documentation and housekeeping as not read, and never their content", () => {
-  const lines = renderInspection(withFindings({ ...model(), files: [{ path: "README.md", role: "documentation" }, { path: ".git/", role: "housekeeping" }, { path: "look.md", role: "prompt" }] }));
+  const lines = renderInspection(withFindings({ ...model(), files: [{ path: "README.md", role: "documentation", bytes: 12 }, { path: ".git/", role: "housekeeping", bytes: null }, { path: "look.md", role: "prompt", bytes: 40 }] }));
   const at = lines.indexOf("Also in the folder");
   expect(lines.slice(at, at + 4)).toEqual(["Also in the folder", "  Not read when the pack is used, and not shown here:", "  README.md", "  .git/"]);
   expect(at).toBeLessThan(lines.indexOf(INSPECT_RULE));
 });
 
 it("shows a hidden character in a file name as visible text, and counts it", () => {
-  const lines = renderInspection(withFindings({ ...model(), files: [{ path: `READ‮ME.md`, role: "documentation" }] }));
+  const lines = renderInspection(withFindings({ ...model(), files: [{ path: `READ‮ME.md`, role: "documentation", bytes: 0 }] }));
   expect(lines.join("\n")).not.toContain("‮");
   expect(lines).toContain("  READ<U+202E>ME.md");
   expect(flat(thingsToLookAt(lines))).toContain("the name of the file READ<U+202E>ME.md");
@@ -365,4 +414,72 @@ it("does not say nothing widens when the workflow shown does not but another doe
   expect(text).toContain("Nothing in the workflow shown widens what the agent may do, but another workflow in this pack does: inspect the whole pack.");
   expect(text).not.toContain("Nothing unusual was found in what this command checks. ");
   expect(text).toContain("Nothing unusual was found in what this command checks for the workflow shown. Inspect the whole pack for the others.");
+});
+
+it("says an added pack is from npm, naming the package and its version", () => {
+  const inspection = model();
+  inspection.pack.source = { kind: "installed", path: "/r/.delivery/packs/test", package: { name: "@acme/delivery-pack-docs", version: "1.2.0", integrity: "sha512-x" } };
+  expect(renderInspection(inspection).slice(1, 3).join(" ")).toContain("test, version 1.0.0, from npm: @acme/delivery-pack-docs 1.2.0.");
+});
+
+it("puts Settings directly after In short", () => {
+  const lines = renderInspection(inspectionOf(deprecations, NO_PROJECT, [], null));
+  const short = lines.indexOf("In short");
+  const next = lines.findIndex((line, index) => index > short && line !== "" && lines[index - 1] === "");
+  expect(lines[next]).toBe("Settings");
+});
+
+it("shows a step's instructions with each value beside its placeholder", async () => {
+  const pack = await settingsPackOf(TWO, TWO_FILES);
+  const lines = renderInspection(inspectionOf(pack, NO_PROJECT, [], { "docs-folder": "handbook" }));
+  const at = lines.indexOf("Each value is shown before its placeholder, in [ ].");
+  expect(lines[at + 1]).toBe(INSPECT_RULE);
+  expect(lines[at + 2]).toBe("Read handbook [{{settings.docs-folder}}].");
+});
+
+it("gives the same facts in text as in the document", async () => {
+  const inspection = inspectionOf(await settingsPackOf(TWO, TWO_FILES), NO_PROJECT, [], { "docs-folder": "handbook" });
+  const text = renderInspection(inspection).join("\n");
+  for (const setting of inspection.settings) {
+    expect(text).toContain(setting.name);
+    expect(text).toContain(setting.type);
+    if (setting.value !== null) expect(text).toContain(setting.value);
+  }
+});
+
+const HOLD = { "hold-from": { type: "severity", summary: "Changes this serious wait.", default: "high" } };
+const HOLD_UNSET = { "hold-from": { type: "severity", summary: "Changes this serious wait." } };
+const holdLimits = (lines: string[]): string => flat(lines.slice(lines.indexOf("How far each workflow goes before it asks you"), lines.indexOf("Checks and landing")));
+
+it("says the severities a setting holds at, and whose value it is, when the configuration sets it", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], { "docs-folder": "d", "hold-from": "medium" });
+  expect(holdLimits(renderInspection(inspection))).toContain("Ideas rated critical, high or medium wait for your sign-off before they land. This is set by hold-from (your configuration).");
+});
+
+it("says the severities a setting holds at, and that the pack's default sets it, when the configuration does not", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], { "docs-folder": "d" });
+  expect(holdLimits(renderInspection(inspection))).toContain("Ideas rated critical or high wait for your sign-off before they land. This is set by hold-from (default).");
+});
+
+it("says the hold is not known when the setting is unset, and does not say the act lands without asking", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD_UNSET }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], { "docs-folder": "d" });
+  const limits = holdLimits(renderInspection(inspection));
+  expect(limits).toContain("When it waits for your sign-off is not known: it is set by hold-from, which is not set.");
+  expect(limits).not.toContain("Lands without asking you again");
+});
+
+it("says the hold is not known, and what the pack's default would do, when the configuration is not read", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], null);
+  expect(holdLimits(renderInspection(inspection))).toContain("When it waits for your sign-off is not known: it is set by hold-from, whose value was not read. With the pack's default, ideas rated critical or high would wait.");
+});
+
+it("says the hold is not known, and that no default exists, when the configuration is not read and the pack gives none", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD_UNSET }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], null);
+  expect(holdLimits(renderInspection(inspection))).toContain("When it waits for your sign-off is not known: it is set by hold-from, whose value was not read, and the pack gives no default.");
+});
+
+it("says the hold is not known for a configuration written as code, which this command does not run", async () => {
+  const project = { found: true, path: ".", config: "code" as const, gate: null, closer: null };
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, TWO_FILES, { holdSetting: "hold-from" }), project, [], null);
+  expect(holdLimits(renderInspection(inspection))).toContain("When it waits for your sign-off is not known: it is set by hold-from, whose value was not read. With the pack's default, ideas rated critical or high would wait.");
 });

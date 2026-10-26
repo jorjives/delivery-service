@@ -29,7 +29,7 @@ export function pathName(path: string): string {
 }
 
 /** A word for a shell command line to be pasted: left alone when it is plain, single-quoted otherwise. */
-function shellQuoted(word: string): string {
+export function shellQuoted(word: string): string {
   const clean = stripControl(word);
   return /^[\w.:@%+=,/-]+$/.test(clean) ? clean : `'${clean.replace(/'/g, `'\\''`)}'`;
 }

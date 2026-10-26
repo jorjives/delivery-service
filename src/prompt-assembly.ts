@@ -1,13 +1,14 @@
 import { isAbsolute } from "node:path";
 import { z } from "zod";
 import { deriveBudgetsFromLog, logTail, readRef, setbackOf, type Setback } from "./case-file.js";
-import { NewFailure, countsNewAssertions, type BudgetSet, type CaseFile, type GateRef, type TaskDef } from "./schema.js";
+import { NewFailure, countsNewAssertions, type BudgetSet, type CaseFile, type GateRef } from "./schema.js";
 import type { RoleConfig } from "./role-config.js";
 import { SharpenedBrief } from "./triage-role-config.js";
 import { GATE_ERROR_EVIDENCE } from "./escalation-packet.js";
 import type { GuardName } from "./guards.js";
 import { activeGuards } from "./task-guards.js";
 import { currentStep, stepIndexOf } from "./workflow-step.js";
+import { renderTask } from "./placeholders.js";
 
 export interface PromptSetback extends Setback {
   /** Log-derived used/max per population at the moment of the setback. */
@@ -95,24 +96,6 @@ function gateLines(gateRef: GateRef, whose = "the project's"): string {
   }
   const where = isAbsolute(gateRef.modulePath) ? "" : " in the project's main folder";
   return `Your work is judged by ${whose} check: the module \`${gateRef.modulePath}\`${where}. You may read it. It is verified unchanged when your work is judged.`;
-}
-
-const TASK_PLACEHOLDER = /\{\{task\.([A-Za-z0-9_]+)\}\}/g;
-
-/** A field's text: a string as it is, a number or boolean as written, and anything else (object, array, null) as compact JSON. */
-function fieldText(value: unknown): string {
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean" ? String(value) : JSON.stringify(value);
-}
-
-/** Fills `{{task.<field>}}` placeholders from the task's own fields, leaving an unmatched placeholder as written. */
-function interpolateTask(prompt: string, taskDef: TaskDef): string {
-  return prompt.replace(TASK_PLACEHOLDER, (placeholder, field: string) => (taskDef[field] === undefined ? placeholder : fieldText(taskDef[field])));
-}
-
-/** The `{{task.<field>}}` placeholders in a prompt that the task has no field for, as written and without repeats. */
-export function unmatchedPlaceholders(prompt: string, taskDef: TaskDef): string[] {
-  const unmatched = [...prompt.matchAll(TASK_PLACEHOLDER)].filter(([, field]) => taskDef[field as string] === undefined).map(([placeholder]) => placeholder);
-  return [...new Set(unmatched)];
 }
 
 /** What will judge the work: the check, the guards in one paragraph, and where the work ends. Pure: read from the header alone. */
@@ -231,7 +214,7 @@ export function assemblePrompt(
   const stepSlot =
     step === undefined
       ? []
-      : ["## Step", `Step ${stepIndexOf(caseFile)} of ${caseFile.header.workflow?.steps.length}, "${step.name}":`, interpolateTask(step.prompt, caseFile.header.taskDef), ""];
+      : ["## Step", `Step ${stepIndexOf(caseFile)} of ${caseFile.header.workflow?.steps.length}, "${step.name}":`, renderTask(step.prompt, caseFile.header.taskDef), ""];
 
   // A run carrying on an earlier run's work says why, so a resumed session takes it as its next turn and a fresh one is not lost.
   const continues = caseFile.header.continues;

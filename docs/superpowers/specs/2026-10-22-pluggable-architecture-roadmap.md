@@ -95,6 +95,7 @@ merges. The built-in non-review pack should run end to end against the scripted 
 
 ### Item 2: Inspect a pack before trusting it
 
+**Status:** ✅ Complete — 2026-10-24 — spec: `docs/superpowers/specs/2026-10-23-inspect-a-pack-design.md`
 **Spec:** `docs/superpowers/specs/2026-10-23-inspect-a-pack-design.md`
 **Delivers:** A project owner can see exactly what a pack will tell the agent to do and
 what it is allowed to touch, before it is installed or run.
@@ -120,6 +121,8 @@ real risk of sharing. Inspection is the first control and comes before install.
 
 ### Item 3: Install a pack from elsewhere, pinned
 
+**Status:** ✅ Complete — 2026-10-25 — spec: `docs/superpowers/specs/2026-10-24-install-a-pack-from-elsewhere-design.md`
+**Spec:** `docs/superpowers/specs/2026-10-24-install-a-pack-from-elsewhere-design.md`
 **Delivers:** A project owner can add a pack published by someone else and get the same
 pack on every machine and every run.
 
@@ -146,6 +149,7 @@ pack on every machine and every run.
 
 ### Item 4: Adapt a shared pack to my project
 
+**Spec:** `docs/superpowers/specs/2026-10-25-adapt-a-shared-pack-design.md`
 **Delivers:** A project owner can make a pack written for someone else's project work in
 theirs, without editing or forking the pack.
 

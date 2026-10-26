@@ -23,6 +23,7 @@ import { intervalSeconds, watchCommand } from "./watch-command.js";
 import { packsCommand, type PacksOptions } from "./packs-command.js";
 import type { PacksInspectOptions } from "./packs-inspect-command.js";
 import type { ReviewCommandOptions } from "./review-command.js";
+import { npmSource } from "../packs/install/npm-source.js";
 
 /** Everything the command takes from the process that runs it. `main.ts` passes the real process; tests pass their own. */
 export interface CliIo {
@@ -101,7 +102,7 @@ export async function runCli(io: CliIo): Promise<number> {
     )
     .version(version, "-V, --version", "print the harness version")
     .option("--no-color", "print without colour")
-    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate, packs and packs inspect, and one JSON event per line from status --watch")
+    .option("--json", "print machine-readable output: one JSON object per step while a run happens, one JSON document from status, report, validate, packs, packs inspect, packs add, packs update and packs approve, and one JSON event per line from status --watch")
     .configureHelp({ showGlobalOptions: true })
     .exitOverride()
     .configureOutput({ writeOut: (text) => out.stdout.write(text), writeErr: (text) => out.stderr.write(text) });
@@ -356,6 +357,68 @@ export async function runCli(io: CliIo): Promise<number> {
       const { packsCheckCommand } = await import("./packs-check-command.js");
       const ctx = ctxFor(command);
       exitCode = await packsCheckCommand(path, options, ctx, inquirerAsk(ctx.colour));
+    });
+
+  packs
+    .command("add")
+    .description("add a pack someone has published on npm: you see exactly what it will do, and nothing is added until you say yes")
+    .argument("<package>", "the npm package, such as @acme/delivery-pack-docs, optionally with @ and a version")
+    .option("--approve <fingerprint>", "add without being asked, only if the pack has this fingerprint, as its account shows it")
+    .action(async (pkg: string, options: { approve?: string }, command: Command) => {
+      const { packsAddCommand } = await import("./packs-add-command.js");
+      const ctx = ctxFor(command);
+      exitCode = await packsAddCommand(pkg, ctx, inquirerAsk(ctx.colour), npmSource(ctx.env), { approve: options.approve });
+    });
+
+  packs
+    .command("restore")
+    .description(
+      "fetch an added pack again at the version in its record, check it matches what was approved, and put its files back",
+    )
+    .argument("<name>", "the added pack to restore, by its name from `delivery packs`, such as docs-drift")
+    .action(async (name: string, _options: unknown, command: Command) => {
+      const { packsRestoreCommand } = await import("./packs-restore-command.js");
+      const ctx = ctxFor(command);
+      exitCode = await packsRestoreCommand(name, ctx, npmSource(ctx.env));
+    });
+
+  packs
+    .command("update")
+    .description(
+      "take a newer version of an added pack: shows what changes, in short and line by line, and changes nothing until you say yes",
+    )
+    .argument("<name>", "the added pack to update, by its name from `delivery packs`, such as docs-drift")
+    .argument(
+      "[request]",
+      "the version, range or tag to move to, such as 1.3.0; without it, what the pack was added with, usually latest",
+    )
+    .option("--approve <fingerprint>", "update without being asked, only if the new version has this fingerprint, as the change shows it")
+    .action(async (name: string, request: string | undefined, options: { approve?: string }, command: Command) => {
+      const { packsUpdateCommand } = await import("./packs-update-command.js");
+      const ctx = ctxFor(command);
+      exitCode = await packsUpdateCommand(name, request, ctx, inquirerAsk(ctx.colour), npmSource(ctx.env), { approve: options.approve });
+    });
+
+  packs
+    .command("approve")
+    .description("approve an added pack whose record says it was not approved, after reading its full account")
+    .argument("<name>", "the added pack to approve, by its name from `delivery packs`, such as docs-drift")
+    .option("--approve <fingerprint>", "approve without being asked, only if the pack has this fingerprint, as its account shows it")
+    .action(async (name: string, options: { approve?: string }, command: Command) => {
+      const { packsApproveCommand } = await import("./packs-approve-command.js");
+      const ctx = ctxFor(command);
+      exitCode = await packsApproveCommand(name, ctx, inquirerAsk(ctx.colour), { approve: options.approve });
+    });
+
+  packs
+    .command("remove")
+    .description(
+      "take an added pack out of the project: names the workflows that will stop existing, then deletes its kept files and its record entry",
+    )
+    .argument("<name>", "the added pack to remove, by its name from `delivery packs`, such as docs-drift")
+    .action(async (name: string, _options: unknown, command: Command) => {
+      const { packsRemoveCommand } = await import("./packs-remove-command.js");
+      exitCode = await packsRemoveCommand(name, ctxFor(command));
     });
 
   packs

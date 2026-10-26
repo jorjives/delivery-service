@@ -3,6 +3,7 @@ import { z } from "zod";
 import { GuardName, Severity } from "../schema.js";
 import type { JsonSchema } from "../report/json-schema.js";
 import { hasHidden } from "./hidden-characters.js";
+import { PathValue, PathsValue, SeverityValue, TextValue } from "./setting-types.js";
 
 /** The versions of the pack format this build reads. `/2` is read, never written. */
 export const PACK_SCHEMAS_READ = ["delivery.pack/2", "delivery.pack/3"] as const;
@@ -11,7 +12,7 @@ export type PackSchemaVersion = (typeof PACK_SCHEMAS_READ)[number];
 /** The version of the pack format this build writes. Additive-only within the major. */
 export const PACK_SCHEMA = "delivery.pack/3";
 
-const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lower-case letters, digits and dashes");
+export const Slug = z.string().regex(/^[a-z0-9][a-z0-9-]*$/, "must be lower-case letters, digits and dashes");
 const Sentence = z
   .string()
   .trim()
@@ -53,6 +54,8 @@ const ActWorkflow = z.strictObject({
   summary: Sentence.optional(),
   guards: z.strictObject({ add: z.array(GuardName).min(1) }).optional(),
   hold: z.strictObject({ atOrAbove: Severity }).optional(),
+  /** The severity setting whose value this act holds at; not with `hold`. */
+  holdSetting: Slug.optional(),
 });
 
 /** One workflow a pack holds: a find that scans for ideas, or an act that fixes one. */
@@ -60,6 +63,18 @@ export const PackWorkflow = z.discriminatedUnion("kind", [FindWorkflow, ActWorkf
 export type FindWorkflow = z.infer<typeof FindWorkflow>;
 export type ActWorkflow = z.infer<typeof ActWorkflow>;
 export type PackWorkflow = z.infer<typeof PackWorkflow>;
+
+const declaration = <T extends string, D extends z.ZodType>(type: T, value: D) =>
+  z.strictObject({ type: z.literal(type), summary: Sentence, default: value.optional() });
+
+/** One setting a pack asks its owner for. No default means the owner must give a value. A default obeys its type's own rules. */
+export const SettingDeclaration = z.discriminatedUnion("type", [
+  declaration("text", TextValue),
+  declaration("path", PathValue),
+  declaration("paths", PathsValue),
+  declaration("severity", SeverityValue),
+]);
+export type SettingDeclaration = z.infer<typeof SettingDeclaration>;
 
 /**
  * A pack's manifest as `delivery.pack/3` writes it. Data only and strict: a key this format does not
@@ -75,6 +90,8 @@ export const PackManifest = z.strictObject({
   title: Sentence,
   summary: Sentence,
   workflows: z.record(Slug, PackWorkflow),
+  /** What the pack asks the project owner for, each setting named by its key. A prompt uses one as `{{settings.<name>}}`. */
+  settings: z.record(Slug, SettingDeclaration).optional(),
 });
 export type PackManifest = z.infer<typeof PackManifest>;
 

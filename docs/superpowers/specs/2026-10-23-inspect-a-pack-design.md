@@ -5,7 +5,7 @@ seeded_by: []
 # Delivery Service: Inspect a Pack Before Trusting It: Design
 
 > **Roadmap:** `docs/superpowers/specs/2026-10-22-pluggable-architecture-roadmap.md` — Item 2
-> **Status:** Draft, awaiting slicing
+> **Status:** ✅ Complete — 2026-10-24 — all 5 slices delivered
 > **Created:** 2026-10-23
 > **Builds on:** packs for any workflow (`docs/superpowers/specs/2026-10-23-packs-for-any-workflow-design.md`), task packs (`docs/superpowers/specs/2026-10-03-task-packs-design.md`, `src/packs/`, `docs/task-packs.md`).
 > **Audit trail:** `docs/prd/2026-10-23-inspect-a-pack/` (`research.md` cited as R§n, `product-design.md` as P§n, `architecture.md` as A§n). Where this document and an approved artefact differ in detail, the artefact wins.

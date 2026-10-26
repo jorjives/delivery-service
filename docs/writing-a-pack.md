@@ -95,7 +95,7 @@ Every key a `delivery.pack/3` `pack.json` may hold is listed here, and any other
 | `title` | `string` | The pack's title, such as `My moves`. Required. |
 | `summary` | `string` | One sentence saying what the pack is for. Required. |
 | `workflows` | `object` | The workflows, each named by its key: exactly one find, and one or more acts, as described below. Required. |
-| `settings` | (reserved) | Reserved for pack settings. This release does not read them, so a pack that has one is refused. |
+| `settings` | `object` | Values the pack asks the project owner for, each named by its key in lower-case letters, digits and dashes. Optional. See [Settings](#settings) below. |
 
 ### A find workflow
 
@@ -117,7 +117,20 @@ An act workflow changes the project to fix one idea. Holds:
 | `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `code.md`. Required. |
 | `summary` | `string` | One sentence saying what the act is for, in the words the scanner is shown. Required when the find offers more than one act, so the scanner can choose between them. |
 | `guards` | `object` | `{ "add": ["tests-unchanged"] }`: [guards](glossary.md#guard) this act turns on. Each name must be one that `delivery packs --schema` lists. Holds only `add`. Optional. |
+| `holdSetting` | `string` | The name of a `severity` setting whose value the owner can change: fixes of ideas rated that or more serious wait for the owner's sign-off. Not with `hold`. Optional. |
 | `hold` | `object` | `{ "atOrAbove": "high" }`: fixes of ideas rated this or more serious wait for the owner's sign-off. `atOrAbove` is `critical`, `high`, `medium` or `low`. Holds only `atOrAbove`. Optional. |
+
+### Settings
+
+A setting is a value the pack asks the project owner for. Each one is declared under `settings`, named by its key:
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| `type` | `"text"`, `"path"`, `"paths"` or `"severity"` | Required. |
+| `summary` | `string` | One line saying what the setting is for. Required. |
+| `default` | by `type` | The value used when the owner gives none. Optional: with no default, the owner must give a value. |
+
+A prompt uses a setting as `{{settings.<name>}}`, and the owner gives values under `packSettings` in `delivery.config.json`.
 
 ### The rules a pack keeps
 
@@ -125,7 +138,12 @@ An act workflow changes the project to fix one idea. Holds:
 - Every name in a find's `ideasFor` is an act workflow in the same pack.
 - Every act workflow is named in some find's `ideasFor`, so an idea can reach it.
 - An act that a find chooses between has a `summary`.
-- `{{settings.` is reserved in prompts, for pack settings this release does not read.
+- A prompt's `{{settings.<name>}}` is replaced by the owner's value, or the default, when the project loads the pack.
+- Every `{{settings.<name>}}` names a declared setting.
+- Every declared setting is used by a prompt or by an act's `holdSetting`, so the owner is never asked for a value nothing reads.
+- An act's `holdSetting` names a declared `severity` setting, and an act has `hold` or `holdSetting`, not both.
+- A pack declares at most 32 settings.
+- Each setting has a `summary`.
 - A pack cannot name a gate, an agent, tools, a closer, `after` steps or commands. A key that tries is refused with a sentence such as `"gate" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check`.
 
 ### The sentences you may see
@@ -140,7 +158,10 @@ An act workflow changes the project to fix one idea. Holds:
 | `"workflows.tests" is not listed in any find workflow's "ideasFor", so no idea could reach it` | Add it to a find's `ideasFor`, or remove it. |
 | `"workflows.code.summary" is missing: the find workflow "scan" needs it to choose between "code" and "tests"` | Add a one-sentence `summary` to the act. |
 | `"workflows.scan.summary" is only for act workflows` | Remove the key from the find. |
-| `"settings" is reserved for pack settings, which this harness does not read yet` | Remove `settings`. |
+| `"workflows.code.holdSetting" cannot be used with "hold" on the same workflow: give the severity as the setting's default, and remove "hold"` | Remove `hold`, and give the severity as the `default` of the setting `holdSetting` names. |
+| `"workflows.code.holdSetting" is "docs-folder", a path setting: a hold must name a severity setting` | Name a `severity` setting in `holdSetting`, or remove the key. |
+| `"settings.docs-folder" has no summary. Say in one line what it is for` | Add a one-line `summary` to the setting. |
+| `docs.md uses {{settings.docs-foldr}}, but pack.json declares no setting of that name. Declared: docs-folder` | Correct the name in the prompt to a declared setting, or declare it under `settings`. |
 | `code.md: is not valid UTF-8 text, so what is shown could differ from what the agent is given.` | Save the file as UTF-8 text. |
 | `tests.md: is a folder, not a file.` | Name a file, not a folder. |
 | `"schema" is "delivery.pack/4", a newer pack format than this harness reads (delivery.pack/2 and delivery.pack/3): upgrade delivery-service to read this pack` | Upgrade delivery-service. |
@@ -307,6 +328,8 @@ See [`packs`](configuration-reference.md#packs). Then start it by name:
 ```bash
 delivery review mymoves
 ```
+
+Before you share it, run `delivery packs inspect ./my-pack` to see it as an owner will, and to be told about any file in the folder a pack should not hold.
 
 `delivery review <name>` starts a pack's find, whatever it is called. This runs a real review of your project with a real agent, so Claude Code must be signed in. It adds ideas to your backlog. To have them changed with `delivery approve` and `delivery run --sources`, the acts the ideas name run as the pack's `<name>:<act>` workflows. See [Review your project](task-packs.md).
 

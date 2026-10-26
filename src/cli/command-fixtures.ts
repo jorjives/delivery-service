@@ -1,8 +1,10 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
+import { vi } from "vitest";
 import { DEFAULT_BUDGETS } from "../budgets.js";
 import { ledgerPath } from "../item-ledger.js";
 import { create, setBaseBranch, setOutcome, writeRef } from "../case-file.js";
@@ -29,6 +31,18 @@ import { initTempRepo } from "../temp-repo.js";
 export { runsRoot };
 
 /** Test support: the scratch project the command tests run against, and the task they give it. */
+/** Runs `body` with `TMPDIR` pointing at a private empty folder, so folders made by other test files running at once cannot show in a count of this one's. */
+export const withPrivateTmpdir = async (body: (dir: string) => Promise<void>): Promise<void> => {
+  const own = mkdtempSync(join(tmpdir(), "private-tmp-"));
+  vi.stubEnv("TMPDIR", own);
+  try {
+    await body(own);
+  } finally {
+    vi.unstubAllEnvs();
+    rmSync(own, { recursive: true, force: true });
+  }
+};
+
 export const PACKAGE = JSON.stringify({ name: "scratch", private: true, scripts: { test: "exit 0" } });
 export const TASK = "add a function that says hello to a name, with a test";
 export const GATE: GateRef = { type: "command", command: "npm test", parseMode: "exitcode" };
@@ -52,6 +66,75 @@ export const MOVES_FILES: Record<string, string> = {
   "moves-pack/tests.md": "# Move tests\n",
 };
 
+/** What a `/3` find-and-act test pack is made of: its folder, name, words, settings, the act's summary and its two prompts. */
+interface FindAndActPack {
+  folder: string;
+  name: string;
+  title: string;
+  summary: string;
+  settings: Record<string, unknown>;
+  fixSummary: string;
+  prompts: { look: string; fix: string };
+}
+
+/** Private: writes a `/3` pack with a find `look` offering an act `fix`, under `repo`, as the test packs below are written. */
+function writeFindAndActPack(repo: string, pack: FindAndActPack): void {
+  const dir = join(repo, pack.folder);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, "pack.json"),
+    JSON.stringify({
+      schema: "delivery.pack/3",
+      name: pack.name,
+      version: "1.0.0",
+      title: pack.title,
+      summary: pack.summary,
+      settings: pack.settings,
+      workflows: {
+        look: { kind: "find", prompt: "look.md", ideasFor: ["fix"] },
+        fix: { kind: "act", summary: pack.fixSummary, prompt: "fix.md" },
+      },
+    }),
+  );
+  writeFileSync(join(dir, "look.md"), pack.prompts.look);
+  writeFileSync(join(dir, "fix.md"), pack.prompts.fix);
+}
+
+/**
+ * Test support: a `/3` pack named `needy` in folder `needy-pack/` under `repo`, with a find `look` offering an act `fix`, and a
+ * required setting `docs-folder` with no default that both prompts use. A project lists it under `packs` as `needy-pack`.
+ */
+export function writeNeedyPack(repo: string): void {
+  writeFindAndActPack(repo, {
+    folder: "needy-pack",
+    name: "needy",
+    title: "Needy",
+    summary: "Needs a setting.",
+    settings: { "docs-folder": { type: "path", summary: "The folder that holds your documentation." } },
+    fixSummary: "Documentation that is out of date.",
+    prompts: { look: "# Look\n\nRead {{settings.docs-folder}}.\n", fix: "# Fix\n\nFix {{settings.docs-folder}}.\n" },
+  });
+}
+
+/**
+ * Test support: a `/3` pack named `guide` in folder `guide-pack/` under `repo`, with a find `look` offering an act `fix`. Its
+ * required setting `docs-folder` has no default, and `tone` defaults to `plain English`. A project lists it as `guide-pack`.
+ */
+export function writeGuidePack(repo: string): void {
+  writeFindAndActPack(repo, {
+    folder: "guide-pack",
+    name: "guide",
+    title: "Guide",
+    summary: "Keeps your documentation up to date.",
+    settings: {
+      "docs-folder": { type: "path", summary: "The folder that holds your documentation." },
+      tone: { type: "text", summary: "How the pages should read.", default: "plain English" },
+    },
+    fixSummary: "A page that is out of date.",
+    prompts: { look: "# Look\n\nRead {{settings.docs-folder}}.\n", fix: "# Fix\n\nFix {{settings.docs-folder}} in {{settings.tone}}.\n" },
+  });
+}
+
 /** Test support: a `delivery.pack/2` pack in folder `folder`, named after it without its `-pack` ending, with a scan and a fix prompt beside it. */
 export const V2_FILES = (folder: string): Record<string, string> => ({
   [`${folder}/pack.json`]: JSON.stringify({
@@ -70,6 +153,24 @@ export const V2_FILES = (folder: string): Record<string, string> => ({
 /** Test support: a project that lists the `/3` moves pack, with `files` overriding or adding any of its files. */
 export const movesProject = (files: Record<string, string> = {}): string =>
   initTempRepo("moves-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ packs: ["moves-pack"] }), ...MOVES_FILES, ...files });
+
+/** Test support: the shipped docs example pack, as a project's copy of it under `docs-pack/`. */
+const DOCS_PACK = fileURLToPath(new URL("../../examples/docs-pack/", import.meta.url));
+const DOCS_PACK_FILES: Record<string, string> = Object.fromEntries(
+  readdirSync(DOCS_PACK).map((name) => [`docs-pack/${name}`, readFileSync(join(DOCS_PACK, name), "utf-8")]),
+);
+
+/**
+ * Test support: a project that lists the docs example pack, with one page, `docs/api.md`, holding a line a fix removes.
+ * `packSettings` is the owner's values for the pack, when given.
+ */
+export const docsProject = (packSettings?: Record<string, unknown>): string =>
+  initTempRepo("docs-", {
+    "package.json": PACKAGE,
+    "delivery.config.json": JSON.stringify({ packs: ["docs-pack"], ...(packSettings === undefined ? {} : { packSettings }) }),
+    "docs/api.md": "# API\n\nRun the old build with `npm run legacy-build`.\n\nCall `render()` to draw a page.\n",
+    ...DOCS_PACK_FILES,
+  });
 
 /** A whole run, agent sessions and git included, needs longer than vitest's default. */
 export const RUN_TIMEOUT = 60_000;

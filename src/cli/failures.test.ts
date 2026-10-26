@@ -20,8 +20,16 @@ import {
   InvalidPack,
   UnknownPack,
   DamagedReview,
+  PackSpecRefused,
+  PackSourceUnavailable,
+  PackIntegrityMismatch,
+  PackLockInvalid,
+  InstalledPackRefused,
 } from "../errors.js";
+import type { LockEntry } from "../packs/install/lock.js";
+import { builtInPacks } from "../packs/manifest.js";
 import { EXIT, Refusal, renderFailure, UNEXPECTED_FOOTER } from "./failures.js";
+import { refusedLines } from "./installed-render.js";
 
 /** Harness vocabulary a person using the command should never have to learn. */
 const JARGON = /worktree|envelope|surface|terminus|[A-Z]{2,}_[A-Z_]+/;
@@ -58,6 +66,17 @@ describe("renderFailure", () => {
     [new MissingBaseline("/r/.delivery/runs/x"), EXIT.unexpected, "This is a bug"],
     [new IllegalStateTransition("/r/.delivery/runs/x", "TRIAGE", "triage"), EXIT.unexpected, "This is a bug"],
     [new ParseError("unexpected token"), EXIT.unexpected, "This is a bug"],
+    [new PackSpecRefused("github:a/b", "git"), EXIT.configuration, "looks like a git address"],
+    [new PackSpecRefused("https://a.test/x.tgz", "web"), EXIT.configuration, "looks like a web address"],
+    [new PackSpecRefused("./pack", "path"), EXIT.configuration, "folder or file on this machine"],
+    [new PackSpecRefused("a b", "name"), EXIT.configuration, "is not an npm package name"],
+    [new PackSourceUnavailable("docs-pack", "latest", "no-npm", ""), EXIT.configuration, "this needs npm to fetch the package, and npm was not found"],
+    [new PackSourceUnavailable("docs-pack", "latest", "not-found", ""), EXIT.configuration, "npm has no package called docs-pack"],
+    [new PackSourceUnavailable("docs-pack", "9.0.0", "no-version", ""), EXIT.configuration, "docs-pack has no version 9.0.0 on npm"],
+    [new PackSourceUnavailable("docs-pack", "latest", "unreachable", ""), EXIT.configuration, "npm could not be reached"],
+    [new PackSourceUnavailable("docs-pack", "latest", "failed", "EACCES"), EXIT.configuration, "npm could not fetch docs-pack (EACCES)"],
+    [new PackIntegrityMismatch("docs-pack", "1.0.0", "sha512-a", "sha512-b"), EXIT.configuration, "does not match what npm published"],
+    [new PackLockInvalid("/r/.delivery/packs.lock.json", "packs.x.version", "is missing"), EXIT.configuration, "record of added packs"],
   ])("renders %o in plain language with its mapped exit code", (err, exitCode, mentions) => {
     const rendered = renderFailure(err);
     expect(rendered.exitCode).toBe(exitCode);
@@ -108,6 +127,29 @@ describe("renderFailure", () => {
     });
   });
 
+  it("refuses every unusable added pack at once, each with its state and its command, and exits as a set-up problem", async () => {
+    const repo = "/r";
+    const entry: LockEntry = {
+      source: "npm",
+      package: "@acme/delivery-pack-docs",
+      request: "latest",
+      version: "1.2.0",
+      integrity: `sha512-${"A".repeat(86)}==`,
+      fingerprint: `delivery.pack-hash/1:${"a".repeat(64)}`,
+      approved: `delivery.pack-hash/1:${"a".repeat(64)}`,
+      files: {},
+    };
+    const pack = (await builtInPacks())[0];
+    if (pack === undefined) throw new Error("the harness ships at least one pack");
+    const missing = { name: "docs-drift", state: "missing" as const, entry };
+    const unapproved = { name: "other", state: "unapproved" as const, entry: { ...entry, approved: `delivery.pack-hash/1:${"b".repeat(64)}` }, pack };
+    const rendered = renderFailure(new InstalledPackRefused(repo, [missing, unapproved]));
+    expect(rendered.exitCode).toBe(EXIT.configuration);
+    expect(rendered.message).toContain(refusedLines(repo, missing)[0]);
+    expect(rendered.message).toContain(refusedLines(repo, unapproved)[0]);
+    expect(rendered.message).not.toMatch(JARGON);
+  });
+
   it("names a damaged review and offers a fresh one, with no stack trace", () => {
     expect(renderFailure(new DamagedReview("/p/.delivery/packs/code-x/review.json"))).toEqual({
       message:
@@ -115,5 +157,35 @@ describe("renderFailure", () => {
         "Run the review again to make a new one, for example: delivery review code",
       exitCode: EXIT.unexpected,
     });
+  });
+});
+
+describe("renderFailure for a restore", () => {
+  it("leads with Not restored, and drops the add-only clause, when npm is missing", () => {
+    expect(renderFailure(new PackSourceUnavailable("x", "1.2.0", "no-npm", "", "restore")).message).toBe(
+      "Not restored: this needs npm to fetch the package, and npm was not found.",
+    );
+  });
+
+  it.each(["not-found", "no-version", "failed"] as const)("leads with Not updated when an update's npm says %s", (reason) => {
+    const { message } = renderFailure(new PackSourceUnavailable("@acme/x", "latest", reason, "boom", "update"));
+    expect(message.startsWith("Not updated:")).toBe(true);
+  });
+  it("says runs of added packs are not affected when an update cannot reach npm", () => {
+    expect(renderFailure(new PackSourceUnavailable("@acme/x", "latest", "unreachable", "", "update")).message)
+      .toBe("Not updated: npm could not be reached. Nothing was changed. Runs of packs already added are not affected.");
+  });
+  it("says runs do not need npm when an update finds no npm", () => {
+    expect(renderFailure(new PackSourceUnavailable("@acme/x", "latest", "no-npm", "", "update")).message)
+      .toBe("Not updated: this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.");
+  });
+  it("leads an update's integrity mismatch with Not updated", () => {
+    expect(renderFailure(new PackIntegrityMismatch("@acme/x", "1.3.0", "sha512-A", "sha512-B", "update")).message.startsWith("Not updated:")).toBe(true);
+  });
+
+  it("keeps the add wording by default", () => {
+    expect(renderFailure(new PackSourceUnavailable("x", "1.2.0", "no-npm", "")).message).toBe(
+      "Not added: this needs npm to fetch the package, and npm was not found. Runs of packs already added do not need npm.",
+    );
   });
 });

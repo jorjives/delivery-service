@@ -5,7 +5,8 @@
 import { describe, expect, it } from "vitest";
 import { withPackWorkflows } from "../src/cli/pack-workflows.js";
 import { delivery, PACKAGE } from "../src/cli/command-fixtures.js";
-import { INSPECT_RULE, INSPECT_WIDTH } from "../src/cli/packs-inspect-render.js";
+import { INSPECT_RULE } from "../src/cli/packs-inspect-render.js";
+import { INSPECT_WIDTH } from "../src/cli/text-wrap.js";
 import { inspectionOf, NO_PROJECT } from "../src/packs/inspection.js";
 import { builtInPacks, promptOf } from "../src/packs/manifest.js";
 import { readPackFolder } from "../src/packs/pack-folder.js";
@@ -31,8 +32,8 @@ const packs = await builtInPacks();
 
 describe.each(packs.map((p) => [p.manifest.name, p] as const))("the built-in pack %s", (name, pack) => {
   it("is shown as a run uses it: each workflow's instructions, guards and hold", async () => {
-    const run = (await withPackWorkflows({}, process.cwd())).workflows ?? {};
-    const inspection = inspectionOf(pack, NO_PROJECT, []);
+    const run = (await withPackWorkflows({}, process.cwd(), undefined)).workflows ?? {};
+    const inspection = inspectionOf(pack, NO_PROJECT, [], null);
     expect(inspection.workflows.map((w) => w.name).sort()).toEqual(Object.keys(pack.workflows).sort());
     for (const workflow of inspection.workflows) {
       const ran = run[workflow.name];
@@ -47,7 +48,7 @@ describe.each(packs.map((p) => [p.manifest.name, p] as const))("the built-in pac
   });
 
   it("shows its find exactly as delivery review --preview gives it to the agent", async () => {
-    const find = inspectionOf(pack, NO_PROJECT, []).workflows.find((w) => w.kind === "find");
+    const find = inspectionOf(pack, NO_PROJECT, [], null).workflows.find((w) => w.kind === "find");
     if (!find?.steps[0]) throw new Error("no find workflow");
     const project = initTempRepo("inspect-preview-", { "package.json": PACKAGE, "a.js": "x\n" });
     const { exitCode, stdout } = await delivery(["review", name, "--preview"], { cwd: project });

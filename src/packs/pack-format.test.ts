@@ -23,6 +23,33 @@ const EXAMPLE_V3 = {
   },
 };
 
+const WITH_SETTINGS = {
+  ...EXAMPLE_V3,
+  settings: {
+    "docs-folder": { type: "path", summary: "The folder that holds your documentation.", default: "docs" },
+    "old-module": { type: "text", summary: "The module the project is moving away from." },
+    areas: { type: "paths", summary: "Where to look.", default: ["src", "lib"] },
+    "hold-from": { type: "severity", summary: "Moves this serious or more wait.", default: "high" },
+  },
+};
+
+describe("a pack's settings", () => {
+  it("reads settings of each type, with and without a default", () => expect(PackManifest.safeParse(WITH_SETTINGS).success).toBe(true));
+  it("reads an act whose hold is a setting", () =>
+    expect(PackManifest.safeParse({ ...WITH_SETTINGS, workflows: { ...WITH_SETTINGS.workflows, code: { kind: "act", prompt: "code.md", holdSetting: "hold-from" } } }).success).toBe(true));
+  it.each([
+    ["a name that is not kebab-case", { Docs_Folder: { type: "path", summary: "x" } }],
+    ["a type it does not name", { a: { type: "choice", summary: "x" } }],
+    ["no summary", { a: { type: "text" } }],
+    ["a two-line summary", { a: { type: "text", summary: "two\nlines" } }],
+    ["a default that fails its type", { a: { type: "path", summary: "x", default: "/etc" } }],
+    ["a default with {{", { a: { type: "text", summary: "x", default: "a {{ b" } }],
+    ["a default with a line break", { a: { type: "text", summary: "x", default: "a\nb" } }],
+    ["an unknown key in a declaration", { a: { type: "text", summary: "x", command: "rm -rf /" } }],
+  ])("refuses %s", (_, settings) => expect(PackManifest.safeParse({ ...EXAMPLE_V3, settings }).success).toBe(false));
+  it("still refuses settings in a delivery.pack/2 manifest", () => expect(PackManifestV2.safeParse({ ...v2, settings: {} }).success).toBe(false));
+});
+
 describe("the pack format's constants", () => {
   it("names the version it writes and the versions it reads", () => {
     expect(PACK_SCHEMA).toBe("delivery.pack/3");
@@ -60,10 +87,11 @@ describe("the pack format's JSON Schema", () => {
   it.each([
     ["an unknown key on a find", (m: Manifest) => (at(m, "scan").tools = ["Bash"])],
     ["an act-only key on a find", (m: Manifest) => (at(m, "scan").hold = { atOrAbove: "high" })],
+    ["holdSetting on a find", (m: Manifest) => (at(m, "scan").holdSetting = "hold-from")],
     ["an unknown key on an act", (m: Manifest) => (at(m, "code").gate = "npm test")],
     ["a kind it does not name", (m: Manifest) => (at(m, "scan").kind = "scna")],
     ["a guard it does not name", (m: Manifest) => (at(m, "code").guards = { add: ["no-such-guard"] })],
-    ["a top-level key it does not name", (m: Manifest) => (m.settings = {})],
+    ["a top-level key it does not name", (m: Manifest) => (m.gate = "npm test")],
   ])("flags %s as an editor would", (_, edit) => {
     const m = structuredClone(EXAMPLE_V3) as Manifest;
     edit(m);
@@ -80,6 +108,15 @@ describe("the pack format's stability promise", () => {
   });
   it("keeps every key and name ever published, each the kind of value it was", () => expect(promised.filter((l) => !current.includes(l))).toEqual([]));
   it("puts every key and name published now under the promise: add its line to pack-published-keys.txt", () => expect(current.filter((l) => !promised.includes(l))).toEqual([]));
+  it("adds holdSetting as the only hold line, and keeps every other", () => {
+    const holdLines = current.filter((l) => l.startsWith("delivery.pack/3.workflows.*.hold"));
+    expect(holdLines).toEqual([
+      'delivery.pack/3.workflows.*.hold.atOrAbove = "critical"', 'delivery.pack/3.workflows.*.hold.atOrAbove = "high"',
+      'delivery.pack/3.workflows.*.hold.atOrAbove = "low"', 'delivery.pack/3.workflows.*.hold.atOrAbove = "medium"',
+      "delivery.pack/3.workflows.*.hold.atOrAbove: string", "delivery.pack/3.workflows.*.hold: object (optional)",
+      "delivery.pack/3.workflows.*.holdSetting: string (optional)",
+    ]);
+  });
 });
 
 describe("text a pack shows the owner", () => {

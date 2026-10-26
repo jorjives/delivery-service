@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -8,7 +8,7 @@ import type { MockScript } from "../mock-script.js";
 import { repoLocked, takeRepoLock } from "../repo-lock.js";
 import { initTempRepo } from "../temp-repo.js";
 import { TEST_MOCK_SCRIPT } from "./agent-session.js";
-import { delivery, movesProject, MOVES_FILES, PACKAGE, RUN_TIMEOUT, scriptFile } from "./command-fixtures.js";
+import { delivery, movesProject, MOVES_FILES, PACKAGE, RUN_TIMEOUT, scriptFile, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { ideasScript, type ScriptedIdea } from "../packs/review-fixtures.js";
 import { IDEA_CAP, resolvePack } from "../packs/manifest.js";
@@ -112,8 +112,20 @@ describe("delivery review", () => {
     const repo = initTempRepo("unlisted-", { "package.json": PACKAGE, ...MOVES_FILES });
     const { exitCode, stderr } = await delivery(["review", "./moves-pack"], { cwd: repo });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stderr.trimEnd()).toBe(`The pack "moves" in ${join(repo, "moves-pack")} is not one your project uses yet. List its folder under "packs" in delivery.config.json, then start it with: delivery review moves`);
+    const dir = join(repo, "moves-pack");
+    expect(stderr.trimEnd()).toBe([
+      `The pack "moves" in ${dir} is not one your project uses yet. See exactly what it will do first with: delivery packs inspect ${dir}`,
+      'To use it, list its folder under "packs" in delivery.config.json, then start it with: delivery review moves',
+    ].join("\n"));
     expect(stderr).not.toMatch(/the review/i);
+  });
+
+  it("quotes a folder path with a space in the inspect command it suggests, so it can be pasted", async () => {
+    const files = Object.fromEntries(Object.entries(MOVES_FILES).map(([name, text]) => [name.replace(/^moves-pack\//, "my moves/"), text]));
+    const repo = initTempRepo("unlisted-space-", { "package.json": PACKAGE, ...files });
+    const { exitCode, stderr } = await delivery(["review", "./my moves"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain(`delivery packs inspect '${join(repo, "my moves")}'\n`);
   });
 
   it("refuses a name no pack has, naming the built-in ones, in a project that lists none", async () => {
@@ -222,4 +234,18 @@ describe("a delivery.pack/3 pack's words", () => {
     expect(stdout).toContain("The pack raised 1 idea in GitHub, without the label you deliver by.");
     expect(gh.issues()).toHaveLength(1);
   }, RUN_TIMEOUT);
+});
+
+describe("delivery review with a required pack setting unset", () => {
+  it("refuses a built-in pack's review before any agent call, naming the pack and setting, and leaves the backlog on main unchanged", async () => {
+    const repo = project();
+    writeNeedyPack(repo);
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packs: ["needy-pack"] }));
+    const before = git(repo, ["rev-parse", "main"]);
+    const { exitCode, stderr } = await delivery(["review", "code"], { cwd: repo, env: await env(scan({ write: { path: IDEA_FILE, content: idea("return price - discount;") } })) });
+    expect(exitCode).toBe(EXIT.configuration);
+    expect(stderr).toContain("Nothing can run yet: the pack needy needs a setting");
+    expect(git(repo, ["rev-parse", "main"])).toBe(before);
+    expect(existsSync(join(repo, IDEA_FILE))).toBe(false);
+  });
 });

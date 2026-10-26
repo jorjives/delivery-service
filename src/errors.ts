@@ -1,3 +1,5 @@
+import type { UnusableInstalledPack } from "./packs/install/installed.js";
+
 export class FileNotFound extends Error {
   readonly code = "FILE_NOT_FOUND" as const;
   constructor(readonly surfaceDir: string, readonly filePath: string) {
@@ -220,5 +222,75 @@ export class DamagedReview extends Error {
   constructor(readonly filePath: string) {
     super(`Damaged review record ${filePath}`);
     this.name = "DamagedReview";
+  }
+}
+
+/** A package name an owner gave that is not a plain npm name: a git, web or local address, or not a name at all. */
+export class PackSpecRefused extends Error {
+  readonly code = "PACK_SPEC_REFUSED" as const;
+  constructor(
+    readonly spec: string,
+    readonly looksLike: "git" | "web" | "path" | "name",
+  ) {
+    super(`Not a plain npm package name: ${spec} (${looksLike})`);
+    this.name = "PackSpecRefused";
+  }
+}
+
+/** npm could not give the package an owner named: no npm, no such package or version, npm unreachable, or npm failed for another reason. */
+export class PackSourceUnavailable extends Error {
+  readonly code = "PACK_SOURCE_UNAVAILABLE" as const;
+  constructor(
+    readonly packageName: string,
+    readonly request: string,
+    readonly reason: "no-npm" | "not-found" | "no-version" | "unreachable" | "failed",
+    readonly detail: string,
+    readonly attempt: PackAttempt = "add",
+  ) {
+    super(`npm could not give ${packageName} ${request} (${reason})`);
+    this.name = "PackSourceUnavailable";
+  }
+}
+
+/** Which command asked npm for a pack: `add` for a new pack, `restore` for one already in the project, `update` for one whose recorded version is being moved. */
+export type PackAttempt = "add" | "restore" | "update";
+
+/** The bytes npm sent for a package do not match the integrity npm published for them. */
+export class PackIntegrityMismatch extends Error {
+  readonly code = "PACK_INTEGRITY_MISMATCH" as const;
+  constructor(
+    readonly packageName: string,
+    readonly version: string,
+    readonly expected: string,
+    readonly actual: string,
+    readonly attempt: PackAttempt = "add",
+  ) {
+    super(`The download of ${packageName} ${version} does not match its published integrity`);
+    this.name = "PackIntegrityMismatch";
+  }
+}
+
+/** The committed record of added packs cannot be read: the file, the field in it that is wrong (null when the whole file is), and what is wrong. */
+export class PackLockInvalid extends Error {
+  readonly code = "PACK_LOCK_INVALID" as const;
+  constructor(
+    readonly filePath: string,
+    readonly field: string | null,
+    readonly detail: string,
+  ) {
+    super(`Invalid record of added packs ${filePath}: ${field === null ? "" : `${field} `}${detail}`);
+    this.name = "PackLockInvalid";
+  }
+}
+
+/** Added packs that are not as the record approved them: refused together, so the owner sees every one at once. */
+export class InstalledPackRefused extends Error {
+  readonly code = "INSTALLED_PACK_REFUSED" as const;
+  constructor(
+    readonly repoPath: string,
+    readonly refused: readonly UnusableInstalledPack[],
+  ) {
+    super(`Added packs not as approved in ${repoPath}: ${refused.map(({ name }) => name).join(", ")}`);
+    this.name = "InstalledPackRefused";
   }
 }

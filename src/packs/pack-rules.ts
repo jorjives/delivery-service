@@ -62,13 +62,15 @@ export function ruleProblems(file: string, manifest: PackManifest): PackProblem[
  * sentence of its own. Undefined means the generic data-only sentence serves.
  */
 export function formatSentence(issue: Issue, raw: unknown): string | undefined {
+  if (issue.path.length === 3 && issue.path[0] === "settings" && issue.path[2] === "summary" && valueAt(raw, issue.path) === undefined) {
+    return `"settings.${String(issue.path[1])}" has no summary. Say in one line what it is for`;
+  }
   if (issue.code !== "unrecognized_keys") return undefined;
   const key = issue.keys[0];
   const field = `"${fieldOf(issue)}"`;
-  if (issue.path.length === 0 && key === "settings") return `${field} is reserved for pack settings, which this harness does not read yet`;
   if (issue.path.length !== 2 || issue.path[0] !== "workflows") return undefined;
   const kind = valueAt(raw, [...issue.path, "kind"]);
-  if (kind === "find" && (key === "summary" || key === "guards" || key === "hold")) return `${field} is only for act workflows`;
+  if (kind === "find" && (key === "summary" || key === "guards" || key === "hold" || key === "holdSetting")) return `${field} is only for act workflows`;
   if (kind === "act" && key === "ideasFor") return `${field} is only for find workflows`;
   return undefined;
 }

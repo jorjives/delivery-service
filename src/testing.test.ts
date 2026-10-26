@@ -9,11 +9,14 @@ describe("the public testing entry point", () => {
       "checkPack",
       "expectEnvelope",
       "fakeAgentPort",
+      "fakePackSource",
       "mockSessionEnvironment",
+      "packageTarball",
       "promptsSent",
       "readJournal",
       "runSupervisorAgainstMock",
       "runSurfaceAgainstMock",
+      "tarballOf",
       "writeMockScript",
     ]);
   });

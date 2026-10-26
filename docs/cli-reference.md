@@ -18,7 +18,7 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery status [run-id]` | Says what happened to a run; follows one with `--watch`; lists them with `--all` | [See what happened to a run](check-a-run.md) |
 | `delivery report [run-id]` | Says in plain words what happened to the task list and what to do next | [Read the report](read-a-report.md) |
 | `delivery review <pack> [repo]` | Starts a pack's find: an agent reads the project and adds ideas to the backlog | [Review your project](task-packs.md) |
-| `delivery packs` | Lists the packs you can use | [Packs](packs.md) |
+| `delivery packs` | Lists the packs you can use, and ends with how to see exactly what one will do; `--json` gives the same list, with each added pack's source and state, as the versioned document `delivery.packs/1` | [Packs](packs.md) |
 | `delivery backlog [id]` | Lists the ideas, open, held and parked items; shows one in full | [Work through a backlog](work-a-backlog.md) |
 | `delivery approve [ids...]` | Chooses ideas to be fixed by the next `run --sources` | [Review your project](task-packs.md) |
 | `delivery decline [ids...]` | Sets ideas aside | [Review your project](task-packs.md) |
@@ -28,7 +28,12 @@ work is good is called the gate in option names and settings, such as `--gate-co
 | `delivery unpark <item>` | Puts a parked item back in the queue | [Work through a backlog](work-a-backlog.md) |
 | `delivery drop-after [batch]` | Gives up after-landing steps that are waiting, such as a deploy you cannot fix | [Set up a project](project-configuration.md) |
 | `delivery packs check <path>` | Checks a pack folder of your own, then runs its fixtures against a scripted agent | [Write a pack](writing-a-pack.md) |
-| `delivery packs inspect <pack>` | Shows what a pack will do before you use it, for a built-in pack or any pack folder: what each workflow is for, how far it goes before it asks you, and every instruction it gives the agent; `--json` gives the same account as a versioned document for scripts | [Packs](packs.md) |
+| `delivery packs inspect <pack>` | Shows what a pack will do before you use it, for a built-in pack or any pack folder: what each workflow is for, how far it goes before it asks you, the settings it asks for and the value each would take, and every instruction it gives the agent; `--json` gives the same account as a versioned document for scripts | [Packs](packs.md#inspect-a-pack-before-you-use-it) |
+| `delivery packs add <package>` | Adds a pack someone has published on npm: shows the exact version and everything the pack will tell the agent, runs nothing from the package, and adds nothing until you say yes; without a terminal, it shows the account and is refused unless `--approve` gives the pack's fingerprint | [Packs](packs.md) |
+| `delivery packs restore <name>` | Fetches an added pack again at the version in its record, checks it matches what was approved, and puts its files back; changes nothing if npm now serves different contents for that version | [Packs](packs.md) |
+| `delivery packs update <name> [request]` | Takes a newer version of an added pack: shows the versions and fingerprints, what changed in short (sign-off, guards, workflows, checks and landing, widening), which instruction files changed and the changed lines, and changes nothing until you say yes; without a terminal it is refused, naming the command to run again, unless `--approve` gives the new version's fingerprint | [Packs](packs.md) |
+| `delivery packs approve <name>` | Approves an added pack whose record says it was not approved, after showing its full account; a pack whose files differ from the record cannot be approved where it stands; without a terminal it shows the account and is refused unless `--approve` gives the pack's fingerprint | [Packs](packs.md) |
+| `delivery packs remove <name>` | Takes an added pack out: names the workflows that will stop existing, then deletes its kept files and its entry in the record; changes nothing while your configuration still names one of its workflows | [Packs](packs.md) |
 | `delivery schedule enable` | Turns on a timer that runs `delivery run --sources` with its own config file, workflow, item cap and concurrency, or changes how often it runs. On a platform that has no scheduler backend yet, refuses and prints the crontab line to use instead: see [Use cron where there is no scheduler](run-on-a-schedule.md#use-cron-where-there-is-no-scheduler) | [Run on a schedule](run-on-a-schedule.md) |
 | `delivery schedule status` | Says, for every schedule the project has, whether it is on, when it last ran and will next run, and shows each schedule's run settings | [Run on a schedule](run-on-a-schedule.md) |
 | `delivery schedule disable` | Turns the default schedule off, the one `--name` names, or every schedule with `--all`; `delivery run --sources` still works by hand | [Run on a schedule](run-on-a-schedule.md) |
@@ -75,6 +80,9 @@ Every run holds the repository while it runs, so a second run started while one 
 | `packs check` | `--yes` | Skips the question about trusting the pack's code before its fixtures run; needed when there is no terminal |
 | `packs inspect` | `--schema` | Prints the JSON Schema of the document `--json` prints, `delivery.pack-inspection/1` |
 | `packs inspect` | `--workflow <name>` | Shows only this workflow, its limits and its instructions, with the pack's name, fingerprint and standing notes |
+| `packs add` | `--approve <fingerprint>` | Adds without asking, only if the pack has this fingerprint, as its account shows it; any other fingerprint is refused |
+| `packs update` | `--approve <fingerprint>` | Updates without asking, only if the new version has this fingerprint, as the change shows it under "Fingerprint after" |
+| `packs approve` | `--approve <fingerprint>` | Approves without asking, only if the pack has this fingerprint, as its account shows it; any other fingerprint is refused |
 | `schedule enable` | `--every <interval>` | Sets how often it runs: minutes that divide an hour (such as `5m`, `15m` or `30m`), hours that divide a day (such as `1h`, `6h` or `12h`), or `1d` (the default) |
 | `schedule enable` | `--name <name>` | Names the schedule, so a project can have several: 1 to 32 lowercase letters, digits or hyphens. Without it, sets up the project's default schedule. Refused when another project already holds that schedule's timer. For a worked example, see [two schedules on one project](run-on-a-schedule.md#worked-example-two-schedules-on-one-project) |
 | `schedule enable` | `--config <path>` | The config file each scheduled run uses (default: the project's own) |
@@ -144,7 +152,7 @@ When several tasks run at once, each object also carries a `scope`, and every ke
   on the run starting and finishing.
 
 `--json` is a global option. It changes the output of `run`, `resume`, `status`, `report`,
-`validate`, `packs`, `packs check` and `packs inspect`; other commands ignore it. Without it the output is
+`validate`, `packs`, `packs check`, `packs inspect`, `packs add`, `packs update` and `packs approve`; other commands ignore it. Without it the output is
 plain-language lines everywhere, piped or in CI included: nothing switches format on its own.
 The step lines are the running command's own account of itself and carry no version. To build
 on what a run did, use the versioned data in [Reports as data](reporting.md).

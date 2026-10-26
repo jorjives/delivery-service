@@ -1,13 +1,27 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import type { LockEntry } from "../packs/install/lock.js";
+import { entryFor } from "../packs/install/install-fixtures.js";
+import type { PackageFile } from "../packs/install/package-archive.js";
+import { installPack } from "../packs/install/store.js";
 import { builtInPacks } from "../packs/manifest.js";
 import { packSchema } from "../packs/pack-format.js";
 import { initTempRepo } from "../temp-repo.js";
-import { delivery } from "./command-fixtures.js";
+import { delivery, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
-import { packWorkflowClash } from "./pack-workflows.js";
+import { ADD_HINT, INSPECT_HINT } from "./packs-command.js";
+import { packWorkflowClash } from "./pack-clash.js";
+
+const encode = (text: string): Uint8Array => new TextEncoder().encode(text);
+
+/** The files of a delivery.pack/3 pack named `moves`, as `delivery packs add` would keep them. */
+const movesFiles = (): PackageFile[] => [
+  { path: "pack.json", bytes: encode(v3Pack("moves")) },
+  { path: "scan.md", bytes: encode("# Scan\n") },
+  { path: "code.md", bytes: encode("# Code\n") },
+];
 
 /** The contents of a delivery.pack/3 manifest named `name`, with a find `scan` offering an act `code`. */
 const v3Pack = (name: string, summary = "Moves calls off retired code."): string =>
@@ -19,6 +33,9 @@ const v3Pack = (name: string, summary = "Moves calls off retired code."): string
     summary,
     workflows: { scan: { kind: "find", prompt: "scan.md", ideasFor: ["code"] }, code: { kind: "act", prompt: "code.md" } },
   });
+
+/** The entry the add of the moves pack records. */
+const MOVES_ENTRY: LockEntry = await entryFor(movesFiles(), { package: "@acme/moves", request: "^1.2.0" });
 
 /** The contents of a delivery.pack/2 manifest named `name`. */
 const v2Pack = (name: string): string =>
@@ -36,8 +53,16 @@ describe("delivery packs", () => {
       `  deprecations  ${deprecations?.manifest.summary} Start it with: delivery review deprecations`,
       `  security      ${security?.manifest.summary} Start it with: delivery review security`,
     ]);
-    expect(lines.at(-1)).toBe("To use a pack folder of your own, list it under packs in delivery.config.json.");
+    expect(lines.at(-3)).toBe("To use a pack folder of your own, list it under packs in delivery.config.json.");
+    expect(lines.at(-1)).toBe("See exactly what a pack will do: delivery packs inspect <name>");
     expect(stdout).not.toMatch(/reviews? (are|is) available/i);
+  });
+
+  it("ends with how to see what a pack will do outside any repository too, and keeps it out of --json", async () => {
+    const outside = await delivery(["packs"], { cwd: mkdtempSync(join(tmpdir(), "no-repo-hint-")) });
+    expect(outside.stdout.trimEnd().split("\n").at(-1)).toBe(INSPECT_HINT);
+    const json = await delivery(["packs", "--json"], { cwd: initTempRepo("packs-hint-json-", { "a.js": "x\n" }) });
+    expect(json.stdout).not.toContain("packs inspect");
   });
 
   it("prints the pack format's JSON Schema with --schema, wherever it is asked", async () => {
@@ -50,7 +75,17 @@ describe("delivery packs", () => {
     const { exitCode, stdout } = await delivery(["packs", "--json"], { cwd: initTempRepo("packs-json-", { "a.js": "x\n" }) });
     expect(exitCode).toBe(EXIT.ok);
     const packs = await builtInPacks();
-    expect(JSON.parse(stdout)).toEqual({ packs: packs.map(({ manifest }) => ({ name: manifest.name, version: manifest.version, title: manifest.title, summary: manifest.summary })) });
+    expect(JSON.parse(stdout)).toEqual({
+      schema: "delivery.packs/1",
+      packs: packs.map(({ manifest }) => ({
+        name: manifest.name,
+        version: manifest.version,
+        title: manifest.title,
+        summary: manifest.summary,
+        source: { kind: "built-in", package: null },
+        state: null,
+      })),
+    });
   });
 
   it("lists a pack the project lists beside the built-in ones, aligned, with its start command", async () => {
@@ -70,6 +105,27 @@ describe("delivery packs", () => {
       `  deprecations  ${deprecations?.manifest.summary} Start it with: delivery review deprecations`,
       `  security      ${security?.manifest.summary} Start it with: delivery review security`,
       "  mymoves       Moves calls off retired code. Start it with: delivery review mymoves",
+    ]);
+  });
+
+  it("still works when a pack the project uses has a required setting with no value", async () => {
+    const repo = initTempRepo("packs-needy-", {
+      "delivery.config.json": JSON.stringify({ packs: ["my-pack", "needy-pack"] }),
+      "my-pack/pack.json": v3Pack("mymoves"),
+      "my-pack/scan.md": "# Scan\n",
+      "my-pack/code.md": "# Code\n",
+    });
+    writeNeedyPack(repo);
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const [code, deprecations, security] = await builtInPacks();
+    const lines = stdout.trimEnd().split("\n");
+    expect(lines.slice(1, 6)).toEqual([
+      `  code          ${code?.manifest.summary} Start it with: delivery review code`,
+      `  deprecations  ${deprecations?.manifest.summary} Start it with: delivery review deprecations`,
+      `  security      ${security?.manifest.summary} Start it with: delivery review security`,
+      "  mymoves       Moves calls off retired code. Start it with: delivery review mymoves",
+      "  needy         Needs a setting. Start it with: delivery review needy",
     ]);
   });
 
@@ -95,7 +151,14 @@ describe("delivery packs", () => {
     const { exitCode, stdout } = await delivery(["packs", "--json"], { cwd: repo });
     expect(exitCode).toBe(EXIT.ok);
     const packs = JSON.parse(stdout).packs;
-    expect(packs[packs.length - 1]).toEqual({ name: "mymoves", version: "1.0.0", title: "Moves", summary: "Moves calls off retired code." });
+    expect(packs[packs.length - 1]).toEqual({
+      name: "mymoves",
+      version: "1.0.0",
+      title: "Moves",
+      summary: "Moves calls off retired code.",
+      source: { kind: "folder", package: null },
+      state: null,
+    });
   });
 
   it("refuses a listed pack with a mistake, naming its file and field", async () => {
@@ -129,7 +192,81 @@ describe("delivery packs", () => {
     });
     const { exitCode, stderr } = await delivery(["packs"], { cwd: repo });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stderr).toContain(packWorkflowClash("mine:scan"));
+    expect(stderr).toContain(
+      packWorkflowClash("mine:scan", { kind: "folder", pack: "mine", manifestFile: join(repo, "a", "pack.json") }, { kind: "folder", pack: "mine", manifestFile: join(repo, "b", "pack.json") }),
+    );
+  });
+
+  it("lists an added pack with its source and version, and says how to add one", async () => {
+    const repo = initTempRepo("packs-added-", { "a.js": "x\n" });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const width = Math.max(...(await builtInPacks()).map(({ manifest }) => manifest.name.length));
+    const lines = stdout.trimEnd().split("\n");
+    expect(lines).toContain(`  ${"moves".padEnd(width)}  Moves calls off retired code. From npm: @acme/moves 1.2.0. As approved. Start it with: delivery review moves`);
+    expect(lines.at(-2)).toBe(ADD_HINT);
+    expect(lines.at(-1)).toBe(INSPECT_HINT);
+  });
+
+  it("lists a changed added pack with its state and the command that fixes it, and exits 0", async () => {
+    const repo = initTempRepo("packs-changed-", { "a.js": "x\n" });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    writeFileSync(join(repo, ".delivery", "packs", "moves", "scan.md"), "# Scan, changed\n");
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const width = Math.max(...(await builtInPacks()).map(({ manifest }) => manifest.name.length));
+    expect(stdout.trimEnd().split("\n")).toContain(`  ${"moves".padEnd(width)}  From npm: @acme/moves 1.2.0. Changed since approved. Will not run. To fix: delivery packs restore moves`);
+  });
+
+  it("lists an unrecorded folder with the line that says so, and exits 0", async () => {
+    const repo = initTempRepo("packs-unrecorded-", { "a.js": "x\n" });
+    mkdirSync(join(repo, ".delivery", "packs", "stray"), { recursive: true });
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const width = Math.max(...(await builtInPacks()).map(({ manifest }) => manifest.name.length));
+    expect(stdout.trimEnd().split("\n")).toContain(`  ${"stray".padEnd(width)}  Not in the record. Will not run. Add it again, or remove .delivery/packs/stray`);
+  });
+
+  it("lists a changed added pack with its state under --json, exiting 0 as the plain list does", async () => {
+    const repo = initTempRepo("packs-changed-json-", { "a.js": "x\n" });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    writeFileSync(join(repo, ".delivery", "packs", "moves", "scan.md"), "# Scan, changed\n");
+    const { exitCode, stdout } = await delivery(["packs", "--json"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(JSON.parse(stdout).packs.at(-1)).toEqual({
+      name: "moves",
+      version: null,
+      title: null,
+      summary: null,
+      source: { kind: "installed", package: { name: "@acme/moves", version: "1.2.0" } },
+      state: "changed",
+    });
+  });
+
+  it("gives under --json the same packs, sources, versions and states as the plain list", async () => {
+    const repo = initTempRepo("packs-same-", {
+      "delivery.config.json": JSON.stringify({ packs: ["my-pack"] }),
+      "my-pack/pack.json": v3Pack("mymoves"),
+      "my-pack/scan.md": "# Scan\n",
+      "my-pack/code.md": "# Code\n",
+    });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    const plain = (await delivery(["packs"], { cwd: repo })).stdout.trimEnd().split("\n");
+    const { exitCode, stdout } = await delivery(["packs", "--json"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    const { packs } = JSON.parse(stdout);
+    expect(packs.map(({ name }: { name: string }) => name)).toEqual([...(await builtInPacks()).map(({ manifest }) => manifest.name), "mymoves", "moves"]);
+    for (const row of packs) {
+      const line = plain.find((candidate) => candidate.trimStart().split(/\s+/)[0] === row.name);
+      expect(line, `the plain list shows ${row.name}`).toBeDefined();
+      if (row.summary !== null) expect(line).toContain(row.summary);
+      if (row.source.package !== null) expect(line).toContain(`From npm: ${row.source.package.name} ${row.source.package.version}`);
+      if (row.state !== null) {
+        expect(row.state).toBe("ok");
+        expect(line).toContain("As approved.");
+      }
+    }
   });
 
   it("lists the built-in packs outside any repository", async () => {
@@ -137,4 +274,15 @@ describe("delivery packs", () => {
     expect(exitCode).toBe(EXIT.ok);
     expect(stdout).toContain("Start it with: delivery review code");
   });
+
+  it("lists a kept pack in a newer format with the upgrade note, and exits 0", async () => {
+    const repo = initTempRepo("packs-newer-", { "a.js": "x\n" });
+    await installPack(repo, "moves", movesFiles(), MOVES_ENTRY);
+    const manifestFile = join(repo, ".delivery", "packs", "moves", "pack.json");
+    writeFileSync(manifestFile, readFileSync(manifestFile, "utf-8").replace("delivery.pack/3", "delivery.pack/4"));
+    const { exitCode, stdout } = await delivery(["packs"], { cwd: repo });
+    expect(exitCode).toBe(EXIT.ok);
+    expect(stdout.trimEnd().split("\n").some((line) => line.endsWith("Kept in a newer pack format. Will not run. To fix: upgrade delivery-service"))).toBe(true);
+  });
+
 });

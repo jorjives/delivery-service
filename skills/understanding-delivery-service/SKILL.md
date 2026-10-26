@@ -45,6 +45,7 @@ delivery validate && delivery preview   # validate --json lists every problem; e
 | Work from GitHub issues or a command | `sources`, `workflows` | work-sources.md, use-workflows.md |
 | Stop the agent weakening tests | `guards` (on by default) | configuration-reference.md#guards |
 | Project rules for the agent | `agent.append` | configuration-reference.md |
+| Values a pack asks for | `packSettings` | configuration-reference.md |
 | Retries, fence, notify, after-landing steps | `budgets`, `fence`, `notify`, `after` | configuration-reference.md |
 
 Examples, in the delivery-service repo: `examples/project-configuration-example/` (small) and its own `delivery.config.json` (issue-driven, two-step workflow, `open-pr`). Walkthrough: `project-configuration.md`.
@@ -61,4 +62,5 @@ Examples, in the delivery-service repo: `examples/project-configuration-example/
 - Declaring the project set up before `delivery validate` prints `Ready to run.`
 - A gate that always passes (`true`, `echo ok`), or one so slow or flaky that correction rounds time out.
 - Using `delivery run` to test the config: it starts a real agent and spends money.
-- Editing the config mid-run and expecting the run to notice: a run keeps the `domain` it started with.
+- Editing the config mid-run and expecting the run to notice: a run keeps the `domain` and pack settings it started with.
+- Leaving a pack's required setting out of `packSettings`: every run, review and validate stops with exit 2 and prints the line to add.

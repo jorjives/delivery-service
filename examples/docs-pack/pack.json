@@ -1,0 +1,35 @@
+{
+  "schema": "delivery.pack/3",
+  "name": "docs",
+  "version": "1.0.0",
+  "title": "Keep the documentation true",
+  "summary": "Finds pages that no longer match the code, and fixes them.",
+  "settings": {
+    "docs-folder": {
+      "type": "path",
+      "summary": "The folder that holds your documentation.",
+      "default": "docs"
+    },
+    "hold-from": {
+      "type": "severity",
+      "summary": "Changes rated this serious or more wait for your sign-off.",
+      "default": "high"
+    }
+  },
+  "workflows": {
+    "look": {
+      "kind": "find",
+      "prompt": "look.md",
+      "ideasFor": ["fix"]
+    },
+    "fix": {
+      "kind": "act",
+      "summary": "A documentation page that no longer matches the code.",
+      "prompt": "fix.md",
+      "guards": {
+        "add": ["tests-unchanged"]
+      },
+      "holdSetting": "hold-from"
+    }
+  }
+}

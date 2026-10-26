@@ -116,7 +116,7 @@ describe("AC: a mistake is refused with a sentence naming the file and field", (
     ["an act no find offers", manifest({}, { scan: find, code: act, extra: act }), '"workflows.extra" is not listed in any find workflow\'s "ideasFor"'],
     ["an act-only key on a find", manifest({}, { scan: { ...find, hold: { atOrAbove: "high" } }, code: act }), '"workflows.scan.hold" is only for act workflows'],
     ["a missing summary where several targets exist", manifest({}, { scan: { ...find, ideasFor: ["code", "tests"] }, code: act, tests: act }), '"workflows.code.summary" is missing'],
-    ["a reserved settings key", manifest({ settings: {} }), '"settings" is reserved for pack settings'],
+    ["an unknown key in a setting declaration", manifest({ settings: { a: { type: "text", summary: "x", run: "y" } } }), '"settings.a.run" is not part of the pack format'],
     ["an unknown key", manifest({ bogus: 1 }), '"bogus" is not part of the pack format'],
     ["a wrong kind", manifest({}, { scan: find, code: { ...act, kind: "nope" } }), '"workflows.code.kind" is "nope"'],
   ];
