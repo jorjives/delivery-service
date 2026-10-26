@@ -85,6 +85,12 @@ describe("summaryLines", () => {
     expect(lines[1]).toBe('  Sign-off: "fix" no longer waits for your sign-off.');
   });
 
+  it("says when a sign-off now depends on a setting with no value, instead of saying nothing", () => {
+    const text = flat(summaryLines([{ kind: "hold-unknown", workflow: "fix", direction: "wider" }], after));
+    expect(text).toContain('Sign-off: "fix" takes its sign-off from a setting with no value yet, so what waits for you cannot be known.');
+    expect(text).not.toContain("Sign-off: no change.");
+  });
+
   it("says a sign-off added, and a threshold moved, with what each rates", () => {
     const text = flat(
       summaryLines(

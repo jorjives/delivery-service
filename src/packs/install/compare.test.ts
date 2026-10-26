@@ -38,6 +38,7 @@ const holdsOf = (before: Inspection, after: Inspection) => comparePacks(before, 
 /** Every pair of inspections the tests in this file compare, so that each comparison can be checked against the published schema. */
 const COMPARED: [Inspection, Inspection][] = [
   [inspection([act("fix", { hold: "high" })]), inspection([act("fix", { hold: null }), act("audit")])],
+  [inspection([act("fix", { hold: "high" })]), inspection([act("fix", { hold: null, holdSetting: "h", holdKnown: false })])],
   [inspection([act("fix", { hold: null })]), inspection([act("fix", { hold: "high" })])],
   [inspection([act("fix", { hold: "high" })]), inspection([act("fix", { hold: "medium" })])],
   [inspection([act("fix", { hold: "medium" })]), inspection([act("fix", { hold: "critical" })])],
@@ -136,6 +137,16 @@ it("reports a hold that moved with its setting's default through the hold kind, 
 
 it("does not report a hold that cannot be known as lifted", () => {
   expect(holdsOf(inspection([act("fix", { hold: "high", holdSetting: "h" })]), inspection([act("fix", { hold: null, holdSetting: "h", holdKnown: false })]))).toEqual([]);
+});
+
+it("reports a hold that becomes unknown, or is re-pointed to a setting that is unknown, as wider and as its own kind", () => {
+  const literal = inspection([act("fix", { hold: "high" })]);
+  const unknown = (holdSetting: string) => inspection([act("fix", { hold: null, holdSetting, holdKnown: false })]);
+  const expected = [{ kind: "hold-unknown", workflow: "fix", direction: "wider" }];
+  expect(comparePacks(literal, unknown("h"))).toEqual(expected);
+  expect(comparePacks(inspection([act("fix", { hold: "high", holdSetting: "a" })]), unknown("b"))).toEqual(expected);
+  expect(comparePacks(unknown("a"), inspection([act("fix", { hold: "high", holdSetting: "b" })]))).toEqual(expected);
+  expect(comparePacks(unknown("a"), unknown("b"))).toEqual(expected);
 });
 
 it("reports nothing for identical inspections", () => {

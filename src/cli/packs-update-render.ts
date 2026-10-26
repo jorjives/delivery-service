@@ -105,12 +105,15 @@ export function headlineLines(name: string, from: { version: string; hash: strin
 }
 
 type HoldChange = Extract<Change, { kind: "hold" }>;
+type HoldUnknownChange = Extract<Change, { kind: "hold-unknown" }>;
 type WidensChange = Extract<Change, { kind: "widens-added" | "widens-removed" }>;
 
 const isWidens = (change: Change): change is WidensChange => change.kind === "widens-added" || change.kind === "widens-removed";
 
-function signOffSentence({ workflow, from, to }: HoldChange): string {
-  const name = `"${showName(workflow)}"`;
+function signOffSentence(change: HoldChange | HoldUnknownChange): string {
+  const name = `"${showName(change.workflow)}"`;
+  if (change.kind === "hold-unknown") return `Sign-off: ${name} takes its sign-off from a setting with no value yet, so what waits for you cannot be known.`;
+  const { from, to } = change;
   if (to === null) return `Sign-off: ${name} no longer waits for your sign-off.`;
   if (from === null) return `Sign-off: ${name} now waits for your sign-off on ideas rated ${ratedAt(to)}.`;
   return `Sign-off: ${name} now waits for your sign-off on ideas rated ${ratedAt(to)} (before: ${ratedAt(from)}).`;
@@ -126,7 +129,7 @@ function guardSentence(change: Extract<Change, { kind: "guard-added" | "guard-re
 
 /** The summary of an update, in the order the owner reads it: sign-off, guards, workflows, checks and landing, widening, new findings, then the caveat. */
 export function summaryLines(changes: readonly Change[], after: Inspection): string[] {
-  const holds = changes.filter((change): change is HoldChange => change.kind === "hold");
+  const holds = changes.filter((change): change is HoldChange | HoldUnknownChange => change.kind === "hold" || change.kind === "hold-unknown");
   const guards = changes.filter((change): change is Extract<Change, { kind: "guard-added" | "guard-removed" }> => change.kind === "guard-added" || change.kind === "guard-removed");
   const names = (kind: "workflow-added" | "workflow-removed"): string[] =>
     changes.flatMap((change) => (change.kind === kind ? [showName(change.workflow)] : []));

@@ -10,6 +10,7 @@ export type Direction = z.infer<typeof Direction>;
 /** One change between two versions of a pack. The update document publishes these, so the schema is the one definition. */
 export const Change = z.union([
   z.object({ kind: z.literal("hold"), workflow: z.string(), from: Severity.nullable(), to: Severity.nullable(), direction: Direction }),
+  z.object({ kind: z.literal("hold-unknown"), workflow: z.string(), direction: Direction }),
   z.object({ kind: z.enum(["guard-added", "guard-removed"]), workflow: z.string(), guard: GuardName, direction: Direction }),
   z.object({ kind: z.enum(["workflow-added", "workflow-removed"]), workflow: z.string(), workflowKind: z.enum(["find", "act"]), direction: Direction }),
   z.object({ kind: z.literal("kind-changed"), workflow: z.string(), from: z.enum(["find", "act"]), to: z.enum(["find", "act"]), direction: Direction }),
@@ -28,6 +29,7 @@ const DIRECTION = {
   holdAdded: "narrower",
   holdLowered: "narrower",
   holdRaised: "wider",
+  holdUnknown: "wider",
   guardAdded: "narrower",
   guardRemoved: "wider",
   workflowAdded: "wider",
@@ -80,8 +82,13 @@ export function comparePacks(before: Inspection, after: Inspection): Change[] {
       add(GROUP.added, at, workflow, { kind: "workflow-added", workflow, workflowKind: next.kind, direction: DIRECTION.workflowAdded });
       return;
     }
-    if (prev.holdKnown && next.holdKnown && prev.hold !== next.hold) {
-      add(GROUP.hold, at, workflow, { kind: "hold", workflow, from: prev.hold, to: next.hold, direction: holdDirection(prev.hold, next.hold) });
+    if (prev.holdKnown && next.holdKnown) {
+      if (prev.hold !== next.hold) {
+        add(GROUP.hold, at, workflow, { kind: "hold", workflow, from: prev.hold, to: next.hold, direction: holdDirection(prev.hold, next.hold) });
+      }
+    } else if (prev.holdSetting !== next.holdSetting) {
+      // A hold that cannot be known has no severity to compare, and a null one would read as lifted. Naming a different setting is the change.
+      add(GROUP.hold, at, workflow, { kind: "hold-unknown", workflow, direction: DIRECTION.holdUnknown });
     }
     for (const guard of minus(guardsOf(next), guardsOf(prev))) {
       add(GROUP.guard, at, guard, { kind: "guard-added", workflow, guard, direction: DIRECTION.guardAdded });
