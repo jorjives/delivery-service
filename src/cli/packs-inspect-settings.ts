@@ -1,6 +1,6 @@
 import type { Inspection, InspectedSetting, ProjectBaseline } from "../packs/inspection.js";
 import { renderSettings } from "../placeholders.js";
-import { snippetLines } from "./pack-settings-render.js";
+import { addThisLines } from "./pack-settings-render.js";
 import { wrap } from "./text-wrap.js";
 
 const CHANGES_TOLD = "Changes: what the agent is told.";
@@ -62,7 +62,11 @@ export function settingsBlock(inspection: Inspection, configName: string): strin
   const add =
     unset.length === 0
       ? []
-      : [...wrap(`Add this to ${configName}, replacing the dots:`, "  "), ...snippetLines(unset.map(({ name }) => ({ pack: pack.name, setting: name })))];
+      : addThisLines(
+          unset.map(({ name }) => ({ pack: pack.name, setting: name })),
+          configName,
+          "  ",
+        );
   return [
     `Settings (${settings.length})`,
     ...reason,

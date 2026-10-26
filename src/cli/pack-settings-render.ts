@@ -103,6 +103,16 @@ function faultLines(problem: Fault): string[] {
   }
 }
 
+/** A setting and its summary, as the owner reads them in a refusal: the summary as a clause after the name. */
+export function settingLine(setting: string, summary: string): string[] {
+  return wrap(`${setting}: ${asClause(summary)}`, "  ", "    ");
+}
+
+/** The line that asks the owner to add the settings to the config, then the placeholder snippet. */
+export function addThisLines(unmet: readonly { pack: string; setting: string }[], configName: string, indent: string): string[] {
+  return [...wrap(`Add this to ${configName}, replacing the dots:`, indent), ...snippetLines(unmet)];
+}
+
 function missingLines(missing: readonly Missing[], configName: string): string[] {
   const packs = new Map<string, Missing[]>();
   for (const problem of missing) packs.set(problem.pack, [...(packs.get(problem.pack) ?? []), problem]);
@@ -120,9 +130,9 @@ function missingLines(missing: readonly Missing[], configName: string): string[]
   ];
   for (const [pack, settings] of packs) {
     if (count > 1) lines.push(...wrap(`The pack ${pack} needs:`, ""));
-    for (const { setting, summary } of settings) lines.push(...wrap(`${setting}: ${asClause(summary)}`, "  ", "    "));
+    for (const { setting, summary } of settings) lines.push(...settingLine(setting, summary));
   }
-  lines.push(...wrap(`Add this to ${configName}, replacing the dots:`, ""), ...snippetLines(missing));
+  lines.push(...addThisLines(missing, configName, ""));
   return lines;
 }
 
