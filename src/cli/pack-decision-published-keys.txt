@@ -170,6 +170,7 @@ delivery.pack-decision/1.account.workflows[].widens[]: string
 delivery.pack-decision/1.account.workflows[]: object
 delivery.pack-decision/1.account: null|object
 delivery.pack-decision/1.changes: array|null
+delivery.pack-decision/1.changes[].default: null|string
 delivery.pack-decision/1.changes[].dimension: string
 delivery.pack-decision/1.changes[].direction = "narrower"
 delivery.pack-decision/1.changes[].direction = "neutral"
@@ -192,6 +193,10 @@ delivery.pack-decision/1.changes[].from = "find"
 delivery.pack-decision/1.changes[].from = "high"
 delivery.pack-decision/1.changes[].from = "low"
 delivery.pack-decision/1.changes[].from = "medium"
+delivery.pack-decision/1.changes[].from = "path"
+delivery.pack-decision/1.changes[].from = "paths"
+delivery.pack-decision/1.changes[].from = "severity"
+delivery.pack-decision/1.changes[].from = "text"
 delivery.pack-decision/1.changes[].from: null|string
 delivery.pack-decision/1.changes[].from: string
 delivery.pack-decision/1.changes[].guard = "backlog"
@@ -208,19 +213,34 @@ delivery.pack-decision/1.changes[].kind = "guard-added"
 delivery.pack-decision/1.changes[].kind = "guard-removed"
 delivery.pack-decision/1.changes[].kind = "hold"
 delivery.pack-decision/1.changes[].kind = "kind-changed"
+delivery.pack-decision/1.changes[].kind = "setting-added"
+delivery.pack-decision/1.changes[].kind = "setting-default-changed"
+delivery.pack-decision/1.changes[].kind = "setting-removed"
+delivery.pack-decision/1.changes[].kind = "setting-type-changed"
 delivery.pack-decision/1.changes[].kind = "widens-added"
 delivery.pack-decision/1.changes[].kind = "widens-removed"
 delivery.pack-decision/1.changes[].kind = "workflow-added"
 delivery.pack-decision/1.changes[].kind = "workflow-removed"
 delivery.pack-decision/1.changes[].kind: string
+delivery.pack-decision/1.changes[].required: boolean
+delivery.pack-decision/1.changes[].setting: string
 delivery.pack-decision/1.changes[].to = "act"
 delivery.pack-decision/1.changes[].to = "critical"
 delivery.pack-decision/1.changes[].to = "find"
 delivery.pack-decision/1.changes[].to = "high"
 delivery.pack-decision/1.changes[].to = "low"
 delivery.pack-decision/1.changes[].to = "medium"
+delivery.pack-decision/1.changes[].to = "path"
+delivery.pack-decision/1.changes[].to = "paths"
+delivery.pack-decision/1.changes[].to = "severity"
+delivery.pack-decision/1.changes[].to = "text"
 delivery.pack-decision/1.changes[].to: null|string
 delivery.pack-decision/1.changes[].to: string
+delivery.pack-decision/1.changes[].type = "path"
+delivery.pack-decision/1.changes[].type = "paths"
+delivery.pack-decision/1.changes[].type = "severity"
+delivery.pack-decision/1.changes[].type = "text"
+delivery.pack-decision/1.changes[].type: string
 delivery.pack-decision/1.changes[].workflow: string
 delivery.pack-decision/1.changes[].workflowKind = "act"
 delivery.pack-decision/1.changes[].workflowKind = "find"

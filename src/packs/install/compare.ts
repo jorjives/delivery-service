@@ -2,6 +2,7 @@ import { z } from "zod";
 import { GuardName, SEVERITIES, Severity } from "../../schema.js";
 import { Finding } from "../inspection-findings.js";
 import type { Inspection, InspectedWorkflow } from "../inspection.js";
+import { SETTING_TYPES } from "../setting-types.js";
 
 export const Direction = z.enum(["narrower", "wider", "neutral"]);
 export type Direction = z.infer<typeof Direction>;
@@ -14,6 +15,10 @@ export const Change = z.union([
   z.object({ kind: z.literal("kind-changed"), workflow: z.string(), from: z.enum(["find", "act"]), to: z.enum(["find", "act"]), direction: Direction }),
   z.object({ kind: z.enum(["widens-added", "widens-removed"]), workflow: z.string(), dimension: z.string(), direction: Direction }),
   z.object({ kind: z.enum(["finding-gained", "finding-lost"]), finding: Finding, direction: Direction }),
+  z.object({ kind: z.literal("setting-added"), setting: z.string(), type: z.enum(SETTING_TYPES), required: z.boolean(), default: z.string().nullable(), direction: Direction }),
+  z.object({ kind: z.literal("setting-removed"), setting: z.string(), direction: Direction }),
+  z.object({ kind: z.literal("setting-default-changed"), setting: z.string(), from: z.string().nullable(), to: z.string().nullable(), direction: Direction }),
+  z.object({ kind: z.literal("setting-type-changed"), setting: z.string(), from: z.enum(SETTING_TYPES), to: z.enum(SETTING_TYPES), direction: Direction }),
 ]);
 export type Change = z.infer<typeof Change>;
 
@@ -31,6 +36,7 @@ const DIRECTION = {
   becameFind: "narrower",
   widensAdded: "wider",
   widensRemoved: "narrower",
+  settingChanged: "neutral",
 } as const satisfies Record<string, Direction>;
 
 /** A finding that is gained or lost: a wider one widens the pack, a note changes nothing it allows. */
@@ -39,8 +45,8 @@ const FINDING_DIRECTION: Record<"gained" | "lost", Record<Finding["relation"], D
   lost: { wider: "narrower", note: "neutral" },
 };
 
-/** The order the kinds of change are listed in: sign-off, guards, workflows added, removed, kind, widens, then findings. */
-const GROUP = { hold: 0, guard: 1, added: 2, removed: 3, kind: 4, widens: 5, finding: 6 } as const;
+/** The order the kinds of change are listed in: sign-off, guards, workflows added, removed, kind, widens, findings, then settings. */
+const GROUP = { hold: 0, guard: 1, added: 2, removed: 3, kind: 4, widens: 5, finding: 6, setting: 7 } as const;
 
 const RANK: Record<Direction, number> = { wider: 0, narrower: 1, neutral: 2 };
 
@@ -74,7 +80,7 @@ export function comparePacks(before: Inspection, after: Inspection): Change[] {
       add(GROUP.added, at, workflow, { kind: "workflow-added", workflow, workflowKind: next.kind, direction: DIRECTION.workflowAdded });
       return;
     }
-    if (prev.hold !== next.hold) {
+    if (prev.holdKnown && next.holdKnown && prev.hold !== next.hold) {
       add(GROUP.hold, at, workflow, { kind: "hold", workflow, from: prev.hold, to: next.hold, direction: holdDirection(prev.hold, next.hold) });
     }
     for (const guard of minus(guardsOf(next), guardsOf(prev))) {
@@ -114,6 +120,28 @@ export function comparePacks(before: Inspection, after: Inspection): Change[] {
       add(GROUP.finding, position(before, finding), finding.detail ?? "", { kind: "finding-lost", finding, direction: FINDING_DIRECTION.lost[finding.relation] });
     }
   }
+
+  const beforeSettings = new Map(before.settings.map((setting) => [setting.name, setting]));
+  const afterSettingNames = new Set(after.settings.map((setting) => setting.name));
+  after.settings.forEach((next, at) => {
+    const prev = beforeSettings.get(next.name);
+    const name = next.name;
+    if (prev === undefined) {
+      add(GROUP.setting, at, name, { kind: "setting-added", setting: name, type: next.type, required: next.required, default: next.default, direction: DIRECTION.settingChanged });
+      return;
+    }
+    if (prev.type !== next.type) {
+      add(GROUP.setting, at, name, { kind: "setting-type-changed", setting: name, from: prev.type, to: next.type, direction: DIRECTION.settingChanged });
+    }
+    if (prev.default !== next.default) {
+      add(GROUP.setting, at, name, { kind: "setting-default-changed", setting: name, from: prev.default, to: next.default, direction: DIRECTION.settingChanged });
+    }
+  });
+  before.settings.forEach((prev, at) => {
+    if (!afterSettingNames.has(prev.name)) {
+      add(GROUP.setting, at, prev.name, { kind: "setting-removed", setting: prev.name, direction: DIRECTION.settingChanged });
+    }
+  });
 
   return entries
     .sort((a, b) => a.group - b.group || RANK[a.change.direction] - RANK[b.change.direction] || a.at - b.at || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
