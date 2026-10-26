@@ -115,6 +115,8 @@ delivery.pack-decision/1.account.workflows[].hold = "high"
 delivery.pack-decision/1.account.workflows[].hold = "low"
 delivery.pack-decision/1.account.workflows[].hold = "medium"
 delivery.pack-decision/1.account.workflows[].hold: null|string
+delivery.pack-decision/1.account.workflows[].holdKnown: boolean
+delivery.pack-decision/1.account.workflows[].holdSetting: null|string
 delivery.pack-decision/1.account.workflows[].kind = "act"
 delivery.pack-decision/1.account.workflows[].kind = "find"
 delivery.pack-decision/1.account.workflows[].kind: string
