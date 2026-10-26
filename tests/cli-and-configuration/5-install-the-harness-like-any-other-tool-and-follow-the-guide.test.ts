@@ -16,7 +16,8 @@
 // keep for `make verify`, a recorded UAT is expected to touch the real registry.
 
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, readFileSync } from "node:fs";
+import { cpSync, existsSync, readdirSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { writeMockScript, type MockScript } from "../../src/testing.js";
@@ -118,8 +119,20 @@ describe("AC: running the installed command via npx, without installing, also wo
     const printed = execFileSync("npx", ["--yes", "--package", tarball, "delivery", "--version"], {
       cwd: scratch("uat5-npx-run-"),
       encoding: "utf-8",
+      // npx unpacks the tarball into its cache; a scratch cache is removed with the other scratch folders.
+      env: { ...process.env, npm_config_cache: scratch("uat5-npx-cache-") },
     });
     expect(printed.trim()).toBe(version);
+
+    // The shared cache must hold no entry for this run's tarball (its path is unique to the run).
+    const shared = join(homedir(), ".npm", "_npx");
+    const leaked = existsSync(shared)
+      ? readdirSync(shared).filter((dir) => {
+          const manifest = join(shared, dir, "package.json");
+          return existsSync(manifest) && readFileSync(manifest, "utf-8").includes(tarball);
+        })
+      : [];
+    expect(leaked).toEqual([]);
   }, INSTALL_TIMEOUT);
 });
 
