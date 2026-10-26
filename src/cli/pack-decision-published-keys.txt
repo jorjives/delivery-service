@@ -251,6 +251,8 @@ delivery.pack-decision/1.files[].status: string
 delivery.pack-decision/1.files[]: object
 delivery.pack-decision/1.fingerprint: null|string
 delivery.pack-decision/1.message: string
+delivery.pack-decision/1.needs: array|null
+delivery.pack-decision/1.needs[]: string
 delivery.pack-decision/1.notInPack.declares: array
 delivery.pack-decision/1.notInPack.declares[] = "bin"
 delivery.pack-decision/1.notInPack.declares[] = "dependencies"

@@ -10,7 +10,7 @@ import { installedPackDir } from "../packs/install/store.js";
 import { readPackage, NO_PACK_FIELD, noPackThere } from "../packs/install/package-archive.js";
 import { withStagedPack } from "../packs/install/staged.js";
 import { fakePackSource, type FakePackSource } from "../packs/install/fake-source.js";
-import { packPackage, SCAN_TEXT } from "../packs/install/install-fixtures.js";
+import { CODE_TEXT, packPackage, SCAN_TEXT } from "../packs/install/install-fixtures.js";
 import type { PackSource } from "../packs/install/pack-source.js";
 import { sriOf } from "../packs/install/pack-source.js";
 import { Inspection } from "../packs/inspection.js";
@@ -20,6 +20,7 @@ import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, withPrivateTmpdir, writeNeedyPack } from "./command-fixtures.js";
 import { EXIT } from "./failures.js";
 import { PackDecision } from "./pack-decision.js";
+import { notRunUntilLines } from "./pack-settings-render.js";
 import { packsAddCommand } from "./packs-add-command.js";
 import { packsUpdateCommand } from "./packs-update-command.js";
 import { addedDifferently, addedLines, alreadyAdded, fingerprintDiffers, NOTHING_ADDED, nobodyToAsk } from "./packs-add-render.js";
@@ -59,6 +60,20 @@ const v3Pack = (name: string): string =>
     summary: "Mine.",
     workflows: { scan: { kind: "find", prompt: "scan.md", ideasFor: ["code"] }, code: { kind: "act", prompt: "code.md" } },
   });
+
+/** The package of a pack that needs one setting, `docs-folder`, which no configuration gives. */
+const needyPackage = (): Uint8Array =>
+  packPackage({
+    manifest: { settings: { "docs-folder": { type: "path", summary: "The folder that holds your documentation." } } },
+    extra: { "scan.md": `${SCAN_TEXT}\nRead {{settings.docs-folder}}.`, "code.md": `${CODE_TEXT}\nFix {{settings.docs-folder}}.` },
+  });
+
+/** A source publishing the needy package as `NAME` at 1.2.0. */
+function needySourceOf(): FakePackSource {
+  const needy = fakePackSource();
+  needy.publish(NAME, "1.2.0", needyPackage());
+  return needy;
+}
 
 /** The temporary folders an add makes, by name. */
 const tempFolders = (): string[] => readdirSync(tmpdir()).filter((name) => name.startsWith("delivery-pack-")).sort();
@@ -214,6 +229,34 @@ describe("delivery packs add", () => {
     const { ctx, lines } = context(repo);
     expect(await packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
     expect(lines.slice(-addedLines("docs-drift", "1.2.0").length)).toEqual(addedLines("docs-drift", "1.2.0"));
+  });
+
+  it("after yes, names the setting the pack needs and the lines to add, and still succeeds", async () => {
+    const needySource = needySourceOf();
+    const { ctx, lines } = context(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, needySource)).toBe(EXIT.ok);
+    expect(lines.slice(-5)).toEqual(notRunUntilLines([{ kind: "missing", pack: "docs-drift", setting: "docs-folder", summary: "The folder that holds your documentation." }], "delivery.config.json"));
+    expect(needySource.fetched).toHaveLength(1);
+  });
+
+  it("says nothing more when the configuration already gives the value", async () => {
+    writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packSettings: { "docs-drift": { "docs-folder": "docs" } } }));
+    const { ctx, lines } = context(repo);
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk({ confirm: true }).ask, needySourceOf())).toBe(EXIT.ok);
+    expect(lines.slice(-addedLines("docs-drift", "1.2.0").length)).toEqual(addedLines("docs-drift", "1.2.0"));
+  });
+
+  it("carries the settings it needs in --json", async () => {
+    const needyHash = await hashOf(needyPackage());
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, needySourceOf(), { approve: needyHash })).toBe(EXIT.ok);
+    expect(PackDecision.parse(JSON.parse(lines[0] ?? "")).needs).toEqual(["docs-folder"]);
+  });
+
+  it("carries an empty list of settings it needs in --json when it needs none", async () => {
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsAddCommand(NAME, ctx, scriptedAsk().ask, source, { approve: hash })).toBe(EXIT.ok);
+    expect(PackDecision.parse(JSON.parse(lines[0] ?? "")).needs).toEqual([]);
   });
 
   it("then lists the pack with its source and version, and previews its find", async () => {

@@ -573,9 +573,9 @@ export async function loadConfigAndPacks(lookup: ConfigLookup): Promise<{ config
  * The settings a run starts from and every pack's state, without refusing any of them: for a caller that must judge an added
  * pack's state itself, such as the add that replaces one, and checks what it decides with `refuseUnusable` or a clash check.
  */
-export async function loadConfigAndPackStates(lookup: ConfigLookup): Promise<{ settings: DeliveryConfig; packs: Pack[]; installed: InstalledPack[] }> {
-  const { settings, configDir } = await settingsAt(lookup);
-  return { settings, ...(await projectPackStates(settings, configDir, lookup.repoPath)) };
+export async function loadConfigAndPackStates(lookup: ConfigLookup): Promise<{ settings: DeliveryConfig; configName: string; packs: Pack[]; installed: InstalledPack[] }> {
+  const { settings, configDir, configName } = await settingsAt(lookup);
+  return { settings, configName, ...(await projectPackStates(settings, configDir, lookup.repoPath)) };
 }
 
 /** The source a project's ideas are raised to instead of committed: its first tracker, if it has one. */

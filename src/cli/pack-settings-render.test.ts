@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 import {
   DEFAULT_CONFIG_NAME,
+  notRunUntilLines,
   ownerWords,
   settingsRefusal,
   shownValue,
@@ -177,4 +178,33 @@ it("writes the snippet on one line when it fits in 60 columns, and expanded othe
   expect(snippetLines([{ pack: "docs-drift", setting: "docs-folder" }])).toEqual([
     '  "packSettings": { "docs-drift": { "docs-folder": "..." } }',
   ]);
+});
+
+it("says how many settings an added pack needs, each with its summary, the lines to add and the command to run next", () => {
+  expect(notRunUntilLines([{ kind: "missing", pack: "docs-drift", setting: "docs-folder", summary: "The folder that holds your documentation." }], DEFAULT_CONFIG_NAME)).toEqual([
+    "It will not run until you give it 1 setting.",
+    "  docs-folder: the folder that holds your documentation.",
+    "Add this to delivery.config.json, replacing the dots:",
+    '  "packSettings": { "docs-drift": { "docs-folder": "..." } }',
+    "Then run: delivery validate",
+  ]);
+});
+
+it("counts several settings in the plural, all within 60 columns and free of safe, valid and verified", () => {
+  const lines = notRunUntilLines(
+    [
+      { kind: "missing", pack: "docs-drift", setting: "docs-folder", summary: "The folder that holds your documentation." },
+      { kind: "missing", pack: "docs-drift", setting: "tone", summary: "How the pages should read." },
+    ],
+    DEFAULT_CONFIG_NAME,
+  );
+  expect(lines[0]).toBe("It will not run until you give it 2 settings.");
+  expect(lines).toContain("  tone: how the pages should read.");
+  expect(lines.some((line) => line.includes('"docs-folder": "...",'))).toBe(true);
+  expect(lines.some((line) => line.includes('"tone": "..."'))).toBe(true);
+  expect(lines.at(-1)).toBe("Then run: delivery validate");
+  for (const line of lines) {
+    expect(line.length).toBeLessThanOrEqual(60);
+    expect(line).not.toMatch(/\b(safe|valid|verified)\b/);
+  }
 });

@@ -25,6 +25,8 @@ export const PackDecision = z.strictObject({
   previous: z.object({ version: z.string(), fingerprint: z.string() }).nullable(),
   account: Inspection.nullable(),
   notInPack: z.object({ ignored: z.array(z.object({ path: z.string(), bytes: z.number().int() })), declares: z.array(z.enum(["scripts", "bin", "dependencies"])) }).nullable(),
+  /** The required settings the pack has no value for, by name; null when the outcome ends before the project's settings are read. */
+  needs: z.array(z.string()).nullable(),
   changes: z.array(Change).nullable(),
   files: z.array(z.object({ path: z.string(), status: z.enum(["changed", "added", "removed", "unchanged"]), added: z.number().int(), removed: z.number().int(), lines: z.array(DiffLine) })).nullable(),
   message: z.string(),
@@ -32,7 +34,7 @@ export const PackDecision = z.strictObject({
 export type PackDecision = z.infer<typeof PackDecision>;
 
 /** The facts a command can set before it ends; each one not set is null in the document. */
-export type DecisionFacts = Pick<PackDecision, "pack" | "package" | "fingerprint" | "previous" | "account" | "notInPack" | "changes" | "files">;
+export type DecisionFacts = Pick<PackDecision, "pack" | "package" | "fingerprint" | "previous" | "account" | "notInPack" | "needs" | "changes" | "files">;
 
 /** How a command writes what it decided: the plain lines a person reads, or under `--json` one document, and nothing else. */
 export interface DecisionOutput {
@@ -111,6 +113,7 @@ export async function withDecisionOutput(ctx: CommandContext, command: PackDecis
         previous: facts.previous ?? null,
         account: facts.account ?? null,
         notInPack: facts.notInPack ?? null,
+        needs: facts.needs ?? null,
         changes: facts.changes ?? null,
         files: facts.files ?? null,
         message: scrub(lines.map((line) => line.trim()).filter((line) => line !== "").join(" ")),

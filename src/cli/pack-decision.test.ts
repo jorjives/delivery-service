@@ -61,6 +61,7 @@ describe("the JSON document", () => {
       previous: null,
       account: relativeAccount(inspection, process.cwd()),
       notInPack: null,
+      needs: null,
       changes: null,
       files: null,
       message: "b",

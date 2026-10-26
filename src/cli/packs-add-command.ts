@@ -8,6 +8,7 @@ import { installedPackDir, installPack } from "../packs/install/store.js";
 import { withStagedPack } from "../packs/install/staged.js";
 import { inspectionOf } from "../packs/inspection.js";
 import type { Pack } from "../packs/manifest.js";
+import { missingSettings } from "../packs/settings.js";
 import { loadConfigAndPackStates } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, type ExitCode } from "./failures.js";
@@ -15,6 +16,7 @@ import type { Ask } from "./init.js";
 import { decideApproval } from "./pack-approval.js";
 import { withDecisionOutput } from "./pack-decision.js";
 import { findClash } from "./pack-clash.js";
+import { notRunUntilLines } from "./pack-settings-render.js";
 import { withWorkflowsOf } from "./pack-workflows.js";
 import { projectBaseline } from "./project-baseline.js";
 import { findRepository } from "./project.js";
@@ -75,12 +77,14 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
       // The would-be set of packs must still make one project: a clash refuses here, before anything is shown or written.
       // The added packs are judged here, not refused on load, so an unrecorded folder of this same name is the one this add replaces.
       // It is checked over the project's own settings, since the config already carries every current pack's workflows.
-      const { settings, packs, installed } = await loadConfigAndPackStates({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
+      const { settings, configName, packs, installed } = await loadConfigAndPackStates({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
       refuseUnusable(repoPath, installed.filter((added) => !(added.state === "unrecorded" && added.name === name)));
       // A clash already in the project is not this pack's fault: it is refused with its own sentence.
       withWorkflowsOf(settings, packs);
       const clash = findClash(settings, [...packs, pack]);
       if (clash !== undefined) return out.end("refused", clashRefusal("add", clash, repoPath), EXIT.configuration);
+      const missing = missingSettings(pack, settings.packSettings?.[name]);
+      out.facts({ needs: missing.map(({ setting }) => setting) });
 
       out.plain(foundLines(fetched, parsed));
       out.plain([""]);
@@ -107,7 +111,7 @@ export async function packsAddCommand(spec: string, ctx: CommandContext, ask: As
         approved: fingerprint,
         files: await fileDigests(stagedDir, fingerprintedFiles(pack)),
       });
-      return out.end("added", addedLines(name, fetched.version), EXIT.ok);
+      return out.end("added", [...addedLines(name, fetched.version), ...(missing.length === 0 ? [] : ["", ...notRunUntilLines(missing, configName)])], EXIT.ok);
     });
   });
 }

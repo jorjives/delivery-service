@@ -1,5 +1,5 @@
 import { hasHidden } from "../packs/hidden-characters.js";
-import type { SettingProblem } from "../packs/settings.js";
+import type { MissingSetting, SettingProblem } from "../packs/settings.js";
 import {
   EMPTY,
   FORWARD_SLASHES,
@@ -133,6 +133,19 @@ function missingLines(missing: readonly Missing[], configName: string): string[]
     for (const { setting, summary } of settings) lines.push(...settingLine(setting, summary));
   }
   lines.push(...addThisLines(missing, configName, ""));
+  return lines;
+}
+
+/**
+ * What an added pack needs before it will run: how many settings it is still owed, each with its summary, the lines to add to
+ * the config, and the command to run next. Pure: no I/O.
+ */
+export function notRunUntilLines(missing: readonly MissingSetting[], configName: string): string[] {
+  const count = missing.length;
+  const lines = [`It will not run until you give it ${count} ${count === 1 ? "setting" : "settings"}.`];
+  for (const { setting, summary } of missing) lines.push(...settingLine(setting, summary));
+  lines.push(...addThisLines(missing, configName, ""));
+  lines.push("Then run: delivery validate");
   return lines;
 }
 

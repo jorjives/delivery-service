@@ -21,3 +21,5 @@ An unset required setting, a `packSettings` entry for a pack not in use, an unde
 `delivery packs inspect` says, for an act whose hold is a setting, the severities that wait for sign-off and whether the value is yours or the default, or why it cannot be known.
 
 `delivery packs` marks a pack that needs a setting with a line under it, `needs setting: <name>`, and `delivery packs --json` gains `packs[].needs`, the required settings with no value. New published pack key `delivery.packs/1.packs[].needs`.
+
+`delivery packs add` says, after an added pack, how many settings it needs and which, with the lines to add to `delivery.config.json` and the command to run next, when the pack needs a setting you have not given. `delivery packs add --json` gains `needs`, the same setting names, which is null when the add ends before the project's settings are read. New published key `delivery.pack-decision/1.needs`.
