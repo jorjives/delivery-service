@@ -54,6 +54,8 @@ const ActWorkflow = z.strictObject({
   summary: Sentence.optional(),
   guards: z.strictObject({ add: z.array(GuardName).min(1) }).optional(),
   hold: z.strictObject({ atOrAbove: Severity }).optional(),
+  /** The severity setting whose value this act holds at; not with `hold`. */
+  holdSetting: Slug.optional(),
 });
 
 /** One workflow a pack holds: a find that scans for ideas, or an act that fixes one. */

@@ -70,7 +70,7 @@ export function formatSentence(issue: Issue, raw: unknown): string | undefined {
   const field = `"${fieldOf(issue)}"`;
   if (issue.path.length !== 2 || issue.path[0] !== "workflows") return undefined;
   const kind = valueAt(raw, [...issue.path, "kind"]);
-  if (kind === "find" && (key === "summary" || key === "guards" || key === "hold")) return `${field} is only for act workflows`;
+  if (kind === "find" && (key === "summary" || key === "guards" || key === "hold" || key === "holdSetting")) return `${field} is only for act workflows`;
   if (kind === "act" && key === "ideasFor") return `${field} is only for find workflows`;
   return undefined;
 }

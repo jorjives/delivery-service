@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
-import type { PackManifest, SettingDeclaration } from "./pack-format.js";
+import type { ActWorkflow, PackManifest, SettingDeclaration } from "./pack-format.js";
 import { SETTINGS_MAX, settingRuleProblems } from "./setting-rules.js";
 
 const FILE = "/p/pack.json";
 const DIR = "/p";
 const PATH: SettingDeclaration = { type: "path", summary: "A folder the agent reads" };
+const SEVERITY: SettingDeclaration = { type: "severity", summary: "Changes this serious wait.", default: "high" };
 
 const workflows: PackManifest["workflows"] = {
   look: { kind: "find", prompt: "look.md", ideasFor: ["fix"] },
@@ -21,6 +22,11 @@ function manifestWith(settings?: Record<string, SettingDeclaration>): PackManife
     workflows,
     ...(settings === undefined ? {} : { settings }),
   };
+}
+
+/** A pack whose act `fix` carries `keys` beside its prompt. */
+function withActKeys(settings: Record<string, SettingDeclaration> | undefined, keys: Omit<ActWorkflow, "kind" | "prompt">): PackManifest {
+  return { ...manifestWith(settings), workflows: { ...workflows, fix: { kind: "act", prompt: "fix.md", ...keys } } };
 }
 
 const withSettings = (settings: Record<string, SettingDeclaration>): PackManifest => manifestWith(settings);
@@ -66,5 +72,34 @@ describe("settingRuleProblems", () => {
   });
   it("finds nothing for a pack with no settings and no {{settings.", () => {
     expect(settingRuleProblems(FILE, DIR, withoutSettings(), texts({ "look.md": "Look {{task.file}}.", "fix.md": "Fix." }))).toEqual([]);
+  });
+  it("counts a setting named by an act's holdSetting as used", () => {
+    const m = withActKeys({ "hold-from": SEVERITY }, { holdSetting: "hold-from" });
+    expect(settingRuleProblems(FILE, DIR, m, texts({ "look.md": "Look.", "fix.md": "Fix." }))).toEqual([]);
+  });
+  it("refuses hold and holdSetting on one act", () => {
+    const m = withActKeys({ "hold-from": SEVERITY }, { hold: { atOrAbove: "high" }, holdSetting: "hold-from" });
+    expect(settingRuleProblems(FILE, DIR, m, texts({ "look.md": "Look.", "fix.md": "Fix." }))).toEqual([
+      { file: FILE, field: "workflows.fix.holdSetting", message: '"workflows.fix.holdSetting" cannot be used with "hold" on the same workflow: give the severity as the setting\'s default, and remove "hold"' },
+    ]);
+  });
+  it("refuses a holdSetting naming a setting that is not a severity", () => {
+    const m = withActKeys({ "docs-folder": PATH }, { holdSetting: "docs-folder" });
+    expect(settingRuleProblems(FILE, DIR, m, texts({ "look.md": "{{settings.docs-folder}}", "fix.md": "Fix." }))).toEqual([
+      { file: FILE, field: "workflows.fix.holdSetting", message: '"workflows.fix.holdSetting" is "docs-folder", a path setting: a hold must name a severity setting' },
+    ]);
+  });
+  it("refuses a holdSetting naming no declared setting, listing the declared ones", () => {
+    const m = withActKeys({ "hold-from": SEVERITY }, { holdSetting: "hold-frm" });
+    expect(settingRuleProblems(FILE, DIR, m, texts({ "look.md": "Look.", "fix.md": "Fix." }))).toEqual([
+      { file: FILE, field: "settings.hold-from", message: '"settings.hold-from" is not used by any prompt: put {{settings.hold-from}} where the agent should be told it, or remove the setting' },
+      { file: FILE, field: "workflows.fix.holdSetting", message: '"workflows.fix.holdSetting" is "hold-frm", but pack.json declares no setting of that name. Declared: hold-from' },
+    ]);
+  });
+  it("refuses a holdSetting in a pack that declares no settings", () => {
+    const m = withActKeys(undefined, { holdSetting: "hold-from" });
+    expect(settingRuleProblems(FILE, DIR, m, texts({ "look.md": "Look.", "fix.md": "Fix." }))).toEqual([
+      { file: FILE, field: "workflows.fix.holdSetting", message: '"workflows.fix.holdSetting" is "hold-from", but pack.json declares no settings' },
+    ]);
   });
 });

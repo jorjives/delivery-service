@@ -473,6 +473,7 @@ describe("a delivery.pack/3 manifest's mistakes", () => {
 
   it.each([
     ["hold", { atOrAbove: "high" }],
+    ["holdSetting", "hold-from"],
     ["guards", { add: ["tests-unchanged"] }],
     ["summary", "A find."],
   ])("refuses %s on a find: it is only for act workflows", async (key, value) => {

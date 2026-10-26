@@ -39,7 +39,7 @@ describe("the 'writing a pack' guide", () => {
   });
 
   it("names every key of a delivery.pack/3 pack.json, the find's and the act's included", () => {
-    const keys = ["$schema", "schema", "name", "version", "title", "summary", "workflows", "kind", "prompt", "ideasFor", "guards", "add", "hold", "atOrAbove", "find", "act"];
+    const keys = ["$schema", "schema", "name", "version", "title", "summary", "workflows", "kind", "prompt", "ideasFor", "guards", "add", "hold", "holdSetting", "atOrAbove", "find", "act"];
     for (const key of keys) expect(guide).toContain(`\`${key}\``);
   });
 

@@ -35,6 +35,8 @@ const WITH_SETTINGS = {
 
 describe("a pack's settings", () => {
   it("reads settings of each type, with and without a default", () => expect(PackManifest.safeParse(WITH_SETTINGS).success).toBe(true));
+  it("reads an act whose hold is a setting", () =>
+    expect(PackManifest.safeParse({ ...WITH_SETTINGS, workflows: { ...WITH_SETTINGS.workflows, code: { kind: "act", prompt: "code.md", holdSetting: "hold-from" } } }).success).toBe(true));
   it.each([
     ["a name that is not kebab-case", { Docs_Folder: { type: "path", summary: "x" } }],
     ["a type it does not name", { a: { type: "choice", summary: "x" } }],
@@ -85,6 +87,7 @@ describe("the pack format's JSON Schema", () => {
   it.each([
     ["an unknown key on a find", (m: Manifest) => (at(m, "scan").tools = ["Bash"])],
     ["an act-only key on a find", (m: Manifest) => (at(m, "scan").hold = { atOrAbove: "high" })],
+    ["holdSetting on a find", (m: Manifest) => (at(m, "scan").holdSetting = "hold-from")],
     ["an unknown key on an act", (m: Manifest) => (at(m, "code").gate = "npm test")],
     ["a kind it does not name", (m: Manifest) => (at(m, "scan").kind = "scna")],
     ["a guard it does not name", (m: Manifest) => (at(m, "code").guards = { add: ["no-such-guard"] })],
@@ -105,6 +108,15 @@ describe("the pack format's stability promise", () => {
   });
   it("keeps every key and name ever published, each the kind of value it was", () => expect(promised.filter((l) => !current.includes(l))).toEqual([]));
   it("puts every key and name published now under the promise: add its line to pack-published-keys.txt", () => expect(current.filter((l) => !promised.includes(l))).toEqual([]));
+  it("adds holdSetting as the only hold line, and keeps every other", () => {
+    const holdLines = current.filter((l) => l.startsWith("delivery.pack/3.workflows.*.hold"));
+    expect(holdLines).toEqual([
+      'delivery.pack/3.workflows.*.hold.atOrAbove = "critical"', 'delivery.pack/3.workflows.*.hold.atOrAbove = "high"',
+      'delivery.pack/3.workflows.*.hold.atOrAbove = "low"', 'delivery.pack/3.workflows.*.hold.atOrAbove = "medium"',
+      "delivery.pack/3.workflows.*.hold.atOrAbove: string", "delivery.pack/3.workflows.*.hold: object (optional)",
+      "delivery.pack/3.workflows.*.holdSetting: string (optional)",
+    ]);
+  });
 });
 
 describe("text a pack shows the owner", () => {

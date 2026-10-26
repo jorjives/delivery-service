@@ -117,6 +117,7 @@ An act workflow changes the project to fix one idea. Holds:
 | `prompt` | `string` | Path to the instructions file, relative to the pack folder, such as `code.md`. Required. |
 | `summary` | `string` | One sentence saying what the act is for, in the words the scanner is shown. Required when the find offers more than one act, so the scanner can choose between them. |
 | `guards` | `object` | `{ "add": ["tests-unchanged"] }`: [guards](glossary.md#guard) this act turns on. Each name must be one that `delivery packs --schema` lists. Holds only `add`. Optional. |
+| `holdSetting` | `string` | The name of a `severity` setting whose value the owner can change: fixes of ideas rated that or more serious wait for the owner's sign-off. Not with `hold`. Optional. |
 | `hold` | `object` | `{ "atOrAbove": "high" }`: fixes of ideas rated this or more serious wait for the owner's sign-off. `atOrAbove` is `critical`, `high`, `medium` or `low`. Holds only `atOrAbove`. Optional. |
 
 ### Settings
@@ -139,7 +140,8 @@ A prompt uses a setting as `{{settings.<name>}}`, and the owner gives values und
 - An act that a find chooses between has a `summary`.
 - A prompt's `{{settings.<name>}}` is replaced by the owner's value, or the default, when the project loads the pack.
 - Every `{{settings.<name>}}` names a declared setting.
-- Every declared setting is used by a prompt, so the owner is never asked for a value nothing reads.
+- Every declared setting is used by a prompt or by an act's `holdSetting`, so the owner is never asked for a value nothing reads.
+- An act's `holdSetting` names a declared `severity` setting, and an act has `hold` or `holdSetting`, not both.
 - A pack declares at most 32 settings.
 - Each setting has a `summary`.
 - A pack cannot name a gate, an agent, tools, a closer, `after` steps or commands. A key that tries is refused with a sentence such as `"gate" is not part of the pack format: a pack holds only data, so it cannot give the agent tools or commands, or bring code of its own for its check`.
@@ -156,6 +158,8 @@ A prompt uses a setting as `{{settings.<name>}}`, and the owner gives values und
 | `"workflows.tests" is not listed in any find workflow's "ideasFor", so no idea could reach it` | Add it to a find's `ideasFor`, or remove it. |
 | `"workflows.code.summary" is missing: the find workflow "scan" needs it to choose between "code" and "tests"` | Add a one-sentence `summary` to the act. |
 | `"workflows.scan.summary" is only for act workflows` | Remove the key from the find. |
+| `"workflows.code.holdSetting" cannot be used with "hold" on the same workflow: give the severity as the setting's default, and remove "hold"` | Remove `hold`, and give the severity as the `default` of the setting `holdSetting` names. |
+| `"workflows.code.holdSetting" is "docs-folder", a path setting: a hold must name a severity setting` | Name a `severity` setting in `holdSetting`, or remove the key. |
 | `"settings.docs-folder" has no summary. Say in one line what it is for` | Add a one-line `summary` to the setting. |
 | `docs.md uses {{settings.docs-foldr}}, but pack.json declares no setting of that name. Declared: docs-folder` | Correct the name in the prompt to a declared setting, or declare it under `settings`. |
 | `code.md: is not valid UTF-8 text, so what is shown could differ from what the agent is given.` | Save the file as UTF-8 text. |

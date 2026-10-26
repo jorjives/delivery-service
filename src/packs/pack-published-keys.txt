@@ -70,6 +70,7 @@ delivery.pack/3.workflows.*.hold.atOrAbove = "low"
 delivery.pack/3.workflows.*.hold.atOrAbove = "medium"
 delivery.pack/3.workflows.*.hold.atOrAbove: string
 delivery.pack/3.workflows.*.hold: object (optional)
+delivery.pack/3.workflows.*.holdSetting: string (optional)
 delivery.pack/3.workflows.*.ideasFor: array
 delivery.pack/3.workflows.*.ideasFor[]: string
 delivery.pack/3.workflows.*.kind = "act"
