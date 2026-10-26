@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Readable } from "node:stream";
 import { vi } from "vitest";
 import { DEFAULT_BUDGETS } from "../budgets.js";
@@ -152,6 +153,24 @@ export const V2_FILES = (folder: string): Record<string, string> => ({
 /** Test support: a project that lists the `/3` moves pack, with `files` overriding or adding any of its files. */
 export const movesProject = (files: Record<string, string> = {}): string =>
   initTempRepo("moves-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ packs: ["moves-pack"] }), ...MOVES_FILES, ...files });
+
+/** Test support: the shipped docs example pack, as a project's copy of it under `docs-pack/`. */
+const DOCS_PACK = fileURLToPath(new URL("../../examples/docs-pack/", import.meta.url));
+const DOCS_PACK_FILES: Record<string, string> = Object.fromEntries(
+  readdirSync(DOCS_PACK).map((name) => [`docs-pack/${name}`, readFileSync(join(DOCS_PACK, name), "utf-8")]),
+);
+
+/**
+ * Test support: a project that lists the docs example pack, with one page, `docs/api.md`, holding a line a fix removes.
+ * `packSettings` is the owner's values for the pack, when given.
+ */
+export const docsProject = (packSettings?: Record<string, unknown>): string =>
+  initTempRepo("docs-", {
+    "package.json": PACKAGE,
+    "delivery.config.json": JSON.stringify({ packs: ["docs-pack"], ...(packSettings === undefined ? {} : { packSettings }) }),
+    "docs/api.md": "# API\n\nRun the old build with `npm run legacy-build`.\n\nCall `render()` to draw a page.\n",
+    ...DOCS_PACK_FILES,
+  });
 
 /** A whole run, agent sessions and git included, needs longer than vitest's default. */
 export const RUN_TIMEOUT = 60_000;

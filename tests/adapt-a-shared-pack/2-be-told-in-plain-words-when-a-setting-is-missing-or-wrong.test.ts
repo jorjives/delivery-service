@@ -65,7 +65,7 @@ describe("UAT: find out what is missing from your configuration before anything 
     const third = run(repo, ["validate"]);
     expect(third.status).toBe(2);
     expect(third.text).toContain('"docs-folder-x" is not a setting of this pack');
-    expect(third.text).toContain("Its settings are: docs-folder.");
+    expect(third.text).toContain("Its settings are: docs-folder, hold-from.");
   });
 });
 

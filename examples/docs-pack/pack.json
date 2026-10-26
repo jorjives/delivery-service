@@ -9,6 +9,11 @@
       "type": "path",
       "summary": "The folder that holds your documentation.",
       "default": "docs"
+    },
+    "hold-from": {
+      "type": "severity",
+      "summary": "Changes rated this serious or more wait for your sign-off.",
+      "default": "high"
     }
   },
   "workflows": {
@@ -23,7 +28,8 @@
       "prompt": "fix.md",
       "guards": {
         "add": ["tests-unchanged"]
-      }
+      },
+      "holdSetting": "hold-from"
     }
   }
 }

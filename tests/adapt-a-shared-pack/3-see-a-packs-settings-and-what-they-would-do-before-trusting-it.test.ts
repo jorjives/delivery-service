@@ -3,7 +3,7 @@
 // Recorded: 2026-10-25 against commit 32cb00a
 //
 // Drives the compiled `delivery packs inspect` command as a subprocess against a copy of
-// the shipped docs example pack (one `path` setting, `docs-folder`, default `docs`).
+// the shipped docs example pack (a `path` setting, `docs-folder`, default `docs`, and a severity setting, `hold-from`, default `high`).
 //
 // SKIPPED AC: a code (`.js`) configuration shows defaults only
 //   (needs a JS config project; covered by unit tests).
@@ -52,14 +52,14 @@ describe("UAT: read what a shared pack will ask of you before running it", () =>
 
     const filled = inspect(repo);
     expect(filled.status).toBe(0);
-    expect(filled.text).toContain("Settings (1)");
+    expect(filled.text).toContain("Settings (2)");
     expect(filled.text).toContain("docs-folder path, default docs");
     expect(filled.text).toContain("The folder that holds your documentation.");
     expect(filled.text).toContain("Your value: handbook (your configuration)");
     expect(filled.text).toContain("Changes: what the agent is told.");
     // The Settings section follows the summary and precedes what the pack may touch.
-    expect(filled.text.indexOf("In short")).toBeLessThan(filled.text.indexOf("Settings (1)"));
-    expect(filled.text.indexOf("Settings (1)")).toBeLessThan(filled.text.indexOf("What it may touch"));
+    expect(filled.text.indexOf("In short")).toBeLessThan(filled.text.indexOf("Settings (2)"));
+    expect(filled.text.indexOf("Settings (2)")).toBeLessThan(filled.text.indexOf("What it may touch"));
 
     setConfig(repo, undefined);
     const defaulted = inspect(repo);
@@ -127,6 +127,7 @@ describe("AC: the data form always carries a settings list with the same facts",
         value: "handbook",
         source: "configuration",
       }),
+      expect.objectContaining({ name: "hold-from", type: "severity", default: "high", value: "high", source: "default", required: false }),
     ]);
 
     requireSetting(repo);
