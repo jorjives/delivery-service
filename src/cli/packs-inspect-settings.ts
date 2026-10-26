@@ -3,7 +3,9 @@ import { renderSettings } from "../placeholders.js";
 import { snippetLines } from "./pack-settings-render.js";
 import { wrap } from "./text-wrap.js";
 
-const CHANGES = "Changes: what the agent is told.";
+const CHANGES_TOLD = "Changes: what the agent is told.";
+const CHANGES_HOLD = "Changes: how far it goes before it asks you.";
+const CHANGES_BOTH = "Changes: what the agent is told, and how far it goes before it asks you.";
 const CLOSING = ["These change what the agent is told and when it waits.", "They do not change your project's own check."];
 
 /** Why the values shown are not the owner's, when some setting is not read: the project's state decides the words. */
@@ -33,12 +35,20 @@ function typeLine({ name, type, default: fallback }: InspectedSetting, width: nu
   return fallback === null ? `${padded}   ${type}, required` : `${padded}   ${type}, default ${fallback}`;
 }
 
-function settingLines(setting: InspectedSetting, width: number): string[] {
+/** What a setting changes, by the shown workflows: the agent's words, its sign-off, or both. */
+function changesOf(name: string, workflows: Inspection["workflows"]): string {
+  const holds = workflows.some((workflow) => workflow.holdSetting === name);
+  const told = workflows.some((workflow) => workflow.steps.some(({ uses }) => uses.some((use) => use.setting === name)));
+  if (holds && told) return CHANGES_BOTH;
+  return holds ? CHANGES_HOLD : CHANGES_TOLD;
+}
+
+function settingLines(setting: InspectedSetting, width: number, changes: string): string[] {
   return [
     ...wrap(typeLine(setting, width), "  ", "    "),
     ...wrap(setting.summary, "    "),
     ...wrap(valueLine(setting), "    "),
-    ...wrap(CHANGES, "    "),
+    ...wrap(changes, "    "),
   ];
 }
 
@@ -56,7 +66,7 @@ export function settingsBlock(inspection: Inspection, configName: string): strin
   return [
     `Settings (${settings.length})`,
     ...reason,
-    ...settings.flatMap((setting) => settingLines(setting, width)),
+    ...settings.flatMap((setting) => settingLines(setting, width, changesOf(setting.name, inspection.workflows))),
     ...add,
     ...CLOSING.flatMap((line) => wrap(line, "  ")),
   ];

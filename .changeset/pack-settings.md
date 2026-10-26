@@ -17,3 +17,5 @@ An unset required setting, a `packSettings` entry for a pack not in use, an unde
 `delivery packs inspect --json` gains `settings` (each setting's name, type, summary, whether it is required, its default, the value in effect, its source and the workflows that use it) and, per step, `given` (the prompt as the agent would be given it) and `uses`.
 
 `delivery packs inspect` shows a Settings section after the summary: each setting, the value in effect and its source, what it changes, and for an unset required setting the lines to add; the instructions show each value beside its placeholder. A faulty owner value for the inspected pack is refused, not shown.
+
+`delivery packs inspect` says, for an act whose hold is a setting, the severities that wait for sign-off and whether the value is yours or the default, or why it cannot be known.

@@ -446,3 +446,40 @@ it("gives the same facts in text as in the document", async () => {
     if (setting.value !== null) expect(text).toContain(setting.value);
   }
 });
+
+const HOLD = { "hold-from": { type: "severity", summary: "Changes this serious wait.", default: "high" } };
+const HOLD_UNSET = { "hold-from": { type: "severity", summary: "Changes this serious wait." } };
+const holdLimits = (lines: string[]): string => flat(lines.slice(lines.indexOf("How far each workflow goes before it asks you"), lines.indexOf("Checks and landing")));
+
+it("says the severities a setting holds at, and whose value it is, when the configuration sets it", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], { "docs-folder": "d", "hold-from": "medium" });
+  expect(holdLimits(renderInspection(inspection))).toContain("Ideas rated critical, high or medium wait for your sign-off before they land. This is set by hold-from (your configuration).");
+});
+
+it("says the severities a setting holds at, and that the pack's default sets it, when the configuration does not", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], { "docs-folder": "d" });
+  expect(holdLimits(renderInspection(inspection))).toContain("Ideas rated critical or high wait for your sign-off before they land. This is set by hold-from (default).");
+});
+
+it("says the hold is not known when the setting is unset, and does not say the act lands without asking", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD_UNSET }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], { "docs-folder": "d" });
+  const limits = holdLimits(renderInspection(inspection));
+  expect(limits).toContain("When it waits for your sign-off is not known: it is set by hold-from, which is not set.");
+  expect(limits).not.toContain("Lands without asking you again");
+});
+
+it("says the hold is not known, and what the pack's default would do, when the configuration is not read", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], null);
+  expect(holdLimits(renderInspection(inspection))).toContain("When it waits for your sign-off is not known: it is set by hold-from, whose value was not read. With the pack's default, ideas rated critical or high would wait.");
+});
+
+it("says the hold is not known, and that no default exists, when the configuration is not read and the pack gives none", async () => {
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD_UNSET }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], null);
+  expect(holdLimits(renderInspection(inspection))).toContain("When it waits for your sign-off is not known: it is set by hold-from, whose value was not read, and the pack gives no default.");
+});
+
+it("says the hold is not known for a configuration written as code, which this command does not run", async () => {
+  const project = { found: true, path: ".", config: "code" as const, gate: null, closer: null };
+  const inspection = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, TWO_FILES, { holdSetting: "hold-from" }), project, [], null);
+  expect(holdLimits(renderInspection(inspection))).toContain("When it waits for your sign-off is not known: it is set by hold-from, whose value was not read. With the pack's default, ideas rated critical or high would wait.");
+});

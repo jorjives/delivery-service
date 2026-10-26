@@ -1,12 +1,12 @@
 import { relative } from "node:path";
 import { GUARD_REFUSES } from "../guards.js";
-import type { ProjectBaseline, Selection, Inspection } from "../packs/inspection.js";
+import type { ProjectBaseline, Selection, Inspection, InspectedSetting } from "../packs/inspection.js";
 import type { Finding, HiddenCharacter } from "../packs/inspection-findings.js";
 import { atOrAbove } from "../item-check.js";
 import { showHidden, showName } from "../packs/hidden-characters.js";
 import { FOLDER_NOT_IN_A_PACK, NOT_IN_A_PACK, UNUSED_INSTRUCTIONS } from "../packs/pack-folder.js";
 import type { PackProblem } from "../packs/manifest.js";
-import { SEVERITIES, type GuardName } from "../schema.js";
+import { Severity, SEVERITIES, type GuardName } from "../schema.js";
 import { OWN_SETUP } from "./own-setup.js";
 import { INSPECT_WIDTH, wrap } from "./text-wrap.js";
 import { DEFAULT_CONFIG_NAME } from "./pack-settings-render.js";
@@ -89,8 +89,34 @@ function touchBlock(): string[] {
   ];
 }
 
+/** The first words of the sign-off limit for a hold that is a setting whose value cannot be known. */
+export const HOLD_NOT_KNOWN = "When it waits for your sign-off is not known:";
+
+/** The severities at or above a setting's hold, most serious first, as the setting's sentences name them. */
+const ratedFromSetting = (hold: Severity): string => orList(SEVERITIES.filter((severity) => atOrAbove(severity, hold)));
+
+/** The sign-off sentences for an act: its literal hold, or the hold its severity setting gives, or why that cannot be known. */
+function signOffSentences(workflow: Inspection["workflows"][number], settings: readonly InspectedSetting[]): string[] {
+  if (workflow.holdSetting === null) {
+    const hold = workflow.hold;
+    if (hold === null) return ["Lands without asking you again, once you have approved the idea."];
+    const rated = SEVERITIES.filter((severity) => atOrAbove(severity, hold)).reverse();
+    return [`Ideas rated ${orList(rated)} wait for your sign-off before they land.`];
+  }
+  const setting = settings.find(({ name }) => name === workflow.holdSetting);
+  if (setting === undefined) throw new Error(`the hold of ${workflow.name} names ${workflow.holdSetting}, which is not in the inspection`);
+  if (workflow.holdKnown && workflow.hold !== null) {
+    const whose = setting.source === "default" ? "default" : "your configuration";
+    return [`Ideas rated ${ratedFromSetting(workflow.hold)} wait for your sign-off before they land.`, `This is set by ${setting.name} (${whose}).`];
+  }
+  const named = `${HOLD_NOT_KNOWN} it is set by ${setting.name}`;
+  if (setting.source === "unset") return [`${named}, which is not set.`];
+  if (setting.default === null) return [`${named}, whose value was not read, and the pack gives no default.`];
+  return [`${named}, whose value was not read. With the pack's default, ideas rated ${ratedFromSetting(Severity.parse(setting.default))} would wait.`];
+}
+
 /** One workflow's limits: the guards it adds or turns off, and what happens to its ideas. */
-function workflowLimits(workflow: Inspection["workflows"][number]): string[] {
+function workflowLimits(workflow: Inspection["workflows"][number], settings: readonly InspectedSetting[]): string[] {
   const added = unique(workflow.steps.flatMap((step) => step.guards.added));
   const off = unique(workflow.steps.flatMap((step) => step.guards.off));
   const guardLines = [
@@ -100,12 +126,8 @@ function workflowLimits(workflow: Inspection["workflows"][number]): string[] {
   const sentences = guardLines.length === 0 ? ["No extra guards."] : guardLines;
   if (workflow.kind === "find") {
     sentences.push("Its ideas wait for you to approve them before any act workflow runs.");
-  } else if (workflow.hold === null) {
-    sentences.push("Lands without asking you again, once you have approved the idea.");
   } else {
-    const hold = workflow.hold;
-    const rated = SEVERITIES.filter((severity) => atOrAbove(severity, hold)).reverse();
-    sentences.push(`Ideas rated ${orList(rated)} wait for your sign-off before they land.`);
+    sentences.push(...signOffSentences(workflow, settings));
   }
   return [...wrap(`${workflow.local}:`, "  "), ...sentences.flatMap((sentence) => wrap(sentence, "    "))];
 }
@@ -115,7 +137,7 @@ function limitsBlock(inspection: Inspection): string[] {
     "How far each workflow goes before it asks you",
     ...wrap("Every workflow is refused if it:", "  "),
     ...inspection.defaultGuards.flatMap((guard) => wrap(`- ${GUARD_REFUSES[guard]}`, "  ", "    ")),
-    ...inspection.workflows.flatMap(workflowLimits),
+    ...inspection.workflows.flatMap((workflow) => workflowLimits(workflow, inspection.settings)),
   ];
 }
 

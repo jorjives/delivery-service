@@ -73,3 +73,13 @@ it("fills each used value in front of its placeholder, and says not set when the
   expect(annotated("Read {{settings.a}} and {{settings.a}}.", uses)).toBe("Read docs [{{settings.a}}] and docs [{{settings.a}}].");
   expect(annotated("Read {{settings.a}} and {{settings.a}}.", [{ placeholder: "{{settings.a}}", setting: "a", value: null }])).toBe("Read [{{settings.a}}, not set] and [{{settings.a}}, not set].");
 });
+
+const HOLD = { "hold-from": { type: "severity", summary: "Changes this serious wait.", default: "high" } };
+const flat = (lines: readonly string[]): string => lines.join(" ").replace(/\s+/g, " ");
+
+it("says a hold setting changes how far the pack goes, and a setting used both ways says both", async () => {
+  const holdOnly = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, TWO_FILES, { holdSetting: "hold-from" }), NO_PROJECT, [], { "docs-folder": "d" });
+  expect(settingsBlock(holdOnly, "delivery.config.json")).toContain("    Changes: how far it goes before it asks you.");
+  const both = inspectionOf(await settingsPackOf({ ...TWO, ...HOLD }, { ...TWO_FILES, "fix.md": "Fix {{settings.topic}} from {{settings.hold-from}}." }, { holdSetting: "hold-from" }), NO_PROJECT, [], { "docs-folder": "d" });
+  expect(flat(settingsBlock(both, "delivery.config.json"))).toContain("Changes: what the agent is told, and how far it goes before it asks you.");
+});
