@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ideaFormat, builtInPacks } from "./manifest.js";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { atOrAbove } from "../item-check.js";
+import { ideaFormat, builtInPacks, readPack } from "./manifest.js";
 import { NO_BRACES, NOT_ABSOLUTE, ONE_LINE } from "./setting-types.js";
 import { settingsPackOf } from "./settings-fixtures.js";
 import { bindSettings, resolveSettings } from "./settings.js";
@@ -150,5 +154,66 @@ describe("resolveSettings", () => {
   });
   it("is empty for a pack with no settings", async () => {
     for (const pack of await builtInPacks()) expect(resolveSettings(pack, undefined)).toEqual({ settings: [], problems: [] });
+  });
+});
+
+describe("a hold taken from a setting", () => {
+  const HOLD = { "hold-from": { type: "severity", summary: "Changes this serious wait.", default: "high" } };
+  const holdOf = (r: ReturnType<typeof bindSettings>) => r.ok && r.pack.workflows["docs:fix"]?.hold;
+  it("holds at the default, then at the owner's value", async () => {
+    const pack = await settingsPackOf({ ...SETTINGS, ...HOLD }, FILES, { holdSetting: "hold-from" });
+    expect(pack.workflows["docs:fix"]?.hold).toBeUndefined(); // the loader leaves it to the binder
+    expect(holdOf(bindSettings(pack, undefined))).toBe("high");
+    expect(holdOf(bindSettings(pack, { "hold-from": "medium" }))).toBe("medium");
+  });
+  it.each([
+    ["the default", "high", undefined, "medium", false],
+    ["the default", "high", undefined, "high", true],
+    ["an owner value", "high", "medium", "medium", true],
+    ["an owner value", "high", "critical", "high", false],
+    ["a changed default", "medium", undefined, "medium", true],
+    ["a changed default", "critical", undefined, "high", false],
+  ] as const)("with %s (default %s, owner %s) a %s change is held: %s", async (_, fallback, owner, severity, held) => {
+    const pack = await settingsPackOf({ ...SETTINGS, "hold-from": { ...HOLD["hold-from"], default: fallback } }, FILES, { holdSetting: "hold-from" });
+    const bound = bindSettings(pack, owner === undefined ? undefined : { "hold-from": owner });
+    expect(bound.ok && atOrAbove(severity, bound.pack.workflows["docs:fix"]?.hold)).toBe(held);
+  });
+  it("lists the holding act among the setting's users, and records it as applied", async () => {
+    const r = bindSettings(await settingsPackOf({ ...SETTINGS, ...HOLD }, FILES, { holdSetting: "hold-from" }), { "hold-from": "low" });
+    expect(r.ok && r.pack.applied.find((a) => a.name === "hold-from")).toEqual({ name: "hold-from", type: "severity", value: "low", source: "configuration", usedBy: ["docs:fix"] });
+  });
+  it("lists a setting used in a prompt and as a hold once, and fills the prompt with the same value", async () => {
+    const files = { ...FILES, "fix.md": "Fix it. Hold from {{settings.hold-from}}." };
+    const r = bindSettings(await settingsPackOf({ ...HOLD, "docs-folder": SETTINGS["docs-folder"] }, { ...files, "look.md": "Read {{settings.docs-folder}}." }, { holdSetting: "hold-from" }), { "hold-from": "low" });
+    expect(r.ok && r.pack.workflows["docs:fix"]).toMatchObject({ hold: "low", steps: [{ prompt: "Fix it. Hold from low." }] });
+    expect(r.ok && r.pack.applied.find((a) => a.name === "hold-from")?.usedBy).toEqual(["docs:fix"]);
+  });
+  it("refuses an owner value that is not a severity, as for any severity setting", async () => {
+    const r = bindSettings(await settingsPackOf({ ...SETTINGS, ...HOLD }, FILES, { holdSetting: "hold-from" }), { "hold-from": "urgent" });
+    expect(r).toMatchObject({ ok: false, problems: [{ kind: "invalid", setting: "hold-from" }] });
+  });
+  it("gives two acts named by one setting the owner's hold, and lists both as its users in manifest order", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "settings-pack-"));
+    const manifest = {
+      schema: "delivery.pack/3",
+      name: "docs",
+      version: "1.0.0",
+      title: "Docs",
+      summary: "Docs.",
+      settings: HOLD,
+      workflows: {
+        look: { kind: "find", prompt: "look.md", ideasFor: ["fix", "tidy"] },
+        fix: { kind: "act", prompt: "fix.md", summary: "Fixes.", holdSetting: "hold-from" },
+        tidy: { kind: "act", prompt: "tidy.md", summary: "Tidies.", holdSetting: "hold-from" },
+      },
+    };
+    writeFileSync(join(dir, "pack.json"), JSON.stringify(manifest));
+    for (const name of ["look", "fix", "tidy"]) writeFileSync(join(dir, `${name}.md`), `${name}.`);
+    const read = await readPack(dir);
+    if (!read.ok) throw new Error(JSON.stringify(read.problems));
+    const r = bindSettings(read.pack, { "hold-from": "medium" });
+    expect(r.ok && r.pack.workflows["docs:fix"]?.hold).toBe("medium");
+    expect(r.ok && r.pack.workflows["docs:tidy"]?.hold).toBe("medium");
+    expect(r.ok && r.pack.applied.find((a) => a.name === "hold-from")?.usedBy).toEqual(["docs:fix", "docs:tidy"]);
   });
 });

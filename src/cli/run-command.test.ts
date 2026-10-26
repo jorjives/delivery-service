@@ -1923,4 +1923,33 @@ describe("delivery run with pack settings", () => {
     },
     RUN_TIMEOUT,
   );
+
+  it(
+    "binds a hold taken from a setting to the owner's value, and pins it into the run's record",
+    async () => {
+      const repo = initTempRepo("run-command-pack-hold-", { "package.json": PACKAGE });
+      mkdirSync(join(repo, "docs-pack"));
+      writeFileSync(
+        join(repo, "docs-pack", "pack.json"),
+        JSON.stringify({
+          schema: "delivery.pack/3",
+          name: "docs",
+          version: "1.0.0",
+          title: "Docs",
+          summary: "Keeps documents true.",
+          settings: { "hold-from": { type: "severity", summary: "Changes this serious wait.", default: "high" } },
+          workflows: { look: { kind: "find", prompt: "look.md", ideasFor: ["fix"] }, fix: { kind: "act", prompt: "fix.md", holdSetting: "hold-from" } },
+        }),
+      );
+      writeFileSync(join(repo, "docs-pack", "look.md"), "Look.");
+      writeFileSync(join(repo, "docs-pack", "fix.md"), "Fix.");
+      configIn(repo, { packs: ["docs-pack"], packSettings: { docs: { "hold-from": "medium" } } });
+
+      const { stdout } = await delivery(["run", "--task", TASK, "--workflow", "docs:fix"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: await scriptFile(completes) } });
+      const caseFile = join(repo, ".delivery", "runs", branchIn(stdout).replace("surface/", ""), "case.json");
+      const record = JSON.parse(readFileSync(caseFile, "utf-8")) as { header: { workflow: { hold?: string } } };
+      expect(record.header.workflow.hold).toBe("medium");
+    },
+    RUN_TIMEOUT,
+  );
 });

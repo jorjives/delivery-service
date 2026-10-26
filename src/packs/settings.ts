@@ -1,3 +1,4 @@
+import { Severity } from "../schema.js";
 import { renderSettings, settingNamesIn } from "../placeholders.js";
 import { valueAt } from "../schema-issues.js";
 import { promptOf, type Instructions, type Pack } from "./manifest.js";
@@ -11,7 +12,7 @@ export interface AppliedSetting {
   type: SettingType;
   value: string;
   source: SettingSource;
-  /** Qualified names of the workflows whose authored prompt uses the setting, in manifest order. */
+  /** Qualified names of the workflows whose authored prompt uses the setting, or whose act holds from it, in manifest order. */
   usedBy: readonly string[];
 }
 
@@ -28,7 +29,7 @@ export interface ResolvedSetting {
   /** The value as the agent would be told it; null when unset, or when the owner's value is faulty. */
   value: string | null;
   source: ResolvedSource;
-  /** Qualified names of the workflows whose authored prompt uses the setting, in manifest order. */
+  /** Qualified names of the workflows whose authored prompt uses the setting, or whose act holds from it, in manifest order. */
   usedBy: readonly string[];
 }
 
@@ -55,9 +56,13 @@ export function resolveSettings(pack: Pack, values: Readonly<Record<string, unkn
   const settings: ResolvedSetting[] = [];
   const problems: SettingProblem[] = [];
   for (const [name, declaration] of Object.entries(declarations)) {
-    const usedBy = Object.entries(pack.instructions)
-      .filter(([, told]) => settingNamesIn(told.authored).includes(name))
-      .map(([workflow]) => workflow);
+    const usedBy = Object.entries(pack.manifest.workflows)
+      .filter(([local, workflow]) => {
+        const told = pack.instructions[`${packName}:${local}`];
+        const inPrompt = told !== undefined && settingNamesIn(told.authored).includes(name);
+        return inPrompt || (workflow.kind === "act" && workflow.holdSetting === name);
+      })
+      .map(([local]) => `${packName}:${local}`);
     const described = {
       name,
       type: declaration.type,
@@ -113,6 +118,13 @@ export function bindSettings(pack: Pack, values: Readonly<Record<string, unknown
     if (workflow === undefined || step === undefined) continue;
     const bound: Instructions = { ...told, authored: renderSettings(told.authored, rendered) };
     workflows[name] = { ...workflow, steps: [{ ...step, prompt: promptOf(bound) }, ...more] };
+  }
+  for (const [local, act] of Object.entries(pack.manifest.workflows)) {
+    if (act.kind !== "act" || act.holdSetting === undefined) continue;
+    const name = `${pack.manifest.name}:${local}`;
+    const current = workflows[name];
+    if (current === undefined) continue;
+    workflows[name] = { ...current, hold: Severity.parse(rendered[act.holdSetting]) };
   }
   return { ok: true, pack: { ...pack, workflows, applied } };
 }
