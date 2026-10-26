@@ -9,7 +9,8 @@ import type { Pack } from "../packs/manifest.js";
 import { projectPacks, withWorkflowsOf } from "./pack-workflows.js";
 import { gateLine, closerPhrase } from "./project-phrases.js";
 import { findRepository } from "./project.js";
-import { checkCustomModules, resolveProject, type ProjectSettings } from "./settings.js";
+import { entryWorkflow, queueTasks } from "./queue.js";
+import { checkCustomModules, resolveProject, unknownWorkflow, type ProjectSettings } from "./settings.js";
 
 /** What `delivery validate` was given on the command line: the two options it shares with `delivery run`. */
 export interface ValidateOptions {
@@ -109,6 +110,13 @@ export async function defaultProject(repoPath: string, env: NodeJS.ProcessEnv): 
 
 /** The check and closing action a run would use (no flags, this environment), with any module of the project's own loaded but never run. */
 async function settleProject(config: DeliveryConfig, repoPath: string, env: NodeJS.ProcessEnv): Promise<ProjectSettings> {
+  // A list entry that names a workflow the project does not have would be refused when it came up.
+  for (const task of queueTasks(config)) {
+    const name = entryWorkflow(task);
+    if (name !== undefined && config.workflows?.[name] === undefined) {
+      throw new Refusal(unknownWorkflow(name, Object.keys(config.workflows ?? {})), EXIT.configuration, "tasks");
+    }
+  }
   const project = await resolveProject({}, { env, repoPath, config });
   await checkCustomModules(project.gateRef, project.closerRef, repoPath);
   return project;
@@ -145,7 +153,8 @@ export async function findProblems(options: ValidateOptions, ctx: CommandContext
     // action a run would use, or a module of the project's own) is listed; check the gate and closer modules
     // separately if CI needs both at once.
     const packs = await projectPacks(checked.config, dirname(file), repoPath, basename(file));
-    await settleProject(withWorkflowsOf(checked.config, packs), repoPath, ctx.env);
+    const config = withWorkflowsOf(checked.config, packs);
+    await settleProject(config, repoPath, ctx.env);
     return [];
   } catch (err) {
     const { message, exitCode } = renderFailure(err);

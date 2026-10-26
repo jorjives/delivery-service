@@ -64,7 +64,7 @@ Full message: `Another run is already going here (started `<time>`, <shape>: `<r
 
 **Why.** `--workflow` names a workflow that neither your configuration file nor any pack you list defines. The message lists the ones that exist.
 
-**Fix.** Use one of the listed names, or add the workflow under [`workflows`](configuration-reference.md#workflows). A workflow also needs a task: "A workflow runs a task you name with `--task`".
+**Fix.** Use one of the listed names, or add the workflow under [`workflows`](configuration-reference.md#workflows). A `tasks` entry that names a workflow it does not have is refused the same way, by `delivery validate` too.
 
 ### I can't start: your main folder can't be protected on this machine
 

@@ -19,7 +19,7 @@ import { unknownCloser } from "./config.js";
 import { EXIT, UNEXPECTED_FOOTER } from "./failures.js";
 import { NO_CHECK, NOT_A_REPOSITORY, UNCOMMITTED_NOTE } from "./project.js";
 import { allRuns, readRun } from "./runs.js";
-import { BOTH_TASKS, unknownWorkflow, WORKFLOW_NEEDS_TASK } from "./settings.js";
+import { BOTH_TASKS, unknownWorkflow } from "./settings.js";
 import { NO_TASK } from "./run-command.js";
 import { FENCE_ABSENT } from "./drive.js";
 import { EVERY_TASK_DONE, taskEnded, runPickedUp, STOPPED_PART_WAY } from "./queue.js";
@@ -1850,11 +1850,26 @@ describe("delivery run --workflow", () => {
     expect(existsSync(join(repo, ".delivery"))).toBe(false);
   });
 
-  it("refuses --workflow for a list of tasks with no task named", async () => {
-    const repo = initTempRepo("run-command-workflow-list-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: ["add a hello function, with a test"], workflows: WORKFLOWS }) });
-    const { exitCode, stderr } = await delivery(["run", "--workflow", "plan-then-build"], { cwd: repo });
+  it(
+    "does a listed task in the workflow it names, and --workflow is the default for entries that name none",
+    async () => {
+      const config = { tasks: [{ intent: "first", workflow: "plan-then-build" }, "second"], workflows: WORKFLOWS, closer: { type: "commit-to-branch" } };
+      const repo = initTempRepo("run-command-workflow-list-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify(config) });
+      const script = await scriptFile({ expectations: [writes("PLAN.md"), writes("BUILT.md"), writes("PLAN2.md"), writes("BUILT2.md")] });
+      const { exitCode } = await delivery(["run", "--workflow", "plan-then-build"], { cwd: repo, env: { [TEST_MOCK_SCRIPT]: script } });
+      expect(exitCode).toBe(EXIT.ok);
+      const records = await allRuns(repo);
+      expect(records.map((record) => record.caseFile.header.workflow?.name)).toEqual(["plan-then-build", "plan-then-build"]);
+    },
+    RUN_TIMEOUT * 4,
+  );
+
+  it("refuses a list entry that names a workflow the project does not define, before anything starts", async () => {
+    const repo = initTempRepo("run-command-workflow-list-unknown-", { "package.json": PACKAGE, "delivery.config.json": JSON.stringify({ tasks: [{ intent: "a", workflow: "nope" }], workflows: WORKFLOWS }) });
+    const { exitCode, stderr } = await delivery(["run"], { cwd: repo });
     expect(exitCode).toBe(EXIT.configuration);
-    expect(stderr).toContain(WORKFLOW_NEEDS_TASK);
+    expect(stderr).toContain("nope");
+    expect(existsSync(join(repo, ".delivery"))).toBe(false);
   });
 });
 

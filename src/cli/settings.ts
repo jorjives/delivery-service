@@ -112,8 +112,6 @@ export const unknownWorkflow = (name: string, known: string[]): string =>
     ? `There's no workflow called \`${name}\`: your config file defines none. Add one under \`workflows\`, or leave out \`--workflow\`.`
     : `There's no workflow called \`${name}\`. Your config file defines ${andList(known)}.`;
 
-export const WORKFLOW_NEEDS_TASK = "A workflow runs a task you name with `--task`. Add one, or leave out `--workflow` to work down your list.";
-
 /** One step as a run pins it: a ready-made gate resolved to the gate it stands for, a custom one digested. */
 async function pinnedStep(step: StepConfig, repoPath: string): Promise<WorkflowStep> {
   const gateRef = step.gate === undefined ? undefined : isPreset(step.gate) ? await presetGate(step.gate, repoPath) : step.gate;

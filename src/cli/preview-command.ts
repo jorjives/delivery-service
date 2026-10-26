@@ -11,7 +11,7 @@ import { andList, findConfig, type DeliveryConfig } from "./config.js";
 import type { CommandContext } from "./context.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
-import { EVERY_TASK_DONE, nextQueueTask, queueTasks, taskHeading } from "./queue.js";
+import { entryWorkflow, EVERY_TASK_DONE, nextQueueTask, queueTasks, taskHeading } from "./queue.js";
 import { allRuns } from "./runs.js";
 import { taskIntent } from "../task-list.js";
 import { OWN_SETUP } from "./own-setup.js";
@@ -45,13 +45,15 @@ export const stepHeading = (index: number, of: number, workflow: string, step: s
 export const CONTINUES = "This step continues the previous step's agent session on its first attempt; a retry starts fresh.";
 
 /** The workflow and the step in it to preview, or undefined when no step was asked for. */
-async function chooseStep(config: DeliveryConfig, repoPath: string, options: PreviewOptions): Promise<{ workflow: PinnedWorkflow; index: number } | undefined> {
-  if (options.step === undefined && options.workflow === undefined) return undefined;
+async function chooseStep(config: DeliveryConfig, repoPath: string, options: PreviewOptions, entry: string | undefined): Promise<{ workflow: PinnedWorkflow; index: number } | undefined> {
+  // A list entry that names a workflow is previewed in it; --workflow is for the entries that name none.
+  const chosen = entry ?? options.workflow;
+  if (options.step === undefined && chosen === undefined) return undefined;
   const known = Object.keys(config.workflows ?? {});
-  if (options.workflow !== undefined && !known.includes(options.workflow)) {
-    throw new Refusal(unknownWorkflow(options.workflow, known), EXIT.configuration);
+  if (chosen !== undefined && !known.includes(chosen)) {
+    throw new Refusal(unknownWorkflow(chosen, known), EXIT.configuration);
   }
-  const named = options.workflow === undefined ? known : [options.workflow];
+  const named = chosen === undefined ? known : [chosen];
   // `--workflow` alone shows its first step.
   const wanted = options.step ?? config.workflows?.[named[0] ?? ""]?.steps[0]?.name;
   const holding = named.filter((name) => config.workflows?.[name]?.steps.some((step) => step.name === wanted));
@@ -162,7 +164,7 @@ export async function previewCommand(options: PreviewOptions, ctx: CommandContex
   // The id is fixed rather than made from the clock, as a real run's is: it
   // is not part of what an agent is told, and a fixed one keeps two previews
   // of the same project identical.
-  const stepped = await chooseStep(config, repoPath, options);
+  const stepped = await chooseStep(config, repoPath, options, entryWorkflow(chosen.taskDef));
   const standIn = initialCaseFile(
     { surfaceId: "preview", taskDef: chosen.taskDef, gateRef, closerRef, domainPrompt, ...(agent === undefined ? {} : { agent }), ...(stepped === undefined ? {} : { workflow: stepped.workflow }) },
     budgets,

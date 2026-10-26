@@ -1,5 +1,5 @@
 import type { SessionEnvironment } from "../agent-invoke.js";
-import type { FenceRecord, SlotOutcome, TaskDef, UsageLimit } from "../schema.js";
+import type { FenceRecord, PinnedWorkflow, SlotOutcome, TaskDef, UsageLimit } from "../schema.js";
 import { USAGE_LIMIT_WORDS } from "../ports.js";
 import { createRunBreaker, repairsUsed, tripsOf, type RunBreaker } from "../breaker.js";
 import { RunHalted } from "../errors.js";
@@ -16,6 +16,9 @@ import type { RunRecord } from "../run-records.js";
 import { findQueueRun, stillToTake, taskIntent, type QueuePosition } from "../task-list.js";
 import { allRuns, describeRun, readRun, unfinishedSupervisedRun } from "./runs.js";
 import type { ProjectSettings } from "./settings.js";
+
+/** The workflow a list entry names for itself, when it names one. */
+export const entryWorkflow = ({ workflow }: TaskDef): string | undefined => (typeof workflow === "string" ? workflow : undefined);
 
 /** Everything this project's list asks for, in the order it was written. */
 export function queueTasks(config: DeliveryConfig): TaskDef[] {
@@ -194,7 +197,15 @@ export async function runQueue(
     carryOn = false,
     skip,
     claims,
-  }: { repoPath: string; carryOn?: boolean; skip?: (task: TaskDef) => Promise<boolean>; claims?: ClaimSource },
+    workflowOf,
+  }: {
+    repoPath: string;
+    carryOn?: boolean;
+    skip?: (task: TaskDef) => Promise<boolean>;
+    claims?: ClaimSource;
+    /** The workflow a task of the list is done in, when it has one. */
+    workflowOf?: (task: TaskDef) => PinnedWorkflow | undefined;
+  },
   ctx: CommandContext,
 ): Promise<ExitCode> {
   // One promise, not one session: slots that start together share one check rather than racing to make two.
@@ -236,7 +247,11 @@ export async function runQueue(
       }
       // A run started a moment ago by another slot may not be on disk yet, so its id counts as taken too.
       const taken = new Set([...records.map((record) => record.runId), ...claimed.map((claim) => claim.surfaceId)]);
-      return { taskDef, position, existing, surfaceId: existing?.runId ?? runIdFor(taskIntent(taskDef), new Date(), taken) };
+      const workflow = workflowOf?.(taskDef);
+      return {
+        taskDef, position, existing, surfaceId: existing?.runId ?? runIdFor(taskIntent(taskDef), new Date(), taken),
+        ...(workflow === undefined ? {} : { start: { workflow } }),
+      };
     }
   };
 
