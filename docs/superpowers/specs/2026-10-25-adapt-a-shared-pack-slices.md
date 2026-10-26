@@ -162,6 +162,7 @@
 
 ## Slice 5: Adding and updating a pack tells you what to set
 
+**Status:** ✅ Complete — 2026-10-26 — `7c50a10`
 **Tests:** ✅ Recorded — 2026-10-26 — `ed4cc26` — cli (vitest) — 1 UAT + 3 AC, 4 skipped
 
 **Delivers:** A project owner who adds or updates a pack is told which settings need an answer before it can run, and can see it in the pack list.
