@@ -8,7 +8,7 @@ import { fingerprintedFiles } from "../packs/install/digests.js";
 import { diffPackFiles } from "../packs/install/file-diff.js";
 import { readInstalledPacks } from "../packs/install/installed.js";
 import { fakePackSource, type FakePackSource } from "../packs/install/fake-source.js";
-import { CODE_TEXT, packPackage } from "../packs/install/install-fixtures.js";
+import { CODE_TEXT, packPackage, SCAN_TEXT } from "../packs/install/install-fixtures.js";
 import { PACK_HASH_LABEL, readLock } from "../packs/install/lock.js";
 import { readPackage } from "../packs/install/package-archive.js";
 import { sriOf } from "../packs/install/pack-source.js";
@@ -16,6 +16,7 @@ import { installedPackDir } from "../packs/install/store.js";
 import { withStagedPack } from "../packs/install/staged.js";
 import { inspectionOf } from "../packs/inspection.js";
 import { readPackFolder } from "../packs/pack-folder.js";
+import { acceptedValues } from "../packs/settings.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import { initTempRepo } from "../temp-repo.js";
 import { delivery, PACKAGE, withPrivateTmpdir, writeNeedyPack } from "./command-fixtures.js";
@@ -51,9 +52,9 @@ async function hashOf(tarball: Uint8Array): Promise<string> {
 
 /**
  * The two inspections and the file diffs an update of docs-drift to `next` judges, built as the command builds them:
- * the kept copy against the staged new version, under the same project baseline.
+ * the kept copy against the staged new version, under the same project baseline, with the owner's `values` as accepted.
  */
-async function judged(repo: string, next: Uint8Array) {
+async function judged(repo: string, next: Uint8Array, values?: Record<string, unknown>) {
   const entry = (await readLock(repo)).packs["docs-drift"];
   if (entry === undefined) throw new Error("docs-drift must be added");
   const read = await readPackage(next);
@@ -69,8 +70,8 @@ async function judged(repo: string, next: Uint8Array) {
       dir: keptDir,
       origin: { kind: "installed" as const, package: entry.package, version: "1.3.0", request: entry.request, integrity: sriOf(next) },
     };
-    const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files, null);
-    const after = inspectionOf(newPack, baseline, folder.files, null);
+    const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files, acceptedValues(kept.pack, values));
+    const after = inspectionOf(newPack, baseline, folder.files, acceptedValues(newPack, values));
     const diffs = await diffPackFiles(keptDir, fingerprintedFiles(kept.pack), stagedDir, fingerprintedFiles(newPack));
     return { before, after, diffs };
   });
@@ -440,5 +441,129 @@ describe("delivery packs update", () => {
     const doc = PackDecision.parse(JSON.parse(lines[0] ?? ""));
     expect(doc.outcome).toBe("refused");
     expect(doc.message).toContain("is not an added pack");
+  });
+});
+
+/** The settings a version of docs-drift declares, and the placeholders its prompts use for them. */
+const DOCS_FOLDER = { "docs-folder": { type: "path", summary: "The folder that holds your documentation." } };
+const TONE = { tone: { type: "text", summary: "How the docs read." } };
+const READS_DOCS = "\nRead {{settings.docs-folder}}.";
+const FIXES_DOCS = "\nFix {{settings.docs-folder}}.";
+const HOLD_SETTING = { "hold-from": { type: "severity", summary: "Changes this serious wait.", default: "high" } };
+const HOLD_WORKFLOWS = { scan: SCAN, code: { kind: "act", prompt: "code.md", holdSetting: "hold-from" } };
+
+/** docs-drift at `version`, declaring `settings` (none when undefined), with the prompt text `uses` appended to scan.md and code.md. */
+function settingsVersion(version: string, settings: Record<string, unknown> | undefined, uses: { scan?: string; code?: string } = {}, workflows: Record<string, unknown> = V1_WORKFLOWS): Uint8Array {
+  return packPackage({
+    version,
+    manifest: { settings, workflows },
+    extra: { "scan.md": SCAN_TEXT + (uses.scan ?? ""), "code.md": CODE_TEXT + (uses.code ?? "") },
+  });
+}
+
+describe("delivery packs update with settings", () => {
+  /** Adds docs-drift 1.2.0 (`v1`) to a new repository, with `packSettings` as the owner's values, and publishes `v2` as 1.3.0. */
+  async function setUp(v1: Uint8Array, v2: Uint8Array, packSettings?: Record<string, unknown>) {
+    const repo = initTempRepo("update-settings-", { "package.json": PACKAGE });
+    if (packSettings !== undefined) writeFileSync(join(repo, "delivery.config.json"), JSON.stringify({ packSettings: { "docs-drift": packSettings } }));
+    const source = await addedDocsDrift(repo, v1);
+    source.publish(NAME, "1.3.0", v2);
+    return { repo, source };
+  }
+
+  it("reports a second required setting, that runs will stop until it is given, and the lines to add; it still updates", async () => {
+    const { repo, source } = await setUp(
+      settingsVersion("1.2.0", DOCS_FOLDER, { scan: READS_DOCS, code: FIXES_DOCS }),
+      settingsVersion("1.3.0", { ...DOCS_FOLDER, ...TONE }, { scan: READS_DOCS, code: FIXES_DOCS + "\nTone {{settings.tone}}." }),
+      { "docs-folder": "docs" },
+    );
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    expect(flat(lines.join("\n"))).toContain("New, needs a value: tone. Until you fix this, every run in this project will stop, including scheduled runs.");
+    expect(lines).toContain('  "packSettings": { "docs-drift": { "tone": "..." } }');
+  });
+
+  it("says the configuration still names a setting the new version removed, and does not fail", async () => {
+    const { repo, source } = await setUp(
+      settingsVersion("1.2.0", DOCS_FOLDER, { scan: READS_DOCS, code: FIXES_DOCS }),
+      settingsVersion("1.3.0", undefined),
+      { "docs-folder": "docs" },
+    );
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: true }).ask, source)).toBe(EXIT.ok);
+    const text = flat(lines.join("\n"));
+    expect(text).toContain("Removed: docs-folder. Your configuration still names it: remove that line.");
+    expect(text).toContain("Until you fix this, every run in this project will stop, including scheduled runs.");
+    expect(text).toContain("Remove docs-folder from packSettings in delivery.config.json.");
+  });
+
+  it("reports a default change that moves the hold in effect with its direction, and none when the owner overrides it", async () => {
+    const v1 = settingsVersion("1.2.0", HOLD_SETTING, {}, HOLD_WORKFLOWS);
+    const v2 = settingsVersion("1.3.0", { "hold-from": { ...HOLD_SETTING["hold-from"], default: "critical" } }, {}, HOLD_WORKFLOWS);
+    const plain = await setUp(v1, v2);
+    const shown = context(plain.repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, shown.ctx, scriptedAsk({ confirm: false }).ask, plain.source)).toBe(EXIT.ok);
+    expect(flat(shown.lines.join("\n"))).toContain("Default changed: hold-from, high to critical. A change now waits for sign-off only at critical: this lets more through.");
+
+    const owned = await setUp(v1, v2, { "hold-from": "medium" });
+    const json = context(owned.repo, { json: true });
+    expect(await packsUpdateCommand("docs-drift", undefined, json.ctx, scriptedAsk().ask, owned.source)).toBe(EXIT.configuration);
+    const doc = PackDecision.parse(JSON.parse(json.lines[0] ?? ""));
+    expect(doc.changes?.some(({ kind }) => kind === "hold")).toBe(false);
+    expect(doc.changes).toContainEqual(expect.objectContaining({ kind: "setting-default-changed", setting: "hold-from" }));
+  });
+
+  it("does not say a new setting needs a value when the configuration already gives a usable value", async () => {
+    const { repo, source } = await setUp(
+      settingsVersion("1.2.0", DOCS_FOLDER, { scan: READS_DOCS, code: FIXES_DOCS }),
+      settingsVersion("1.3.0", { ...DOCS_FOLDER, ...TONE }, { scan: READS_DOCS, code: FIXES_DOCS + "\nTone {{settings.tone}}." }),
+      { "docs-folder": "docs", tone: "plain" },
+    );
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: false }).ask, source)).toBe(EXIT.ok);
+    expect(lines).toContain("  New: tone. Your configuration gives it.");
+    expect(flat(lines.join("\n"))).not.toContain("every run in this project will stop");
+  });
+
+  it("says every run will stop when the new version changes a setting's type so the owner's value no longer fits, and does not say the configuration gives it", async () => {
+    const { repo, source } = await setUp(
+      settingsVersion("1.2.0", { "docs-folder": { type: "text", summary: "The folder that holds your documentation." } }, { scan: READS_DOCS, code: FIXES_DOCS }),
+      settingsVersion("1.3.0", { "docs-folder": { type: "severity", summary: "The folder that holds your documentation." } }, { scan: READS_DOCS, code: FIXES_DOCS }),
+      { "docs-folder": "docs" },
+    );
+    const { ctx, lines } = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk({ confirm: false }).ask, source)).toBe(EXIT.ok);
+    const text = flat(lines.join("\n"));
+    expect(text).toContain("Type changed: docs-folder, text to severity. Your value no longer fits.");
+    expect(text).toContain("every run in this project will stop");
+    expect(text).toContain("Change docs-folder in delivery.config.json");
+  });
+
+  it("says a required setting whose value no longer fits the new type cannot be used, and leaves it out of the settings it needs", async () => {
+    const { repo, source } = await setUp(
+      settingsVersion("1.2.0", DOCS_FOLDER, { scan: READS_DOCS, code: FIXES_DOCS }),
+      settingsVersion("1.3.0", { ...DOCS_FOLDER, ...TONE }, { scan: READS_DOCS, code: FIXES_DOCS + "\nTone {{settings.tone}}." }),
+      { "docs-folder": "docs", tone: 3 },
+    );
+    const plain = context(repo);
+    expect(await packsUpdateCommand("docs-drift", undefined, plain.ctx, scriptedAsk({ confirm: false }).ask, source)).toBe(EXIT.ok);
+    const text = flat(plain.lines.join("\n"));
+    expect(text).toContain("gives it a value the pack cannot use");
+    expect(text).not.toContain("Your configuration gives it.");
+
+    const json = context(repo, { json: true });
+    expect(await packsUpdateCommand("docs-drift", undefined, json.ctx, scriptedAsk().ask, source)).toBe(EXIT.configuration);
+    expect(PackDecision.parse(JSON.parse(json.lines[0] ?? "")).needs).toEqual([]);
+  });
+
+  it("carries the setting changes and the settings still needed in --json, and the owner's accepted values in the account", async () => {
+    const v2 = settingsVersion("1.3.0", { ...DOCS_FOLDER, ...TONE }, { scan: READS_DOCS, code: FIXES_DOCS + "\nTone {{settings.tone}}." });
+    const { repo, source } = await setUp(settingsVersion("1.2.0", DOCS_FOLDER, { scan: READS_DOCS, code: FIXES_DOCS }), v2, { "docs-folder": "docs" });
+    const { ctx, lines } = context(repo, { json: true });
+    expect(await packsUpdateCommand("docs-drift", undefined, ctx, scriptedAsk().ask, source, { approve: await hashOf(v2) })).toBe(EXIT.ok);
+    const doc = PackDecision.parse(JSON.parse(lines[0] ?? ""));
+    expect(doc.changes).toContainEqual(expect.objectContaining({ kind: "setting-added", setting: "tone", required: true }));
+    expect(doc.needs).toEqual(["tone"]);
+    expect(doc.account?.settings.find(({ name }) => name === "docs-folder")?.source).toBe("configuration");
   });
 });

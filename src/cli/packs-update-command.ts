@@ -11,6 +11,7 @@ import { withStagedPack } from "../packs/install/staged.js";
 import { inspectionOf } from "../packs/inspection.js";
 import type { Pack } from "../packs/manifest.js";
 import { readPackFolder } from "../packs/pack-folder.js";
+import { acceptedValues, missingSettings, resolveSettings } from "../packs/settings.js";
 import { addedPackNamed } from "./added-pack-lookup.js";
 import { loadConfigAndPackStates } from "./config.js";
 import type { CommandContext } from "./context.js";
@@ -34,6 +35,7 @@ import {
   notUpdatableLines,
   renamedLines,
   sameContentLines,
+  settingsChangeLines,
   stateHintLines,
   summaryLines,
   updatedLines,
@@ -104,7 +106,7 @@ export async function packsUpdateCommand(
 
       // The would-be set of packs must still make one project: a clash refuses here, before anything is shown or written.
       // The pack being replaced is left out, since the new version takes its place.
-      const { settings, packs, installed: states } = await loadConfigAndPackStates({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
+      const { settings, configName, packs, installed: states } = await loadConfigAndPackStates({ startDir: ctx.cwd, repoPath, flag: undefined, env: ctx.env });
       refuseUnusable(repoPath, states.filter((added) => added.name !== name));
       const others = packs.filter((pack) => !(pack.origin.kind === "installed" && pack.manifest.name === name));
       withWorkflowsOf(settings, others);
@@ -116,11 +118,21 @@ export async function packsUpdateCommand(
       const keptDir = installedPackDir(repoPath, name);
       const kept = await readPackFolder(keptDir);
       if (!kept.ok) throw new Error(`${name} was read as a pack a moment ago, and is not one now`);
-      const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files, null);
-      const after = inspectionOf(newPack, baseline, folder.files, null);
+      // Both versions are judged with the owner's values, so a setting change and a default that moves a hold show as a run will see them.
+      const given = settings.packSettings?.[name];
+      const before = inspectionOf({ ...kept.pack, origin: { kind: "installed", package: entry.package, version: entry.version, request: entry.request, integrity: entry.integrity } }, baseline, kept.files, acceptedValues(kept.pack, given));
+      const after = inspectionOf(newPack, baseline, folder.files, acceptedValues(newPack, given));
       const diffs = await diffPackFiles(keptDir, fingerprintedFiles(kept.pack), stagedDir, fingerprintedFiles(newPack));
       const changes = comparePacks(before, after);
-      out.facts({ previous: { version: entry.version, fingerprint: before.pack.hash }, fingerprint: after.pack.hash, changes, files: diffs });
+      // What the new version stops a run for: the problems the refusal would render, but for the unknown pack, which a run of this pack cannot have.
+      const problems = resolveSettings(newPack, given).problems.filter(({ kind }) => kind !== "unknown-pack");
+      out.facts({
+        previous: { version: entry.version, fingerprint: before.pack.hash },
+        fingerprint: after.pack.hash,
+        changes,
+        files: diffs,
+        needs: missingSettings(newPack, given).map(({ setting }) => setting),
+      });
       // The account is a fact under --json only: a plain update shows the change below, not the whole account.
       if (ctx.json) out.account(after);
 
@@ -130,6 +142,8 @@ export async function packsUpdateCommand(
       if (installed.state === "changed") out.plain(keptDiffersLines());
       out.plain([""]);
       out.plain(summaryLines(changes, after));
+      const settingLines = settingsChangeLines(changes, after, Object.keys(acceptedValues(newPack, given)), problems, configName);
+      if (settingLines.length > 0) out.plain(["", ...settingLines]);
       out.plain([""]);
       out.plain(filesLines(diffs));
       out.plain([""]);
