@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { Change } from "../packs/install/compare.js";
 import type { FileDiff } from "../packs/install/file-diff.js";
 import { INSPECTION_SCHEMA, NO_PROJECT, withFindings, type Inspection, type InspectedWorkflow } from "../packs/inspection.js";
+import type { SettingProblem } from "../packs/settings.js";
+import { NOT_SEVERITY } from "../packs/setting-types.js";
 import { FORBIDDEN, REASSURING } from "../report/report-fixtures.js";
 import {
   badRequestLines,
@@ -14,6 +16,7 @@ import {
   notUpdatableLines,
   renamedLines,
   sameContentLines,
+  settingsChangeLines,
   stateHintLines,
   summaryLines,
   updatedLines,
@@ -321,5 +324,97 @@ describe("the width and the words", () => {
     expect(widest(lines)).toBeLessThanOrEqual(60);
     expect(flat(lines)).not.toMatch(REASSURING);
     expect(flat(lines)).not.toMatch(FORBIDDEN);
+  });
+});
+
+describe("settingsChangeLines", () => {
+  const MISSING_DOCS_FOLDER: SettingProblem = { kind: "missing", pack: "docs-drift", setting: "docs-folder", summary: "The folder that holds your documentation." };
+  const UNDECLARED_OLD_FOLDER: SettingProblem = { kind: "undeclared", pack: "docs-drift", setting: "old-folder", declared: ["docs-folder"] };
+  const INVALID_FOLDER: SettingProblem = { kind: "invalid", pack: "docs-drift", setting: "folder", rule: NOT_SEVERITY, value: "docs" };
+  const STOP = "Until you fix this, every run in this project will stop, including scheduled runs.";
+
+  it("says a new setting needs a value, that every run will stop until it is given, and the lines to add", () => {
+    expect(settingsChangeLines([{ kind: "setting-added", setting: "docs-folder", type: "path", required: true, default: null, direction: "neutral" }], after, [], [MISSING_DOCS_FOLDER], "delivery.config.json")).toEqual([
+      "Settings",
+      "  New, needs a value: docs-folder.",
+      "  Until you fix this, every run in this project will stop,",
+      "    including scheduled runs.",
+      "  Add this to delivery.config.json, replacing the dots:",
+      '  "packSettings": { "docs-drift": { "docs-folder": "..." } }',
+    ]);
+  });
+
+  it("names a new optional setting with its default, a removed one the configuration still names, and a changed type", () => {
+    const lines = settingsChangeLines(
+      [
+        { kind: "setting-added", setting: "max-ideas", type: "text", required: false, default: "10", direction: "neutral" },
+        { kind: "setting-removed", setting: "old-folder", direction: "neutral" },
+        { kind: "setting-type-changed", setting: "folder", from: "path", to: "text", direction: "neutral" },
+      ],
+      after,
+      [],
+      [UNDECLARED_OLD_FOLDER],
+      "delivery.config.json",
+    );
+    expect(lines).toContain("  New, has a default: max-ideas (10).");
+    expect(flat(lines)).toContain("Removed: old-folder. Your configuration still names it: remove that line.");
+    expect(lines).toContain("  Type changed: folder, path to text.");
+  });
+
+  it("says a default change that moved the hold lets more through, and one the owner overrides says only the default", () => {
+    const holdAfter = inspection([workflow({ local: "code", kind: "act", holdSetting: "hold-from" })]);
+    const defaultChange: Change = { kind: "setting-default-changed", setting: "hold-from", from: "high", to: "critical", direction: "neutral" };
+    const hold: Change = { kind: "hold", workflow: "code", from: "high", to: "critical", direction: "wider" };
+    expect(flat(settingsChangeLines([defaultChange, hold], holdAfter, [], [], "delivery.config.json"))).toContain(
+      "Default changed: hold-from, high to critical. A change now waits for sign-off only at critical: this lets more through.",
+    );
+    const lessHold: Change = { kind: "hold", workflow: "code", from: "critical", to: "high", direction: "narrower" };
+    expect(flat(settingsChangeLines([defaultChange, lessHold], holdAfter, [], [], "delivery.config.json"))).toContain(
+      "A change now waits for sign-off only at high or critical: this lets less through.",
+    );
+    const alone = settingsChangeLines([defaultChange], holdAfter, [], [], "delivery.config.json");
+    expect(alone).toContain("  Default changed: hold-from, high to critical.");
+    expect(flat(alone)).not.toContain("this lets");
+  });
+
+  it("says every run will stop, and what to remove, for a setting the configuration names that the new version removed", () => {
+    const lines = settingsChangeLines([{ kind: "setting-removed", setting: "old-folder", direction: "neutral" }], after, [], [UNDECLARED_OLD_FOLDER], "delivery.config.json");
+    expect(flat(lines)).toContain("Removed: old-folder. Your configuration still names it: remove that line.");
+    expect(flat(lines)).toContain(STOP);
+    expect(flat(lines)).toContain("Remove old-folder from packSettings in delivery.config.json.");
+  });
+
+  it("says every run will stop, and what to change, for a value the new type no longer takes, and never says the configuration gives it", () => {
+    const lines = settingsChangeLines([{ kind: "setting-type-changed", setting: "folder", from: "text", to: "severity", direction: "neutral" }], after, [], [INVALID_FOLDER], "delivery.config.json");
+    expect(flat(lines)).toContain("Type changed: folder, text to severity. Your value no longer fits.");
+    expect(flat(lines)).toContain(STOP);
+    expect(flat(lines)).toContain('Change folder in delivery.config.json: "docs" is not a severity. Use one of: low, medium, high, critical.');
+
+    const added: Change = { kind: "setting-added", setting: "folder", type: "severity", required: true, default: null, direction: "neutral" };
+    const unusable = settingsChangeLines([added], after, [], [INVALID_FOLDER], "delivery.config.json");
+    expect(flat(unusable)).toContain("New: folder. Your configuration gives it a value the pack cannot use.");
+    expect(flat(unusable)).not.toContain("Your configuration gives it.");
+  });
+
+  it("says a new required setting the owner already gives a usable value, with no warning that runs will stop", () => {
+    const added: Change = { kind: "setting-added", setting: "tone", type: "text", required: true, default: null, direction: "neutral" };
+    const lines = settingsChangeLines([added], after, ["tone"], [], "delivery.config.json");
+    expect(lines).toEqual(["Settings", "  New: tone. Your configuration gives it."]);
+  });
+
+  it("says nothing when no setting changed and there are no problems", () => expect(settingsChangeLines([], after, [], [], "delivery.config.json")).toEqual([]));
+
+  it("keeps every line within 60 columns and never says safe, valid or verified", () => {
+    const changes: Change[] = [
+      { kind: "setting-added", setting: "docs-folder", type: "path", required: true, default: null, direction: "neutral" },
+      { kind: "setting-added", setting: "max-ideas", type: "text", required: false, default: "10", direction: "neutral" },
+      { kind: "setting-removed", setting: "old-folder", direction: "neutral" },
+      { kind: "setting-default-changed", setting: "folder", from: "high", to: "critical", direction: "neutral" },
+      { kind: "setting-type-changed", setting: "folder", from: "text", to: "severity", direction: "neutral" },
+    ];
+    const lines = settingsChangeLines(changes, after, [], [MISSING_DOCS_FOLDER, UNDECLARED_OLD_FOLDER, INVALID_FOLDER], "delivery.config.json");
+    expect(widest(lines)).toBeLessThanOrEqual(60);
+    expect(flat(lines)).not.toMatch(/\b(safe|valid|verified)\b/);
+    expect(flat(lines)).not.toMatch(REASSURING);
   });
 });

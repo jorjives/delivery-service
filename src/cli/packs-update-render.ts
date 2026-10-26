@@ -4,8 +4,10 @@ import type { Change } from "../packs/install/compare.js";
 import type { DiffLine, FileDiff } from "../packs/install/file-diff.js";
 import { showHidden, showName } from "../packs/hidden-characters.js";
 import type { Inspection } from "../packs/inspection.js";
+import type { MissingSetting, SettingProblem } from "../packs/settings.js";
 import { CHECKS_AND_LANDING_DIMENSIONS } from "../packs/widening.js";
 import { SEVERITIES, type Severity } from "../schema.js";
+import { addThisLines, ownerWords } from "./pack-settings-render.js";
 import type { ConfirmQuestion } from "./init.js";
 import { findingSentence, orList } from "./packs-inspect-render.js";
 import { INSPECT_WIDTH, wrap } from "./text-wrap.js";
@@ -170,6 +172,83 @@ export function summaryLines(changes: readonly Change[], after: Inspection): str
           ...gained.flatMap((finding, index) => wrap(`${index + 1}. ${findingSentence(finding)}`, "    ", "       ")),
         ]),
     ...sentence("Read the changed lines below. This summary does not cover what the instructions say.", "  "),
+  ];
+}
+
+type SettingChange = Extract<Change, { kind: "setting-added" | "setting-removed" | "setting-default-changed" | "setting-type-changed" }>;
+
+const isSettingChange = (change: Change): change is SettingChange =>
+  change.kind === "setting-added" || change.kind === "setting-removed" || change.kind === "setting-default-changed" || change.kind === "setting-type-changed";
+
+const STOP_SENTENCE = "Until you fix this, every run in this project will stop, including scheduled runs.";
+
+/** The clause that says a default change moved the sign-off in effect: only a hold of an act that takes its threshold from the setting. */
+function holdClause(setting: string, changes: readonly Change[], after: Inspection): string {
+  const hold = changes.find(
+    (change): change is HoldChange =>
+      change.kind === "hold" && after.workflows.some((workflow) => workflow.local === change.workflow && workflow.holdSetting === setting),
+  );
+  if (hold === undefined || hold.to === null) return "";
+  return ` A change now waits for sign-off only at ${ratedAt(hold.to)}: this lets ${hold.direction === "wider" ? "more" : "less"} through.`;
+}
+
+function settingSentence(change: SettingChange, changes: readonly Change[], after: Inspection, accepted: readonly string[], problems: readonly SettingProblem[]): string {
+  const { setting } = change;
+  const names = (kind: "missing" | "undeclared" | "invalid"): boolean => problems.some((problem) => problem.kind === kind && "setting" in problem && problem.setting === setting);
+  switch (change.kind) {
+    case "setting-added":
+      if (!change.required) return `New, has a default: ${setting} (${change.default}).`;
+      if (names("missing")) return `New, needs a value: ${setting}.`;
+      if (accepted.includes(setting)) return `New: ${setting}. Your configuration gives it.`;
+      return `New: ${setting}. Your configuration gives it a value the pack cannot use.`;
+    case "setting-removed":
+      return `Removed: ${setting}.${names("undeclared") ? " Your configuration still names it: remove that line." : ""}`;
+    case "setting-default-changed":
+      if (change.to === null) return `Default removed: ${setting} (was ${change.from}).`;
+      if (change.from === null) return `Default added: ${setting} (${change.to}).`;
+      return `Default changed: ${setting}, ${change.from} to ${change.to}.${holdClause(setting, changes, after)}`;
+    case "setting-type-changed":
+      return `Type changed: ${setting}, ${change.from} to ${change.to}.${names("invalid") ? " Your value no longer fits." : ""}`;
+  }
+}
+
+/** What each problem asks the owner to do, in the order the problems are given. The missing settings share one block of lines to add. */
+function problemLines(problems: readonly SettingProblem[], configName: string): string[] {
+  const missing = problems.filter((problem): problem is MissingSetting => problem.kind === "missing");
+  return problems.flatMap((problem) => {
+    switch (problem.kind) {
+      case "missing":
+        return problem === missing[0] ? addThisLines(missing, configName, "  ") : [];
+      case "undeclared":
+        return sentence(`Remove ${problem.setting} from packSettings in ${configName}.`, "  ");
+      case "invalid": {
+        const { statement, remedy } = ownerWords(problem.rule, problem.value);
+        return [...sentence(`Change ${problem.setting} in ${configName}: ${statement}`, "  "), ...(remedy === "" ? [] : sentence(remedy, "  "))];
+      }
+      case "unknown-pack":
+        return [];
+    }
+  });
+}
+
+/**
+ * The settings part of an update: each setting change in one sentence, then what will stop every run until it is fixed, and
+ * what to do. `accepted` names the settings the owner's values already give a usable value. `problems` are the very problems
+ * the refusal renders, so a run stops for what this part names. Empty when no setting changed and nothing is wrong.
+ */
+export function settingsChangeLines(
+  changes: readonly Change[],
+  after: Inspection,
+  accepted: readonly string[],
+  problems: readonly SettingProblem[],
+  configName: string,
+): string[] {
+  const settingChanges = changes.filter(isSettingChange);
+  if (settingChanges.length === 0 && problems.length === 0) return [];
+  return [
+    "Settings",
+    ...settingChanges.flatMap((change) => sentence(settingSentence(change, changes, after, accepted, problems), "  ")),
+    ...(problems.length === 0 ? [] : [...sentence(STOP_SENTENCE, "  "), ...problemLines(problems, configName)]),
   ];
 }
 
