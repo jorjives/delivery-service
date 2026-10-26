@@ -6,7 +6,7 @@ import { atOrAbove } from "../item-check.js";
 import { ideaFormat, builtInPacks, readPack } from "./manifest.js";
 import { NO_BRACES, NOT_ABSOLUTE, ONE_LINE } from "./setting-types.js";
 import { settingsPackOf } from "./settings-fixtures.js";
-import { bindSettings, resolveSettings } from "./settings.js";
+import { acceptedValues, bindSettings, missingSettings, resolveSettings } from "./settings.js";
 
 const SETTINGS = {
   "docs-folder": { type: "path", summary: "The folder.", default: "docs" },
@@ -215,5 +215,25 @@ describe("a hold taken from a setting", () => {
     expect(r.ok && r.pack.workflows["docs:fix"]?.hold).toBe("medium");
     expect(r.ok && r.pack.workflows["docs:tidy"]?.hold).toBe("medium");
     expect(r.ok && r.pack.applied.find((a) => a.name === "hold-from")?.usedBy).toEqual(["docs:fix", "docs:tidy"]);
+  });
+});
+
+describe("missingSettings", () => {
+  it("lists the required settings with no value, in declaration order, with their summaries", async () => {
+    const pack = await settingsPackOf({ a: { type: "path", summary: "The A." }, b: { type: "text", summary: "The B.", default: "x" }, c: { type: "text", summary: "The C." } }, USES_ABC);
+    expect(missingSettings(pack, { c: "given" })).toEqual([{ kind: "missing", pack: pack.manifest.name, setting: "a", summary: "The A." }]);
+    expect(missingSettings(pack, undefined).map(({ setting }) => setting)).toEqual(["a", "c"]);
+  });
+  it("does not count a given but faulty value as missing", async () => {
+    const pack = await settingsPackOf({ a: { type: "path", summary: "The A." }, b: { type: "text", summary: "The B.", default: "x" }, c: { type: "text", summary: "The C." } }, USES_ABC);
+    expect(missingSettings(pack, { a: "/etc", c: "x" })).toEqual([]);
+  });
+});
+
+describe("acceptedValues", () => {
+  it("keeps declared settings whose value fits, and drops undeclared names and faulty values", async () => {
+    const pack = await settingsPackOf({ a: { type: "path", summary: "The A." }, b: { type: "text", summary: "The B.", default: "x" }, c: { type: "text", summary: "The C." } }, USES_ABC);
+    expect(acceptedValues(pack, { a: "/etc", b: "kept", gone: "y" })).toEqual({ b: "kept" });
+    expect(acceptedValues(pack, undefined)).toEqual({});
   });
 });

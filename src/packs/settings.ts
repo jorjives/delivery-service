@@ -40,6 +40,25 @@ export type SettingProblem =
   | { kind: "invalid"; pack: string; setting: string; rule: string; value: unknown }
   | { kind: "unknown-pack"; pack: string; inUse: readonly string[] };
 
+export type MissingSetting = Extract<SettingProblem, { kind: "missing" }>;
+
+/** The required settings with no value, in declaration order: the `missing` problems of `resolveSettings`. */
+export function missingSettings(pack: Pack, values: Readonly<Record<string, unknown>> | undefined): MissingSetting[] {
+  return resolveSettings(pack, values).problems.filter((problem): problem is MissingSetting => problem.kind === "missing");
+}
+
+/** The owner's values for settings the pack declares, keeping only those its declaration accepts. */
+export function acceptedValues(pack: Pack, values: Readonly<Record<string, unknown>> | undefined): Record<string, unknown> {
+  const declarations = pack.manifest.settings ?? {};
+  const given = values ?? {};
+  const accepted: Record<string, unknown> = {};
+  for (const [name, declaration] of Object.entries(declarations)) {
+    if (!Object.hasOwn(given, name)) continue;
+    if (settingValueSchema(declaration).safeParse(given[name]).success) accepted[name] = given[name];
+  }
+  return accepted;
+}
+
 /** The value a setting is bound to: the owner's when given, else the pack's default. Undefined when neither holds. */
 function boundRaw(declaration: { default?: unknown }, name: string, given: Readonly<Record<string, unknown>>): unknown {
   return Object.hasOwn(given, name) ? given[name] : declaration.default;
