@@ -19,7 +19,8 @@ export interface WorkItem {
   workflow?: string;
   resolve?: string;
   cadenceMs?: number;
-  fallback: boolean;
+  /** Set for the items of a source marked `recurring`: never delivered, so taken again every run that reaches them, and joined to no sequence. */
+  recurring?: true;
   /** Items sharing a name form one sequence, in the order sources list them: only its earliest undelivered item is taken (spec §5.10). */
   sequence?: string;
   /** Set for a github source's items, and for a command source that says it is a tracker: follow-ups its items add are raised through it, not landed (spec §5.5). */
@@ -62,7 +63,7 @@ async function listCommand(source: Extract<SourceConfig, { type: "command" }>, n
   if (!tasks.success) return skip(`${what} printed tasks I can't read: each needs a string \`id\`, and a \`sequence\`, where there is one, must be a name`);
   return {
     items: tasks.data.map(({ id, ...taskDef }) => ({
-      key: `${name}:${id}`, source: name, kind: "command" as const, id, taskDef, fallback: source.fallback === true, ...withWorkflow(taskDef), ...withSequence(taskDef.sequence),
+      key: `${name}:${id}`, source: name, kind: "command" as const, id, taskDef, ...(source.recurring === true ? { recurring: true as const } : {}), ...withWorkflow(taskDef), ...withSequence(taskDef.sequence),
       ...(source.tracker === true ? { raise: true as const } : {}),
     })),
     notes: [],
@@ -72,7 +73,7 @@ async function listCommand(source: Extract<SourceConfig, { type: "command" }>, n
 /** One source's open work, in the source's own order, with a note for anything it could not use. */
 export async function listSource(source: SourceConfig, { repoPath, config, env }: { repoPath: string; config: DeliveryConfig; env: NodeJS.ProcessEnv }): Promise<Listed> {
   const name = sourceName(source);
-  const fallback = source.fallback === true;
+  const recurring = source.type === "list" && source.recurring === true ? { recurring: true as const } : {};
   switch (source.type) {
     case "backlog": {
       const backlog = await readBacklog(repoPath);
@@ -80,7 +81,7 @@ export async function listSource(source: SourceConfig, { repoPath, config, env }
         items: backlog.items
           .filter((item) => item.status === "open")
           .map((item) => ({
-            key: `${name}:${item.file}`, source: name, kind: "backlog" as const, id: item.file, taskDef: itemTask(item), fallback,
+            key: `${name}:${item.file}`, source: name, kind: "backlog" as const, id: item.file, taskDef: itemTask(item),
             ...(item.workflow === undefined ? {} : { workflow: item.workflow }),
             ...withSequence(item.sequence),
             ...(item.cadenceMs === undefined ? { resolve: `${BACKLOG_DIR}/${item.file}` } : { cadenceMs: item.cadenceMs }),
@@ -98,7 +99,7 @@ export async function listSource(source: SourceConfig, { repoPath, config, env }
           .map(structureTask)
           .map((taskDef) => ({ id: taskId(taskDef), taskDef }))
           .filter(({ id }, index, all) => all.findIndex((other) => other.id === id) === index)
-          .map(({ id, taskDef }) => ({ key: `${name}:${id}`, source: name, kind: "list" as const, id, taskDef, fallback, ...withWorkflow(taskDef), ...withSequence(taskDef.sequence) })),
+          .map(({ id, taskDef }) => ({ key: `${name}:${id}`, source: name, kind: "list" as const, id, taskDef, ...recurring, ...withWorkflow(taskDef), ...withSequence(taskDef.sequence) })),
         notes: [],
       };
     case "command":
@@ -125,7 +126,7 @@ async function standingOf(item: WorkItem, state: ItemState | undefined, repoPath
   if (taken.has(item.key)) return { kind: "held", reason: "in_flight" };
   if (state?.parked) return { kind: "held", reason: state.parked === "decision" ? "decision" : "parked" };
   if (state !== undefined && !state.settled && records.some((r) => r.runId === state.lastRunId && r.caseFile.outcome === undefined)) return { kind: "held", reason: "in_flight" };
-  if (item.fallback || item.cadenceMs !== undefined) return { kind: "takeable" };
+  if (item.recurring || item.cadenceMs !== undefined) return { kind: "takeable" };
   if (item.kind === "list" && !stillToTake(records, item.taskDef)) return { kind: "delivered" };
   // Landed, not yet merged: its work is on a branch that still exists, or already on the local base branch while the
   // backlog (read from origin) still shows it open. Not dispatched again until neither holds.
@@ -164,8 +165,8 @@ export async function chooseWork(
   const read: string[] = [];
   const take = async (items: WorkItem[], source: string): Promise<void> => {
     for (const item of items) {
-      // A fallback item is never "delivered" (always takeable today), so it keeps today's rule and joins no sequence.
-      const sequence = item.fallback ? undefined : item.sequence;
+      // A recurring item is never "delivered" (always takeable), so it joins no sequence.
+      const sequence = item.recurring ? undefined : item.sequence;
       if (sequence !== undefined && heads.has(sequence)) {
         waiting.add(sequence);
         continue;

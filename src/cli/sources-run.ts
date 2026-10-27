@@ -149,7 +149,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const answeredTasks = [...ledger.values()].filter((state) => isAnsweredTask(state) && (only === undefined || state.key === only));
   for (const state of answeredTasks.slice(0, Math.max(0, max - claims.length - chosen.items.length))) {
     const taskDef = records.find((r) => r.runId === state.lastRunId)?.caseFile.header.taskDef;
-    if (taskDef !== undefined) chosen.items.push({ key: state.key, source: "task", kind: "list", id: state.key.slice("task:".length), taskDef, fallback: false });
+    if (taskDef !== undefined) chosen.items.push({ key: state.key, source: "task", kind: "list", id: state.key.slice("task:".length), taskDef });
   }
   for (const item of chosen.items) {
     const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch: perItem ? undefined : branch, workflow }, ctx);
@@ -318,7 +318,7 @@ async function claimFor(
 async function complete(key: string, record: RunRecord, sources: readonly SourceConfig[], repoPath: string, ctx: CommandContext): Promise<void> {
   const item = record.caseFile.header.item;
   const source = sources.find((s) => sourceName(s) === item?.source);
-  if (item === undefined || source?.type !== "command" || source.fallback === true) return;
+  if (item === undefined || source?.type !== "command" || source.recurring === true) return;
   try {
     const result = await runShell(source.command, ["complete", item.id], { cwd: repoPath, timeoutMs: 60_000, env: ctx.env });
     if (result.exitCode !== 0) ctx.report.note(completeFailed(key, result.stderr.trim() || `it exited with code ${result.exitCode}`));

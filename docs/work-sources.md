@@ -18,6 +18,8 @@ This guide shows how to tell `delivery run --sources` where to find work: in wha
 
 `"fallback": true` reads a source only when no other source has any work. `name` tells a source's entries apart in a run's report; it defaults to the `type`. Two sources with the same name are refused, so give one of them its own `name`.
 
+`fallback` only decides when a source is read: its items are delivered once, like any other. To derive new work whenever the backlog is empty, add `"recurring": true` to a `list` or `command` source. Its items are never counted as delivered, so each is taken again on every run that reaches it, `<command> complete <id>` is not called, and a `sequence` on its items is ignored.
+
 ## Take work from a command
 
 A `command` source is run through its own command line. It needs two calls:
@@ -86,7 +88,7 @@ A source of slices should name each slices file as the sequence, so every spec i
 
 `delivery status` and `delivery report` name each held sequence, the item holding it, and why. In the [report's data](reporting.md) this is `held`.
 
-A sequence is an order only. To make one spec's slices wait for another's, give them the same sequence name. A recurring backlog item (one with a `cadence`) cannot be in a sequence, and a `sequence` on a fallback source's items is ignored. An item the run leaves alone (an issue not approved, a backlog file it cannot read) is not part of its sequence until the run can use it; the run's note about it says why.
+A sequence is an order only. To make one spec's slices wait for another's, give them the same sequence name. A recurring backlog item (one with a `cadence`) cannot be in a sequence, and a `sequence` on a recurring source's items is ignored. An item the run leaves alone (an issue not approved, a backlog file it cannot read) is not part of its sequence until the run can use it; the run's note about it says why.
 
 ## Next steps
 
