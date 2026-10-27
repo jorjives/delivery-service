@@ -112,7 +112,12 @@ export const CloserRef = z.discriminatedUnion("type", [
   // delivered item, each on the one below. The spec's
   // titleTemplate/bodyTemplate are deliberately absent until an owner needs
   // them; the defaults name the surface and the task.
-  z.object({ type: z.literal("open-pr"), stack: z.boolean().optional() }).strict(),
+  // `branch` says where accepted work lands: "delivery" (the default) on the shared delivery branch, "per-item" on its own
+  // branch per item, so each item gets an independent pull request from the base. Per-item cannot also stack.
+  z
+    .object({ type: z.literal("open-pr"), stack: z.boolean().optional(), branch: z.enum(["per-item", "delivery"]).optional() })
+    .strict()
+    .refine((ref) => !(ref.branch === "per-item" && ref.stack === true), { message: "`stack` needs the delivery branch, so it cannot be used with `branch: \"per-item\"`" }),
   z
     .object({
       type: z.literal("custom"),

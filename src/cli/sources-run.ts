@@ -108,6 +108,8 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const deliveryLedger = deliveryLedgerPath(path);
   // A stack the setup cannot take stops the run before anything is claimed or landed (spec §9).
   const stacked = isStacked(project.closerRef);
+  // Per-item: no shared branch; each item lands on its own and the closer acts on it, as it does for a task.
+  const perItem = project.closerRef.type === "open-pr" && project.closerRef.branch === "per-item";
   if (stacked) {
     const blocked = await checkStackSetup(repoPath, deliveryLedger, branch);
     if (blocked !== undefined) {
@@ -150,7 +152,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
     if (taskDef !== undefined) chosen.items.push({ key: state.key, source: "task", kind: "list", id: state.key.slice("task:".length), taskDef, fallback: false });
   }
   for (const item of chosen.items) {
-    const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch, workflow }, ctx);
+    const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch: perItem ? undefined : branch, workflow }, ctx);
     if (claim !== undefined) claims.push(claim);
   }
   // Readied before any task starts, so every task builds on the owner's latest commits (spec §5.7). Also readied when
@@ -164,7 +166,7 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   const stackReconciled = stacked
     ? await reconcileStackBranch(repoPath, deliveryLedger, { gateRef: project.gateRef, itemLedger: path, env: ctx.env, opens: claims.length > 0 || waiting, parkAfter })
     : undefined;
-  const reconciled = stackReconciled ?? (claims.length === 0 && !waiting && !mergedOnGitHub
+  const reconciled = stackReconciled ?? (perItem || (claims.length === 0 && !waiting && !mergedOnGitHub)
     ? undefined
     : await reconcileDeliveryBranch(repoPath, project.gateRef, deliveryLedger, ctx.env, mergedTips));
   if (reconciled?.ready === false) {
@@ -269,7 +271,7 @@ async function claimFor(
   item: WorkItem,
   state: ItemState | undefined,
   records: RunRecord[],
-  { repoPath, config, project, now, taken, branch, workflow: runWorkflow }: { repoPath: string; config: DeliveryConfig; project: ProjectSettings; now: Date; taken: Set<string>; branch: string; workflow?: string },
+  { repoPath, config, project, now, taken, branch, workflow: runWorkflow }: { repoPath: string; config: DeliveryConfig; project: ProjectSettings; now: Date; taken: Set<string>; branch: string | undefined; workflow?: string },
   ctx: CommandContext,
 ): Promise<(QueueClaim & { key: string }) | undefined> {
   // Only an undefined workflow is the item's own problem (left out with a note); any other refusal stops the command.
@@ -306,7 +308,7 @@ async function claimFor(
     existing: undefined,
     start: {
       item: ref,
-      delivery: { branch },
+      ...(branch === undefined ? {} : { delivery: { branch } }),
       ...(carried === undefined ? (workflow === undefined ? {} : { workflow }) : { continues: carried.continues, ...(carried.workflow === undefined ? {} : { workflow: carried.workflow }) }),
     },
   };
