@@ -183,12 +183,10 @@ const NEXT: Record<Route, (facts: PlainFacts) => string[]> = {
     listed
       ? ["Decide. To say yes, add the permission to the task wording. To say no, remove the task from your list.", RUN_LIST]
       : [`Decide. To say yes, run the task again with the permission in its wording: ${RUN_REWORDED}. To say no, do nothing more.`],
-  answer: ({ listed, item }) =>
-    item !== null
-      ? [`Answer it: delivery answer ${item} "your answer"`, "Then run: delivery run --sources"]
-      : listed
-        ? ["Answer it by adding your answer to the task's wording in your list.", RUN_LIST]
-        : [`Run the task again with your answer in its wording: ${RUN_REWORDED}`],
+  answer: ({ item, runId }) => {
+    const key = item ?? runId;
+    return [`Answer it: delivery answer ${key} "your answer"`, "Then run: delivery run --sources"];
+  },
   reword: ({ listed }) =>
     listed ? ["Reword the task, or remove it from your list.", RUN_LIST] : [`Reword the task and run it again: ${RUN_REWORDED}`],
   sign_in: ({ listed }) => ["Check that the agent can sign in on this machine.", RUN_AGAIN_ALONE, ...(listed ? [THEN_THE_LIST] : [])],

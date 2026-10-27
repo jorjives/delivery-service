@@ -70,6 +70,11 @@ describe("delivery answer for a run started with --task", () => {
     const { exitCode, stderr } = await delivery(["answer", runId, "Formal, please."], { cwd: repo, env });
     expect(stderr).not.toContain("is parked here");
     expect(exitCode).toBe(EXIT.ok);
+
+    const script = await scriptFile(completes);
+    const carried = await delivery(["run", "--sources"], { cwd: repo, env: { ...env, [TEST_MOCK_SCRIPT]: script } });
+    expect(carried.exitCode).toBe(EXIT.ok);
+    expect(promptsSent(await readJournal(`${script}.journal.jsonl`)).join("\n")).toContain("Formal, please.");
   }, RUN_TIMEOUT);
 });
 

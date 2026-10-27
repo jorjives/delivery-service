@@ -1,12 +1,14 @@
 import { resolve } from "node:path";
 import { commitItemFields } from "../backlog.js";
-import { ledgerPath, parkedItems, readItemLedger, recordAnswer, recordSignOff, recordUnpark, type ItemState } from "../item-ledger.js";
+import { DEFAULT_PARK_AFTER, ledgerPath, parkedItems, readItemLedger, recordAnswer, recordDispatched, recordSignOff, recordUnpark, settleRun, type ItemState } from "../item-ledger.js";
+import { taskIntent } from "../task-list.js";
 import { branchName } from "../provision.js";
 import type { CommandContext } from "./context.js";
 import { DEFAULT_SOURCES, loadConfig, sourceName } from "./config.js";
 import { uncommittedItems } from "./backlog-commands.js";
 import { EXIT, Refusal, type ExitCode } from "./failures.js";
 import { findRepository } from "./project.js";
+import { allRuns } from "./runs.js";
 import { holdingRepo } from "./run-exclusion.js";
 import { runSources } from "./sources-run.js";
 
@@ -26,10 +28,27 @@ export const signedOff = (key: string): string => `Signed off ${key}: checking i
 export const rejected = (key: string, branch: string): string => `Set ${key} aside: nothing was landed. Its work stays on branch ${branch} if you want it.`;
 export const rejectOnTracker = (key: string): string => `${key} lives in your tracker, not your backlog folder: close it there to set it aside.`;
 
+/** The key a stopped run started with `--task` or from a list takes in the ledger, so it can be answered like an item. */
+export const taskKey = (runId: string): string => `task:${runId}`;
+
+/**
+ * A run that stopped on a question and came from no source, entered in the ledger under its own key so `answer` can
+ * carry it on. Written once: a run already in the ledger is left as it is.
+ */
+async function adoptAskedRun(runId: string, repoPath: string, path: string): Promise<void> {
+  const key = taskKey(runId);
+  if ((await readItemLedger(path)).has(key)) return;
+  const record = (await allRuns(repoPath)).find((r) => r.runId === runId);
+  if (record === undefined || record.caseFile.header.item !== undefined || record.caseFile.outcome?.cause?.kind !== "decision") return;
+  await recordDispatched(path, key, runId, taskIntent(record.caseFile.header.taskDef));
+  await settleRun(path, key, record, DEFAULT_PARK_AFTER);
+}
+
 /** The parked item a person named, by its key or, when only one parked item has it, by its id. */
 async function parkedNamed(item: string, options: ItemOptions, ctx: CommandContext): Promise<{ repoPath: string; path: string; state: ItemState }> {
   const repoPath = await findRepository(resolve(ctx.cwd, options.repo ?? "."));
   const path = ledgerPath(repoPath, ctx.env);
+  await adoptAskedRun(item, repoPath, path);
   const parked = parkedItems(await readItemLedger(path));
   const byKey = parked.find((state) => state.key === item);
   const byId = parked.filter((state) => state.key.endsWith(`:${item}`) || state.key.endsWith(`:${item}.md`) || state.key.endsWith(`-${item}.md`));
