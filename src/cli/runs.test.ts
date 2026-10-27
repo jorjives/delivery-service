@@ -45,6 +45,27 @@ describe("the runs a repository is holding", () => {
     expect((await unfinishedRuns(repo)).map((record) => record.runId)).toEqual(["add-a-greeting-20260915T211500Z"]);
   });
 
+  it("leaves out a run of a sources item: only the sources pipeline picks that up", async () => {
+    const repo = await scratchRepo();
+    await writeRun(repo, "add-a-greeting-20260915T211500Z", "add a greeting");
+    const dir = join(runsRoot(repo), "say-hello-20260915T213000Z");
+    await mkdir(dir, { recursive: true });
+    await create(
+      dir,
+      {
+        surfaceId: "say-hello-20260915T213000Z",
+        taskDef: { intent: "say hello" },
+        gateRef: GATE,
+        closerRef: { type: "commit-to-branch" },
+        item: { key: "backlog:hello.md", source: "backlog", id: "hello.md", resolve: "hello.md" },
+        delivery: { branch: "delivery/sources" },
+      },
+      DEFAULT_BUDGETS,
+    );
+
+    expect((await unfinishedRuns(repo)).map((record) => record.runId)).toEqual(["add-a-greeting-20260915T211500Z"]);
+  });
+
   it("puts the most recently touched run first, whatever order they were started in", async () => {
     const repo = await scratchRepo();
     const older = await writeRun(repo, "reverse-a-word-20260915T213000Z", "reverse a word");

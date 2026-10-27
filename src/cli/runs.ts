@@ -52,9 +52,13 @@ export async function allRuns(repoPath: string): Promise<RunRecord[]> {
   return found.sort((a, b) => b.touchedAt - a.touchedAt).map(({ record }) => record);
 }
 
-/** The runs this repository is still holding: a record with no outcome, which is what an interrupted run leaves behind. */
+/**
+ * The runs of single tasks this repository is still holding: a record with no outcome, which is what an interrupted run
+ * leaves behind. A sources item's run is left out: it belongs to the sources pipeline, which settles the item and hands
+ * the delivery branch on, so `delivery run --sources` picks it up and nothing else does.
+ */
 export async function unfinishedRuns(repoPath: string): Promise<RunRecord[]> {
-  return (await allRuns(repoPath)).filter((record) => !record.caseFile.outcome);
+  return (await allRuns(repoPath)).filter((record) => !record.caseFile.outcome && record.caseFile.header.item === undefined);
 }
 
 /** A run of several tasks at once, read back from the repository: its folder and its record. */
