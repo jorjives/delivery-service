@@ -403,3 +403,29 @@ describe("delivery run --sources with the stacked open-pr closer", () => {
     expect(countDispatched(items)).toBe(dispatched);
   }, RUN_TIMEOUT * 3);
 });
+
+describe("delivery run --sources with closer.branch per-item", () => {
+  let gh: GhStandIn;
+
+  beforeEach(() => {
+    gh = createGhStandIn();
+    vi.stubEnv("PATH", `${gh.binDir}${delimiter}${process.env.PATH ?? ""}`);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("opens one independent pull request per item, each from the base, instead of one rolling pull request", async () => {
+    const { repo } = project({ closer: { type: "open-pr", branch: "per-item" } }, { [A]: brief(1, "Add a function that says hello to a name."), [B]: brief(2, "Add a function that says goodbye.") });
+
+    const { exitCode } = await delivery(["run", "--sources", "--max", "2"], { cwd: repo, env: await envFor(threeWays) });
+
+    expect(exitCode).toBe(EXIT.ok);
+    const prs = gh.pullRequests();
+    expect(prs).toHaveLength(2);
+    expect(prs.map((pr) => pr.base)).toEqual(["main", "main"]);
+    expect(prs.every((pr) => pr.head.startsWith("surface/"))).toBe(true);
+    expect(prs.map((pr) => pr.head)).not.toContain("delivery/main");
+  }, RUN_TIMEOUT * 2);
+});
