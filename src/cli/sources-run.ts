@@ -69,6 +69,8 @@ function turnFor(state: ItemState | undefined): Continues["turn"] | undefined {
   return undefined;
 }
 
+const isAnsweredTask = (state: ItemState): boolean => state.key.startsWith("task:") && state.parked === null && state.settled && state.lastClass === "decision" && state.answer !== null;
+
 export async function runSources(options: RunFlags, { repoPath, config }: { repoPath: string; config: DeliveryConfig }, ctx: CommandContext, { only }: { only?: string } = {}): Promise<ExitCode> {
   const max = maxItems(options);
   // Refused here, before anything is fetched, settled or chosen, so an unknown name touches nothing.
@@ -141,6 +143,12 @@ export async function runSources(options: RunFlags, { repoPath, config }: { repo
   for (const note of chosen.notes) ctx.report.note(note);
   // Merged per source: this run only saw `chosen.read`, so holds in sources it never reached are kept, not wiped (spec §5.10, §10).
   await recordHeld(heldPath(path), chosen.held, chosen.read);
+  // An answered run that came from no source (`delivery run --task`) has no listing to be chosen from: its record is its work.
+  const answeredTasks = [...ledger.values()].filter((state) => isAnsweredTask(state) && (only === undefined || state.key === only));
+  for (const state of answeredTasks.slice(0, Math.max(0, max - claims.length - chosen.items.length))) {
+    const taskDef = records.find((r) => r.runId === state.lastRunId)?.caseFile.header.taskDef;
+    if (taskDef !== undefined) chosen.items.push({ key: state.key, source: "task", kind: "list", id: state.key.slice("task:".length), taskDef, fallback: false });
+  }
   for (const item of chosen.items) {
     const claim = await claimFor(item, ledger.get(item.key), records, { repoPath, config, project, now, taken, branch, workflow }, ctx);
     if (claim !== undefined) claims.push(claim);
