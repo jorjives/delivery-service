@@ -98,7 +98,7 @@ export async function listSource(source: SourceConfig, { repoPath, config, env }
           .map(structureTask)
           .map((taskDef) => ({ id: taskId(taskDef), taskDef }))
           .filter(({ id }, index, all) => all.findIndex((other) => other.id === id) === index)
-          .map(({ id, taskDef }) => ({ key: `${name}:${id}`, source: name, kind: "list" as const, id, taskDef, fallback, ...withWorkflow(taskDef) })),
+          .map(({ id, taskDef }) => ({ key: `${name}:${id}`, source: name, kind: "list" as const, id, taskDef, fallback, ...withWorkflow(taskDef), ...withSequence(taskDef.sequence) })),
         notes: [],
       };
     case "command":
