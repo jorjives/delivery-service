@@ -52,6 +52,11 @@ describe("the list source", () => {
     expect(await keysOf(["new task", "second task", "first task"])).toEqual([expect.any(String), b, a]);
   });
 
+  it("carries a task's sequence onto its item, as the backlog, command and github sources do", async () => {
+    const { items } = await listSource({ type: "list" }, { repoPath: ".", config: { tasks: [{ intent: "slice one", sequence: "docs/specs/a-slices.md" }, "plain task"] }, env: {} });
+    expect(items.map((i) => i.sequence)).toEqual(["docs/specs/a-slices.md", undefined]);
+  });
+
   it("lists a task written twice once", async () => {
     expect(await keysOf(["same", "same", "other"])).toHaveLength(2);
   });
