@@ -295,7 +295,10 @@ Interpolated text is placed among the step's instructions. When it comes from an
 
 Each entry under `sources` is an object with a `type`. Every kind also takes `name`, which tells
 its items apart in the report (default: the `type`), and `"fallback": true`, which reads it only
-when no other source has any work. Two sources with the same name stop the command.
+when no other source has any work. A `list` or `command` source also takes `"recurring": true`: its
+items are never counted as delivered, so each is taken again on every run that reaches it, a
+`complete` command is never called for it, and a `sequence` on its items is ignored. Without
+`recurring`, a fallback source's items are delivered once, like any other. Two sources with the same name stop the command.
 
 | Type | Fields | Reads |
 |---|---|---|

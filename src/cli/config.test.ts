@@ -683,7 +683,7 @@ const TWO_STEPS = {
 
 describe("work sources", () => {
   it("accepts backlog, list and command sources, in order, one marked as a fallback", () => {
-    expect(DeliveryConfig.parse({ sources: [{ type: "backlog" }, { type: "command", command: "./next-slice.sh" }, { type: "list", fallback: true }], parkAfter: 2, notify: "./tell-me.sh" }).sources).toHaveLength(3);
+    expect(DeliveryConfig.parse({ sources: [{ type: "backlog" }, { type: "command", command: "./next-slice.sh" }, { type: "list", fallback: true }, { type: "list", name: "loop", recurring: true }], parkAfter: 2, notify: "./tell-me.sh" }).sources).toHaveLength(4);
   });
 
   it("refuses a command source with no command, saying what one takes", () => {

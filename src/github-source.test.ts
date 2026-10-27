@@ -13,7 +13,7 @@ describe("reading an issue as a work item", () => {
   it("takes the title as the intent and the title and body as the brief, keyed by the issue number", () => {
     expect(issueItem(issue(), SOURCE, "github")).toEqual({
       item: {
-        key: "github:12", source: "github", kind: "github", id: "12", fallback: false, raise: true,
+        key: "github:12", source: "github", kind: "github", id: "12", raise: true,
         issue: { number: 12, parked: false },
         taskDef: { intent: "Say hello", body: "Say hello\n\nAdd a hello function." },
       },

@@ -30,7 +30,8 @@ function sourcePhrase(source: SourceConfig): string {
     command: source.type === "command" ? `\`${source.command}\`` : "",
     github: source.type === "github" ? `github issues labelled \`${source.label ?? DEFAULT_LABEL}\`` : "",
   }[source.type];
-  return source.fallback === true ? `${where} (only when nothing else has work)` : where;
+  const notes = [source.fallback === true ? "only when nothing else has work" : "", "recurring" in source && source.recurring === true ? "never finished" : ""].filter(Boolean);
+  return notes.length === 0 ? where : `${where} (${notes.join("; ")})`;
 }
 
 /**

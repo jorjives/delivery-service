@@ -76,7 +76,7 @@ describe("the command source", () => {
     writeFileSync(join(repo, "tasks.sh"), `#!/bin/sh\n[ "$1" = list ] && echo '[{"id":"s-4","intent":"Deliver slice 4","workflow":"build","spec":"docs/s.md"}]'\n`);
     chmodSync(join(repo, "tasks.sh"), 0o755);
     const { items } = await listSource({ type: "command", command: "./tasks.sh", name: "slices" }, { repoPath: repo, config: {}, env: process.env });
-    expect(items).toEqual([{ key: "slices:s-4", source: "slices", kind: "command", id: "s-4", taskDef: { intent: "Deliver slice 4", workflow: "build", spec: "docs/s.md" }, workflow: "build", fallback: false }]);
+    expect(items).toEqual([{ key: "slices:s-4", source: "slices", kind: "command", id: "s-4", taskDef: { intent: "Deliver slice 4", workflow: "build", spec: "docs/s.md" }, workflow: "build" }]);
   });
 
   it("puts a task's sequence on the work item, so a slices source can make each slices file its own sequence", async () => {
@@ -173,6 +173,14 @@ describe("chooseWork", () => {
     const records = [{ runId: "r1", caseFile: { header: { taskDef }, outcome: { kind: "closed" } } }] as unknown as RunRecord[];
     const chosen = await chooseWork([{ type: "list", fallback: true }], { ...base, repoPath: repo, config: { tasks: ["derive new work"] }, records });
     expect(chosen.items).toEqual([]);
+  });
+
+  it("offers a recurring list task again after its run was delivered", async () => {
+    const repo = repoWith({});
+    const taskDef = { intent: "derive new work" };
+    const records = [{ runId: "r1", caseFile: { header: { taskDef }, outcome: { kind: "closed" } } }] as unknown as RunRecord[];
+    const chosen = await chooseWork([{ type: "list", recurring: true }], { ...base, repoPath: repo, config: { tasks: ["derive new work"] }, records });
+    expect(chosen.items.map((i) => i.key)).toEqual([`list:${taskId(taskDef)}`]);
   });
 
   it("carries on with the other sources when one fails, naming it", async () => {
@@ -345,11 +353,11 @@ describe("chooseWork with sequences", () => {
     expect(chosen.held).toEqual([{ sequence: "spec-a", item: A1, source: "backlog", reason: "in_flight" }, { sequence: "spec-b", item: B1, source: "backlog", reason: "parked" }]);
   });
 
-  it("ignores a sequence on a fallback source's items, which are never delivered", async () => {
+  it("ignores a sequence on a recurring source's items, which are never delivered", async () => {
     const repo = repoWith({});
     writeFileSync(join(repo, "tasks.sh"), `#!/bin/sh\n[ "$1" = list ] && echo '[{"id":"f1","intent":"F1","sequence":"s"},{"id":"f2","intent":"F2","sequence":"s"}]'\n`);
     chmodSync(join(repo, "tasks.sh"), 0o755);
-    const chosen = await chooseWork([{ type: "command", command: "./tasks.sh", name: "chores", fallback: true }], { ...base, repoPath: repo, env: process.env, max: 3 });
+    const chosen = await chooseWork([{ type: "command", command: "./tasks.sh", name: "chores", recurring: true }], { ...base, repoPath: repo, env: process.env, max: 3 });
     expect(keys(chosen)).toEqual(["chores:f1", "chores:f2"]);
     expect(chosen.held).toEqual([]);
   });

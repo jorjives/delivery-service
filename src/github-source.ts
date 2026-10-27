@@ -78,7 +78,7 @@ export function issueItem(issue: Issue, source: GithubSource, name: string): { i
   const taskDef: TaskDef = { ...fields, intent: issue.title, body: split.text === "" ? issue.title : `${issue.title}\n\n${split.text}` };
   return {
     item: {
-      key: `${name}:${issue.number}`, source: name, kind: "github", id: String(issue.number), taskDef, fallback: source.fallback === true,
+      key: `${name}:${issue.number}`, source: name, kind: "github", id: String(issue.number), taskDef,
       ...(workflow === undefined ? {} : { workflow }),
       ...(sequence === undefined || sequence === "" ? {} : { sequence }),
       raise: true,

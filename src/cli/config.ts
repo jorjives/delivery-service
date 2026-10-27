@@ -154,12 +154,15 @@ export function stepLabel(step: AfterStep): string {
 export const WorkflowConfig = z.object({ steps: z.array(StepConfig).min(1), after: z.array(AfterStep).optional(), hold: Severity.optional() }).strict();
 export type WorkflowConfig = z.infer<typeof WorkflowConfig>;
 
-/** One place `delivery run --sources` finds work. A `fallback` is read only when no other source has any. */
+/**
+ * One place `delivery run --sources` finds work. A `fallback` is read only when no other source has any.
+ * A `recurring` list or command source is never finished: its items are taken again on every run that reaches them.
+ */
 export const SourceConfig = z.discriminatedUnion("type", [
   z.object({ type: z.literal("backlog"), name: Written.optional(), fallback: z.boolean().optional() }).strict(),
-  z.object({ type: z.literal("list"), name: Written.optional(), fallback: z.boolean().optional() }).strict(),
+  z.object({ type: z.literal("list"), name: Written.optional(), fallback: z.boolean().optional(), recurring: z.boolean().optional() }).strict(),
   z.object({
-    type: z.literal("command"), command: Written, name: Written.optional(), fallback: z.boolean().optional(),
+    type: z.literal("command"), command: Written, name: Written.optional(), fallback: z.boolean().optional(), recurring: z.boolean().optional(),
     // `tracker`: the script is a tracker and also answers `<command> raise`; follow-ups its items' agents write are raised through it instead of landing in the backlog (spec §5.5)
     tracker: z.boolean().optional(),
   }).strict(),
@@ -307,7 +310,7 @@ const WHAT_IT_TAKES: Record<keyof DeliveryConfig, string> = {
     'It is the list of places work comes from, in order, for `delivery run --sources`: each one an object with a `type` of "backlog", "list", "command" or "github" ' +
     '(a command source also takes `command`, and `"tracker": true` when it can `raise` follow-ups; a github source may take a `label` and a default `workflow`), ' +
     'for example `[{ "type": "github", "label": "delivery" }, { "type": "command", "command": "./next-slice.sh" }]`. ' +
-    'Add `"fallback": true` to one that is used only when nothing else has work.',
+    'Add `"fallback": true` to one that is used only when nothing else has work, and `"recurring": true` to a list or command source whose work is never finished.',
   after:
     "It is a list of steps run once a run's work has landed and your closer has taken it: each one a command, such as " +
     '`{ "run": "make deploy", "check": "curl -f http://localhost/health" }` (add `"in": "base"` to run it in your own folder rather than a copy of what landed), ' +
