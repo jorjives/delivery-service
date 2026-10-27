@@ -419,3 +419,29 @@ describe("delivery validate with a required pack setting unset", () => {
     expect(json.exitCode).toBe(EXIT.configuration);
   });
 });
+
+describe("what validate says about settings that only take effect with `delivery run --sources`", () => {
+  it("names each one that a project worked by task would silently ignore", () => {
+    const config: DeliveryConfig = {
+      tasks: ["a"],
+      closer: { type: "open-pr", stack: true },
+      after: [{ run: "make deploy" }],
+      parkAfter: 2,
+    };
+    const lines = checkedLines(config, project({ closerRef: { type: "open-pr", stack: true } }));
+    expect(lines).toContain("! closer.stack: only `delivery run --sources` stacks pull requests; `delivery run` opens one per task");
+    expect(lines).toContain("! after: runs only after `delivery run --sources` lands work");
+    expect(lines).toContain("! parkAfter: only `delivery run --sources` parks work");
+  });
+
+  it("warns about none of them for a project that is run with sources", () => {
+    const config: DeliveryConfig = {
+      sources: [{ type: "backlog" }],
+      closer: { type: "open-pr", stack: true },
+      after: [{ run: "make deploy" }],
+      parkAfter: 2,
+    };
+    const lines = checkedLines(config, project({ closerRef: { type: "open-pr", stack: true } }));
+    expect(lines.filter((line) => line.startsWith("!"))).toEqual([]);
+  });
+});

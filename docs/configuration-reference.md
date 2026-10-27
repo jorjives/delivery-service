@@ -189,6 +189,11 @@ A required setting with no value stops `delivery run`, `delivery review` and `de
 A list of places `delivery run --sources` finds work, read in order. Default:
 `[{ "type": "backlog" }]`. See [Work sources](#work-sources) for each kind.
 
+!!! note "Settings that need `--sources`"
+    `closer.stack`, `after`, `parkAfter`, `workflows.<name>.after` and `workflows.<name>.hold` take effect
+    only with `delivery run --sources`. With `delivery run` or `delivery run --task` they are ignored, and
+    `delivery validate` names each one that a project without `sources` sets, marked `!`.
+
 ### `parkAfter`
 
 A whole number, 1 or more. Default: 3. How many runs in a row an item may end undelivered before it
