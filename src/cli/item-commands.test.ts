@@ -56,6 +56,23 @@ describe("delivery answer", () => {
   });
 });
 
+describe("delivery answer for a run started with --task", () => {
+  it("records the answer to the question a --task run stopped on, named by its run id", async () => {
+    const repo = initTempRepo("item-commands-task-", { "package.json": PACKAGE });
+    const state = mkdtempSync(join(tmpdir(), "item-task-state-"));
+    const asks = { expectations: [{ json: { status: "escalate", category: "decision", question: "Formal or casual greeting?", rationale: "the task does not say" } }] };
+    const env = { XDG_STATE_HOME: state, [TEST_MOCK_SCRIPT]: await scriptFile(asks as never) };
+    const stopped = await delivery(["run", "--task", "Add a greeting function."], { cwd: repo, env });
+    expect(stopped.exitCode).toBe(EXIT.escalated);
+    const runId = /Starting run (\S+):/.exec(stopped.stdout)?.[1] ?? "";
+    expect(runId).not.toBe("");
+
+    const { exitCode, stderr } = await delivery(["answer", runId, "Formal, please."], { cwd: repo, env });
+    expect(stderr).not.toContain("is parked here");
+    expect(exitCode).toBe(EXIT.ok);
+  }, RUN_TIMEOUT);
+});
+
 describe("delivery unpark", () => {
   it("puts a parked item back in the queue, to start afresh", async () => {
     const { repo, env, path } = await withLedger([{ t: "parked", key: KEY, reason: "escalated", at }]);
