@@ -167,6 +167,14 @@ describe("chooseWork", () => {
     expect((await chooseWork(sources, { ...base, repoPath: empty, config })).items.map((i) => i.key)).toEqual([`list:${taskId({ intent: "derive new work" })}`]);
   });
 
+  it("does not offer a fallback list task again once its run has been delivered", async () => {
+    const repo = repoWith({});
+    const taskDef = { intent: "derive new work" };
+    const records = [{ runId: "r1", caseFile: { header: { taskDef }, outcome: { kind: "closed" } } }] as unknown as RunRecord[];
+    const chosen = await chooseWork([{ type: "list", fallback: true }], { ...base, repoPath: repo, config: { tasks: ["derive new work"] }, records });
+    expect(chosen.items).toEqual([]);
+  });
+
   it("carries on with the other sources when one fails, naming it", async () => {
     const repo = repoWith({ ".delivery/backlog/20261016T090000Z-a.md": item("open") });
     const chosen = await chooseWork([{ type: "command", command: "exit 1" }, { type: "backlog" }], { ...base, repoPath: repo, env: process.env });
