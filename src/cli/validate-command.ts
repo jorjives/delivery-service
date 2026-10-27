@@ -58,6 +58,22 @@ function workflowsLines(config: DeliveryConfig): string[] {
   return [`workflows: ${phrases.join(", ")}`];
 }
 
+/** The settings a project without `sources` has set that only `delivery run --sources` acts on, one warning each. */
+function sourcesOnlyWarnings(config: DeliveryConfig, project: ProjectSettings): string[] {
+  if (config.sources !== undefined) return [];
+  // Pack workflows are named <pack>:<workflow>; their settings are the pack's, not the project's.
+  const workflows = Object.entries(config.workflows ?? {}).filter(([name]) => !name.includes(":"));
+  return [
+    ...(project.closerRef.type === "open-pr" && project.closerRef.stack === true
+      ? ["closer.stack: only `delivery run --sources` stacks pull requests; `delivery run` opens one per task"]
+      : []),
+    ...(config.after === undefined ? [] : ["after: runs only after `delivery run --sources` lands work"]),
+    ...workflows.filter(([, { after }]) => after !== undefined).map(([name]) => `workflows.${name}.after: runs only after \`delivery run --sources\` lands work`),
+    ...(config.parkAfter === undefined ? [] : ["parkAfter: only `delivery run --sources` parks work"]),
+    ...workflows.filter(([, { hold }]) => hold !== undefined).map(([name]) => `workflows.${name}.hold: only work from \`delivery run --sources\` can be held for sign-off`),
+  ].map((line) => `! ${line}`);
+}
+
 /**
  * One line per thing `validate` checked, in the owner's terms: the description,
  * the tasks or sources, the workflows, what the check runs, what the closing action does, and the agent
@@ -73,7 +89,7 @@ export function checkedLines(config: DeliveryConfig, project: ProjectSettings): 
     `gate: ${gateLine(project)}`,
     `closer: ${closerPhrase(project.closerRef)}`,
     ...(config.agent === undefined ? [] : [`agent options: ${Object.keys(config.agent).join(", ")}`]),
-  ].map((line) => `✓ ${line}`);
+  ].map((line) => `✓ ${line}`).concat(sourcesOnlyWarnings(config, project));
 }
 
 /**
